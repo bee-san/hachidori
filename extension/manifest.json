@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "hoshidicts",
+  "version": "0.1.0",
+  "description": "Hover any Japanese text to look it up in your imported Yomitan dictionaries.",
+  "minimum_chrome_version": "118",
+  "permissions": [
+    "offscreen",
+    "storage",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "options_page": "settings.html",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_idle",
+      "js": [
+        "render/glossary.js",
+        "render/popup.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "render/reader.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}

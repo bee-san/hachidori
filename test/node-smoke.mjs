@@ -1,0 +1,877 @@
+#!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Contract test for the wasm C ABI. Runs the real hoshidicts.wasm on the real
+// fixture dictionary in plain MEMFS and checks both the values and the JSON
+// shape the extension is coded against.
+//
+// Zero dependencies, one shared module instance, assertions in dependency order
+// (import -> add_dict -> lookup -> error paths -> reset). Every check prints its
+// own PASS/FAIL line so a failure names exactly which part of the contract broke.
+
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, relative } from 'node:path';
+
+import {
+  EXPECTED,
+  EXPECTED_GLOSSARIES,
+  MEDIA_PATH,
+  STYLES,
+  TERMS,
+  TITLE,
+  TRAINED_TERMS,
+  TRAINED_TITLE,
+  TRAINING_SAMPLE_FLOOR,
+  buildFixtureZip,
+  buildNoIndexZip,
+  buildNotAZip,
+  buildTitledZip,
+  buildTrainedZip,
+  makePng,
+  termKey,
+  writeFixtures,
+} from './make-fixture.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const MODULE_PATH = join(HERE, '..', 'extension', 'vendor', 'hoshidicts.mjs');
+const WASM_PATH = join(HERE, '..', 'extension', 'vendor', 'hoshidicts.wasm');
+const DICT_DIR = `/dicts/${TITLE}`;
+const TRAINED_DIR = `/dicts/${TRAINED_TITLE}`;
+
+// Every marker query.cpp still recognises, newest first. The importer writes
+// .hoshidicts_4 when it trained a zstd dictionary for the term banks and
+// .hoshidicts_3 when it did not, so a test that pins one specific marker pins
+// which branch the fixture happened to take. This list is what both
+// wasm/bindings.cpp's dictionary_files_present and offscreen.js's MARKER_FILES
+// have to accept.
+const MARKER_FILES = ['.hoshidicts_4', '.hoshidicts_3', '.hoshidicts_2', '.hoshidicts_1'];
+
+// dict.zstd exists only alongside .hoshidicts_4, so it is never part of the
+// required set.
+const REQUIRED_FILES = ['index.json', 'hash.table', 'bloom.filter', 'blobs.bin'];
+
+// ---------------------------------------------------------------------------
+// Tiny assert harness
+// ---------------------------------------------------------------------------
+
+let passed = 0;
+const failures = [];
+let group = '';
+
+const G = (name) => {
+  group = name;
+  console.log(`\n# ${name}`);
+};
+
+function check(name, fn) {
+  const label = `${group} :: ${name}`;
+  try {
+    fn();
+    passed++;
+    console.log(`  PASS  ${name}`);
+  } catch (e) {
+    failures.push({ label, message: e.message });
+    console.log(`  FAIL  ${name}`);
+    for (const line of String(e.message).split('\n')) console.log(`        ${line}`);
+  }
+}
+
+function ok(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+const show = (v) => (typeof v === 'string' ? JSON.stringify(v) : JSON.stringify(v) ?? String(v));
+
+function eq(actual, expected, what) {
+  if (actual !== expected) {
+    throw new Error(`${what}\n  expected: ${show(expected)}\n  actual:   ${show(actual)}`);
+  }
+}
+
+function same(actual, expected, what) {
+  const a = JSON.stringify(actual);
+  const b = JSON.stringify(expected);
+  if (a !== b) throw new Error(`${what}\n  expected: ${b}\n  actual:   ${a}`);
+}
+
+// ---------------------------------------------------------------------------
+// Structural validation of contract B
+//
+// A shape is 'string' | 'number' | 'int' | 'boolean', {key: shape} for an object
+// with exactly that key set, or arrayOf(shape).
+// ---------------------------------------------------------------------------
+
+const arrayOf = (shape) => ({ __array: shape });
+
+const TRACE = { name: 'string', description: 'string' };
+const GLOSSARY = { dictionary: 'string', glossary: 'string', definitionTags: 'string', termTags: 'string' };
+const FREQUENCY = { value: 'int', displayValue: 'string' };
+const FREQUENCY_ENTRY = { dictionary: 'string', frequencies: arrayOf(FREQUENCY) };
+const PITCH = { position: 'int', pattern: 'string', nasal: arrayOf('int'), devoice: arrayOf('int') };
+const PITCH_ENTRY = { dictionary: 'string', pitches: arrayOf(PITCH), transcriptions: arrayOf('string') };
+const TERM = {
+  expression: 'string',
+  reading: 'string',
+  rules: 'string',
+  score: 'int',
+  glossaries: arrayOf(GLOSSARY),
+  frequencies: arrayOf(FREQUENCY_ENTRY),
+  pitches: arrayOf(PITCH_ENTRY),
+};
+const LOOKUP_RESULT = {
+  matched: 'string',
+  deinflected: 'string',
+  trace: arrayOf(TRACE),
+  term: TERM,
+  preprocessorSteps: 'int',
+};
+const LOOKUP_RESPONSE = { results: arrayOf(LOOKUP_RESULT), dictionaryCount: 'int' };
+const KANJI_STAT = { name: 'string', value: 'string' };
+const KANJI_ENTRY = {
+  dictionary: 'string',
+  onyomi: 'string',
+  kunyomi: 'string',
+  tags: 'string',
+  definitions: arrayOf('string'),
+  stats: arrayOf(KANJI_STAT),
+};
+const LOOKUP_KANJI = { character: 'string', entries: arrayOf(KANJI_ENTRY) };
+const STYLE = { dictionary: 'string', styles: 'string' };
+const IMPORT_REPORT = {
+  success: 'boolean',
+  title: 'string',
+  termCount: 'int',
+  metaCount: 'int',
+  frequencyCount: 'int',
+  pitchCount: 'int',
+  kanjiCount: 'int',
+  mediaCount: 'int',
+  error: 'string',
+};
+
+function shapeProblems(value, shape, path = '$', out = []) {
+  if (typeof shape === 'string') {
+    if (shape === 'int') {
+      if (typeof value !== 'number' || !Number.isInteger(value)) {
+        out.push(`${path}: expected integer, got ${typeof value} ${show(value)}`);
+      }
+    } else if (typeof value !== shape) {
+      out.push(`${path}: expected ${shape}, got ${typeof value} ${show(value)}`);
+    }
+    return out;
+  }
+
+  if (shape.__array) {
+    if (!Array.isArray(value)) {
+      out.push(`${path}: expected array, got ${typeof value} ${show(value)}`);
+      return out;
+    }
+    value.forEach((item, i) => shapeProblems(item, shape.__array, `${path}[${i}]`, out));
+    return out;
+  }
+
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    out.push(`${path}: expected object, got ${Array.isArray(value) ? 'array' : typeof value}`);
+    return out;
+  }
+
+  for (const key of Object.keys(shape)) {
+    if (!Object.hasOwn(value, key)) out.push(`${path}.${key}: missing`);
+    else shapeProblems(value[key], shape[key], `${path}.${key}`, out);
+  }
+  for (const key of Object.keys(value)) {
+    if (!Object.hasOwn(shape, key)) out.push(`${path}.${key}: unexpected key (contract has no such field)`);
+  }
+  return out;
+}
+
+function conforms(value, shape, what) {
+  const problems = shapeProblems(value, shape);
+  if (problems.length) throw new Error(`${what} violates the JSON contract:\n  ${problems.join('\n  ')}`);
+}
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+
+const REPO_ROOT = join(HERE, '..');
+const shortPath = (p) => relative(REPO_ROOT, p) || p;
+
+if (!existsSync(MODULE_PATH) || !existsSync(WASM_PATH)) {
+  const missing = [MODULE_PATH, WASM_PATH].filter((p) => !existsSync(p));
+  console.error(`node-smoke: ${missing.join('\nnode-smoke: ')}\nnot found.\n`);
+  console.error('Build the wasm module first:\n');
+  console.error('    ./wasm/build.sh\n');
+  console.error('(that script sources wasm/env.sh, which puts a python >= 3.10 and emsdk on PATH)');
+  process.exit(2);
+}
+
+console.log('writing fixtures:');
+for (const { path, bytes } of writeFixtures()) {
+  console.log(`  ${String(bytes).padStart(7)}  ${shortPath(path)}`);
+}
+
+const { default: createHoshidicts } = await import(MODULE_PATH);
+const M = await createHoshidicts();
+
+const call = (name, ret, types, args) => M.ccall(name, ret, types, args);
+const lastError = () => call('hdw_last_error', 'string', [], []);
+const hdwImport = (zip, out, lowRam = 0) =>
+  JSON.parse(call('hdw_import', 'string', ['string', 'string', 'number'], [zip, out, lowRam]));
+const addDict = (path, kind) => call('hdw_add_dict', 'number', ['string', 'number'], [path, kind]);
+const lookupRaw = (text, maxResults = 32, scanLength = 16, options = '') =>
+  call('hdw_lookup', 'string', ['string', 'number', 'number', 'string'], [text, maxResults, scanLength, options]);
+const lookup = (...args) => JSON.parse(lookupRaw(...args));
+const kanji = (character) => JSON.parse(call('hdw_kanji', 'string', ['string'], [character]));
+const styles = () => JSON.parse(call('hdw_styles', 'string', [], []));
+const media = (dictionary, path) => call('hdw_media', 'number', ['string', 'string'], [dictionary, path]);
+const mediaBytes = (length) => {
+  // 'pointer', as offscreen.js uses: only that return type is masked back to
+  // unsigned, and with a heap grown past 2GB a raw i32 address reads negative.
+  const ptr = call('hdw_media_data', 'pointer', [], []);
+  return Uint8Array.from(M.HEAPU8.subarray(ptr, ptr + length));
+};
+const reset = () => call('hdw_reset', null, [], []);
+const entriesOf = (dir) => M.FS.readdir(dir).filter((n) => n !== '.' && n !== '..');
+const markerOf = (entries) => MARKER_FILES.find((m) => entries.includes(m));
+
+// Plain MEMFS. IDBFS is what the extension mounts at /dicts in the browser, but
+// it needs an IndexedDB, so here /dicts is an ordinary in-memory directory and
+// nothing calls FS.syncfs.
+M.FS.mkdir('/work');
+M.FS.mkdir('/dicts');
+M.FS.writeFile('/work/fixture.zip', buildFixtureZip());
+M.FS.writeFile('/work/no-index.zip', buildNoIndexZip());
+M.FS.writeFile('/work/not-a-zip.txt', buildNotAZip());
+
+// ---------------------------------------------------------------------------
+
+G('hdw_import');
+
+const report = hdwImport('/work/fixture.zip', '/dicts');
+console.log(`  actual counts: ${JSON.stringify(report)}`);
+
+check('report conforms to ImportReport', () => conforms(report, IMPORT_REPORT, 'ImportReport'));
+check('success', () => eq(report.success, true, `import failed: ${report.error}`));
+check('error is empty on success', () => eq(report.error, '', 'error should be empty'));
+check('title', () => eq(report.title, EXPECTED.title, 'title'));
+for (const key of ['termCount', 'metaCount', 'frequencyCount', 'pitchCount', 'kanjiCount', 'mediaCount']) {
+  check(key, () => eq(report[key], EXPECTED[key], key));
+}
+check('last_error cleared after a successful import', () => eq(lastError(), '', 'hdw_last_error'));
+check('output directory laid out as add_dict expects', () => {
+  const entries = entriesOf(DICT_DIR);
+  ok(
+    markerOf(entries) !== undefined,
+    `${DICT_DIR} carries none of ${JSON.stringify(MARKER_FILES)}; got ${JSON.stringify(entries.sort())}`,
+  );
+  for (const required of REQUIRED_FILES) {
+    ok(entries.includes(required), `${DICT_DIR}/${required} missing; got ${JSON.stringify(entries.sort())}`);
+  }
+});
+
+// This fixture is the migration case: fewer term rows than train_zstd_dict needs,
+// so the importer skips training and lays the directory out exactly the way every
+// pre-4 engine did. Everything below that loads it is therefore also proof that a
+// dictionary imported before the zstd-dictionary change still works.
+check('the primary fixture stays under the zstd training floor', () =>
+  ok(
+    TERMS.length < TRAINING_SAMPLE_FLOOR,
+    `TERMS has ${TERMS.length} rows; at ${TRAINING_SAMPLE_FLOOR} the importer starts training a zstd ` +
+      `dictionary and this fixture stops covering the pre-4 layout`,
+  ));
+
+check('the untrained import is a .hoshidicts_3 directory with no dict.zstd', () => {
+  const entries = entriesOf(DICT_DIR);
+  eq(markerOf(entries), '.hoshidicts_3', `marker in ${DICT_DIR}: ${JSON.stringify(entries.sort())}`);
+  ok(!entries.includes('dict.zstd'), 'dict.zstd should not exist without a trained dictionary');
+});
+
+// ---------------------------------------------------------------------------
+
+G('mmap output files (Emscripten fd regression)');
+
+// memory::map_rw ftruncates the file to its final length before mmapping it, so
+// hash.table and bloom.filter are the right *size* even when the mapping's
+// writes never reach the file. Before the wasm branch's fix that is exactly what
+// happened: zero-filled tables, an import that still reported success, and every
+// lookup silently returning nothing. Checking the length alone would not catch
+// it, so these read the bytes and check the headers and the payload.
+const hashTable = M.FS.readFile(`${DICT_DIR}/hash.table`);
+const bloomFilter = M.FS.readFile(`${DICT_DIR}/bloom.filter`);
+const view = (u8) => new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+
+check('hash.table is non-empty', () => ok(hashTable.length > 0, 'hash.table has zero length'));
+check('bloom.filter is non-empty', () => ok(bloomFilter.length > 0, 'bloom.filter has zero length'));
+
+check('hash.table content is not zero-filled', () => {
+  const capacity = view(hashTable).getUint32(0, true);
+  ok(capacity >= 16, `capacity header is ${capacity}, expected >= 16 (zeroed file?)`);
+  eq(hashTable.length, 4 + capacity * 16, 'hash.table length for the declared capacity');
+  let occupied = 0;
+  for (let slot = 0; slot < capacity; slot++) {
+    if (view(hashTable).getBigUint64(4 + slot * 16, true) !== 0n) occupied++;
+  }
+  console.log(`        capacity=${capacity} occupied slots=${occupied}`);
+  ok(occupied > 0, 'every hash slot is zero: the mmap writes never reached the file');
+});
+
+check('bloom.filter content is not zero-filled', () => {
+  const v = view(bloomFilter);
+  const numBits = Number(v.getBigUint64(0, true));
+  const numHashes = Number(v.getBigUint64(8, true));
+  ok(numBits >= 64 && (numBits & (numBits - 1)) === 0, `num_bits header is ${numBits}, expected a power of two >= 64`);
+  eq(numHashes, 7, 'num_hashes header');
+  eq(bloomFilter.length, 16 + numBits / 8, 'bloom.filter length for the declared num_bits');
+  const set = bloomFilter.subarray(16).reduce((n, b) => n + (b === 0 ? 0 : 1), 0);
+  console.log(`        num_bits=${numBits} non-zero payload bytes=${set}`);
+  ok(set > 0, 'the whole bit array is zero: the mmap writes never reached the file');
+});
+
+// ---------------------------------------------------------------------------
+
+G('hdw_add_dict');
+
+// One imported directory registered under all four kinds. The fixture carries
+// term, meta and kanji banks in a single zip, and DictionaryQuery keeps a
+// separate vector per kind, so this is how one zip serves every query path.
+const KINDS = { term: 0, freq: 1, pitch: 2, kanji: 3 };
+for (const [name, kind] of Object.entries(KINDS)) {
+  check(`kind ${kind} (${name}) accepted`, () => {
+    eq(addDict(DICT_DIR, kind), 1, `add_dict(${name}) rejected: ${lastError()}`);
+    eq(lastError(), '', 'hdw_last_error after a successful add_dict');
+  });
+}
+
+const DICTIONARY_COUNT = Object.keys(KINDS).length;
+
+// ---------------------------------------------------------------------------
+
+G('hdw_lookup');
+
+const AUTO_OPTIONS = JSON.stringify({ frequencyDictionary: '', frequencyOrder: 'auto', primaryReading: '' });
+
+check('response conforms to the lookup contract', () => {
+  conforms(lookup('食べたかった', 32, 16, AUTO_OPTIONS), LOOKUP_RESPONSE, 'lookup response');
+});
+
+check('dictionaryCount counts every successful add_dict', () => {
+  eq(lookup('食べる').dictionaryCount, DICTIONARY_COUNT, 'dictionaryCount');
+});
+
+check('exact match', () => {
+  const { results } = lookup('食べる');
+  eq(results.length, 1, 'result count');
+  const r = results[0];
+  eq(r.matched, '食べる', 'matched');
+  eq(r.deinflected, '食べる', 'deinflected');
+  same(r.trace, [], 'trace should be empty for an uninflected match');
+  eq(r.preprocessorSteps, 0, 'preprocessorSteps');
+  eq(r.term.expression, '食べる', 'expression');
+  eq(r.term.reading, 'たべる', 'reading');
+  eq(r.term.rules, 'v1', 'rules');
+  eq(r.term.score, 120, 'score should be the max across merged entries');
+});
+
+check('glossaries arrive raw, in term-bank order, one per bank row', () => {
+  const { glossaries } = lookup('食べる').results[0].term;
+  same(
+    glossaries.map((g) => g.glossary),
+    EXPECTED_GLOSSARIES.get(termKey('食べる', 'たべる')),
+    'raw glossary strings',
+  );
+  same(
+    glossaries.map((g) => [g.dictionary, g.definitionTags, g.termTags]),
+    [
+      [TITLE, 'vt', 'ichidan'],
+      [TITLE, 'col', 'ichidan'],
+    ],
+    'per-glossary dictionary and tags',
+  );
+});
+
+check('structured-content glossary is not pre-parsed', () => {
+  const { glossaries } = lookup('漢字').results[0].term;
+  eq(glossaries.length, 1, 'glossary count');
+  const raw = glossaries[0].glossary;
+  same([raw], EXPECTED_GLOSSARIES.get(termKey('漢字', 'かんじ')), 'raw structured-content string');
+  const parsed = JSON.parse(raw);
+  eq(parsed[0].type, 'structured-content', 'glossary[0].type');
+  eq(parsed[1], 'Chinese character', 'glossary[1] plain string');
+  const div = parsed[0].content[0];
+  eq(div.tag, 'div', 'nested root tag');
+  const tags = div.content.map((c) => c.tag);
+  same(tags, ['span', 'ul', 'table', 'img'], 'nested child tags');
+  eq(div.content[3].path, MEDIA_PATH, 'img path');
+});
+
+check('deinflected match records the transform chain', () => {
+  const { results } = lookup('食べたかった');
+  eq(results.length, 1, 'result count');
+  const r = results[0];
+  eq(r.matched, '食べたかった', 'matched should be the surface form');
+  eq(r.deinflected, '食べる', 'deinflected should be the dictionary form');
+  same(
+    r.trace.map((t) => t.name),
+    ['-た', '-たい'],
+    'trace names, in application order',
+  );
+  ok(
+    r.trace.every((t) => t.description.length > 0),
+    'every trace step should carry a description',
+  );
+  eq(r.term.expression, '食べる', 'expression');
+});
+
+check('deinflection survives a five-step chain', () => {
+  const { results } = lookup('食べさせられたくなかった');
+  eq(results.length, 1, 'result count');
+  same(
+    results[0].trace.map((t) => t.name),
+    ['-た', 'negative', '-たい', 'potential or passive', 'causative'],
+    'trace names',
+  );
+  eq(results[0].term.expression, '食べる', 'expression');
+});
+
+check('kana-only entry (empty reading in the bank)', () => {
+  const { results } = lookup('ありがとう');
+  eq(results.length, 1, 'result count');
+  eq(results[0].term.expression, 'ありがとう', 'expression');
+  eq(results[0].term.reading, 'ありがとう', 'reading should fall back to the expression');
+  eq(results[0].term.rules, '', 'rules');
+  same(
+    results[0].term.glossaries.map((g) => g.glossary),
+    EXPECTED_GLOSSARIES.get(termKey('ありがとう', '')),
+    'glossary',
+  );
+});
+
+check('reading-only query reaches the kanji headword', () => {
+  const { results } = lookup('たべる');
+  eq(results.length, 1, 'result count');
+  eq(results[0].matched, 'たべる', 'matched');
+  eq(results[0].term.expression, '食べる', 'expression');
+});
+
+check('text preprocessing is counted', () => {
+  const { results } = lookup('タベル');
+  eq(results.length, 1, 'result count');
+  eq(results[0].term.expression, '食べる', 'expression');
+  ok(results[0].preprocessorSteps > 0, `katakana input should cost preprocessor steps, got ${results[0].preprocessorSteps}`);
+});
+
+check('miss returns an empty result set, not an error', () => {
+  for (const text of ['犬猫鳥', 'xyzzy']) {
+    const response = lookup(text);
+    same(response.results, [], `results for ${text}`);
+    eq(response.dictionaryCount, DICTIONARY_COUNT, 'dictionaryCount on a miss');
+  }
+  eq(lastError(), '', 'a miss is not an error');
+});
+
+check('maxResults 0 and empty text are treated as no-ops', () => {
+  same(lookup('食べる', 0).results, [], 'maxResults 0');
+  same(lookup('食べる', 32, 0).results, [], 'scanLength 0');
+  same(lookup('').results, [], 'empty text');
+});
+
+// ---------------------------------------------------------------------------
+
+G('frequencies and pitches');
+
+check('nested {"frequency":{...}} meta shape', () => {
+  same(
+    lookup('食べる').results[0].term.frequencies,
+    [{ dictionary: TITLE, frequencies: [{ value: 142, displayValue: '142位' }] }],
+    'frequencies',
+  );
+});
+
+check('flat {"value":...} meta shape', () => {
+  same(
+    lookup('読む').results[0].term.frequencies,
+    [{ dictionary: TITLE, frequencies: [{ value: 88, displayValue: '88' }] }],
+    'frequencies',
+  );
+});
+
+check('pitch positions, patterns, nasal and devoice', () => {
+  const { pitches } = lookup('食べる').results[0].term;
+  eq(pitches.length, 1, 'one pitch entry per pitch dictionary');
+  eq(pitches[0].dictionary, TITLE, 'dictionary');
+  same(
+    pitches[0].pitches,
+    [
+      { position: 2, pattern: '', nasal: [], devoice: [] },
+      { position: 0, pattern: '', nasal: [1], devoice: [1, 2] },
+      { position: 0, pattern: 'LHH', nasal: [], devoice: [] },
+    ],
+    'pitches: int position, bare-int nasal, array devoice, string position as pattern',
+  );
+});
+
+check('ipa transcriptions merge into the same pitch entry', () => {
+  same(lookup('食べる').results[0].term.pitches[0].transcriptions, ['tabeɾɯ'], 'transcriptions');
+});
+
+// ---------------------------------------------------------------------------
+
+G('hdw_kanji / hdw_styles / hdw_media');
+
+check('kanji hit conforms and carries sorted stats', () => {
+  const result = kanji('食');
+  conforms(result, LOOKUP_KANJI, 'LookupKanji');
+  eq(result.character, '食', 'character');
+  eq(result.entries.length, 1, 'entry count');
+  const e = result.entries[0];
+  eq(e.dictionary, TITLE, 'dictionary');
+  eq(e.onyomi, 'ショク ジキ', 'onyomi');
+  eq(e.kunyomi, 'く.う た.べる', 'kunyomi');
+  eq(e.tags, 'jouyou grade2', 'tags');
+  same(e.definitions, ['food', 'eat', 'meal'], 'definitions');
+  // The engine stores stats in an unordered_map; the binding sorts by name.
+  same(
+    e.stats,
+    [
+      { name: 'freq', value: '382' },
+      { name: 'grade', value: '2' },
+      { name: 'strokes', value: '9' },
+    ],
+    'stats, sorted by name',
+  );
+});
+
+check('kanji miss returns the documented empty sentinel', () => {
+  for (const character of ['犬', '']) {
+    same(kanji(character), { character: '', entries: [] }, `kanji(${show(character)})`);
+  }
+});
+
+check('styles come from the imported index.json', () => {
+  const result = styles();
+  conforms(result, arrayOf(STYLE), 'hdw_styles');
+  same(result, [{ dictionary: TITLE, styles: STYLES }], 'styles');
+});
+
+check('media returns the byte length and the real file bytes', () => {
+  const expected = makePng();
+  const length = media(TITLE, MEDIA_PATH);
+  eq(length, expected.length, 'byte length');
+  const bytes = mediaBytes(length);
+  same(
+    [...bytes.subarray(0, 8)],
+    [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+    'PNG signature in the returned bytes',
+  );
+  ok(Buffer.from(bytes).equals(expected), 'returned bytes differ from the fixture file');
+});
+
+check('media absence returns 0 without setting an error', () => {
+  eq(media(TITLE, 'media/nope.png'), 0, 'unknown path');
+  eq(lastError(), '', 'a missing media file is not an error');
+  eq(media('no-such-dictionary', MEDIA_PATH), 0, 'unknown dictionary');
+  eq(lastError(), '', 'an unknown dictionary is not an error');
+});
+
+check('media with a null argument is rejected, not crashed', () => {
+  eq(media(TITLE, null), 0, 'null path');
+  ok(lastError().length > 0, 'hdw_last_error should be populated');
+});
+
+// ---------------------------------------------------------------------------
+
+G('error paths (none may abort the module)');
+
+check('importing a plain text file fails cleanly', () => {
+  const r = hdwImport('/work/not-a-zip.txt', '/dicts');
+  conforms(r, IMPORT_REPORT, 'ImportReport');
+  eq(r.success, false, 'success');
+  eq(r.error, 'failed to open zip', 'error');
+  eq(lastError(), r.error, 'hdw_last_error should mirror report.error');
+});
+
+check('importing a zip with no index.json fails cleanly', () => {
+  const r = hdwImport('/work/no-index.zip', '/dicts');
+  eq(r.success, false, 'success');
+  eq(r.error, 'could not find index.json', 'error');
+  eq(r.title, '', 'title');
+  eq(lastError(), r.error, 'hdw_last_error');
+});
+
+check('importing a path that does not exist fails cleanly', () => {
+  const r = hdwImport('/work/absent.zip', '/dicts');
+  eq(r.success, false, 'success');
+  ok(r.error.length > 0, 'error should be populated');
+  ok(lastError().length > 0, 'hdw_last_error should be populated');
+});
+
+check('a failed import leaves the already-imported dictionary alone', () => {
+  const entries = M.FS.readdir('/dicts').filter((n) => n !== '.' && n !== '..');
+  same(entries, [TITLE], '/dicts contents');
+});
+
+check('add_dict rejects an empty path', () => {
+  eq(addDict('', 0), 0, 'return value');
+  eq(lastError(), 'empty dictionary path', 'hdw_last_error');
+});
+
+check('add_dict rejects a directory with no version marker', () => {
+  eq(addDict('/work', 0), 0, 'return value');
+  eq(lastError(), 'not an imported dictionary directory: /work', 'hdw_last_error');
+});
+
+check('add_dict rejects a directory that does not exist', () => {
+  eq(addDict('/dicts/absent', 0), 0, 'return value');
+  eq(lastError(), 'not an imported dictionary directory: /dicts/absent', 'hdw_last_error');
+});
+
+check('add_dict rejects out-of-range kinds', () => {
+  for (const kind of [-1, 4, 7]) {
+    eq(addDict(DICT_DIR, kind), 0, `kind ${kind} return value`);
+    eq(lastError(), `unknown dictionary kind ${kind}`, `kind ${kind} hdw_last_error`);
+  }
+});
+
+check('malformed options_json falls back instead of throwing', () => {
+  for (const options of ['{', '{"frequencyOrder":42}', 'not json at all', '[]']) {
+    const raw = lookupRaw('食べる', 32, 16, options);
+    // The documented fallback body. dictionaryCount is 0 here even though
+    // dictionaries are loaded, because the fallback is a literal.
+    eq(raw, '{"results":[],"dictionaryCount":0}', `fallback body for options ${show(options)}`);
+    ok(lastError().length > 0, `hdw_last_error should be populated for options ${show(options)}`);
+  }
+});
+
+check('unset options are accepted in every documented spelling', () => {
+  for (const options of ['', null, AUTO_OPTIONS, '{}', '{"bogus":1,"frequencyOrder":"auto"}']) {
+    const { results } = lookup('食べる', 32, 16, options);
+    eq(results.length, 1, `results for options ${show(options)}`);
+    eq(lastError(), '', `hdw_last_error for options ${show(options)}`);
+  }
+  for (const order of ['auto', 'ascending', 'descending', 'disabled']) {
+    const options = JSON.stringify({ frequencyDictionary: TITLE, frequencyOrder: order, primaryReading: 'たべる' });
+    eq(lookup('食べる', 32, 16, options).results.length, 1, `results for frequencyOrder ${order}`);
+  }
+});
+
+check('the module is still alive after every error path', () => {
+  eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
+  eq(kanji('食').entries.length, 1, 'kanji entry count');
+  eq(media(TITLE, MEDIA_PATH), makePng().length, 'media byte length');
+});
+
+// ---------------------------------------------------------------------------
+
+G('hdw_reset');
+
+reset();
+
+check('reset drops every dictionary', () => {
+  eq(lastError(), '', 'hdw_last_error');
+  same(lookup('食べる'), { results: [], dictionaryCount: 0 }, 'lookup with zero dictionaries');
+  same(kanji('食'), { character: '', entries: [] }, 'kanji with zero dictionaries');
+  same(styles(), [], 'styles with zero dictionaries');
+  eq(media(TITLE, MEDIA_PATH), 0, 'media with zero dictionaries');
+});
+
+check('dictionaries can be reloaded from the same MEMFS directory', () => {
+  eq(addDict(DICT_DIR, 0), 1, `add_dict after reset: ${lastError()}`);
+  eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
+});
+
+// ---------------------------------------------------------------------------
+
+G('hdw_import staging');
+
+// dictionary_importer::import turns the title inside the archive into a
+// directory and remove_all()s that directory on failure, so hdw_import stages
+// every import in a scratch directory and only moves the result into place once
+// it is complete. Without that, a title of ".." deletes the filesystem the
+// dictionaries live in and a failed re-import destroys the copy it replaces.
+reset();
+M.FS.writeFile('/root-canary.txt', 'canary');
+const rootBefore = M.FS.readdir('/').filter((n) => n !== '.' && n !== '..').sort();
+
+for (const title of ['..', '../../..', '../escaped', 'sub/dir', '.', '']) {
+  check(`a title of ${show(title)} is refused and destroys nothing`, () => {
+    M.FS.writeFile('/work/titled.zip', buildTitledZip(title));
+    const r = hdwImport('/work/titled.zip', '/dicts');
+    conforms(r, IMPORT_REPORT, 'ImportReport');
+    eq(r.success, false, 'success');
+    ok(r.error.length > 0, 'error should be populated');
+    eq(lastError(), r.error, 'hdw_last_error should mirror report.error');
+    same(
+      M.FS.readdir('/dicts').filter((n) => n !== '.' && n !== '..'),
+      [TITLE],
+      '/dicts should still hold exactly the imported dictionary and no staging debris',
+    );
+    same(M.FS.readdir('/').filter((n) => n !== '.' && n !== '..').sort(), rootBefore, 'filesystem root');
+  });
+}
+
+check('a failed re-import leaves the installed dictionary loadable', () => {
+  M.FS.writeFile('/work/no-banks.zip', buildTitledZip(TITLE, { banks: false }));
+  const r = hdwImport('/work/no-banks.zip', '/dicts');
+  eq(r.success, false, 'success');
+  eq(r.error, 'empty dictionary', 'error');
+  eq(r.title, TITLE, 'title');
+  const entries = entriesOf(DICT_DIR);
+  ok(
+    markerOf(entries) !== undefined && REQUIRED_FILES.every((f) => entries.includes(f)),
+    `${DICT_DIR} lost files to the failed re-import: ${JSON.stringify(entries.sort())}`,
+  );
+  reset();
+  eq(addDict(DICT_DIR, 0), 1, `add_dict after the failed re-import: ${lastError()}`);
+  eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
+});
+
+check('a successful re-import replaces the dictionary in place', () => {
+  reset();
+  const r = hdwImport('/work/fixture.zip', '/dicts');
+  eq(r.success, true, `re-import failed: ${r.error}`);
+  eq(r.title, TITLE, 'title');
+  same(
+    M.FS.readdir('/dicts').filter((n) => n !== '.' && n !== '..'),
+    [TITLE],
+    '/dicts after a re-import',
+  );
+  eq(addDict(DICT_DIR, 0), 1, `add_dict after the re-import: ${lastError()}`);
+  eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
+});
+
+// ---------------------------------------------------------------------------
+
+G('trained zstd dictionary (.hoshidicts_4) and the pre-4 layout beside it');
+
+// Upstream trains a zstd dictionary from the first term bank when it can sample
+// enough glossaries. Doing so changes two things on disk -- the marker becomes
+// .hoshidicts_4 and a dict.zstd appears -- and it changes how blobs.bin is
+// encoded: glossaries are compressed against that dictionary, so a lookup only
+// returns the right bytes if query.cpp found and loaded it. The lookups below are
+// the real assertion; the marker checks only say which branch was taken.
+reset();
+M.FS.writeFile('/work/trained.zip', buildTrainedZip());
+const trained = hdwImport('/work/trained.zip', '/dicts');
+console.log(`  trained import: ${JSON.stringify(trained)}`);
+
+check('the trained import succeeds', () => {
+  conforms(trained, IMPORT_REPORT, 'ImportReport');
+  eq(trained.success, true, `import failed: ${trained.error}`);
+  eq(trained.title, TRAINED_TITLE, 'title');
+  eq(trained.termCount, TRAINED_TERMS.length, 'termCount');
+});
+
+check('a trained import is a .hoshidicts_4 directory with a dict.zstd', () => {
+  const entries = entriesOf(TRAINED_DIR);
+  eq(markerOf(entries), '.hoshidicts_4', `marker in ${TRAINED_DIR}: ${JSON.stringify(entries.sort())}`);
+  ok(entries.includes('dict.zstd'), `dict.zstd missing; got ${JSON.stringify(entries.sort())}`);
+  ok(M.FS.readFile(`${TRAINED_DIR}/dict.zstd`).length > 0, 'dict.zstd is empty');
+  for (const required of REQUIRED_FILES) {
+    ok(entries.includes(required), `${TRAINED_DIR}/${required} missing`);
+  }
+});
+
+check('add_dict accepts the .hoshidicts_4 directory', () =>
+  eq(addDict(TRAINED_DIR, 0), 1, `add_dict: ${lastError()}`));
+
+check('glossaries compressed against the trained dictionary decompress', () => {
+  // Row 0 is 食べる with rules v1, so this also runs the deinflection path.
+  const first = lookup('食べたかった').results[0];
+  eq(first.term.expression, '食べる', 'expression');
+  same(
+    first.term.glossaries.map((g) => g.glossary),
+    [JSON.stringify(TRAINED_TERMS[0][5])],
+    'glossary bytes for 食べる',
+  );
+
+  // A generated row, so the assertion covers a glossary the trained dictionary
+  // actually had samples of rather than only the hand-written one.
+  const [expression, , , , , glossary] = TRAINED_TERMS[TRAINED_TERMS.length - 1];
+  const last = lookup(expression).results[0];
+  eq(last.term.expression, expression, 'expression');
+  same(
+    last.term.glossaries.map((g) => g.glossary),
+    [JSON.stringify(glossary)],
+    `glossary bytes for ${expression}`,
+  );
+});
+
+// dict.zstd is not optional once the marker says _4: query.cpp builds a DDict out
+// of whatever it reads there, an absent or truncated file gives it an empty one,
+// and then every glossary in the dictionary decompresses to "". add_dict cannot
+// observe that -- the load "succeeds" -- so the refusal has to happen in
+// dictionary_files_present, or the reader gets a popup with a headword, tags and
+// no definitions and nothing anywhere reports an error.
+for (const [what, write] of [
+  ['missing', null],
+  ['zero length', new Uint8Array(0)],
+]) {
+  check(`add_dict refuses a .hoshidicts_4 directory whose dict.zstd is ${what}`, () => {
+    const path = `${TRAINED_DIR}/dict.zstd`;
+    const saved = M.FS.readFile(path);
+    reset();
+    M.FS.unlink(path);
+    if (write !== null) {
+      M.FS.writeFile(path, write);
+    }
+    try {
+      eq(addDict(TRAINED_DIR, 0), 0, 'add_dict should refuse the directory');
+      ok(lastError().includes(TRAINED_DIR), `hdw_last_error should name the directory: ${lastError()}`);
+      // What the refusal is protecting against: with the file gone the load
+      // reports success and hands back empty glossaries instead.
+      eq(lookup('食べたかった').dictionaryCount, 0, 'nothing should be loaded');
+    } finally {
+      M.FS.writeFile(path, saved);
+    }
+    reset();
+    eq(addDict(TRAINED_DIR, 0), 1, `add_dict with dict.zstd restored: ${lastError()}`);
+    eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
+  });
+}
+
+// The migration case, stated on its own rather than inferred from the earlier
+// groups: after upgrading the engine a user still has .hoshidicts_3 directories
+// with no dict.zstd sitting next to whatever they import next. query.cpp still
+// reads _3, so both have to load, at the same time, from the same query object.
+check('a .hoshidicts_3 directory with no dict.zstd still loads', () => {
+  reset();
+  const entries = entriesOf(DICT_DIR);
+  eq(markerOf(entries), '.hoshidicts_3', 'marker');
+  ok(!entries.includes('dict.zstd'), 'dict.zstd should be absent');
+  eq(addDict(DICT_DIR, 0), 1, `add_dict: ${lastError()}`);
+  const hit = lookup('食べたかった').results[0];
+  eq(hit.term.expression, '食べる', 'expression');
+  same(
+    hit.term.glossaries.map((g) => g.glossary),
+    EXPECTED_GLOSSARIES.get(termKey('食べる', 'たべる')),
+    'glossary bytes from the pre-4 layout',
+  );
+});
+
+check('a _3 and a _4 dictionary load together and both answer', () => {
+  reset();
+  eq(addDict(DICT_DIR, 0), 1, `add_dict ${DICT_DIR}: ${lastError()}`);
+  eq(addDict(TRAINED_DIR, 0), 1, `add_dict ${TRAINED_DIR}: ${lastError()}`);
+
+  const names = lookup('食べたかった').results[0].term.glossaries.map((g) => g.dictionary);
+  ok(names.includes(TITLE), `${TITLE} missing from ${JSON.stringify(names)}`);
+  ok(names.includes(TRAINED_TITLE), `${TRAINED_TITLE} missing from ${JSON.stringify(names)}`);
+
+  // Only the _4 dictionary holds this one, and only the _3 one holds 漢字.
+  const [expression] = TRAINED_TERMS[1];
+  eq(lookup(expression).results[0].term.expression, expression, `${expression} from the _4 dictionary`);
+  eq(lookup('漢字').results[0].term.expression, '漢字', '漢字 from the _3 dictionary');
+});
+
+// ---------------------------------------------------------------------------
+
+console.log(`\n${passed} passed, ${failures.length} failed`);
+if (failures.length) {
+  console.log('\nfailures:');
+  for (const { label, message } of failures) console.log(`  ${label}\n    ${message.replace(/\n/g, '\n    ')}`);
+  process.exit(1);
+}
+console.log('\nfixture counts (use these as the expectation baseline):');
+for (const [k, v] of Object.entries(EXPECTED)) console.log(`  ${k}: ${v}`);

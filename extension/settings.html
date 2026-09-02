@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>hoshidicts settings</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="masthead">
+        <h1>hoshidicts</h1>
+        <p class="lede">Hover Japanese text on any page to look it up in your own dictionaries.</p>
+        <p class="engine-status" id="engine-status" role="status" aria-live="polite">Contacting the engine&hellip;</p>
+      </header>
+
+      <section class="card" aria-labelledby="import-heading">
+        <div class="card-head">
+          <h2 id="import-heading">Import</h2>
+          <p class="hint">
+            Yomitan <code>.zip</code> dictionaries. Importing runs in the background with no progress
+            readout, and a large dictionary can take several minutes. Keep this page open until it
+            finishes &mdash; closing it cancels the transfer.
+          </p>
+        </div>
+        <div class="import-row">
+          <label class="file-button">
+            <span>Choose a .zip file</span>
+            <input id="import-file" type="file" accept=".zip,application/zip" />
+          </label>
+          <p class="import-state" id="import-state" role="status" aria-live="polite"></p>
+        </div>
+        <div class="track" id="import-progress" hidden><div class="track-fill"></div></div>
+        <p class="import-detail" id="import-detail" hidden></p>
+      </section>
+
+      <section class="card" aria-labelledby="dictionaries-heading">
+        <div class="card-head">
+          <h2 id="dictionaries-heading">Dictionaries</h2>
+          <p class="hint">
+            This list is the load order, and load order decides ranking: results from the dictionary
+            at the top are offered first. Reorder with the arrows.
+          </p>
+        </div>
+        <ol class="dict-list" id="dict-list"></ol>
+        <p class="empty-state" id="dict-empty">Nothing imported yet.</p>
+      </section>
+
+      <section class="card" aria-labelledby="lookup-heading">
+        <div class="card-head">
+          <h2 id="lookup-heading">Lookup</h2>
+          <p class="hint">Applies to every page as soon as it is changed.</p>
+        </div>
+        <div class="fields">
+          <label class="field">
+            <span class="field-label">Hover modifier</span>
+            <select id="opt-modifier">
+              <option value="none">None &mdash; plain hover</option>
+              <option value="shift">Shift</option>
+              <option value="ctrl">Ctrl</option>
+              <option value="alt">Alt</option>
+            </select>
+            <span class="field-hint">Hold this key for a lookup to fire.</span>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Hover delay</span>
+            <span class="input-suffix">
+              <input id="opt-hover-delay" type="number" min="0" max="2000" step="10" />
+              <span class="suffix">ms</span>
+            </span>
+            <span class="field-hint">Pause before the popup appears.</span>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Scan length</span>
+            <input id="opt-scan-length" type="number" min="1" max="64" step="1" />
+            <span class="field-hint">Characters read forward from the cursor.</span>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Maximum results</span>
+            <input id="opt-max-results" type="number" min="1" max="256" step="1" />
+            <span class="field-hint">Entries kept per lookup, after ranking.</span>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Frequency order</span>
+            <select id="opt-frequency-order">
+              <option value="auto">Automatic</option>
+              <option value="ascending">Ascending &mdash; most common first</option>
+              <option value="descending">Descending &mdash; rarest first</option>
+              <option value="disabled">Disabled</option>
+            </select>
+            <span class="field-hint">How frequency data reorders results.</span>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Frequency dictionary</span>
+            <select id="opt-frequency-dictionary"></select>
+            <span class="field-hint">
+              Used when the order above is ascending or descending; automatic considers them all.
+            </span>
+          </label>
+        </div>
+      </section>
+    </main>
+
+    <template id="dict-row-template">
+      <li class="dict-row">
+        <span class="dict-rank" aria-hidden="true"></span>
+        <span class="dict-title"></span>
+        <label class="cell">
+          <span class="cell-label">Kind</span>
+          <select class="dict-kind">
+            <option value="term">Terms</option>
+            <option value="freq">Frequency</option>
+            <option value="pitch">Pitch accent</option>
+            <option value="kanji">Kanji</option>
+          </select>
+        </label>
+        <label class="cell toggle">
+          <input type="checkbox" class="dict-enabled" />
+          <span class="cell-label">Enabled</span>
+        </label>
+        <span class="dict-actions">
+          <button type="button" class="ghost dict-up" aria-label="Move up" title="Move up">&#8593;</button>
+          <button type="button" class="ghost dict-down" aria-label="Move down" title="Move down">&#8595;</button>
+          <button type="button" class="ghost danger dict-remove">Remove</button>
+        </span>
+      </li>
+    </template>
+
+    <script type="module" src="settings.js"></script>
+  </body>
+</html>

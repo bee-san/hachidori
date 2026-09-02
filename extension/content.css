@@ -1,0 +1,43 @@
+/*
+ * Page-document styles for hoshidicts-web's hover highlight.
+ *
+ * Everything else the extension draws lives in the popup's shadow root and is
+ * styled by render/reader.css. These two rules cannot: `::highlight()` resolves
+ * only against the ranges' own tree, and the ranges CSS.highlights receives
+ * point at the page's text nodes -- a `::highlight()` rule inside the shadow
+ * root would never match them. `.gsm-hoshidicts-source-match` is the fallback
+ * class createSourceHighlighter puts on page elements when the Custom Highlight
+ * API is unavailable or a range could not be built, so it has to live here too.
+ *
+ * Colours mirror reader.css's default palette and read
+ * `--hoshidicts-palette-primary` first, so a page-level theme override keeps the
+ * highlight in step with the popup.
+ *
+ * Copyright (C) 2026 Manhhao
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+::highlight(gsm-hoshidicts-match) {
+  color: inherit;
+  background-color: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-primary, #7aa2ff) 34%,
+    transparent
+  );
+}
+
+.gsm-hoshidicts-source-match {
+  border-radius: 2px;
+  /* The class lands on arbitrary page elements, so it has to outrank whatever
+     background the page already set on them. */
+  background-color: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-primary, #7aa2ff) 34%,
+    transparent
+  ) !important;
+  box-shadow: 0 0 0 1px color-mix(
+    in srgb,
+    var(--hoshidicts-palette-primary, #7aa2ff) 50%,
+    transparent
+  );
+}
