@@ -1,0 +1,5 @@
+wasm/build/
+node_modules/
+test/fixtures/*.zip
+test/tmp/
+*.log
