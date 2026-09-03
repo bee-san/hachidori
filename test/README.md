@@ -138,7 +138,7 @@ report and the expected counts on every run.
 
 The real test. Loads the threaded bundle by default or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-104 checks, ordered by dependency. Exits 0 on success,
+94 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -181,13 +181,10 @@ What it proves, in order:
    malformed `options_json`; `hdw_media` with a null argument. Each asserts the
    documented return value *and* `hdw_last_error`, then the suite re-runs a real
    lookup, kanji query and media fetch to prove the module is still alive.
-   Hostile-archive resource limits are proven here too, at limit minus one, the
-   limit, and limit plus one: a forged central-directory entry count, per-entry
-   and aggregate expanded-byte caps, an expansion-ratio cap, a local/central
-   size disagreement, and a deflate entry that declares output but carries no
-   compressed bytes are all refused before the parser reserves, resizes or
-   decompresses anything, while the pinned Jitendex and Pixiv corpora
-   (`HACHIDORI_JITENDEX_ZIP`, `HACHIDORI_PIXIV_ZIP`) still import.
+   Archives are not subject to fixed compressed-byte, member-count, expanded-byte,
+   or compression-ratio caps. Regression fixtures cross each former threshold and
+   assert that no fixed-limit error is returned. Structurally inconsistent local
+   and central headers and impossible zero-byte deflate streams remain rejected.
 7. **`hdw_reset`** — every dictionary dropped (lookup, kanji, styles and media all
    return their empty forms), then reloaded from the same MEMFS directory.
 8. **Import staging.** `dictionary_importer::import` builds its output directory
@@ -285,10 +282,9 @@ What it proves, in order:
 5. **Error paths.** An unknown type is answered as `<type>_result` with
    `ok: false` rather than dropped; a non-zip import fails with a report attached
    and leaves the previously loaded set intact; an import with no blob URL is
-   rejected rather than thrown; an archive whose declared length exceeds the
-   compressed-input cap is rejected before streaming, and a length-less stream
-   that writes past the cap is rejected while streaming, both leaving the loaded
-   set intact.
+   rejected rather than thrown. Declared content length does not impose a fixed
+   archive cap, and the suite asserts that the streaming service contains no
+   fixed archive-byte limit.
 6. **The renderer against the engine's own bytes.** This is the check that a
    hand-written payload cannot make: the actual `hd_lookup` / `hd_kanji` /
    `hd_styles` / `hd_media` replies go into the real `createPopupView`, and the

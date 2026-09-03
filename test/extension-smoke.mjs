@@ -414,37 +414,19 @@ function makeChrome(owner, bus, storage) {
 /* --------------------------------------------------------------------- fake fetch */
 
 const blobUrls = new Map();
-const oversizedUrls = new Map();
+const declaredLengthUrls = new Map();
 let nextBlobId = 0;
 
 function installFetch() {
   globalThis.fetch = async (input) => {
     const url = String(input);
-    if (oversizedUrls.has(url)) {
-      const plan = oversizedUrls.get(url);
-      if (plan.contentLength !== undefined) {
-        return {
-          ok: true,
-          status: 200,
-          headers: { get: (name) => (name.toLowerCase() === "content-length" ? String(plan.contentLength) : null) },
-          body: { getReader: () => ({ async read() { return { done: true, value: undefined }; } }) },
-          arrayBuffer: async () => { throw new Error("blob responses must be streamed into the WASM filesystem"); },
-        };
-      }
-      let remaining = plan.chunks;
+    if (declaredLengthUrls.has(url)) {
+      const contentLength = declaredLengthUrls.get(url);
       return {
         ok: true,
         status: 200,
-        headers: { get: () => null },
-        body: {
-          getReader: () => ({
-            async read() {
-              if (remaining <= 0) return { done: true, value: undefined };
-              remaining -= 1;
-              return { done: false, value: new Uint8Array(plan.chunkBytes) };
-            },
-          }),
-        },
+        headers: { get: (name) => (name.toLowerCase() === "content-length" ? String(contentLength) : null) },
+        body: { getReader: () => ({ async read() { return { done: true, value: undefined }; } }) },
         arrayBuffer: async () => { throw new Error("blob responses must be streamed into the WASM filesystem"); },
       };
     }
@@ -488,10 +470,10 @@ function createObjectURL(bytes) {
   return url;
 }
 
-function createOversizedURL(plan) {
+function createDeclaredLengthURL(contentLength) {
   nextBlobId += 1;
-  const url = `blob:${EXTENSION_ORIGIN}/oversized-${nextBlobId}`;
-  oversizedUrls.set(url, plan);
+  const url = `blob:${EXTENSION_ORIGIN}/declared-length-${nextBlobId}`;
+  declaredLengthUrls.set(url, contentLength);
   return url;
 }
 
@@ -908,30 +890,25 @@ async function main() {
   const noBlob = await request("hd_import", { blobUrl: "", fileName: "x.zip" });
   check("an import with no blob URL is rejected, not thrown", noBlob.ok === false, JSON.stringify(noBlob));
 
-  const oversizedHeader = await request("hd_import", {
-    blobUrl: createOversizedURL({ contentLength: 536870913 }),
+  const declaredLength = await request("hd_import", {
+    blobUrl: createDeclaredLengthURL(536870913),
     fileName: "huge.zip",
   });
   check(
-    "an archive whose declared length exceeds the cap is rejected before streaming",
-    oversizedHeader.ok === false && /too large/u.test(oversizedHeader.error ?? ""),
-    JSON.stringify(oversizedHeader),
+    "a declared archive length is not rejected by a fixed byte cap",
+    declaredLength.ok === false && !/too large/u.test(declaredLength.error ?? ""),
+    JSON.stringify(declaredLength),
   );
 
-  const oversizedStream = await request("hd_import", {
-    blobUrl: createOversizedURL({ chunks: 1, chunkBytes: 536870913 }),
-    fileName: "huge-stream.zip",
-  });
   check(
-    "a stream that writes past the cap is rejected even with no declared length",
-    oversizedStream.ok === false && /too large/u.test(oversizedStream.error ?? ""),
-    JSON.stringify(oversizedStream),
+    "the engine service contains no fixed archive byte cap",
+    !/MAX_ARCHIVE_BYTES|the archive is too large/u.test(readFileSync(resolve(EXTENSION, "engine-service.js"), "utf8")),
   );
 
-  const afterOversized = await request("hd_status");
+  const afterDeclaredLength = await request("hd_status");
   equal(
-    "a rejected oversized import restores the previously loaded set",
-    [afterOversized.ready, afterOversized.dictionaryCount],
+    "a failed empty import restores the previously loaded set",
+    [afterDeclaredLength.ready, afterDeclaredLength.dictionaryCount],
     [true, 4],
   );
 

@@ -509,17 +509,15 @@ export function buildNotAZip() {
   return utf8('this is not a zip file, it is a plain text file. '.repeat(3));
 }
 
-export const ARCHIVE_LIMITS = {
-  MAX_ARCHIVE_BYTES: 536870912,
+export const FORMER_ARCHIVE_LIMITS = {
   MAX_ENTRIES: 4096,
   MAX_ENTRY_UNCOMPRESSED: 268435456,
   MAX_TOTAL_UNCOMPRESSED: 1610612736,
   MAX_EXPANSION_RATIO: 512,
 };
 
-export const LIMIT_ERRORS = {
+export const ARCHIVE_ERRORS = {
   entries: 'archive declares too many entries',
-  size: 'archive is too large',
   entryExpanded: 'archive entry expands beyond the per-entry limit',
   totalExpanded: 'archive expands beyond the aggregate limit',
   ratio: 'archive entry compression ratio exceeds the limit',
@@ -531,19 +529,17 @@ function hostileBaseEntries() {
   return [];
 }
 
-// An archive whose EOCD declares `count` central-directory entries. Only the
-// base entries are physically present, so the parser bounds central-directory
-// work by its own entry cap rather than by how many records really follow.
+// The declared records are absent, so this exercises count handling without
+// constructing thousands of central-directory records.
 export function buildEntryCountZip(count) {
   return forgeZip(hostileBaseEntries(), { eocdEntries: count });
 }
 
-// A deflate entry whose central-directory uncompressed size claims `size` over
-// a compressed body within the ratio guard, so the per-entry expanded cap fires
-// in isolation before any allocation.
+// The archive has no index, so import stops after central-directory validation
+// without allocating the claimed expanded body.
 export function buildEntryExpandedZip(size) {
   const entries = hostileBaseEntries();
-  const compressed = Math.ceil(size / ARCHIVE_LIMITS.MAX_EXPANSION_RATIO);
+  const compressed = Math.ceil(size / FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO);
   const stream = Buffer.alloc(compressed);
   entries.push({
     name: 'term_bank_1.json',
@@ -558,16 +554,16 @@ export function buildEntryExpandedZip(size) {
   return forgeZip(entries);
 }
 
-// Many deflate entries whose declared uncompressed sizes sum past the aggregate
-// cap while each stays under the per-entry cap and within the ratio guard.
+// The entries collectively cross the former aggregate threshold but contain no
+// index, so import stops before their claimed bodies are expanded.
 export function buildTotalExpandedZip(total) {
-  const perEntry = ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED / 2;
+  const perEntry = FORMER_ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED / 2;
   const entries = hostileBaseEntries();
   let remaining = total;
   let index = 1;
   while (remaining > 0) {
     const size = Math.min(perEntry, remaining);
-    const compressed = Math.ceil(size / ARCHIVE_LIMITS.MAX_EXPANSION_RATIO);
+    const compressed = Math.ceil(size / FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO);
     const stream = Buffer.alloc(compressed);
     entries.push({
       name: `term_bank_${index}.json`,
@@ -585,9 +581,8 @@ export function buildTotalExpandedZip(total) {
   return forgeZip(entries);
 }
 
-// A deflate entry whose declared uncompressed size is `ratio` times its
-// compressed size, exercising the expansion-ratio guard independently of the
-// per-entry byte cap.
+// The declared ratio can cross the former threshold without requiring a large
+// fixture body.
 export function buildRatioZip(ratio) {
   const compressed = 4096;
   const stream = Buffer.alloc(compressed);
