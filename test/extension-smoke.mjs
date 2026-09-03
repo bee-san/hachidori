@@ -414,17 +414,47 @@ function makeChrome(owner, bus, storage) {
 /* --------------------------------------------------------------------- fake fetch */
 
 const blobUrls = new Map();
+const oversizedUrls = new Map();
 let nextBlobId = 0;
 
 function installFetch() {
   globalThis.fetch = async (input) => {
     const url = String(input);
+    if (oversizedUrls.has(url)) {
+      const plan = oversizedUrls.get(url);
+      if (plan.contentLength !== undefined) {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: (name) => (name.toLowerCase() === "content-length" ? String(plan.contentLength) : null) },
+          body: { getReader: () => ({ async read() { return { done: true, value: undefined }; } }) },
+          arrayBuffer: async () => { throw new Error("blob responses must be streamed into the WASM filesystem"); },
+        };
+      }
+      let remaining = plan.chunks;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        body: {
+          getReader: () => ({
+            async read() {
+              if (remaining <= 0) return { done: true, value: undefined };
+              remaining -= 1;
+              return { done: false, value: new Uint8Array(plan.chunkBytes) };
+            },
+          }),
+        },
+        arrayBuffer: async () => { throw new Error("blob responses must be streamed into the WASM filesystem"); },
+      };
+    }
     if (blobUrls.has(url)) {
       const bytes = blobUrls.get(url);
       let offset = 0;
       return {
         ok: true,
         status: 200,
+        headers: { get: () => null },
         body: {
           getReader: () => ({
             async read() {
@@ -455,6 +485,13 @@ function createObjectURL(bytes) {
   nextBlobId += 1;
   const url = `blob:${EXTENSION_ORIGIN}/smoke-${nextBlobId}`;
   blobUrls.set(url, bytes);
+  return url;
+}
+
+function createOversizedURL(plan) {
+  nextBlobId += 1;
+  const url = `blob:${EXTENSION_ORIGIN}/oversized-${nextBlobId}`;
+  oversizedUrls.set(url, plan);
   return url;
 }
 
@@ -870,6 +907,33 @@ async function main() {
 
   const noBlob = await request("hd_import", { blobUrl: "", fileName: "x.zip" });
   check("an import with no blob URL is rejected, not thrown", noBlob.ok === false, JSON.stringify(noBlob));
+
+  const oversizedHeader = await request("hd_import", {
+    blobUrl: createOversizedURL({ contentLength: 536870913 }),
+    fileName: "huge.zip",
+  });
+  check(
+    "an archive whose declared length exceeds the cap is rejected before streaming",
+    oversizedHeader.ok === false && /too large/u.test(oversizedHeader.error ?? ""),
+    JSON.stringify(oversizedHeader),
+  );
+
+  const oversizedStream = await request("hd_import", {
+    blobUrl: createOversizedURL({ chunks: 1, chunkBytes: 536870913 }),
+    fileName: "huge-stream.zip",
+  });
+  check(
+    "a stream that writes past the cap is rejected even with no declared length",
+    oversizedStream.ok === false && /too large/u.test(oversizedStream.error ?? ""),
+    JSON.stringify(oversizedStream),
+  );
+
+  const afterOversized = await request("hd_status");
+  equal(
+    "a rejected oversized import restores the previously loaded set",
+    [afterOversized.ready, afterOversized.dictionaryCount],
+    [true, 4],
+  );
 
   section("renderer against real engine output");
   // 漢字 is the fixture's structured-content entry, the only one carrying an <img>.

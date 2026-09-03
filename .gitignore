@@ -4,4 +4,6 @@ node_modules/
 test/fixtures/
 test/tmp/
 benchmark/results/
+benchmark/jl/bin/
+benchmark/jl/obj/
 *.log
