@@ -93,4 +93,4 @@ The offscreen document deliberately has no direct `chrome.storage` access. It as
 
 The zero-dependency Node suite checks imports, deinflection, normalized kana lookup, media extraction, malformed input, fallback persistence, thread-bridge transfer behavior, extension packaging, and generated runtime assets. Chrome E2E tests exercise both the threaded direct-OPFS path and the forced compatibility path, including restart durability, service-worker idling, bounded concurrency, and transactional replacement recovery.
 
-The browser benchmark records import-to-first-valid-lookup, steady lookup, full-process restoration, process-tree resources, exact storage manifests, and input/runtime hashes. The cross-engine benchmark adds production-path adapters for Yomitan and JL under one rotating schedule; see [Benchmarks](benchmarks.md).
+The browser benchmark records import-to-first-valid-lookup, steady lookup, full-process restoration, process-tree resources, exact storage manifests, and input/runtime hashes. The cross-engine benchmark adds production-path adapters for Yomitan and JL under one rotating schedule; see [Benchmarks](../benchmark/README.md).
