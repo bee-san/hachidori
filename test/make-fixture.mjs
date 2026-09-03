@@ -107,6 +107,71 @@ function buildZip(entries) {
   return Buffer.concat(chunks);
 }
 
+function forgeZip(entries, { eocdEntries } = {}) {
+  const chunks = [];
+  const records = [];
+  let offset = 0;
+
+  for (const e of entries) {
+    const name = utf8(e.name);
+    const body = e.body ?? Buffer.alloc(0);
+    const lfh = Buffer.alloc(30);
+    lfh.writeUInt32LE(0x04034b50, 0);
+    lfh.writeUInt16LE(20, 4);
+    lfh.writeUInt16LE(0x0800, 6);
+    lfh.writeUInt16LE(e.method ?? STORE, 8);
+    lfh.writeUInt16LE(0, 10);
+    lfh.writeUInt16LE(0x21, 12);
+    lfh.writeUInt32LE(e.crc ?? 0, 14);
+    lfh.writeUInt32LE((e.lfhCompressed ?? body.length) >>> 0, 18);
+    lfh.writeUInt32LE((e.lfhUncompressed ?? body.length) >>> 0, 22);
+    lfh.writeUInt16LE(name.length, 26);
+    lfh.writeUInt16LE(0, 28);
+
+    records.push({ ...e, name, body, lfhOffset: offset });
+    chunks.push(lfh, name, body);
+    offset += lfh.length + name.length + body.length;
+  }
+
+  const cdStart = offset;
+  for (const e of records) {
+    const cdh = Buffer.alloc(46);
+    cdh.writeUInt32LE(0x02014b50, 0);
+    cdh.writeUInt16LE(20, 4);
+    cdh.writeUInt16LE(20, 6);
+    cdh.writeUInt16LE(0x0800, 8);
+    cdh.writeUInt16LE(e.method ?? STORE, 10);
+    cdh.writeUInt16LE(0, 12);
+    cdh.writeUInt16LE(0x21, 14);
+    cdh.writeUInt32LE(e.crc ?? 0, 16);
+    cdh.writeUInt32LE((e.cdCompressed ?? e.body.length) >>> 0, 20);
+    cdh.writeUInt32LE((e.cdUncompressed ?? e.body.length) >>> 0, 24);
+    cdh.writeUInt16LE(e.name.length, 28);
+    cdh.writeUInt16LE(0, 30);
+    cdh.writeUInt16LE(0, 32);
+    cdh.writeUInt16LE(0, 34);
+    cdh.writeUInt16LE(0, 36);
+    cdh.writeUInt32LE((0o100644 << 16) >>> 0, 38);
+    cdh.writeUInt32LE(e.lfhOffset, 42);
+    chunks.push(cdh, e.name);
+    offset += cdh.length + e.name.length;
+  }
+
+  const declared = eocdEntries ?? records.length;
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(declared & 0xffff, 8);
+  eocd.writeUInt16LE(declared & 0xffff, 10);
+  eocd.writeUInt32LE(offset - cdStart, 12);
+  eocd.writeUInt32LE(cdStart, 16);
+  eocd.writeUInt16LE(0, 20);
+  chunks.push(eocd);
+
+  return Buffer.concat(chunks);
+}
+
 // ---------------------------------------------------------------------------
 // A real 16x16 PNG, built here so the media assertions can check a genuine
 // file signature rather than a made-up byte string.
@@ -442,6 +507,137 @@ export function buildMalformedIndexZip() {
 // Not an archive at all. zip.cpp's EOCD scan has to bottom out and fail.
 export function buildNotAZip() {
   return utf8('this is not a zip file, it is a plain text file. '.repeat(3));
+}
+
+export const ARCHIVE_LIMITS = {
+  MAX_ARCHIVE_BYTES: 536870912,
+  MAX_ENTRIES: 4096,
+  MAX_ENTRY_UNCOMPRESSED: 268435456,
+  MAX_TOTAL_UNCOMPRESSED: 1610612736,
+  MAX_EXPANSION_RATIO: 512,
+};
+
+export const LIMIT_ERRORS = {
+  entries: 'archive declares too many entries',
+  size: 'archive is too large',
+  entryExpanded: 'archive entry expands beyond the per-entry limit',
+  totalExpanded: 'archive expands beyond the aggregate limit',
+  ratio: 'archive entry compression ratio exceeds the limit',
+  forgedSize: 'archive entry sizes disagree between headers',
+  tinyCompressed: 'archive entry has no compressed data for its declared size',
+};
+
+function hostileBaseEntries() {
+  return [];
+}
+
+// An archive whose EOCD declares `count` central-directory entries. Only the
+// base entries are physically present, so the parser bounds central-directory
+// work by its own entry cap rather than by how many records really follow.
+export function buildEntryCountZip(count) {
+  return forgeZip(hostileBaseEntries(), { eocdEntries: count });
+}
+
+// A deflate entry whose central-directory uncompressed size claims `size` over
+// a compressed body within the ratio guard, so the per-entry expanded cap fires
+// in isolation before any allocation.
+export function buildEntryExpandedZip(size) {
+  const entries = hostileBaseEntries();
+  const compressed = Math.ceil(size / ARCHIVE_LIMITS.MAX_EXPANSION_RATIO);
+  const stream = Buffer.alloc(compressed);
+  entries.push({
+    name: 'term_bank_1.json',
+    method: DEFLATE,
+    body: stream,
+    crc: 0,
+    lfhCompressed: compressed,
+    lfhUncompressed: size,
+    cdCompressed: compressed,
+    cdUncompressed: size,
+  });
+  return forgeZip(entries);
+}
+
+// Many deflate entries whose declared uncompressed sizes sum past the aggregate
+// cap while each stays under the per-entry cap and within the ratio guard.
+export function buildTotalExpandedZip(total) {
+  const perEntry = ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED / 2;
+  const entries = hostileBaseEntries();
+  let remaining = total;
+  let index = 1;
+  while (remaining > 0) {
+    const size = Math.min(perEntry, remaining);
+    const compressed = Math.ceil(size / ARCHIVE_LIMITS.MAX_EXPANSION_RATIO);
+    const stream = Buffer.alloc(compressed);
+    entries.push({
+      name: `term_bank_${index}.json`,
+      method: DEFLATE,
+      body: stream,
+      crc: 0,
+      lfhCompressed: compressed,
+      lfhUncompressed: size,
+      cdCompressed: compressed,
+      cdUncompressed: size,
+    });
+    remaining -= size;
+    index += 1;
+  }
+  return forgeZip(entries);
+}
+
+// A deflate entry whose declared uncompressed size is `ratio` times its
+// compressed size, exercising the expansion-ratio guard independently of the
+// per-entry byte cap.
+export function buildRatioZip(ratio) {
+  const compressed = 4096;
+  const stream = Buffer.alloc(compressed);
+  const entries = hostileBaseEntries();
+  entries.push({
+    name: 'term_bank_1.json',
+    method: DEFLATE,
+    body: stream,
+    crc: 0,
+    lfhCompressed: compressed,
+    lfhUncompressed: compressed * ratio,
+    cdCompressed: compressed,
+    cdUncompressed: compressed * ratio,
+  });
+  return forgeZip(entries);
+}
+
+// A deflate entry whose local and central uncompressed sizes disagree; the
+// parser cannot trust either without the other agreeing.
+export function buildForgedSizeZip() {
+  const entries = hostileBaseEntries();
+  const stream = deflateRawSync(utf8('x'), { level: 9 });
+  entries.push({
+    name: 'term_bank_1.json',
+    method: DEFLATE,
+    body: stream,
+    crc: 0,
+    lfhCompressed: stream.length,
+    lfhUncompressed: 1,
+    cdCompressed: stream.length,
+    cdUncompressed: 4096,
+  });
+  return forgeZip(entries);
+}
+
+// A deflate entry that declares output but carries no compressed bytes, an
+// impossible stream the reader must refuse before handing it to the decoder.
+export function buildTinyCompressedZip() {
+  const entries = hostileBaseEntries();
+  entries.push({
+    name: 'term_bank_1.json',
+    method: DEFLATE,
+    body: Buffer.alloc(0),
+    crc: 0,
+    lfhCompressed: 0,
+    lfhUncompressed: 4096,
+    cdCompressed: 0,
+    cdUncompressed: 4096,
+  });
+  return forgeZip(entries);
 }
 
 const OUTPUTS = [

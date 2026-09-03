@@ -431,7 +431,7 @@ bool peek_title(const std::string &zip_path, std::string &title,
                 std::string &error) {
   Zip zip;
   if (!zip.open(std::filesystem::path{zip_path})) {
-    error = "failed to open zip";
+    error = zip.error.empty() ? "failed to open zip" : zip.error;
     return false;
   }
   const int index_entry = zip.find("index.json");

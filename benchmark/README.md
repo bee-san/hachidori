@@ -115,6 +115,48 @@ Required filenames and SHA-256 hashes:
 The report gives separate import-to-first-valid-lookup, full-browser-restart,
 first-ready lookup, and steady usable-to-lookup distributions for each corpus.
 
+## Hachidori + Yomitan + JL comparison
+
+`comparison.json` runs the three engines through one fail-closed contract. Every
+engine/corpus cell gets a fresh profile or database, one excluded outer warmup,
+ten measured imports, one excluded lookup warmup per import, and five measured
+lookup passes. A deterministic rotating schedule changes cell position on every
+round while running one cell at a time to avoid cross-engine contention.
+
+The adapters use production code paths:
+
+- Hachidori imports through its settings file input and looks up through
+  `chrome.runtime`, the MV3 service worker, the offscreen document, and the
+  pthread Wasm/OPFS engine;
+- Yomitan 26.7.29.0 imports through its settings file input and looks up through
+  the extension backend's `termsFind` action;
+- JL 4.3.0 builds the pinned `JL.Core` source and calls
+  `DictUtils.LoadDictionaries()` and `LookupUtils.LookupText()` with SQLite.
+
+Provide the immutable fixtures, Yomitan release artifact, and clean JL checkout:
+
+```bash
+export HACHIDORI_BENCH_DATA=/absolute/path/to/dictionary-archives
+export HACHIDORI_BENCH_DEPS=/absolute/path/to/benchmark-dependencies
+export HACHIDORI_BENCH_JL=/absolute/path/to/JL-at-cfd64048e1ef1f90a9234cf10ce823d6854e4556
+
+node benchmark/compare.mjs --dry-run
+node benchmark/compare.mjs
+```
+
+The expected Yomitan artifact is
+`$HACHIDORI_BENCH_DEPS/yomitan-26.7.29.0/yomitan-chrome.zip` with SHA-256
+`457894937a27947f99a4b474a60e3a3804ec1a2a5105f43807d34f5eb6c90795`.
+`--max-runs N` intentionally stops after `N` pending cells so adapter smoke runs
+can be inspected and resumed. The same output directory resumes only when every
+pinned executable, source tree, archive, config, and stable host identity still
+matches its run definition.
+
+The comparison output keeps per-run import timings, every measured per-query
+latency and semantic response hash, engine-specific production-path evidence,
+input identities before and after every cell, the exact schedule, validation
+verdict, summary, CSV, report, and a checksum manifest.
+
 ## Custom real-corpus configuration
 
 Create a JSON file outside the repository or below the ignored

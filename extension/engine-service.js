@@ -28,6 +28,8 @@ const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
 const DEFAULT_MAX_RESULTS = 32;
 const DEFAULT_SCAN_LENGTH = 16;
 
+const MAX_ARCHIVE_BYTES = 536870912;
+
 const BASE64_CHUNK = 0x8000;
 const MEDIA_TYPES = {
   avif: "image/avif",
@@ -566,9 +568,17 @@ function mediaType(path) {
 }
 
 async function streamResponseToFile(FS, response, path) {
+  const declared = Number(response.headers?.get?.("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_ARCHIVE_BYTES) {
+    throw new Error("the archive is too large");
+  }
+
   const reader = response.body?.getReader?.();
   if (reader === undefined) {
     const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_ARCHIVE_BYTES) {
+      throw new Error("the archive is too large");
+    }
     FS.writeFile(path, bytes);
     return bytes.byteLength;
   }
@@ -581,6 +591,9 @@ async function streamResponseToFile(FS, response, path) {
       if (done) break;
       const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
       if (bytes.byteLength === 0) continue;
+      if (bytes.byteLength > MAX_ARCHIVE_BYTES - written) {
+        throw new Error("the archive is too large");
+      }
       FS.write(output, bytes, 0, bytes.byteLength);
       written += bytes.byteLength;
     }

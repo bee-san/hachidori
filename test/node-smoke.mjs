@@ -9,13 +9,15 @@
 // (import -> add_dict -> lookup -> error paths -> reset). Every check prints its
 // own PASS/FAIL line so a failure names exactly which part of the contract broke.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 
 import {
+  ARCHIVE_LIMITS,
   EXPECTED,
   EXPECTED_GLOSSARIES,
+  LIMIT_ERRORS,
   MANY_BANK_COUNT,
   MANY_BANK_TITLE,
   MEDIA_PATH,
@@ -25,12 +27,18 @@ import {
   TRAINED_TERMS,
   TRAINED_TITLE,
   TRAINING_SAMPLE_FLOOR,
+  buildEntryCountZip,
+  buildEntryExpandedZip,
   buildFixtureZip,
+  buildForgedSizeZip,
   buildMalformedIndexZip,
   buildManyBankZip,
   buildNoIndexZip,
   buildNotAZip,
+  buildRatioZip,
+  buildTinyCompressedZip,
   buildTitledZip,
+  buildTotalExpandedZip,
   buildTrainedZip,
   makePng,
   termKey,
@@ -681,6 +689,123 @@ check('the module is still alive after every error path', () => {
   eq(kanji('食').entries.length, 1, 'kanji entry count');
   eq(media(TITLE, MEDIA_PATH), makePng().length, 'media byte length');
 });
+
+// ---------------------------------------------------------------------------
+
+G('hostile-archive resource limits (fail closed before reserve/resize/decode)');
+
+let hostileSeq = 0;
+const importHostile = (bytes) => {
+  const path = `/work/hostile-${hostileSeq++}.zip`;
+  M.FS.writeFile(path, bytes);
+  const r = hdwImport(path, '/dicts');
+  try {
+    M.FS.unlink(path);
+  } catch {
+    // never written
+  }
+  return r;
+};
+const rejectedWith = (bytes, message, what) => {
+  const r = importHostile(bytes);
+  eq(r.success, false, `${what} should be rejected`);
+  eq(r.error, message, `${what} error`);
+  eq(lastError(), message, `${what} hdw_last_error`);
+};
+const notRejectedWith = (bytes, message, what) => {
+  const r = importHostile(bytes);
+  ok(r.error !== message, `${what} must not trip the limit (got ${show(r.error)})`);
+};
+
+check('entry count at limit minus one does not trip the entry cap', () =>
+  notRejectedWith(buildEntryCountZip(ARCHIVE_LIMITS.MAX_ENTRIES - 1), LIMIT_ERRORS.entries, 'entries limit-1'));
+check('entry count at the limit does not trip the entry cap', () =>
+  notRejectedWith(buildEntryCountZip(ARCHIVE_LIMITS.MAX_ENTRIES), LIMIT_ERRORS.entries, 'entries limit'));
+check('entry count above the limit is refused before the central directory is walked', () =>
+  rejectedWith(buildEntryCountZip(ARCHIVE_LIMITS.MAX_ENTRIES + 1), LIMIT_ERRORS.entries, 'entries limit+1'));
+
+check('per-entry expanded size at limit minus one does not trip the per-entry cap', () =>
+  notRejectedWith(
+    buildEntryExpandedZip(ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED - 1),
+    LIMIT_ERRORS.entryExpanded,
+    'per-entry limit-1',
+  ));
+check('per-entry expanded size at the limit does not trip the per-entry cap', () =>
+  notRejectedWith(
+    buildEntryExpandedZip(ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED),
+    LIMIT_ERRORS.entryExpanded,
+    'per-entry limit',
+  ));
+check('per-entry expanded size above the limit is refused before allocation', () =>
+  rejectedWith(
+    buildEntryExpandedZip(ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED + 1),
+    LIMIT_ERRORS.entryExpanded,
+    'per-entry limit+1',
+  ));
+
+check('aggregate expanded size at limit minus one does not trip the aggregate cap', () =>
+  notRejectedWith(
+    buildTotalExpandedZip(ARCHIVE_LIMITS.MAX_TOTAL_UNCOMPRESSED - 1),
+    LIMIT_ERRORS.totalExpanded,
+    'aggregate limit-1',
+  ));
+check('aggregate expanded size at the limit does not trip the aggregate cap', () =>
+  notRejectedWith(
+    buildTotalExpandedZip(ARCHIVE_LIMITS.MAX_TOTAL_UNCOMPRESSED),
+    LIMIT_ERRORS.totalExpanded,
+    'aggregate limit',
+  ));
+check('aggregate expanded size above the limit is refused across many entries', () =>
+  rejectedWith(
+    buildTotalExpandedZip(ARCHIVE_LIMITS.MAX_TOTAL_UNCOMPRESSED + 1),
+    LIMIT_ERRORS.totalExpanded,
+    'aggregate limit+1',
+  ));
+
+check('expansion ratio at limit minus one does not trip the ratio guard', () =>
+  notRejectedWith(buildRatioZip(ARCHIVE_LIMITS.MAX_EXPANSION_RATIO - 1), LIMIT_ERRORS.ratio, 'ratio limit-1'));
+check('expansion ratio at the limit does not trip the ratio guard', () =>
+  notRejectedWith(buildRatioZip(ARCHIVE_LIMITS.MAX_EXPANSION_RATIO), LIMIT_ERRORS.ratio, 'ratio limit'));
+check('expansion ratio above the limit is refused before decompression', () =>
+  rejectedWith(buildRatioZip(ARCHIVE_LIMITS.MAX_EXPANSION_RATIO + 1), LIMIT_ERRORS.ratio, 'ratio limit+1'));
+
+check('a forged local/central size disagreement is refused', () =>
+  rejectedWith(buildForgedSizeZip(), LIMIT_ERRORS.forgedSize, 'forged size'));
+
+check('a deflate entry with no compressed data for its declared size is refused', () =>
+  rejectedWith(buildTinyCompressedZip(), LIMIT_ERRORS.tinyCompressed, 'tiny compressed'));
+
+check('a failed hostile import leaves the already-imported dictionary alone', () => {
+  const entries = M.FS.readdir('/dicts').filter((n) => n !== '.' && n !== '..');
+  same(entries, [TITLE], '/dicts contents');
+});
+
+check('the module is still alive after every hostile-archive rejection', () => {
+  eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
+});
+
+const CORPORA = [
+  ['pixiv', process.env.HACHIDORI_PIXIV_ZIP],
+  ['jitendex', process.env.HACHIDORI_JITENDEX_ZIP],
+];
+for (const [name, corpusPath] of CORPORA) {
+  check(`the pinned ${name} corpus is admitted by the limits`, () => {
+    if (!corpusPath || !existsSync(corpusPath)) {
+      throw new Error(
+        `set HACHIDORI_${name.toUpperCase()}_ZIP to the pinned ${name} archive to prove real-corpus admission`,
+      );
+    }
+    const bytes = readFileSync(corpusPath);
+    const zipPath = `/work/corpus-${name}.zip`;
+    M.FS.writeFile(zipPath, bytes);
+    const r = hdwImport(zipPath, '/corpus-dicts');
+    M.FS.unlink(zipPath);
+    const tripped = Object.values(LIMIT_ERRORS);
+    ok(!tripped.includes(r.error), `${name} rejected by a hard limit: ${show(r.error)}`);
+    eq(r.success, true, `${name} import failed: ${r.error}`);
+    reset();
+  });
+}
 
 // ---------------------------------------------------------------------------
 
