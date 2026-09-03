@@ -24,6 +24,7 @@ TMP="${TMP_DIR:-$HERE/tmp}"
 BUILD_DIR="$TMP/native"
 WORK="$TMP/baseline"
 FIXTURE="$HERE/fixtures/hachidori-fixture.zip"
+PARENT_FIXTURE="$HERE/fixtures/parent-title.zip"
 LOG="$TMP/baseline.txt"
 
 # The words node-smoke.mjs asserts on. Keep the two lists in step.
@@ -134,8 +135,9 @@ echo "baseline: using CXX=$CXX_FOUND CC=$CC_FOUND"
 # Fixture
 # ---------------------------------------------------------------------------
 
-[ -f "$FIXTURE" ] || node "$HERE/make-fixture.mjs" >/dev/null
+node "$HERE/make-fixture.mjs" >/dev/null
 [ -f "$FIXTURE" ] || die "could not produce $FIXTURE; run 'node test/make-fixture.mjs'"
+[ -f "$PARENT_FIXTURE" ] || die "could not produce $PARENT_FIXTURE; run 'node test/make-fixture.mjs'"
 
 # ---------------------------------------------------------------------------
 # Build, out of tree
@@ -151,6 +153,14 @@ cmake --build "$BUILD_DIR" --parallel "$(nproc 2>/dev/null || echo 4)" > "$TMP/b
 
 CLI="$BUILD_DIR/hoshidicts-cli"
 [ -x "$CLI" ] || die "$CLI was not produced"
+
+PATH_WORK="$TMP/path-safety"
+rm -rf "$PATH_WORK"
+mkdir -p "$PATH_WORK/input"
+cp "$PARENT_FIXTURE" "$PATH_WORK/input/"
+printf 'keep\n' > "$PATH_WORK/sentinel"
+"$CLI" import "$PATH_WORK/input/parent-title.zip" >/dev/null 2>&1 || true
+[ -f "$PATH_WORK/sentinel" ] || die "an archive title escaped its output directory"
 
 # ---------------------------------------------------------------------------
 # Import and dump

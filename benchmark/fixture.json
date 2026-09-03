@@ -1,0 +1,65 @@
+{
+  "corpora": [
+    {
+      "id": "fixture",
+      "archive": "../test/fixtures/hachidori-fixture.zip",
+      "expectedReport": {
+        "title": "hachidori-fixture",
+        "termCount": 5,
+        "metaCount": 4,
+        "frequencyCount": 2,
+        "pitchCount": 2,
+        "kanjiCount": 1,
+        "mediaCount": 1
+      },
+      "expectedDictionaryCount": 4
+    }
+  ],
+  "queries": [
+    {
+      "id": "exact",
+      "text": "食べる",
+      "expect": "hit",
+      "expectedExpression": "食べる"
+    },
+    {
+      "id": "deinflected",
+      "text": "食べたかった",
+      "expect": "hit",
+      "expectedExpression": "食べる"
+    },
+    {
+      "id": "reading",
+      "text": "たべる",
+      "expect": "hit",
+      "expectedExpression": "食べる"
+    },
+    {
+      "id": "katakana-normalization",
+      "text": "タベル",
+      "expect": "hit",
+      "expectedExpression": "食べる"
+    },
+    {
+      "id": "kana-only",
+      "text": "ありがとう",
+      "expect": "hit",
+      "expectedExpression": "ありがとう"
+    },
+    {
+      "id": "miss",
+      "text": "xyzzy",
+      "expect": "miss"
+    }
+  ],
+  "warmups": 0,
+  "samples": 1,
+  "lookupPasses": 2,
+  "seed": 20260902,
+  "timeoutMs": 120000,
+  "idleCheckMs": 0,
+  "lookup": {
+    "maxResults": 32,
+    "scanLength": 16
+  }
+}

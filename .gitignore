@@ -1,5 +1,7 @@
 wasm/build/
+wasm/build-fallback/
 node_modules/
 test/fixtures/
 test/tmp/
+benchmark/results/
 *.log

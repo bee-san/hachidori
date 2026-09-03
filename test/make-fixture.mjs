@@ -15,7 +15,7 @@
 // JSON makes that string exactly predictable for node-smoke.mjs.
 
 import { deflateRawSync, crc32, deflateSync } from 'node:zlib';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -317,7 +317,7 @@ export const EXPECTED = {
 // primary fixture still produces the pre-4 layout: .hoshidicts_3 and no
 // dict.zstd, which is exactly what a dictionary imported by an older engine looks
 // like. TRAINING_SAMPLE_FLOOR pins that, so growing TERMS past eight rows fails
-// loudly in node-smoke.mjs instead of silently retiring the migration coverage.
+// loudly in node-smoke.mjs instead of silently retiring the compatibility coverage.
 //
 // This fixture goes over the floor, so between the two every marker the engine
 // can write is exercised.
@@ -361,6 +361,23 @@ export function buildTrainedZip() {
     zipEntry('index.json', JSON.stringify({ ...index, title: TRAINED_TITLE })),
     zipEntry('term_bank_1.json', JSON.stringify(TRAINED_TERMS)),
   ]);
+}
+
+export const MANY_BANK_TITLE = 'hachidori-fixture-many-banks';
+export const MANY_BANK_COUNT = TRAINED_TERMS.length + 19;
+
+export function buildManyBankZip() {
+  const entries = [
+    zipEntry('index.json', JSON.stringify({ ...index, title: MANY_BANK_TITLE })),
+    zipEntry('term_bank_1.json', JSON.stringify(TRAINED_TERMS)),
+  ];
+  for (let bank = 2; bank <= 20; bank += 1) {
+    const expression = String.fromCodePoint(0x7000 + bank);
+    entries.push(zipEntry(`term_bank_${bank}.json`, JSON.stringify([
+      [expression, expression, 'n', '', 0, [`scheduler bank ${bank}`], 1000 + bank, ''],
+    ])));
+  }
+  return buildZip(entries);
 }
 
 // DictionaryQuery keys terms on (expression, reading), with an empty reading in
@@ -416,6 +433,12 @@ export function buildNoIndexZip() {
   return buildZip([zipEntry('term_bank_1.json', JSON.stringify(TERMS))]);
 }
 
+// The preflight parser must reject an unreadable index before the importer can
+// derive any filesystem path from archive data.
+export function buildMalformedIndexZip() {
+  return buildZip([zipEntry('index.json', '{"title":')]);
+}
+
 // Not an archive at all. zip.cpp's EOCD scan has to bottom out and fail.
 export function buildNotAZip() {
   return utf8('this is not a zip file, it is a plain text file. '.repeat(3));
@@ -424,6 +447,9 @@ export function buildNotAZip() {
 const OUTPUTS = [
   ['hachidori-fixture.zip', buildFixtureZip],
   ['hachidori-fixture-trained.zip', buildTrainedZip],
+  ['hachidori-fixture-many-banks.zip', buildManyBankZip],
+  ['parent-title.zip', () => buildTitledZip('..', { banks: false })],
+  ['malformed-index.zip', buildMalformedIndexZip],
   ['no-index.zip', buildNoIndexZip],
   ['not-a-zip.txt', buildNotAZip],
 ];
@@ -440,7 +466,7 @@ export function writeFixtures(dir = FIXTURES) {
   return written;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) {
   for (const { path, bytes } of writeFixtures()) {
     console.log(`${bytes.toString().padStart(7)}  ${path}`);
   }

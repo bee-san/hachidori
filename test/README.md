@@ -2,20 +2,23 @@
 
 # Hachidori test harness
 
-Six commands, run in this order. Everything up to step 3 is zero-dependency: node
-built-ins, `/bin/sh`, cmake. Step 4 needs jsdom and step 5 needs Chrome plus
-`puppeteer-core`, all three installed outside the repo — see the jsdom section
-below and the `chrome-e2e.mjs` one.
+Ten pieces, run in this order. The JavaScript checks use Node built-ins except
+`extension-smoke.mjs`, which needs jsdom. The browser checks need Chrome and
+`puppeteer-core`; those dependencies stay outside the repository.
 
 ```sh
 cd /path/to/hachidori
 
-./wasm/build.sh                  # 1. produces extension/vendor/hoshidicts.{mjs,wasm}
+./wasm/build.sh                  # 1. produces threaded OPFS and fallback IDBFS bundles
 node test/make-fixture.mjs       # 2. writes test/fixtures/
-node test/node-smoke.mjs         # 3. the C ABI contract test
-node test/extension-smoke.mjs    # 4. the extension's own JS against that wasm
-node test/chrome-e2e.mjs         # 5. the extension in a real Chrome
-./test/baseline.sh               # 6. optional native cross-check
+node test/node-smoke.mjs         # 3. threaded C ABI contract test
+HACHIDORI_WASM_VARIANT=fallback node test/node-smoke.mjs # 4. fallback C ABI contract test
+node test/threaded-bridge-smoke.mjs # 5. threaded bridge admission/control test
+node test/extension-smoke.mjs    # 6. the extension's own JS against that wasm
+node --test benchmark/*.test.mjs # 7. fail-closed benchmark framework tests
+node test/chrome-e2e.mjs         # 8. pthread/OPFS path in a real Chrome
+node test/chrome-fallback.mjs    # 9. capability fallback through IDBFS in real Chrome
+./test/baseline.sh               # 10. optional native cross-check
 ```
 
 Step 2 is optional on its own: `node-smoke.mjs` imports the generator and builds
@@ -32,11 +35,12 @@ fails if `git status` in the submodule comes back dirty.
 ## `make-fixture.mjs`
 
 Generates `test/fixtures/hachidori-fixture.zip`, a Yomitan format-3 dictionary,
-`test/fixtures/hachidori-fixture-trained.zip` (the same format with enough term rows to
-push the importer over its zstd-training floor — see below), plus two deliberately
-broken archives for the error-path tests. The ZIP container is
-written by hand with `node:zlib` — the engine's reader only needs local file
-headers, a central directory and raw deflate streams, and that is about 80 lines.
+`hachidori-fixture-trained.zip` (enough term rows to cross the zstd-training floor),
+and `hachidori-fixture-many-banks.zip` (twenty banks for the bounded scheduler). It
+also writes malformed, missing-index, non-ZIP, and parent-title archives for the
+error and path-safety checks. The ZIP container is written by hand with
+`node:zlib` — the engine's reader only needs local file headers, a central
+directory and raw deflate streams, and that is about 80 lines.
 
 The `.zip` is checked against `third_party/hoshidicts/src/json/yomitan_parser.cpp`
 and `src/importer.cpp`, not guessed. `python3 -m zipfile` and the native CLI both
@@ -53,10 +57,13 @@ read it.
 | `media/kanji.png` | a real 16×16 PNG, the target of the `img` path above |
 | `media/` | a bare directory record; `get_files()` has to skip it or `mediaCount` is wrong |
 
-Two negative fixtures:
+Negative fixtures include:
 
+- `malformed-index.zip` — `index.json` cannot be parsed during title preflight.
 - `no-index.zip` — a valid archive with no `index.json`.
 - `not-a-zip.txt` — plain text, so the EOCD scan has to bottom out.
+- `parent-title.zip` — declares `..`; the native baseline proves that direct use
+  of Hoshidicts cannot escape and recursively delete its output directory.
 
 `buildTitledZip(title, {banks})` builds a third kind on the fly, in memory: the
 same `index.json` with the title replaced, optionally with no term bank so the
@@ -105,7 +112,7 @@ and no `dict.zstd`, which is byte-for-byte what every dictionary imported by a
 pre-`.hoshidicts_4` engine looks like.
 
 `hachidori-fixture.zip` has five term rows, deliberately under that floor, so it stays
-the migration case; `TRAINING_SAMPLE_FLOOR` pins that, and `node-smoke.mjs` fails
+the compatibility case; `TRAINING_SAMPLE_FLOOR` pins that, and `node-smoke.mjs` fails
 loudly if `TERMS` grows past it instead of silently retiring the coverage.
 `hachidori-fixture-trained.zip` (`buildTrainedZip()`, 49 rows with deliberately
 repetitive glossaries so the training has structure to find) is the other side.
@@ -129,9 +136,9 @@ report and the expected counts on every run.
 
 ## `node-smoke.mjs`
 
-The real test. Loads `extension/vendor/hoshidicts.mjs`, mounts plain MEMFS (not
-IDBFS — that needs a browser IndexedDB), and drives the frozen C ABI end to end.
-73 checks, one shared module instance, ordered by dependency. Exits 0 on success,
+The real test. Loads the threaded bundle by default or the fallback bundle when
+`HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
+80 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -195,6 +202,12 @@ What it proves, in order:
    direction: a `_4` directory whose `dict.zstd` is missing or zero-length must be
    *refused* by `add_dict`, because loading it succeeds and returns an empty
    glossary for every term.
+10. **Interrupted installation recovery.** Synthetic transaction trees cover a
+    partial old-dictionary backup, a committed backup beside a partial new
+    destination, a complete new destination beside its retained backup, and an
+    interrupted first install. Initialization restores the complete previous
+    files when needed, preserves a fully published replacement, removes
+    incomplete destinations, and leaves no transaction debris.
 
 Two behaviours worth knowing, both asserted so they cannot drift silently:
 
@@ -212,7 +225,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 68 checks, all of
+full request→reply round trip per contract-C message type. 72 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -340,18 +353,20 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The only test that runs the extension in a browser. Chrome and `puppeteer-core`
+The primary-path test that runs the extension in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
-`HACHIDORI_PUPPETEER`, and `HACHIDORI_PROFILE` when needed.
+`HACHIDORI_PUPPETEER`, and `HACHIDORI_PROFILE`; the run aborts with a message
+naming the variable if either is missing.
 
 It launches Chrome with `--load-extension`, imports the fixture through the real
 `#import-file` input on `settings.html`, hovers real text with a real mouse on a
 page served over `http://127.0.0.1` (content scripts do not run on
 `chrome-extension://`, `about:blank`, or `file://` without a per-extension
 opt-in), then relaunches against the same profile and hovers again with no
-re-import — which is the only test that can prove IDBFS persistence at all.
+re-import — which is the only test that proves direct OPFS persistence through a
+full Chrome restart.
 
 ### the profile
 
@@ -360,7 +375,7 @@ printed at the top of the run. Per-pid because two runs sharing one profile
 deadlock over the extension's leveldb: the second Chrome cannot open
 `chrome.storage.local` at all and every read comes back
 `IO error: …/LOCK … (ChromeMethodBFE: 15::LockFile::1)`, which surfaces as a
-pass-2 failure that reads exactly like an IDBFS regression. Two concurrent runs
+pass-2 failure that reads exactly like a persistence regression. Two concurrent runs
 are now fine. A green run deletes its profile; a failing one keeps it and says so,
 because the profile is the only place the imported dictionary can be examined
 afterwards.
@@ -372,7 +387,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 28 assertions, and the summary line
+`PLANNED` at the top of the file names all 33 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -420,14 +435,16 @@ text it sits in, so that loop stops at the first read that has it.
 - "No popup for latin text" is **bracketed**: the popup is asserted to be on
   screen the moment before the pointer moves to `hello world`, and the same hover
   routine is asserted to produce a popup again afterwards. On its own that check
-  passes against an extension whose hover is completely dead — with a broken
-  `mousemove` registration this file reports 13/27, and the negative check is one
-  of the ones still green.
+  passes against an extension whose hover is completely dead; bracketing keeps
+  that negative check from going green by itself.
 - `#import-file` is checked for `type="file"` and an `accept` list containing
   `.zip`, not just for existing.
 - The post-restart `hd_status` must report `dictionaryCount === 4`, one per kind
   the fixture registers. `>= 1` also passes for a reload that lost the frequency
   and pitch dictionaries and would then answer a bare lookup with no tags.
+- The OPFS path is imported, replaced in place, killed with `SIGKILL`, restored,
+  queried again, and removed. The removal must clear settings rows, delete the
+  directory, and turn the same query into a checked miss.
 
 Two things about reading the popup:
 
@@ -443,6 +460,16 @@ The offscreen document has a permanent CDP session on `Runtime`, because it has 
 console anyone reads and a boot failure there is otherwise invisible: its
 `consoleAPICalled` and `exceptionThrown` events go into the diagnostics the run
 prints after a failure.
+
+---
+
+## `chrome-fallback.mjs`
+
+This loads a temporary extension manifest without cross-origin isolation, making
+pthreads unavailable. It imports through the single-thread IDBFS bundle, closes
+Chrome, and launches the same fallback build against the retained profile. Both
+launches must report `storageBackend: "idbfs"` and `threaded: false`, return the
+expected term, frequency, pitch and kanji data, and leave OPFS empty.
 
 ---
 
