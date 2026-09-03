@@ -5,7 +5,7 @@
  * only test that proves the parts node cannot reach: that Chrome accepts the
  * manifest, that the extension_pages CSP actually permits compiling the wasm in
  * the offscreen document, that chrome.offscreen and chrome.runtime.getContexts
- * behave as assumed, that IDBFS survives a browser restart, and that a real
+ * behave as assumed, that OPFS survives a browser restart, and that a real
  * caretRangeFromPoint hover produces a rendered popup.
  *
  * Chrome and puppeteer-core live outside the repo (see CHROME and PUPPETEER
@@ -87,12 +87,15 @@ const HIGHLIGHT_NAME = (readFileSync(resolve(EXTENSION, "content.js"), "utf8")
 const PLANNED = [
   "extension loads and its service worker starts",
   "offscreen document compiles the wasm under the extension CSP",
+  "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
   "settings page exposes a .zip file input",
   "the .zip file input is type=file and accepts .zip",
   "importing a Yomitan .zip from the settings page succeeds",
+  "the imported dictionary is persisted in OPFS",
   "the imported dictionary is recorded in chrome.storage.local",
+  "re-importing the same dictionary replaces it safely in OPFS",
   "the dictionary list renders the imported dictionary",
   "hovering an inflected verb shows a popup",
   "the content script attached its closed-shadow host to the page",
@@ -111,8 +114,11 @@ const PLANNED = [
   "hovering non-Japanese text shows no popup",
   "the same hover shows a popup again after the non-Japanese one",
   "the settings page lists the dictionary again after a restart",
-  "the dictionary survives a browser restart via IDBFS",
+  "the dictionary survives a browser restart via OPFS",
   "lookups work after a restart with no re-import",
+  "removing the dictionary clears its settings rows",
+  "removing the dictionary deletes its OPFS directory",
+  "lookups miss after the dictionary is removed",
 ];
 
 const results = [];
@@ -312,6 +318,7 @@ async function main() {
 
   const launchArgs = {
     executablePath: CHROME,
+    dumpio: process.env.HACHIDORI_DUMPIO === "1",
     headless: "shell" === process.env.HACHIDORI_HEADLESS ? "shell" : true,
     userDataDir: PROFILE,
     args: [
@@ -424,6 +431,14 @@ async function main() {
   check("offscreen document compiles the wasm under the extension CSP", engineUp,
     `#engine-status settled on: ${statusText}`);
 
+  const threadPrerequisites = await page.evaluate(() => ({
+    crossOriginIsolated: globalThis.crossOriginIsolated === true,
+    sharedArrayBuffer: typeof globalThis.SharedArrayBuffer === "function",
+  }));
+  check("extension pages expose pthread prerequisites",
+    threadPrerequisites.crossOriginIsolated && threadPrerequisites.sharedArrayBuffer,
+    `thread prerequisites: ${JSON.stringify(threadPrerequisites)}`);
+
   const offscreenExists = await page.evaluate(async () =>
     (await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] })).length);
   check("chrome.offscreen.createDocument produced exactly one offscreen document",
@@ -470,6 +485,24 @@ async function main() {
   check("importing a Yomitan .zip from the settings page succeeds", importOk,
     `#import-state: ${importState}\n       #import-detail: ${importDetail}`);
 
+  const opfsFiles = await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const paths = [];
+    const walk = async (directory, prefix) => {
+      for await (const [name, handle] of directory.entries()) {
+        const path = prefix === "" ? name : `${prefix}/${name}`;
+        paths.push(path);
+        if (handle.kind === "directory") await walk(handle, path);
+      }
+    };
+    await walk(root, "");
+    return paths.sort();
+  });
+  check("the imported dictionary is persisted in OPFS",
+    opfsFiles.some(path => path.endsWith("hachidori-fixture/.hoshidicts_3")
+      || path.endsWith("hachidori-fixture/.hoshidicts_4")),
+    `OPFS paths: ${JSON.stringify(opfsFiles)}`);
+
   const stored = await page.evaluate(() => chrome.storage.local.get("dictionaries"));
   const dicts = stored?.dictionaries ?? [];
   // The fixture is a combined archive: terms, frequencies, pitches and a kanji
@@ -481,6 +514,19 @@ async function main() {
       ["term", "freq", "pitch", "kanji"]
         .map(kind => `hachidori-fixture|/dicts/hachidori-fixture|${kind}|true`).join(","),
     `dictionaries: ${JSON.stringify(dicts)}`);
+
+  await page.evaluate(() => {
+    document.getElementById("import-file").value = "";
+    document.getElementById("import-state").textContent = "";
+  });
+  const replacementInput = await page.$("#import-file");
+  await replacementInput.uploadFile(FIXTURE);
+  const replacementState = await page.waitForFunction(() => {
+    const text = (document.getElementById("import-state")?.textContent || "").trim();
+    return text === "" || text === "…" || /^(importing|working)/i.test(text) ? false : text;
+  }, { timeout: 120_000, polling: 250 }).then(handle => handle.jsonValue()).catch(() => "(never settled)");
+  check("re-importing the same dictionary replaces it safely in OPFS", /^Imported /.test(replacementState),
+    `#import-state: ${replacementState}`);
 
   const rowText = await page.evaluate(() =>
     (document.getElementById("dict-list")?.textContent || "").replace(/\s+/g, " ").trim());
@@ -611,10 +657,13 @@ async function main() {
     control !== null && control.plain.includes("食べる"),
     `popup text: ${control ? control.plain.slice(0, 200) : "(no popup)"}`);
 
-  await browser.close();
+  const chromeProcess = browser.process();
+  const chromeKilled = new Promise((resolveKilled) => chromeProcess.once("close", resolveKilled));
+  chromeProcess.kill("SIGKILL");
+  await chromeKilled;
 
   // ---------------------------------------------------------------- pass 2
-  // Same profile, fresh browser: the dictionary must come back out of IDBFS
+  // Same profile after an abrupt browser exit: the dictionary must come back out of OPFS
   // without another import. This is the assertion that node cannot make at all.
   browser = await launch.launch(launchArgs);
   watch(browser);
@@ -636,8 +685,8 @@ async function main() {
     "hachidori-fixture did not reappear in #dict-list after relaunching with the same profile");
 
   // #dict-list above comes out of chrome.storage.local, which persists in the
-  // profile whatever IDBFS did; only a dictionaryCount the engine reports after
-  // its own syncfs(true) proves the imported files came back.
+  // profile regardless of OPFS; only a dictionaryCount reported by the fresh
+  // engine proves that the imported files came back.
   const reloadCount = await page.evaluate(async () => {
     const deadline = Date.now() + 90_000;
     let reply;
@@ -653,7 +702,7 @@ async function main() {
   // All four kinds, not "at least one": the fixture registers term, freq, pitch
   // and kanji, and a reload that brought back only some of them would still
   // answer a bare 食べる lookup while silently losing the frequency tags.
-  check("the dictionary survives a browser restart via IDBFS",
+  check("the dictionary survives a browser restart via OPFS",
     reloadCount?.dictionaryCount === 4,
     `hd_status reply: ${JSON.stringify(reloadCount)}`);
 
@@ -666,6 +715,45 @@ async function main() {
   check("lookups work after a restart with no re-import",
     !!afterRestart && afterRestart.includes("食べる"),
     `popup text: ${afterRestart ? afterRestart.slice(0, 300) : "(no popup)"}`);
+
+  const removeReply = await page.evaluate(() => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen",
+    type: "hd_remove",
+    requestId: "e2e-remove",
+    title: "hachidori-fixture",
+  })).catch(error => ({ error: String(error) }));
+  const removed = await page.waitForFunction(async () => {
+    const stored = await chrome.storage.local.get("dictionaries");
+    const status = await chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen", type: "hd_status", requestId: "e2e-remove-status",
+    });
+    return (stored.dictionaries ?? []).length === 0 && status?.ok && status.dictionaryCount === 0;
+  }, { timeout: 90_000, polling: 250 }).then(() => true).catch(() => false);
+  check("removing the dictionary clears its settings rows", removeReply?.ok === true && removed,
+    `remove reply: ${JSON.stringify(removeReply)}`);
+
+  const opfsRemoved = await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    try {
+      await root.getDirectoryHandle("hachidori-fixture");
+      return false;
+    } catch (error) {
+      return error?.name === "NotFoundError";
+    }
+  });
+  check("removing the dictionary deletes its OPFS directory", opfsRemoved,
+    "hachidori-fixture still exists in OPFS");
+
+  const removedLookup = await page.evaluate(() => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen",
+    type: "hd_lookup",
+    requestId: "e2e-removed",
+    text: "食べる",
+  })).catch(error => ({ error: String(error) }));
+  check("lookups miss after the dictionary is removed",
+    removedLookup?.ok === true && removedLookup?.dictionaryCount === 0
+      && Array.isArray(removedLookup?.results) && removedLookup.results.length === 0,
+    `lookup reply: ${JSON.stringify(removedLookup)}`);
 
   await browser.close();
   server.close();
