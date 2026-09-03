@@ -421,12 +421,22 @@ function installFetch() {
   globalThis.fetch = async (input) => {
     const url = String(input);
     if (declaredLengthUrls.has(url)) {
-      const contentLength = declaredLengthUrls.get(url);
+      const { contentLength, bytes } = declaredLengthUrls.get(url);
+      let offset = 0;
       return {
         ok: true,
         status: 200,
         headers: { get: (name) => (name.toLowerCase() === "content-length" ? String(contentLength) : null) },
-        body: { getReader: () => ({ async read() { return { done: true, value: undefined }; } }) },
+        body: {
+          getReader: () => ({
+            async read() {
+              if (offset >= bytes.byteLength) return { done: true, value: undefined };
+              const value = bytes.subarray(offset, Math.min(offset + 257, bytes.byteLength));
+              offset += value.byteLength;
+              return { done: false, value };
+            },
+          }),
+        },
         arrayBuffer: async () => { throw new Error("blob responses must be streamed into the WASM filesystem"); },
       };
     }
@@ -470,10 +480,10 @@ function createObjectURL(bytes) {
   return url;
 }
 
-function createDeclaredLengthURL(contentLength) {
+function createDeclaredLengthURL(contentLength, bytes) {
   nextBlobId += 1;
   const url = `blob:${EXTENSION_ORIGIN}/declared-length-${nextBlobId}`;
-  declaredLengthUrls.set(url, contentLength);
+  declaredLengthUrls.set(url, { contentLength, bytes });
   return url;
 }
 
@@ -657,6 +667,53 @@ async function main() {
   await import(`file://${mjs.replace(/\\/gu, "/")}`); // fail fast if the bundle is broken
   const engineService = await import(
     `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}`
+  );
+  const formerArchiveByteLimit = 536870912;
+  const streamChunk = new Uint8Array(1024 * 1024);
+  let streamRemaining = formerArchiveByteLimit + 1;
+  let streamedBytes = 0;
+  let streamClosed = false;
+  let streamUnlinked = false;
+  let streamed = null;
+  let streamError = null;
+  try {
+    streamed = await engineService.streamResponseToFile(
+      {
+        open: () => ({}),
+        write(_stream, _value, _offset, length) {
+          streamedBytes += length;
+          return length;
+        },
+        close() {
+          streamClosed = true;
+        },
+        unlink() {
+          streamUnlinked = true;
+        },
+      },
+      {
+        body: {
+          getReader: () => ({
+            async read() {
+              if (streamRemaining === 0) return { done: true, value: undefined };
+              const value = streamRemaining >= streamChunk.byteLength
+                ? streamChunk
+                : streamChunk.subarray(0, streamRemaining);
+              streamRemaining -= value.byteLength;
+              return { done: false, value };
+            },
+          }),
+        },
+      },
+      "/streamed-boundary.zip",
+    );
+  } catch (error) {
+    streamError = error;
+  }
+  equal(
+    "an actual streamed body crosses the former fixed byte cap",
+    [streamError?.message ?? null, streamed, streamedBytes, streamClosed, streamUnlinked],
+    [null, formerArchiveByteLimit + 1, formerArchiveByteLimit + 1, true, false],
   );
   const { default: createHoshidicts } = await import(
     `file://${resolve(EXTENSION, "vendor", "hoshidicts.mjs").replace(/\\/gu, "/")}?service`
@@ -891,18 +948,13 @@ async function main() {
   check("an import with no blob URL is rejected, not thrown", noBlob.ok === false, JSON.stringify(noBlob));
 
   const declaredLength = await request("hd_import", {
-    blobUrl: createDeclaredLengthURL(536870913),
+    blobUrl: createDeclaredLengthURL(formerArchiveByteLimit + 1, zip),
     fileName: "huge.zip",
   });
-  check(
-    "a declared archive length is not rejected by a fixed byte cap",
-    declaredLength.ok === false && !/too large/u.test(declaredLength.error ?? ""),
-    JSON.stringify(declaredLength),
-  );
-
-  check(
-    "the engine service contains no fixed archive byte cap",
-    !/MAX_ARCHIVE_BYTES|the archive is too large/u.test(readFileSync(resolve(EXTENSION, "engine-service.js"), "utf8")),
+  equal(
+    "a valid archive with a declared length above the former cap imports successfully",
+    [declaredLength.ok, declaredLength.report?.title, declaredLength.report?.termCount],
+    [true, FIXTURE_TITLE, 5],
   );
 
   const afterDeclaredLength = await request("hd_status");

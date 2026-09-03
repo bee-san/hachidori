@@ -565,7 +565,7 @@ function mediaType(path) {
   return MEDIA_TYPES[extension] ?? "application/octet-stream";
 }
 
-async function streamResponseToFile(FS, response, path) {
+export async function streamResponseToFile(FS, response, path) {
   const reader = response.body?.getReader?.();
   if (reader === undefined) {
     const bytes = new Uint8Array(await response.arrayBuffer());

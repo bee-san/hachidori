@@ -712,38 +712,45 @@ const rejectedWith = (bytes, message, what) => {
   eq(r.error, message, `${what} error`);
   eq(lastError(), message, `${what} hdw_last_error`);
 };
-const notRejectedWith = (bytes, message, what) => {
+const acceptedWithoutResourceCap = (bytes, what) => {
   const r = importHostile(bytes);
-  ok(r.error !== message, `${what} must not trip the limit (got ${show(r.error)})`);
+  same(
+    {
+      title: r.title,
+      termCount: r.termCount,
+      metaCount: r.metaCount,
+      frequencyCount: r.frequencyCount,
+      pitchCount: r.pitchCount,
+      kanjiCount: r.kanjiCount,
+      mediaCount: r.mediaCount,
+    },
+    EXPECTED,
+    `${what} import report`,
+  );
+  eq(r.success, true, `${what} success: ${r.error}`);
+  reset();
+  eq(addDict(DICT_DIR, 0), 1, `${what} add_dict: ${lastError()}`);
+  eq(lookup('食べたかった').results[0].term.expression, '食べる', `${what} lookup`);
+};
+
+const resourceBoundaryArchives = {
+  entries: buildEntryCountZip(FORMER_ARCHIVE_LIMITS.MAX_ENTRIES + 1),
+  entryExpanded: await buildEntryExpandedZip(FORMER_ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED + 1),
+  totalExpanded: await buildTotalExpandedZip(FORMER_ARCHIVE_LIMITS.MAX_TOTAL_UNCOMPRESSED + 1),
+  ratio: await buildRatioZip(FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO + 1),
 };
 
 check('entry counts above the former cap are not rejected by a fixed limit', () =>
-  notRejectedWith(
-    buildEntryCountZip(FORMER_ARCHIVE_LIMITS.MAX_ENTRIES + 1),
-    ARCHIVE_ERRORS.entries,
-    'entry count',
-  ));
+  acceptedWithoutResourceCap(resourceBoundaryArchives.entries, 'entry count'));
 
 check('expanded entries above the former cap are not rejected by a fixed limit', () =>
-  notRejectedWith(
-    buildEntryExpandedZip(FORMER_ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED + 1),
-    ARCHIVE_ERRORS.entryExpanded,
-    'expanded entry',
-  ));
+  acceptedWithoutResourceCap(resourceBoundaryArchives.entryExpanded, 'expanded entry'));
 
 check('aggregate expanded bytes above the former cap are not rejected by a fixed limit', () =>
-  notRejectedWith(
-    buildTotalExpandedZip(FORMER_ARCHIVE_LIMITS.MAX_TOTAL_UNCOMPRESSED + 1),
-    ARCHIVE_ERRORS.totalExpanded,
-    'aggregate expanded bytes',
-  ));
+  acceptedWithoutResourceCap(resourceBoundaryArchives.totalExpanded, 'aggregate expanded bytes'));
 
 check('compression ratios above the former cap are not rejected by a fixed limit', () =>
-  notRejectedWith(
-    buildRatioZip(FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO + 1),
-    ARCHIVE_ERRORS.ratio,
-    'compression ratio',
-  ));
+  acceptedWithoutResourceCap(resourceBoundaryArchives.ratio, 'compression ratio'));
 
 check('a forged local/central size disagreement is refused', () =>
   rejectedWith(buildForgedSizeZip(), ARCHIVE_ERRORS.forgedSize, 'forged size'));

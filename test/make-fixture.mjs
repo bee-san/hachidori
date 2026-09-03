@@ -14,8 +14,9 @@
 // bytes of the glossary array straight out of term_bank_1.json, so minified
 // JSON makes that string exactly predictable for node-smoke.mjs.
 
-import { deflateRawSync, crc32, deflateSync } from 'node:zlib';
+import { createDeflateRaw, deflateRawSync, crc32, deflateSync } from 'node:zlib';
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -529,75 +530,118 @@ function hostileBaseEntries() {
   return [];
 }
 
-// The declared records are absent, so this exercises count handling without
-// constructing thousands of central-directory records.
 export function buildEntryCountZip(count) {
-  return forgeZip(hostileBaseEntries(), { eocdEntries: count });
+  const entries = fixtureEntries();
+  while (entries.length < count) {
+    entries.push(zipEntry(`unused-${entries.length}/`, Buffer.alloc(0), STORE));
+  }
+  return buildZip(entries);
 }
 
-// The archive has no index, so import stops after central-directory validation
-// without allocating the claimed expanded body.
-export function buildEntryExpandedZip(size) {
-  const entries = hostileBaseEntries();
-  const compressed = Math.ceil(size / FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO);
-  const stream = Buffer.alloc(compressed);
-  entries.push({
-    name: 'term_bank_1.json',
-    method: DEFLATE,
-    body: stream,
-    crc: 0,
-    lfhCompressed: compressed,
-    lfhUncompressed: size,
-    cdCompressed: compressed,
-    cdUncompressed: size,
-  });
-  return forgeZip(entries);
+function deterministicBytes(size) {
+  const bytes = Buffer.allocUnsafe(size);
+  let state = 0x6d2b79f5;
+  for (let i = 0; i < bytes.length; i += 1) {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    bytes[i] = state >>> 24;
+  }
+  return bytes;
 }
 
-// The entries collectively cross the former aggregate threshold but contain no
-// index, so import stops before their claimed bodies are expanded.
-export function buildTotalExpandedZip(total) {
-  const perEntry = FORMER_ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED / 2;
-  const entries = hostileBaseEntries();
-  let remaining = total;
-  let index = 1;
+async function compressedPayload(size, noiseSize) {
+  const compressor = createDeflateRaw({ level: 9 });
+  const chunks = [];
+  let checksum = 0;
+  compressor.on('data', (chunk) => chunks.push(chunk));
+  const ended = once(compressor, 'end');
+  const write = async (chunk) => {
+    checksum = crc32(chunk, checksum) >>> 0;
+    if (!compressor.write(chunk)) {
+      await once(compressor, 'drain');
+    }
+  };
+  if (noiseSize > 0) {
+    await write(deterministicBytes(noiseSize));
+  }
+  const zeros = Buffer.alloc(1024 * 1024);
+  let remaining = size - noiseSize;
   while (remaining > 0) {
-    const size = Math.min(perEntry, remaining);
-    const compressed = Math.ceil(size / FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO);
-    const stream = Buffer.alloc(compressed);
-    entries.push({
-      name: `term_bank_${index}.json`,
-      method: DEFLATE,
-      body: stream,
-      crc: 0,
-      lfhCompressed: compressed,
-      lfhUncompressed: size,
-      cdCompressed: compressed,
-      cdUncompressed: size,
-    });
+    const chunk = remaining >= zeros.length ? zeros : zeros.subarray(0, remaining);
+    await write(chunk);
+    remaining -= chunk.length;
+  }
+  compressor.end();
+  await ended;
+  return { body: Buffer.concat(chunks), crc: checksum, size };
+}
+
+function forgedEntry(entry) {
+  return {
+    name: entry.name,
+    method: entry.method,
+    body: entry.body,
+    crc: entry.crc,
+    lfhCompressed: entry.body.length,
+    lfhUncompressed: entry.raw.length,
+    cdCompressed: entry.body.length,
+    cdUncompressed: entry.raw.length,
+  };
+}
+
+function payloadEntry(payload) {
+  return {
+    name: 'styles.css',
+    method: payload.method ?? DEFLATE,
+    body: payload.body,
+    crc: payload.crc,
+    lfhCompressed: payload.body.length,
+    lfhUncompressed: payload.size,
+    cdCompressed: payload.body.length,
+    cdUncompressed: payload.size,
+  };
+}
+
+function forgedFixtureEntries() {
+  return fixtureEntries().map(forgedEntry);
+}
+
+export async function buildEntryExpandedZip(size) {
+  const noiseSize = Math.ceil(size / (FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO - 64));
+  const payload = await compressedPayload(size, noiseSize);
+  if (size > payload.body.length * FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO) {
+    throw new Error('entry-expanded fixture also crosses the former ratio cap');
+  }
+  return forgeZip([...forgedFixtureEntries(), payloadEntry(payload)]);
+}
+
+export async function buildTotalExpandedZip(total) {
+  const size = FORMER_ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED / 2;
+  const noiseSize = Math.ceil(size / (FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO - 64));
+  const payload = await compressedPayload(size, noiseSize);
+  if (size > payload.body.length * FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO) {
+    throw new Error('aggregate fixture also crosses the former ratio cap');
+  }
+  const entries = forgedFixtureEntries();
+  let remaining = total;
+  while (remaining >= size) {
+    entries.push(payloadEntry(payload));
     remaining -= size;
-    index += 1;
+  }
+  if (remaining > 0) {
+    const body = Buffer.alloc(remaining);
+    entries.push(payloadEntry({ body, crc: crc32(body) >>> 0, size: remaining, method: STORE }));
   }
   return forgeZip(entries);
 }
 
-// The declared ratio can cross the former threshold without requiring a large
-// fixture body.
-export function buildRatioZip(ratio) {
-  const compressed = 4096;
-  const stream = Buffer.alloc(compressed);
-  const entries = hostileBaseEntries();
-  entries.push({
-    name: 'term_bank_1.json',
-    method: DEFLATE,
-    body: stream,
-    crc: 0,
-    lfhCompressed: compressed,
-    lfhUncompressed: compressed * ratio,
-    cdCompressed: compressed,
-    cdUncompressed: compressed * ratio,
-  });
-  return forgeZip(entries);
+export async function buildRatioZip(ratio) {
+  const payload = await compressedPayload((ratio + 1) * 4096, 0);
+  if (payload.size <= payload.body.length * ratio) {
+    throw new Error('ratio fixture does not cross the requested ratio');
+  }
+  return forgeZip([...forgedFixtureEntries(), payloadEntry(payload)]);
 }
 
 // A deflate entry whose local and central uncompressed sizes disagree; the
