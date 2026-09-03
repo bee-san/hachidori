@@ -133,6 +133,8 @@
   let activeHighlightText = "";
   let activeTermRender = null;
   let lookupToken = 0;
+  let optionsStorageRevision = 0;
+  let dictionariesStorageRevision = 0;
 
   function extensionAlive() {
     try {
@@ -756,7 +758,11 @@
     let pending = mediaCache.get(key);
     if (!pending) {
       pending = sendRequest("hd_media", { dictionary, path })
-        .then((reply) => (typeof reply.dataUrl === "string" ? reply.dataUrl : null))
+        .then((reply) => (
+          reply.generation === generation && typeof reply.dataUrl === "string"
+            ? reply.dataUrl
+            : null
+        ))
         .catch(() => null);
       mediaCache.set(key, pending);
     }
@@ -1063,13 +1069,23 @@
     }
   }
 
-  function focusKanjiLink(character) {
+  function kanjiLinkFocusTarget(sourceLink, character) {
+    const links = shadow?.querySelectorAll(".gsm-hoshidicts-kanji-link");
+    const index = links ? Array.prototype.indexOf.call(links, sourceLink) : -1;
+    return { character, index };
+  }
+
+  function focusKanjiLink(focusTarget) {
     const links = shadow?.querySelectorAll(".gsm-hoshidicts-kanji-link");
     if (!links || links.length === 0) {
       return;
     }
+    const character = typeof focusTarget === "object" ? focusTarget?.character : focusTarget;
     let target = links[0];
-    if (typeof character === "string" && character !== "") {
+    const index = Number.isInteger(focusTarget?.index) ? focusTarget.index : -1;
+    if (index >= 0 && index < links.length && links[index].textContent === character) {
+      target = links[index];
+    } else if (typeof character === "string" && character !== "") {
       for (const link of links) {
         if (link.textContent === character) {
           target = link;
@@ -1087,18 +1103,15 @@
     }
   }
 
-  function restoreTermRender(previous, character) {
+  function restoreTermRender(previous, focusTarget) {
+    lookupToken += 1;
     renderTerms(
       previous.results,
       previous.candidate,
       previous.matchedText,
       previous.renderOptions,
     );
-    if (typeof previous.renderOptions?.onBack === "function") {
-      focusPopupControl(".gsm-hoshidicts-kanji-back");
-    } else {
-      focusKanjiLink(character);
-    }
+    focusKanjiLink(focusTarget);
   }
 
   function renderTerms(results, candidate, matchedText, renderOptions = {}) {
@@ -1202,13 +1215,14 @@
     });
   }
 
-  async function showKanji(character) {
+  async function showKanji(character, _result, _candidate, sourceLink) {
     if (!activeCandidate || typeof character !== "string" || !character) {
       return;
     }
     const candidate = activeCandidate;
     const previous = activeTermRender;
     const highlightText = activeHighlightText;
+    const returnFocus = kanjiLinkFocusTarget(sourceLink, character);
     const capability = selectedKanjiDictionaryCapability();
     const useTermDictionary = capability?.kind === "term";
     const token = (lookupToken += 1);
@@ -1242,7 +1256,7 @@
       if (results.length > 0) {
         renderTerms(results, candidate, highlightText || character, {
           onBack: previous
-            ? () => restoreTermRender(previous, character)
+            ? () => restoreTermRender(previous, returnFocus)
             : undefined,
         });
         return;
@@ -1272,7 +1286,7 @@
         dictionaryPresentation: [],
         highlightText: highlightText || character,
         onBack: previous
-          ? () => restoreTermRender(previous, character)
+          ? () => restoreTermRender(previous, returnFocus)
           : undefined,
       });
     } catch (error) {
@@ -1429,27 +1443,48 @@
     if (disposed || area !== "local") {
       return;
     }
-    if (changes.options || changes.dictionaries) {
-      lookupToken += 1;
-    }
+    let changed = false;
     if (changes.options) {
-      options = normalizeOptions(changes.options.newValue);
+      optionsStorageRevision += 1;
+      const next = normalizeOptions(changes.options.newValue);
+      changed ||= JSON.stringify(next) !== JSON.stringify(options);
+      options = next;
     }
     if (changes.dictionaries) {
-      dictionaries = normalizeDictionaries(changes.dictionaries.newValue);
+      dictionariesStorageRevision += 1;
+      const next = normalizeDictionaries(changes.dictionaries.newValue);
+      changed ||= JSON.stringify(next) !== JSON.stringify(dictionaries);
+      dictionaries = next;
+    }
+    if (changed) {
+      lookupToken += 1;
     }
   }
 
   function start() {
     try {
+      chrome.storage.onChanged.addListener(onStorageChanged);
+      const requestedOptionsRevision = optionsStorageRevision;
+      const requestedDictionariesRevision = dictionariesStorageRevision;
       chrome.storage.local.get({ dictionaries: [], options: DEFAULT_OPTIONS }, (stored) => {
-        if (chrome.runtime.lastError) {
+        if (disposed || chrome.runtime.lastError) {
           return;
         }
-        options = normalizeOptions(stored && stored.options);
-        dictionaries = normalizeDictionaries(stored && stored.dictionaries);
+        let changed = false;
+        if (optionsStorageRevision === requestedOptionsRevision) {
+          const next = normalizeOptions(stored && stored.options);
+          changed ||= JSON.stringify(next) !== JSON.stringify(options);
+          options = next;
+        }
+        if (dictionariesStorageRevision === requestedDictionariesRevision) {
+          const next = normalizeDictionaries(stored && stored.dictionaries);
+          changed ||= JSON.stringify(next) !== JSON.stringify(dictionaries);
+          dictionaries = next;
+        }
+        if (changed) {
+          lookupToken += 1;
+        }
       });
-      chrome.storage.onChanged.addListener(onStorageChanged);
     } catch {
       // Without storage access the defaults are still usable.
     }

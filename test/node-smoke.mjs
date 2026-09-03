@@ -238,6 +238,14 @@ const addDict = (path, kind) => call('hdw_add_dict', 'number', ['string', 'numbe
 const lookupRaw = (text, maxResults = 32, scanLength = 16, options = '') =>
   call('hdw_lookup', 'string', ['string', 'number', 'number', 'string'], [text, maxResults, scanLength, options]);
 const lookup = (...args) => JSON.parse(lookupRaw(...args));
+const lookupDictionary = (text, path, maxResults = 32, scanLength = 16, options = '') => JSON.parse(
+  call(
+    'hdw_lookup_dictionary',
+    'string',
+    ['string', 'string', 'number', 'number', 'string'],
+    [text, path, maxResults, scanLength, options],
+  ),
+);
 const kanji = (character) => JSON.parse(call('hdw_kanji', 'string', ['string'], [character]));
 const styles = () => JSON.parse(call('hdw_styles', 'string', [], []));
 const media = (dictionary, path) => call('hdw_media', 'number', ['string', 'string'], [dictionary, path]);
@@ -1095,6 +1103,36 @@ check('a partial first install is removed', () =>
   eq(recoveryFs.analyzePath('/dicts/first-install').exists, false, 'partial destination'));
 check('recovery removes transaction debris', () =>
   eq(recoveryFs.analyzePath('/dicts/.hdw-import').exists, false, 'staging directory'));
+
+G('hdw_lookup_dictionary');
+
+const SELECTED_TITLE = 'selected-dictionary-fixture';
+const SELECTED_DIR = `/dicts/${SELECTED_TITLE}`;
+M.FS.writeFile('/work/selected.zip', buildTitledZip(SELECTED_TITLE));
+const selectedReport = hdwImport('/work/selected.zip', '/dicts');
+reset();
+eq(addDict(DICT_DIR, 0), 1, `add primary dictionary: ${lastError()}`);
+
+check('a dictionary-scoped lookup rejects a path that is not loaded', () => {
+  const response = lookupDictionary('食べる', SELECTED_DIR);
+  conforms(response, LOOKUP_RESPONSE, 'unloaded dictionary lookup');
+  eq(response.results.length, 0, 'unloaded path result count');
+});
+
+eq(addDict(SELECTED_DIR, 0), 1, `add selected dictionary: ${lastError()}`);
+const selectedLookup = lookupDictionary('食べる', SELECTED_DIR, 1);
+check('a dictionary-scoped lookup conforms to the lookup contract', () => {
+  conforms(selectedLookup, LOOKUP_RESPONSE, 'dictionary-scoped lookup');
+  eq(selectedLookup.dictionaryCount, 2, 'overall loaded capability count');
+});
+check('a dictionary-scoped lookup returns only the requested term dictionary', () => {
+  ok(selectedReport.success, `selected fixture import failed: ${selectedReport.error}`);
+  eq(selectedLookup.results.length, 1, 'selected result count');
+  ok(
+    selectedLookup.results[0].term.glossaries.every(({ dictionary }) => dictionary === SELECTED_TITLE),
+    JSON.stringify(selectedLookup.results[0].term.glossaries),
+  );
+});
 
 // ---------------------------------------------------------------------------
 

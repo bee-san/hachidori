@@ -1262,7 +1262,7 @@
         expression,
         expressionText,
         readingText,
-        (character) => onKanjiClick(character, result, candidate),
+        (character, sourceLink) => onKanjiClick(character, result, candidate, sourceLink),
         {
           enabled: showPitchAccentFurigana,
           groups: result.term.pitches,

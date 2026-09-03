@@ -455,6 +455,7 @@ export function buildGenericKanjiZip() {
     zipEntry('index.json', JSON.stringify({ ...index, title: GENERIC_KANJI_TITLE })),
     zipEntry('term_bank_1.json', JSON.stringify([
       ['食', 'しょく', '', '', 100, [GENERIC_KANJI_GLOSSARY], 1, ''],
+      ['食食', 'しょくしょく', '', '', 90, ['duplicate-kanji focus fixture'], 2, ''],
     ])),
   ]);
 }
