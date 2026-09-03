@@ -183,8 +183,10 @@ What it proves, in order:
    lookup, kanji query and media fetch to prove the module is still alive.
    Archives are not subject to fixed compressed-byte, member-count, expanded-byte,
    or compression-ratio caps. Regression fixtures cross each former threshold and
-   assert that no fixed-limit error is returned. Structurally inconsistent local
-   and central headers and impossible zero-byte deflate streams remain rejected.
+   must complete import, reload from the installed files, and answer a lookup. The
+   expanded-size fixtures carry valid raw-deflate streams while keeping their
+   physical ZIPs small. Structurally inconsistent local and central headers and
+   impossible zero-byte deflate streams remain rejected.
 7. **`hdw_reset`** — every dictionary dropped (lookup, kanji, styles and media all
    return their empty forms), then reloaded from the same MEMFS directory.
 8. **Import staging.** `dictionary_importer::import` builds its output directory
@@ -282,9 +284,9 @@ What it proves, in order:
 5. **Error paths.** An unknown type is answered as `<type>_result` with
    `ok: false` rather than dropped; a non-zip import fails with a report attached
    and leaves the previously loaded set intact; an import with no blob URL is
-   rejected rather than thrown. Declared content length does not impose a fixed
-   archive cap, and the suite asserts that the streaming service contains no
-   fixed archive-byte limit.
+   rejected rather than thrown. A valid import with a declared length above the
+   former byte cap succeeds, and a counting filesystem sink receives an actual
+   streamed body one byte beyond that boundary.
 6. **The renderer against the engine's own bytes.** This is the check that a
    hand-written payload cannot make: the actual `hd_lookup` / `hd_kanji` /
    `hd_styles` / `hd_media` replies go into the real `createPopupView`, and the
