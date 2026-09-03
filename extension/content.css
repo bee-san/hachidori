@@ -1,5 +1,5 @@
 /*
- * Page-document styles for hoshidicts-web's hover highlight.
+ * Page-document styles for Hachidori's hover highlight.
  *
  * Everything else the extension draws lives in the popup's shadow root and is
  * styled by render/reader.css. These two rules cannot: `::highlight()` resolves

@@ -19,22 +19,61 @@ import { spawnSync } from "node:child_process";
 import { existsSync, rmSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
 const EXTENSION = resolve(REPO, "extension");
-const FIXTURE = resolve(HERE, "fixtures/hdw-fixture.zip");
+const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
+const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
 
-const CHROME = process.env.HDW_CHROME
-  || "/home/skerraut/.cache/hdw-browsers/chrome/linux-152.0.7977.75/chrome-linux64/chrome";
-const PUPPETEER = process.env.HDW_PUPPETEER
-  || "/home/skerraut/.cache/hdw-e2e/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js";
+function cachedChrome() {
+  const root = resolve(CACHE, "hachidori-browsers/chrome");
+  if (!existsSync(root)) return "";
+  const suffixes = process.platform === "linux"
+    ? [["chrome-linux64", "chrome"]]
+    : process.platform === "darwin"
+      ? [
+          ["chrome-mac-arm64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"],
+          ["chrome-mac-x64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"],
+        ]
+      : process.platform === "win32"
+        ? [["chrome-win64", "chrome.exe"], ["chrome-win32", "chrome.exe"]]
+        : [];
+  const builds = readdirSync(root).sort((a, b) =>
+    b.localeCompare(a, undefined, { numeric: true }));
+  for (const build of builds) {
+    for (const suffix of suffixes) {
+      const candidate = resolve(root, build, ...suffix);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return "";
+}
+
+function installedChrome() {
+  const candidates = process.platform === "linux"
+    ? ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"]
+    : process.platform === "darwin"
+      ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+      : process.platform === "win32"
+        ? [resolve(process.env.PROGRAMFILES || "C:/Program Files", "Google/Chrome/Application/chrome.exe")]
+        : [];
+  return candidates.find(existsSync) || "";
+}
+
+const CHROME = process.env.HACHIDORI_CHROME
+  || process.env.CHROME_BIN
+  || cachedChrome()
+  || installedChrome();
+const PUPPETEER = process.env.HACHIDORI_PUPPETEER
+  || resolve(CACHE, "hachidori-e2e/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js");
 // Per-pid by default. Two runs sharing one profile fight over the extension's
 // leveldb: the second Chrome cannot open chrome.storage.local at all
 // ("IO error: .../LOCK ... LockFile"), which showed up here as a pass-2 failure
 // that looked like an IDBFS regression. Kept after a failing run so the profile
 // can be inspected, removed after a green one.
-const PROFILE = process.env.HDW_PROFILE || `/tmp/hdw-e2e-profile-${process.pid}`;
+const PROFILE = process.env.HACHIDORI_PROFILE || `/tmp/hachidori-e2e-profile-${process.pid}`;
 
 // The name the content script registers its Custom Highlight under, read out of
 // the source instead of copied: a copy would keep passing after a rename, which
@@ -49,6 +88,7 @@ const PLANNED = [
   "extension loads and its service worker starts",
   "offscreen document compiles the wasm under the extension CSP",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
+  "manifest and settings page are branded as Hachidori",
   "settings page exposes a .zip file input",
   "the .zip file input is type=file and accepts .zip",
   "importing a Yomitan .zip from the settings page succeeds",
@@ -101,7 +141,7 @@ function fatal(message) {
 // chrome-extension:// or about:blank, and file:// needs a per-extension opt-in
 // that no command-line flag can grant.
 const PAGE_HTML = `<!doctype html>
-<html lang="ja"><head><meta charset="utf-8"><title>hdw e2e</title>
+<html lang="ja"><head><meta charset="utf-8"><title>hachidori e2e</title>
 <style>
   body { font: 32px/2 serif; padding: 80px; }
   span { display: inline-block; }
@@ -229,8 +269,10 @@ async function hoverForPopup(page, popup, selector, { charFraction = 0.15, attem
 }
 
 async function main() {
-  if (!existsSync(CHROME)) fatal(`no chrome at ${CHROME} (set HDW_CHROME)`);
-  if (!existsSync(PUPPETEER)) fatal(`no puppeteer-core at ${PUPPETEER} (set HDW_PUPPETEER)`);
+  if (!CHROME || !existsSync(CHROME)) {
+    fatal("no Chrome found (set HACHIDORI_CHROME or install it as described in test/README.md)");
+  }
+  if (!existsSync(PUPPETEER)) fatal(`no puppeteer-core at ${PUPPETEER} (set HACHIDORI_PUPPETEER)`);
   if (!existsSync(resolve(EXTENSION, "vendor/hoshidicts.wasm"))) {
     fatal("extension/vendor/hoshidicts.wasm is missing -- run wasm/build.sh first");
   }
@@ -254,12 +296,12 @@ async function main() {
 
   // Start from a clean profile so the persistence check below is meaningful: the
   // dictionary must arrive via import, not via a leftover IndexedDB. Only the
-  // per-pid default is deleted to get there -- an explicit HDW_PROFILE may be any
+  // per-pid default is deleted to get there -- an explicit HACHIDORI_PROFILE may be any
   // directory the reader named, including a real browser profile, and recursively
   // deleting that is not this file's business.
-  if (process.env.HDW_PROFILE) {
+  if (process.env.HACHIDORI_PROFILE) {
     if (existsSync(PROFILE) && readdirSync(PROFILE).length > 0) {
-      fatal(`HDW_PROFILE=${PROFILE} is not empty. Pass 1 has to import the fixture into a`
+      fatal(`HACHIDORI_PROFILE=${PROFILE} is not empty. Pass 1 has to import the fixture into a`
         + ` clean profile or the restart check proves nothing; remove it yourself and re-run.`);
     }
   } else {
@@ -270,7 +312,7 @@ async function main() {
 
   const launchArgs = {
     executablePath: CHROME,
-    headless: "shell" === process.env.HDW_HEADLESS ? "shell" : true,
+    headless: "shell" === process.env.HACHIDORI_HEADLESS ? "shell" : true,
     userDataDir: PROFILE,
     args: [
       "--no-sandbox",
@@ -345,6 +387,28 @@ async function main() {
   page.on("pageerror", e => diagnostics.push(`[settings] pageerror: ${e.message}`));
   await page.goto(settingsUrl, { waitUntil: "domcontentloaded" });
 
+  const branding = await page.evaluate(() => {
+    const manifest = chrome.runtime.getManifest();
+    return {
+      heading: document.querySelector(".masthead h1")?.textContent?.trim() ?? "",
+      icons: manifest.icons ?? {},
+      name: manifest.name,
+      shortName: manifest.short_name,
+      title: document.title,
+    };
+  });
+  check(
+    "manifest and settings page are branded as Hachidori",
+    branding.name === "Hachidori"
+      && branding.shortName === "Hachidori"
+      && branding.title === "Hachidori settings"
+      && branding.heading === "Hachidori"
+      && ["16", "32", "48", "128"].every(
+        size => branding.icons[size] === `icons/hachidori-${size}.png`,
+      ),
+    JSON.stringify(branding),
+  );
+
   // The offscreen document is where the wasm is compiled. If the CSP forbids it,
   // or chrome.offscreen misbehaves, the engine never reaches a ready state and
   // this is the assertion that catches it.
@@ -415,13 +479,13 @@ async function main() {
   check("the imported dictionary is recorded in chrome.storage.local",
     dicts.map(d => `${d.title}|${d.path}|${d.kind}|${d.enabled}`).join(",") ===
       ["term", "freq", "pitch", "kanji"]
-        .map(kind => `hdw-fixture|/dicts/hdw-fixture|${kind}|true`).join(","),
+        .map(kind => `hachidori-fixture|/dicts/hachidori-fixture|${kind}|true`).join(","),
     `dictionaries: ${JSON.stringify(dicts)}`);
 
   const rowText = await page.evaluate(() =>
     (document.getElementById("dict-list")?.textContent || "").replace(/\s+/g, " ").trim());
   check("the dictionary list renders the imported dictionary",
-    rowText.includes("hdw-fixture"), `#dict-list: ${rowText.slice(0, 300)}`);
+    rowText.includes("hachidori-fixture"), `#dict-list: ${rowText.slice(0, 300)}`);
 
   // ------------------------------------------------------------------- hover
   const tab = await browser.newPage();
@@ -448,13 +512,13 @@ async function main() {
   check("hovering an inflected verb shows a popup", verb !== null,
     "no .gsm-hoshidicts-popup appeared within 12 hover attempts");
   const hostPresent = verb === null ? false : await tab.evaluate(() => {
-    const host = document.querySelector("hoshidicts-web-host");
+    const host = document.querySelector("hachidori-host");
     // A closed root is invisible from here, which is the point: page script
     // cannot reach into the popup either.
     return !!host && host.isConnected && host.shadowRoot === null;
   });
   check("the content script attached its closed-shadow host to the page", hostPresent,
-    "no connected <hoshidicts-web-host> with a closed shadow root");
+    "no connected <hachidori-host> with a closed shadow root");
 
   // Read through a default rather than under an `if`: a popup that never appeared
   // must fail these three as well, not quietly remove them from the total.
@@ -566,10 +630,10 @@ async function main() {
 
   const persisted = await page.waitForFunction(() => {
     const t = (document.getElementById("dict-list")?.textContent || "");
-    return t.includes("hdw-fixture") ? true : false;
+    return t.includes("hachidori-fixture") ? true : false;
   }, { timeout: 90_000, polling: 500 }).then(() => true).catch(() => false);
   check("the settings page lists the dictionary again after a restart", persisted,
-    "hdw-fixture did not reappear in #dict-list after relaunching with the same profile");
+    "hachidori-fixture did not reappear in #dict-list after relaunching with the same profile");
 
   // #dict-list above comes out of chrome.storage.local, which persists in the
   // profile whatever IDBFS did; only a dictionaryCount the engine reports after
@@ -630,7 +694,7 @@ function report() {
       console.log("\nbrowser diagnostics (last 60):");
       for (const d of diagnostics.slice(-60)) console.log(`  ${d}`);
     }
-  } else if (!process.env.HDW_PROFILE) {
+  } else if (!process.env.HACHIDORI_PROFILE) {
     rmSync(PROFILE, { recursive: true, force: true });
   }
   process.exit(failed ? 1 : 0);

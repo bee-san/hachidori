@@ -59,6 +59,16 @@ body {
   gap: 28px;
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand img {
+  border-radius: 12px;
+}
+
 .masthead h1 {
   margin: 0;
   font-size: 26px;

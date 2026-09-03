@@ -1,6 +1,6 @@
 /*
  * Structured-content, furigana, and dictionary-style rendering for the
- * hoshidicts-web popup.
+ * Hachidori popup.
  *
  * Ported from GameSentenceMiner PR #549
  * (GSM_Overlay/features/hoshidicts/reader.js). Structured content follows

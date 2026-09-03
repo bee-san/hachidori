@@ -1,5 +1,5 @@
 /*
- * Service worker for hoshidicts-web.
+ * Service worker for Hachidori.
  *
  * The worker holds no engine state: it only guarantees that the offscreen
  * document exists and relays requests to it. The engine lives in the offscreen

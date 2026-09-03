@@ -1,6 +1,6 @@
 /*
  * Hover scanning, popup hosting, and offscreen-engine messaging for
- * hoshidicts-web.
+ * Hachidori.
  *
  * Rendering lives in render/popup.js and render/glossary.js (ported from
  * GameSentenceMiner PR #549); this file only produces the
@@ -17,7 +17,7 @@
   const TARGET = "hoshidicts-offscreen";
   const HIGHLIGHT_NAME = "gsm-hoshidicts-match";
   const READER_STYLESHEET = "render/reader.css";
-  const HOST_TAG = "hoshidicts-web-host";
+  const HOST_TAG = "hachidori-host";
 
   const DEFAULT_OPTIONS = {
     scanLength: 16,
@@ -609,7 +609,7 @@
     activeCandidate = null;
     activeTermRender = null;
     if (reason) {
-      console.debug(`hoshidicts-web: content script stopped (${reason})`);
+      console.debug(`hachidori: content script stopped (${reason})`);
     }
   }
 
@@ -911,7 +911,7 @@
         }
         buildUi(styles);
       })().catch((error) => {
-        console.warn("hoshidicts-web: popup unavailable", error);
+        console.warn("hachidori: popup unavailable", error);
         // The next hover retries, so a half-built host must not stay in the page
         // and must not leave `view` null behind a non-null `popup`.
         discardUi();
@@ -992,7 +992,7 @@
       view.renderResults(results, candidate, renderContextFor());
     } catch (error) {
       // A malformed result must cost one hover, not the whole content script.
-      console.warn("hoshidicts-web: could not render results", error);
+      console.warn("hachidori: could not render results", error);
       hide();
       return;
     }
@@ -1031,7 +1031,7 @@
       ]);
     } catch (error) {
       if (!disposed && token === lookupToken) {
-        console.debug("hoshidicts-web: lookup failed", error);
+        console.debug("hachidori: lookup failed", error);
       }
       return;
     }
@@ -1048,7 +1048,7 @@
         activeHighlightText = "";
         activeTermRender = null;
         view.renderNotice(
-          "No dictionaries loaded. Import a Yomitan .zip from the hoshidicts-web options page.",
+          "No dictionaries loaded. Import a Yomitan .zip from the Hachidori options page.",
           candidate
         );
         positionPopup();
@@ -1093,7 +1093,7 @@
     try {
       reply = await sendRequest("hd_kanji", { character });
     } catch (error) {
-      console.debug("hoshidicts-web: kanji lookup failed", error);
+      console.debug("hachidori: kanji lookup failed", error);
       return;
     }
     if (disposed || token !== lookupToken || !popup || popup.hidden) {
@@ -1112,7 +1112,7 @@
           : undefined,
       });
     } catch (error) {
-      console.warn("hoshidicts-web: could not render kanji", error);
+      console.warn("hachidori: could not render kanji", error);
       hide();
       return;
     }
