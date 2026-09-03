@@ -16,6 +16,7 @@
 <p align="center">
   <a href="#install-in-60-seconds">Install</a> ·
   <a href="#use-it">Usage</a> ·
+  <a href="#benchmarks">Benchmarks</a> ·
   <a href="#hachidori-vs-the-alternatives">Compare</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -61,6 +62,22 @@ Open Hachidori's options page to:
 - configure the hover key, delay, scan length, result limit, and frequency ranking.
 
 Large dictionaries can take several minutes to import. Keep the options page open until the import finishes.
+
+## Benchmarks
+
+This directional smoke comparison uses the full **VNDB Characters by Bee** dictionary: 6,648,310 term rows, 146,570 media files, a 291.7 MB archive, and 4.46 GB expanded.
+
+<p align="center">
+  <img src="docs/assets/benchmark-import.jpg" alt="Import-to-usable benchmark for the 6.65-million-row VNDB Characters by Bee dictionary: Hachidori 15 seconds, JL 4 minutes 6 seconds, and Yomitan 20 minutes 36 seconds" width="820">
+</p>
+
+<p align="center">
+  <img src="docs/assets/benchmark-hit-latency.jpg" alt="Shared-hit lookup latency benchmark: Hachidori 1.03 milliseconds, JL 4.84 milliseconds, and Yomitan 3.20 milliseconds" width="820">
+</p>
+
+<p align="center">
+  <img src="docs/assets/benchmark-throughput.jpg" alt="Two-query lookup throughput benchmark: Hachidori 1,108 lookups per second, JL 375, and Yomitan 317" width="820">
+</p>
 
 ## Hachidori vs the alternatives
 
