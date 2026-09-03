@@ -223,7 +223,7 @@
     const projected = [];
     for (const result of results) {
       const glossaries = Array.isArray(result?.term?.glossaries)
-        ? result.term.glossaries.filter((glossary) => glossary.dictionary === title)
+        ? result.term.glossaries.filter((glossary) => glossary && glossary.dictionary === title)
         : [];
       if (glossaries.length > 0) {
         projected.push({
@@ -1063,18 +1063,42 @@
     }
   }
 
-  function restoreTermRender(previous) {
+  function focusKanjiLink(character) {
+    const links = shadow?.querySelectorAll(".gsm-hoshidicts-kanji-link");
+    if (!links || links.length === 0) {
+      return;
+    }
+    let target = links[0];
+    if (typeof character === "string" && character !== "") {
+      for (const link of links) {
+        if (link.textContent === character) {
+          target = link;
+          break;
+        }
+      }
+    }
+    if (typeof target?.focus !== "function") {
+      return;
+    }
+    try {
+      target.focus({ preventScroll: true });
+    } catch {
+      target.focus();
+    }
+  }
+
+  function restoreTermRender(previous, character) {
     renderTerms(
       previous.results,
       previous.candidate,
       previous.matchedText,
       previous.renderOptions,
     );
-    focusPopupControl(
-      typeof previous.renderOptions?.onBack === "function"
-        ? ".gsm-hoshidicts-kanji-back"
-        : ".gsm-hoshidicts-kanji-link",
-    );
+    if (typeof previous.renderOptions?.onBack === "function") {
+      focusPopupControl(".gsm-hoshidicts-kanji-back");
+    } else {
+      focusKanjiLink(character);
+    }
   }
 
   function renderTerms(results, candidate, matchedText, renderOptions = {}) {
@@ -1218,7 +1242,7 @@
       if (results.length > 0) {
         renderTerms(results, candidate, highlightText || character, {
           onBack: previous
-            ? () => restoreTermRender(previous)
+            ? () => restoreTermRender(previous, character)
             : undefined,
         });
         return;
@@ -1248,7 +1272,7 @@
         dictionaryPresentation: [],
         highlightText: highlightText || character,
         onBack: previous
-          ? () => restoreTermRender(previous)
+          ? () => restoreTermRender(previous, character)
           : undefined,
       });
     } catch (error) {
