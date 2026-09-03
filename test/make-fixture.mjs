@@ -302,6 +302,7 @@ export const TERMS = [
   // single hash entry and a kana-only lookup has to hit the expression.
   ['ありがとう', '', 'int', '', 80, ['thank you', 'thanks'], 3, 'uk'],
   ['読む', 'よむ', 'vt', 'v5', 60, ['to read'], 4, ''],
+  ['食', 'たべもの', 'n', '', 1000, ['unrelated term-dictionary definition'], 5, ''],
 ];
 
 // [expression, mode, data]
@@ -379,7 +380,7 @@ export const EXPECTED = {
 // .hoshidicts_3. train_zstd_dict gives up unless it can sample at least eight
 // glossaries, and ZDICT needs a few kilobytes on top of that to converge.
 //
-// TERMS above stays deliberately under that floor at five rows, so importing the
+// TERMS above stays deliberately under that floor at six rows, so importing the
 // primary fixture still produces the pre-4 layout: .hoshidicts_3 and no
 // dict.zstd, which is exactly what a dictionary imported by an older engine looks
 // like. TRAINING_SAMPLE_FLOOR pins that, so growing TERMS past eight rows fails
@@ -444,6 +445,18 @@ export function buildManyBankZip() {
     ])));
   }
   return buildZip(entries);
+}
+
+export const GENERIC_KANJI_TITLE = 'hachidori-generic-kanji-fixture';
+export const GENERIC_KANJI_GLOSSARY = 'term-only single-kanji definition';
+
+export function buildGenericKanjiZip() {
+  return buildZip([
+    zipEntry('index.json', JSON.stringify({ ...index, title: GENERIC_KANJI_TITLE })),
+    zipEntry('term_bank_1.json', JSON.stringify([
+      ['食', 'しょく', '', '', 100, [GENERIC_KANJI_GLOSSARY], 1, ''],
+    ])),
+  ]);
 }
 
 // DictionaryQuery keys terms on (expression, reading), with an empty reading in
@@ -683,6 +696,7 @@ const OUTPUTS = [
   ['hachidori-fixture.zip', buildFixtureZip],
   ['hachidori-fixture-trained.zip', buildTrainedZip],
   ['hachidori-fixture-many-banks.zip', buildManyBankZip],
+  ['hachidori-generic-kanji-fixture.zip', buildGenericKanjiZip],
   ['parent-title.zip', () => buildTitledZip('..', { banks: false })],
   ['malformed-index.zip', buildMalformedIndexZip],
   ['no-index.zip', buildNoIndexZip],

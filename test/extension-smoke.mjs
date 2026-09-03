@@ -26,7 +26,7 @@ import { homedir } from "node:os";
 // The trained fixture is built in memory rather than read out of test/fixtures:
 // the .zip on disk is only there for the browser test, which needs a real file to
 // hand to an <input type=file>.
-import { TRAINED_TERMS, TRAINED_TITLE, buildTrainedZip } from "./make-fixture.mjs";
+import { EXPECTED, TRAINED_TERMS, TRAINED_TITLE, buildTrainedZip } from "./make-fixture.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -851,7 +851,15 @@ async function main() {
       imported.report.kanjiCount,
       imported.report.mediaCount,
     ],
-    [FIXTURE_TITLE, 5, 4, 2, 2, 1, 1],
+    [
+      EXPECTED.title,
+      EXPECTED.termCount,
+      EXPECTED.metaCount,
+      EXPECTED.frequencyCount,
+      EXPECTED.pitchCount,
+      EXPECTED.kanjiCount,
+      EXPECTED.mediaCount,
+    ],
   );
 
   // The fixture is a combined dictionary, and the engine indexes each kind

@@ -380,10 +380,21 @@ check('dictionaryCount counts every successful add_dict', () => {
   eq(lookup('食べる').dictionaryCount, DICTIONARY_COUNT, 'dictionaryCount');
 });
 
+// The primary fixture carries a single-kanji 食 term (for the clicked-kanji
+// generic-dictionary path), so a scan of a 食… surface now also matches that
+// shorter headword. The verb stays first (results are ordered by scan length),
+// and the only extra row is that 食 entry.
+const verbAndKanji = (results) => {
+  eq(results.length, 2, 'result count');
+  const extra = results[1];
+  eq(extra.matched, '食', 'the extra match is the single-kanji headword');
+  eq(extra.term.expression, '食', 'extra expression');
+  return results[0];
+};
+
 check('exact match', () => {
   const { results } = lookup('食べる');
-  eq(results.length, 1, 'result count');
-  const r = results[0];
+  const r = verbAndKanji(results);
   eq(r.matched, '食べる', 'matched');
   eq(r.deinflected, '食べる', 'deinflected');
   same(r.trace, [], 'trace should be empty for an uninflected match');
@@ -428,8 +439,7 @@ check('structured-content glossary is not pre-parsed', () => {
 
 check('deinflected match records the transform chain', () => {
   const { results } = lookup('食べたかった');
-  eq(results.length, 1, 'result count');
-  const r = results[0];
+  const r = verbAndKanji(results);
   eq(r.matched, '食べたかった', 'matched should be the surface form');
   eq(r.deinflected, '食べる', 'deinflected should be the dictionary form');
   same(
@@ -446,13 +456,13 @@ check('deinflected match records the transform chain', () => {
 
 check('deinflection survives a five-step chain', () => {
   const { results } = lookup('食べさせられたくなかった');
-  eq(results.length, 1, 'result count');
+  const primary = verbAndKanji(results);
   same(
-    results[0].trace.map((t) => t.name),
+    primary.trace.map((t) => t.name),
     ['-た', 'negative', '-たい', 'potential or passive', 'causative'],
     'trace names',
   );
-  eq(results[0].term.expression, '食べる', 'expression');
+  eq(primary.term.expression, '食べる', 'expression');
 });
 
 check('kana-only entry (empty reading in the bank)', () => {
@@ -675,12 +685,13 @@ check('malformed options_json falls back instead of throwing', () => {
 check('unset options are accepted in every documented spelling', () => {
   for (const options of ['', null, AUTO_OPTIONS, '{}', '{"bogus":1,"frequencyOrder":"auto"}']) {
     const { results } = lookup('食べる', 32, 16, options);
-    eq(results.length, 1, `results for options ${show(options)}`);
+    eq(results.length, 2, `results for options ${show(options)}`);
+    eq(results[0].term.expression, '食べる', `verb result for options ${show(options)}`);
     eq(lastError(), '', `hdw_last_error for options ${show(options)}`);
   }
   for (const order of ['auto', 'ascending', 'descending', 'disabled']) {
     const options = JSON.stringify({ frequencyDictionary: TITLE, frequencyOrder: order, primaryReading: 'たべる' });
-    eq(lookup('食べる', 32, 16, options).results.length, 1, `results for frequencyOrder ${order}`);
+    eq(lookup('食べる', 32, 16, options).results.length, 2, `results for frequencyOrder ${order}`);
   }
 });
 

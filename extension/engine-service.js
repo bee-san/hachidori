@@ -621,6 +621,44 @@ const HANDLERS = {
     };
   },
 
+  async hd_lookup_dictionary(message) {
+    await ensureLoaded();
+    const title = text(message.dictionary);
+    const entry = (await readStoredDictionaries()).find((candidate) =>
+      candidate?.enabled !== false
+      && candidate?.kind === "term"
+      && candidate?.title === title);
+    if (!entry) {
+      return { results: [], dictionaryCount };
+    }
+    const options = {
+      frequencyDictionary: text(message.options?.frequencyDictionary),
+      frequencyOrder: FREQUENCY_ORDERS.includes(message.options?.frequencyOrder)
+        ? message.options.frequencyOrder
+        : "auto",
+      primaryReading: text(message.options?.primaryReading),
+    };
+    const json = engine.ccall(
+      "hdw_lookup_dictionary",
+      "string",
+      ["string", "string", "number", "number", "string"],
+      [
+        text(message.text),
+        text(entry.path),
+        clampInt(message.maxResults, 1, 256, DEFAULT_MAX_RESULTS),
+        clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH),
+        JSON.stringify(options),
+      ],
+    );
+    throwIfEngineFailed("hdw_lookup_dictionary");
+    const parsed = parseJson(json, "hdw_lookup_dictionary");
+    const count = Number(parsed?.dictionaryCount);
+    return {
+      results: Array.isArray(parsed?.results) ? parsed.results : [],
+      dictionaryCount: Number.isFinite(count) ? count : dictionaryCount,
+    };
+  },
+
   async hd_kanji(message) {
     await ensureLoaded();
     const character = text(message.character);
@@ -823,6 +861,7 @@ const HANDLERS = {
 function failurePayload(type) {
   switch (type) {
     case "hd_lookup":
+    case "hd_lookup_dictionary":
       return { results: [], dictionaryCount: 0 };
     case "hd_kanji":
       return { kanji: null };
