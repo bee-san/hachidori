@@ -1,14 +1,14 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 
-# test harness
+# Hachidori test harness
 
-Five pieces, run in this order. Everything up to step 3 is zero-dependency: node
+Six commands, run in this order. Everything up to step 3 is zero-dependency: node
 built-ins, `/bin/sh`, cmake. Step 4 needs jsdom and step 5 needs Chrome plus
 `puppeteer-core`, all three installed outside the repo — see the jsdom section
 below and the `chrome-e2e.mjs` one.
 
 ```sh
-cd /local/home/skerraut/hoshidicts-web
+cd /path/to/hachidori
 
 ./wasm/build.sh                  # 1. produces extension/vendor/hoshidicts.{mjs,wasm}
 node test/make-fixture.mjs       # 2. writes test/fixtures/
@@ -31,8 +31,8 @@ fails if `git status` in the submodule comes back dirty.
 
 ## `make-fixture.mjs`
 
-Generates `test/fixtures/hdw-fixture.zip`, a Yomitan format-3 dictionary,
-`test/fixtures/hdw-fixture-trained.zip` (the same format with enough term rows to
+Generates `test/fixtures/hachidori-fixture.zip`, a Yomitan format-3 dictionary,
+`test/fixtures/hachidori-fixture-trained.zip` (the same format with enough term rows to
 push the importer over its zstd-training floor — see below), plus two deliberately
 broken archives for the error-path tests. The ZIP container is
 written by hand with `node:zlib` — the engine's reader only needs local file
@@ -71,10 +71,10 @@ editing a bank cannot silently desync the expectation.
 
 ### fixture counts
 
-`hdw_import` on `hdw-fixture.zip` must report exactly:
+`hdw_import` on `hachidori-fixture.zip` must report exactly:
 
 ```
-title           hdw-fixture
+title           hachidori-fixture
 termCount       5
 metaCount       4
 frequencyCount  2
@@ -104,10 +104,10 @@ against it. That changes the directory: the marker becomes `.hoshidicts_4` and a
 and no `dict.zstd`, which is byte-for-byte what every dictionary imported by a
 pre-`.hoshidicts_4` engine looks like.
 
-`hdw-fixture.zip` has five term rows, deliberately under that floor, so it stays
+`hachidori-fixture.zip` has five term rows, deliberately under that floor, so it stays
 the migration case; `TRAINING_SAMPLE_FLOOR` pins that, and `node-smoke.mjs` fails
 loudly if `TERMS` grows past it instead of silently retiring the coverage.
-`hdw-fixture-trained.zip` (`buildTrainedZip()`, 49 rows with deliberately
+`hachidori-fixture-trained.zip` (`buildTrainedZip()`, 49 rows with deliberately
 repetitive glossaries so the training has structure to find) is the other side.
 Both markers are then loaded together, from one query object, because that is the
 state of a profile after an engine upgrade.
@@ -247,7 +247,7 @@ What it proves, in order:
    `runtime` only, as a real one does, so a storage call from `offscreen.js` fails
    here the way it fails in Chrome; a static check backs that up for the paths
    this file does not exercise, and `hd_dicts_read` is answered by the worker
-   without ever being relayed. Then `hd_import` of `hdw-fixture.zip` succeeds,
+   without ever being relayed. Then `hd_import` of `hachidori-fixture.zip` succeeds,
    `hd_import_result` carries all nine `ImportReport` fields, the counts match the
    baseline above, `chrome.storage.local.dictionaries` gets one schema-D row per
    kind the archive carries, and IndexedDB is non-empty afterwards.
@@ -296,20 +296,24 @@ What it proves, in order:
 
 ### jsdom
 
-Step 6 needs jsdom. It is not a repo dependency — it lives in the same
+Step 4 needs jsdom. It is not a repo dependency — it lives in the same
 out-of-repo tree as `puppeteer-core`, so a checkout carries neither:
 
 ```sh
-cd /home/skerraut/.cache/hdw-e2e && npm install jsdom
+CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}"
+mkdir -p "$CACHE_ROOT/hachidori-e2e"
+cd "$CACHE_ROOT/hachidori-e2e"
+npm install jsdom puppeteer-core
+./node_modules/.bin/browsers install chrome@stable --path "$CACHE_ROOT/hachidori-browsers"
 ```
 
-That path is the built-in default, so on this machine `node
-test/extension-smoke.mjs` finds it with no environment at all. Elsewhere, point
-`HDW_JSDOM` at the directory above a `node_modules` that has jsdom in it, or
+That path is the built-in default, so `node test/extension-smoke.mjs` finds it
+without an environment variable. To use another location, point
+`HACHIDORI_JSDOM` at the directory above a `node_modules` that has jsdom in it, or
 `NODE_PATH` at the `node_modules` itself:
 
 ```sh
-HDW_JSDOM=/path/to/tree node test/extension-smoke.mjs
+HACHIDORI_JSDOM=/path/to/tree node test/extension-smoke.mjs
 NODE_PATH=/path/to/tree/node_modules node test/extension-smoke.mjs
 ```
 
@@ -337,9 +341,10 @@ node test/chrome-e2e.mjs
 ```
 
 The only test that runs the extension in a browser. Chrome and `puppeteer-core`
-live outside the repo so a checkout does not carry a 290 MB browser; override with
-`HDW_CHROME`, `HDW_PUPPETEER` and `HDW_PROFILE`, and the run aborts with a message
-naming the variable if either is missing.
+live outside the repo so a checkout does not carry a browser. The setup command
+above installs Chrome for Testing in the default cache; the harness also checks
+`CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
+`HACHIDORI_PUPPETEER`, and `HACHIDORI_PROFILE` when needed.
 
 It launches Chrome with `--load-extension`, imports the fixture through the real
 `#import-file` input on `settings.html`, hovers real text with a real mouse on a
@@ -350,7 +355,7 @@ re-import — which is the only test that can prove IDBFS persistence at all.
 
 ### the profile
 
-`/tmp/hdw-e2e-profile-<pid>` unless `HDW_PROFILE` says otherwise, and the path is
+`/tmp/hachidori-e2e-profile-<pid>` unless `HACHIDORI_PROFILE` says otherwise, and the path is
 printed at the top of the run. Per-pid because two runs sharing one profile
 deadlock over the extension's leveldb: the second Chrome cannot open
 `chrome.storage.local` at all and every read comes back
@@ -360,14 +365,14 @@ are now fine. A green run deletes its profile; a failing one keeps it and says s
 because the profile is the only place the imported dictionary can be examined
 afterwards.
 
-`HDW_PROFILE` is never deleted, and never created over something that is already
+`HACHIDORI_PROFILE` is never deleted, and never created over something that is already
 there either: pass 1 has to import the fixture into a clean profile or the restart
-check proves nothing, so a non-empty `HDW_PROFILE` is a hard error naming the
+check proves nothing, so a non-empty `HACHIDORI_PROFILE` is a hard error naming the
 directory rather than an `rmSync` of whatever the reader pointed the variable at.
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 27 assertions, and the summary line
+`PLANNED` at the top of the file names all 28 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -460,8 +465,8 @@ Two things it buys:
 
 ### compiler requirement
 
-This host's default toolchain cannot build the engine. `/usr/bin/clang++` is 15
-and `/usr/bin/g++` is 11.5; the engine is C++23 (`std::ranges::to` and
+Older default toolchains such as Clang 15 or GCC 11 cannot build the engine. The
+engine is C++23 (`std::ranges::to` and
 `std::views::as_rvalue` in `src/query.cpp` and `src/lookup.cpp`, `std::format` in
 `cli/main.cpp`) and `external/glaze` is v8. You need GCC ≥ 14, or clang ≥ 17 with
 libc++ ≥ 17 / libstdc++ ≥ 14 headers.
@@ -474,8 +479,7 @@ compiles *and* runs:
 g++-15  g++-14  gcc15-g++  gcc14-g++  g++  clang++-20  clang++-19  clang++-18  clang++
 ```
 
-On this machine that resolves to `/usr/bin/gcc14-g++` (GCC 14.2.1), which builds
-clean with no warnings. Override with `CXX=… CC=… ./test/baseline.sh`; an
+Override with `CXX=… CC=… ./test/baseline.sh`; an
 explicitly set `$CXX` that fails the probe is a hard error rather than being
 silently skipped.
 

@@ -4,7 +4,7 @@
 # Native baseline for the wasm build.
 #
 # Builds third_party/hoshidicts with -DHOSHIDICTS_CLI=ON on the host toolchain,
-# imports test/fixtures/hdw-fixture.zip with hoshidicts-cli, and dumps the same
+# imports test/fixtures/hachidori-fixture.zip with hoshidicts-cli, and dumps the same
 # words node-smoke.mjs looks up. Two things come out of that:
 #
 #   * the Emscripten portability patches carried on the submodule's `wasm` branch
@@ -23,7 +23,7 @@ ENGINE="$REPO_ROOT/third_party/hoshidicts"
 TMP="${TMP_DIR:-$HERE/tmp}"
 BUILD_DIR="$TMP/native"
 WORK="$TMP/baseline"
-FIXTURE="$HERE/fixtures/hdw-fixture.zip"
+FIXTURE="$HERE/fixtures/hachidori-fixture.zip"
 LOG="$TMP/baseline.txt"
 
 # The words node-smoke.mjs asserts on. Keep the two lists in step.
@@ -181,27 +181,27 @@ run() {
 {
   echo "$HEADER"
 
-  run import hdw-fixture.zip
+  run import hachidori-fixture.zip
 
-  printf '\n$ ls hdw-fixture/\n'
+  printf '\n$ ls hachidori-fixture/\n'
   # Byte sizes, not disk blocks: hash.table and bloom.filter are the two files
   # the Emscripten mmap fix is about, so these are the reference for the sizes
   # node-smoke.mjs reads out of MEMFS.
-  for f in $(ls -A hdw-fixture | sort); do
-    printf '  %8s  %s\n' "$(wc -c < "hdw-fixture/$f")" "$f"
+  for f in $(ls -A hachidori-fixture | sort); do
+    printf '  %8s  %s\n' "$(wc -c < "hachidori-fixture/$f")" "$f"
   done
 
   for word in $WORDS; do
-    run lookup hdw-fixture "$word"
+    run lookup hachidori-fixture "$word"
   done
 
-  run query hdw-fixture 漢字
+  run query hachidori-fixture 漢字
   run deinflect 食べたかった
   run preprocess タベル
-  run freq hdw-fixture 食べる たべる
-  run freq hdw-fixture 読む よむ
-  run kanji hdw-fixture 食
-  run kanji hdw-fixture 犬
+  run freq hachidori-fixture 食べる たべる
+  run freq hachidori-fixture 読む よむ
+  run kanji hachidori-fixture 食
+  run kanji hachidori-fixture 犬
 } > "$LOG" 2>&1
 
 cat "$LOG"

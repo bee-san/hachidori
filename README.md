@@ -1,158 +1,121 @@
-# hoshidicts-web
+<p align="center">
+  <img src="docs/assets/hachidori.png" width="180" alt="Hachidori hummingbird logo">
+</p>
 
-A Chrome extension that runs the [hoshidicts](https://github.com/Manhhao/hoshidicts)
-dictionary engine as WebAssembly, entirely in your browser. Import Yomitan `.zip`
-dictionaries, hover Japanese text on any page, get a definition.
+<h1 align="center">Hachidori</h1>
 
-No native helper, no local server, no network calls. The engine, your dictionaries and
-every lookup stay inside the browser.
+<p align="center"><strong>Your Japanese dictionaries, on every webpage — fast, private, and entirely in Chrome.</strong></p>
 
-## Scope
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-7c3aed" alt="GPL-3.0-or-later license"></a>
+  <a href="#install-in-60-seconds"><img src="https://img.shields.io/badge/Chrome-118%2B-4285F4?logo=googlechrome&logoColor=white" alt="Chrome 118 or newer"></a>
+  <a href="#privacy-by-default"><img src="https://img.shields.io/badge/lookups-100%25_local-0f766e" alt="Lookups run locally"></a>
+  <a href="https://github.com/bee-san/hachidori"><img src="https://img.shields.io/github/stars/bee-san/hachidori?style=flat&color=f59e0b" alt="GitHub stars"></a>
+</p>
 
-Two features, on purpose:
+<p align="center">
+  <a href="#install-in-60-seconds">Install</a> ·
+  <a href="#use-it">Usage</a> ·
+  <a href="#hachidori-vs-the-alternatives">Compare</a> ·
+  <a href="docs/architecture.md">Architecture</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-- **Import** Yomitan `.zip` dictionaries from the settings page.
-- **Look up** by hovering text on any page.
+Hachidori turns any Yomitan-compatible `.zip` dictionary into instant Japanese definitions on the page you are reading. Hover a word, see the matching entry, and keep reading. You do not need a native helper, local server, account, or network lookup.
 
-Deliberately absent: Anki mining, audio, texthooker integration, and Firefox support.
-
-## How it works
-
-```
-content script (any page)          service worker            offscreen document
-  hover -> scan text       --->  ensure offscreen exists --> hoshidicts.wasm
-  popup in shadow DOM      <---      relay reply         <-- MEMFS + IDBFS at /dicts
-                                     owns chrome.storage       ^
-  settings.html  -- blob: URL of the picked .zip ---------------
-```
-
-The engine lives in an **offscreen document**, which is the only extension context that
-both persists across service-worker restarts and can compile WebAssembly. A service worker
-dies after ~30 s idle, which would mean reloading every dictionary on each lookup; a
-content script cannot compile wasm at all, because the host page's CSP applies.
-
-Offscreen documents are granted `chrome.runtime` and nothing else — no `chrome.storage`.
-So the service worker owns configuration and messages it in. This is not a stylistic
-choice; reading `chrome.storage.local` from the offscreen document silently kills the
-engine at boot.
-
-Dictionaries persist through Emscripten's **IDBFS** mounted at `/dicts`: `FS.syncfs(false)`
-after an import, `FS.syncfs(true)` at boot. Imported dictionaries are memory-mapped by the
-engine exactly as they are natively.
-
-The zip never travels over `chrome.runtime.sendMessage`, which JSON-serialises its payload.
-The settings page creates a `blob:` URL and the offscreen document `fetch`es it — same
-`chrome-extension://` origin, so a 50 MB archive costs one copy instead of a
-50-million-element JSON array.
-
-## Install
-
-Requires Chrome 118 or newer (`@scope`, used by dictionary-supplied CSS).
+## Install in 60 seconds
 
 ```sh
-git clone --recurse-submodules https://github.com/bee-san/hoshidicts-web
+git clone https://github.com/bee-san/hachidori.git
 ```
 
-Then `chrome://extensions` → enable **Developer mode** → **Load unpacked** → select the
-`extension/` directory.
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Choose **Load unpacked** and select the cloned `hachidori/extension` directory.
+4. Open Hachidori's **Options**, import a Yomitan `.zip`, then hover Japanese text on any page.
 
-`extension/vendor/hoshidicts.{mjs,wasm}` is committed, so loading it unpacked needs no
-build step.
+Hachidori requires Chrome 118 or newer. The WebAssembly bundle is committed, so using the extension needs no build step and no submodules.
 
-Open the extension's options page, import a Yomitan `.zip`, and hover some Japanese.
+## See it in action
 
-A large dictionary takes a while to import and the settings page must stay open while it
-runs — closing it revokes the `blob:` URL out from under the import.
+<p align="center">
+  <img src="docs/assets/demo.png" alt="Hachidori showing a Japanese dictionary definition while hovering text in Chrome" width="820">
+</p>
 
-## Building the WebAssembly yourself
+Hachidori scans forward from the character under your pointer, deinflects forms such as `食べたかった` to `食べる`, ranks matches using your chosen dictionaries, and renders the result beside the text.
 
-Needs [emsdk](https://emscripten.org/docs/getting_started/downloads.html) (developed
-against 6.0.9) and CMake.
+## Why Hachidori?
+
+- **Bring your own dictionaries.** Import the same open Yomitan `.zip` ecosystem used by established Japanese-learning tools.
+- **Stay on the page.** Definitions appear beside the word under your pointer, including structured content, images, frequencies, pitch accents, and kanji details.
+- **Keep lookups private.** The engine, your dictionaries, and every lookup stay inside Chrome.
+- **Keep the tool focused.** Hachidori does dictionary import and hover lookup instead of becoming a full study suite.
+
+## Use it
+
+Open Hachidori's options page to:
+
+- import one or more Yomitan dictionaries;
+- choose whether each dictionary supplies terms, frequencies, pitch accents, or kanji;
+- reorder dictionaries to control result priority;
+- configure the hover key, delay, scan length, result limit, and frequency ranking.
+
+Large dictionaries can take several minutes to import. Keep the options page open until the import finishes.
+
+## Hachidori vs the alternatives
+
+| | **Hachidori** | **Yomitan** | **hoshidicts CLI** |
+| --- | --- | --- | --- |
+| Best for | Focused hover lookups | A complete browser study workflow | Native and command-line integrations |
+| Runs in the browser | Yes, including the engine | Yes | No |
+| Imports Yomitan dictionaries | Yes | Yes | Yes |
+| Hover popup on ordinary pages | Yes | Yes | No built-in browser popup |
+| Native helper or local server needed | No | No | The native program itself |
+| Audio, Anki, and mining workflows | Deliberately out of scope | Built in or integrated | Build your own integration |
+
+Choose Hachidori when you want the shortest path from a Yomitan dictionary to a private hover definition. Choose Yomitan when you want the broader study ecosystem; choose the hoshidicts CLI when you want the native engine outside a browser.
+
+## Privacy by default
+
+Hachidori makes no network calls. Dictionary archives are imported locally, persisted in Chrome's IndexedDB-backed extension storage, and queried by the bundled WebAssembly engine.
+
+Only import dictionaries you trust. Hachidori validates the archive title before the engine creates its on-disk directory, but dictionary-supplied content and CSS still come from the archive you choose.
+
+## Documentation
+
+- [Architecture and WebAssembly build](docs/architecture.md)
+- [Test harness and guarantees](test/README.md)
+- [Contributing](CONTRIBUTING.md)
+- [Issues and support](https://github.com/bee-san/hachidori/issues)
+
+## Build and test
+
+Building the bundled engine requires [Emscripten](https://emscripten.org/docs/getting_started/downloads.html) and CMake:
 
 ```sh
+git clone --recurse-submodules https://github.com/bee-san/hachidori.git
+cd hachidori
 . ./wasm/env.sh && ./wasm/build.sh
 ```
 
-`wasm/env.sh` sources `emsdk_env.sh` and puts a Python ≥ 3.10 on `PATH` first — emsdk's
-launchers reject older interpreters, and some distributions still ship 3.9 as `python3`.
-
-The build compiles the engine and `wasm/bindings.cpp` with `-fwasm-exceptions` and no
-pthreads, then copies the output into `extension/vendor/`. Single-threaded is what lets
-this avoid `SharedArrayBuffer`, and therefore the COOP/COEP manifest keys.
-
-`wasm/bindings.cpp` uses the engine's C++ API directly rather than its C FFI, and
-serialises results with [glaze](https://github.com/stephenberry/glaze) into the same JSON
-shape GameSentenceMiner's overlay already speaks — which is what lets the ported renderer
-work unchanged.
-
-## Tests
+The fast checks use the committed WebAssembly bundle:
 
 ```sh
-node test/make-fixture.mjs      # synthesise Yomitan dictionaries covering every rendered shape
-node test/node-smoke.mjs        # 73 checks: the engine under node -- import, lookup, contract, error paths
-node test/extension-smoke.mjs   # 68 checks: extension logic against a stubbed chrome and DOM
-node test/chrome-e2e.mjs        # 27 checks: the real thing, in a real Chrome
-./test/baseline.sh              # native build, to prove the engine patches changed nothing
+node test/make-fixture.mjs
+node test/node-smoke.mjs
+node test/extension-smoke.mjs
 ```
 
-See [`test/README.md`](test/README.md) for what each one proves and what it cannot.
+The [test guide](test/README.md) explains the real-Chrome E2E test, dependencies, fixed assertion counts, and native baseline.
 
-`chrome-e2e.mjs` needs a Chrome binary and `puppeteer-core`; point `HDW_CHROME` and
-`HDW_PUPPETEER` at them. `extension-smoke.mjs` needs `jsdom`, via `HDW_JSDOM` or
-`NODE_PATH`. Install both outside the repo so a checkout does not carry a browser.
+## Contributing
 
-The browser test is the only one that can prove Chrome accepts the manifest, that the CSP
-permits compiling the wasm, that a real `caretRangeFromPoint` hover renders a popup, and
-that dictionaries survive a browser restart. Everything else runs against fakes, and fakes
-are how the worst bug in this project's history hid: the offscreen document's stub `chrome`
-had a `storage` that the real one does not.
+Bug reports, focused pull requests, and documentation improvements are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md); if you are unsure where a change belongs, [open an issue](https://github.com/bee-san/hachidori/issues/new).
 
-Two things the harness does deliberately, both learned the hard way:
+## Credits
 
-- **The check count is fixed up front.** A check that never runs is a failure, not a
-  smaller denominator — "14/15 passed" reads like success and is how a regression hides.
-- **Each assertion has been watched fail.** They were broken on purpose, one at a time, to
-  confirm they can go red. An assertion nobody has seen fail is not known to work; one of
-  the original checks turned out to be incapable of failing at all.
-
-The popup lives in a **closed** shadow root, which `pierce/` selectors cannot enter — the
-harness reads it through a CDP `DOM.getDocument({pierce: true})` session instead.
-
-## Engine changes
-
-`third_party/hoshidicts` tracks the [`wasm`
-branch](https://github.com/bee-san/hoshidicts/tree/wasm), which is upstream `main` plus two
-portability fixes. Neither changes native behaviour, and both are upstreamable:
-
-- **`importer.cpp`** spawned threads via `std::async(std::launch::async)`. An Emscripten
-  build without `-pthread` stubs `pthread_create` to return `EAGAIN`, so libc++ throws
-  and every import fails. Every future in that file is waited on before its result is
-  read, so `std::launch::deferred` is equivalent there.
-- **`memory.cpp`** closed the file descriptor immediately after `mmap`. That is fine on
-  POSIX, but Emscripten flushes `MAP_SHARED` writes *through* the descriptor at
-  `msync`/`munmap`, so `hash::linear::build_to_file` and `hash::bloom::build_to_file`
-  silently produced zeroed files — the import still reported success, and every subsequent
-  lookup found nothing. Worse, a recycled descriptor number would have written into an
-  unrelated file. The descriptor now lives in `mapped_file` and is closed by `unmap()`.
-
-`test/node-smoke.mjs` asserts `hash.table` and `bloom.filter` come out non-empty, which is
-the regression test for the second one.
-
-Only import dictionaries you trust. An imported dictionary's directory name comes from the
-`title` inside the archive, so `wasm/bindings.cpp` validates that title and stages the
-import in a scratch directory before the engine sees it.
-
-## Attribution
-
-The popup renderer, structured-content renderer, furigana segmentation and CSS are ported
-from [GameSentenceMiner PR #549](https://github.com/bpwhelan/GameSentenceMiner/pull/549),
-which in turn adapts [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and
-[Yomitan](https://github.com/yomidevs/yomitan). See
-[`extension/render/ATTRIBUTION.md`](extension/render/ATTRIBUTION.md).
-
-The dictionary engine is [hoshidicts](https://github.com/Manhhao/hoshidicts) by Manhhao.
+Hachidori is powered by [hoshidicts](https://github.com/Manhhao/hoshidicts) by Manhhao. Its popup renderer, structured-content renderer, furigana segmentation, and CSS are ported from [GameSentenceMiner PR #549](https://github.com/bpwhelan/GameSentenceMiner/pull/549), which adapts [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Yomitan](https://github.com/yomidevs/yomitan). See the full [renderer attribution](extension/render/ATTRIBUTION.md).
 
 ## License
 
-GPL-3.0-or-later, matching hoshidicts and the ported GameSentenceMiner code. See
-[`LICENSE`](LICENSE).
+Hachidori is available under [GPL-3.0-or-later](LICENSE), matching hoshidicts and the ported GameSentenceMiner code.

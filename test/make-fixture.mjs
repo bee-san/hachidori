@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Generates test/fixtures/hdw-fixture.zip, a Yomitan format-3 dictionary that
+// Generates test/fixtures/hachidori-fixture.zip, a Yomitan format-3 dictionary that
 // covers every shape the extension renders, plus the malformed archives the
 // error-path tests need.
 //
@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, 'fixtures');
 
-export const TITLE = 'hdw-fixture';
+export const TITLE = 'hachidori-fixture';
 export const MEDIA_PATH = 'media/kanji.png';
 
 // ---------------------------------------------------------------------------
@@ -157,8 +157,8 @@ const index = {
   revision: 'test-1',
   sequenced: true,
   isUpdatable: false,
-  author: 'hoshidicts-web test harness',
-  url: 'https://example.invalid/hdw-fixture',
+  author: 'Hachidori test harness',
+  url: 'https://example.invalid/hachidori-fixture',
   description: 'synthetic dictionary covering every shape the extension renders',
   attribution: 'GPL-3.0-or-later',
   sourceLanguage: 'ja',
@@ -172,7 +172,7 @@ const structuredContent = {
   content: [
     {
       tag: 'div',
-      data: { hdw: 'entry' },
+      data: { hachidori: 'entry' },
       content: [
         { tag: 'span', style: { fontWeight: 'bold' }, content: 'Chinese characters' },
         {
@@ -283,10 +283,10 @@ export const TAGS = [
 ];
 
 export const STYLES = [
-  '.hdw-fixture-table {',
+  '.hachidori-fixture-table {',
   '  border-collapse: collapse;',
   '}',
-  '.hdw-fixture-table th {',
+  '.hachidori-fixture-table th {',
   '  text-align: left;',
   '  padding-right: 0.5em;',
   '}',
@@ -323,7 +323,7 @@ export const EXPECTED = {
 // can write is exercised.
 export const TRAINING_SAMPLE_FLOOR = 8;
 
-export const TRAINED_TITLE = 'hdw-fixture-trained';
+export const TRAINED_TITLE = 'hachidori-fixture-trained';
 export const TRAINED_ROWS = 48;
 
 // Distinct expressions, spread out in the CJK block so no two rows collide, with
@@ -422,8 +422,8 @@ export function buildNotAZip() {
 }
 
 const OUTPUTS = [
-  ['hdw-fixture.zip', buildFixtureZip],
-  ['hdw-fixture-trained.zip', buildTrainedZip],
+  ['hachidori-fixture.zip', buildFixtureZip],
+  ['hachidori-fixture-trained.zip', buildTrainedZip],
   ['no-index.zip', buildNoIndexZip],
   ['not-a-zip.txt', buildNotAZip],
 ];

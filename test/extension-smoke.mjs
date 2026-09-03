@@ -21,6 +21,7 @@ import { createContext, runInContext } from "node:vm";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 
 // The trained fixture is built in memory rather than read out of test/fixtures:
 // the .zip on disk is only there for the browser test, which needs a real file to
@@ -30,13 +31,16 @@ import { TRAINED_TERMS, TRAINED_TITLE, buildTrainedZip } from "./make-fixture.mj
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 const EXTENSION = resolve(ROOT, "extension");
-const FIXTURE = resolve(HERE, "fixtures/hdw-fixture.zip");
-const EXTENSION_ORIGIN = "chrome-extension://hoshidictswebsmokeextensionid";
+const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
+const EXTENSION_ORIGIN = "chrome-extension://hachidorismokeextensionid";
 
-const FIXTURE_TITLE = "hdw-fixture";
+const FIXTURE_TITLE = "hachidori-fixture";
 // Where chrome-e2e.mjs already keeps puppeteer-core, so one out-of-repo tree
-// holds every test dependency. HDW_JSDOM or NODE_PATH override it.
-const DEFAULT_JSDOM_TREE = "/home/skerraut/.cache/hdw-e2e";
+// holds every test dependency. HACHIDORI_JSDOM or NODE_PATH override it.
+const DEFAULT_JSDOM_TREE = resolve(
+  process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"),
+  "hachidori-e2e",
+);
 
 let passed = 0;
 let failed = 0;
@@ -355,7 +359,7 @@ function makeChrome(owner, bus, storage) {
   const events = () => ({ addListener() {}, removeListener() {} });
   return {
     runtime: {
-      id: "hoshidictswebsmokeextensionid",
+      id: "hachidorismokeextensionid",
       lastError: undefined,
       getURL(path) {
         return `${EXTENSION_ORIGIN}/${String(path).replace(/^\//u, "")}`;
@@ -637,7 +641,7 @@ async function main() {
 
   const zip = new Uint8Array(await readFile(FIXTURE));
   const blobUrl = createObjectURL(zip);
-  const imported = await request("hd_import", { blobUrl, fileName: "hdw-fixture.zip" });
+  const imported = await request("hd_import", { blobUrl, fileName: "hachidori-fixture.zip" });
   check("hd_import succeeds", imported.ok === true, JSON.stringify(imported));
   equal("hd_import_result carries the full ImportReport", Object.keys(imported.report ?? {}).sort(), [
     "error",
@@ -793,7 +797,7 @@ async function main() {
     fail(
       "jsdom is loadable, so the renderer stage can run",
       `${jsdomFailure}\nSearched: ${jsdomSearchPaths().join(", ")}\n` +
-        "Install it outside the repo and point HDW_JSDOM or NODE_PATH at that tree:\n" +
+        "Install it outside the repo and point HACHIDORI_JSDOM or NODE_PATH at that tree:\n" +
         `  (cd ${DEFAULT_JSDOM_TREE} && npm install jsdom)\n` +
         `  NODE_PATH=${DEFAULT_JSDOM_TREE}/node_modules node test/extension-smoke.mjs`,
     );
@@ -842,7 +846,7 @@ async function main() {
   // IDBFS round trip, neither of which node-smoke.mjs touches.
   const trainedImport = await request("hd_import", {
     blobUrl: createObjectURL(buildTrainedZip()),
-    fileName: "hdw-fixture-trained.zip",
+    fileName: "hachidori-fixture-trained.zip",
   });
   equal(
     "hd_import accepts a dictionary over the zstd training floor",
@@ -898,7 +902,7 @@ async function main() {
 // resolving through require() before importing.
 function jsdomSearchPaths() {
   return [
-    ...(process.env.HDW_JSDOM ? [process.env.HDW_JSDOM] : []),
+    ...(process.env.HACHIDORI_JSDOM ? [process.env.HACHIDORI_JSDOM] : []),
     ...(process.env.NODE_PATH ? process.env.NODE_PATH.split(":").filter(Boolean) : []),
     ROOT,
     HERE,
