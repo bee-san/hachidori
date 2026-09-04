@@ -25,6 +25,17 @@ function setError(message) {
   element("dict-group-error").textContent = message;
 }
 
+function groupNameError(groups, name, excludedId = null) {
+  if (name === "") return "Enter a group name.";
+  const key = groupNameKey(name);
+  if (key === ALL_GROUP_NAME_KEY) return "All is reserved and cannot be used as a group name.";
+  if (groups.some((group) =>
+    group.id !== excludedId && groupNameKey(group.name) === key)) {
+    return "A group with this name already exists.";
+  }
+  return "";
+}
+
 function bindMoveButtons(row, prefix, index, length, label, move) {
   const up = row.querySelector(`.${prefix}-up`);
   const down = row.querySelector(`.${prefix}-down`);
@@ -64,20 +75,9 @@ export function createDictionaryGroupController({
   updateItemById,
   renderDeferredAfterBlur,
 }) {
-  function nameError(groups, name, excludedId = null) {
-    if (name === "") return "Enter a group name.";
-    const key = groupNameKey(name);
-    if (key === ALL_GROUP_NAME_KEY) return "All is reserved and cannot be used as a group name.";
-    if (groups.some((group) =>
-      group.id !== excludedId && groupNameKey(group.name) === key)) {
-      return "A group with this name already exists.";
-    }
-    return "";
-  }
-
   function changeNamedGroup(name, excludedId, update) {
     void commitGroups((current) => {
-      const error = nameError(current, name, excludedId);
+      const error = groupNameError(current, name, excludedId);
       if (error) {
         setError(error);
         return null;
@@ -141,7 +141,7 @@ export function createDictionaryGroupController({
     input.setAttribute("aria-label", `Name for ${group.name}`);
     input.addEventListener("change", () => {
       const name = normaliseGroupName(input.value);
-      const error = nameError(readState().groups, name, group.id);
+      const error = groupNameError(readState().groups, name, group.id);
       if (error) {
         input.value = group.name;
         setError(error);
@@ -223,7 +223,7 @@ export function createDictionaryGroupController({
   function create() {
     const input = element("dict-group-name-new");
     const name = normaliseGroupName(input.value);
-    const error = nameError(readState().groups, name);
+    const error = groupNameError(readState().groups, name);
     if (error) {
       setError(error);
       return;
