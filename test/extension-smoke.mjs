@@ -860,8 +860,47 @@ async function customEngineStage() {
     `file://${resolve(EXTENSION, "vendor", "hoshidicts.mjs").replace(/\\/gu, "/")}?custom-engine-stage`
   );
   let engine = null;
+  let advancePresentationBeforeCustomCas = false;
+  let advancePresentationAfterCustomCas = false;
+  let loseNextCustomCasReply = false;
+  const sendWorker = (type, fields = {}) => pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type,
+    ...fields,
+  });
   engineService.configureEngineService(
-    (message) => pageChrome.runtime.sendMessage(message),
+    async (message) => {
+      if (message.type === "hd_custom_cas" && advancePresentationBeforeCustomCas) {
+        advancePresentationBeforeCustomCas = false;
+        const current = (await storage.api().local.get("dictionaryState")).dictionaryState;
+        await sendWorker("hd_state_cas", {
+          baseRevision: current.revision,
+          dictionaries: current.dictionaries.map((dictionary) =>
+            dictionary.id === CUSTOM_DICTIONARY_ID
+              ? { ...dictionary, displayName: "Personal notes", favorite: true }
+              : dictionary),
+        });
+      }
+      const reply = await pageChrome.runtime.sendMessage(message);
+      if (message.type === "hd_custom_cas"
+          && reply?.ok === true
+          && advancePresentationAfterCustomCas) {
+        advancePresentationAfterCustomCas = false;
+        await sendWorker("hd_state_cas", {
+          baseRevision: reply.state.revision,
+          dictionaries: reply.state.dictionaries.map((dictionary) =>
+            dictionary.id === CUSTOM_DICTIONARY_ID
+              ? { ...dictionary, displayName: "Advanced after commit" }
+              : dictionary),
+        });
+        throw new Error("injected ambiguous custom CAS reply");
+      }
+      if (message.type === "hd_custom_cas" && reply?.ok === true && loseNextCustomCasReply) {
+        loseNextCustomCasReply = false;
+        throw new Error("injected lost custom CAS reply");
+      }
+      return reply;
+    },
     {
       createHoshidicts: async (...args) => {
         engine = await createHoshidicts(...args);
@@ -1024,9 +1063,149 @@ async function customEngineStage() {
     JSON.stringify({ appended, appendedLookup }),
   );
 
+  const conflictSource = `${appended.document?.text ?? ""}conflict, \u304d\u3087\u3046\u305d\u3046, conflict\r\n`;
+  advancePresentationBeforeCustomCas = true;
+  const conflictSaved = await request("hd_custom_save", {
+    baseDocumentRevision: appended.document?.revision ?? 0,
+    text: conflictSource,
+  });
+  check(
+    "custom state CAS retries preserve concurrent presentation edits",
+    conflictSaved.ok === true
+      && conflictSaved.document?.text === conflictSource
+      && conflictSaved.state?.dictionaries?.[0]?.displayName === "Personal notes"
+      && conflictSaved.state?.dictionaries?.[0]?.favorite === true
+      && conflictSaved.state?.dictionaries?.[0]?.enabled === true
+      && conflictSaved.state?.dictionaries?.[0]?.path !== appended.state?.dictionaries?.[0]?.path
+      && generationRoots().length === 1,
+    JSON.stringify({ conflictSaved, roots: generationRoots() }),
+  );
+
+  const lostSource = `${conflictSource}lost, \u308d\u3059\u3068, recovered\r\n`;
+  loseNextCustomCasReply = true;
+  const recoveredLostReply = await request("hd_custom_save", {
+    baseDocumentRevision: conflictSaved.document?.revision ?? 0,
+    text: lostSource,
+  });
+  check(
+    "an exact source and state readback recovers a lost custom CAS reply",
+    recoveredLostReply.ok === true
+      && recoveredLostReply.document?.text === lostSource
+      && recoveredLostReply.state?.dictionaries?.[0]?.revision
+        === recoveredLostReply.document?.semanticRevision
+      && generationRoots().length === 1,
+    JSON.stringify({ recoveredLostReply, roots: generationRoots() }),
+  );
+
+  const beforeFailedSave = await sendWorker("hd_custom_read");
+  const rootsBeforeFailedSave = generationRoots();
+  storage.failNextSet("injected custom storage failure");
+  const failedSave = await request("hd_custom_save", {
+    baseDocumentRevision: beforeFailedSave.document?.revision ?? 0,
+    text: `${lostSource}failure, \u3057\u3063\u3071\u3044, failure\r\n`,
+  });
+  const afterFailedSave = await sendWorker("hd_custom_read");
+  check(
+    "a failed custom commit restores the working generation without debris",
+    failedSave.ok === false
+      && JSON.stringify(afterFailedSave) === JSON.stringify(beforeFailedSave)
+      && JSON.stringify(generationRoots()) === JSON.stringify(rootsBeforeFailedSave),
+    JSON.stringify({ failedSave, beforeFailedSave, afterFailedSave, roots: generationRoots() }),
+  );
+
+  const brokenState = {
+    ...afterFailedSave.state,
+    revision: afterFailedSave.state.revision + 1,
+    dictionaries: afterFailedSave.state.dictionaries.map((dictionary) => ({
+      ...dictionary,
+      enabled: false,
+    })),
+  };
+  await storage.api().local.set({ dictionaryState: brokenState });
+  const repaired = await request("hd_custom_save", {
+    baseDocumentRevision: afterFailedSave.document.revision,
+    text: afterFailedSave.document.text,
+  });
+  check(
+    "a semantic no-op rebuilds a committed package that violates fixed invariants",
+    repaired.ok === true
+      && repaired.rebuilt === true
+      && repaired.document?.revision === afterFailedSave.document.revision
+      && repaired.state?.revision === brokenState.revision + 1
+      && repaired.state?.dictionaries?.[0]?.enabled === true
+      && repaired.state?.dictionaries?.[0]?.path
+        !== afterFailedSave.state?.dictionaries?.[0]?.path
+      && generationRoots().length === 1,
+    JSON.stringify({ repaired, roots: generationRoots() }),
+  );
+
+  const legacyCollisionId = "legacy-reserved-title-package";
+  const collisionState = {
+    ...repaired.state,
+    revision: repaired.state.revision + 1,
+    dictionaries: repaired.state.dictionaries.map((dictionary) => ({
+      ...dictionary,
+      id: legacyCollisionId,
+    })),
+  };
+  await storage.api().local.set({ dictionaryState: collisionState });
+  const collisionSave = await request("hd_custom_save", {
+    baseDocumentRevision: repaired.document.revision,
+    text: repaired.document.text,
+  });
+  const removedCollision = await request("hd_remove", {
+    id: legacyCollisionId,
+    title: CUSTOM_DICTIONARY_TITLE,
+  });
+  const rebuiltAfterCollision = await request("hd_custom_save", {
+    baseDocumentRevision: repaired.document.revision,
+    text: repaired.document.text,
+  });
+  check(
+    "a pre-existing reserved-title package is a removable collision, not the managed package",
+    collisionSave.ok === false
+      && collisionSave.error?.includes("already installed")
+      && removedCollision.ok === true
+      && rebuiltAfterCollision.ok === true
+      && rebuiltAfterCollision.state?.dictionaries?.[0]?.id === CUSTOM_DICTIONARY_ID
+      && generationRoots().length === 1,
+    JSON.stringify({ collisionSave, removedCollision, rebuiltAfterCollision, roots: generationRoots() }),
+  );
+
+  const ambiguousSource = `${rebuiltAfterCollision.document?.text ?? ""}ambiguous, \u3042\u3044\u307e\u3044, retained\r\n`;
+  const rootsBeforeAmbiguous = generationRoots();
+  advancePresentationAfterCustomCas = true;
+  const ambiguous = await request("hd_custom_save", {
+    baseDocumentRevision: rebuiltAfterCollision.document?.revision ?? 0,
+    text: ambiguousSource,
+  });
+  const authoritativeAfterAmbiguous = await sendWorker("hd_custom_read");
+  const rootsAfterAmbiguous = generationRoots();
+  const recoveredAmbiguous = await request("hd_reload");
+  check(
+    "a non-exact lost-reply readback retains both generations until authoritative reload",
+    ambiguous.ok === false
+      && ambiguous.error?.includes("outcome is unknown")
+      && authoritativeAfterAmbiguous.document?.text === ambiguousSource
+      && authoritativeAfterAmbiguous.state?.dictionaries?.[0]?.displayName
+        === "Advanced after commit"
+      && rootsBeforeAmbiguous.length === 1
+      && rootsAfterAmbiguous.length === 2
+      && recoveredAmbiguous.ok === true
+      && generationRoots().length === 1,
+    JSON.stringify({
+      ambiguous,
+      authoritativeAfterAmbiguous,
+      recoveredAmbiguous,
+      rootsBeforeAmbiguous,
+      rootsAfterAmbiguous,
+      rootsAfterReload: generationRoots(),
+    }),
+  );
+
   const clearedSource = "# retained source\r\nmalformed";
   const cleared = await request("hd_custom_save", {
-    baseDocumentRevision: appended.document?.revision ?? 0,
+    baseDocumentRevision: authoritativeAfterAmbiguous.document?.revision ?? 0,
     text: clearedSource,
   });
   const clearedStatus = await request("hd_status");
