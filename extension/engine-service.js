@@ -415,6 +415,10 @@ function recommendedFinalUrlMatches(source, value) {
   if (finalUrl.hostname !== "release-assets.githubusercontent.com") {
     return false;
   }
+  const assetPrefix = `/github-production-release-asset/${source.githubRepositoryId}/`;
+  if (!finalUrl.pathname.startsWith(assetPrefix)) {
+    return false;
+  }
   const disposition = finalUrl.searchParams.get("response-content-disposition")
     ?? finalUrl.searchParams.get("rscd")
     ?? "";

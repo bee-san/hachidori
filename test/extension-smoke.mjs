@@ -649,6 +649,7 @@ const RECOMMENDED_DICTIONARIES = [
     publisherUrl: "https://jitendex.org/",
     downloadUrl: "https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip",
     indexUrl: "https://jitendex.org/static/yomitan.json",
+    githubRepositoryId: "744330420",
     title: "Jitendex.org [2026-08-11]",
     revision: "2026.08.11.0",
     capabilities: ["term", "media"],
@@ -659,6 +660,7 @@ const RECOMMENDED_DICTIONARIES = [
     publisherUrl: "https://github.com/yomidevs/jmdict-yomitan",
     downloadUrl: "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMnedict.zip",
     indexUrl: "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMnedict.json",
+    githubRepositoryId: "696075636",
     title: "JMnedict [2026-09-04]",
     revision: "JMnedict.2026-09-04",
     capabilities: ["term"],
@@ -669,6 +671,7 @@ const RECOMMENDED_DICTIONARIES = [
     publisherUrl: "https://github.com/bee-san/bees-ultimate-kanji-dictionary",
     downloadUrl: "https://github.com/bee-san/bees-ultimate-kanji-dictionary/releases/latest/download/bees-ultimate-kanji-dictionary.zip",
     indexUrl: "https://raw.githubusercontent.com/bee-san/bees-ultimate-kanji-dictionary/main/dist/index.json",
+    githubRepositoryId: "1335822804",
     title: "Bee's Ultimate Kanji Dictionary",
     revision: "2026.09.02",
     capabilities: ["term", "freq", "media"],
@@ -679,6 +682,7 @@ const RECOMMENDED_DICTIONARIES = [
     publisherUrl: "https://jiten.moe/frequency-dictionaries",
     downloadUrl: "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
     indexUrl: "https://api.jiten.moe/api/frequency-list/index",
+    githubRepositoryId: null,
     title: "Jiten",
     revision: "Jiten 26-09-02",
     capabilities: ["freq"],
@@ -702,6 +706,7 @@ function checkRecommendedDictionaries() {
     publisherUrl: entry.publisherUrl,
     downloadUrl: entry.downloadUrl,
     indexUrl: entry.indexUrl,
+    githubRepositoryId: entry.githubRepositoryId,
     capabilities: [...entry.capabilities],
   }));
   const expected = RECOMMENDED_DICTIONARIES.map(({ title, revision, ...entry }) => entry);
@@ -1099,7 +1104,7 @@ async function main() {
   const recommended = RECOMMENDED_DICTIONARIES[0];
   const recommendedFields = {
     sourceId: recommended.sourceId,
-    finalUrl: "https://release-assets.githubusercontent.com/github-production-release-asset/123/asset"
+    finalUrl: `https://release-assets.githubusercontent.com/github-production-release-asset/${recommended.githubRepositoryId}/asset`
       + "?response-content-disposition=attachment%3B%20filename%3Djitendex-yomitan.zip",
   };
   const recommendedArchive = (overrides = {}) => createObjectURL(buildRecommendedZip({
@@ -1140,6 +1145,16 @@ async function main() {
   await rejectRecommended(
     "recommended import rejects a final URL outside its catalogue entry",
     { sourceId: recommended.sourceId, finalUrl: "https://example.invalid/not-jitendex.zip" },
+    {},
+    recommended.title,
+  );
+  await rejectRecommended(
+    "recommended import rejects a release asset from another repository",
+    {
+      sourceId: recommended.sourceId,
+      finalUrl: "https://release-assets.githubusercontent.com/github-production-release-asset/123/asset"
+        + "?response-content-disposition=attachment%3B%20filename%3Djitendex-yomitan.zip",
+    },
     {},
     recommended.title,
   );
