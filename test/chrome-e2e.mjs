@@ -1141,9 +1141,13 @@ async function main() {
     createButton.click();
     current = await waitFor(current.revision, (candidate) => candidate.groups?.length === 2);
     const grammarGroupId = current.groups.find((group) => group.name === "Grammar").id;
-    groupRow(grammarGroupId).querySelector(".dict-group-up").click();
+    const grammarUp = groupRow(grammarGroupId).querySelector(".dict-group-up");
+    grammarUp.focus();
+    grammarUp.click();
     current = await waitFor(current.revision, (candidate) => candidate.groups?.[0]?.id === grammarGroupId);
     const groupOrderAfterMove = current.groups.map((group) => group.name);
+    const groupMoveFocusRetained = document.activeElement?.classList.contains("dict-group-down") === true
+      && document.activeElement.closest(".dict-group")?.dataset.groupId === grammarGroupId;
 
     const rename = groupRow(studyGroupId).querySelector(".dict-group-name");
     rename.value = "Reading";
@@ -1151,15 +1155,23 @@ async function main() {
     current = await waitFor(current.revision, (candidate) => candidate.groups
       .find((group) => group.id === studyGroupId)?.name === "Reading");
 
+    const studyAdd = groupRow(studyGroupId).querySelector(".dict-group-add");
+    studyAdd.focus();
     current = await addMember(studyGroupId, fixtureId);
+    const groupAddFocusRetained = document.activeElement?.classList.contains("dict-group-add") === true
+      && document.activeElement.closest(".dict-group")?.dataset.groupId === studyGroupId;
     current = await addMember(studyGroupId, genericId);
     const membershipBeforeMove = current.groups
       .find((group) => group.id === studyGroupId).dictionaryIds;
-    memberRow(studyGroupId, genericId).querySelector(".dict-group-member-up").click();
+    const genericUp = memberRow(studyGroupId, genericId).querySelector(".dict-group-member-up");
+    genericUp.focus();
+    genericUp.click();
     current = await waitFor(current.revision, (candidate) => candidate.groups
       .find((group) => group.id === studyGroupId)?.dictionaryIds[0] === genericId);
     const membershipAfterMove = current.groups
       .find((group) => group.id === studyGroupId).dictionaryIds;
+    const memberMoveFocusRetained = document.activeElement?.classList.contains("dict-group-member-down") === true
+      && document.activeElement.closest(".dict-group-member")?.dataset.dictionaryId === genericId;
 
     const aliasInput = [...document.querySelectorAll("#dict-list .dict-row")]
       .find((row) => row.dataset.dictionaryId === fixtureId)
@@ -1189,9 +1201,12 @@ async function main() {
       createRevision,
       invalidRevision,
       groupOrderAfterMove,
+      groupMoveFocusRetained,
+      groupAddFocusRetained,
       finalGroupOrder: current.groups.map((group) => group.name),
       membershipBeforeMove,
       membershipAfterMove,
+      memberMoveFocusRetained,
       membershipAfterAlias,
       groupedAliasLabel,
     };
@@ -1202,6 +1217,9 @@ async function main() {
       && groupManagement.duplicateError?.includes("already exists")
       && groupManagement.reservedError?.includes("reserved")
       && groupManagement.invalidRevision === groupManagement.createRevision
+      && groupManagement.groupMoveFocusRetained === true
+      && groupManagement.groupAddFocusRetained === true
+      && groupManagement.memberMoveFocusRetained === true
       && JSON.stringify(groupManagement.membershipAfterAlias)
         === JSON.stringify(groupManagement.membershipAfterMove)
       && groupManagement.groupedAliasLabel === "Grouped alias",
