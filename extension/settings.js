@@ -48,7 +48,7 @@ let dictionaryCommitTail = Promise.resolve();
 let dictionaryCommitFailed = false;
 let dictionaryRenderDeferred = false;
 let pendingManagementFocus = null;
-let groupPointerDown = false;
+let managementPointerDown = false;
 let dictionarySearch = "";
 const selectedDictionaryIds = new Set();
 let draggedDictionaryId = null;
@@ -1180,17 +1180,17 @@ function attachHandlers() {
     event.preventDefault();
     dictionaryGroupController.create();
   });
-  element("dict-group-list").addEventListener("pointerdown", () => {
-    groupPointerDown = true;
+  document.querySelector("main").addEventListener("pointerdown", (event) => {
+    if (event.target.closest("#dict-list, #dict-group-list")) managementPointerDown = true;
   });
-  const finishGroupPointer = () => {
-    groupPointerDown = false;
+  const finishManagementPointer = () => {
+    managementPointerDown = false;
     setTimeout(() => {
       if (dictionaryRenderDeferred) renderChangedDictionaryState();
     }, 0);
   };
-  window.addEventListener("pointerup", finishGroupPointer, true);
-  window.addEventListener("pointercancel", finishGroupPointer, true);
+  window.addEventListener("pointerup", finishManagementPointer, true);
+  window.addEventListener("pointercancel", finishManagementPointer, true);
 
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
@@ -1240,7 +1240,7 @@ function dictionaryNameIsBeingEdited() {
 }
 
 function renderChangedDictionaryState() {
-  if (committing || groupPointerDown || dictionaryNameIsBeingEdited()) {
+  if (committing || managementPointerDown || dictionaryNameIsBeingEdited()) {
     dictionaryRenderDeferred = true;
     return;
   }
