@@ -842,6 +842,8 @@ async function main() {
   );
   let forwardedLowRam = null;
   let observedEngine = null;
+  let loadedDictionaryPaths = new Set();
+  let peakLoadedDictionaryPaths = 0;
   const createObservedHoshidicts = async (...args) => {
     const module = await createHoshidicts(...args);
     observedEngine = module;
@@ -850,7 +852,17 @@ async function main() {
       if (name === "hdw_import") {
         forwardedLowRam = argumentValues[2];
       }
-      return ccall(name, returnType, argumentTypes, argumentValues);
+      const result = ccall(name, returnType, argumentTypes, argumentValues);
+      if (name === "hdw_reset") {
+        loadedDictionaryPaths = new Set();
+      } else if (name === "hdw_add_dict" && result) {
+        loadedDictionaryPaths.add(argumentValues[0]);
+        peakLoadedDictionaryPaths = Math.max(
+          peakLoadedDictionaryPaths,
+          loadedDictionaryPaths.size,
+        );
+      }
+      return result;
     };
     return module;
   };
@@ -1234,6 +1246,29 @@ async function main() {
     canonicallyEquivalentPackages.length === 2
       && new Set(canonicallyEquivalentPackages.map((dictionary) => dictionary.id)).size === 2,
     JSON.stringify(canonicallyEquivalentPackages),
+  );
+  const stateWithThreePackages = await storedDictionaryState();
+  peakLoadedDictionaryPaths = 0;
+  const allDisabled = await request("hd_apply_state", {
+    baseRevision: stateWithThreePackages.revision,
+    dictionaries: stateWithThreePackages.dictionaries.map((dictionary) => ({
+      ...dictionary,
+      enabled: false,
+    })),
+  });
+  const disabledValidationPeak = peakLoadedDictionaryPaths;
+  const disabledStatusAfterValidation = await request("hd_status");
+  const restoredThreePackages = await request("hd_apply_state", {
+    baseRevision: allDisabled.state.revision,
+    dictionaries: stateWithThreePackages.dictionaries,
+  });
+  check(
+    "disabled packages are validated independently before publishing an empty load set",
+    allDisabled.ok === true
+      && disabledStatusAfterValidation.dictionaryCount === 0
+      && disabledValidationPeak === 1
+      && restoredThreePackages.ok === true,
+    JSON.stringify({ allDisabled, disabledValidationPeak, restoredThreePackages }),
   );
   for (const title of canonicallyEquivalentTitles) {
     await request("hd_remove", { title });

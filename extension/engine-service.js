@@ -689,11 +689,16 @@ function loadDictionaries(dictionaries, { strict = false } = {}) {
       throw new Error(`refusing to load an invalid dictionary path: ${text(dictionary?.path)}`);
     }
   }
-  engine.ccall("hdw_reset", null, [], []);
-  if (strict && dictionaries.some((dictionary) => dictionary.enabled === false)) {
-    addDictionaries(dictionaries, true, true);
-    engine.ccall("hdw_reset", null, [], []);
+  if (strict) {
+    for (const dictionary of dictionaries) {
+      if (dictionary.enabled !== false) {
+        continue;
+      }
+      engine.ccall("hdw_reset", null, [], []);
+      addDictionaries([dictionary], true, true);
+    }
   }
+  engine.ccall("hdw_reset", null, [], []);
   return addDictionaries(dictionaries, false, strict);
 }
 
