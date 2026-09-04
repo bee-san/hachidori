@@ -19,6 +19,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -1287,25 +1288,80 @@ async function main() {
     JSON.stringify({ removedLegacyRemovalRoot, afterLegacyRemoval }),
   );
 
-  const invalidLoadPath = "/dicts/invalid-native-load";
+  const invalidLoadTitle = "invalid-native-load";
+  const invalidLoadPath = `/dicts/${invalidLoadTitle}`;
+  const invalidImportDate = 0;
   observedEngine.FS.mkdir(invalidLoadPath);
   observedEngine.FS.writeFile(`${invalidLoadPath}/.hoshidicts_3`, new Uint8Array());
   observedEngine.FS.writeFile(`${invalidLoadPath}/index.json`, JSON.stringify({
-    title: "invalid-native-load",
+    title: invalidLoadTitle,
     revision: "test-1",
+    importDate: invalidImportDate,
     counts: { terms: { total: 1 } },
   }));
+  const stateBeforeInvalidLoad = await storedDictionaryState();
+  const invalidPackage = {
+    id: createHash("sha256").update(invalidLoadTitle).digest("hex").slice(0, 32),
+    title: invalidLoadTitle,
+    displayName: null,
+    path: invalidLoadPath,
+    enabled: true,
+    favorite: false,
+    revision: "test-1",
+    isUpdatable: false,
+    indexUrl: null,
+    downloadUrl: null,
+    language: null,
+    termCount: 1,
+    frequencyCount: 0,
+    pitchCount: 0,
+    kanjiCount: 0,
+    mediaCount: 0,
+    installedAt: new Date(invalidImportDate).toISOString(),
+    lastUpdateCheck: null,
+  };
+  const invalidStateWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: stateBeforeInvalidLoad.revision,
+    dictionaries: [...stateBeforeInvalidLoad.dictionaries, invalidPackage],
+  });
+  const authoritativeInvalidState = invalidStateWrite.state;
   const invalidReload = await request("hd_reload");
+  const stateAfterInvalidReload = await storedDictionaryState();
   check(
-    "reload rejects an enabled package that the native engine cannot load",
-    invalidReload.ok === false && invalidReload.error?.includes("could not load"),
-    JSON.stringify(invalidReload),
+    "reload rejects an authoritative invalid package without pruning its state",
+    invalidStateWrite.ok === true
+      && authoritativeInvalidState.dictionaries.length === stateBeforeInvalidLoad.dictionaries.length + 1
+      && invalidReload.ok === false
+      && invalidReload.error?.includes("could not load")
+      && JSON.stringify(stateAfterInvalidReload) === JSON.stringify(authoritativeInvalidState),
+    JSON.stringify({ invalidStateWrite, invalidReload, stateAfterInvalidReload }),
   );
+  const repairedStateWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: stateAfterInvalidReload.revision,
+    dictionaries: stateAfterInvalidReload.dictionaries.filter(
+      (dictionary) => dictionary.title !== invalidLoadTitle,
+    ),
+  });
   observedEngine.FS.unlink(`${invalidLoadPath}/index.json`);
   observedEngine.FS.unlink(`${invalidLoadPath}/.hoshidicts_3`);
   observedEngine.FS.rmdir(invalidLoadPath);
   const repairedReload = await request("hd_reload");
-  check("reload recovers after the invalid package is removed", repairedReload.ok === true, JSON.stringify(repairedReload));
+  const stateAfterRepair = await storedDictionaryState();
+  check(
+    "reload recovers after the invalid package is explicitly removed",
+    repairedStateWrite.ok === true
+      && !repairedStateWrite.state.dictionaries.some(
+        (dictionary) => dictionary.title === invalidLoadTitle,
+      )
+      && repairedReload.ok === true
+      && repairedReload.dictionaryCount === 4
+      && JSON.stringify(stateAfterRepair) === JSON.stringify(repairedStateWrite.state),
+    JSON.stringify({ repairedStateWrite, repairedReload, stateAfterRepair }),
+  );
 
   section("lookup, kanji, styles, media");
   const lookup = await request("hd_lookup", {
