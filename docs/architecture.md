@@ -79,6 +79,11 @@ was `.hdw-remove`.
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 
+Dictionary-group normalization and controls live in `dictionary-groups.js`; the
+Settings entrypoint owns imports, package management, and the shared commit
+queue. Groups remain in `dictionaryState` so package removal and membership
+pruning are one compare-and-set transaction rather than two coordinated writes.
+
 ## Runtime messages
 
 | Message | Purpose |

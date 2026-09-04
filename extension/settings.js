@@ -13,6 +13,8 @@ const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
 // settings page can be left open.
 const STATUS_RETRY_MS = 5000;
+const { createController: createDictionaryGroupController, normaliseDictionaryGroups } =
+  globalThis.HD_DICTIONARY_GROUPS;
 
 const DEFAULT_OPTIONS = {
   scanLength: 16,
@@ -132,39 +134,6 @@ function normaliseDictionaries(value) {
     return [];
   }
   return value.map(normaliseDictionary).filter((entry) => entry !== null);
-}
-
-function normaliseGroupName(value) {
-  return stringValue(value).normalize("NFKC").trim().replace(/\s+/gu, " ");
-}
-
-function groupNameKey(value) {
-  return normaliseGroupName(value).toLowerCase();
-}
-
-const ALL_GROUP_NAME_KEY = groupNameKey("All");
-
-function normaliseDictionaryGroups(value, installedDictionaries) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const installedIds = new Set(installedDictionaries.map((dictionary) => dictionary.id));
-  return value.map((group) => {
-    const id = stringValue(group?.id);
-    const name = normaliseGroupName(group?.name);
-    if (id === "" || name === "") {
-      return null;
-    }
-    const seen = new Set();
-    const dictionaryIds = Array.isArray(group?.dictionaryIds)
-      ? group.dictionaryIds.filter((dictionaryId) => {
-        if (!installedIds.has(dictionaryId) || seen.has(dictionaryId)) return false;
-        seen.add(dictionaryId);
-        return true;
-      })
-      : [];
-    return { id, name, dictionaryIds };
-  }).filter((group) => group !== null);
 }
 
 function normaliseDictionaryState(value) {
@@ -862,172 +831,6 @@ function renderDictionaries() {
   setControlsDisabled(importing);
 }
 
-function setDictionaryGroupError(message) {
-  element("dict-group-error").textContent = message;
-}
-
-function dictionaryGroupNameError(name, excludedId = null) {
-  if (name === "") {
-    return "Enter a group name.";
-  }
-  const key = groupNameKey(name);
-  if (key === ALL_GROUP_NAME_KEY) {
-    return "All is reserved and cannot be used as a group name.";
-  }
-  if (dictionaryState.groups.some((group) => group.id !== excludedId && groupNameKey(group.name) === key)) {
-    return "A group with this name already exists.";
-  }
-  return "";
-}
-
-function changeDictionaryGroup(id, update) {
-  void commitGroups((current) => updateItemById(current, id, update));
-}
-
-function moveDictionaryGroup(id, step) {
-  void commitGroups((current) => {
-    const index = current.findIndex((group) => group.id === id);
-    return moveListItem(current, index, index + step);
-  });
-}
-
-function moveDictionaryGroupMember(groupId, dictionaryId, step) {
-  changeDictionaryGroup(groupId, (group) => {
-    const index = group.dictionaryIds.indexOf(dictionaryId);
-    const dictionaryIds = moveListItem(group.dictionaryIds, index, index + step);
-    return dictionaryIds === null ? group : { ...group, dictionaryIds };
-  });
-}
-
-function renderDictionaryGroupMember(group, dictionary, index) {
-  const template = element("dict-group-member-template");
-  const row = template.content.firstElementChild.cloneNode(true);
-  const label = dictionaryLabel(dictionary);
-  row.dataset.dictionaryId = dictionary.id;
-  row.querySelector(".dict-group-member-name").textContent = label;
-  const canonical = row.querySelector(".dict-group-member-canonical");
-  canonical.textContent = dictionary.displayName ? dictionary.title : "";
-  canonical.hidden = !dictionary.displayName;
-
-  const up = row.querySelector(".dict-group-member-up");
-  const down = row.querySelector(".dict-group-member-down");
-  up.dataset.pinnedDisabled = String(index === 0);
-  down.dataset.pinnedDisabled = String(index === group.dictionaryIds.length - 1);
-  up.setAttribute("aria-label", `Move ${label} up in ${group.name}`);
-  down.setAttribute("aria-label", `Move ${label} down in ${group.name}`);
-  up.addEventListener("click", () => moveDictionaryGroupMember(group.id, dictionary.id, -1));
-  down.addEventListener("click", () => moveDictionaryGroupMember(group.id, dictionary.id, 1));
-
-  const remove = row.querySelector(".dict-group-member-remove");
-  remove.setAttribute("aria-label", `Remove ${label} from ${group.name}`);
-  remove.addEventListener("click", () => {
-    changeDictionaryGroup(group.id, (current) => ({
-      ...current,
-      dictionaryIds: current.dictionaryIds.filter((id) => id !== dictionary.id),
-    }));
-  });
-  return row;
-}
-
-function bindDictionaryGroupName(row, group) {
-  const input = row.querySelector(".dict-group-name");
-  input.value = group.name;
-  input.setAttribute("aria-label", `Name for ${group.name}`);
-  input.addEventListener("change", () => {
-    const name = normaliseGroupName(input.value);
-    const error = dictionaryGroupNameError(name, group.id);
-    if (error) {
-      input.value = group.name;
-      setDictionaryGroupError(error);
-      return;
-    }
-    setDictionaryGroupError("");
-    changeDictionaryGroup(group.id, (current) =>
-      current.name === name ? current : { ...current, name });
-  });
-  renderDeferredAfterBlur(input);
-}
-
-function bindDictionaryGroupAdd(row, group) {
-  const select = row.querySelector(".dict-group-add-select");
-  const add = row.querySelector(".dict-group-add");
-  const available = dictionaries.filter((dictionary) => !group.dictionaryIds.includes(dictionary.id));
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = available.length === 0 ? "All dictionaries added" : "Choose a dictionary";
-  select.appendChild(placeholder);
-  for (const dictionary of available) {
-    const option = document.createElement("option");
-    option.value = dictionary.id;
-    option.textContent = dictionaryLabel(dictionary);
-    select.appendChild(option);
-  }
-  select.dataset.pinnedDisabled = String(available.length === 0);
-  add.dataset.pinnedDisabled = String(available.length === 0);
-  add.addEventListener("click", () => {
-    const dictionaryId = select.value;
-    if (dictionaryId === "") return;
-    changeDictionaryGroup(group.id, (current) => ({
-      ...current,
-      dictionaryIds: [...current.dictionaryIds, dictionaryId],
-    }));
-  });
-}
-
-function renderDictionaryGroupRow(group, index) {
-  const template = element("dict-group-template");
-  const row = template.content.firstElementChild.cloneNode(true);
-  row.dataset.groupId = group.id;
-  bindDictionaryGroupName(row, group);
-
-  const up = row.querySelector(".dict-group-up");
-  const down = row.querySelector(".dict-group-down");
-  const remove = row.querySelector(".dict-group-delete");
-  up.dataset.pinnedDisabled = String(index === 0);
-  down.dataset.pinnedDisabled = String(index === dictionaryState.groups.length - 1);
-  up.setAttribute("aria-label", `Move ${group.name} up`);
-  down.setAttribute("aria-label", `Move ${group.name} down`);
-  remove.setAttribute("aria-label", `Delete ${group.name}`);
-  up.addEventListener("click", () => moveDictionaryGroup(group.id, -1));
-  down.addEventListener("click", () => moveDictionaryGroup(group.id, 1));
-  remove.addEventListener("click", () => {
-    void commitGroups((current) => current.filter((entry) => entry.id !== group.id));
-  });
-
-  bindDictionaryGroupAdd(row, group);
-  const members = row.querySelector(".dict-group-members");
-  const installedById = new Map(dictionaries.map((dictionary) => [dictionary.id, dictionary]));
-  group.dictionaryIds.forEach((dictionaryId, memberIndex) => {
-    members.appendChild(renderDictionaryGroupMember(group, installedById.get(dictionaryId), memberIndex));
-  });
-  row.querySelector(".dict-group-members-empty").hidden = group.dictionaryIds.length > 0;
-  return row;
-}
-
-function renderDictionaryGroups() {
-  const list = element("dict-group-list");
-  list.textContent = "";
-  dictionaryState.groups.forEach((group, index) => {
-    list.appendChild(renderDictionaryGroupRow(group, index));
-  });
-  element("dict-group-empty").hidden = dictionaryState.groups.length > 0;
-  setControlsDisabled(importing);
-}
-
-function createDictionaryGroup() {
-  const input = element("dict-group-name-new");
-  const name = normaliseGroupName(input.value);
-  const error = dictionaryGroupNameError(name);
-  if (error) {
-    setDictionaryGroupError(error);
-    return;
-  }
-  const group = { id: crypto.randomUUID(), name, dictionaryIds: [] };
-  input.value = "";
-  setDictionaryGroupError("");
-  void commitGroups((current) => [...current, group]);
-}
-
 function dictionaryMoveTarget(current, index, move) {
   if (move.targetId) {
     return current.findIndex((entry) => entry.id === move.targetId);
@@ -1111,7 +914,8 @@ function renderDictionaryState() {
   dictionaries = dictionaryState.dictionaries;
   dictionaryRenderDeferred = false;
   renderDictionaries();
-  renderDictionaryGroups();
+  dictionaryGroupController.render();
+  setControlsDisabled(importing);
   normaliseDictionarySelections();
   renderOptions();
   if (focus) restoreManagementFocus(focus);
@@ -1197,6 +1001,16 @@ function commitGroups(update) {
     return groups === null ? null : { ...current, groups };
   }, false);
 }
+
+const dictionaryGroupController = createDictionaryGroupController({
+  readState: () => dictionaryState,
+  readDictionaries: () => dictionaries,
+  commitGroups,
+  dictionaryLabel,
+  moveListItem,
+  updateItemById,
+  renderDeferredAfterBlur,
+});
 
 async function removeDictionary(title) {
   if (!window.confirm(`Remove ${title}? Its imported data is deleted and has to be imported again.`)) {
@@ -1362,7 +1176,7 @@ function attachHandlers() {
 
   element("dict-group-create-form").addEventListener("submit", (event) => {
     event.preventDefault();
-    createDictionaryGroup();
+    dictionaryGroupController.create();
   });
 
   for (const field of NUMBER_FIELDS) {
