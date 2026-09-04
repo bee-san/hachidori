@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.31)
 
 project(hachidori LANGUAGES C CXX)
 
+option(HACHIDORI_PTHREADS "Build the pthread + OPFS runtime" ON)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 99)
@@ -14,12 +16,20 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # the add_subdirectory'd trees.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fwasm-exceptions -O3")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fwasm-exceptions -O3")
+if(HACHIDORI_PTHREADS)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+endif()
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/hoshidicts hoshidicts)
 
 add_executable(hoshidicts_wasm bindings.cpp)
 
-set_target_properties(hoshidicts_wasm PROPERTIES OUTPUT_NAME hoshidicts SUFFIX ".mjs")
+if(HACHIDORI_PTHREADS)
+  set_target_properties(hoshidicts_wasm PROPERTIES OUTPUT_NAME hoshidicts-threaded SUFFIX ".mjs")
+else()
+  set_target_properties(hoshidicts_wasm PROPERTIES OUTPUT_NAME hoshidicts SUFFIX ".mjs")
+endif()
 
 # The engine links glaze PRIVATE, so its include dirs do not propagate here.
 target_link_libraries(hoshidicts_wasm PRIVATE hoshidicts glaze::glaze)
@@ -28,6 +38,10 @@ target_link_libraries(hoshidicts_wasm PRIVATE hoshidicts glaze::glaze)
 # zip/zip.hpp so it can read the archive's declared title before handing the
 # archive to an importer that turns that title into a directory it may delete.
 target_include_directories(hoshidicts_wasm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/hoshidicts/src)
+
+if(HACHIDORI_PTHREADS)
+  target_compile_definitions(hoshidicts_wasm PRIVATE HACHIDORI_OPFS=1)
+endif()
 
 target_link_options(hoshidicts_wasm PRIVATE
     -O3
@@ -40,7 +54,22 @@ target_link_options(hoshidicts_wasm PRIVATE
     -sMAXIMUM_MEMORY=4GB
     -sSTACK_SIZE=8MB
     -sFORCE_FILESYSTEM=1
-    -lidbfs.js
-    -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,IDBFS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8
-    -sEXPORTED_FUNCTIONS=_malloc,_free,_hdw_import,_hdw_reset,_hdw_add_dict,_hdw_lookup,_hdw_kanji,_hdw_styles,_hdw_media,_hdw_media_data,_hdw_last_error
+    -sEXPORTED_FUNCTIONS=_malloc,_free,_hdw_init_storage,_hdw_import,_hdw_reset,_hdw_add_dict,_hdw_lookup,_hdw_kanji,_hdw_styles,_hdw_media,_hdw_media_data,_hdw_last_error
 )
+
+if(HACHIDORI_PTHREADS)
+  target_link_options(hoshidicts_wasm PRIVATE
+      -pthread
+      "SHELL:-sPTHREAD_POOL_SIZE=Math.max(2,Math.min(globalThis.navigator?.hardwareConcurrency||1,8))+1"
+      -sPTHREAD_POOL_SIZE_STRICT=2
+      -sPTHREAD_POOL_DELAY_LOAD=0
+      -sALLOW_BLOCKING_ON_MAIN_THREAD=0
+      -sWASMFS=1
+      -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8
+  )
+else()
+  target_link_options(hoshidicts_wasm PRIVATE
+      -lidbfs.js
+      -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,IDBFS,UTF8ToString,stringToNewUTF8,HEAPU8,lengthBytesUTF8
+  )
+endif()

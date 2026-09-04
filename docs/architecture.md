@@ -1,59 +1,96 @@
-# Hachidori architecture
+# Architecture
 
-Hachidori is the browser extension and user interface. [hoshidicts](https://github.com/Manhhao/hoshidicts) remains the name of the upstream dictionary engine and the bundled `hoshidicts.{mjs,wasm}` module.
+Hachidori is a Manifest V3 Chrome extension with a native C++ dictionary engine compiled to WebAssembly. Extension pages send typed runtime messages; the service worker routes them to an offscreen document whose lifetime is independent of service-worker idling.
 
-## Runtime design
+## Runtime layout
 
 ```text
-content script (any page)          service worker            offscreen document
-  hover -> scan text       --->  ensure offscreen exists --> hoshidicts.wasm
-  popup in shadow DOM      <---      relay reply         <-- MEMFS + IDBFS at /dicts
-                                     owns chrome.storage       ^
-  settings.html  -- blob: URL of the picked .zip ---------------
+web page
+  └─ content.js
+       ├─ scans Japanese text near the pointer
+       └─ renders popup.html in an isolated iframe
+
+settings.html / content.js
+  └─ chrome.runtime.sendMessage
+       └─ background.js (MV3 service worker)
+            ├─ owns chrome.storage.local dictionary metadata
+            ├─ creates or reconnects to offscreen.html
+            └─ relays requests without holding engine state
+                 └─ offscreen.js
+                      ├─ probes pthread, shared-memory, and direct-OPFS support
+                      ├─ primary: engine-worker.js
+                      │    └─ pthread Wasm + WasmFS direct OPFS
+                      └─ fallback: engine-service.js
+                           └─ single-thread Wasm + IDBFS
 ```
 
-The engine lives in an **offscreen document**, the only extension context that both persists across service-worker restarts and can compile WebAssembly. A service worker dies after roughly 30 seconds idle, which would require every dictionary to reload on the next lookup. A content script cannot compile the module because the host page's Content Security Policy applies.
+The service worker can be terminated after an idle period without discarding loaded dictionaries. A later request recreates the routing context while the offscreen engine remains authoritative. Runtime requests carry explicit IDs, generations, and result message types so stale or malformed replies fail closed.
 
-Offscreen documents receive `chrome.runtime` but not `chrome.storage`. The service worker therefore owns configuration and sends it to the offscreen document. Reading `chrome.storage.local` from the offscreen document prevents the engine from booting.
+## Primary engine path
 
-Dictionaries persist through Emscripten's **IDBFS** mounted at `/dicts`: `FS.syncfs(false)` runs after an import and `FS.syncfs(true)` at boot. The engine memory-maps the imported dictionaries just as it does natively.
+On supported Chrome builds, `offscreen.js` starts a dedicated module worker after proving all three capabilities:
 
-The archive itself never crosses `chrome.runtime.sendMessage`, which JSON-serializes its payload. The settings page creates a `blob:` URL and the offscreen document fetches it from the same `chrome-extension://` origin. A 50 MB archive therefore costs one copy instead of becoming a 50-million-element JSON array.
+- `crossOriginIsolated` and shared `WebAssembly.Memory`;
+- module workers;
+- a synchronous access handle from the origin-private file system.
 
-## Building the WebAssembly module
+`engine-worker.js` loads the pthread WebAssembly build. WasmFS mounts direct OPFS at `/dicts`, so the C++ engine reads its generated indexes without copying them through IndexedDB or the JavaScript heap. The extension manifest supplies the cross-origin isolation policy required by shared Wasm memory and exposes the generated pthread worker asset.
 
-The build needs [emsdk](https://emscripten.org/docs/getting_started/downloads.html) and CMake. It was developed against Emscripten 6.0.9.
+The worker serializes engine mutations and bounds pending requests. Imports reject concurrent work with a busy response rather than letting lookup and dictionary replacement race. The offscreen bridge also bounds its queue and preserves a last-known status response while an import occupies the engine worker.
 
-```sh
-git clone --recurse-submodules https://github.com/bee-san/hachidori.git
-cd hachidori
-. ./wasm/env.sh && ./wasm/build.sh
-```
+## Compatibility path
 
-`wasm/env.sh` sources `emsdk_env.sh` and puts Python 3.10 or newer first on `PATH`, because emsdk's launchers reject older interpreters.
+If shared Wasm memory, workers, or direct OPFS are unavailable, `offscreen.js` loads the single-thread WebAssembly module locally. That build mounts IDBFS at `/dicts`, restores it before opening dictionaries, and synchronizes generated files after a successful import.
 
-The build compiles hoshidicts and `wasm/bindings.cpp` with `-fwasm-exceptions` and without pthreads, then copies the output into `extension/vendor/`. The single-threaded build avoids `SharedArrayBuffer` and the corresponding COOP/COEP manifest requirements.
+The fallback is intentionally explicit: `hd_status` reports `threaded: false` and `storageBackend: "idbfs"`. The production benchmark rejects fallback execution when it is measuring the primary Hachidori path.
 
-The binding uses the engine's C++ API directly and serializes results with [glaze](https://github.com/stephenberry/glaze) into the JSON shape expected by the ported renderer.
+## Import transaction
 
-## Engine portability changes
+Dictionary import follows one logical transaction:
 
-`third_party/hoshidicts` tracks the [`wasm` branch](https://github.com/bee-san/hoshidicts/tree/wasm), which is upstream `main` plus two portability fixes. Neither changes native behavior.
+1. `settings.html` receives the ZIP through its real file input and sends `hd_import`.
+2. The service worker transfers the archive to the offscreen document.
+3. The engine worker imports Yomitan banks through the Hoshidicts C++ importer.
+4. Generated files are written under a temporary dictionary path.
+5. The old path is moved aside, the completed path is promoted, and recovery markers guard interrupted swaps.
+6. Dictionary metadata is committed through a compare-and-set message handled by the service worker.
+7. The engine reloads enabled dictionaries and replies with the import report and new generation.
+8. The settings page renders success only after that reply.
 
-### Deferred imports
+Startup recovery resolves any interrupted replacement before dictionary discovery. The archive input is not stored after a successful import; only generated indexes and extension metadata remain.
 
-`importer.cpp` spawned threads through `std::async(std::launch::async)`. An Emscripten build without `-pthread` stubs `pthread_create` to return `EAGAIN`, so libc++ throws and every import fails. Each future in that file is awaited before its result is read, making `std::launch::deferred` equivalent there.
+## Storage ownership
 
-### Memory-mapped file lifetime
+| Data | Owner | Storage |
+| --- | --- | --- |
+| Generated dictionary indexes | engine worker or fallback engine | direct OPFS or IDBFS under `/dicts` |
+| Dictionary title, path, kind, order, enabled state | service worker | `chrome.storage.local` key `dictionaries` |
+| Scan length, result limit, modifier, delay, frequency ordering | extension pages | `chrome.storage.local` key `options` |
 
-`memory.cpp` closed a file descriptor immediately after `mmap`. That is valid on POSIX, but Emscripten flushes `MAP_SHARED` writes through the descriptor during `msync` or `munmap`. As a result, `hash::linear::build_to_file` and `hash::bloom::build_to_file` silently produced zeroed files even though the import reported success. A recycled descriptor number could also write into an unrelated file.
+The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write.
 
-The descriptor now lives in `mapped_file` and is closed by `unmap()`. `test/node-smoke.mjs` verifies that `hash.table` and `bloom.filter` are non-empty and contain real data.
+## Runtime messages
 
-## Import boundary
+| Message | Purpose |
+| --- | --- |
+| `hd_import` | Import one Yomitan ZIP and return an exact report |
+| `hd_lookup` | Run a bounded scan/deinflection lookup |
+| `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, and threading mode |
+| `hd_reload` | Reload enabled dictionaries from persisted metadata |
+| `hd_dicts_read` | Read dictionary metadata through the service worker |
+| `hd_dicts_write` | Compare-and-set dictionary metadata through the service worker |
 
-An imported dictionary's directory name comes from the `title` in its archive. `wasm/bindings.cpp` validates that title and stages the import in a scratch directory before the engine sees it. Only import dictionaries you trust: their content, media, and CSS are supplied by the archive.
+## Build outputs
 
-## Further reading
+`wasm/build.sh` produces two runtime variants from the same bindings:
 
-The [test harness guide](../test/README.md) documents the ABI contract, IndexedDB persistence checks, renderer coverage, browser restart test, and native baseline in detail.
+- `extension/vendor/hoshidicts-threaded.mjs` and `hoshidicts-threaded.wasm` for pthread WasmFS/direct OPFS;
+- `extension/vendor/hoshidicts.mjs` and `hoshidicts.wasm` for single-thread IDBFS.
+
+`HACHIDORI_PTHREADS` selects the CMake variant. `HACHIDORI_WASM_VARIANT=fallback` selects the fallback artifact in the Node smoke test.
+
+## Test boundaries
+
+The zero-dependency Node suite checks imports, deinflection, normalized kana lookup, media extraction, malformed input, fallback persistence, thread-bridge transfer behavior, extension packaging, and generated runtime assets. Chrome E2E tests exercise both the threaded direct-OPFS path and the forced compatibility path, including restart durability, service-worker idling, bounded concurrency, and transactional replacement recovery.
+
+The browser benchmark records import-to-first-valid-lookup, steady lookup, full-process restoration, process-tree resources, exact storage manifests, and input/runtime hashes. The cross-engine benchmark adds production-path adapters for Yomitan and JL under one rotating schedule; see [Benchmarks](../benchmark/README.md).

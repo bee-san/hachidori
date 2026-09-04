@@ -1,0 +1,115 @@
+{
+  "corpora": [
+    {
+      "id": "jitendex",
+      "archive": "${HACHIDORI_BENCH_DATA}/jitendex-yomitan-2026.08.11.0.zip",
+      "expectedSha256": "8364e69e7bd0881c42011e96af921a7399d7fe06e2bf4fff4da6d18affff74fc",
+      "expectedReport": {
+        "title": "Jitendex.org [2026-08-11]",
+        "termCount": 435448,
+        "metaCount": 0,
+        "frequencyCount": 0,
+        "pitchCount": 0,
+        "kanjiCount": 0,
+        "mediaCount": 250
+      },
+      "expectedDictionaryCount": 1,
+      "queryIds": [
+        "eat-exact",
+        "eat-deinflected",
+        "japan-exact",
+        "cat-exact",
+        "emoji-miss"
+      ]
+    },
+    {
+      "id": "pixiv-light",
+      "archive": "${HACHIDORI_BENCH_DATA}/PixivLight_2026-08-16.zip",
+      "expectedSha256": "50049358e0045c7e97b2916e0eaece7e2ae2ffe89b527ddacbda7641842d6f05",
+      "expectedReport": {
+        "title": "Pixiv Light [2026-08-16]",
+        "termCount": 710819,
+        "metaCount": 0,
+        "frequencyCount": 0,
+        "pitchCount": 0,
+        "kanjiCount": 0,
+        "mediaCount": 1
+      },
+      "expectedDictionaryCount": 1,
+      "queryIds": [
+        "hatsune-miku",
+        "touhou-project",
+        "pixiv-exact",
+        "eat-exact",
+        "emoji-miss"
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "id": "eat-exact",
+      "text": "食べる",
+      "expect": "hit",
+      "expectedExpression": "食べる"
+    },
+    {
+      "id": "eat-deinflected",
+      "text": "食べたかった",
+      "expect": "hit",
+      "expectedExpression": "食べる"
+    },
+    {
+      "id": "japan-exact",
+      "text": "日本",
+      "expect": "hit",
+      "expectedExpression": "日本"
+    },
+    {
+      "id": "cat-exact",
+      "text": "猫",
+      "expect": "hit",
+      "expectedExpression": "猫"
+    },
+    {
+      "id": "hatsune-miku",
+      "text": "初音ミク",
+      "expect": "hit",
+      "expectedExpression": "初音ミク"
+    },
+    {
+      "id": "touhou-project",
+      "text": "東方Project",
+      "expect": "hit",
+      "expectedExpression": "東方Project"
+    },
+    {
+      "id": "pixiv-exact",
+      "text": "ピクシブ",
+      "expect": "hit",
+      "expectedExpression": "ピクシブ"
+    },
+    {
+      "id": "emoji-miss",
+      "text": "🫠🫨🪼",
+      "expect": "miss"
+    }
+  ],
+  "warmups": 1,
+  "samples": 5,
+  "lookupPasses": 5,
+  "seed": 20260903,
+  "idleCheckMs": 0,
+  "timeoutMs": 300000,
+  "headless": true,
+  "keepProfiles": false,
+  "allowNoSandbox": false,
+  "lookup": {
+    "maxResults": 32,
+    "scanLength": 32,
+    "options": {
+      "frequencyDictionary": "",
+      "frequencyOrder": "auto",
+      "primaryReading": ""
+    }
+  }
+}

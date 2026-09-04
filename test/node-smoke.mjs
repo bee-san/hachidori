@@ -14,8 +14,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 
 import {
+  ARCHIVE_ERRORS,
   EXPECTED,
   EXPECTED_GLOSSARIES,
+  FORMER_ARCHIVE_LIMITS,
+  MANY_BANK_COUNT,
+  MANY_BANK_TITLE,
   MEDIA_PATH,
   STYLES,
   TERMS,
@@ -23,10 +27,18 @@ import {
   TRAINED_TERMS,
   TRAINED_TITLE,
   TRAINING_SAMPLE_FLOOR,
+  buildEntryCountZip,
+  buildEntryExpandedZip,
   buildFixtureZip,
+  buildForgedSizeZip,
+  buildMalformedIndexZip,
+  buildManyBankZip,
   buildNoIndexZip,
   buildNotAZip,
+  buildRatioZip,
+  buildTinyCompressedZip,
   buildTitledZip,
+  buildTotalExpandedZip,
   buildTrainedZip,
   makePng,
   termKey,
@@ -34,10 +46,12 @@ import {
 } from './make-fixture.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const MODULE_PATH = join(HERE, '..', 'extension', 'vendor', 'hoshidicts.mjs');
-const WASM_PATH = join(HERE, '..', 'extension', 'vendor', 'hoshidicts.wasm');
+const VARIANT = process.env.HACHIDORI_WASM_VARIANT === 'fallback' ? 'hoshidicts' : 'hoshidicts-threaded';
+const MODULE_PATH = join(HERE, '..', 'extension', 'vendor', `${VARIANT}.mjs`);
+const WASM_PATH = join(HERE, '..', 'extension', 'vendor', `${VARIANT}.wasm`);
 const DICT_DIR = `/dicts/${TITLE}`;
 const TRAINED_DIR = `/dicts/${TRAINED_TITLE}`;
+const MANY_BANK_DIR = `/dicts/${MANY_BANK_TITLE}`;
 
 // Every marker query.cpp still recognises, newest first. The importer writes
 // .hoshidicts_4 when it trained a zstd dictionary for the term banks and
@@ -217,6 +231,7 @@ const M = await createHoshidicts();
 
 const call = (name, ret, types, args) => M.ccall(name, ret, types, args);
 const lastError = () => call('hdw_last_error', 'string', [], []);
+const initStorage = (persistent = 0) => call('hdw_init_storage', 'number', ['number'], [persistent]);
 const hdwImport = (zip, out, lowRam = 0) =>
   JSON.parse(call('hdw_import', 'string', ['string', 'string', 'number'], [zip, out, lowRam]));
 const addDict = (path, kind) => call('hdw_add_dict', 'number', ['string', 'number'], [path, kind]);
@@ -236,12 +251,17 @@ const reset = () => call('hdw_reset', null, [], []);
 const entriesOf = (dir) => M.FS.readdir(dir).filter((n) => n !== '.' && n !== '..');
 const markerOf = (entries) => MARKER_FILES.find((m) => entries.includes(m));
 
-// Plain MEMFS. IDBFS is what the extension mounts at /dicts in the browser, but
-// it needs an IndexedDB, so here /dicts is an ordinary in-memory directory and
-// nothing calls FS.syncfs.
+// Plain MEMFS here; the browser asks the same ABI call for a persistent OPFS
+// backend. Keeping creation behind the ABI makes both mounts exercise the same
+// logical /dicts path.
 M.FS.mkdir('/work');
-M.FS.mkdir('/dicts');
+G('hdw_init_storage');
+check('memory storage initializes /dicts', () => {
+  eq(initStorage(0), 1, `storage init failed: ${lastError()}`);
+  ok(Array.isArray(M.FS.readdir('/dicts')), '/dicts was not created');
+});
 M.FS.writeFile('/work/fixture.zip', buildFixtureZip());
+M.FS.writeFile('/work/malformed-index.zip', buildMalformedIndexZip());
 M.FS.writeFile('/work/no-index.zip', buildNoIndexZip());
 M.FS.writeFile('/work/not-a-zip.txt', buildNotAZip());
 
@@ -271,7 +291,7 @@ check('output directory laid out as add_dict expects', () => {
   }
 });
 
-// This fixture is the migration case: fewer term rows than train_zstd_dict needs,
+// This fixture is the on-disk compatibility case: fewer term rows than train_zstd_dict needs,
 // so the importer skips training and lays the directory out exactly the way every
 // pre-4 engine did. Everything below that loads it is therefore also proof that a
 // dictionary imported before the zstd-dictionary change still works.
@@ -600,6 +620,14 @@ check('importing a zip with no index.json fails cleanly', () => {
   eq(lastError(), r.error, 'hdw_last_error');
 });
 
+check('an unreadable index is rejected by the preflight before import', () => {
+  const r = hdwImport('/work/malformed-index.zip', '/dicts');
+  eq(r.success, false, 'success');
+  eq(r.error, 'could not parse index.json before import', 'error');
+  eq(r.title, '', 'title');
+  eq(lastError(), r.error, 'hdw_last_error');
+});
+
 check('importing a path that does not exist fails cleanly', () => {
   const r = hdwImport('/work/absent.zip', '/dicts');
   eq(r.success, false, 'success');
@@ -660,6 +688,83 @@ check('the module is still alive after every error path', () => {
   eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
   eq(kanji('食').entries.length, 1, 'kanji entry count');
   eq(media(TITLE, MEDIA_PATH), makePng().length, 'media byte length');
+});
+
+// ---------------------------------------------------------------------------
+
+G('archive parsing without fixed resource caps');
+
+let hostileSeq = 0;
+const importHostile = (bytes) => {
+  const path = `/work/hostile-${hostileSeq++}.zip`;
+  M.FS.writeFile(path, bytes);
+  const r = hdwImport(path, '/dicts');
+  try {
+    M.FS.unlink(path);
+  } catch {
+    // never written
+  }
+  return r;
+};
+const rejectedWith = (bytes, message, what) => {
+  const r = importHostile(bytes);
+  eq(r.success, false, `${what} should be rejected`);
+  eq(r.error, message, `${what} error`);
+  eq(lastError(), message, `${what} hdw_last_error`);
+};
+const acceptedWithoutResourceCap = (bytes, what) => {
+  const r = importHostile(bytes);
+  same(
+    {
+      title: r.title,
+      termCount: r.termCount,
+      metaCount: r.metaCount,
+      frequencyCount: r.frequencyCount,
+      pitchCount: r.pitchCount,
+      kanjiCount: r.kanjiCount,
+      mediaCount: r.mediaCount,
+    },
+    EXPECTED,
+    `${what} import report`,
+  );
+  eq(r.success, true, `${what} success: ${r.error}`);
+  reset();
+  eq(addDict(DICT_DIR, 0), 1, `${what} add_dict: ${lastError()}`);
+  eq(lookup('食べたかった').results[0].term.expression, '食べる', `${what} lookup`);
+};
+
+const resourceBoundaryArchives = {
+  entries: buildEntryCountZip(FORMER_ARCHIVE_LIMITS.MAX_ENTRIES + 1),
+  entryExpanded: await buildEntryExpandedZip(FORMER_ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED + 1),
+  totalExpanded: await buildTotalExpandedZip(FORMER_ARCHIVE_LIMITS.MAX_TOTAL_UNCOMPRESSED + 1),
+  ratio: await buildRatioZip(FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO + 1),
+};
+
+check('entry counts above the former cap are not rejected by a fixed limit', () =>
+  acceptedWithoutResourceCap(resourceBoundaryArchives.entries, 'entry count'));
+
+check('expanded entries above the former cap are not rejected by a fixed limit', () =>
+  acceptedWithoutResourceCap(resourceBoundaryArchives.entryExpanded, 'expanded entry'));
+
+check('aggregate expanded bytes above the former cap are not rejected by a fixed limit', () =>
+  acceptedWithoutResourceCap(resourceBoundaryArchives.totalExpanded, 'aggregate expanded bytes'));
+
+check('compression ratios above the former cap are not rejected by a fixed limit', () =>
+  acceptedWithoutResourceCap(resourceBoundaryArchives.ratio, 'compression ratio'));
+
+check('a forged local/central size disagreement is refused', () =>
+  rejectedWith(buildForgedSizeZip(), ARCHIVE_ERRORS.forgedSize, 'forged size'));
+
+check('a deflate entry with no compressed data for its declared size is refused', () =>
+  rejectedWith(buildTinyCompressedZip(), ARCHIVE_ERRORS.tinyCompressed, 'tiny compressed'));
+
+check('a failed malformed import leaves the already-imported dictionary alone', () => {
+  const entries = M.FS.readdir('/dicts').filter((n) => n !== '.' && n !== '..');
+  same(entries, [TITLE], '/dicts contents');
+});
+
+check('the module is still alive after malformed-archive rejection', () => {
+  eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
 });
 
 // ---------------------------------------------------------------------------
@@ -753,7 +858,7 @@ G('trained zstd dictionary (.hoshidicts_4) and the pre-4 layout beside it');
 // the real assertion; the marker checks only say which branch was taken.
 reset();
 M.FS.writeFile('/work/trained.zip', buildTrainedZip());
-const trained = hdwImport('/work/trained.zip', '/dicts');
+const trained = hdwImport('/work/trained.zip', '/dicts', 1);
 console.log(`  trained import: ${JSON.stringify(trained)}`);
 
 check('the trained import succeeds', () => {
@@ -831,7 +936,7 @@ for (const [what, write] of [
   });
 }
 
-// The migration case, stated on its own rather than inferred from the earlier
+// The compatibility case, stated on its own rather than inferred from the earlier
 // groups: after upgrading the engine a user still has .hoshidicts_3 directories
 // with no dict.zstd sitting next to whatever they import next. query.cpp still
 // reads _3, so both have to load, at the same time, from the same query object.
@@ -864,6 +969,121 @@ check('a _3 and a _4 dictionary load together and both answer', () => {
   eq(lookup(expression).results[0].term.expression, expression, `${expression} from the _4 dictionary`);
   eq(lookup('漢字').results[0].term.expression, '漢字', '漢字 from the _3 dictionary');
 });
+
+G('multi-bank pthread scheduler');
+
+M.FS.writeFile('/work/many-banks.zip', buildManyBankZip());
+const manyBankReport = hdwImport('/work/many-banks.zip', '/dicts', 0);
+check('twenty term banks import through the bounded worker pool', () => {
+  eq(manyBankReport.success, true, manyBankReport.error);
+  eq(manyBankReport.termCount, MANY_BANK_COUNT, 'term count');
+  eq(markerOf(entriesOf(MANY_BANK_DIR)), '.hoshidicts_4', 'trained marker');
+});
+check('the last scheduled bank is indexed and loadable', () => {
+  reset();
+  eq(addDict(MANY_BANK_DIR, 0), 1, lastError());
+  const expression = String.fromCodePoint(0x7000 + 20);
+  eq(lookup(expression).results[0]?.term.expression, expression, 'last bank expression');
+});
+
+G('interrupted install recovery');
+
+const recovery = await createHoshidicts();
+const recoveryFs = recovery.FS;
+const mkdirTree = (path) => recoveryFs.mkdirTree(path);
+const copyInstalledFiles = (destination, names) => {
+  mkdirTree(destination);
+  for (const name of names) {
+    recoveryFs.writeFile(`${destination}/${name}`, M.FS.readFile(`${DICT_DIR}/${name}`));
+  }
+};
+const installedFiles = entriesOf(DICT_DIR);
+const split = Math.ceil(installedFiles.length / 2);
+
+mkdirTree('/dicts/.hdw-import/new/partial-backup');
+copyInstalledFiles('/dicts/partial-backup', installedFiles.slice(0, split));
+copyInstalledFiles('/dicts/.hdw-import/replaced/partial-backup', installedFiles.slice(split));
+
+mkdirTree('/dicts/.hdw-import/new/committed-backup');
+copyInstalledFiles('/dicts/.hdw-import/replaced/committed-backup', installedFiles);
+recoveryFs.writeFile('/dicts/.hdw-import/replaced/committed-backup/.backup-ready', new Uint8Array());
+copyInstalledFiles('/dicts/committed-backup', ['blobs.bin']);
+
+mkdirTree('/dicts/.hdw-import/new/uncommitted-new');
+copyInstalledFiles('/dicts/.hdw-import/replaced/uncommitted-new', installedFiles);
+recoveryFs.writeFile('/dicts/.hdw-import/replaced/uncommitted-new/.backup-ready', new Uint8Array());
+recoveryFs.writeFile('/dicts/.hdw-import/replaced/uncommitted-new/old-only', new Uint8Array([1]));
+copyInstalledFiles('/dicts/uncommitted-new', installedFiles);
+recoveryFs.writeFile('/dicts/uncommitted-new/new-only', new Uint8Array([1]));
+
+mkdirTree('/dicts/.hdw-import/new/committed-new');
+copyInstalledFiles('/dicts/.hdw-import/replaced/committed-new', installedFiles.slice(0, -1));
+recoveryFs.writeFile('/dicts/.hdw-import/replaced/committed-new/.backup-ready', new Uint8Array());
+recoveryFs.writeFile('/dicts/.hdw-import/replaced/committed-new/old-only', new Uint8Array([1]));
+copyInstalledFiles('/dicts/committed-new', installedFiles);
+recoveryFs.writeFile('/dicts/committed-new/.new-committed', new Uint8Array());
+recoveryFs.writeFile('/dicts/committed-new/new-only', new Uint8Array([1]));
+
+mkdirTree('/dicts/.hdw-import/new/corrupt-new');
+copyInstalledFiles('/dicts/.hdw-import/replaced/corrupt-new', installedFiles);
+recoveryFs.writeFile('/dicts/.hdw-import/replaced/corrupt-new/.backup-ready', new Uint8Array());
+for (const name of installedFiles) {
+  mkdirTree('/dicts/corrupt-new');
+  recoveryFs.writeFile(`/dicts/corrupt-new/${name}`, new Uint8Array());
+}
+
+const cleanupCrashTitles = installedFiles.map((_, deleted) => `cleanup-crash-${deleted}`);
+cleanupCrashTitles.push(`cleanup-crash-${installedFiles.length}`);
+for (let deleted = 0; deleted < cleanupCrashTitles.length; deleted += 1) {
+  const title = cleanupCrashTitles[deleted];
+  copyInstalledFiles(`/dicts/.hdw-import/replaced/${title}`, installedFiles.slice(deleted));
+  recoveryFs.writeFile(`/dicts/.hdw-import/replaced/${title}/.backup-ready`, new Uint8Array());
+  copyInstalledFiles(`/dicts/${title}`, installedFiles);
+  recoveryFs.writeFile(`/dicts/${title}/.new-committed`, new Uint8Array());
+  recoveryFs.writeFile(`/dicts/${title}/new-only`, new Uint8Array([1]));
+}
+
+mkdirTree('/dicts/.hdw-import/new/first-install');
+recoveryFs.writeFile('/dicts/.hdw-import/new/first-install/index.json', new Uint8Array([1]));
+copyInstalledFiles('/dicts/first-install', ['blobs.bin']);
+
+const recoveryCall = (name, ret, types, args) => recovery.ccall(name, ret, types, args);
+const recoveryInit = recoveryCall('hdw_init_storage', 'number', ['number'], [0]);
+check('storage initialization recovers interrupted installs', () =>
+  eq(recoveryInit, 1, recoveryCall('hdw_last_error', 'string', [], [])));
+check('a partially moved backup is merged back without deleting the files left in place', () =>
+  eq(recoveryCall('hdw_add_dict', 'number', ['string', 'number'], ['/dicts/partial-backup', 0]), 1,
+    recoveryCall('hdw_last_error', 'string', [], [])));
+check('a committed backup replaces a partial new destination', () =>
+  eq(recoveryCall('hdw_add_dict', 'number', ['string', 'number'], ['/dicts/committed-backup', 0]), 1,
+    recoveryCall('hdw_last_error', 'string', [], [])));
+check('a complete but uncommitted new destination is rolled back', () => {
+  eq(recoveryFs.analyzePath('/dicts/uncommitted-new/old-only').exists, true, 'old backup sentinel');
+  eq(recoveryFs.analyzePath('/dicts/uncommitted-new/new-only').exists, false, 'new destination sentinel');
+});
+check('a committed new destination wins over a partially deleted backup', () => {
+  eq(recoveryFs.analyzePath('/dicts/committed-new/new-only').exists, true, 'new destination sentinel');
+  eq(recoveryFs.analyzePath('/dicts/committed-new/old-only').exists, false, 'old backup sentinel');
+});
+check('a corrupt destination cannot displace the last valid backup', () => {
+  recoveryCall('hdw_reset', null, [], []);
+  eq(recoveryCall('hdw_add_dict', 'number', ['string', 'number'], ['/dicts/corrupt-new', 0]), 1,
+    recoveryCall('hdw_last_error', 'string', [], []));
+  const result = recoveryCall('hdw_lookup', 'string', ['string', 'number', 'number', 'string'],
+    ['食べる', 8, 16, '{}']);
+  eq(JSON.parse(result).results[0]?.term?.expression, '食べる', 'restored backup lookup');
+});
+check('every interrupted backup-cleanup prefix preserves the committed replacement', () => {
+  for (const title of cleanupCrashTitles) {
+    eq(recoveryFs.analyzePath(`/dicts/${title}/new-only`).exists, true, `${title} destination`);
+    eq(recoveryFs.analyzePath(`/dicts/${title}/.new-committed`).exists, false, `${title} commit marker`);
+    eq(recoveryFs.analyzePath(`/dicts/.hdw-import/replaced/${title}`).exists, false, `${title} backup`);
+  }
+});
+check('a partial first install is removed', () =>
+  eq(recoveryFs.analyzePath('/dicts/first-install').exists, false, 'partial destination'));
+check('recovery removes transaction debris', () =>
+  eq(recoveryFs.analyzePath('/dicts/.hdw-import').exists, false, 'staging directory'));
 
 // ---------------------------------------------------------------------------
 

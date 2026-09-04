@@ -5,18 +5,30 @@
 // static, valid until the next call to the same function.
 
 #include <algorithm>
+#include <bit>
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
+#ifdef HACHIDORI_OPFS
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
 #include <emscripten/emscripten.h>
+#ifdef HACHIDORI_OPFS
+#include <emscripten/wasmfs.h>
+#endif
 #include <glaze/glaze.hpp>
 #include <hoshidicts.h>
 
@@ -126,6 +138,7 @@ struct WireImportReport {
 };
 
 std::string g_last_error;
+int g_storage_mode = -1;
 
 void clear_error() { g_last_error.clear(); }
 
@@ -304,7 +317,51 @@ int dictionary_version(const std::filesystem::path& dir) {
 // never have one, which is also what every dictionary imported by an older engine
 // looks like. A zero-length dict.zstd is exactly as unusable as a missing one,
 // since ZSTD_createDDict() accepts an empty buffer without complaint.
-bool dictionary_files_present(const std::filesystem::path& dir) {
+struct WireIndexTitle {
+  std::string title;
+};
+
+bool valid_hash_table(const std::filesystem::path &path) {
+  std::error_code error;
+  const uintmax_t size = std::filesystem::file_size(path, error);
+  if (error || size < sizeof(uint32_t)) {
+    return false;
+  }
+  uint32_t capacity = 0;
+  std::ifstream input(path, std::ios::binary);
+  input.read(reinterpret_cast<char *>(&capacity), sizeof(capacity));
+  return input.good() && capacity >= 16 &&
+         size == sizeof(uint32_t) + static_cast<uintmax_t>(capacity) * 16;
+}
+
+bool valid_bloom_filter(const std::filesystem::path &path) {
+  std::error_code error;
+  const uintmax_t size = std::filesystem::file_size(path, error);
+  if (error || size < 2 * sizeof(uint64_t)) {
+    return false;
+  }
+  uint64_t num_bits = 0;
+  uint64_t num_hashes = 0;
+  std::ifstream input(path, std::ios::binary);
+  input.read(reinterpret_cast<char *>(&num_bits), sizeof(num_bits));
+  input.read(reinterpret_cast<char *>(&num_hashes), sizeof(num_hashes));
+  return input.good() && num_bits >= 64 && std::has_single_bit(num_bits) &&
+         num_hashes > 0 && size == 2 * sizeof(uint64_t) + num_bits / 8;
+}
+
+bool valid_dictionary_index(const std::filesystem::path &path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    return false;
+  }
+  const std::string contents(std::istreambuf_iterator<char>(input), {});
+  WireIndexTitle index;
+  return !glz::read<glz::opts{.error_on_unknown_keys = false}>(
+             index, std::string_view{contents}) &&
+         !index.title.empty();
+}
+
+bool dictionary_files_present(const std::filesystem::path &dir) {
   const int version = dictionary_version(dir);
   if (version == 0) {
     return false;
@@ -312,20 +369,20 @@ bool dictionary_files_present(const std::filesystem::path& dir) {
   if (version >= 4 && !non_empty_file(dir / "dict.zstd")) {
     return false;
   }
-  return std::filesystem::is_regular_file(dir / "index.json") &&
-         std::filesystem::is_regular_file(dir / "hash.table") &&
-         std::filesystem::is_regular_file(dir / "bloom.filter") &&
-         std::filesystem::is_regular_file(dir / "blobs.bin");
+  return valid_dictionary_index(dir / "index.json") &&
+         valid_hash_table(dir / "hash.table") &&
+         valid_bloom_filter(dir / "bloom.filter") &&
+         non_empty_file(dir / "blobs.bin");
 }
 
-uint64_t meta_count(const SummaryMetaCount& counts, const std::string& mode) {
+uint64_t meta_count(const SummaryMetaCount &counts, const std::string &mode) {
   auto it = counts.find(mode);
   return it == counts.end() ? 0 : it->second;
 }
 
-// dictionary_importer::import derives its output directory from the title inside
-// the archive and remove_all()s that directory if anything later throws, so it
-// must never be pointed straight at the directory holding the installed
+// dictionary_importer::import derives its output directory from the title
+// inside the archive and remove_all()s that directory if anything later throws,
+// so it must never be pointed straight at the directory holding the installed
 // dictionaries: a title of ".." resolves to the parent of the output directory
 // and takes everything under it with it, a title containing a separator lands
 // somewhere nothing will ever load it from, and a re-import that fails partway
@@ -335,11 +392,19 @@ uint64_t meta_count(const SummaryMetaCount& counts, const std::string& mode) {
 constexpr std::string_view STAGING_DIR = ".hdw-import";
 constexpr std::string_view STAGING_WORK = "new";
 constexpr std::string_view STAGING_REPLACED = "replaced";
+constexpr std::string_view BACKUP_READY = ".backup-ready";
+constexpr std::string_view NEW_COMMITTED = ".new-committed";
 
 struct RemoveOnExit {
   std::filesystem::path path;
+  bool active = true;
+
+  void release() { active = false; }
 
   ~RemoveOnExit() {
+    if (!active) {
+      return;
+    }
     std::error_code error;
     std::filesystem::remove_all(path, error);
   }
@@ -348,59 +413,247 @@ struct RemoveOnExit {
 // STAGING_DIR is excluded because the import is assembled inside it: a title
 // naming it would make the staging root its own destination.
 bool usable_as_directory_name(std::string_view title) {
-  return !title.empty() && title != "." && title != ".." && title != STAGING_DIR &&
-         title.find('/') == std::string_view::npos && title.find('\\') == std::string_view::npos;
+  return !title.empty() && title != "." && title != ".." &&
+         title != STAGING_DIR && title.find('/') == std::string_view::npos &&
+         title.find('\\') == std::string_view::npos &&
+         title.find('\0') == std::string_view::npos;
 }
 
 std::string unusable_title_error(std::string_view title) {
   if (title.empty()) {
     return "the archive declares no dictionary title";
   }
-  return "the dictionary title \"" + std::string{title} + "\" cannot be used as a folder name";
+  return "the dictionary title \"" + std::string{title} +
+         "\" cannot be used as a folder name";
 }
 
-struct WireIndexTitle {
-  std::string title;
-};
-
-// The importer's own parse of index.json is authoritative; this one only has to
-// see the title early enough to refuse it. A failure here is deliberately not
-// reported: the import runs anyway and fails with the importer's own message.
-std::optional<std::string> peek_title(const std::string& zip_path) {
+bool peek_title(const std::string &zip_path, std::string &title,
+                std::string &error) {
   Zip zip;
   if (!zip.open(std::filesystem::path{zip_path})) {
-    return std::nullopt;
+    error = zip.error.empty() ? "failed to open zip" : zip.error;
+    return false;
   }
   const int index_entry = zip.find("index.json");
   if (index_entry < 0) {
-    return std::nullopt;
+    error = "could not find index.json";
+    return false;
   }
   const std::string index_json = zip.read(index_entry);
   WireIndexTitle index;
-  if (glz::read<glz::opts{.error_on_unknown_keys = false}>(index, std::string_view{index_json})) {
-    return std::nullopt;
+  if (glz::read<glz::opts{.error_on_unknown_keys = false}>(
+          index, std::string_view{index_json})) {
+    error = "could not parse index.json before import";
+    return false;
   }
-  return index.title;
+  title = std::move(index.title);
+  return true;
 }
 
-// Moves the staged dictionary onto `destination` without ever leaving it half
-// replaced: the previous import is moved aside first and only dropped once the
-// new one is in place, which is what makes a failed re-import survivable.
-void install_dictionary(const std::filesystem::path& staged, const std::filesystem::path& destination,
-                        const std::filesystem::path& aside) {
+void move_dictionary_files(const std::filesystem::path &source,
+                           const std::filesystem::path &destination) {
+  std::filesystem::create_directories(destination);
+  std::vector<std::filesystem::path> files;
+  for (const auto &entry : std::filesystem::directory_iterator(source)) {
+    if (!entry.is_regular_file()) {
+      throw std::runtime_error(
+          "an imported dictionary contains an unsupported nested path");
+    }
+    files.push_back(entry.path());
+  }
+  std::ranges::sort(files, [](const auto &left, const auto &right) {
+    const bool left_marker =
+        left.filename().string().starts_with(".hoshidicts_");
+    const bool right_marker =
+        right.filename().string().starts_with(".hoshidicts_");
+    if (left_marker != right_marker) {
+      return !left_marker;
+    }
+    return left.filename() < right.filename();
+  });
+  for (const auto &file : files) {
+    std::filesystem::rename(file, destination / file.filename());
+  }
+}
+
+void flush_file(const std::filesystem::path &path) {
+#ifdef HACHIDORI_OPFS
+  const int fd = open(path.c_str(), O_RDWR);
+  if (fd < 0) {
+    throw std::system_error(errno, std::generic_category(),
+                            "could not open " + path.string());
+  }
+  if (fsync(fd) != 0) {
+    const int error = errno;
+    close(fd);
+    throw std::system_error(error, std::generic_category(),
+                            "could not flush " + path.string());
+  }
+  close(fd);
+#else
+  static_cast<void>(path);
+#endif
+}
+
+void flush_tree(const std::filesystem::path &root) {
+  if (!std::filesystem::exists(root)) {
+    return;
+  }
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(root)) {
+    if (entry.is_regular_file()) {
+      flush_file(entry.path());
+    }
+  }
+}
+
+void write_marker(const std::filesystem::path &path,
+                  std::string_view error_message) {
+  std::ofstream marker(path, std::ios::binary | std::ios::trunc);
+  if (!marker) {
+    throw std::runtime_error(std::string{error_message});
+  }
+  marker.close();
+  if (!marker) {
+    throw std::runtime_error(std::string{error_message});
+  }
+  flush_file(path);
+}
+
+// OPFS does not support renaming directories. Move their flat file contents,
+// writing the version marker last so an interrupted destination is never
+// loaded. A previous import is kept under `aside` until the replacement is
+// complete.
+void install_dictionary(const std::filesystem::path &staged,
+                        const std::filesystem::path &destination,
+                        const std::filesystem::path &aside) {
   const bool replacing = std::filesystem::exists(destination);
   if (replacing) {
-    std::filesystem::rename(destination, aside);
+    std::filesystem::remove(destination / NEW_COMMITTED);
+    std::filesystem::create_directories(aside.parent_path());
+    try {
+      move_dictionary_files(destination, aside);
+      write_marker(aside / BACKUP_READY,
+                   "could not commit the previous dictionary backup");
+    } catch (...) {
+      const auto backup_error = std::current_exception();
+      try {
+        std::filesystem::remove(aside / BACKUP_READY);
+        move_dictionary_files(aside, destination);
+      } catch (const std::exception &rollback_error) {
+        throw std::runtime_error(std::string{"the previous dictionary could "
+                                             "not be backed up or restored: "} +
+                                 rollback_error.what());
+      }
+      std::rethrow_exception(backup_error);
+    }
   }
   try {
-    std::filesystem::rename(staged, destination);
-  } catch (...) {
+    move_dictionary_files(staged, destination);
+    flush_tree(destination);
     if (replacing) {
-      std::error_code error;
-      std::filesystem::rename(aside, destination, error);
+      write_marker(destination / NEW_COMMITTED,
+                   "could not commit the replacement dictionary");
     }
-    throw;
+  } catch (...) {
+    const auto install_error = std::current_exception();
+    try {
+      std::filesystem::remove_all(destination);
+      if (replacing) {
+        std::filesystem::remove(aside / BACKUP_READY);
+        move_dictionary_files(aside, destination);
+      }
+    } catch (const std::exception &rollback_error) {
+      throw std::runtime_error(
+          std::string{"installation failed and the previous dictionary could "
+                      "not be restored: "} +
+          rollback_error.what());
+    }
+    std::rethrow_exception(install_error);
   }
+  if (replacing) {
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(aside, cleanup_error);
+    if (!cleanup_error) {
+      std::filesystem::remove(destination / NEW_COMMITTED, cleanup_error);
+    }
+  }
+}
+
+bool directory_has_payload(const std::filesystem::path &directory) {
+  for (const auto &entry : std::filesystem::directory_iterator(directory)) {
+    const std::string name = entry.path().filename().string();
+    if (name != BACKUP_READY && name != NEW_COMMITTED) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void recover_interrupted_install(const std::filesystem::path &root) {
+  const std::filesystem::path staging = root / STAGING_DIR;
+  const std::filesystem::path work = staging / STAGING_WORK;
+  const std::filesystem::path replaced = staging / STAGING_REPLACED;
+  if (std::filesystem::is_directory(replaced)) {
+    for (const auto &entry : std::filesystem::directory_iterator(replaced)) {
+      if (!entry.is_directory()) {
+        continue;
+      }
+      const std::filesystem::path destination = root / entry.path().filename();
+      const std::filesystem::path ready = entry.path() / BACKUP_READY;
+      const std::filesystem::path committed = destination / NEW_COMMITTED;
+      if (std::filesystem::exists(committed)) {
+        if (!dictionary_files_present(destination)) {
+          if (!dictionary_files_present(entry.path())) {
+            throw std::runtime_error("neither side of a committed dictionary "
+                                     "replacement is loadable");
+          }
+          std::filesystem::remove_all(destination);
+          std::filesystem::remove(ready);
+          move_dictionary_files(entry.path(), destination);
+        } else {
+          std::filesystem::remove_all(entry.path());
+          std::filesystem::remove(committed);
+        }
+        continue;
+      }
+      if (std::filesystem::exists(ready)) {
+        if (!dictionary_files_present(entry.path())) {
+          throw std::runtime_error(
+              "the committed previous dictionary backup is not loadable");
+        }
+        std::filesystem::remove_all(destination);
+        std::filesystem::remove(ready);
+        move_dictionary_files(entry.path(), destination);
+        continue;
+      }
+      if (!directory_has_payload(entry.path())) {
+        std::filesystem::remove_all(entry.path());
+        continue;
+      }
+      move_dictionary_files(entry.path(), destination);
+    }
+  }
+  if (std::filesystem::is_directory(work)) {
+    for (const auto &entry : std::filesystem::directory_iterator(work)) {
+      if (!entry.is_directory()) {
+        continue;
+      }
+      const std::filesystem::path destination = root / entry.path().filename();
+      if (!dictionary_files_present(destination)) {
+        std::filesystem::remove_all(destination);
+      }
+    }
+  }
+  if (std::filesystem::is_directory(root)) {
+    for (const auto &entry : std::filesystem::directory_iterator(root)) {
+      if (entry.is_directory() && entry.path().filename() != STAGING_DIR &&
+          dictionary_files_present(entry.path())) {
+        std::filesystem::remove(entry.path() / NEW_COMMITTED);
+      }
+    }
+  }
+  std::filesystem::remove_all(staging);
 }
 
 WireImportReport report_for(const ImportResult& result) {
@@ -426,19 +679,26 @@ WireImportReport staged_import(const std::string& zip_path, const std::string& o
     return report;
   }
 
-  if (const auto peeked = peek_title(zip_path); peeked.has_value() && !usable_as_directory_name(*peeked)) {
-    report.title = *peeked;
-    report.error = unusable_title_error(*peeked);
+  const std::filesystem::path staging = root / STAGING_DIR;
+  const std::filesystem::path work = staging / STAGING_WORK;
+  std::string title;
+  if (!peek_title(zip_path, title, report.error)) {
     return report;
   }
-
-  const std::filesystem::path staging = root / STAGING_DIR;
-  const RemoveOnExit cleanup{staging};
-  const std::filesystem::path work = staging / STAGING_WORK;
-  std::error_code error;
-  // Debris from an import the browser killed halfway through.
-  std::filesystem::remove_all(staging, error);
-  std::filesystem::create_directories(work);
+  const std::filesystem::path staged = (work / title).lexically_normal();
+  if (!usable_as_directory_name(title) || staged.parent_path() != work.lexically_normal()) {
+    report.title = title;
+    report.error = unusable_title_error(title);
+    return report;
+  }
+  try {
+    recover_interrupted_install(root);
+    std::filesystem::create_directories(work);
+  } catch (const std::exception& e) {
+    report.error = std::string{"could not recover an interrupted dictionary installation: "} + e.what();
+    return report;
+  }
+  RemoveOnExit cleanup{staging};
 
   report = report_for(dictionary_importer::import(zip_path, work.string(), low_ram));
   if (!report.success) {
@@ -449,15 +709,17 @@ WireImportReport staged_import(const std::string& zip_path, const std::string& o
     report.error = unusable_title_error(report.title);
     return report;
   }
-  const std::filesystem::path staged = work / report.title;
-  if (!dictionary_files_present(staged)) {
+  const std::filesystem::path imported = work / report.title;
+  if (!dictionary_files_present(imported)) {
     report.success = false;
     report.error = "the import produced no loadable dictionary";
     return report;
   }
   try {
-    install_dictionary(staged, root / report.title, staging / STAGING_REPLACED);
+    flush_tree(imported);
+    install_dictionary(imported, root / report.title, staging / STAGING_REPLACED / report.title);
   } catch (const std::exception& e) {
+    cleanup.release();
     report.success = false;
     report.error = std::string{"could not install the imported dictionary: "} + e.what();
   }
@@ -471,6 +733,39 @@ std::vector<uint8_t> g_media;
 using namespace hdw;
 
 extern "C" {
+
+EMSCRIPTEN_KEEPALIVE int hdw_init_storage(int persistent) {
+  clear_error();
+  const int requested_mode = persistent == 0 ? 0 : 1;
+  if (g_storage_mode >= 0) {
+    if (g_storage_mode == requested_mode) {
+      return 1;
+    }
+    set_error("storage is already initialized with a different backend");
+    return 0;
+  }
+
+  try {
+    if (requested_mode == 0) {
+      std::filesystem::create_directory("/dicts");
+    } else {
+#ifdef HACHIDORI_OPFS
+      const backend_t backend = wasmfs_create_opfs_backend();
+      if (wasmfs_create_directory("/dicts", 0777, backend) != 0) {
+        throw std::runtime_error("could not mount OPFS at /dicts");
+      }
+#else
+      throw std::runtime_error("this build has no OPFS backend");
+#endif
+    }
+    recover_interrupted_install("/dicts");
+    g_storage_mode = requested_mode;
+    return 1;
+  } catch (...) {
+    set_error(describe_current_exception());
+    return 0;
+  }
+}
 
 EMSCRIPTEN_KEEPALIVE const char* hdw_last_error(void) { return g_last_error.c_str(); }
 

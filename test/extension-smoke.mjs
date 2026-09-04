@@ -414,17 +414,50 @@ function makeChrome(owner, bus, storage) {
 /* --------------------------------------------------------------------- fake fetch */
 
 const blobUrls = new Map();
+const declaredLengthUrls = new Map();
 let nextBlobId = 0;
 
 function installFetch() {
   globalThis.fetch = async (input) => {
     const url = String(input);
-    if (blobUrls.has(url)) {
-      const bytes = blobUrls.get(url);
+    if (declaredLengthUrls.has(url)) {
+      const { contentLength, bytes } = declaredLengthUrls.get(url);
+      let offset = 0;
       return {
         ok: true,
         status: 200,
-        arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+        headers: { get: (name) => (name.toLowerCase() === "content-length" ? String(contentLength) : null) },
+        body: {
+          getReader: () => ({
+            async read() {
+              if (offset >= bytes.byteLength) return { done: true, value: undefined };
+              const value = bytes.subarray(offset, Math.min(offset + 257, bytes.byteLength));
+              offset += value.byteLength;
+              return { done: false, value };
+            },
+          }),
+        },
+        arrayBuffer: async () => { throw new Error("blob responses must be streamed into the WASM filesystem"); },
+      };
+    }
+    if (blobUrls.has(url)) {
+      const bytes = blobUrls.get(url);
+      let offset = 0;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        body: {
+          getReader: () => ({
+            async read() {
+              if (offset >= bytes.byteLength) return { done: true, value: undefined };
+              const value = bytes.subarray(offset, Math.min(offset + 257, bytes.byteLength));
+              offset += value.byteLength;
+              return { done: false, value };
+            },
+          }),
+        },
+        arrayBuffer: async () => { throw new Error("blob responses must be streamed into the WASM filesystem"); },
       };
     }
     if (url.startsWith(`${EXTENSION_ORIGIN}/`)) {
@@ -447,10 +480,17 @@ function createObjectURL(bytes) {
   return url;
 }
 
+function createDeclaredLengthURL(contentLength, bytes) {
+  nextBlobId += 1;
+  const url = `blob:${EXTENSION_ORIGIN}/declared-length-${nextBlobId}`;
+  declaredLengthUrls.set(url, { contentLength, bytes });
+  return url;
+}
+
 /* -------------------------------------------------------------------------- setup */
 
 function installNavigator() {
-  const value = { storage: { persist: async () => true }, userAgent: "smoke" };
+  const value = { storage: { persist: async () => true }, userAgent: "smoke", hardwareConcurrency: 4 };
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     value,
@@ -477,7 +517,7 @@ const OPTION_RANGES = [
       ["content.js", /maxResults:\s*clampInteger\(\s*source\.maxResults,\s*(\d+),\s*(\d+)/u],
       ["settings.js", /key:\s*"maxResults",[^}]*?min:\s*(\d+),\s*max:\s*(\d+)/u],
       ["settings.html", /id="opt-max-results"[^>]*?min="(\d+)"[^>]*?max="(\d+)"/u],
-      ["offscreen.js", /clampInt\(\s*message\.maxResults,\s*(\d+),\s*(\d+)/u],
+      ["engine-service.js", /clampInt\(\s*message\.maxResults,\s*(\d+),\s*(\d+)/u],
     ],
   ],
   [
@@ -486,7 +526,7 @@ const OPTION_RANGES = [
       ["content.js", /scanLength:\s*clampInteger\(\s*source\.scanLength,\s*(\d+),\s*(\d+)/u],
       ["settings.js", /key:\s*"scanLength",[^}]*?min:\s*(\d+),\s*max:\s*(\d+)/u],
       ["settings.html", /id="opt-scan-length"[^>]*?min="(\d+)"[^>]*?max="(\d+)"/u],
-      ["offscreen.js", /clampInt\(\s*message\.scanLength,\s*(\d+),\s*(\d+)/u],
+      ["engine-service.js", /clampInt\(\s*message\.scanLength,\s*(\d+),\s*(\d+)/u],
     ],
   ],
 ];
@@ -537,6 +577,39 @@ async function main() {
     "offscreen.js uses no chrome API beyond chrome.runtime",
     offscreenApis.every((api) => api === "runtime"),
     [...new Set(offscreenApis)].join(", "),
+  );
+  check(
+    "runtime selection depends on capabilities rather than stored dictionaries",
+    !offscreenSource.includes("hd_dicts_read") && !offscreenSource.includes("opfsDictionaryTitles"),
+    "offscreen.js still contains legacy-storage selection logic",
+  );
+  check(
+    "the threaded bridge places a hard bound on pending engine requests",
+    /pending\.size\s*>=\s*MAX_PENDING_REQUESTS/u.test(offscreenSource)
+      && /message\?\.type\s*===\s*"hd_status"/u.test(offscreenSource),
+    "offscreen.js does not cap its pending map while preserving status replies",
+  );
+  const probePath = resolve(EXTENSION, "opfs-capability-worker.js");
+  const probeSource = existsSync(probePath) ? readFileSync(probePath, "utf8") : "";
+  check(
+    "threaded selection probes the exact OPFS primitives WasmFS needs",
+    offscreenSource.includes("opfs-capability-worker.js")
+      && probeSource.includes("createSyncAccessHandle")
+      && probeSource.includes(".move("),
+    "the direct-OPFS path lacks a worker-side sync-access and move probe",
+  );
+  const bindingsSource = readFileSync(resolve(ROOT, "wasm/bindings.cpp"), "utf8");
+  check(
+    "the OPFS durability barrier opens writable sync-access handles before fsync",
+    /open\(path\.c_str\(\), O_RDWR\)/u.test(bindingsSource)
+      && !/open\(path\.c_str\(\), O_RDONLY\)/u.test(bindingsSource),
+    "flush_file can still select WasmFS's non-flushing Blob path",
+  );
+  check(
+    "replacement commit state remains outside the backup being deleted",
+    bindingsSource.includes("destination / NEW_COMMITTED")
+      && !bindingsSource.includes("aside / NEW_COMMITTED"),
+    "the durable replacement marker is not anchored in the destination",
   );
 
   const idb = installFakeIndexedDB();
@@ -592,7 +665,81 @@ async function main() {
   }
 
   await import(`file://${mjs.replace(/\\/gu, "/")}`); // fail fast if the bundle is broken
-  await import(`file://${resolve(EXTENSION, "offscreen.js").replace(/\\/gu, "/")}`);
+  const engineService = await import(
+    `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}`
+  );
+  const formerArchiveByteLimit = 536870912;
+  const streamChunk = new Uint8Array(1024 * 1024);
+  let streamRemaining = formerArchiveByteLimit + 1;
+  let streamedBytes = 0;
+  let streamClosed = false;
+  let streamUnlinked = false;
+  let streamed = null;
+  let streamError = null;
+  try {
+    streamed = await engineService.streamResponseToFile(
+      {
+        open: () => ({}),
+        write(_stream, _value, _offset, length) {
+          streamedBytes += length;
+          return length;
+        },
+        close() {
+          streamClosed = true;
+        },
+        unlink() {
+          streamUnlinked = true;
+        },
+      },
+      {
+        body: {
+          getReader: () => ({
+            async read() {
+              if (streamRemaining === 0) return { done: true, value: undefined };
+              const value = streamRemaining >= streamChunk.byteLength
+                ? streamChunk
+                : streamChunk.subarray(0, streamRemaining);
+              streamRemaining -= value.byteLength;
+              return { done: false, value };
+            },
+          }),
+        },
+      },
+      "/streamed-boundary.zip",
+    );
+  } catch (error) {
+    streamError = error;
+  }
+  equal(
+    "an actual streamed body crosses the former fixed byte cap",
+    [streamError?.message ?? null, streamed, streamedBytes, streamClosed, streamUnlinked],
+    [null, formerArchiveByteLimit + 1, formerArchiveByteLimit + 1, true, false],
+  );
+  const { default: createHoshidicts } = await import(
+    `file://${resolve(EXTENSION, "vendor", "hoshidicts.mjs").replace(/\\/gu, "/")}?service`
+  );
+  let forwardedLowRam = null;
+  const createObservedHoshidicts = async (...args) => {
+    const module = await createHoshidicts(...args);
+    const ccall = module.ccall.bind(module);
+    module.ccall = (name, returnType, argumentTypes, argumentValues) => {
+      if (name === "hdw_import") {
+        forwardedLowRam = argumentValues[2];
+      }
+      return ccall(name, returnType, argumentTypes, argumentValues);
+    };
+    return module;
+  };
+  engineService.configureEngineService(
+    (message) => offscreenChrome.runtime.sendMessage(message),
+    { createHoshidicts: createObservedHoshidicts, storageBackend: "idbfs", lowRam: true },
+  );
+  engineService.startEngine();
+  offscreenChrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (!message || message.target !== "hoshidicts-offscreen" || message.relayed !== true) return false;
+    engineService.handleEngineMessage(message).then(sendResponse);
+    return true;
+  });
 
   section("boot and relay");
   let status = await request("hd_status");
@@ -604,9 +751,16 @@ async function main() {
     "ok",
     "ready",
     "requestId",
+    "storageBackend",
+    "threaded",
     "type",
   ]);
   check("hd_status echoes the requestId", status.requestId === "status-1", JSON.stringify(status));
+  check(
+    "the fallback reports single-thread IDBFS",
+    status.storageBackend === "idbfs" && status.threaded === false,
+    JSON.stringify(status),
+  );
 
   const deadline = Date.now() + 30000;
   while (!(status.ok && status.ready && !status.loading) && Date.now() < deadline) {
@@ -641,8 +795,9 @@ async function main() {
 
   const zip = new Uint8Array(await readFile(FIXTURE));
   const blobUrl = createObjectURL(zip);
-  const imported = await request("hd_import", { blobUrl, fileName: "hachidori-fixture.zip" });
+  const imported = await request("hd_import", { blobUrl, fileName: "hachidori-fixture.zip", lowRam: false });
   check("hd_import succeeds", imported.ok === true, JSON.stringify(imported));
+  equal("hd_import forwards its request-level lowRam override", forwardedLowRam, 0);
   equal("hd_import_result carries the full ImportReport", Object.keys(imported.report ?? {}).sort(), [
     "error",
     "frequencyCount",
@@ -683,8 +838,20 @@ async function main() {
   );
   check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
 
+  await storage.api().local.set({
+    dictionaries: [{
+      title: FIXTURE_TITLE,
+      path: `/dicts/${FIXTURE_TITLE}`,
+      kind: "term",
+      enabled: true,
+    }],
+  });
   const reloaded = await request("hd_reload");
-  equal("hd_reload loads every kind", [reloaded.ok, reloaded.dictionaryCount], [true, 4]);
+  equal(
+    "reconciliation restores kinds added by a same-title replacement",
+    [reloaded.ok, reloaded.dictionaryCount, (await storedDictionaries()).map((row) => row.kind)],
+    [true, 4, ["term", "freq", "pitch", "kanji"]],
+  );
 
   section("lookup, kanji, styles, media");
   const lookup = await request("hd_lookup", {
@@ -780,6 +947,23 @@ async function main() {
   const noBlob = await request("hd_import", { blobUrl: "", fileName: "x.zip" });
   check("an import with no blob URL is rejected, not thrown", noBlob.ok === false, JSON.stringify(noBlob));
 
+  const declaredLength = await request("hd_import", {
+    blobUrl: createDeclaredLengthURL(formerArchiveByteLimit + 1, zip),
+    fileName: "huge.zip",
+  });
+  equal(
+    "a valid archive with a declared length above the former cap imports successfully",
+    [declaredLength.ok, declaredLength.report?.title, declaredLength.report?.termCount],
+    [true, FIXTURE_TITLE, 5],
+  );
+
+  const afterDeclaredLength = await request("hd_status");
+  equal(
+    "a failed empty import restores the previously loaded set",
+    [afterDeclaredLength.ready, afterDeclaredLength.dictionaryCount],
+    [true, 4],
+  );
+
   section("renderer against real engine output");
   // 漢字 is the fixture's structured-content entry, the only one carrying an <img>.
   const imageLookup = await request("hd_lookup", {
@@ -821,6 +1005,14 @@ async function main() {
     "a failed remove reloads the dictionaries it unloaded",
     [afterFailedRemove.ready, afterFailedRemove.dictionaryCount],
     [true, 4],
+  );
+
+  const unsafeRemove = await request("hd_remove", { title: "../outside" });
+  const afterUnsafeRemove = await request("hd_status");
+  equal(
+    "hd_remove rejects a title that can escape the dictionary root",
+    [unsafeRemove.ok, afterUnsafeRemove.dictionaryCount],
+    [false, 4],
   );
 
   const removed = await request("hd_remove", { title: FIXTURE_TITLE });

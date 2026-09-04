@@ -14,8 +14,9 @@
 // bytes of the glossary array straight out of term_bank_1.json, so minified
 // JSON makes that string exactly predictable for node-smoke.mjs.
 
-import { deflateRawSync, crc32, deflateSync } from 'node:zlib';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createDeflateRaw, deflateRawSync, crc32, deflateSync } from 'node:zlib';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -101,6 +102,71 @@ function buildZip(entries) {
   eocd.writeUInt32LE(cdStart, 16);
   // Zero-length comment keeps the EOCD at exactly size-22, which is where
   // zip.cpp starts its backwards scan.
+  eocd.writeUInt16LE(0, 20);
+  chunks.push(eocd);
+
+  return Buffer.concat(chunks);
+}
+
+function forgeZip(entries, { eocdEntries } = {}) {
+  const chunks = [];
+  const records = [];
+  let offset = 0;
+
+  for (const e of entries) {
+    const name = utf8(e.name);
+    const body = e.body ?? Buffer.alloc(0);
+    const lfh = Buffer.alloc(30);
+    lfh.writeUInt32LE(0x04034b50, 0);
+    lfh.writeUInt16LE(20, 4);
+    lfh.writeUInt16LE(0x0800, 6);
+    lfh.writeUInt16LE(e.method ?? STORE, 8);
+    lfh.writeUInt16LE(0, 10);
+    lfh.writeUInt16LE(0x21, 12);
+    lfh.writeUInt32LE(e.crc ?? 0, 14);
+    lfh.writeUInt32LE((e.lfhCompressed ?? body.length) >>> 0, 18);
+    lfh.writeUInt32LE((e.lfhUncompressed ?? body.length) >>> 0, 22);
+    lfh.writeUInt16LE(name.length, 26);
+    lfh.writeUInt16LE(0, 28);
+
+    records.push({ ...e, name, body, lfhOffset: offset });
+    chunks.push(lfh, name, body);
+    offset += lfh.length + name.length + body.length;
+  }
+
+  const cdStart = offset;
+  for (const e of records) {
+    const cdh = Buffer.alloc(46);
+    cdh.writeUInt32LE(0x02014b50, 0);
+    cdh.writeUInt16LE(20, 4);
+    cdh.writeUInt16LE(20, 6);
+    cdh.writeUInt16LE(0x0800, 8);
+    cdh.writeUInt16LE(e.method ?? STORE, 10);
+    cdh.writeUInt16LE(0, 12);
+    cdh.writeUInt16LE(0x21, 14);
+    cdh.writeUInt32LE(e.crc ?? 0, 16);
+    cdh.writeUInt32LE((e.cdCompressed ?? e.body.length) >>> 0, 20);
+    cdh.writeUInt32LE((e.cdUncompressed ?? e.body.length) >>> 0, 24);
+    cdh.writeUInt16LE(e.name.length, 28);
+    cdh.writeUInt16LE(0, 30);
+    cdh.writeUInt16LE(0, 32);
+    cdh.writeUInt16LE(0, 34);
+    cdh.writeUInt16LE(0, 36);
+    cdh.writeUInt32LE((0o100644 << 16) >>> 0, 38);
+    cdh.writeUInt32LE(e.lfhOffset, 42);
+    chunks.push(cdh, e.name);
+    offset += cdh.length + e.name.length;
+  }
+
+  const declared = eocdEntries ?? records.length;
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(declared & 0xffff, 8);
+  eocd.writeUInt16LE(declared & 0xffff, 10);
+  eocd.writeUInt32LE(offset - cdStart, 12);
+  eocd.writeUInt32LE(cdStart, 16);
   eocd.writeUInt16LE(0, 20);
   chunks.push(eocd);
 
@@ -317,7 +383,7 @@ export const EXPECTED = {
 // primary fixture still produces the pre-4 layout: .hoshidicts_3 and no
 // dict.zstd, which is exactly what a dictionary imported by an older engine looks
 // like. TRAINING_SAMPLE_FLOOR pins that, so growing TERMS past eight rows fails
-// loudly in node-smoke.mjs instead of silently retiring the migration coverage.
+// loudly in node-smoke.mjs instead of silently retiring the compatibility coverage.
 //
 // This fixture goes over the floor, so between the two every marker the engine
 // can write is exercised.
@@ -361,6 +427,23 @@ export function buildTrainedZip() {
     zipEntry('index.json', JSON.stringify({ ...index, title: TRAINED_TITLE })),
     zipEntry('term_bank_1.json', JSON.stringify(TRAINED_TERMS)),
   ]);
+}
+
+export const MANY_BANK_TITLE = 'hachidori-fixture-many-banks';
+export const MANY_BANK_COUNT = TRAINED_TERMS.length + 19;
+
+export function buildManyBankZip() {
+  const entries = [
+    zipEntry('index.json', JSON.stringify({ ...index, title: MANY_BANK_TITLE })),
+    zipEntry('term_bank_1.json', JSON.stringify(TRAINED_TERMS)),
+  ];
+  for (let bank = 2; bank <= 20; bank += 1) {
+    const expression = String.fromCodePoint(0x7000 + bank);
+    entries.push(zipEntry(`term_bank_${bank}.json`, JSON.stringify([
+      [expression, expression, 'n', '', 0, [`scheduler bank ${bank}`], 1000 + bank, ''],
+    ])));
+  }
+  return buildZip(entries);
 }
 
 // DictionaryQuery keys terms on (expression, reading), with an empty reading in
@@ -416,14 +499,192 @@ export function buildNoIndexZip() {
   return buildZip([zipEntry('term_bank_1.json', JSON.stringify(TERMS))]);
 }
 
+// The preflight parser must reject an unreadable index before the importer can
+// derive any filesystem path from archive data.
+export function buildMalformedIndexZip() {
+  return buildZip([zipEntry('index.json', '{"title":')]);
+}
+
 // Not an archive at all. zip.cpp's EOCD scan has to bottom out and fail.
 export function buildNotAZip() {
   return utf8('this is not a zip file, it is a plain text file. '.repeat(3));
 }
 
+export const FORMER_ARCHIVE_LIMITS = {
+  MAX_ENTRIES: 4096,
+  MAX_ENTRY_UNCOMPRESSED: 268435456,
+  MAX_TOTAL_UNCOMPRESSED: 1610612736,
+  MAX_EXPANSION_RATIO: 512,
+};
+
+export const ARCHIVE_ERRORS = {
+  entries: 'archive declares too many entries',
+  entryExpanded: 'archive entry expands beyond the per-entry limit',
+  totalExpanded: 'archive expands beyond the aggregate limit',
+  ratio: 'archive entry compression ratio exceeds the limit',
+  forgedSize: 'archive entry sizes disagree between headers',
+  tinyCompressed: 'archive entry has no compressed data for its declared size',
+};
+
+function hostileBaseEntries() {
+  return [];
+}
+
+export function buildEntryCountZip(count) {
+  const entries = fixtureEntries();
+  while (entries.length < count) {
+    entries.push(zipEntry(`unused-${entries.length}/`, Buffer.alloc(0), STORE));
+  }
+  return buildZip(entries);
+}
+
+function deterministicBytes(size) {
+  const bytes = Buffer.allocUnsafe(size);
+  let state = 0x6d2b79f5;
+  for (let i = 0; i < bytes.length; i += 1) {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    bytes[i] = state >>> 24;
+  }
+  return bytes;
+}
+
+async function compressedPayload(size, noiseSize) {
+  const compressor = createDeflateRaw({ level: 9 });
+  const chunks = [];
+  let checksum = 0;
+  compressor.on('data', (chunk) => chunks.push(chunk));
+  const ended = once(compressor, 'end');
+  const write = async (chunk) => {
+    checksum = crc32(chunk, checksum) >>> 0;
+    if (!compressor.write(chunk)) {
+      await once(compressor, 'drain');
+    }
+  };
+  if (noiseSize > 0) {
+    await write(deterministicBytes(noiseSize));
+  }
+  const zeros = Buffer.alloc(1024 * 1024);
+  let remaining = size - noiseSize;
+  while (remaining > 0) {
+    const chunk = remaining >= zeros.length ? zeros : zeros.subarray(0, remaining);
+    await write(chunk);
+    remaining -= chunk.length;
+  }
+  compressor.end();
+  await ended;
+  return { body: Buffer.concat(chunks), crc: checksum, size };
+}
+
+function forgedEntry(entry) {
+  return {
+    name: entry.name,
+    method: entry.method,
+    body: entry.body,
+    crc: entry.crc,
+    lfhCompressed: entry.body.length,
+    lfhUncompressed: entry.raw.length,
+    cdCompressed: entry.body.length,
+    cdUncompressed: entry.raw.length,
+  };
+}
+
+function payloadEntry(payload) {
+  return {
+    name: 'styles.css',
+    method: payload.method ?? DEFLATE,
+    body: payload.body,
+    crc: payload.crc,
+    lfhCompressed: payload.body.length,
+    lfhUncompressed: payload.size,
+    cdCompressed: payload.body.length,
+    cdUncompressed: payload.size,
+  };
+}
+
+function forgedFixtureEntries() {
+  return fixtureEntries().map(forgedEntry);
+}
+
+export async function buildEntryExpandedZip(size) {
+  const noiseSize = Math.ceil(size / (FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO - 64));
+  const payload = await compressedPayload(size, noiseSize);
+  if (size > payload.body.length * FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO) {
+    throw new Error('entry-expanded fixture also crosses the former ratio cap');
+  }
+  return forgeZip([...forgedFixtureEntries(), payloadEntry(payload)]);
+}
+
+export async function buildTotalExpandedZip(total) {
+  const size = FORMER_ARCHIVE_LIMITS.MAX_ENTRY_UNCOMPRESSED / 2;
+  const noiseSize = Math.ceil(size / (FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO - 64));
+  const payload = await compressedPayload(size, noiseSize);
+  if (size > payload.body.length * FORMER_ARCHIVE_LIMITS.MAX_EXPANSION_RATIO) {
+    throw new Error('aggregate fixture also crosses the former ratio cap');
+  }
+  const entries = forgedFixtureEntries();
+  let remaining = total;
+  while (remaining >= size) {
+    entries.push(payloadEntry(payload));
+    remaining -= size;
+  }
+  if (remaining > 0) {
+    const body = Buffer.alloc(remaining);
+    entries.push(payloadEntry({ body, crc: crc32(body) >>> 0, size: remaining, method: STORE }));
+  }
+  return forgeZip(entries);
+}
+
+export async function buildRatioZip(ratio) {
+  const payload = await compressedPayload((ratio + 1) * 4096, 0);
+  if (payload.size <= payload.body.length * ratio) {
+    throw new Error('ratio fixture does not cross the requested ratio');
+  }
+  return forgeZip([...forgedFixtureEntries(), payloadEntry(payload)]);
+}
+
+// A deflate entry whose local and central uncompressed sizes disagree; the
+// parser cannot trust either without the other agreeing.
+export function buildForgedSizeZip() {
+  const entries = hostileBaseEntries();
+  const stream = deflateRawSync(utf8('x'), { level: 9 });
+  entries.push({
+    name: 'term_bank_1.json',
+    method: DEFLATE,
+    body: stream,
+    crc: 0,
+    lfhCompressed: stream.length,
+    lfhUncompressed: 1,
+    cdCompressed: stream.length,
+    cdUncompressed: 4096,
+  });
+  return forgeZip(entries);
+}
+
+// A deflate entry that declares output but carries no compressed bytes, an
+// impossible stream the reader must refuse before handing it to the decoder.
+export function buildTinyCompressedZip() {
+  const entries = hostileBaseEntries();
+  entries.push({
+    name: 'term_bank_1.json',
+    method: DEFLATE,
+    body: Buffer.alloc(0),
+    crc: 0,
+    lfhCompressed: 0,
+    lfhUncompressed: 4096,
+    cdCompressed: 0,
+    cdUncompressed: 4096,
+  });
+  return forgeZip(entries);
+}
+
 const OUTPUTS = [
   ['hachidori-fixture.zip', buildFixtureZip],
   ['hachidori-fixture-trained.zip', buildTrainedZip],
+  ['hachidori-fixture-many-banks.zip', buildManyBankZip],
+  ['parent-title.zip', () => buildTitledZip('..', { banks: false })],
+  ['malformed-index.zip', buildMalformedIndexZip],
   ['no-index.zip', buildNoIndexZip],
   ['not-a-zip.txt', buildNotAZip],
 ];
@@ -440,7 +701,7 @@ export function writeFixtures(dir = FIXTURES) {
   return written;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) {
   for (const { path, bytes } of writeFixtures()) {
     console.log(`${bytes.toString().padStart(7)}  ${path}`);
   }
