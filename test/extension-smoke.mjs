@@ -2290,6 +2290,7 @@ async function settingsConflictStage() {
     selectedAfterExternalChange: selectedRowIds(),
     visibleAfterExternalChange: rowIds(),
   };
+  result.directDictionaryWrites = directDictionaryWrites;
   dom.window.close();
   return result;
 }
