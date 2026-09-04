@@ -4505,7 +4505,7 @@ async function settingsCustomDictionaryStage() {
             pendingSave = resolveSave;
           });
         }
-        if (message.type === "hd_apply_state") {
+        if (message.type === "hd_apply_state" || message.type === "hd_state_cas") {
           stateRequests.push(structuredClone(message));
           state = {
             ...state,
@@ -4604,7 +4604,8 @@ async function settingsCustomDictionaryStage() {
   };
   window.document.getElementById("dict-select-visible")?.click();
   window.document.getElementById("dict-bulk-disable")?.click();
-  await waitFor(() => stateRequests.length === 1);
+  await waitFor(() => stateRequests.length === 1
+    && window.document.getElementById("dict-bulk-favorite")?.disabled === false);
   result.bulkState = stateRequests[0]?.dictionaries?.map(({ id, enabled }) => ({ id, enabled }));
   window.document.getElementById("dict-bulk-favorite")?.click();
   await waitFor(() => stateRequests.length === 2);

@@ -59,6 +59,7 @@ let customEditorLoaded = false;
 let customLoading = false;
 let customSaving = false;
 let customDraftStale = false;
+let customDraftNewline = "\n";
 let importing = false;
 let updating = false;
 let removing = false;
@@ -195,9 +196,7 @@ function adoptDictionaryState(value) {
 }
 
 function pruneDictionarySelection() {
-  const installedIds = new Set(dictionaries
-    .filter((dictionary) => !isManagedCustomDictionary(dictionary))
-    .map((dictionary) => dictionary.id));
+  const installedIds = new Set(dictionaries.map((dictionary) => dictionary.id));
   for (const id of selectedDictionaryIds) {
     if (!installedIds.has(id)) {
       selectedDictionaryIds.delete(id);
@@ -359,7 +358,12 @@ function renderCustomDictionaryErrors(errors) {
 function customDictionaryDirty() {
   return customEditorLoaded
     && customBaseDocument !== null
-    && element("custom-dictionary-source").value !== customBaseDocument.text;
+    && customDictionaryDraftSource() !== customBaseDocument.text;
+}
+
+function customDictionaryDraftSource() {
+  const source = element("custom-dictionary-source").value.replace(/\r\n?|\n/gu, "\n");
+  return customDraftNewline === "\r\n" ? source.replace(/\n/gu, "\r\n") : source;
 }
 
 function renderCustomDictionaryControls() {
@@ -382,7 +386,7 @@ function showCustomDictionaryEditor(visible) {
 }
 
 function renderCustomDictionaryValidation() {
-  const parsed = parseCustomDictionary(element("custom-dictionary-source").value);
+  const parsed = parseCustomDictionary(customDictionaryDraftSource());
   renderCustomDictionaryErrors(parsed.errors);
   return parsed;
 }
@@ -390,6 +394,7 @@ function renderCustomDictionaryValidation() {
 function resetCustomDictionaryDraft(documentValue) {
   customBaseDocument = documentValue;
   customDraftStale = false;
+  customDraftNewline = documentValue.text.includes("\r\n") ? "\r\n" : "\n";
   element("custom-dictionary-source").value = documentValue.text;
   renderCustomDictionaryValidation();
   renderCustomDictionaryControls();
@@ -485,7 +490,7 @@ async function saveCustomDictionarySource(event) {
     return;
   }
 
-  const source = element("custom-dictionary-source").value;
+  const source = customDictionaryDraftSource();
   const parsed = renderCustomDictionaryValidation();
   const pending = {
     baseRevision: customBaseDocument.revision,
@@ -632,8 +637,7 @@ function setControlsDisabled(disabled) {
   )) {
     control.disabled = blocked || control.dataset.pinnedDisabled === "true";
   }
-  element("dict-select-visible").disabled = blocked
-    || visibleDictionaries().every(isManagedCustomDictionary);
+  element("dict-select-visible").disabled = blocked || visibleDictionaries().length === 0;
   for (const control of element("dict-controls").querySelectorAll(".dict-bulk-actions button")) {
     control.disabled = blocked || selectedDictionaryIds.size === 0;
   }
@@ -925,7 +929,7 @@ function updateSelectedDictionaries(field, value, reloadEngine) {
   void commitDictionaries((current) => {
     let changed = false;
     const next = current.map((dictionary) => {
-      if (isManagedCustomDictionary(dictionary)
+      if ((field === "enabled" && isManagedCustomDictionary(dictionary))
           || !ids.has(dictionary.id)
           || dictionary[field] === value) {
         return dictionary;
@@ -981,11 +985,10 @@ function focusedManagementControl() {
 }
 
 function renderDictionarySelection(visible) {
-  const selectable = visible.filter((dictionary) => !isManagedCustomDictionary(dictionary));
-  const visibleSelected = selectable.filter((dictionary) => selectedDictionaryIds.has(dictionary.id)).length;
+  const visibleSelected = visible.filter((dictionary) => selectedDictionaryIds.has(dictionary.id)).length;
   const selectVisible = element("dict-select-visible");
-  selectVisible.checked = selectable.length > 0 && visibleSelected === selectable.length;
-  selectVisible.indeterminate = visibleSelected > 0 && visibleSelected < selectable.length;
+  selectVisible.checked = visible.length > 0 && visibleSelected === visible.length;
+  selectVisible.indeterminate = visibleSelected > 0 && visibleSelected < visible.length;
   element("dict-selection-count").textContent = `${selectedDictionaryIds.size} selected`;
   element("dict-match-count").textContent = `${visible.length} of ${dictionaries.length}`;
 }
@@ -1000,12 +1003,6 @@ function bindDictionarySelection(row, entry) {
   const selected = row.querySelector(".dict-selected");
   selected.checked = selectedDictionaryIds.has(entry.id);
   selected.setAttribute("aria-label", `Select ${dictionaryLabel(entry)}`);
-  if (isManagedCustomDictionary(entry)) {
-    selected.checked = false;
-    selected.dataset.pinnedDisabled = "true";
-    selected.disabled = true;
-    return;
-  }
   selected.addEventListener("change", () => {
     if (selected.checked) {
       selectedDictionaryIds.add(entry.id);
@@ -1672,9 +1669,7 @@ function attachHandlers() {
   });
 
   element("dict-select-visible").addEventListener("change", (event) => {
-    for (const dictionary of visibleDictionaries().filter(
-      (entry) => !isManagedCustomDictionary(entry),
-    )) {
+    for (const dictionary of visibleDictionaries()) {
       if (event.target.checked) {
         selectedDictionaryIds.add(dictionary.id);
       } else {
