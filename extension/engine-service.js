@@ -935,15 +935,25 @@ function normaliseReport(raw) {
 }
 
 function withImport(stored, generated, recommendedSource) {
-  const existingIndex = stored.findIndex((dictionary) =>
-    dictionary?.id === generated.id || text(dictionary?.title) === generated.title);
+  let existingIndex = recommendedSource === null ? -1 : stored.findIndex((dictionary) =>
+    optionalText(dictionary?.sourceId) === recommendedSource.sourceId);
+  if (existingIndex < 0 && generated.indexUrl !== null) {
+    existingIndex = stored.findIndex((dictionary) => dictionary?.indexUrl === generated.indexUrl);
+  }
+  if (existingIndex < 0) {
+    existingIndex = stored.findIndex((dictionary) =>
+      dictionary?.id === generated.id || text(dictionary?.title) === generated.title);
+  }
   if (existingIndex < 0) {
     return [...stored, recommendedSource === null
       ? generated
       : withRecommendedSource(generated, recommendedSource)];
   }
   const next = [...stored];
-  const replacement = withStoredPresentation(generated, stored[existingIndex]);
+  const replacement = {
+    ...withStoredPresentation(generated, stored[existingIndex]),
+    id: optionalText(stored[existingIndex]?.id) ?? generated.id,
+  };
   next[existingIndex] = recommendedSource === null
     ? replacement
     : withRecommendedSource(replacement, recommendedSource);

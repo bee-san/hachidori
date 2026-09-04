@@ -1199,6 +1199,61 @@ async function main() {
       && trustedPackage?.mediaCount === 1,
     JSON.stringify({ trustedImport, trustedState }),
   );
+  const trustedIndex = trustedState.dictionaries.findIndex(
+    (dictionary) => dictionary.sourceId === recommended.sourceId,
+  );
+  const presentedState = await request("hd_apply_state", {
+    baseRevision: trustedState.revision,
+    dictionaries: trustedState.dictionaries.map((dictionary, index) => index === trustedIndex
+      ? { ...dictionary, displayName: "Starter terms", enabled: false, favorite: true }
+      : dictionary),
+  });
+  const updatedTitle = "Jitendex.org [2026-09-05]";
+  const updatedRevision = "2026.09.05.0";
+  const updatedImport = await request("hd_import", {
+    blobUrl: recommendedArchive({ title: updatedTitle, revision: updatedRevision }),
+    fileName: "jitendex-yomitan.zip",
+    ...recommendedFields,
+  });
+  const updatedState = await storedDictionaryState();
+  const updatedPackage = updatedState.dictionaries[trustedIndex];
+  check(
+    "a dated recommended update preserves package identity, order, and presentation",
+    presentedState.ok === true
+      && updatedImport.ok === true
+      && updatedState.dictionaries.length === trustedState.dictionaries.length
+      && updatedPackage?.id === trustedPackage.id
+      && updatedPackage?.title === updatedTitle
+      && updatedPackage?.revision === updatedRevision
+      && updatedPackage?.sourceId === recommended.sourceId
+      && updatedPackage?.displayName === "Starter terms"
+      && updatedPackage?.enabled === false
+      && updatedPackage?.favorite === true,
+    JSON.stringify({ presentedState, updatedImport, updatedState }),
+  );
+  const localUpdateTitle = "Jitendex.org [2026-09-06]";
+  const localUpdateRevision = "2026.09.06.0";
+  const localUpdateImport = await request("hd_import", {
+    blobUrl: recommendedArchive({ title: localUpdateTitle, revision: localUpdateRevision }),
+    fileName: "jitendex-yomitan.zip",
+  });
+  const localUpdateState = await storedDictionaryState();
+  const localUpdatePackage = localUpdateState.dictionaries[trustedIndex];
+  check(
+    "a local managed reimport matches its index URL and preserves catalogue identity",
+    localUpdateImport.ok === true
+      && localUpdateState.dictionaries.length === trustedState.dictionaries.length
+      && localUpdatePackage?.id === trustedPackage.id
+      && localUpdatePackage?.title === localUpdateTitle
+      && localUpdatePackage?.revision === localUpdateRevision
+      && localUpdatePackage?.sourceId === recommended.sourceId
+      && localUpdatePackage?.displayName === "Starter terms"
+      && localUpdatePackage?.enabled === false
+      && localUpdatePackage?.favorite === true,
+    JSON.stringify({ localUpdateImport, localUpdateState }),
+  );
+  await request("hd_remove", { title: localUpdateTitle });
+  await request("hd_remove", { title: updatedTitle });
   await request("hd_remove", { title: recommended.title });
 
   // Model an actual pre-D9 install: legacy rows named a canonical title path,
