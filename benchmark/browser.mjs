@@ -23,9 +23,33 @@ import {
 } from "./system.mjs";
 
 const TARGET = "hoshidicts-offscreen";
+const ARCHIVE_IMPORT_COMPLETION = /^Finished (\d+) of (\d+) archives? — (\d+) imported, (\d+) failed\.$/;
 let requestCounter = 0;
 
 const sleep = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
+
+function archiveImportCounts(text) {
+  const match = ARCHIVE_IMPORT_COMPLETION.exec(text);
+  if (!match) return null;
+  return {
+    completed: Number(match[1]),
+    total: Number(match[2]),
+    imported: Number(match[3]),
+    failed: Number(match[4]),
+  };
+}
+
+export function isTerminalArchiveImportState(text) {
+  return archiveImportCounts(text) !== null;
+}
+
+export function isSuccessfulArchiveImportState(text) {
+  const counts = archiveImportCounts(text);
+  return counts !== null
+    && counts.completed === counts.total
+    && counts.imported === counts.total
+    && counts.failed === 0;
+}
 
 async function withTimeout(promise, milliseconds, label) {
   let timer;
@@ -241,7 +265,8 @@ async function importThroughSettings(page, archive, timeoutMs, beforeUpload) {
   await installImportProbe(page);
   const input = await page.$("#import-file");
   if (!input) throw new Error("settings.html has no #import-file");
-  await page.evaluate(() => {
+  await page.evaluate((completionPattern) => {
+    const completion = new RegExp(completionPattern);
     const state = window.__hdwBenchmarkImport;
     state.active = {
       userStart: performance.now(),
@@ -257,7 +282,7 @@ async function importThroughSettings(page, archive, timeoutMs, beforeUpload) {
     };
     const outcome = () => {
       const text = (document.getElementById("import-state")?.textContent || "").trim();
-      if (!/^Imported /.test(text) && !/ could not be imported\.$/.test(text)) return;
+      if (!completion.test(text)) return;
       state.active.uiEnd = performance.now();
       state.active.uiState = text;
       state.active.uiDetail = (document.getElementById("import-detail")?.textContent || "").trim();
@@ -265,7 +290,7 @@ async function importThroughSettings(page, archive, timeoutMs, beforeUpload) {
     };
     const observer = new MutationObserver(outcome);
     observer.observe(document.getElementById("import-state"), { childList: true, subtree: true, characterData: true });
-  });
+  }, ARCHIVE_IMPORT_COMPLETION.source);
   await beforeUpload();
   await input.uploadFile(archive);
   await page.waitForFunction(() => {
@@ -435,7 +460,7 @@ function verifyImport(corpus, imported) {
     throw error;
   }
   if (reply.error !== null) throw new Error("successful import returned an unexpected error field");
-  if (!/^Imported /.test(imported.uiState)) {
+  if (!isSuccessfulArchiveImportState(imported.uiState)) {
     throw new Error(`settings page did not report success: ${imported.uiState}`);
   }
   for (const [key, expected] of Object.entries(corpus.expectedReport ?? {})) {
