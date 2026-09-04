@@ -892,6 +892,12 @@
     const onKanjiClick = typeof options.onKanjiClick === "function"
       ? options.onKanjiClick
       : () => {};
+    const onAddCustomEntry = typeof options.onAddCustomEntry === "function"
+      ? options.onAddCustomEntry
+      : async () => {};
+    const onNoteEditingChange = typeof options.onNoteEditingChange === "function"
+      ? options.onNoteEditingChange
+      : () => {};
     const onBeforeResultsRendered =
       typeof options.onBeforeResultsRendered === "function"
         ? options.onBeforeResultsRendered
@@ -921,6 +927,7 @@
     let currentSourceHighlight = null;
     let toolbarPosition = options.toolbarPosition === "bottom" ? "bottom" : "top";
     let currentToolbar = null;
+    let currentNoteControls = null;
     let masonryFrame = null;
     const masonryObserver = typeof windowRef.ResizeObserver === "function"
       ? new windowRef.ResizeObserver(() => scheduleMasonry())
@@ -1027,6 +1034,8 @@
     }
 
     function clear() {
+      currentNoteControls?.close(false);
+      currentNoteControls = null;
       sourceHighlighter.clear();
       currentSourceHighlight = null;
       currentToolbar = null;
@@ -1034,6 +1043,158 @@
       popup.replaceChildren();
       popup.scrollTop = 0;
       setDefinitionBlurState("revealed");
+    }
+
+    function createNoteControls(readPrefill) {
+      const button = documentRef.createElement("button");
+      button.type = "button";
+      button.className = "gsm-hoshidicts-note-button";
+      button.title = "Add to custom dictionary";
+      button.setAttribute("aria-label", "Add to custom dictionary");
+      button.setAttribute("aria-expanded", "false");
+
+      const icon = documentRef.createElement("span");
+      icon.className = "gsm-hoshidicts-note-icon";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = "+";
+      button.appendChild(icon);
+
+      const actions = documentRef.createElement("div");
+      actions.className = "gsm-hoshidicts-entry-actions";
+      actions.appendChild(button);
+
+      const form = documentRef.createElement("form");
+      form.className = "gsm-hoshidicts-note-form";
+      form.hidden = true;
+
+      function createField(labelText, name, multiline = false) {
+        const label = documentRef.createElement("label");
+        label.className = "gsm-hoshidicts-note-field";
+        const labelValue = documentRef.createElement("span");
+        labelValue.textContent = labelText;
+        const control = multiline
+          ? documentRef.createElement("textarea")
+          : documentRef.createElement("input");
+        control.id = `${idPrefix}-note-${name}`;
+        control.name = name;
+        control.className = `gsm-hoshidicts-note-${name}`;
+        control.required = true;
+        if (!multiline) control.autocomplete = "off";
+        label.htmlFor = control.id;
+        label.append(labelValue, control);
+        form.appendChild(label);
+        return control;
+      }
+
+      const term = createField("Term", "term");
+      const reading = createField("Reading", "reading");
+      const definition = createField("Definition", "definition", true);
+      const error = documentRef.createElement("div");
+      error.className = "gsm-hoshidicts-note-error";
+      error.setAttribute("role", "alert");
+      error.hidden = true;
+      form.appendChild(error);
+
+      const formActions = documentRef.createElement("div");
+      formActions.className = "gsm-hoshidicts-note-actions";
+      const cancel = documentRef.createElement("button");
+      cancel.type = "button";
+      cancel.className = "gsm-hoshidicts-note-cancel";
+      cancel.textContent = "Cancel";
+      const save = documentRef.createElement("button");
+      save.type = "submit";
+      save.className = "gsm-hoshidicts-note-save";
+      save.textContent = "Save";
+      formActions.append(cancel, save);
+      form.appendChild(formActions);
+
+      let editing = false;
+      let pending = false;
+
+      function setPending(value) {
+        pending = value;
+        for (const control of [term, reading, definition, cancel, save]) {
+          control.disabled = pending;
+        }
+        button.disabled = pending;
+      }
+
+      function close(restoreFocus = true) {
+        if (form.hidden) return false;
+        form.hidden = true;
+        button.setAttribute("aria-expanded", "false");
+        error.hidden = true;
+        error.textContent = "";
+        if (editing) {
+          editing = false;
+          onNoteEditingChange(false);
+        }
+        if (restoreFocus && button.isConnected) button.focus();
+        positionPopup();
+        return true;
+      }
+
+      function open() {
+        const prefill = readPrefill() || {};
+        term.value = String(prefill.term || "");
+        reading.value = String(prefill.reading || "");
+        definition.value = String(prefill.definition || "");
+        error.hidden = true;
+        error.textContent = "";
+        form.hidden = false;
+        button.setAttribute("aria-expanded", "true");
+        if (!editing) {
+          editing = true;
+          onNoteEditingChange(true);
+        }
+        term.focus();
+        term.select();
+        positionPopup();
+      }
+
+      button.addEventListener("click", () => {
+        if (form.hidden) open();
+        else close();
+      });
+      cancel.addEventListener("click", () => close());
+      form.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && close()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      });
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (pending) return;
+        const entry = {
+          term: term.value,
+          reading: reading.value,
+          definition: definition.value,
+        };
+        if (Object.values(entry).some((value) => value.trim() === "")) {
+          error.textContent = "Complete the term, reading, and definition.";
+          error.hidden = false;
+          positionPopup();
+          return;
+        }
+        error.hidden = true;
+        error.textContent = "";
+        setPending(true);
+        try {
+          await onAddCustomEntry(entry);
+          close();
+        } catch (appendError) {
+          error.textContent = typeof appendError?.message === "string"
+            ? appendError.message
+            : String(appendError);
+          error.hidden = false;
+          positionPopup();
+        } finally {
+          setPending(false);
+        }
+      });
+
+      return { actions, button, close, form };
     }
 
     function setSourceHighlightEnabled(enabled) {
@@ -1243,6 +1404,7 @@
         showPitchAccentFurigana = true,
         pitchAccentFuriganaDictionary = null,
         onBack = null,
+        noteControls = null,
       } = {}
     ) {
       const header = element || documentRef.createElement("header");
@@ -1307,6 +1469,9 @@
         header.appendChild(navigation);
       } else {
         header.appendChild(headword);
+      }
+      if (primary && noteControls) {
+        header.appendChild(noteControls.actions);
       }
       return { element: header };
     }
@@ -1374,6 +1539,7 @@
               ? renderContext.pitchAccentFuriganaDictionary
               : null,
           onBack: resultIndex === 0 ? renderContext.onBack : null,
+          noteControls: resultIndex === 0 ? renderContext.noteControls : null,
         });
         if (resultIndex !== 0) {
           entry.appendChild(renderedHeader.element);
@@ -1571,6 +1737,12 @@
 
     function renderKanji(kanji, candidate, renderOptions = {}) {
       clear();
+      const noteControls = createNoteControls(() => ({
+        term: kanji.character,
+        reading: "",
+        definition: "",
+      }));
+      currentNoteControls = noteControls;
       const dictionaryDisplayNames = createDictionaryDisplayNames(
         kanji.entries.map(({ dictionary }) => dictionary),
         Array.isArray(renderOptions.dictionaryPresentation)
@@ -1595,9 +1767,9 @@
       glyph.className = "gsm-hoshidicts-kanji-glyph";
       glyph.textContent = kanji.character;
       navigation.appendChild(glyph);
-      primaryHeader.appendChild(navigation);
+      primaryHeader.append(navigation, noteControls.actions);
       const toolbar = createResultChrome(primaryHeader);
-      popup.appendChild(toolbar);
+      popup.append(toolbar, noteControls.form);
 
       for (const kanjiEntry of kanji.entries) {
         const entry = documentRef.createElement("article");
@@ -1789,8 +1961,15 @@
       const primaryHeader = documentRef.createElement("header");
       primaryHeader.className =
         "gsm-hoshidicts-entry-header gsm-hoshidicts-primary-header";
+      let projectedPrimary = null;
+      const noteControls = createNoteControls(() => ({
+        term: projectedPrimary?.term?.expression || "",
+        reading: projectedPrimary?.term?.reading || "",
+        definition: "",
+      }));
+      currentNoteControls = noteControls;
       const toolbar = createResultChrome(primaryHeader, metadataStrip);
-      popup.append(toolbar, panel);
+      popup.append(toolbar, noteControls.form, panel);
       setRenderedToolbar(toolbar);
 
       const tabButtons = [];
@@ -1839,6 +2018,17 @@
           button.focus();
         }
         const selectionChanged = previousIndex !== selectedIndex;
+        if ((!hasRendered || selectionChanged)
+            && typeof renderContext.onDictionaryTabSelected === "function") {
+          const descriptor = tabDescriptors[selectedIndex];
+          renderContext.onDictionaryTabSelected(
+            typeof descriptor.dictionary === "string"
+              ? { dictionary: descriptor.dictionary }
+              : typeof descriptor.groupId === "string"
+                ? { groupId: descriptor.groupId }
+                : null
+          );
+        }
         if (hasRendered && !selectionChanged) {
           if (
             button && !popup.hidden
@@ -1854,12 +2044,14 @@
         popup.scrollTop = 0;
         const selectedDictionaries = tabDescriptors[selectedIndex].dictionaries;
         const projectedResults = projectResults(results, selectedDictionaries);
+        projectedPrimary = projectedResults[0] || null;
         rendered = renderResultPanel(
           panel,
           projectedResults,
           candidate,
           {
             ...renderContext,
+            noteControls,
             // Lookup statistics describe the first unfiltered result. Keep the
             // line on the All tab so a dictionary projection cannot attach the
             // original term's count to a different expression.
@@ -1946,6 +2138,9 @@
 
     return {
       clear,
+      closeNoteForm() {
+        return currentNoteControls?.close() === true;
+      },
       renderNotice,
       renderResults,
       renderKanji,
