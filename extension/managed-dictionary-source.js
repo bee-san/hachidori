@@ -1,8 +1,8 @@
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 
 /*
- * Canonical update-source and download trust rules shared by the service worker
- * and engine worker.
+ * Canonical update-source, download trust, and schedule rules shared by every
+ * runtime context that enforces managed dictionary updates.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -10,6 +10,21 @@ import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 const RECOMMENDED_BY_ID = new Map(
   RECOMMENDED_DICTIONARIES.map((entry) => [entry.sourceId, entry]),
 );
+
+export const MANAGED_UPDATE_SCHEDULE_MINUTES = Object.freeze({
+  off: null,
+  hourly: 60,
+  daily: 24 * 60,
+  weekly: 7 * 24 * 60,
+  monthly: 30 * 24 * 60,
+});
+
+export function managedUpdateSchedule(value) {
+  return typeof value === "string"
+      && Object.hasOwn(MANAGED_UPDATE_SCHEDULE_MINUTES, value)
+    ? value
+    : null;
+}
 
 export const MANAGED_DICTIONARY_CHANGED =
   "the managed dictionary changed while its update was being prepared";

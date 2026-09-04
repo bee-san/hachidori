@@ -799,7 +799,7 @@ async function reloadFromStorage() {
     const committed = await reconcile();
     publishLoadedDictionaries(committed.loadedCount);
     reloadError = null;
-    await cleanupCommittedDictionaries(committed.state);
+    await cleanupCommittedDictionaries();
   } catch (error) {
     reloadError = asError(error);
     throw reloadError;
@@ -971,12 +971,10 @@ function withImport(stored, generated, recommendedSource, managedSource) {
   return next;
 }
 
-async function cleanupCommittedDictionaries(committed) {
+async function cleanupCommittedDictionaries() {
   try {
     const { state } = await readDictionaryStorage();
-    if (state === null
-        || state.revision !== committed.revision
-        || !sameDictionaries(state.dictionaries, committed.dictionaries)) {
+    if (state === null) {
       return;
     }
     await cleanupUnreferencedDictionaries(state.dictionaries);
@@ -1015,7 +1013,7 @@ async function commitImportedGeneration(
     ));
   publishLoadedDictionaries(committed.loadedCount);
   reloadError = null;
-  await cleanupCommittedDictionaries(committed.state);
+  await cleanupCommittedDictionaries();
   return committed.state;
 }
 
@@ -1440,7 +1438,7 @@ const HANDLERS = {
     if (reply.ok === true) {
       publishLoadedDictionaries(loadedCount);
       reloadError = null;
-      await cleanupCommittedDictionaries(reply.state);
+      await cleanupCommittedDictionaries();
       return {};
     }
 

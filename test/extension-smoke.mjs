@@ -1094,9 +1094,27 @@ async function main() {
   };
   let loseNextStateCasReply = false;
   let failAfterCommittedRevision = null;
+  let advanceGroupsAfterCommittedRevision = null;
+  let advancedStateDuringCleanup = null;
   engineService.configureEngineService(
     async (message) => {
       const reply = await offscreenChrome.runtime.sendMessage(message);
+      if (message.type === "hd_state_cas"
+          && reply?.ok === true
+          && advanceGroupsAfterCommittedRevision !== null
+          && reply.state?.dictionaries?.some(
+            (dictionary) => dictionary.revision === advanceGroupsAfterCommittedRevision.revision,
+          )) {
+        const advance = advanceGroupsAfterCommittedRevision;
+        advanceGroupsAfterCommittedRevision = null;
+        advancedStateDuringCleanup = await offscreenChrome.runtime.sendMessage({
+          target: "hoshidicts-worker",
+          type: "hd_state_cas",
+          baseRevision: reply.state.revision,
+          dictionaries: reply.state.dictionaries,
+          groups: advance.groups,
+        });
+      }
       if (loseNextStateCasReply && message.type === "hd_state_cas") {
         loseNextStateCasReply = false;
         throw new Error("injected lost CAS reply");
@@ -1544,6 +1562,57 @@ async function main() {
     }),
   );
 
+  const cleanupRaceRevision = "2026.09.07.1";
+  const cleanupRaceGroup = { ...managedGroup, name: "Managed after update" };
+  const cleanupRaceGeneration = ownedGenerationRoot(
+    manuallyUpdated.path,
+    manuallyUpdated.title,
+  );
+  const cleanupArchiveRequests = { count: 0 };
+  remoteJson(recommended.indexUrl, { revision: cleanupRaceRevision });
+  remoteArchive(
+    recommended.downloadUrl,
+    buildRecommendedZip({
+      title: "Jitendex.org [2026-09-07]",
+      revision: cleanupRaceRevision,
+      indexUrl: recommended.indexUrl,
+      downloadUrl: recommended.downloadUrl,
+      capabilities: recommended.capabilities,
+    }),
+    recommended.downloadUrl,
+    cleanupArchiveRequests,
+  );
+  advanceGroupsAfterCommittedRevision = {
+    revision: cleanupRaceRevision,
+    groups: [cleanupRaceGroup],
+  };
+  const cleanupRaceUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [managedId],
+  });
+  const cleanupRaceState = await storedDictionaryState();
+  const cleanupRacePackage = cleanupRaceState.dictionaries.find((entry) => entry.id === managedId);
+  const cleanupRaceRows = idb.keys("/dicts");
+  check(
+    "generation cleanup follows an authoritative group-only state advance",
+    cleanupRaceUpdate?.ok === true
+      && cleanupArchiveRequests.count === 1
+      && advancedStateDuringCleanup?.ok === true
+      && cleanupRacePackage?.revision === cleanupRaceRevision
+      && JSON.stringify(cleanupRaceState.groups) === JSON.stringify([cleanupRaceGroup])
+      && !cleanupRaceRows.some((path) =>
+        path === cleanupRaceGeneration || path.startsWith(`${cleanupRaceGeneration}/`)),
+    JSON.stringify({
+      cleanupRaceUpdate,
+      cleanupRaceState,
+      cleanupArchiveRequests,
+      advancedStateDuringCleanup,
+      cleanupRaceGeneration,
+      cleanupRaceRows,
+    }),
+  );
+
   const scheduled = await pageChrome.runtime.sendMessage({
     target: updateTarget,
     type: "hd_updates_schedule",
@@ -1592,7 +1661,7 @@ async function main() {
       && alarmUpdated.displayName === "Starter terms"
       && alarmUpdated.enabled === false
       && alarmUpdated.favorite === true
-      && JSON.stringify(alarmState.groups) === JSON.stringify([managedGroup]),
+      && JSON.stringify(alarmState.groups) === JSON.stringify([cleanupRaceGroup]),
     JSON.stringify({ alarmState, archiveRequests }),
   );
 
@@ -1642,7 +1711,7 @@ async function main() {
       && failedAlarmPackage?.lastUpdateCheck?.status === "update-available"
       && failedAlarmPackage?.lastUpdateCheck?.remoteRevision === failedRevision
       && failedAlarmPackage?.lastUpdateCheck?.error?.includes("revision")
-      && JSON.stringify(failedAlarmState.groups) === JSON.stringify([managedGroup]),
+      && JSON.stringify(failedAlarmState.groups) === JSON.stringify([cleanupRaceGroup]),
     JSON.stringify({ beforeFailedAlarm, failedAlarmState }),
   );
 

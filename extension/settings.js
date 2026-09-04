@@ -8,7 +8,10 @@ import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
 } from "./dictionary-groups.js";
-import { managedDictionarySource } from "./managed-dictionary-source.js";
+import {
+  managedDictionarySource,
+  managedUpdateSchedule,
+} from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 
 const TARGET = "hoshidicts-offscreen";
@@ -17,7 +20,6 @@ const UPDATE_TARGET = "hachidori-updates";
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
 const MODIFIERS = ["none", "shift", "ctrl", "alt"];
 const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
-const UPDATE_SCHEDULES = ["off", "hourly", "daily", "weekly", "monthly"];
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
 // settings page can be left open.
@@ -164,7 +166,7 @@ function normaliseDictionaryState(value) {
 
 function normaliseUpdateSettings(value) {
   return {
-    schedule: UPDATE_SCHEDULES.includes(value?.schedule) ? value.schedule : "off",
+    schedule: managedUpdateSchedule(value?.schedule) ?? "off",
     lastCheckedAt: typeof value?.lastCheckedAt === "string" ? value.lastCheckedAt : null,
   };
 }

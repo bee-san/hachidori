@@ -1,8 +1,10 @@
 import {
   httpsUrl,
   MANAGED_DICTIONARY_CHANGED,
+  MANAGED_UPDATE_SCHEDULE_MINUTES,
   managedDictionaryFingerprint,
   managedDictionaryMatches,
+  managedUpdateSchedule,
 } from "./managed-dictionary-source.js";
 
 /*
@@ -39,13 +41,6 @@ const UPDATE_SETTINGS_KEY = "dictionaryUpdates";
 const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
 const DICTIONARY_STATE_SCHEMA_VERSION = 1;
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
-const UPDATE_SCHEDULE_MINUTES = Object.freeze({
-  hourly: 60,
-  daily: 24 * 60,
-  weekly: 7 * 24 * 60,
-  monthly: 30 * 24 * 60,
-});
-
 // A relayed request can arrive in the window between createDocument() resolving
 // and offscreen.js running its module body, where nothing is listening yet.
 const RELAY_ATTEMPTS = 5;
@@ -148,10 +143,7 @@ async function readDictionaryStorage() {
 }
 
 function normaliseUpdateSettings(value) {
-  const schedule = value?.schedule === "off"
-    || Object.prototype.hasOwnProperty.call(UPDATE_SCHEDULE_MINUTES, value?.schedule)
-    ? value.schedule
-    : "off";
+  const schedule = managedUpdateSchedule(value?.schedule) ?? "off";
   return {
     schedule,
     lastCheckedAt: typeof value?.lastCheckedAt === "string" ? value.lastCheckedAt : null,
@@ -497,7 +489,7 @@ let alarmTail = Promise.resolve();
 function reconcileUpdateAlarm() {
   const run = alarmTail.then(async () => {
     const settings = await readUpdateSettings();
-    const periodInMinutes = UPDATE_SCHEDULE_MINUTES[settings.schedule] ?? null;
+    const periodInMinutes = MANAGED_UPDATE_SCHEDULE_MINUTES[settings.schedule];
     const existing = await chrome.alarms.get(UPDATE_ALARM);
     if (periodInMinutes === null) {
       if (existing) await chrome.alarms.clear(UPDATE_ALARM);
@@ -517,14 +509,9 @@ function reconcileUpdateAlarm() {
 }
 
 const UPDATE_HANDLERS = {
-  async hd_updates_read() {
-    return { settings: await readUpdateSettings() };
-  },
-
   async hd_updates_schedule(message) {
-    const schedule = message?.schedule;
-    if (schedule !== "off"
-        && !Object.prototype.hasOwnProperty.call(UPDATE_SCHEDULE_MINUTES, schedule)) {
+    const schedule = managedUpdateSchedule(message?.schedule);
+    if (schedule === null) {
       throw new Error("the dictionary update schedule is invalid");
     }
     const settings = await writeUpdateSettings((current) => ({ ...current, schedule }));
