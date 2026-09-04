@@ -1262,20 +1262,17 @@ async function main() {
       && afterLegacyRemovalReload.dictionaries.some((dictionary) => dictionary.title === legacyRemovalTitle),
     JSON.stringify({ legacyRemovalReload, afterLegacyRemovalReload }),
   );
-  await storage.api().local.set({
-    dictionaryState: {
-      ...afterLegacyRemovalReload,
-      revision: afterLegacyRemovalReload.revision + 1,
-      dictionaries: afterLegacyRemovalReload.dictionaries.filter(
-        (dictionary) => dictionary.title !== legacyRemovalTitle,
+  const removedLegacyRemovalRoot = await request("hd_remove", { title: legacyRemovalTitle });
+  const afterLegacyRemoval = await storedDictionaryState();
+  check(
+    "the preserved .hdw-remove dictionary remains removable",
+    removedLegacyRemovalRoot.ok === true
+      && !observedEngine.FS.analyzePath(legacyRemovalPath).exists
+      && !afterLegacyRemoval.dictionaries.some(
+        (dictionary) => dictionary.title === legacyRemovalTitle,
       ),
-    },
-  });
-  for (const name of observedEngine.FS.readdir(legacyRemovalPath)) {
-    if (name !== "." && name !== "..") observedEngine.FS.unlink(`${legacyRemovalPath}/${name}`);
-  }
-  observedEngine.FS.rmdir(legacyRemovalPath);
-  await request("hd_reload");
+    JSON.stringify({ removedLegacyRemovalRoot, afterLegacyRemoval }),
+  );
 
   const invalidLoadPath = "/dicts/invalid-native-load";
   observedEngine.FS.mkdir(invalidLoadPath);

@@ -261,6 +261,17 @@ function settleStagedRemoval(title, restore) {
   return true;
 }
 
+function settleRemovalFiles(title, retained) {
+  if (title === ".hdw-remove" && hasDictionaryMarker(REMOVAL_ROOT)) {
+    if (retained) {
+      return false;
+    }
+    removeTree(REMOVAL_ROOT);
+    return true;
+  }
+  return settleStagedRemoval(title, retained);
+}
+
 function count(value) {
   const number = Math.trunc(Number(value));
   return Number.isFinite(number) && number > 0 ? number : 0;
@@ -583,6 +594,9 @@ async function loadRemovalCandidate(state, dictionaries) {
 }
 
 function stageDictionaryRemoval(title) {
+  if (title === ".hdw-remove" && hasDictionaryMarker(REMOVAL_ROOT)) {
+    return;
+  }
   const installedPath = `${DICT_ROOT}/${title}`;
   if (!exists(installedPath)) {
     return;
@@ -597,7 +611,7 @@ async function settleRemovalForState(title, state) {
   const retained = state.dictionaries.some(
     (dictionary) => text(dictionary?.title) === title,
   );
-  if (settleStagedRemoval(title, retained)) {
+  if (settleRemovalFiles(title, retained)) {
     await persistFilesystem();
   }
   await restoreCommittedDictionaries(state);
@@ -1049,7 +1063,8 @@ const HANDLERS = {
   async hd_remove(message) {
     requireEngine();
     const title = text(message.title);
-    if (!usableDictionaryTitle(title)) {
+    const legacyRemovalRoot = title === ".hdw-remove" && hasDictionaryMarker(REMOVAL_ROOT);
+    if (!usableDictionaryTitle(title) && !legacyRemovalRoot) {
       throw new Error("the remove request carried an unusable dictionary title");
     }
     const snapshot = await readDictionaryStorage();
@@ -1096,7 +1111,7 @@ const HANDLERS = {
     // The package is no longer reachable through storage or the live engine.
     // Cleanup may be retried by reconcile() after a crash or filesystem error.
     try {
-      if (settleStagedRemoval(title, false)) {
+      if (settleRemovalFiles(title, false)) {
         await persistFilesystem();
       }
     } catch (error) {
