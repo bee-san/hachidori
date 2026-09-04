@@ -194,6 +194,10 @@ function exists(path) {
   }
 }
 
+function hasDictionaryMarker(path) {
+  return MARKER_FILES.some((marker) => exists(`${path}/${marker}`));
+}
+
 function isDirectory(stat) {
   return (stat.mode & 0o170000) === 0o040000;
 }
@@ -323,7 +327,7 @@ async function listImported() {
     } catch (error) {
       continue;
     }
-    if (isDirectory(stat) && MARKER_FILES.some((marker) => exists(`${path}/${marker}`))) {
+    if (isDirectory(stat) && hasDictionaryMarker(path)) {
       dictionaries.push(await packageFromIndex(path));
     }
   }
@@ -394,6 +398,12 @@ async function commitDictionaryState(baseRevision, dictionaries) {
 
 async function recoverPendingRemovals(snapshot) {
   if (!exists(REMOVAL_ROOT)) {
+    return;
+  }
+  // `.hdw-remove` was a valid title before this staging directory existed.
+  // Its version marker distinguishes that legacy dictionary from transaction
+  // state, so upgrading must leave it intact.
+  if (hasDictionaryMarker(REMOVAL_ROOT)) {
     return;
   }
   const stored = snapshot.state?.dictionaries ?? snapshot.legacyDictionaries ?? [];

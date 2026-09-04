@@ -1228,6 +1228,55 @@ async function main() {
     JSON.stringify(removalRootImport),
   );
 
+  const legacyRemovalTitle = ".hdw-remove";
+  const legacyRemovalPath = `/dicts/${legacyRemovalTitle}`;
+  observedEngine.FS.mkdir(legacyRemovalPath);
+  for (const name of observedEngine.FS.readdir(`/dicts/${FIXTURE_TITLE}`)) {
+    if (name === "." || name === "..") continue;
+    const source = `/dicts/${FIXTURE_TITLE}/${name}`;
+    let bytes = observedEngine.FS.readFile(source);
+    if (name === "index.json") {
+      const legacyIndex = JSON.parse(new TextDecoder().decode(bytes));
+      legacyIndex.title = legacyRemovalTitle;
+      bytes = new TextEncoder().encode(JSON.stringify(legacyIndex));
+    }
+    observedEngine.FS.writeFile(`${legacyRemovalPath}/${name}`, bytes);
+  }
+  const beforeLegacyRemovalReload = await storedDictionaryState();
+  await storage.api().local.set({
+    dictionaryState: {
+      ...beforeLegacyRemovalReload,
+      revision: beforeLegacyRemovalReload.revision + 1,
+      dictionaries: [
+        ...beforeLegacyRemovalReload.dictionaries,
+        { ...importedPackage, id: "legacy-placeholder", title: legacyRemovalTitle, path: legacyRemovalPath },
+      ],
+    },
+  });
+  const legacyRemovalReload = await request("hd_reload");
+  const afterLegacyRemovalReload = await storedDictionaryState();
+  check(
+    "removal recovery preserves a pre-reservation .hdw-remove dictionary",
+    legacyRemovalReload.ok === true
+      && observedEngine.FS.analyzePath(`${legacyRemovalPath}/.hoshidicts_3`).exists
+      && afterLegacyRemovalReload.dictionaries.some((dictionary) => dictionary.title === legacyRemovalTitle),
+    JSON.stringify({ legacyRemovalReload, afterLegacyRemovalReload }),
+  );
+  await storage.api().local.set({
+    dictionaryState: {
+      ...afterLegacyRemovalReload,
+      revision: afterLegacyRemovalReload.revision + 1,
+      dictionaries: afterLegacyRemovalReload.dictionaries.filter(
+        (dictionary) => dictionary.title !== legacyRemovalTitle,
+      ),
+    },
+  });
+  for (const name of observedEngine.FS.readdir(legacyRemovalPath)) {
+    if (name !== "." && name !== "..") observedEngine.FS.unlink(`${legacyRemovalPath}/${name}`);
+  }
+  observedEngine.FS.rmdir(legacyRemovalPath);
+  await request("hd_reload");
+
   const invalidLoadPath = "/dicts/invalid-native-load";
   observedEngine.FS.mkdir(invalidLoadPath);
   observedEngine.FS.writeFile(`${invalidLoadPath}/.hoshidicts_3`, new Uint8Array());
