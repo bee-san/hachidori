@@ -798,6 +798,12 @@ function checkRecommendedDictionaries() {
     return;
   }
   pass("the recommended catalogue exists");
+  const manifest = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"));
+  check(
+    "the extension requests the browser alarm permission for managed updates",
+    manifest.permissions?.includes("alarms") === true,
+    JSON.stringify(manifest.permissions),
+  );
   const catalogueContract = (entry) => ({
     sourceId: entry.sourceId,
     name: entry.name,
@@ -1577,6 +1583,52 @@ async function main() {
       && await alarms.api.get(updateAlarmName) === undefined,
     JSON.stringify({ scheduleOff, alarms: [...alarms.values.values()] }),
   );
+
+  const communityTitle = "Community Dictionary";
+  const communityIndexUrl = "https://example.test/community/index.json";
+  const communityDownloadUrl = "https://example.test/community/archive.zip";
+  const communityImport = await request("hd_import", {
+    blobUrl: createObjectURL(buildRecommendedZip({
+      title: communityTitle,
+      revision: "community-1",
+      indexUrl: communityIndexUrl,
+      downloadUrl: communityDownloadUrl,
+      capabilities: ["term"],
+    })),
+    fileName: "community.zip",
+  });
+  const communityState = await storedDictionaryState();
+  const community = communityState.dictionaries.find((entry) => entry.title === communityTitle);
+  remoteJson(communityIndexUrl, { revision: "community-2" });
+  remoteArchive(
+    communityDownloadUrl,
+    buildRecommendedZip({
+      title: communityTitle,
+      revision: "community-2",
+      indexUrl: communityIndexUrl,
+      downloadUrl: communityDownloadUrl,
+      capabilities: ["term"],
+    }),
+  );
+  const communityUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community?.id],
+  });
+  const updatedCommunityState = await storedDictionaryState();
+  const updatedCommunity = updatedCommunityState.dictionaries.find((entry) => entry.id === community?.id);
+  check(
+    "a local import with a complete HTTPS update descriptor uses the same managed transaction",
+    communityImport.ok === true
+      && community?.sourceId === undefined
+      && community?.isUpdatable === true
+      && communityUpdate?.ok === true
+      && updatedCommunity?.revision === "community-2"
+      && updatedCommunity?.id === community.id
+      && updatedCommunity?.lastUpdateCheck?.status === "up-to-date",
+    JSON.stringify({ communityImport, community, communityUpdate, updatedCommunityState }),
+  );
+  await request("hd_remove", { title: communityTitle });
   await request("hd_remove", { title: "Jitendex.org [2026-09-08]" });
   await request("hd_remove", { title: localUpdateTitle });
   await request("hd_remove", { title: updatedTitle });
@@ -3171,6 +3223,9 @@ async function settingsManagedUpdatesStage() {
       && Date.now() < deadline) {
     await new Promise((done) => window.setTimeout(done, 5));
   }
+  while (window.document.getElementById("update-check-now")?.disabled && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
   result.allRequest = updateRequests.filter((request) => request.type === "hd_updates_install")[1];
 
   const schedule = window.document.getElementById("update-schedule");
@@ -3182,6 +3237,7 @@ async function settingsManagedUpdatesStage() {
       && Date.now() < deadline) {
     await new Promise((done) => window.setTimeout(done, 5));
   }
+  await new Promise((done) => window.setTimeout(done, 0));
   result.scheduleRequest = updateRequests.find((request) => request.type === "hd_updates_schedule");
   dom.window.close();
   return result;
