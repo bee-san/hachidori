@@ -21,20 +21,20 @@
         <div class="card-head">
           <h2 id="import-heading">Import</h2>
           <p class="hint">
-            Yomitan <code>.zip</code> dictionaries. Importing runs in the background with no progress
-            readout, and a large dictionary can take several minutes. Keep this page open until it
-            finishes &mdash; closing it cancels the transfer.
+            Choose one or more Yomitan <code>.zip</code> dictionaries. They import one at a time, and
+            a large dictionary can take several minutes. Keep this page open until the batch finishes
+            &mdash; closing it cancels the current transfer.
           </p>
         </div>
         <div class="import-row">
           <label class="file-button">
-            <span>Choose a .zip file</span>
-            <input id="import-file" type="file" accept=".zip,application/zip" />
+            <span>Choose .zip files</span>
+            <input id="import-file" type="file" accept=".zip,application/zip" multiple />
           </label>
           <p class="import-state" id="import-state" role="status" aria-live="polite"></p>
         </div>
         <div class="track" id="import-progress" hidden><div class="track-fill"></div></div>
-        <p class="import-detail" id="import-detail" hidden></p>
+        <ol class="import-detail" id="import-detail" aria-label="Import results" hidden></ol>
         <div class="recommendations" aria-labelledby="recommended-dictionaries-heading">
           <div class="recommendations-head">
             <h3 id="recommended-dictionaries-heading">Recommended dictionaries</h3>

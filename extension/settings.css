@@ -199,11 +199,23 @@ code {
 
 .import-detail {
   margin: 0;
-  padding: 12px 14px;
+  padding: 12px 14px 12px 36px;
   border-radius: 8px;
   background: var(--surface-sunken);
   color: var(--text-dim);
   overflow-wrap: anywhere;
+}
+
+.import-result + .import-result {
+  margin-top: 6px;
+}
+
+.import-result.is-ready {
+  color: var(--ok);
+}
+
+.import-result.is-error {
+  color: var(--error);
 }
 
 .recommendations {
@@ -264,8 +276,8 @@ code {
   font-size: 12.5px;
 }
 
-/* Indeterminate on purpose: hdw_import is a single blocking call with no
-   progress callback, so a moving bar would be a lie about position. */
+/* Indeterminate for the current archive: hdw_import has no byte progress
+   callback. The status line reports completed archives across the batch. */
 .track {
   height: 4px;
   border-radius: 2px;

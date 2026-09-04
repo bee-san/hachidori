@@ -63,7 +63,7 @@ Open Hachidori's options page to:
 - reorder dictionaries by dragging, with the arrow buttons, or by entering a position;
 - configure the hover key, delay, scan length, result limit, frequency ranking, and the dictionary opened when you click a kanji.
 
-Large dictionaries can take several minutes to import. Keep the options page open until the import finishes.
+Selected dictionaries import one at a time, with an outcome retained for every archive; a failure does not stop the rest. Large dictionaries can take several minutes, so keep the page open until the batch finishes.
 
 The kanji dictionary chooser accepts both traditional Yomitan kanji dictionaries and term dictionaries with single-kanji entries.
 

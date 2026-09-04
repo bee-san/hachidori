@@ -1676,6 +1676,33 @@ async function main() {
       && settingsConflict.management.visibleAfterExternalChange?.join(",") === "cccccccccccccccccccccccccccccccc,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     JSON.stringify(settingsConflict?.management),
   );
+  const settingsBatch = await settingsBatchImportStage();
+  check(
+    "settings import every selected archive sequentially and retain each outcome",
+    settingsBatch?.multiple === true
+      && settingsBatch.pickerValue === ""
+      && JSON.stringify(settingsBatch.importRequests?.map(({ fileName }) => fileName))
+        === JSON.stringify(["first.zip", "broken.zip", "replacement.zip"])
+      && settingsBatch.importRequests?.every(({ state, completed }, index) =>
+        state.includes(`${index + 1} of 3`)
+          && state.includes(`${index} of 3 complete`)
+          && completed === index)
+      && settingsBatch.maxActiveImports === 1
+      && JSON.stringify(settingsBatch.revokedUrls) === JSON.stringify(settingsBatch.createdUrls)
+      && JSON.stringify(settingsBatch.outcomes?.map(({ error }) => error))
+        === JSON.stringify([false, true, false])
+      && settingsBatch.outcomes?.[0]?.text.includes("first.zip")
+      && settingsBatch.outcomes[0].text.includes("Imported First")
+      && settingsBatch.outcomes?.[1]?.text.includes("broken.zip")
+      && settingsBatch.outcomes[1].text.includes("broken archive")
+      && settingsBatch.outcomes?.[2]?.text.includes("replacement.zip")
+      && settingsBatch.outcomes[2].text.includes("Imported First")
+      && settingsBatch.finalState === "Finished 3 of 3 archives — 2 imported, 1 failed."
+      && settingsBatch.controlsRestored === true
+      && settingsBatch.stateReads === 1
+      && settingsBatch.statusReads === 1,
+    JSON.stringify(settingsBatch),
+  );
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -1935,6 +1962,122 @@ async function loadJsdom() {
     jsdomFailure = `${entry} resolved but would not import: ${error.message}`;
     return null;
   }
+}
+
+async function settingsBatchImportStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) {
+    return null;
+  }
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+    url: `${EXTENSION_ORIGIN}/settings.html`,
+  });
+  const { window } = dom;
+  const state = { schemaVersion: 1, revision: 0, dictionaries: [] };
+  const importReplies = [
+    { ok: true, report: { success: true, title: "First", termCount: 1 } },
+    { ok: false, error: "broken archive", report: { success: false, error: "broken archive" } },
+    { ok: true, report: { success: true, title: "First", termCount: 2 } },
+  ];
+  const importRequests = [];
+  const createdUrls = [];
+  const revokedUrls = [];
+  let activeImports = 0;
+  let maxActiveImports = 0;
+  let stateReads = 0;
+  let statusReads = 0;
+
+  window.URL.createObjectURL = (file) => {
+    const url = `blob:settings-batch/${createdUrls.length}-${file.name}`;
+    createdUrls.push(url);
+    return url;
+  };
+  window.URL.revokeObjectURL = (url) => revokedUrls.push(url);
+  window.chrome = {
+    runtime: {
+      id: "hachidorisettingsbatchsmoke",
+      async sendMessage(message) {
+        if (message.type === "hd_state_read") {
+          stateReads += 1;
+          return { ok: true, state: structuredClone(state) };
+        }
+        if (message.type === "hd_status") {
+          statusReads += 1;
+          return { ok: true, ready: true, loading: false, dictionaryCount: 0 };
+        }
+        if (message.type === "hd_options_write") {
+          return { ok: true, options: structuredClone(message.options) };
+        }
+        if (message.type === "hd_import") {
+          activeImports += 1;
+          maxActiveImports = Math.max(maxActiveImports, activeImports);
+          const index = importRequests.length;
+          importRequests.push({
+            fileName: message.fileName,
+            state: window.document.getElementById("import-state")?.textContent ?? "",
+            completed: window.document.querySelectorAll("#import-detail .import-result").length,
+          });
+          await new Promise((done) => window.setTimeout(done, 0));
+          activeImports -= 1;
+          return importReplies[index];
+        }
+        throw new Error(`unexpected settings batch request ${message.type}`);
+      },
+    },
+    storage: {
+      local: {
+        async get() {
+          return { options: { kanjiClickDictionary: "" } };
+        },
+      },
+      onChanged: { addListener() {} },
+    },
+  };
+  window.eval(readFileSync(resolve(EXTENSION, "settings.js"), "utf8"));
+
+  const deadline = Date.now() + 2000;
+  while (!window.document.getElementById("engine-status")?.textContent?.startsWith("Ready")
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  stateReads = 0;
+  statusReads = 0;
+
+  const input = window.document.getElementById("import-file");
+  const files = [
+    new window.File(["first"], "first.zip", { type: "application/zip" }),
+    new window.File(["broken"], "broken.zip", { type: "application/zip" }),
+    new window.File(["replacement"], "replacement.zip", { type: "application/zip" }),
+  ];
+  Object.defineProperty(input, "files", { configurable: true, value: files });
+  input.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  const batchDeadline = Date.now() + 2000;
+  while ((importRequests.length < files.length || input.disabled) && Date.now() < batchDeadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  const outcomes = [...window.document.querySelectorAll("#import-detail .import-result")].map((item) => ({
+    text: item.textContent,
+    error: item.classList.contains("is-error"),
+  }));
+  const result = {
+    multiple: input.multiple,
+    pickerValue: input.value,
+    importRequests,
+    maxActiveImports,
+    createdUrls,
+    revokedUrls,
+    outcomes,
+    finalState: window.document.getElementById("import-state")?.textContent ?? "",
+    controlsRestored: input.disabled === false,
+    stateReads,
+    statusReads,
+  };
+  dom.window.close();
+  return result;
 }
 
 async function settingsConflictStage() {

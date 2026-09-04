@@ -28,6 +28,7 @@ const REPO = resolve(HERE, "..");
 const EXTENSION = resolve(REPO, "extension");
 const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
 const GENERIC_KANJI_FIXTURE = resolve(HERE, "fixtures/hachidori-generic-kanji-fixture.zip");
+const INVALID_FIXTURE = resolve(HERE, "fixtures/malformed-index.zip");
 const GENERIC_KANJI_SELECTION = { title: GENERIC_KANJI_TITLE, kind: "term" };
 const FIXTURE_KANJI_SELECTION = { title: "hachidori-fixture", kind: "kanji" };
 const FIXTURE_TERM_SELECTION = { title: "hachidori-fixture", kind: "term" };
@@ -140,11 +141,12 @@ const PLANNED = [
   "recommended dictionaries form two columns on desktop",
   "recommended dictionaries stack without overflow on narrow screens",
   "settings page exposes a .zip file input",
-  "the .zip file input is type=file and accepts .zip",
+  "the .zip file input accepts multiple .zip files",
   "importing a Yomitan .zip from the settings page succeeds",
   "the imported dictionary is persisted in OPFS",
   "the imported dictionary is recorded in chrome.storage.local",
-  "re-importing the same dictionary replaces it safely in OPFS",
+  "the import batch continues after failure and retains every archive outcome",
+  "batch re-import preserves dictionary presentation, source, and order",
   "the dictionary list renders its alias, metadata, and five capability badges",
   "the dictionary position input stays compact on a narrow Settings page",
   "the Settings enabled control re-enables the preserved package",
@@ -722,26 +724,29 @@ async function main() {
   // everything offers the reader dictionaries it cannot import.
   const inputShape = await page.evaluate(() => {
     const el = document.getElementById("import-file");
-    return { tag: el.tagName.toLowerCase(), type: el.type, accept: el.getAttribute("accept") || "" };
+    return {
+      tag: el.tagName.toLowerCase(),
+      type: el.type,
+      accept: el.getAttribute("accept") || "",
+      multiple: el.multiple,
+    };
   });
-  check("the .zip file input is type=file and accepts .zip",
+  check("the .zip file input accepts multiple .zip files",
     inputShape.tag === "input" && inputShape.type === "file"
-      && inputShape.accept.split(",").map(s => s.trim()).includes(".zip"),
+      && inputShape.accept.split(",").map(s => s.trim()).includes(".zip")
+      && inputShape.multiple === true,
     `#import-file: ${JSON.stringify(inputShape)}`);
   await input.uploadFile(FIXTURE);
 
   const importState = await page.waitForFunction(() => {
     const t = (document.getElementById("import-state")?.textContent || "").trim();
-    // "Importing x — 3s elapsed" is the in-progress line; anything else is the
-    // outcome. An alternative matching the empty string would match every line
-    // and this wait would never settle.
-    return t === "" || t === "…" || /^(importing|working)/i.test(t) ? false : t;
+    return t.startsWith("Finished 1 of 1 archive") ? t : false;
   }, { timeout: 120_000, polling: 500 }).then(h => h.jsonValue()).catch(() => "(never settled)");
   const importDetail = await page.evaluate(() =>
     (document.getElementById("import-detail")?.textContent || "").trim());
-  // The success line settings.js writes, rather than the absence of the words
-  // fail and error: a wait that timed out must not read as a pass.
-  const importOk = /^Imported /.test(importState);
+  const importOk = importState === "Finished 1 of 1 archive — 1 imported, 0 failed."
+    && importDetail.includes("hachidori-fixture.zip")
+    && importDetail.includes("Imported hachidori-fixture");
   check("importing a Yomitan .zip from the settings page succeeds", importOk,
     `#import-state: ${importState}\n       #import-detail: ${importDetail}`);
 
@@ -806,34 +811,62 @@ async function main() {
     lastUpdateCheck: LAST_UPDATE_CHECK,
   });
 
-  await page.evaluate(() => {
-    document.getElementById("import-file").value = "";
-    document.getElementById("import-state").textContent = "";
-  });
-  const replacementInput = await page.$("#import-file");
-  await replacementInput.uploadFile(FIXTURE);
-  const replacementState = await page.waitForFunction(() => {
+  const batchInput = await page.$("#import-file");
+  await batchInput.uploadFile(GENERIC_KANJI_FIXTURE, INVALID_FIXTURE, FIXTURE);
+  const batchState = await page.waitForFunction(() => {
     const text = (document.getElementById("import-state")?.textContent || "").trim();
-    return text === "" || text === "…" || /^(importing|working)/i.test(text) ? false : text;
-  }, { timeout: 120_000, polling: 250 }).then(handle => handle.jsonValue()).catch(() => "(never settled)");
+    return text.startsWith("Finished 3 of 3 archives") ? text : false;
+  }, { timeout: 180_000, polling: 250 }).then(handle => handle.jsonValue()).catch(() => "(never settled)");
+  const batchUi = await page.evaluate(() => ({
+    pickerValue: document.getElementById("import-file")?.value ?? "missing",
+    progressHidden: document.getElementById("import-progress")?.hidden,
+    stateError: document.getElementById("import-state")?.classList.contains("is-error"),
+    outcomes: [...document.querySelectorAll("#import-detail .import-result")].map((result) => ({
+      text: result.textContent.trim(),
+      error: result.classList.contains("is-error"),
+    })),
+  }));
   const replacedState = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
-  const replacedPackage = replacedState?.dictionaryState?.dictionaries?.[0];
+  const replacedDictionaries = replacedState?.dictionaryState?.dictionaries ?? [];
+  const replacedPackage = replacedDictionaries.find(
+    (dictionary) => dictionary.title === "hachidori-fixture",
+  );
+  const genericPackage = replacedDictionaries.find(
+    (dictionary) => dictionary.title === GENERIC_KANJI_TITLE,
+  );
   const replacedFixtureGeneration = ownedGenerationRoot(
     replacedPackage?.path,
     "hachidori-fixture",
   );
-  const opfsAfterReimport = await listOpfsPaths(page);
-  check("re-importing the same dictionary replaces it safely in OPFS",
+  const opfsAfterBatch = await listOpfsPaths(page);
+  check("the import batch continues after failure and retains every archive outcome",
+    batchState === "Finished 3 of 3 archives — 2 imported, 1 failed."
+      && batchUi.pickerValue === ""
+      && batchUi.progressHidden === true
+      && batchUi.stateError === true
+      && batchUi.outcomes.length === 3
+      && batchUi.outcomes[0].error === false
+      && batchUi.outcomes[0].text.includes("hachidori-generic-kanji-fixture.zip")
+      && batchUi.outcomes[0].text.includes(`Imported ${GENERIC_KANJI_TITLE}`)
+      && batchUi.outcomes[1].error === true
+      && batchUi.outcomes[1].text.includes("malformed-index.zip")
+      && batchUi.outcomes[1].text.includes("Could not be imported")
+      && batchUi.outcomes[2].error === false
+      && batchUi.outcomes[2].text.includes("hachidori-fixture.zip")
+      && batchUi.outcomes[2].text.includes("Imported hachidori-fixture"),
+    `#import-state: ${batchState}; batch UI: ${JSON.stringify(batchUi)}`);
+  check("batch re-import preserves dictionary presentation, source, and order",
     aliasChanged?.settled?.id === FIXTURE_ID
       && stateBeforeReimport?.ok === true
-      && /^Imported /.test(replacementState)
-      && replacedState?.dictionaryState?.dictionaries?.length === 1
+      && replacedDictionaries.length === 2
       && replacedState.dictionaryState.revision > dictionaryState.revision
+      && JSON.stringify(replacedDictionaries.map((dictionary) => dictionary.id))
+        === JSON.stringify([FIXTURE_ID, GENERIC_KANJI_ID])
       && replacedPackage?.id === FIXTURE_ID
       && replacedFixtureGeneration !== ""
       && replacedPackage.path !== fixturePackage.path
-      && generationExists(opfsAfterReimport, replacedPackage.path)
-      && generationIsAbsent(opfsAfterReimport, firstFixtureGeneration)
+      && generationExists(opfsAfterBatch, replacedPackage.path)
+      && generationIsAbsent(opfsAfterBatch, firstFixtureGeneration)
       && replacedPackage?.displayName === FIXTURE_ALIAS
       && replacedPackage?.enabled === false
       && replacedPackage?.favorite === true
@@ -841,8 +874,8 @@ async function main() {
       && replacedPackage?.indexUrl === MANAGED_INDEX_URL
       && replacedPackage?.downloadUrl === MANAGED_DOWNLOAD_URL
       && replacedPackage?.lastUpdateCheck === LAST_UPDATE_CHECK,
-    `alias change: ${JSON.stringify(aliasChanged)}; state before reimport: ${JSON.stringify(stateBeforeReimport)}; #import-state: ${replacementState};`
-      + ` dictionaryState: ${JSON.stringify(replacedState?.dictionaryState)}; OPFS paths: ${JSON.stringify(opfsAfterReimport)}`);
+    `alias change: ${JSON.stringify(aliasChanged)}; state before reimport: ${JSON.stringify(stateBeforeReimport)};`
+      + ` dictionaryState: ${JSON.stringify(replacedState?.dictionaryState)}; OPFS paths: ${JSON.stringify(opfsAfterBatch)}`);
 
   await page.waitForFunction((alias) => {
     const row = document.querySelector("#dict-list .dict-row");
@@ -867,7 +900,7 @@ async function main() {
     };
   });
   check("the dictionary list renders its alias, metadata, and five capability badges",
-    renderedDictionary.count === 1
+    renderedDictionary.count === 2
       && renderedDictionary.title === FIXTURE_ALIAS
       && renderedDictionary.canonical === "hachidori-fixture"
       && renderedDictionary.alias === FIXTURE_ALIAS
@@ -922,23 +955,12 @@ async function main() {
     JSON.stringify(fixtureEnabled),
   );
 
-  await input.uploadFile(GENERIC_KANJI_FIXTURE);
-  const genericImportState = await page.waitForFunction((title) => {
-    const text = (document.getElementById("import-state")?.textContent || "").trim();
-    return text.startsWith("Imported ") && text.includes(title) ? text : false;
-  }, { timeout: 120_000, polling: 500 }, GENERIC_KANJI_TITLE)
-    .then(handle => handle.jsonValue())
-    .catch(() => "(never settled)");
-  const afterGenericImport = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
-  const genericPackage = afterGenericImport?.dictionaryState?.dictionaries?.find(
-    (dictionary) => dictionary.title === GENERIC_KANJI_TITLE,
-  );
   check(
     "importing a term-only single-kanji dictionary succeeds",
-    genericImportState.includes(GENERIC_KANJI_TITLE)
-      && genericPackage?.id === GENERIC_KANJI_ID
-      && genericPackage.id !== fixtureId,
-    `#import-state: ${genericImportState}; dictionaryState: ${JSON.stringify(afterGenericImport?.dictionaryState)}`,
+    genericPackage?.id === GENERIC_KANJI_ID
+      && genericPackage.id !== fixtureId
+      && generationExists(opfsAfterBatch, genericPackage.path),
+    `dictionaryState: ${JSON.stringify(replacedState?.dictionaryState)}; OPFS paths: ${JSON.stringify(opfsAfterBatch)}`,
   );
 
   await page.waitForFunction(() => document.querySelectorAll("#dict-list .dict-row").length === 2, {
