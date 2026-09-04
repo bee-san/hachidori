@@ -934,12 +934,13 @@ async function main() {
     schemaVersion: 1,
     revision: 1,
     dictionaries: [],
+    groups: [],
   });
   const readBack = await pageChrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_read" });
   equal(
     "the service worker answers hd_state_read without relaying it",
     [readBack?.ok, readBack?.state, bus.log.some((row) => row.type === "hd_state_read" && row.relayed)],
-    [true, { schemaVersion: 1, revision: 1, dictionaries: [] }, false],
+    [true, { schemaVersion: 1, revision: 1, dictionaries: [], groups: [] }, false],
   );
 
   const zip = new Uint8Array(await readFile(FIXTURE));
@@ -1079,11 +1080,17 @@ async function main() {
     ...entry,
     displayName: "stale writer",
   }));
+  const studyGroup = {
+    id: "study-group",
+    name: "Study",
+    dictionaryIds: [importedPackage.id],
+  };
   const firstWriter = await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
     type: "hd_state_cas",
     baseRevision: migratedState.revision,
     dictionaries: firstWriterDictionaries,
+    groups: [studyGroup],
   });
   const staleWriter = await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
@@ -1097,6 +1104,7 @@ async function main() {
     firstWriter?.ok === true
       && firstWriter.state?.revision === migratedState.revision + 1
       && firstWriter.state?.dictionaries?.[0]?.favorite === true
+      && JSON.stringify(firstWriter.state?.groups) === JSON.stringify([studyGroup])
       && staleWriter?.ok === false
       && staleWriter.conflict === true
       && JSON.stringify(staleWriter.state) === JSON.stringify(firstWriter.state)
@@ -1703,6 +1711,32 @@ async function main() {
       && settingsBatch.statusReads === 1,
     JSON.stringify(settingsBatch),
   );
+  check(
+    "settings manage normalized global groups and stable ordered memberships",
+    settingsConflict?.groups?.normalisedGroupName === "Study Deck"
+      && settingsConflict.groups.duplicateError?.includes("already exists")
+      && settingsConflict.groups.reservedError?.includes("reserved")
+      && settingsConflict.groups.requestsAfterDuplicate === 1
+      && settingsConflict.groups.requestsAfterReserved === 1
+      && settingsConflict.groups.groupOrderAfterMove?.join(",") === "Grammar,Study Deck"
+      && settingsConflict.groups.membershipBeforeMove?.join(",")
+        === "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      && settingsConflict.groups.membershipAfterMove?.join(",")
+        === "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      && settingsConflict.groups.membershipAfterAlias?.join(",")
+        === settingsConflict.groups.membershipAfterMove.join(",")
+      && settingsConflict.groups.renamedMemberLabel === "Renamed after grouping"
+      && settingsConflict.groups.finalGroups?.length === 1
+      && settingsConflict.groups.finalGroups[0].name === "Reading"
+      && settingsConflict.groups.finalGroups[0].dictionaryIds?.join(",")
+        === "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      && settingsConflict.groups.requestTypes?.length === 9
+      && settingsConflict.groups.requestTypes.every((type) => type === "hd_state_cas")
+      && settingsConflict.groups.dictionarySnapshots.every((snapshot) =>
+        snapshot.join(",") === settingsConflict.groups.dictionarySnapshots[0].join(","))
+     && settingsConflict.directDictionaryWrites === 0,
+    JSON.stringify(settingsConflict?.groups),
+  );
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -1763,7 +1797,12 @@ async function main() {
   check("hd_remove succeeds", removed.ok === true, JSON.stringify(removed));
   const afterRemove = await request("hd_status");
   equal("nothing is loaded after a remove", [afterRemove.ready, afterRemove.dictionaryCount], [true, 0]);
-  equal("the logical dictionary inventory is empty", (await storedDictionaryState()).dictionaries, []);
+  const stateAfterRemove = await storedDictionaryState();
+  equal("the logical dictionary inventory is empty", stateAfterRemove.dictionaries, []);
+  equal("removing a dictionary prunes its stable group membership", stateAfterRemove.groups, [{
+    ...studyGroup,
+    dictionaryIds: [],
+  }]);
   const generationBefore = afterRemove.generation;
   const noop = await request("hd_remove", { title: "never imported" });
   const afterNoop = await request("hd_status");
@@ -2096,6 +2135,7 @@ async function settingsConflictStage() {
     schemaVersion: 1,
     revision: 7,
     dictionaries: [genericPackage()],
+    groups: [],
   };
   let storageListener = null;
   const casRequests = [];
@@ -2105,11 +2145,12 @@ async function settingsConflictStage() {
   let directDictionaryWrites = 0;
   let removeStarted = false;
   let releaseRemove = null;
-  const acceptState = (nextDictionaries) => {
+  const acceptState = (nextDictionaries, nextGroups = state.groups) => {
     state = {
       schemaVersion: 1,
       revision: state.revision + 1,
       dictionaries: structuredClone(nextDictionaries),
+      groups: structuredClone(nextGroups),
     };
     storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
     return { ok: true, state: structuredClone(state) };
@@ -2126,14 +2167,16 @@ async function settingsConflictStage() {
             type: message.type,
             baseRevision: message.baseRevision,
             dictionaries: structuredClone(message.dictionaries),
+            groups: message.groups === undefined ? undefined : structuredClone(message.groups),
           });
-          return acceptState(message.dictionaries);
+          return acceptState(message.dictionaries, message.groups);
         }
         if (message.type === "hd_apply_state") {
           casRequests.push({
             type: message.type,
             baseRevision: message.baseRevision,
             dictionaries: structuredClone(message.dictionaries),
+            groups: message.groups === undefined ? undefined : structuredClone(message.groups),
           });
           if (!rejectNextApply) {
             if (!holdNextApply) {
@@ -2157,6 +2200,7 @@ async function settingsConflictStage() {
               enabled: true,
               favorite: true,
             }],
+            groups: structuredClone(state.groups),
           };
           storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
           return {
@@ -2305,6 +2349,7 @@ async function settingsConflictStage() {
     schemaVersion: 1,
     revision: state.revision + 1,
     dictionaries: managementDictionaries,
+    groups: [],
   };
   storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
   await new Promise((done) => window.setTimeout(done, 0));
@@ -2385,6 +2430,7 @@ async function settingsConflictStage() {
     schemaVersion: 1,
     revision: state.revision + 1,
     dictionaries: structuredClone(managementDictionaries),
+    groups: [],
   };
   storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
   casRequests.splice(4);
@@ -2447,6 +2493,104 @@ async function settingsConflictStage() {
     selectedAfterOperations,
     selectedAfterExternalChange: selectedRowIds(),
     visibleAfterExternalChange: rowIds(),
+  };
+
+  casRequests.length = 0;
+  const newGroupName = window.document.getElementById("dict-group-name-new");
+  const createGroup = window.document.getElementById("dict-group-create");
+  const groupError = window.document.getElementById("dict-group-error");
+  if (!(newGroupName instanceof window.HTMLInputElement)
+      || !(createGroup instanceof window.HTMLButtonElement)
+      || !(groupError instanceof window.HTMLElement)) {
+    result.groups = { error: "dictionary group controls did not render" };
+    result.directDictionaryWrites = directDictionaryWrites;
+    dom.window.close();
+    return result;
+  }
+
+  const groupRow = (id) => [...window.document.querySelectorAll("#dict-group-list .dict-group")]
+    .find((row) => row.dataset.groupId === id);
+  const groupMemberRow = (groupId, dictionaryId) => [...groupRow(groupId)
+    ?.querySelectorAll(".dict-group-member") ?? []]
+    .find((row) => row.dataset.dictionaryId === dictionaryId);
+  const addGroupMember = async (groupId, dictionaryId, requestCount) => {
+    const row = groupRow(groupId);
+    const select = row?.querySelector(".dict-group-add-select");
+    select.value = dictionaryId;
+    row.querySelector(".dict-group-add").click();
+    await waitForRequestCount(requestCount);
+  };
+
+  newGroupName.value = "  Ｓtudy\t  Deck ";
+  createGroup.click();
+  await waitForRequestCount(1);
+  const studyGroupId = state.groups[0]?.id;
+  const normalisedGroupName = state.groups[0]?.name;
+
+  newGroupName.value = "study deck";
+  createGroup.click();
+  await new Promise((done) => window.setTimeout(done, 0));
+  const duplicateError = groupError.textContent;
+  const requestsAfterDuplicate = casRequests.length;
+
+  newGroupName.value = " Ａｌｌ ";
+  createGroup.click();
+  await new Promise((done) => window.setTimeout(done, 0));
+  const reservedError = groupError.textContent;
+  const requestsAfterReserved = casRequests.length;
+
+  newGroupName.value = "Grammar";
+  createGroup.click();
+  await waitForRequestCount(2);
+  const grammarGroupId = state.groups.find((group) => group.name === "Grammar")?.id;
+  groupRow(grammarGroupId).querySelector(".dict-group-up").click();
+  await waitForRequestCount(3);
+  const groupOrderAfterMove = state.groups.map((group) => group.name);
+
+  const studyName = groupRow(studyGroupId).querySelector(".dict-group-name");
+  studyName.value = "Reading";
+  studyName.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await waitForRequestCount(4);
+
+  await addGroupMember(studyGroupId, ids.beta, 5);
+  await addGroupMember(studyGroupId, ids.alpha, 6);
+  const membershipBeforeMove = state.groups.find((group) => group.id === studyGroupId)?.dictionaryIds;
+  groupMemberRow(studyGroupId, ids.alpha).querySelector(".dict-group-member-up").click();
+  await waitForRequestCount(7);
+  const membershipAfterMove = state.groups.find((group) => group.id === studyGroupId)?.dictionaryIds;
+
+  state = {
+    ...state,
+    revision: state.revision + 1,
+    dictionaries: state.dictionaries.map((dictionary) => dictionary.id === ids.beta
+      ? { ...dictionary, displayName: "Renamed after grouping" }
+      : dictionary),
+  };
+  storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+  await new Promise((done) => window.setTimeout(done, 0));
+  const membershipAfterAlias = state.groups.find((group) => group.id === studyGroupId)?.dictionaryIds;
+  const renamedMemberLabel = groupMemberRow(studyGroupId, ids.beta)
+    ?.querySelector(".dict-group-member-name")?.textContent;
+
+  groupMemberRow(studyGroupId, ids.beta).querySelector(".dict-group-member-remove").click();
+  await waitForRequestCount(8);
+  groupRow(grammarGroupId).querySelector(".dict-group-delete").click();
+  await waitForRequestCount(9);
+
+  result.groups = {
+    normalisedGroupName,
+    duplicateError,
+    reservedError,
+    requestsAfterDuplicate,
+    requestsAfterReserved,
+    groupOrderAfterMove,
+    membershipBeforeMove,
+    membershipAfterMove,
+    membershipAfterAlias,
+    renamedMemberLabel,
+    finalGroups: structuredClone(state.groups),
+    requestTypes: casRequests.map((request) => request.type),
+    dictionarySnapshots: casRequests.map((request) => request.dictionaries.map((dictionary) => dictionary.id)),
   };
   result.directDictionaryWrites = directDictionaryWrites;
   dom.window.close();

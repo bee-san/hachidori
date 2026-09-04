@@ -153,6 +153,8 @@ const PLANNED = [
   "importing a term-only single-kanji dictionary succeeds",
   "dictionary management filters and bulk-updates visible stable selections",
   "drag and keyboard position controls share the persisted lookup order",
+  "named groups normalize unique names and keep stable dictionary memberships",
+  "group and member order controls persist their shared state order",
   "the kanji dictionary chooser lists imported term and kanji dictionaries",
   "a combined archive exposes separate term and native kanji choices",
   "stale title-only kanji selections are pruned",
@@ -1082,6 +1084,136 @@ async function main() {
       && JSON.stringify(orderAfterKeyboardMove.order) === JSON.stringify(orderBeforeDrag.order)
       && orderAfterKeyboardMove.selected === true,
     JSON.stringify({ orderBeforeDrag, orderAfterDrag, orderAfterKeyboardMove }),
+  );
+
+  const groupManagement = await page.evaluate(async ({ fixtureId, genericId, fixtureAlias }) => {
+    const nameInput = document.getElementById("dict-group-name-new");
+    const createButton = document.getElementById("dict-group-create");
+    const error = document.getElementById("dict-group-error");
+    if (!(nameInput instanceof HTMLInputElement)
+        || !(createButton instanceof HTMLButtonElement)
+        || !(error instanceof HTMLElement)) {
+      return { error: "dictionary group controls were missing" };
+    }
+
+    const state = async () => (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+    const waitFor = async (revision, matches) => {
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        const current = await state();
+        if (current.revision > revision && matches(current)) return current;
+        await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+      }
+      throw new Error("dictionary group state did not settle");
+    };
+    const groupRow = (id) => [...document.querySelectorAll("#dict-group-list .dict-group")]
+      .find((row) => row.dataset.groupId === id);
+    const memberRow = (groupId, dictionaryId) => [...groupRow(groupId)
+      ?.querySelectorAll(".dict-group-member") ?? []]
+      .find((row) => row.dataset.dictionaryId === dictionaryId);
+    const addMember = async (groupId, dictionaryId) => {
+      const before = await state();
+      const row = groupRow(groupId);
+      const select = row.querySelector(".dict-group-add-select");
+      select.value = dictionaryId;
+      row.querySelector(".dict-group-add").click();
+      return waitFor(before.revision, (current) => current.groups
+        .find((group) => group.id === groupId)?.dictionaryIds.includes(dictionaryId));
+    };
+
+    let current = await state();
+    nameInput.value = "  Ｓtudy\t  Deck ";
+    createButton.click();
+    current = await waitFor(current.revision, (candidate) => candidate.groups?.length === 1);
+    const studyGroupId = current.groups[0].id;
+    const normalisedName = current.groups[0].name;
+    const createRevision = current.revision;
+
+    nameInput.value = "study deck";
+    createButton.click();
+    const duplicateError = error.textContent;
+    nameInput.value = " Ａｌｌ ";
+    createButton.click();
+    const reservedError = error.textContent;
+    const invalidRevision = (await state()).revision;
+
+    nameInput.value = "Grammar";
+    createButton.click();
+    current = await waitFor(current.revision, (candidate) => candidate.groups?.length === 2);
+    const grammarGroupId = current.groups.find((group) => group.name === "Grammar").id;
+    groupRow(grammarGroupId).querySelector(".dict-group-up").click();
+    current = await waitFor(current.revision, (candidate) => candidate.groups?.[0]?.id === grammarGroupId);
+    const groupOrderAfterMove = current.groups.map((group) => group.name);
+
+    const rename = groupRow(studyGroupId).querySelector(".dict-group-name");
+    rename.value = "Reading";
+    rename.dispatchEvent(new Event("change", { bubbles: true }));
+    current = await waitFor(current.revision, (candidate) => candidate.groups
+      .find((group) => group.id === studyGroupId)?.name === "Reading");
+
+    current = await addMember(studyGroupId, fixtureId);
+    current = await addMember(studyGroupId, genericId);
+    const membershipBeforeMove = current.groups
+      .find((group) => group.id === studyGroupId).dictionaryIds;
+    memberRow(studyGroupId, genericId).querySelector(".dict-group-member-up").click();
+    current = await waitFor(current.revision, (candidate) => candidate.groups
+      .find((group) => group.id === studyGroupId)?.dictionaryIds[0] === genericId);
+    const membershipAfterMove = current.groups
+      .find((group) => group.id === studyGroupId).dictionaryIds;
+
+    const aliasInput = [...document.querySelectorAll("#dict-list .dict-row")]
+      .find((row) => row.dataset.dictionaryId === fixtureId)
+      ?.querySelector(".dict-display-name");
+    const beforeAlias = current.revision;
+    aliasInput.value = "Grouped alias";
+    aliasInput.dispatchEvent(new Event("change", { bubbles: true }));
+    current = await waitFor(beforeAlias, (candidate) => candidate.dictionaries
+      .find((dictionary) => dictionary.id === fixtureId)?.displayName === "Grouped alias");
+    const membershipAfterAlias = current.groups
+      .find((group) => group.id === studyGroupId).dictionaryIds;
+    const groupedAliasLabel = memberRow(studyGroupId, fixtureId)
+      ?.querySelector(".dict-group-member-name")?.textContent;
+
+    const restoredAliasInput = [...document.querySelectorAll("#dict-list .dict-row")]
+      .find((row) => row.dataset.dictionaryId === fixtureId)
+      ?.querySelector(".dict-display-name");
+    restoredAliasInput.value = fixtureAlias;
+    restoredAliasInput.dispatchEvent(new Event("change", { bubbles: true }));
+    current = await waitFor(current.revision, (candidate) => candidate.dictionaries
+      .find((dictionary) => dictionary.id === fixtureId)?.displayName === fixtureAlias);
+
+    return {
+      normalisedName,
+      duplicateError,
+      reservedError,
+      createRevision,
+      invalidRevision,
+      groupOrderAfterMove,
+      finalGroupOrder: current.groups.map((group) => group.name),
+      membershipBeforeMove,
+      membershipAfterMove,
+      membershipAfterAlias,
+      groupedAliasLabel,
+    };
+  }, { fixtureId: FIXTURE_ID, genericId: GENERIC_KANJI_ID, fixtureAlias: FIXTURE_ALIAS });
+  check(
+    "named groups normalize unique names and keep stable dictionary memberships",
+    groupManagement.normalisedName === "Study Deck"
+      && groupManagement.duplicateError?.includes("already exists")
+      && groupManagement.reservedError?.includes("reserved")
+      && groupManagement.invalidRevision === groupManagement.createRevision
+      && JSON.stringify(groupManagement.membershipAfterAlias)
+        === JSON.stringify(groupManagement.membershipAfterMove)
+      && groupManagement.groupedAliasLabel === "Grouped alias",
+    JSON.stringify(groupManagement),
+  );
+  check(
+    "group and member order controls persist their shared state order",
+    JSON.stringify(groupManagement.groupOrderAfterMove) === JSON.stringify(["Grammar", "Study Deck"])
+      && JSON.stringify(groupManagement.finalGroupOrder) === JSON.stringify(["Grammar", "Reading"])
+      && JSON.stringify(groupManagement.membershipBeforeMove) === JSON.stringify([FIXTURE_ID, GENERIC_KANJI_ID])
+      && JSON.stringify(groupManagement.membershipAfterMove) === JSON.stringify([GENERIC_KANJI_ID, FIXTURE_ID]),
+    JSON.stringify(groupManagement),
   );
 
   const kanjiChooser = await page.evaluate(() => {
