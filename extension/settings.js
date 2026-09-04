@@ -13,6 +13,12 @@ import {
   managedUpdateSchedule,
 } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
+import {
+  CUSTOM_DICTIONARY_ID,
+  CUSTOM_DICTIONARY_SOURCE_KEY,
+  normaliseCustomDictionaryDocument,
+  parseCustomDictionary,
+} from "./custom-dictionary.js";
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
@@ -47,6 +53,12 @@ let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups
 let dictionaries = dictionaryState.dictionaries;
 let options = { ...DEFAULT_OPTIONS };
 let updateSettings = { schedule: "off", lastCheckedAt: null };
+let customDocument = null;
+let customBaseDocument = null;
+let customEditorLoaded = false;
+let customLoading = false;
+let customSaving = false;
+let customDraftStale = false;
 let importing = false;
 let updating = false;
 let removing = false;
@@ -183,7 +195,9 @@ function adoptDictionaryState(value) {
 }
 
 function pruneDictionarySelection() {
-  const installedIds = new Set(dictionaries.map((dictionary) => dictionary.id));
+  const installedIds = new Set(dictionaries
+    .filter((dictionary) => !isManagedCustomDictionary(dictionary))
+    .map((dictionary) => dictionary.id));
   for (const id of selectedDictionaryIds) {
     if (!installedIds.has(id)) {
       selectedDictionaryIds.delete(id);
@@ -215,6 +229,10 @@ function hasCapability(dictionary, kind) {
 
 function dictionaryLabel(dictionary) {
   return dictionary.displayName || dictionary.title;
+}
+
+function isManagedCustomDictionary(dictionary) {
+  return dictionary?.id === CUSTOM_DICTIONARY_ID;
 }
 
 function normaliseKanjiSelection(value) {
@@ -320,6 +338,214 @@ function setUpdateState(message, tone = "") {
   state.classList.toggle("is-ready", tone === "ready");
 }
 
+function setCustomDictionaryStatus(message, tone = "") {
+  const status = element("custom-dictionary-status");
+  status.textContent = message;
+  status.classList.toggle("is-error", tone === "error");
+  status.classList.toggle("is-ready", tone === "ready");
+}
+
+function renderCustomDictionaryErrors(errors) {
+  const list = element("custom-dictionary-errors");
+  list.textContent = "";
+  for (const error of Array.isArray(errors) ? errors : []) {
+    const item = document.createElement("li");
+    item.textContent = `Line ${String(error?.lineNumber)}: ${stringValue(error?.reason, "invalid entry")}`;
+    list.appendChild(item);
+  }
+  list.hidden = list.childElementCount === 0;
+}
+
+function customDictionaryDirty() {
+  return customEditorLoaded
+    && customBaseDocument !== null
+    && element("custom-dictionary-source").value !== customBaseDocument.text;
+}
+
+function renderCustomDictionaryControls() {
+  const busy = importing || updating || removing || committing || customLoading || customSaving;
+  const open = element("custom-dictionary-open");
+  const source = element("custom-dictionary-source");
+  open.disabled = busy;
+  source.disabled = busy;
+  element("custom-dictionary-save").disabled = busy
+    || !customDictionaryDirty()
+    || customDraftStale;
+  element("custom-dictionary-reload").disabled = busy;
+}
+
+function showCustomDictionaryEditor(visible) {
+  element("custom-dictionary-form").hidden = !visible;
+  const open = element("custom-dictionary-open");
+  open.setAttribute("aria-expanded", String(visible));
+  open.textContent = visible ? "Close source editor" : "Open source editor";
+}
+
+function renderCustomDictionaryValidation() {
+  const parsed = parseCustomDictionary(element("custom-dictionary-source").value);
+  renderCustomDictionaryErrors(parsed.errors);
+  return parsed;
+}
+
+function resetCustomDictionaryDraft(documentValue) {
+  customBaseDocument = documentValue;
+  customDraftStale = false;
+  element("custom-dictionary-source").value = documentValue.text;
+  renderCustomDictionaryValidation();
+  renderCustomDictionaryControls();
+}
+
+function markCustomDictionaryStale() {
+  customDraftStale = true;
+  setCustomDictionaryStatus(
+    "The custom dictionary source changed elsewhere. Reload the saved source before saving.",
+    "error",
+  );
+  renderCustomDictionaryControls();
+}
+
+function adoptCustomDictionaryDocument(value) {
+  const next = normaliseCustomDictionaryDocument(value);
+  if (customDocument !== null && next.revision <= customDocument.revision) {
+    return false;
+  }
+  const preserveDraft = customEditorLoaded
+    && (customDictionaryDirty() || customDraftStale || customSaving);
+  customDocument = next;
+  if (!customEditorLoaded) {
+    return true;
+  }
+  if (preserveDraft) {
+    if (customBaseDocument === null || next.revision > customBaseDocument.revision) {
+      markCustomDictionaryStale();
+    }
+  } else {
+    resetCustomDictionaryDraft(next);
+    setCustomDictionaryStatus("Loaded the newest saved source.", "ready");
+  }
+  return true;
+}
+
+function adoptCustomDictionaryState(value) {
+  if (value === null || value === undefined) return;
+  if (adoptDictionaryState(value)) {
+    renderChangedDictionaryState();
+  }
+}
+
+async function loadCustomDictionarySource() {
+  if (customLoading || customSaving) return;
+  customLoading = true;
+  setCustomDictionaryStatus("Loading the saved custom dictionary source…");
+  renderCustomDictionaryControls();
+  try {
+    const reply = await send("hd_custom_read", {}, WORKER_TARGET);
+    if (!reply.ok || reply.document === undefined) {
+      throw new Error(reply.error || "the custom dictionary source could not be read");
+    }
+    adoptCustomDictionaryDocument(reply.document);
+    adoptCustomDictionaryState(reply.state);
+    if (customDocument === null) {
+      throw new Error("the custom dictionary source reply was empty");
+    }
+    customEditorLoaded = true;
+    resetCustomDictionaryDraft(customDocument);
+    showCustomDictionaryEditor(true);
+    setCustomDictionaryStatus(`Loaded source revision ${customDocument.revision}.`, "ready");
+  } catch (error) {
+    setCustomDictionaryStatus(`Could not load the custom dictionary source: ${describe(error)}`, "error");
+  } finally {
+    customLoading = false;
+    renderCustomDictionaryControls();
+  }
+}
+
+function customDictionarySavedMessage(reply, validCount, errorCount) {
+  let message;
+  if (reply.removed === true) {
+    message = "Saved the source and removed the custom dictionary because it has no valid entries.";
+  } else if (reply.rebuilt === false) {
+    message = `Saved ${validCount} valid ${validCount === 1 ? "entry" : "entries"} without rebuilding.`;
+  } else {
+    message = `Saved ${validCount} valid ${validCount === 1 ? "entry" : "entries"} and rebuilt the custom dictionary.`;
+  }
+  if (errorCount > 0) {
+    message += ` Skipped ${errorCount} malformed ${errorCount === 1 ? "line" : "lines"}.`;
+  }
+  return message;
+}
+
+async function saveCustomDictionarySource(event) {
+  event.preventDefault();
+  if (!customEditorLoaded || customLoading || customSaving || !customDictionaryDirty()) {
+    return;
+  }
+  if (customDraftStale) {
+    markCustomDictionaryStale();
+    return;
+  }
+
+  const source = element("custom-dictionary-source").value;
+  const parsed = renderCustomDictionaryValidation();
+  const pending = {
+    baseRevision: customBaseDocument.revision,
+    source,
+    parsed,
+  };
+  customSaving = true;
+  setCustomDictionaryStatus("Saving and compiling the custom dictionary…");
+  setControlsDisabled(importing);
+  try {
+    const reply = await send("hd_custom_save", {
+      baseDocumentRevision: pending.baseRevision,
+      text: pending.source,
+    });
+    if (reply.document !== undefined) {
+      adoptCustomDictionaryDocument(reply.document);
+    }
+    adoptCustomDictionaryState(reply.state);
+    renderCustomDictionaryErrors(reply.errors ?? pending.parsed.errors);
+    if (!reply.ok) {
+      if (reply.stale === true
+          || (customDocument !== null && customDocument.revision > pending.baseRevision)) {
+        markCustomDictionaryStale();
+      }
+      setCustomDictionaryStatus(
+        `Could not save the custom dictionary: ${reply.error || "the source changed elsewhere"}`,
+        "error",
+      );
+      return;
+    }
+
+    const saved = normaliseCustomDictionaryDocument(reply.document);
+    if (saved.text !== pending.source) {
+      throw new Error("the saved custom dictionary source did not match the submitted draft");
+    }
+    customBaseDocument = saved;
+    const newerDocumentExists = customDocument !== null
+      && (customDocument.revision > saved.revision
+        || customDocument.text !== saved.text
+        || customDocument.semanticRevision !== saved.semanticRevision);
+    customDraftStale = newerDocumentExists;
+    if (newerDocumentExists) {
+      setCustomDictionaryStatus(
+        "Saved this draft, but the source changed again elsewhere. Reload before saving.",
+        "error",
+      );
+    } else {
+      setCustomDictionaryStatus(
+        customDictionarySavedMessage(reply, pending.parsed.entries.length, pending.parsed.errors.length),
+        "ready",
+      );
+    }
+  } catch (error) {
+    setCustomDictionaryStatus(`Could not save the custom dictionary: ${describe(error)}`, "error");
+  } finally {
+    customSaving = false;
+    setControlsDisabled(importing);
+  }
+}
+
 function isUpdateCheckable(dictionary) {
   return managedDictionarySource(dictionary) !== null;
 }
@@ -340,7 +566,7 @@ function renderUpdateControls() {
   element("update-last-checked").textContent = checked !== null && !Number.isNaN(checked.getTime())
     ? `Last checked ${checked.toLocaleString()}.`
     : "Never checked.";
-  const busy = updating || importing || removing || committing;
+  const busy = updating || importing || removing || committing || customSaving;
   element("update-all").disabled = busy || availableUpdates().length === 0;
   element("update-check-now").disabled = busy;
   schedule.disabled = busy;
@@ -391,7 +617,7 @@ function renderRecommendedActions() {
 }
 
 function setControlsDisabled(disabled) {
-  const blocked = disabled || removing || updating;
+  const blocked = disabled || removing || updating || customSaving;
   element("import-file").disabled = blocked || committing;
   element("install-recommended").disabled = blocked || committing;
   element("retry-recommended").disabled = blocked || committing;
@@ -399,18 +625,20 @@ function setControlsDisabled(disabled) {
     control.disabled = blocked || control.dataset.pinnedDisabled === "true";
   }
   for (const drag of document.querySelectorAll(".dict-drag")) {
-    drag.draggable = !blocked;
+    drag.draggable = !blocked && drag.dataset.pinnedDisabled !== "true";
   }
   for (const control of document.querySelectorAll(
     "#dict-group-create-form input, #dict-group-create-form button, #dict-group-list input, #dict-group-list select, #dict-group-list button",
   )) {
     control.disabled = blocked || control.dataset.pinnedDisabled === "true";
   }
-  element("dict-select-visible").disabled = blocked || visibleDictionaries().length === 0;
+  element("dict-select-visible").disabled = blocked
+    || visibleDictionaries().every(isManagedCustomDictionary);
   for (const control of element("dict-controls").querySelectorAll(".dict-bulk-actions button")) {
     control.disabled = blocked || selectedDictionaryIds.size === 0;
   }
   renderUpdateControls();
+  renderCustomDictionaryControls();
 }
 
 function elapsedSince(started) {
@@ -697,7 +925,9 @@ function updateSelectedDictionaries(field, value, reloadEngine) {
   void commitDictionaries((current) => {
     let changed = false;
     const next = current.map((dictionary) => {
-      if (!ids.has(dictionary.id) || dictionary[field] === value) {
+      if (isManagedCustomDictionary(dictionary)
+          || !ids.has(dictionary.id)
+          || dictionary[field] === value) {
         return dictionary;
       }
       changed = true;
@@ -751,10 +981,11 @@ function focusedManagementControl() {
 }
 
 function renderDictionarySelection(visible) {
-  const visibleSelected = visible.filter((dictionary) => selectedDictionaryIds.has(dictionary.id)).length;
+  const selectable = visible.filter((dictionary) => !isManagedCustomDictionary(dictionary));
+  const visibleSelected = selectable.filter((dictionary) => selectedDictionaryIds.has(dictionary.id)).length;
   const selectVisible = element("dict-select-visible");
-  selectVisible.checked = visible.length > 0 && visibleSelected === visible.length;
-  selectVisible.indeterminate = visibleSelected > 0 && visibleSelected < visible.length;
+  selectVisible.checked = selectable.length > 0 && visibleSelected === selectable.length;
+  selectVisible.indeterminate = visibleSelected > 0 && visibleSelected < selectable.length;
   element("dict-selection-count").textContent = `${selectedDictionaryIds.size} selected`;
   element("dict-match-count").textContent = `${visible.length} of ${dictionaries.length}`;
 }
@@ -769,6 +1000,12 @@ function bindDictionarySelection(row, entry) {
   const selected = row.querySelector(".dict-selected");
   selected.checked = selectedDictionaryIds.has(entry.id);
   selected.setAttribute("aria-label", `Select ${dictionaryLabel(entry)}`);
+  if (isManagedCustomDictionary(entry)) {
+    selected.checked = false;
+    selected.dataset.pinnedDisabled = "true";
+    selected.disabled = true;
+    return;
+  }
   selected.addEventListener("change", () => {
     if (selected.checked) {
       selectedDictionaryIds.add(entry.id);
@@ -783,6 +1020,11 @@ function bindDictionarySelection(row, entry) {
 function bindDictionaryDrag(row, entry) {
   const drag = row.querySelector(".dict-drag");
   drag.title = `Drag ${dictionaryLabel(entry)} to reorder`;
+  if (isManagedCustomDictionary(entry)) {
+    drag.dataset.pinnedDisabled = "true";
+    drag.draggable = false;
+    return;
+  }
   drag.addEventListener("dragstart", (event) => {
     draggedDictionaryId = entry.id;
     if (event.dataTransfer) {
@@ -844,6 +1086,12 @@ function bindDictionaryEnabled(row, entry) {
   enabled.checked = entry.enabled;
   enabled.setAttribute("aria-label", `Enabled for ${entry.title}`);
   enabled.title = `Enabled for ${entry.title}`;
+  if (isManagedCustomDictionary(entry)) {
+    enabled.checked = true;
+    enabled.dataset.pinnedDisabled = "true";
+    enabled.disabled = true;
+    return;
+  }
   enabled.addEventListener("change", () => {
     const value = enabled.checked;
     void commitDictionaries(updateDictionary(entry.id, (dictionary) =>
@@ -852,14 +1100,16 @@ function bindDictionaryEnabled(row, entry) {
 }
 
 function bindDictionaryOrder(row, entry, index) {
+  const fixed = isManagedCustomDictionary(entry);
+  const minimumIndex = isManagedCustomDictionary(dictionaries[0]) ? 1 : 0;
   const up = row.querySelector(".dict-up");
   const down = row.querySelector(".dict-down");
   up.setAttribute("aria-label", `Move ${entry.title} up`);
   up.title = `Move ${entry.title} up`;
   down.setAttribute("aria-label", `Move ${entry.title} down`);
   down.title = `Move ${entry.title} down`;
-  up.dataset.pinnedDisabled = String(index === 0);
-  down.dataset.pinnedDisabled = String(index === dictionaries.length - 1);
+  up.dataset.pinnedDisabled = String(fixed || index <= minimumIndex);
+  down.dataset.pinnedDisabled = String(fixed || index === dictionaries.length - 1);
   up.addEventListener("click", () => {
     moveDictionary(entry.id, { step: -1 });
   });
@@ -870,13 +1120,19 @@ function bindDictionaryOrder(row, entry, index) {
   const position = row.querySelector(".dict-position-input");
   const move = row.querySelector(".dict-move");
   position.value = String(index + 1);
+  position.min = String(minimumIndex + 1);
   position.max = String(dictionaries.length);
+  position.dataset.pinnedDisabled = String(fixed);
+  move.dataset.pinnedDisabled = String(fixed);
   position.setAttribute("aria-label", `Position for ${dictionaryLabel(entry)}`);
   move.setAttribute("aria-label", `Move ${dictionaryLabel(entry)} to position`);
   move.title = `Move ${dictionaryLabel(entry)} to position`;
   const moveToPosition = () => {
     const target = Number(position.value);
-    if (Number.isInteger(target) && target >= 1 && target <= dictionaries.length) {
+    if (!fixed
+        && Number.isInteger(target)
+        && target >= minimumIndex + 1
+        && target <= dictionaries.length) {
       moveDictionary(entry.id, { position: target });
     } else {
       position.value = String(index + 1);
@@ -924,9 +1180,15 @@ function renderDictionaryRow(template, entry, index) {
   const remove = row.querySelector(".dict-remove");
   remove.setAttribute("aria-label", `Remove ${entry.title}`);
   remove.title = `Remove ${entry.title}`;
-  remove.addEventListener("click", () => {
-    removeDictionary(entry.title);
-  });
+  if (isManagedCustomDictionary(entry)) {
+    remove.dataset.pinnedDisabled = "true";
+    remove.disabled = true;
+    remove.hidden = true;
+  } else {
+    remove.addEventListener("click", () => {
+      removeDictionary(entry.id, entry.title);
+    });
+  }
   return row;
 }
 
@@ -966,7 +1228,9 @@ function dictionaryMoveTarget(current, index, move) {
 function moveDictionary(id, move) {
   void commitDictionaries((current) => {
     const index = current.findIndex((entry) => entry.id === id);
-    const target = dictionaryMoveTarget(current, index, move);
+    if (index < 0 || isManagedCustomDictionary(current[index])) return null;
+    const minimumIndex = isManagedCustomDictionary(current[0]) ? 1 : 0;
+    const target = Math.max(minimumIndex, dictionaryMoveTarget(current, index, move));
     return moveListItem(current, index, target);
   }, true);
 }
@@ -1136,7 +1400,7 @@ const dictionaryGroupController = createDictionaryGroupController({
   renderDeferredAfterBlur,
 });
 
-async function removeDictionary(title) {
+async function removeDictionary(id, title) {
   if (!window.confirm(`Remove ${title}? Its imported data is deleted and has to be imported again.`)) {
     return;
   }
@@ -1144,7 +1408,7 @@ async function removeDictionary(title) {
   setControlsDisabled(true);
   try {
     await dictionaryCommitTail;
-    const reply = await send("hd_remove", { title });
+    const reply = await send("hd_remove", { id, title });
     if (!reply.ok) {
       throw new Error(reply.error ?? "unknown error");
     }
@@ -1365,6 +1629,33 @@ async function writeUpdateSchedule(schedule) {
 }
 
 function attachHandlers() {
+  element("custom-dictionary-open").addEventListener("click", () => {
+    if (!customEditorLoaded) {
+      void loadCustomDictionarySource();
+      return;
+    }
+    showCustomDictionaryEditor(element("custom-dictionary-form").hidden);
+  });
+  element("custom-dictionary-form").addEventListener("submit", (event) => {
+    void saveCustomDictionarySource(event);
+  });
+  element("custom-dictionary-reload").addEventListener("click", () => {
+    void loadCustomDictionarySource();
+  });
+  element("custom-dictionary-source").addEventListener("input", () => {
+    const parsed = renderCustomDictionaryValidation();
+    if (customDraftStale) {
+      markCustomDictionaryStale();
+    } else if (customDictionaryDirty()) {
+      setCustomDictionaryStatus(
+        `${parsed.entries.length} valid ${parsed.entries.length === 1 ? "entry" : "entries"} ready to save.`,
+      );
+    } else {
+      setCustomDictionaryStatus("No unsaved changes.");
+    }
+    renderCustomDictionaryControls();
+  });
+
   const file = element("import-file");
   file.addEventListener("change", () => {
     const picked = [...(file.files ?? [])];
@@ -1381,7 +1672,9 @@ function attachHandlers() {
   });
 
   element("dict-select-visible").addEventListener("change", (event) => {
-    for (const dictionary of visibleDictionaries()) {
+    for (const dictionary of visibleDictionaries().filter(
+      (entry) => !isManagedCustomDictionary(entry),
+    )) {
       if (event.target.checked) {
         selectedDictionaryIds.add(dictionary.id);
       } else {
@@ -1514,9 +1807,20 @@ function handleOptionsChange(change) {
   }
 }
 
+function handleCustomDictionarySourceChange(change) {
+  try {
+    adoptCustomDictionaryDocument(change.newValue);
+  } catch (error) {
+    setCustomDictionaryStatus(`Could not read the changed custom dictionary source: ${describe(error)}`, "error");
+  }
+}
+
 function handleStorageChange(changes, area) {
   if (area !== "local") {
     return;
+  }
+  if (changes[CUSTOM_DICTIONARY_SOURCE_KEY]) {
+    handleCustomDictionarySourceChange(changes[CUSTOM_DICTIONARY_SOURCE_KEY]);
   }
   if (changes.dictionaryState && !handleDictionaryStateChange(changes.dictionaryState)) {
     return;
@@ -1550,6 +1854,7 @@ async function start() {
   options = normaliseOptions(stored.options);
   updateSettings = normaliseUpdateSettings(stored.dictionaryUpdates);
   attachHandlers();
+  renderCustomDictionaryControls();
   if (await reloadDictionaries()) {
     await writeOptions();
   }
