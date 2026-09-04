@@ -825,6 +825,224 @@ async function customBackgroundStage() {
   };
 }
 
+async function customEngineStage() {
+  installFetch();
+  installNavigator();
+  const bus = makeBus();
+  const storage = makeStorage();
+  const alarms = makeAlarms();
+  const swChrome = makeChrome("custom-engine-sw", bus, storage, alarms);
+  loadBackgroundScript({
+    chrome: swChrome,
+    console,
+    fetch: globalThis.fetch,
+    setTimeout,
+    clearTimeout,
+    Promise,
+    Error,
+    TypeError,
+    JSON,
+    String,
+    Number,
+    Boolean,
+    Object,
+    Array,
+    RegExp,
+    Math,
+    Date,
+    URL,
+  });
+  const pageChrome = makeChrome("custom-engine-page", bus, storage, alarms);
+  const engineService = await import(
+    `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}?custom-engine-stage`
+  );
+  const { default: createHoshidicts } = await import(
+    `file://${resolve(EXTENSION, "vendor", "hoshidicts.mjs").replace(/\\/gu, "/")}?custom-engine-stage`
+  );
+  let engine = null;
+  engineService.configureEngineService(
+    (message) => pageChrome.runtime.sendMessage(message),
+    {
+      createHoshidicts: async (...args) => {
+        engine = await createHoshidicts(...args);
+        return engine;
+      },
+      storageBackend: "memory",
+      lowRam: true,
+    },
+  );
+  engineService.startEngine();
+  let counter = 0;
+  const request = (type, fields = {}) => {
+    counter += 1;
+    return engineService.handleEngineMessage({
+      type,
+      requestId: `custom-engine-${counter}`,
+      ...fields,
+    });
+  };
+  let status = await request("hd_status");
+  const deadline = Date.now() + 30_000;
+  while (!(status.ok && status.ready && !status.loading) && Date.now() < deadline) {
+    await new Promise((done) => setTimeout(done, 25));
+    status = await request("hd_status");
+  }
+
+  const reservedEntries = [{ term: "reserved", reading: "\u3088\u3084\u304f", definition: "reserved" }];
+  const reservedRevision = await customDictionarySemanticRevision(reservedEntries);
+  const reservedImport = await request("hd_import", {
+    blobUrl: createObjectURL(buildCustomDictionaryZip(reservedEntries, reservedRevision)),
+    fileName: "reserved-custom.zip",
+  });
+  const afterReservedImport = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_read",
+  });
+  const generationRoots = () => engine.FS.readdir("/dicts").filter((name) =>
+    name !== "." && name !== ".." && name.startsWith(".hdw-generation-"));
+  check(
+    "public ZIP import cannot claim the reserved custom title",
+    reservedImport.ok === false
+      && afterReservedImport.state?.dictionaries?.length === 0
+      && generationRoots().length === 0,
+    JSON.stringify({ reservedImport, afterReservedImport, roots: generationRoots() }),
+  );
+  if (reservedImport.ok === true) {
+    await request("hd_remove", { title: CUSTOM_DICTIONARY_TITLE });
+  }
+
+  const source = [
+    "# personal entries",
+    "\u98df\u3079\u308b, \u305f\u3079\u308b, to eat",
+    "literal, \u308a\u3066\u3089\u308b, literal\\\\nmarker",
+    "broken",
+    "",
+  ].join("\r\n");
+  const saved = await request("hd_custom_save", { baseDocumentRevision: 0, text: source });
+  const savedStatus = await request("hd_status");
+  const savedLookup = await request("hd_lookup_dictionary", {
+    dictionary: CUSTOM_DICTIONARY_TITLE,
+    text: "\u98df\u3079\u308b",
+  });
+  check(
+    "custom save compiles with real WASM and publishes the fixed package first and enabled",
+    saved.ok === true
+      && saved.errors?.length === 1
+      && saved.document?.revision === 1
+      && saved.state?.dictionaries?.length === 1
+      && saved.state.dictionaries[0]?.id === CUSTOM_DICTIONARY_ID
+      && saved.state.dictionaries[0]?.title === CUSTOM_DICTIONARY_TITLE
+      && saved.state.dictionaries[0]?.enabled === true
+      && saved.state.dictionaries[0]?.revision === saved.document?.semanticRevision
+      && saved.state.dictionaries[0]?.termCount === 2
+      && savedStatus.dictionaryCount === 1
+      && savedLookup.results?.[0]?.term?.expression === "\u98df\u3079\u308b",
+    JSON.stringify({ saved, savedStatus, savedLookup }),
+  );
+
+  const protectedRemoval = await request("hd_remove", {
+    id: CUSTOM_DICTIONARY_ID,
+    title: CUSTOM_DICTIONARY_TITLE,
+  });
+  const protectedDisable = await request("hd_apply_state", {
+    baseRevision: saved.state?.revision,
+    dictionaries: (saved.state?.dictionaries ?? []).map((dictionary) => ({
+      ...dictionary,
+      enabled: false,
+    })),
+  });
+  const afterProtectedMutation = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_custom_read",
+  });
+  check(
+    "public removal and ordinary state writes cannot mutate the fixed package",
+    protectedRemoval.ok === false
+      && protectedDisable.ok === false
+      && afterProtectedMutation.state?.dictionaries?.[0]?.enabled === true,
+    JSON.stringify({ protectedRemoval, protectedDisable, afterProtectedMutation }),
+  );
+
+  const reformattedSource = [
+    "# reformatted only",
+    " \u98df\u3079\u308b , \u305f\u3079\u308b , to eat ",
+    "literal,\u308a\u3066\u3089\u308b,literal\\\\nmarker",
+    "",
+  ].join("\r\n");
+  const beforeSourceOnly = await request("hd_status");
+  const sourceOnly = await request("hd_custom_save", {
+    baseDocumentRevision: saved.document?.revision ?? 0,
+    text: reformattedSource,
+  });
+  const afterSourceOnly = await request("hd_status");
+  const exactNoop = await request("hd_custom_save", {
+    baseDocumentRevision: sourceOnly.document?.revision ?? 0,
+    text: reformattedSource,
+  });
+  check(
+    "source-only and exact semantic no-ops do not rebuild or bump dictionary state",
+    sourceOnly.ok === true
+      && sourceOnly.rebuilt === false
+      && sourceOnly.document?.revision === (saved.document?.revision ?? 0) + 1
+      && sourceOnly.state?.revision === saved.state?.revision
+      && sourceOnly.state?.dictionaries?.[0]?.path === saved.state?.dictionaries?.[0]?.path
+      && afterSourceOnly.generation === beforeSourceOnly.generation
+      && exactNoop.ok === true
+      && exactNoop.document?.revision === sourceOnly.document?.revision
+      && exactNoop.state?.revision === sourceOnly.state?.revision
+      && (await request("hd_status")).generation === beforeSourceOnly.generation,
+    JSON.stringify({ saved, sourceOnly, exactNoop, beforeSourceOnly, afterSourceOnly }),
+  );
+
+  const stale = await request("hd_custom_save", {
+    baseDocumentRevision: saved.document?.revision ?? 0,
+    text: "stale, \u3059\u3066\u30fc\u308b, stale",
+  });
+  check(
+    "a stale Settings save is refused before compilation",
+    stale.ok === false
+      && stale.stale === true
+      && stale.document?.revision === sourceOnly.document?.revision
+      && stale.state?.dictionaries?.[0]?.path === sourceOnly.state?.dictionaries?.[0]?.path,
+    JSON.stringify(stale),
+  );
+
+  const appended = await request("hd_custom_append", {
+    entry: { term: "\u6ce8\u8a18", reading: "\u3061\u3085\u3046\u304d", definition: "noted\nagain" },
+  });
+  const appendedLookup = await request("hd_lookup_dictionary", {
+    dictionary: CUSTOM_DICTIONARY_TITLE,
+    text: "\u6ce8\u8a18",
+  });
+  check(
+    "queued Note append reads the latest source, preserves CRLF, and recompiles once",
+    appended.ok === true
+      && appended.document?.revision === (sourceOnly.document?.revision ?? 0) + 1
+      && appended.document?.text.includes("\r\n\u6ce8\u8a18, \u3061\u3085\u3046\u304d, noted\\nagain\r\n")
+      && appended.state?.revision === (sourceOnly.state?.revision ?? 0) + 1
+      && appendedLookup.results?.[0]?.term?.expression === "\u6ce8\u8a18",
+    JSON.stringify({ appended, appendedLookup }),
+  );
+
+  const clearedSource = "# retained source\r\nmalformed";
+  const cleared = await request("hd_custom_save", {
+    baseDocumentRevision: appended.document?.revision ?? 0,
+    text: clearedSource,
+  });
+  const clearedStatus = await request("hd_status");
+  check(
+    "zero valid rows save the source and atomically remove the managed package",
+    cleared.ok === true
+      && cleared.removed === true
+      && cleared.errors?.length === 1
+      && cleared.document?.text === clearedSource
+      && cleared.state?.dictionaries?.length === 0
+      && clearedStatus.dictionaryCount === 0
+      && generationRoots().length === 0,
+    JSON.stringify({ cleared, clearedStatus, roots: generationRoots() }),
+  );
+}
+
 function loadSettingsScript(window) {
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
@@ -1068,6 +1286,9 @@ async function main() {
         === JSON.stringify(customBackground.removed.state),
     JSON.stringify(customBackground),
   );
+
+  section("managed custom dictionary engine transaction");
+  await customEngineStage();
 
   section("recommended dictionaries");
   checkRecommendedDictionaries();
