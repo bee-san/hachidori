@@ -1200,6 +1200,54 @@ async function fetchImportArchive(request) {
   return response;
 }
 
+async function runImportTransaction(response, fileName, importLowRam, commit) {
+  const generationRoot = createGenerationRoot();
+  // Unload before importing: the loaded dictionaries are mapped into the same
+  // 32-bit address space the importer needs. Public count/generation state is
+  // not changed until either the candidate or the committed state is loaded.
+  engine.ccall("hdw_reset", null, [], []);
+
+  const archivePath = storageBackend === "opfs" ? OPFS_IMPORT_ZIP : IMPORT_ZIP;
+  let report;
+  let rollbackAttempted = false;
+  try {
+    report = await importDictionaryArchive(
+      response,
+      archivePath,
+      generationRoot,
+      importLowRam,
+      fileName,
+    );
+    if (report.success && report.title === "") {
+      // hdw_import refuses a title it cannot use as a folder name, so this is
+      // unreachable; without a title there is nothing to register, and a row
+      // with an empty title would poison reconcile().
+      report.success = false;
+      report.error = `${fileName} declares no dictionary title`;
+    }
+    if (report.success) {
+      await persistFilesystem();
+      await commit(generationRoot, report);
+    } else {
+      const failure = new Error(report.error || `${fileName} could not be imported`);
+      rollbackAttempted = true;
+      await rollbackImportedGeneration(generationRoot, failure);
+    }
+  } catch (error) {
+    if (error instanceof UnknownDictionaryStateCommitError) {
+      // Storage may already reference the new path. Neither generation is safe
+      // to delete until an authoritative read succeeds.
+      reloadError = error;
+      throw error;
+    }
+    if (!rollbackAttempted) {
+      await rollbackImportedGeneration(generationRoot, error);
+    }
+    throw error;
+  }
+  return report;
+}
+
 const HANDLERS = {
   async hd_lookup(message) {
     await ensureLoaded();
@@ -1322,57 +1370,19 @@ const HANDLERS = {
       managedSource,
       recommendedSource,
     } = request;
-    const generationRoot = createGenerationRoot();
-    // Unload before importing: the loaded dictionaries are mapped into the same
-    // 32-bit address space the importer needs. Public count/generation state is
-    // not changed until either the candidate or the committed state is loaded.
-    engine.ccall("hdw_reset", null, [], []);
-
-    const archivePath = storageBackend === "opfs" ? OPFS_IMPORT_ZIP : IMPORT_ZIP;
-    let report;
-    let rollbackAttempted = false;
-    try {
-      report = await importDictionaryArchive(
-        response,
-        archivePath,
-        generationRoot,
-        importLowRam,
-        fileName,
-      );
-
-      if (report.success && report.title === "") {
-        // hdw_import refuses a title it cannot use as a folder name, so this is
-        // unreachable; without a title there is nothing to register, and a row
-        // with an empty title would poison reconcile().
-        report.success = false;
-        report.error = `${fileName} declares no dictionary title`;
-      }
-      if (report.success) {
-        await persistFilesystem();
-        await commitImportedGeneration(
+    const report = await runImportTransaction(
+      response,
+      fileName,
+      importLowRam,
+      (generationRoot, importedReport) =>
+        commitImportedGeneration(
           generationRoot,
-          report,
+          importedReport,
           recommendedSource,
           managedSource,
           expectedRevision,
-        );
-      } else {
-        const failure = new Error(report.error || `${fileName} could not be imported`);
-        rollbackAttempted = true;
-        await rollbackImportedGeneration(generationRoot, failure);
-      }
-    } catch (error) {
-      if (error instanceof UnknownDictionaryStateCommitError) {
-        // Storage may already reference the new path. Neither generation is safe
-        // to delete until an authoritative read succeeds.
-        reloadError = error;
-        throw error;
-      }
-      if (!rollbackAttempted) {
-        await rollbackImportedGeneration(generationRoot, error);
-      }
-      throw error;
-    }
+        ),
+    );
 
     if (!report.success) {
       return { ok: false, error: report.error || `${fileName} could not be imported`, report };
