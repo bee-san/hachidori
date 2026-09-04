@@ -332,15 +332,15 @@ function renderRecommendedCatalogue() {
 }
 
 function missingRecommendedDictionaries() {
-  const installed = new Set(dictionaries.map((entry) => entry.sourceId).filter(Boolean));
-  return RECOMMENDED_DICTIONARIES.filter((entry) => !installed.has(entry.sourceId));
+  return RECOMMENDED_DICTIONARIES.filter((entry) => !dictionaries.some((dictionary) =>
+    dictionary.sourceId === entry.sourceId || dictionary.indexUrl === entry.indexUrl));
 }
 
 function renderRecommendedActions() {
-  const installed = new Set(dictionaries.map((entry) => entry.sourceId).filter(Boolean));
   const missing = missingRecommendedDictionaries();
   element("recommended-starter").hidden = dictionaries.length > 0;
-  element("recommended-retry").hidden = installed.size === 0 || missing.length === 0;
+  element("recommended-retry").hidden =
+    missing.length === 0 || missing.length === RECOMMENDED_DICTIONARIES.length;
 }
 
 function setControlsDisabled(disabled) {

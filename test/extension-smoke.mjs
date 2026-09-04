@@ -1962,7 +1962,8 @@ async function main() {
       && recommendedSettings.completeSourceIds.length === RECOMMENDED_DICTIONARIES.length
       && RECOMMENDED_DICTIONARIES.every(({ sourceId }) =>
         recommendedSettings.completeSourceIds.includes(sourceId))
-      && recommendedSettings.retryHiddenWhenComplete === true,
+      && recommendedSettings.retryHiddenWhenComplete === true
+      && recommendedSettings.legacyIndexOnlySkipped === true,
     JSON.stringify(recommendedSettings),
   );
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
@@ -2545,6 +2546,22 @@ async function settingsRecommendedImportStage() {
     maxActiveDownloads,
     maxActiveImports,
   };
+  const [legacyDictionary, ...otherDictionaries] = state.dictionaries;
+  const legacyIndexOnlyDictionary = { ...legacyDictionary };
+  delete legacyIndexOnlyDictionary.sourceId;
+  state = {
+    ...state,
+    revision: state.revision + 1,
+    dictionaries: [legacyIndexOnlyDictionary, ...otherDictionaries],
+  };
+  storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+  await new Promise((done) => window.setTimeout(done, 0));
+  const fetchCountBeforeLegacyRetry = fetches.length;
+  window.document.getElementById("retry-recommended")?.click();
+  await new Promise((done) => window.setTimeout(done, 10));
+  result.legacyIndexOnlySkipped =
+    window.document.getElementById("recommended-retry")?.hidden === true
+    && fetches.length === fetchCountBeforeLegacyRetry;
   dom.window.close();
   return result;
 }
