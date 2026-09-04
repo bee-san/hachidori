@@ -1713,12 +1713,12 @@ async function main() {
   );
   check(
     "settings manage normalized global groups and stable ordered memberships",
-    settingsConflict?.groups?.normalisedGroupName === "Study Deck"
+    settingsConflict?.groups?.normalisedGroupName === "INDIGO Deck"
       && settingsConflict.groups.duplicateError?.includes("already exists")
       && settingsConflict.groups.reservedError?.includes("reserved")
       && settingsConflict.groups.requestsAfterDuplicate === 1
       && settingsConflict.groups.requestsAfterReserved === 1
-      && settingsConflict.groups.groupOrderAfterMove?.join(",") === "Grammar,Study Deck"
+      && settingsConflict.groups.groupOrderAfterMove?.join(",") === "Grammar,INDIGO Deck"
       && settingsConflict.groups.membershipBeforeMove?.join(",")
         === "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       && settingsConflict.groups.membershipAfterMove?.join(",")
@@ -2521,17 +2521,21 @@ async function settingsConflictStage() {
     await waitForRequestCount(requestCount);
   };
 
-  newGroupName.value = "  Ｓtudy\t  Deck ";
+  window.String.prototype.toLocaleLowerCase = function toTurkishLowerCase() {
+    return localeLowerCase.call(this, "tr");
+  };
+  newGroupName.value = "  ＩＮＤＩＧＯ\t  Deck ";
   createGroup.click();
   await waitForRequestCount(1);
   const studyGroupId = state.groups[0]?.id;
   const normalisedGroupName = state.groups[0]?.name;
 
-  newGroupName.value = "study deck";
+  newGroupName.value = "indigo deck";
   createGroup.click();
   await new Promise((done) => window.setTimeout(done, 0));
   const duplicateError = groupError.textContent;
   const requestsAfterDuplicate = casRequests.length;
+  window.String.prototype.toLocaleLowerCase = localeLowerCase;
 
   newGroupName.value = " Ａｌｌ ";
   createGroup.click();
