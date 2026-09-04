@@ -5475,6 +5475,9 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
   shadow.appendChild(popup);
 
   let positioned = 0;
+  const noteEntries = [];
+  const noteEditingStates = [];
+  let addNoteEntry = async () => {};
   const view = HDPopup.createPopupView({
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
@@ -5482,6 +5485,13 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
     getPopupColumns: () => 1,
     idPrefix: "hoshidicts",
     onKanjiClick() {},
+    onAddCustomEntry(entry) {
+      noteEntries.push(structuredClone(entry));
+      return addNoteEntry(entry);
+    },
+    onNoteEditingChange(editing) {
+      noteEditingStates.push(editing);
+    },
     parseTagList: HDGlossary.parseTagList,
     popup,
     positionPopup() {
@@ -5555,6 +5565,101 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
     JSON.stringify(popup.textContent.slice(0, 200)),
   );
 
+  const glossary = lookup.results[0].term.glossaries[0];
+  const noteResults = [
+    {
+      ...lookup.results[0],
+      term: {
+        ...lookup.results[0].term,
+        expression: "All-tab primary",
+        reading: "おーる",
+        glossaries: [{ ...glossary, dictionary: "Dictionary A" }],
+      },
+    },
+    {
+      ...lookup.results[0],
+      term: {
+        ...lookup.results[0].term,
+        expression: "Projected primary",
+        reading: "ぷろじぇくてっど",
+        glossaries: [{ ...glossary, dictionary: "Dictionary B" }],
+      },
+    },
+  ];
+  const selectedTabs = [];
+  view.renderResults(noteResults, candidate, {
+    dictionaryPresentation: [{ title: "Dictionary B", displayName: "Favourite B", favorite: true }],
+    onDictionaryTabSelected(tab) {
+      selectedTabs.push(tab);
+    },
+  });
+  popup.querySelector('[role="tab"][data-dictionary="Dictionary B"]')?.click();
+  const termNoteButton = popup.querySelector(".gsm-hoshidicts-note-button");
+  termNoteButton?.click();
+  const termNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
+  const termInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-term");
+  const readingInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-reading");
+  const definitionInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-definition");
+  check(
+    "the shared Note form uses the currently projected primary term",
+    selectedTabs.length === 2
+      && selectedTabs[0] === null
+      && selectedTabs[1]?.dictionary === "Dictionary B"
+      && termNoteButton?.getAttribute("aria-expanded") === "true"
+      && termInput?.value === "Projected primary"
+      && readingInput?.value === "ぷろじぇくてっど"
+      && definitionInput?.value === ""
+      && !termInput?.hasAttribute("maxlength")
+      && !readingInput?.hasAttribute("maxlength")
+      && !definitionInput?.hasAttribute("maxlength"),
+    JSON.stringify({
+      selectedTabs,
+      expanded: termNoteButton?.getAttribute("aria-expanded"),
+      term: termInput?.value,
+      reading: readingInput?.value,
+      definition: definitionInput?.value,
+    }),
+  );
+  if (definitionInput) definitionInput.value = "A retained draft";
+  addNoteEntry = async () => {
+    throw new Error("simulated append failure");
+  };
+  termNoteForm?.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await new Promise((done) => window.setTimeout(done, 0));
+  const rejectedDraft = {
+    hidden: termNoteForm?.hidden,
+    definition: definitionInput?.value,
+    error: termNoteForm?.querySelector(".gsm-hoshidicts-note-error")?.textContent,
+  };
+  addNoteEntry = async () => {};
+  termNoteForm?.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await new Promise((done) => window.setTimeout(done, 0));
+  check(
+    "a rejected Note append retains its draft and a successful retry closes it",
+    rejectedDraft.hidden === false
+      && rejectedDraft.definition === "A retained draft"
+      && rejectedDraft.error?.includes("simulated append failure")
+      && noteEntries.length === 2
+      && noteEntries.every((entry) => JSON.stringify(entry) === JSON.stringify({
+        term: "Projected primary",
+        reading: "ぷろじぇくてっど",
+        definition: "A retained draft",
+      }))
+      && termNoteForm?.hidden === true
+      && noteEditingStates.join(",") === "true,false",
+    JSON.stringify({ rejectedDraft, noteEntries, noteEditingStates, hidden: termNoteForm?.hidden }),
+  );
+  termNoteButton?.click();
+  const firstEscapeClosed = typeof view.closeNoteForm === "function" && view.closeNoteForm();
+  const secondEscapeClosed = typeof view.closeNoteForm === "function" && view.closeNoteForm();
+  check(
+    "the Note controller consumes Escape only while its form is open",
+    firstEscapeClosed === true
+      && secondEscapeClosed === false
+      && noteEditingStates.join(",") === "true,false,true,false",
+    JSON.stringify({ firstEscapeClosed, secondEscapeClosed, noteEditingStates }),
+  );
+
   view.renderResults(imageLookup.results, candidate, {
     generation: imageLookup.generation,
     hidePopupGrammarTags: false,
@@ -5604,6 +5709,20 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
     "the kanji view renders the readings without splitting them per character",
     popup.textContent.includes(kanji.entries[0].onyomi.split(/[\s,;]/u)[0]),
     JSON.stringify(popup.textContent.slice(0, 200)),
+  );
+  const kanjiNoteButton = popup.querySelector(".gsm-hoshidicts-note-button");
+  kanjiNoteButton?.click();
+  const kanjiNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
+  check(
+    "the kanji view uses the same Note form with a glyph-only prefill",
+    kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-term")?.value === kanji.character
+      && kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-reading")?.value === ""
+      && kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-definition")?.value === "",
+    JSON.stringify({
+      term: kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-term")?.value,
+      reading: kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-reading")?.value,
+      definition: kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-definition")?.value,
+    }),
   );
 
   view.renderNotice("nothing found", candidate);
