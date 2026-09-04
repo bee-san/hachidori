@@ -20,6 +20,7 @@ import { existsSync, rmSync, mkdirSync, readdirSync, readFileSync } from "node:f
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
+import { createContext, runInContext } from "node:vm";
 
 import {
   GENERIC_KANJI_GLOSSARY,
@@ -125,48 +126,27 @@ const PROFILE = process.env.HACHIDORI_PROFILE || `/tmp/hachidori-e2e-profile-${p
 const HIGHLIGHT_NAME = (readFileSync(resolve(EXTENSION, "content.js"), "utf8")
   .match(/HIGHLIGHT_NAME\s*=\s*"([^"]+)"/) || [])[1];
 
-const RECOMMENDED_DICTIONARIES = [
-  {
-    sourceId: "jitendex",
-    name: "Jitendex",
-    publisherUrl: "https://jitendex.org/",
-    downloadUrl: "https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip",
-    indexUrl: "https://jitendex.org/static/yomitan.json",
-    title: "Jitendex.org [2026-08-11]",
-    revision: "2026.08.11.0",
-    capabilities: ["term", "media"],
-  },
-  {
-    sourceId: "jmnedict",
-    name: "JMnedict for Yomitan",
-    publisherUrl: "https://github.com/yomidevs/jmdict-yomitan",
-    downloadUrl: "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMnedict.zip",
-    indexUrl: "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMnedict.json",
-    title: "JMnedict [2026-09-04]",
-    revision: "JMnedict.2026-09-04",
-    capabilities: ["term"],
-  },
-  {
-    sourceId: "bees-ultimate-kanji-dictionary",
-    name: "Bee's Ultimate Kanji Dictionary",
-    publisherUrl: "https://github.com/bee-san/bees-ultimate-kanji-dictionary",
-    downloadUrl: "https://github.com/bee-san/bees-ultimate-kanji-dictionary/releases/latest/download/bees-ultimate-kanji-dictionary.zip",
-    indexUrl: "https://raw.githubusercontent.com/bee-san/bees-ultimate-kanji-dictionary/main/dist/index.json",
+const catalogueContext = createContext({});
+catalogueContext.globalThis = catalogueContext;
+runInContext(
+  readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8"),
+  catalogueContext,
+  { filename: "recommended-dictionaries.js" },
+);
+const RECOMMENDED_FIXTURE_METADATA = {
+  jitendex: { title: "Jitendex.org [2026-08-11]", revision: "2026.08.11.0" },
+  jmnedict: { title: "JMnedict [2026-09-04]", revision: "JMnedict.2026-09-04" },
+  "bees-ultimate-kanji-dictionary": {
     title: "Bee's Ultimate Kanji Dictionary",
     revision: "2026.09.02",
-    capabilities: ["term", "freq", "media"],
   },
-  {
-    sourceId: "jiten",
-    name: "Jiten Frequency Dictionary",
-    publisherUrl: "https://jiten.moe/frequency-dictionaries",
-    downloadUrl: "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
-    indexUrl: "https://api.jiten.moe/api/frequency-list/index",
-    title: "Jiten",
-    revision: "Jiten 26-09-02",
-    capabilities: ["freq"],
-  },
-];
+  jiten: { title: "Jiten", revision: "Jiten 26-09-02" },
+};
+const RECOMMENDED_DICTIONARIES = catalogueContext.HD_RECOMMENDED_DICTIONARIES.map((entry) => ({
+  ...entry,
+  capabilities: [...entry.capabilities],
+  ...RECOMMENDED_FIXTURE_METADATA[entry.sourceId],
+}));
 const RECOMMENDED_LINKS = RECOMMENDED_DICTIONARIES.map(({ name, publisherUrl }) => [name, publisherUrl]);
 
 // Every assertion this run makes, named up front. The denominator is this list,
@@ -781,6 +761,10 @@ async function main() {
       && cleanInstaller.dictionaryManagementVisible === true,
     JSON.stringify(cleanInstaller),
   );
+  if (process.env.HACHIDORI_SETTINGS_SCREENSHOT) {
+    const importCard = await page.$('section[aria-labelledby="import-heading"]');
+    await importCard.screenshot({ path: process.env.HACHIDORI_SETTINGS_SCREENSHOT });
+  }
 
   const recommendedFixtures = new Map(RECOMMENDED_DICTIONARIES.map((entry) => [
     entry.downloadUrl,
