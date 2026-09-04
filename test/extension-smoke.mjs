@@ -434,11 +434,54 @@ function makeStorage() {
   };
 }
 
+function makeEvent() {
+  const listeners = [];
+  return {
+    addListener(listener) {
+      listeners.push(listener);
+    },
+    removeListener(listener) {
+      const index = listeners.indexOf(listener);
+      if (index >= 0) listeners.splice(index, 1);
+    },
+    fire(...args) {
+      for (const listener of [...listeners]) listener(...args);
+    },
+  };
+}
+
+function makeAlarms() {
+  const values = new Map();
+  const onAlarm = makeEvent();
+  return {
+    api: {
+      async clear(name) {
+        return values.delete(name);
+      },
+      create(name, info) {
+        values.set(name, { name, ...structuredClone(info) });
+      },
+      async get(name) {
+        return values.has(name) ? structuredClone(values.get(name)) : undefined;
+      },
+      onAlarm,
+    },
+    fire(name) {
+      const alarm = values.get(name);
+      if (alarm) onAlarm.fire(structuredClone(alarm));
+    },
+    values,
+  };
+}
+
 const offscreenState = { created: 0, exists: false, concurrent: 0, peakConcurrent: 0 };
 
-function makeChrome(owner, bus, storage) {
-  const events = () => ({ addListener() {}, removeListener() {} });
+function makeChrome(owner, bus, storage, alarms = makeAlarms()) {
+  const onInstalled = makeEvent();
+  const onStartup = makeEvent();
   return {
+    alarms: alarms.api,
+    __events: { onInstalled, onStartup },
     runtime: {
       id: "hachidorismokeextensionid",
       lastError: undefined,
@@ -454,8 +497,8 @@ function makeChrome(owner, bus, storage) {
         },
         removeListener() {},
       },
-      onInstalled: events(),
-      onStartup: events(),
+      onInstalled,
+      onStartup,
       sendMessage(message, callback) {
         const promise = bus.sendMessage(owner, message);
         if (typeof callback !== "function") {
@@ -496,11 +539,15 @@ function makeChrome(owner, bus, storage) {
 
 const blobUrls = new Map();
 const declaredLengthUrls = new Map();
+const remoteResponses = new Map();
 let nextBlobId = 0;
 
 function installFetch() {
   globalThis.fetch = async (input) => {
     const url = String(input);
+    if (remoteResponses.has(url)) {
+      return remoteResponses.get(url)(url);
+    }
     if (declaredLengthUrls.has(url)) {
       const { contentLength, bytes } = declaredLengthUrls.get(url);
       let offset = 0;
@@ -554,6 +601,41 @@ function installFetch() {
   };
 }
 
+function remoteJson(url, value, status = 200) {
+  remoteResponses.set(url, async () => ({
+    ok: status >= 200 && status < 300,
+    status,
+    url,
+    async json() {
+      return structuredClone(value);
+    },
+  }));
+}
+
+function remoteArchive(url, bytes, finalUrl = url, observed = null) {
+  remoteResponses.set(url, async () => {
+    if (observed) observed.count += 1;
+    let offset = 0;
+    return {
+      ok: true,
+      status: 200,
+      url: finalUrl,
+      headers: { get: () => null },
+      body: {
+        getReader: () => ({
+          async read() {
+            if (offset >= bytes.byteLength) return { done: true, value: undefined };
+            const value = bytes.subarray(offset, Math.min(offset + 257, bytes.byteLength));
+            offset += value.byteLength;
+            return { done: false, value };
+          },
+          releaseLock() {},
+        }),
+      },
+    };
+  });
+}
+
 function createObjectURL(bytes) {
   nextBlobId += 1;
   const url = `blob:${EXTENSION_ORIGIN}/smoke-${nextBlobId}`;
@@ -584,6 +666,20 @@ function loadClassicScript(file, sandbox) {
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(source, context, { filename: file });
+  return context;
+}
+
+function loadBackgroundScript(sandbox) {
+  const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
+  const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
+  const context = createContext(sandbox);
+  context.globalThis = context;
+  runInContext(
+    `${recommended.replace(/^export\s+/gmu, "")}\n${background}`,
+    context,
+    { filename: resolve(EXTENSION, "background.js") },
+  );
   return context;
 }
 
@@ -826,6 +922,7 @@ async function main() {
 
   const bus = makeBus();
   const storage = makeStorage();
+  const alarms = makeAlarms();
 
   // offscreen.js is a real ES module, so it reads `chrome` off the shared global;
   // the scripts loaded into a vm context get their own chrome.
@@ -835,16 +932,17 @@ async function main() {
   // too. Withholding the rest is what lets this harness catch a call that only
   // fails in a browser: offscreen.js reading chrome.storage.local looked correct
   // here for as long as the fake handed it one.
-  const offscreenChrome = makeChrome("offscreen", bus, storage);
+  const offscreenChrome = makeChrome("offscreen", bus, storage, alarms);
   delete offscreenChrome.storage;
   delete offscreenChrome.offscreen;
   delete offscreenChrome.runtime.getContexts;
   globalThis.chrome = offscreenChrome;
 
-  const swChrome = makeChrome("sw", bus, storage);
-  loadClassicScript(resolve(EXTENSION, "background.js"), {
+  const swChrome = makeChrome("sw", bus, storage, alarms);
+  loadBackgroundScript({
     chrome: swChrome,
     console,
+    fetch: globalThis.fetch,
     setTimeout,
     clearTimeout,
     Promise,
@@ -858,9 +956,10 @@ async function main() {
     RegExp,
     Math,
     Date,
+    URL,
   });
 
-  const pageChrome = makeChrome("page", bus, storage);
+  const pageChrome = makeChrome("page", bus, storage, alarms);
   let counter = 0;
   async function request(type, fields = {}) {
     counter += 1;
@@ -1270,6 +1369,215 @@ async function main() {
       && reloadedManagedPackage?.favorite === true,
     JSON.stringify({ managedReload, reloadedManagedState }),
   );
+
+  section("managed dictionary updates");
+  const updateTarget = "hachidori-updates";
+  const updateAlarmName = "hachidori-managed-dictionary-updates";
+  const managedId = reloadedManagedPackage.id;
+  const managedGroup = { id: "managed", name: "Managed", dictionaryIds: [managedId] };
+  const grouped = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: reloadedManagedState.revision,
+    dictionaries: reloadedManagedState.dictionaries,
+    groups: [managedGroup],
+  });
+  check("managed update fixture adds a stable-id group", grouped?.ok === true, JSON.stringify(grouped));
+
+  const archiveRequests = { count: 0 };
+  const checkedRevision = "2026.09.07.0";
+  remoteJson(recommended.indexUrl, { revision: checkedRevision });
+  remoteArchive(
+    recommended.downloadUrl,
+    buildRecommendedZip({
+      title: "Jitendex.org [2026-09-07]",
+      revision: checkedRevision,
+      indexUrl: recommended.indexUrl,
+      downloadUrl: recommended.downloadUrl,
+      capabilities: recommended.capabilities,
+    }),
+    recommended.downloadUrl,
+    archiveRequests,
+  );
+  const checked = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_check",
+  });
+  const checkedState = await storedDictionaryState();
+  const checkedManaged = checkedState.dictionaries.find((entry) => entry.id === managedId);
+  const checkedLocal = checkedState.dictionaries.find((entry) => entry.id === importedPackage.id);
+  const checkedGlobals = (await storage.api().local.get("dictionaryUpdates")).dictionaryUpdates;
+  check(
+    "Check now records a disabled managed package without downloading and skips local archives",
+    checked?.ok === true
+      && checkedManaged?.enabled === false
+      && checkedManaged?.lastUpdateCheck?.status === "update-available"
+      && checkedManaged.lastUpdateCheck.remoteRevision === checkedRevision
+      && checkedLocal?.lastUpdateCheck === null
+      && archiveRequests.count === 0
+      && Number.isFinite(Date.parse(checkedGlobals?.lastCheckedAt)),
+    JSON.stringify({ checked, checkedState, checkedGlobals, archiveRequests }),
+  );
+
+  // The per-package update state is structured data. Losing the import CAS reply
+  // must still recognize the cloned readback as the exact committed value.
+  loseNextStateCasReply = true;
+  const manualUpdate = await Promise.race([
+    pageChrome.runtime.sendMessage({
+      target: updateTarget,
+      type: "hd_updates_install",
+      dictionaryIds: [managedId],
+    }),
+    new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 10000)),
+  ]);
+  const manualState = await storedDictionaryState();
+  const manuallyUpdated = manualState.dictionaries.find((entry) => entry.id === managedId);
+  check(
+    "manual Update rechecks and atomically replaces through the existing import transaction",
+    manualUpdate?.ok === true
+      && manualUpdate.timeout !== true
+      && archiveRequests.count === 1
+      && manuallyUpdated?.revision === checkedRevision
+      && manuallyUpdated?.id === managedId
+      && manuallyUpdated?.displayName === "Starter terms"
+      && manuallyUpdated?.enabled === false
+      && manuallyUpdated?.favorite === true
+      && manuallyUpdated?.lastUpdateCheck?.status === "up-to-date"
+      && JSON.stringify(manualState.groups) === JSON.stringify([managedGroup]),
+    JSON.stringify({ manualUpdate, manualState, archiveRequests }),
+  );
+
+  const scheduled = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_schedule",
+    schedule: "hourly",
+  });
+  const hourlyAlarm = await alarms.api.get(updateAlarmName);
+  check(
+    "one global schedule creates one browser alarm",
+    scheduled?.ok === true
+      && scheduled.settings?.schedule === "hourly"
+      && hourlyAlarm?.periodInMinutes === 60
+      && alarms.values.size === 1,
+    JSON.stringify({ scheduled, hourlyAlarm, alarms: [...alarms.values.values()] }),
+  );
+
+  const alarmRevision = "2026.09.08.0";
+  remoteJson(recommended.indexUrl, { revision: alarmRevision });
+  remoteArchive(
+    recommended.downloadUrl,
+    buildRecommendedZip({
+      title: "Jitendex.org [2026-09-08]",
+      revision: alarmRevision,
+      indexUrl: recommended.indexUrl,
+      downloadUrl: recommended.downloadUrl,
+      capabilities: recommended.capabilities,
+    }),
+    recommended.downloadUrl,
+    archiveRequests,
+  );
+  alarms.fire(updateAlarmName);
+  const alarmDeadline = Date.now() + 10000;
+  let alarmState = await storedDictionaryState();
+  while ((alarmState.dictionaries.find((entry) => entry.id === managedId)?.revision !== alarmRevision
+      || alarmState.dictionaries.find((entry) => entry.id === managedId)?.lastUpdateCheck?.status !== "up-to-date")
+      && Date.now() < alarmDeadline) {
+    await new Promise((done) => setTimeout(done, 25));
+    alarmState = await storedDictionaryState();
+  }
+  const alarmUpdated = alarmState.dictionaries.find((entry) => entry.id === managedId);
+  check(
+    "the scheduled alarm auto-installs available updates without deadlocking storage",
+    alarmUpdated?.revision === alarmRevision
+      && alarmUpdated?.lastUpdateCheck?.status === "up-to-date"
+      && archiveRequests.count === 2
+      && alarmUpdated.id === managedId
+      && alarmUpdated.displayName === "Starter terms"
+      && alarmUpdated.enabled === false
+      && alarmUpdated.favorite === true
+      && JSON.stringify(alarmState.groups) === JSON.stringify([managedGroup]),
+    JSON.stringify({ alarmState, archiveRequests }),
+  );
+
+  await alarms.api.clear(updateAlarmName);
+  swChrome.__events.onStartup.fire();
+  const alarmRepairDeadline = Date.now() + 2000;
+  let repairedAlarm = await alarms.api.get(updateAlarmName);
+  while (!repairedAlarm && Date.now() < alarmRepairDeadline) {
+    await new Promise((done) => setTimeout(done, 10));
+    repairedAlarm = await alarms.api.get(updateAlarmName);
+  }
+  check(
+    "service-worker startup recreates a missing configured alarm",
+    repairedAlarm?.periodInMinutes === 60 && alarms.values.size === 1,
+    JSON.stringify({ repairedAlarm, alarms: [...alarms.values.values()] }),
+  );
+
+  const failedRevision = "2026.09.09.0";
+  const beforeFailedAlarm = await storedDictionaryState();
+  const beforeFailedPackage = beforeFailedAlarm.dictionaries.find((entry) => entry.id === managedId);
+  remoteJson(recommended.indexUrl, { revision: failedRevision });
+  remoteArchive(
+    recommended.downloadUrl,
+    buildRecommendedZip({
+      title: "Jitendex.org [2026-09-09]",
+      revision: "wrong-revision",
+      indexUrl: recommended.indexUrl,
+      downloadUrl: recommended.downloadUrl,
+      capabilities: recommended.capabilities,
+    }),
+    recommended.downloadUrl,
+    archiveRequests,
+  );
+  alarms.fire(updateAlarmName);
+  const failureDeadline = Date.now() + 10000;
+  let failedAlarmState = await storedDictionaryState();
+  while (!failedAlarmState.dictionaries.find((entry) => entry.id === managedId)?.lastUpdateCheck?.error
+      && Date.now() < failureDeadline) {
+    await new Promise((done) => setTimeout(done, 25));
+    failedAlarmState = await storedDictionaryState();
+  }
+  const failedAlarmPackage = failedAlarmState.dictionaries.find((entry) => entry.id === managedId);
+  check(
+    "a failed scheduled replacement retains the old generation and reports the available revision",
+    failedAlarmPackage?.revision === alarmRevision
+      && failedAlarmPackage?.path === beforeFailedPackage.path
+      && failedAlarmPackage?.lastUpdateCheck?.status === "update-available"
+      && failedAlarmPackage?.lastUpdateCheck?.remoteRevision === failedRevision
+      && failedAlarmPackage?.lastUpdateCheck?.error?.includes("revision")
+      && JSON.stringify(failedAlarmState.groups) === JSON.stringify([managedGroup]),
+    JSON.stringify({ beforeFailedAlarm, failedAlarmState }),
+  );
+
+  remoteJson(recommended.indexUrl, {}, 503);
+  const failedCheck = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_check",
+  });
+  const failedCheckState = await storedDictionaryState();
+  const failedCheckPackage = failedCheckState.dictionaries.find((entry) => entry.id === managedId);
+  check(
+    "an index failure is recorded per item without changing the installed revision",
+    failedCheck?.ok === true
+      && failedCheckPackage?.revision === alarmRevision
+      && failedCheckPackage?.lastUpdateCheck?.status === "check-failed"
+      && failedCheckPackage?.lastUpdateCheck?.error?.includes("HTTP 503"),
+    JSON.stringify({ failedCheck, failedCheckState }),
+  );
+
+  const scheduleOff = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_schedule",
+    schedule: "off",
+  });
+  check(
+    "turning periodic checks off clears the one managed-update alarm",
+    scheduleOff?.ok === true
+      && scheduleOff.settings?.schedule === "off"
+      && await alarms.api.get(updateAlarmName) === undefined,
+    JSON.stringify({ scheduleOff, alarms: [...alarms.values.values()] }),
+  );
+  await request("hd_remove", { title: "Jitendex.org [2026-09-08]" });
   await request("hd_remove", { title: localUpdateTitle });
   await request("hd_remove", { title: updatedTitle });
   await request("hd_remove", { title: recommended.title });
