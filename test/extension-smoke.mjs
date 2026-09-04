@@ -965,7 +965,9 @@ async function customEngineStage() {
   });
   check(
     "custom save compiles with real WASM and publishes the fixed package first and enabled",
-    saved.ok === true
+    saved.type === "hd_custom_save_result"
+      && /^custom-engine-\d+$/u.test(saved.requestId)
+      && saved.ok === true
       && saved.errors?.length === 1
       && saved.document?.revision === 1
       && saved.state?.dictionaries?.length === 1
@@ -1055,7 +1057,9 @@ async function customEngineStage() {
   });
   check(
     "queued Note append reads the latest source, preserves CRLF, and recompiles once",
-    appended.ok === true
+    appended.type === "hd_custom_append_result"
+      && /^custom-engine-\d+$/u.test(appended.requestId)
+      && appended.ok === true
       && appended.document?.revision === (sourceOnly.document?.revision ?? 0) + 1
       && appended.document?.text.includes("\r\n\u6ce8\u8a18, \u3061\u3085\u3046\u304d, noted\\nagain\r\n")
       && appended.state?.revision === (sourceOnly.state?.revision ?? 0) + 1

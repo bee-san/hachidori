@@ -645,7 +645,14 @@ async function commitCustomStorage(snapshot, source, semanticRevision, dictionar
     ...(changesState ? { dictionaries, groups } : {}),
   };
   try {
-    return await ask("hd_custom_cas", fields);
+    const reply = await ask("hd_custom_cas", fields);
+    // The host reply's envelope belongs to this internal CAS request. Let
+    // handleEngineMessage apply the public save/append envelope instead of
+    // allowing these fields to overwrite its type and request ID.
+    const result = { ...reply };
+    delete result.type;
+    delete result.requestId;
+    return result;
   } catch (commitError) {
     let current;
     try {
