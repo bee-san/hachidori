@@ -1657,6 +1657,11 @@ async function main() {
         request.type === (index < 2 ? "hd_apply_state" : "hd_state_cas"))
       && settingsConflict.management.bulkHiddenUntouched === true
       && settingsConflict.management.bulkValues?.join(",") === "false,false,false,true,true,true,true,true,true,false,false,false"
+      && JSON.stringify(settingsConflict.management.queuedOrderTitles) === JSON.stringify([
+        ["ＡＬＰＨＡ", "Hidden one", "Alpha alias", "Ａｌｐｈａ notes", "Hidden two"],
+        ["ＡＬＰＨＡ", "Hidden one", "Ａｌｐｈａ notes", "Alpha alias", "Hidden two"],
+      ])
+      && settingsConflict.management.orderRequests?.every((request) => request.type === "hd_apply_state")
       && JSON.stringify(settingsConflict.management.orderTitles) === JSON.stringify([
         ["ＡＬＰＨＡ", "Alpha alias", "Hidden one", "Hidden two", "Ａｌｐｈａ notes"],
         ["Ａｌｐｈａ notes", "ＡＬＰＨＡ", "Alpha alias", "Hidden one", "Hidden two"],
@@ -1951,9 +1956,20 @@ async function settingsConflictStage() {
   let storageListener = null;
   const casRequests = [];
   let rejectNextApply = true;
+  let holdNextApply = false;
+  let releaseHeldApply = null;
   let directDictionaryWrites = 0;
   let removeStarted = false;
   let releaseRemove = null;
+  const acceptState = (nextDictionaries) => {
+    state = {
+      schemaVersion: 1,
+      revision: state.revision + 1,
+      dictionaries: structuredClone(nextDictionaries),
+    };
+    storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+    return { ok: true, state: structuredClone(state) };
+  };
   window.chrome = {
     runtime: {
       id: "hachidorisettingssmoke",
@@ -1967,13 +1983,7 @@ async function settingsConflictStage() {
             baseRevision: message.baseRevision,
             dictionaries: structuredClone(message.dictionaries),
           });
-          state = {
-            schemaVersion: 1,
-            revision: state.revision + 1,
-            dictionaries: structuredClone(message.dictionaries),
-          };
-          storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
-          return { ok: true, state: structuredClone(state) };
+          return acceptState(message.dictionaries);
         }
         if (message.type === "hd_apply_state") {
           casRequests.push({
@@ -1982,13 +1992,16 @@ async function settingsConflictStage() {
             dictionaries: structuredClone(message.dictionaries),
           });
           if (!rejectNextApply) {
-            state = {
-              schemaVersion: 1,
-              revision: state.revision + 1,
-              dictionaries: structuredClone(message.dictionaries),
-            };
-            storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
-            return { ok: true, state: structuredClone(state) };
+            if (!holdNextApply) {
+              return acceptState(message.dictionaries);
+            }
+            holdNextApply = false;
+            return new Promise((resolveApply) => {
+              releaseHeldApply = () => {
+                releaseHeldApply = null;
+                resolveApply(acceptState(message.dictionaries));
+              };
+            });
           }
           rejectNextApply = false;
           state = {
@@ -2201,6 +2214,24 @@ async function settingsConflictStage() {
       return dictionary.enabled === true && dictionary.favorite === false;
     }));
 
+  holdNextApply = true;
+  const queuedUp = rowFor(ids.gamma).querySelector(".dict-up");
+  queuedUp.click();
+  await waitForRequestCount(5);
+  queuedUp.click();
+  releaseHeldApply?.();
+  await waitForRequestCount(6);
+  const queuedOrderTitles = casRequests.slice(4).map((request) =>
+    request.dictionaries.map((dictionary) => dictionary.displayName || dictionary.title));
+
+  state = {
+    schemaVersion: 1,
+    revision: state.revision + 1,
+    dictionaries: structuredClone(managementDictionaries),
+  };
+  storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+  casRequests.splice(4);
+
   rowFor(ids.beta).querySelector(".dict-up").click();
   await waitForRequestCount(5);
 
@@ -2250,6 +2281,7 @@ async function settingsConflictStage() {
     bulkRequests,
     bulkValues,
     bulkHiddenUntouched,
+    queuedOrderTitles,
     orderRequests,
     orderTitles,
     hiddenOrderPreserved,

@@ -643,7 +643,7 @@ function renderDictionaries() {
       event.preventDefault();
       clearDictionaryDropTargets();
       if (draggedDictionaryId && draggedDictionaryId !== entry.id) {
-        moveDictionary(draggedDictionaryId, index);
+        moveDictionary(draggedDictionaryId, { targetId: entry.id });
       }
       draggedDictionaryId = null;
     });
@@ -708,10 +708,10 @@ function renderDictionaries() {
     up.dataset.pinnedDisabled = String(index === 0);
     down.dataset.pinnedDisabled = String(index === dictionaries.length - 1);
     up.addEventListener("click", () => {
-      moveDictionary(entry.id, index - 1);
+      moveDictionary(entry.id, { step: -1 });
     });
     down.addEventListener("click", () => {
-      moveDictionary(entry.id, index + 1);
+      moveDictionary(entry.id, { step: 1 });
     });
 
     const position = row.querySelector(".dict-position-input");
@@ -724,7 +724,7 @@ function renderDictionaries() {
     const moveToPosition = () => {
       const target = Number(position.value);
       if (Number.isInteger(target) && target >= 1 && target <= dictionaries.length) {
-        moveDictionary(entry.id, target - 1);
+        moveDictionary(entry.id, { position: target });
       } else {
         position.value = String(index + 1);
       }
@@ -755,9 +755,20 @@ function renderDictionaries() {
   setControlsDisabled(importing);
 }
 
-function moveDictionary(id, target) {
+function dictionaryMoveTarget(current, index, move) {
+  if (move.targetId) {
+    return current.findIndex((entry) => entry.id === move.targetId);
+  }
+  if (move.step) {
+    return index + move.step;
+  }
+  return move.position - 1;
+}
+
+function moveDictionary(id, move) {
   void commitDictionaries((current) => {
     const index = current.findIndex((entry) => entry.id === id);
+    const target = dictionaryMoveTarget(current, index, move);
     if (index < 0 || target < 0 || target >= current.length || index === target) {
       return null;
     }
