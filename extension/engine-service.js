@@ -667,6 +667,7 @@ function withStoredPresentation(generated, stored) {
   const sourceId = optionalText(stored?.sourceId);
   return {
     ...generated,
+    id: optionalText(stored?.id) ?? generated.id,
     displayName: typeof stored?.displayName === "string" ? stored.displayName : null,
     enabled: stored?.enabled !== false,
     favorite: stored?.favorite === true,
@@ -950,10 +951,7 @@ function withImport(stored, generated, recommendedSource) {
       : withRecommendedSource(generated, recommendedSource)];
   }
   const next = [...stored];
-  const replacement = {
-    ...withStoredPresentation(generated, stored[existingIndex]),
-    id: optionalText(stored[existingIndex]?.id) ?? generated.id,
-  };
+  const replacement = withStoredPresentation(generated, stored[existingIndex]);
   next[existingIndex] = recommendedSource === null
     ? replacement
     : withRecommendedSource(replacement, recommendedSource);

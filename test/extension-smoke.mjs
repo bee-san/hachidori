@@ -1258,6 +1258,20 @@ async function main() {
       && localUpdatePackage?.favorite === true,
     JSON.stringify({ localUpdateImport, localUpdateState }),
   );
+  const managedReload = await request("hd_reload");
+  const reloadedManagedState = await storedDictionaryState();
+  const reloadedManagedPackage = reloadedManagedState.dictionaries[trustedIndex];
+  check(
+    "managed package identity survives dictionary reconciliation",
+    managedReload.ok === true
+      && reloadedManagedPackage?.id === trustedPackage.id
+      && reloadedManagedPackage?.title === localUpdateTitle
+      && reloadedManagedPackage?.sourceId === recommended.sourceId
+      && reloadedManagedPackage?.displayName === "Starter terms"
+      && reloadedManagedPackage?.enabled === false
+      && reloadedManagedPackage?.favorite === true,
+    JSON.stringify({ managedReload, reloadedManagedState }),
+  );
   await request("hd_remove", { title: localUpdateTitle });
   await request("hd_remove", { title: updatedTitle });
   await request("hd_remove", { title: recommended.title });
