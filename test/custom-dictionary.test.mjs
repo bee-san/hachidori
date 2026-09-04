@@ -13,7 +13,7 @@ import {
   serializeCustomDictionaryEntry,
 } from "../extension/custom-dictionary.js";
 
-test("custom source preserves ordered duplicates and reports every malformed line", () => {
+test("custom source preserves ordered duplicates and reports every malformed line", async () => {
   const source = [
     "\ufeff# personal entries",
     "",
@@ -26,6 +26,8 @@ test("custom source preserves ordered duplicates and reports every malformed lin
     ",reading,definition",
     "term,,definition",
     "term,reading,",
+    "decoded-empty,reading,\\n",
+    "decoded-whitespace,reading,\\n \\n",
     "escaped,\u3048\u3059\u3051\u30fc\u3077,line 1\\nline 2",
     "literal,\u308a\u3066\u3089\u308b,line 1\\\\nline 2",
   ].join("\r\n");
@@ -43,7 +45,10 @@ test("custom source preserves ordered duplicates and reports every malformed lin
     [9, "term is empty"],
     [10, "reading is empty"],
     [11, "definition is empty"],
+    [12, "definition is empty"],
+    [13, "definition is empty"],
   ]);
+  await assert.doesNotReject(() => customDictionarySemanticRevision(parsed.entries));
   assert.equal(source.startsWith("\ufeff#"), true, "parsing must not mutate the source document");
 });
 

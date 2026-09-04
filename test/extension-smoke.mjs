@@ -3756,13 +3756,25 @@ async function main() {
     JSON.stringify(noteContent?.refreshFailure),
   );
   check(
-    "Note refresh skips a replaced view or detached page anchor",
+    "Note refresh skips a replaced view or an anchor detached before or during its response",
     noteContent?.replaced?.refreshCount === 0
       && noteContent.replaced.backExpression === "\u98df\u3079\u305f"
       && noteContent.replaced.popupHidden === true
       && noteContent.detached?.refreshCount === 0
-      && noteContent.detached.resolved === true,
-    JSON.stringify({ replaced: noteContent?.replaced, detached: noteContent?.detached }),
+      && noteContent.detached.resolved === true
+      && noteContent.detachedDuringRefresh?.term?.refreshCount === 1
+      && noteContent.detachedDuringRefresh.term.renderCount === 0
+      && noteContent.detachedDuringRefresh.term.popupHidden === true
+      && noteContent.detachedDuringRefresh.term.resolved === true
+      && noteContent.detachedDuringRefresh?.kanji?.refreshCount === 1
+      && noteContent.detachedDuringRefresh.kanji.renderCount === 0
+      && noteContent.detachedDuringRefresh.kanji.popupHidden === true
+      && noteContent.detachedDuringRefresh.kanji.resolved === true,
+    JSON.stringify({
+      replaced: noteContent?.replaced,
+      detached: noteContent?.detached,
+      detachedDuringRefresh: noteContent?.detachedDuringRefresh,
+    }),
   );
   check(
     "Note editing cancels hover dismissal and consumes Escape before popup capture",
@@ -6134,6 +6146,73 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function detachedDuringRefreshCase() {
+    async function run(kind) {
+      const nativeKanji = kind === "kanji";
+      const harness = await createHarness(nativeKanji
+        ? { title: "Generic", kind: "kanji" }
+        : undefined);
+      await harness.initialLookup();
+      if (nativeKanji) {
+        const clicked = harness.callbacks().onKanjiClick("\u98df", null, null, null);
+        const selected = harness.take("hd_kanji");
+        harness.reply(selected, {
+          kanji: {
+            character: "\u98df",
+            entries: [{ dictionary: "Generic" }],
+          },
+        });
+        await clicked;
+      }
+      harness.edit(true);
+      const append = harness.callbacks().onAddCustomEntry({
+        definition: nativeKanji ? "food" : "ate",
+        reading: nativeKanji ? "\u3057\u3087\u304f" : "\u305f\u3079\u305f",
+        term: nativeKanji ? "\u98df" : "\u98df\u3079\u305f",
+      });
+      const appendRequest = harness.take("hd_custom_append");
+      harness.reply(appendRequest, {
+        document: { revision: 2, semanticRevision: "two", text: "" },
+        state: harness.state(2, "after-note"),
+      });
+      await harness.settle();
+      const refresh = harness.take(nativeKanji ? "hd_kanji" : "hd_lookup");
+      const renderCount = harness.renders.length;
+      harness.anchor.remove();
+      harness.reply(refresh, nativeKanji
+        ? {
+            kanji: {
+              character: "\u98df",
+              entries: [{ dictionary: "Generic" }],
+            },
+          }
+        : {
+            dictionaryCount: 1,
+            results: [harness.term("\u98df\u3079\u305f refreshed")],
+          });
+      await harness.settle();
+      let resolved = true;
+      try {
+        await append;
+      } catch {
+        resolved = false;
+      }
+      const result = {
+        popupHidden: harness.driver.snapshot().popupHidden,
+        refreshCount: refresh === null ? 0 : 1,
+        renderCount: harness.renders.length - renderCount,
+        resolved,
+      };
+      harness.close();
+      return result;
+    }
+
+    return {
+      kanji: await run("kanji"),
+      term: await run("term"),
+    };
+  }
+
   async function guardCase() {
     const harness = await createHarness();
     await harness.initialLookup();
@@ -6194,6 +6273,7 @@ async function contentNoteStage() {
     callbacksWired,
     deferredInvalidation: await deferredInvalidationCase(),
     detached: await detachedCase(),
+    detachedDuringRefresh: await detachedDuringRefreshCase(),
     eventFirst: await eventFirstCase(),
     guards: await guardCase(),
     kanji: await kanjiCase(),
