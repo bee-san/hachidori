@@ -81,6 +81,13 @@ const PROFILE = process.env.HACHIDORI_PROFILE || `/tmp/hachidori-e2e-profile-${p
 const HIGHLIGHT_NAME = (readFileSync(resolve(EXTENSION, "content.js"), "utf8")
   .match(/HIGHLIGHT_NAME\s*=\s*"([^"]+)"/) || [])[1];
 
+const RECOMMENDED_DICTIONARIES = [
+  ["Jitendex", "https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip"],
+  ["JMdict (English)", "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_english.zip"],
+  ["Bee's Ultimate Kanji Dictionary", "https://github.com/bee-san/bees-ultimate-kanji-dictionary/releases/latest/download/bees-ultimate-kanji-dictionary.zip"],
+  ["Jiten Frequency", "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan"],
+];
+
 // Every assertion this run makes, named up front. The denominator is this list,
 // not the number of checks that happened to execute: a suite that skips an
 // assertion under a regression prints "23/24 passed" and reads like success.
@@ -90,6 +97,9 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
+  "settings page renders exactly four safe recommended dictionary links",
+  "recommended dictionaries form two columns on desktop",
+  "recommended dictionaries stack without overflow on narrow screens",
   "settings page exposes a .zip file input",
   "the .zip file input is type=file and accepts .zip",
   "importing a Yomitan .zip from the settings page succeeds",
@@ -415,6 +425,74 @@ async function main() {
       ),
     JSON.stringify(branding),
   );
+
+  await page.setViewport({ width: 960, height: 900 });
+  const desktopRecommendations = await page.evaluate(expected => {
+    const list = document.querySelector(".recommended-dictionary-list");
+    const items = list ? [...list.children] : [];
+    return {
+      columns: list ? getComputedStyle(list).gridTemplateColumns.split(" ").filter(Boolean).length : 0,
+      links: [...document.querySelectorAll("a.recommended-dictionary-link")].map(anchor => [
+        anchor.textContent.trim(),
+        anchor.href,
+        anchor.target,
+        anchor.rel,
+      ]),
+      rects: items.map(item => {
+        const rect = item.getBoundingClientRect();
+        return { bottom: rect.bottom, left: rect.left, right: rect.right, top: rect.top };
+      }),
+      expected,
+    };
+  }, RECOMMENDED_DICTIONARIES);
+  const desktopLinks = desktopRecommendations.links.map(([name, url]) => [name, url]);
+  check(
+    "settings page renders exactly four safe recommended dictionary links",
+    JSON.stringify(desktopLinks) === JSON.stringify(RECOMMENDED_DICTIONARIES)
+      && desktopRecommendations.links.every(([, , target, rel]) =>
+        target === "_blank" && rel.split(/\s+/u).includes("noopener") && rel.split(/\s+/u).includes("noreferrer")),
+    JSON.stringify(desktopRecommendations.links),
+  );
+  const desktopRects = desktopRecommendations.rects;
+  check(
+    "recommended dictionaries form two columns on desktop",
+    desktopRecommendations.columns === 2
+      && desktopRects.length === RECOMMENDED_DICTIONARIES.length
+      && Math.abs(desktopRects[0].top - desktopRects[1].top) <= 1
+      && Math.abs(desktopRects[2].top - desktopRects[3].top) <= 1
+      && desktopRects[0].left < desktopRects[1].left
+      && desktopRects[2].top >= Math.max(desktopRects[0].bottom, desktopRects[1].bottom),
+    JSON.stringify(desktopRecommendations),
+  );
+
+  await page.setViewport({ width: 480, height: 900 });
+  const narrowRecommendations = await page.evaluate(() => {
+    const list = document.querySelector(".recommended-dictionary-list");
+    const items = list ? [...list.children] : [];
+    const listRect = list?.getBoundingClientRect();
+    return {
+      columns: list ? getComputedStyle(list).gridTemplateColumns.split(" ").filter(Boolean).length : 0,
+      documentWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      list: listRect ? { left: listRect.left, right: listRect.right } : null,
+      rects: items.map(item => {
+        const rect = item.getBoundingClientRect();
+        return { bottom: rect.bottom, left: rect.left, right: rect.right, top: rect.top };
+      }),
+    };
+  });
+  check(
+    "recommended dictionaries stack without overflow on narrow screens",
+    narrowRecommendations.columns === 1
+      && narrowRecommendations.rects.length === RECOMMENDED_DICTIONARIES.length
+      && narrowRecommendations.scrollWidth <= narrowRecommendations.documentWidth
+      && narrowRecommendations.rects.every((rect, index, rects) =>
+        rect.left >= narrowRecommendations.list.left - 1
+          && rect.right <= narrowRecommendations.list.right + 1
+          && (index === 0 || rect.top >= rects[index - 1].bottom)),
+    JSON.stringify(narrowRecommendations),
+  );
+  await page.setViewport({ width: 800, height: 600 });
 
   // The offscreen document is where the wasm is compiled. If the CSP forbids it,
   // or chrome.offscreen misbehaves, the engine never reaches a ready state and

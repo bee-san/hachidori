@@ -553,6 +553,34 @@ function checkOptionRanges() {
   }
 }
 
+const RECOMMENDED_DICTIONARIES = [
+  ["Jitendex", "https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip"],
+  ["JMdict (English)", "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_english.zip"],
+  ["Bee's Ultimate Kanji Dictionary", "https://github.com/bee-san/bees-ultimate-kanji-dictionary/releases/latest/download/bees-ultimate-kanji-dictionary.zip"],
+  ["Jiten Frequency", "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan"],
+];
+
+function checkRecommendedDictionaries() {
+  const html = readFileSync(resolve(EXTENSION, "settings.html"), "utf8");
+  const anchors = [...html.matchAll(/<a\s+([^>]*\bclass="recommended-dictionary-link"[^>]*)>([^<]+)<\/a>/gu)];
+  const actual = anchors.map(([, attributes, name]) => [
+    name,
+    /\bhref="([^"]+)"/u.exec(attributes)?.[1] ?? "",
+  ]);
+  check(
+    "settings exposes exactly four canonical recommended dictionary downloads",
+    JSON.stringify(actual) === JSON.stringify(RECOMMENDED_DICTIONARIES),
+    JSON.stringify(actual),
+  );
+  check(
+    "recommended dictionary downloads open safely in a new tab",
+    anchors.length === RECOMMENDED_DICTIONARIES.length
+      && anchors.every(([, attributes]) => attributes.includes('target="_blank"')
+        && attributes.includes('rel="noopener noreferrer"')),
+    anchors.map(([, attributes]) => attributes).join("\n"),
+  );
+}
+
 async function main() {
   const mjs = resolve(EXTENSION, "vendor/hoshidicts.mjs");
   const wasm = resolve(EXTENSION, "vendor/hoshidicts.wasm");
@@ -567,6 +595,9 @@ async function main() {
 
   section("option ranges");
   checkOptionRanges();
+
+  section("recommended dictionaries");
+  checkRecommendedDictionaries();
 
   // Only chrome.runtime exists in an offscreen document. A path that is never
   // exercised below would still be a boot failure in a browser, so this is a
