@@ -714,12 +714,18 @@ function loadBackgroundScript(sandbox) {
 
 function loadSettingsScript(window) {
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
+  const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
+    .replace(/^export\s+/gmu, "");
   const groups = readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
-  window.eval(`${recommended.replace(/^export\s+/gmu, "")}\n${groups}\n${settings}`);
+  window.eval(
+    `${recommended.replace(/^export\s+/gmu, "")}\n${managedSource}\n${groups}\n${settings}`,
+  );
 }
 
 // content.js cannot be driven here (it needs a page), so the one thing worth
@@ -1400,6 +1406,34 @@ async function main() {
       && localUpdatePackage?.favorite === true,
     JSON.stringify({ localUpdateImport, localUpdateState }),
   );
+  const collisionRowsBefore = idb.keys("/dicts")
+    .filter((path) => path.includes("/dicts/.hdw-generation-"))
+    .sort();
+  const collidingLocalReimport = await request("hd_import", {
+    blobUrl: recommendedArchive({
+      title: FIXTURE_TITLE,
+      revision: "2026.09.06.collision",
+    }),
+    fileName: "colliding-local-reimport.zip",
+  });
+  const collisionState = await storedDictionaryState();
+  const collisionRowsAfter = idb.keys("/dicts")
+    .filter((path) => path.includes("/dicts/.hdw-generation-"))
+    .sort();
+  check(
+    "a local reimport matched by source cannot take another package's canonical title",
+    collidingLocalReimport.ok === false
+      && collidingLocalReimport.error?.includes("already installed")
+      && JSON.stringify(collisionState) === JSON.stringify(localUpdateState)
+      && JSON.stringify(collisionRowsAfter) === JSON.stringify(collisionRowsBefore),
+    JSON.stringify({
+      collidingLocalReimport,
+      localUpdateState,
+      collisionState,
+      collisionRowsBefore,
+      collisionRowsAfter,
+    }),
+  );
   const managedReload = await request("hd_reload");
   const reloadedManagedState = await storedDictionaryState();
   const reloadedManagedPackage = reloadedManagedState.dictionaries[trustedIndex];
@@ -1827,8 +1861,7 @@ async function main() {
       && stalePathUpdate.outcomes?.[0]?.error?.includes("changed while")
       && stalePathCommunity?.revision === "community-2"
       && stalePathCommunity?.path !== beforePathRace.path
-      && JSON.stringify(stalePathCommunity?.lastUpdateCheck)
-        === JSON.stringify(beforePathRace.lastUpdateCheck)
+      && stalePathCommunity?.lastUpdateCheck === null
       && pathRaceArchiveRequests.count === 0,
     JSON.stringify({
       collisionFixtureRestored,
@@ -2775,6 +2808,9 @@ async function main() {
       && managedUpdateSettings.initial.lastChecked.includes("9/4/2026")
       && managedUpdateSettings.initial.managedStatus.includes("Update available")
       && managedUpdateSettings.initial.managedUpdateHidden === false
+      && managedUpdateSettings.initial.insecureMetadata.includes("Local archive")
+      && managedUpdateSettings.initial.insecureStatus === "Not update-checkable"
+      && managedUpdateSettings.initial.insecureUpdateHidden === true
       && managedUpdateSettings.initial.localStatus === "Not update-checkable"
       && managedUpdateSettings.initial.localUpdateHidden === true
       && managedUpdateSettings.checkRequest?.type === "hd_updates_check"
@@ -3418,6 +3454,19 @@ async function settingsManagedUpdatesStage() {
           error: null,
         },
       }),
+      genericPackage({
+        id: "insecure-id",
+        title: "Insecure source",
+        isUpdatable: true,
+        indexUrl: "http://example.test/insecure/index.json",
+        downloadUrl: "http://example.test/insecure/archive.zip",
+        lastUpdateCheck: {
+          checkedAt: "2026-09-04T10:00:00.000Z",
+          status: "update-available",
+          remoteRevision: "test-2",
+          error: null,
+        },
+      }),
       genericPackage({ id: "local-id", title: "Local terms" }),
     ],
     groups: [],
@@ -3525,6 +3574,7 @@ async function settingsManagedUpdatesStage() {
     await new Promise((done) => window.setTimeout(done, 5));
   }
   const managedRow = () => window.document.querySelector('[data-dictionary-id="managed-id"]');
+  const insecureRow = () => window.document.querySelector('[data-dictionary-id="insecure-id"]');
   const localRow = () => window.document.querySelector('[data-dictionary-id="local-id"]');
   const result = {
     initial: {
@@ -3532,6 +3582,9 @@ async function settingsManagedUpdatesStage() {
       lastChecked: window.document.getElementById("update-last-checked")?.textContent ?? "",
       managedStatus: managedRow()?.querySelector(".dict-update-status")?.textContent ?? "",
       managedUpdateHidden: managedRow()?.querySelector(".dict-update")?.hidden,
+      insecureMetadata: insecureRow()?.querySelector(".dict-metadata")?.textContent ?? "",
+      insecureStatus: insecureRow()?.querySelector(".dict-update-status")?.textContent ?? "",
+      insecureUpdateHidden: insecureRow()?.querySelector(".dict-update")?.hidden,
       localStatus: localRow()?.querySelector(".dict-update-status")?.textContent ?? "",
       localUpdateHidden: localRow()?.querySelector(".dict-update")?.hidden,
     },

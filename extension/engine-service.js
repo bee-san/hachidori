@@ -923,12 +923,6 @@ function withImport(stored, generated, recommendedSource, managedSource) {
     if (existingIndex < 0 || !managedDictionaryMatches(existing, managedSource.fingerprint)) {
       throw new Error(MANAGED_DICTIONARY_CHANGED);
     }
-    const collision = stored.some((dictionary, index) =>
-      index !== existingIndex
-        && (dictionary?.id === generated.id || text(dictionary?.title) === generated.title));
-    if (collision) {
-      throw new Error(`a dictionary named ${generated.title} is already installed`);
-    }
   }
   if (existingIndex < 0 && recommendedSource !== null) {
     existingIndex = stored.findIndex((dictionary) =>
@@ -946,8 +940,17 @@ function withImport(stored, generated, recommendedSource, managedSource) {
       ? generated
       : withRecommendedSource(generated, recommendedSource)];
   }
+  const collision = stored.some((dictionary, index) =>
+    index !== existingIndex
+      && (dictionary?.id === generated.id || text(dictionary?.title) === generated.title));
+  if (collision) {
+    throw new Error(`a dictionary named ${generated.title} is already installed`);
+  }
   const next = [...stored];
-  let replacement = withStoredPresentation(generated, stored[existingIndex]);
+  let replacement = {
+    ...withStoredPresentation(generated, stored[existingIndex]),
+    lastUpdateCheck: null,
+  };
   if (managedSource !== null) {
     replacement = {
       ...replacement,

@@ -8,6 +8,7 @@ import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
 } from "./dictionary-groups.js";
+import { managedDictionarySource } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 
 const TARGET = "hoshidicts-offscreen";
@@ -318,7 +319,7 @@ function setUpdateState(message, tone = "") {
 }
 
 function isUpdateCheckable(dictionary) {
-  return dictionary.isUpdatable && dictionary.indexUrl !== null && dictionary.downloadUrl !== null;
+  return managedDictionarySource(dictionary) !== null;
 }
 
 function availableUpdates() {
@@ -621,7 +622,7 @@ function dictionaryMetadata(entry) {
       details.push(`Imported ${installed.toLocaleString()}`);
     }
   }
-  details.push(entry.isUpdatable && entry.indexUrl && entry.downloadUrl ? "Update source available" : "Local archive");
+  details.push(isUpdateCheckable(entry) ? "Update source available" : "Local archive");
   return details.join(" · ");
 }
 
