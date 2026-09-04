@@ -1719,10 +1719,14 @@ async function main() {
       && settingsConflict.groups.requestsAfterDuplicate === 1
       && settingsConflict.groups.requestsAfterReserved === 1
       && settingsConflict.groups.groupOrderAfterMove?.join(",") === "Grammar,INDIGO Deck"
+      && settingsConflict.groups.groupMoveFocusRetained === true
+      && settingsConflict.groups.groupAddFocusRetained === true
       && settingsConflict.groups.membershipBeforeMove?.join(",")
         === "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       && settingsConflict.groups.membershipAfterMove?.join(",")
         === "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      && settingsConflict.groups.memberMoveFocusRetained === true
+      && settingsConflict.groups.memberRemoveFocusRetained === true
       && settingsConflict.groups.membershipAfterAlias?.join(",")
         === settingsConflict.groups.membershipAfterMove.join(",")
       && settingsConflict.groups.renamedMemberLabel === "Renamed after grouping"
@@ -1742,6 +1746,14 @@ async function main() {
     "a storage change invalidates an in-flight clicked-kanji lookup",
     Array.isArray(staleKanjiRenders?.renders) && staleKanjiRenders.renders.length === 0,
     JSON.stringify(staleKanjiRenders),
+  );
+  const groupOnlyKanjiRenders = await staleKanjiResponseStage("group-storage-change");
+  check(
+    "a group-only state change leaves an in-flight clicked-kanji lookup alone",
+    Array.isArray(groupOnlyKanjiRenders?.renders)
+      && groupOnlyKanjiRenders.renders.length === 1
+      && groupOnlyKanjiRenders.popupHidden === false,
+    JSON.stringify(groupOnlyKanjiRenders),
   );
   const staleBackRenders = await staleKanjiResponseStage("back");
   check(
@@ -2547,21 +2559,33 @@ async function settingsConflictStage() {
   createGroup.click();
   await waitForRequestCount(2);
   const grammarGroupId = state.groups.find((group) => group.name === "Grammar")?.id;
-  groupRow(grammarGroupId).querySelector(".dict-group-up").click();
+  const grammarUp = groupRow(grammarGroupId).querySelector(".dict-group-up");
+  grammarUp.focus();
+  grammarUp.click();
   await waitForRequestCount(3);
   const groupOrderAfterMove = state.groups.map((group) => group.name);
+  const groupMoveFocusRetained = window.document.activeElement?.classList.contains("dict-group-down") === true
+    && window.document.activeElement.closest(".dict-group")?.dataset.groupId === grammarGroupId;
 
   const studyName = groupRow(studyGroupId).querySelector(".dict-group-name");
   studyName.value = "Reading";
   studyName.dispatchEvent(new window.Event("change", { bubbles: true }));
   await waitForRequestCount(4);
 
+  const studyAdd = groupRow(studyGroupId).querySelector(".dict-group-add");
+  studyAdd.focus();
   await addGroupMember(studyGroupId, ids.beta, 5);
+  const groupAddFocusRetained = window.document.activeElement?.classList.contains("dict-group-add") === true
+    && window.document.activeElement.closest(".dict-group")?.dataset.groupId === studyGroupId;
   await addGroupMember(studyGroupId, ids.alpha, 6);
   const membershipBeforeMove = state.groups.find((group) => group.id === studyGroupId)?.dictionaryIds;
-  groupMemberRow(studyGroupId, ids.alpha).querySelector(".dict-group-member-up").click();
+  const alphaUp = groupMemberRow(studyGroupId, ids.alpha).querySelector(".dict-group-member-up");
+  alphaUp.focus();
+  alphaUp.click();
   await waitForRequestCount(7);
   const membershipAfterMove = state.groups.find((group) => group.id === studyGroupId)?.dictionaryIds;
+  const memberMoveFocusRetained = window.document.activeElement?.classList.contains("dict-group-member-down") === true
+    && window.document.activeElement.closest(".dict-group-member")?.dataset.dictionaryId === ids.alpha;
 
   state = {
     ...state,
@@ -2576,8 +2600,12 @@ async function settingsConflictStage() {
   const renamedMemberLabel = groupMemberRow(studyGroupId, ids.beta)
     ?.querySelector(".dict-group-member-name")?.textContent;
 
-  groupMemberRow(studyGroupId, ids.beta).querySelector(".dict-group-member-remove").click();
+  const betaRemove = groupMemberRow(studyGroupId, ids.beta).querySelector(".dict-group-member-remove");
+  betaRemove.focus();
+  betaRemove.click();
   await waitForRequestCount(8);
+  const memberRemoveFocusRetained = window.document.activeElement?.classList.contains("dict-group-member-remove") === true
+    && window.document.activeElement.closest(".dict-group-member")?.dataset.dictionaryId === ids.alpha;
   groupRow(grammarGroupId).querySelector(".dict-group-delete").click();
   await waitForRequestCount(9);
 
@@ -2588,8 +2616,12 @@ async function settingsConflictStage() {
     requestsAfterDuplicate,
     requestsAfterReserved,
     groupOrderAfterMove,
+    groupMoveFocusRetained,
+    groupAddFocusRetained,
     membershipBeforeMove,
     membershipAfterMove,
+    memberMoveFocusRetained,
+    memberRemoveFocusRetained,
     membershipAfterAlias,
     renamedMemberLabel,
     finalGroups: structuredClone(state.groups),
@@ -2705,6 +2737,16 @@ async function staleKanjiResponseStage(invalidation) {
     storageListener({
       options: {
         newValue: { kanjiClickDictionary: { title: "Other", kind: "term" } },
+      },
+    }, "local");
+  } else if (invalidation === "group-storage-change") {
+    storageListener({
+      dictionaryState: {
+        newValue: {
+          ...dictionaryState,
+          revision: dictionaryState.revision + 1,
+          groups: [{ id: "study", name: "Study", dictionaryIds: [] }],
+        },
       },
     }, "local");
   } else if (invalidation === "back") {
