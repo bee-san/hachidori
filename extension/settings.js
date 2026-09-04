@@ -1159,7 +1159,7 @@ function queueDictionaryStateChange(update, reloadEngine) {
   }
   pendingDictionaryCommits += 1;
   committing = true;
-  pendingManagementFocus ??= focusedManagementControl();
+  pendingManagementFocus = focusedManagementControl() ?? pendingManagementFocus;
   setControlsDisabled(importing);
 
   const run = dictionaryCommitTail.then(
