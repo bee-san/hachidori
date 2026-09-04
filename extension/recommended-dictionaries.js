@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-(() => {
-  const entries = [
+export const RECOMMENDED_DICTIONARIES = Object.freeze(
+  [
     {
       sourceId: "jitendex",
       name: "Jitendex",
@@ -64,11 +64,5 @@
       requiredCapability: "freq",
       titlePattern: "^Jiten$",
     },
-  ].map((entry) => Object.freeze(entry));
-
-  Object.defineProperty(globalThis, "HD_RECOMMENDED_DICTIONARIES", {
-    value: Object.freeze(entries),
-    writable: false,
-    configurable: false,
-  });
-})();
+  ].map((entry) => Object.freeze(entry)),
+);

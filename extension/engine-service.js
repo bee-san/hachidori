@@ -1,4 +1,4 @@
-import "./recommended-dictionaries.js";
+import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
@@ -19,7 +19,7 @@ const GENERATION_NAME = /^\.hdw-generation-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-
 const IMPORT_ZIP = "/.hdw-archive.zip";
 const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
 const RECOMMENDED_BY_ID = new Map(
-  globalThis.HD_RECOMMENDED_DICTIONARIES.map((entry) => [entry.sourceId, entry]),
+  RECOMMENDED_DICTIONARIES.map((entry) => [entry.sourceId, entry]),
 );
 
 // Index into this array is the `kind` argument of hdw_add_dict.

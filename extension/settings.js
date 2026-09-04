@@ -8,6 +8,7 @@ import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
 } from "./dictionary-groups.js";
+import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
@@ -15,7 +16,6 @@ const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
 const MODIFIERS = ["none", "shift", "ctrl", "alt"];
 const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
 const STATUS_POLL_MS = 1000;
-const RECOMMENDED_DICTIONARIES = globalThis.HD_RECOMMENDED_DICTIONARIES;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
 // settings page can be left open.
 const STATUS_RETRY_MS = 5000;
