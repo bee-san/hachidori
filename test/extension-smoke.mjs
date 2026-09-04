@@ -3360,8 +3360,9 @@ async function main() {
       && settingsCustom.eventBeforeReadReply?.value === "newer event, にゅー, wins\n"
       && settingsCustom.eventBeforeReadReply.expanded === "true"
       && settingsCustom.eventBeforeReadReply.readCount === 1
+      && settingsCustom.eventBeforeReadReply.saveDisabled === true
       && settingsCustom.eventFirstSave?.baseRevision === 7
-      && settingsCustom.eventFirstSave.text === settingsCustom.eventFirstSave.value
+      && settingsCustom.eventFirstSave.submittedUsesCrlf === true
       && settingsCustom.eventFirstSave.saveDisabled === true
       && settingsCustom.replyBeforeEvent?.saveDisabled === true
       && settingsCustom.equalEventIgnored === true,
@@ -3386,7 +3387,7 @@ async function main() {
   check(
     "settings pins the managed custom package while leaving presentation editable",
     settingsCustom?.fixedControls?.first === true
-      && settingsCustom.fixedControls.selectedDisabled === true
+      && settingsCustom.fixedControls.selectedDisabled === false
       && settingsCustom.fixedControls.enabled === true
       && settingsCustom.fixedControls.enabledDisabled === true
       && settingsCustom.fixedControls.draggable === false
@@ -3401,6 +3402,10 @@ async function main() {
       && JSON.stringify(settingsCustom.bulkState) === JSON.stringify([
         { id: CUSTOM_DICTIONARY_ID, enabled: true },
         { id: "ordinary-id", enabled: false },
+      ])
+      && JSON.stringify(settingsCustom.favoriteState) === JSON.stringify([
+        { id: CUSTOM_DICTIONARY_ID, favorite: true },
+        { id: "ordinary-id", favorite: true },
       ]),
     JSON.stringify(settingsCustom),
   );
@@ -4566,15 +4571,16 @@ async function settingsCustomDictionaryStage() {
     ...customDocument,
     revision: 6,
     semanticRevision: "b".repeat(64),
-    text: "newer event, にゅー, wins\n",
+    text: "newer event, にゅー, wins\r\n",
   };
   publish({ customDictionarySource: { newValue: structuredClone(customDocument) } });
   pendingRead?.();
-  await waitFor(() => form.hidden === false && source.value === customDocument.text);
+  await waitFor(() => form.hidden === false && source.value === "newer event, にゅー, wins\n");
   result.eventBeforeReadReply = {
     value: source.value,
     expanded: open.getAttribute("aria-expanded"),
     readCount: customReadRequests.length,
+    saveDisabled: save.disabled,
   };
 
   const customRow = () => window.document.querySelector(`[data-dictionary-id="${CUSTOM_DICTIONARY_ID}"]`);
@@ -4600,6 +4606,9 @@ async function settingsCustomDictionaryStage() {
   window.document.getElementById("dict-bulk-disable")?.click();
   await waitFor(() => stateRequests.length === 1);
   result.bulkState = stateRequests[0]?.dictionaries?.map(({ id, enabled }) => ({ id, enabled }));
+  window.document.getElementById("dict-bulk-favorite")?.click();
+  await waitFor(() => stateRequests.length === 2);
+  result.favoriteState = stateRequests[1]?.dictionaries?.map(({ id, favorite }) => ({ id, favorite }));
 
   source.focus();
   source.value = "draft, どらふと, keep me\n";
@@ -4608,7 +4617,7 @@ async function settingsCustomDictionaryStage() {
     ...customDocument,
     revision: 7,
     semanticRevision: "c".repeat(64),
-    text: "external, そと, reload me\n",
+    text: "external, そと, reload me\r\n",
   };
   publish({ customDictionarySource: { newValue: structuredClone(customDocument) } });
   const savesBeforeStaleSubmit = customSaveRequests.length;
@@ -4623,7 +4632,7 @@ async function settingsCustomDictionaryStage() {
   };
 
   reload.click();
-  await waitFor(() => customReadRequests.length === 2 && source.value === customDocument.text);
+  await waitFor(() => customReadRequests.length === 2 && source.value === "external, そと, reload me\n");
   result.reloadedValue = source.value;
 
   const eventFirstText = "valid, ばりっど, line\\nsecond\nbroken\n, よみ, missing term\n";
@@ -4631,12 +4640,13 @@ async function settingsCustomDictionaryStage() {
   source.dispatchEvent(new window.Event("input", { bubbles: true }));
   form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
   await waitFor(() => pendingSave !== null && customSaveRequests.length === 1);
-  const eventFirstParsed = parseCustomDictionary(eventFirstText);
+  const eventFirstSavedText = eventFirstText.replace(/\n/gu, "\r\n");
+  const eventFirstParsed = parseCustomDictionary(eventFirstSavedText);
   customDocument = {
     schemaVersion: 1,
     revision: 8,
     semanticRevision: "d".repeat(64),
-    text: eventFirstText,
+    text: eventFirstSavedText,
   };
   state = {
     ...state,
@@ -4667,6 +4677,7 @@ async function settingsCustomDictionaryStage() {
     baseRevision: customSaveRequests[0]?.baseDocumentRevision,
     text: customSaveRequests[0]?.text,
     value: source.value,
+    submittedUsesCrlf: customSaveRequests[0]?.text === eventFirstSavedText,
     saveDisabled: save.disabled,
     diagnostics: [...window.document.querySelectorAll("#custom-dictionary-errors li")]
       .map((item) => item.textContent),
@@ -4678,11 +4689,12 @@ async function settingsCustomDictionaryStage() {
   form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
   await waitFor(() => pendingSave !== null && customSaveRequests.length === 2);
   const replyFirstParsed = parseCustomDictionary(replyFirstText);
+  const replyFirstSavedText = replyFirstText.replace(/\n/gu, "\r\n");
   customDocument = {
     schemaVersion: 1,
     revision: 9,
     semanticRevision: "e".repeat(64),
-    text: replyFirstText,
+    text: replyFirstSavedText,
   };
   state = { ...state, revision: state.revision + 1 };
   const resolveReplyFirst = pendingSave;
@@ -4717,7 +4729,7 @@ async function settingsCustomDictionaryStage() {
     schemaVersion: 1,
     revision: 10,
     semanticRevision: "f".repeat(64),
-    text: "newest source, さいしん, authoritative\n",
+    text: "newest source, さいしん, authoritative\r\n",
   };
   const resolveStale = pendingSave;
   pendingSave = null;
@@ -4736,7 +4748,8 @@ async function settingsCustomDictionaryStage() {
     status: window.document.getElementById("custom-dictionary-status")?.textContent ?? "",
   };
   reload.click();
-  await waitFor(() => customReadRequests.length === 3 && source.value === customDocument.text);
+  await waitFor(() => customReadRequests.length === 3
+    && source.value === "newest source, さいしん, authoritative\n");
   result.finalReload = source.value;
 
   dom.window.close();
