@@ -246,7 +246,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 111 checks, all of
+full request→reply round trip per contract-C message type. 112 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -287,9 +287,14 @@ What it proves, in order:
    with generated-index metadata and its exact stable ID, four legacy kind rows
    migrate once, stale CAS writes are rejected, invalid selectors are pruned in
    the same worker-owned transaction, and IndexedDB is non-empty afterwards. The
-   Settings fixture also covers normalized dictionary search, stable visible
+   Settings fixtures also cover normalized dictionary search, stable visible
    selection, bulk state changes, every reorder path, queued moves, external
-   selection pruning, alias-edit preservation, conflict rollback, and removal.
+   selection pruning, alias-edit preservation, conflict rollback, the removal
+   control barrier, and a three-archive batch whose middle import fails without
+   stopping the last one.
+   The batch assertion pins sequential requests, completed/total progress, one
+   retained outcome and revoked object URL per file, a cleared picker, and one
+   final dictionary-state/status refresh.
 3. **Every read path** with the logical fixture package expanded to all four native kinds:
    `hd_lookup` and selected-dictionary `hd_lookup_dictionary` (payload keys,
    deinflection trace, glossary still a raw string,
@@ -388,10 +393,12 @@ above installs Chrome for Testing in the default cache; the harness also checks
 `HACHIDORI_PUPPETEER`, and `HACHIDORI_PROFILE`; the run aborts with a message
 naming the variable if either is missing.
 
-It launches Chrome with `--load-extension`, imports the combined and term-only
-kanji fixtures through the real `#import-file` input on `settings.html`, exercises
-filtered bulk management, a real pointer drag, and keyboard position movement,
-verifies capability-aware chooser migration and clicked-kanji navigation, and hovers real
+It launches Chrome with `--load-extension`, then uses the real `#import-file` on
+`settings.html` for a valid archive and a three-file batch containing a term-only
+kanji dictionary, a malformed ZIP, and a same-title reimport. It verifies the
+ordered per-file outcomes and failure continuation, exercises filtered bulk
+management, a real pointer drag, keyboard position movement, capability-aware
+chooser migration, and clicked-kanji navigation, and hovers real
 text with a real mouse on a page served over `http://127.0.0.1` (content scripts do not run on
 `chrome-extension://`, `about:blank`, or `file://` without a per-extension
 opt-in), then relaunches against the same profile and hovers again with no
@@ -417,7 +424,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 57 assertions, and the summary line
+`PLANNED` at the top of the file names all 58 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -467,12 +474,14 @@ text it sits in, so that loop stops at the first read that has it.
   routine is asserted to produce a popup again afterwards. On its own that check
   passes against an extension whose hover is completely dead; bracketing keeps
   that negative check from going green by itself.
-- `#import-file` is checked for `type="file"` and an `accept` list containing
-  `.zip`, not just for existing.
-- Reimport keeps the logical package's stable ID, alias, enabled/favourite state,
-  managed update source, and last-check state. The Settings row then exposes its
-  canonical title, alias, metadata, and all five capability badges, while the
-  actual checkbox is used for both an enable and a disable commit.
+- `#import-file` is checked for `type="file"`, `multiple`, and an `accept` list
+  containing `.zip`, not just for existing. The three-file selection must retain
+  success, failure, and success outcomes in order and clear the picker afterwards.
+- Reimport in that batch keeps the logical package's stable ID, position, alias,
+  enabled/favourite state, managed update source, and last-check state. The
+  Settings row then exposes its canonical title, alias, metadata, and all five
+  capability badges, while the actual checkbox is used for both an enable and a
+  disable commit.
 - Stable IDs are checked against the two fixtures' exact title-derived values,
   not only against a hexadecimal shape, and the two IDs must differ.
 - The favourite package's popup tab uses its alias while lookups and stored state

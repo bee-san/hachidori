@@ -46,9 +46,9 @@ The fallback is intentionally explicit: `hd_status` reports `threaded: false` an
 
 ## Import transaction
 
-Dictionary import follows one logical transaction:
+Each dictionary import follows one logical transaction:
 
-1. `settings.html` receives the ZIP through its real file input and sends `hd_import`.
+1. `settings.html` takes the next ZIP from its real file input and sends `hd_import`.
 2. The service worker transfers the archive to the offscreen document.
 3. The engine worker imports Yomitan banks through the Hoshidicts C++ importer into a fresh `/dicts/.hdw-generation-<UUID>/<title>` root. A committed root is never overwritten in place.
 4. The generated files are flushed to the storage backend before metadata can reference them.
@@ -56,6 +56,10 @@ Dictionary import follows one logical transaction:
 6. Only a confirmed commit publishes the new dictionary count and generation.
 7. The engine re-reads authoritative state before garbage-collecting unreferenced generation roots.
 8. The settings page renders success only after that reply.
+
+Multiple selected archives remain separate transactions. The settings page runs
+them sequentially, keeps an outcome for each file, continues after a failed
+archive, and refreshes dictionary state and engine status once after the batch.
 
 If a compare-and-set result is unknown because both the commit reply and its readback fail, both the previous and candidate roots are retained. Revisioned manifest paths are authoritative on restart: the engine strict-loads those paths and removes unreferenced generations rather than adopting them from disk. The IDBFS startup path also resolves imports left by the older `.hdw-import` protocol. The archive input itself is not retained.
 
