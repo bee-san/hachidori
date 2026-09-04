@@ -925,6 +925,30 @@ async function main() {
   check("frequencies came through", first.term.frequencies.length > 0, JSON.stringify(first.term.frequencies));
   check("pitches came through", first.term.pitches.length > 0, JSON.stringify(first.term.pitches));
 
+  const selectedLookup = await request("hd_lookup_dictionary", {
+    dictionary: FIXTURE_TITLE,
+    text: "食べたかった",
+    maxResults: 1,
+    scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  });
+  check(
+    "hd_lookup_dictionary returns only the selected enabled term dictionary",
+    selectedLookup.ok === true
+      && selectedLookup.results.length === 1
+      && selectedLookup.results[0].term.glossaries.every(({ dictionary }) => dictionary === FIXTURE_TITLE),
+    JSON.stringify(selectedLookup),
+  );
+  const missingSelectedLookup = await request("hd_lookup_dictionary", {
+    dictionary: "not imported",
+    text: "食",
+  });
+  equal(
+    "hd_lookup_dictionary refuses a title that is not enabled and stored",
+    [missingSelectedLookup.ok, missingSelectedLookup.results, missingSelectedLookup.dictionaryCount],
+    [true, [], 4],
+  );
+
   // content.js renders "no dictionaries imported" on dictionaryCount 0, so an
   // ordinary no-match must not report 0 the way the engine's error fallback does.
   const noMatch = await request("hd_lookup", {
@@ -993,7 +1017,7 @@ async function main() {
   equal(
     "a valid archive with a declared length above the former cap imports successfully",
     [declaredLength.ok, declaredLength.report?.title, declaredLength.report?.termCount],
-    [true, FIXTURE_TITLE, 5],
+    [true, FIXTURE_TITLE, 6],
   );
 
   const afterDeclaredLength = await request("hd_status");
@@ -1025,6 +1049,24 @@ async function main() {
         `  NODE_PATH=${DEFAULT_JSDOM_TREE}/node_modules node test/extension-smoke.mjs`,
     );
   }
+  const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
+  check(
+    "a storage change invalidates an in-flight clicked-kanji lookup",
+    Array.isArray(staleKanjiRenders) && staleKanjiRenders.length === 0,
+    JSON.stringify(staleKanjiRenders),
+  );
+  const staleBackRenders = await staleKanjiResponseStage("back");
+  check(
+    "Back invalidates an in-flight clicked-kanji lookup",
+    Array.isArray(staleBackRenders) && staleBackRenders.length === 1,
+    JSON.stringify(staleBackRenders),
+  );
+  const staleInitialStorageRenders = await staleKanjiResponseStage("initial-storage");
+  check(
+    "initial storage hydration invalidates an in-flight clicked-kanji lookup",
+    Array.isArray(staleInitialStorageRenders) && staleInitialStorageRenders.length === 0,
+    JSON.stringify(staleInitialStorageRenders),
+  );
 
   section("hd_remove");
   // hd_remove unloads every dictionary before it deletes anything, so if the
@@ -1069,7 +1111,7 @@ async function main() {
   );
 
   section("a trained (.hoshidicts_4) dictionary through the extension layer");
-  // Everything above imports the 5-row fixture, which is under the importer's
+  // Everything above imports the 6-row fixture, which is under the importer's
   // zstd-training floor and therefore lands in the pre-4 layout. Nothing outside
   // node-smoke.mjs had ever seen the layout the current engine writes for a real
   // dictionary: a .hoshidicts_4 marker, a dict.zstd, and glossaries compressed
@@ -1161,6 +1203,132 @@ async function loadJsdom() {
     jsdomFailure = `${entry} resolved but would not import: ${error.message}`;
     return null;
   }
+}
+
+async function staleKanjiResponseStage(invalidation) {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) {
+    return null;
+  }
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM("<!doctype html><body><span id=anchor>食</span></body>", {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+    url: "https://example.test/",
+  });
+  const { window } = dom;
+  let storageListener = null;
+  let initialStorageCallback = null;
+  let pending = null;
+  const firstSelection = { title: "Generic", kind: "term" };
+  window.chrome = {
+    runtime: {
+      id: "hachidoricontentsmoke",
+      lastError: null,
+      getURL: (path) => `chrome-extension://hachidoricontentsmoke/${path}`,
+      sendMessage(request, callback) {
+        pending = { callback, request };
+      },
+    },
+    storage: {
+      local: {
+        get(defaults, callback) {
+          const stored = {
+            ...defaults,
+            dictionaries: [{ title: "Generic", kind: "term", enabled: true }],
+            options: { ...defaults.options, kanjiClickDictionary: firstSelection },
+          };
+          if (invalidation === "initial-storage") {
+            initialStorageCallback = () => callback(stored);
+          } else {
+            callback(stored);
+          }
+        },
+      },
+      onChanged: {
+        addListener(listener) {
+          storageListener = listener;
+        },
+        removeListener() {},
+      },
+    },
+  };
+  const marker = "  start();\n}());";
+  const source = readFileSync(resolve(EXTENSION, "content.js"), "utf8");
+  const instrumented = source.replace(marker, `
+  globalThis.__hachidoriContentSmoke = {
+    setState(candidate, nextPopup, nextView, nextHighlighter) {
+      activeCandidate = candidate;
+      activeHighlightText = "";
+      activeTermRender = { candidate, matchedText: "食べる", renderOptions: {}, results: [] };
+      currentGeneration = 0;
+      styleGeneration = 0;
+      popup = nextPopup;
+      view = nextView;
+      highlighter = nextHighlighter;
+    },
+    restore() {
+      restoreTermRender(activeTermRender, { character: "食", index: 0 });
+    },
+    showKanji,
+  };
+  start();
+}());`);
+  if (instrumented === source) {
+    return ["content.js instrumentation marker was not found"];
+  }
+  window.eval(instrumented);
+  const anchor = window.document.getElementById("anchor");
+  const popup = window.document.createElement("div");
+  popup.hidden = false;
+  window.document.body.appendChild(popup);
+  const renders = [];
+  window.__hachidoriContentSmoke.setState(
+    {
+      anchor,
+      matchOffset: 0,
+      scanEntries: [{ node: anchor.firstChild, offset: 0, sourceLength: 1, text: "食" }],
+      vertical: false,
+    },
+    popup,
+    {
+      renderKanji(value) { renders.push(value); },
+      renderResults(value) { renders.push(value); },
+      setToolbarPosition() {},
+    },
+    { apply() {}, clearAll() {} },
+  );
+  const lookup = window.__hachidoriContentSmoke.showKanji("食");
+  if (invalidation === "storage-change") {
+    storageListener({
+      options: {
+        newValue: { kanjiClickDictionary: { title: "Other", kind: "term" } },
+      },
+    }, "local");
+  } else if (invalidation === "back") {
+    window.__hachidoriContentSmoke.restore();
+  } else {
+    initialStorageCallback();
+  }
+  const reply = pending.request.type === "hd_kanji"
+    ? {
+        generation: 0,
+        kanji: { character: "食", entries: [{ dictionary: "Native" }] },
+        ok: true,
+        requestId: pending.request.requestId,
+        type: "hd_kanji_result",
+      }
+    : {
+        generation: 0,
+        ok: true,
+        requestId: pending.request.requestId,
+        results: [{ term: { expression: "食", glossaries: [{ dictionary: "Generic" }] } }],
+        type: "hd_lookup_dictionary_result",
+      };
+  pending.callback(reply);
+  await lookup;
+  dom.window.close();
+  return renders;
 }
 
 // The renderer is the one consumer that reads contract B field by field, so it

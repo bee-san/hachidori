@@ -118,14 +118,18 @@ function selectionValue(selection) {
 }
 
 function selectionFromValue(value) {
-  if (value === "") {
+  if (!value) {
     return "";
   }
   try {
-    return normaliseKanjiSelection(JSON.parse(value));
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === "object") {
+      return normaliseKanjiSelection(parsed);
+    }
   } catch {
-    return normaliseKanjiSelection(value);
+    // Legacy title-only values are not JSON.
   }
+  return normaliseKanjiSelection(value);
 }
 
 function migrateKanjiSelection() {
