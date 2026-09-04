@@ -134,6 +134,7 @@
   let currentViewRequest = null;
   let noteEditing = false;
   let pendingCustomAppends = 0;
+  let deferredDictionaryInvalidationRevision = -1;
   let lookupToken = 0;
   let optionsStorageRevision = 0;
   let dictionaryStateRevision = -1;
@@ -1066,6 +1067,7 @@
     activeTermRender = null;
     currentViewRequest = null;
     noteEditing = false;
+    deferredDictionaryInvalidationRevision = -1;
     lookupToken += 1;
     if (!popup) {
       return;
@@ -1448,6 +1450,9 @@
         && popup && !popup.hidden
         && anchorConnected(expectedView.candidate)
       ) {
+        // The exact replay reads the engine's latest committed state, so it also
+        // consumes any dictionary invalidation deferred to protect this draft.
+        deferredDictionaryInvalidationRevision = -1;
         // Saving the row is the transactional boundary. Refresh is deliberately
         // detached: a lookup error after the commit must not leave a retryable
         // form that can append the same row twice.
@@ -1458,6 +1463,11 @@
       return reply;
     } finally {
       pendingCustomAppends -= 1;
+      if (pendingCustomAppends === 0
+          && !noteEditing
+          && deferredDictionaryInvalidationRevision >= 0) {
+        hide();
+      }
     }
   }
 
@@ -1611,21 +1621,28 @@
   }
 
   function invalidateStoredState(dictionaryChanged) {
-    if (
-      dictionaryChanged
-      && popup && !popup.hidden
-      && !noteEditing
-      && pendingCustomAppends === 0
-    ) {
-      hide();
-    } else {
-      lookupToken += 1;
+    if (dictionaryChanged && popup && !popup.hidden) {
+      if (noteEditing || pendingCustomAppends > 0) {
+        deferredDictionaryInvalidationRevision = Math.max(
+          deferredDictionaryInvalidationRevision,
+          dictionaryStateRevision,
+        );
+        lookupToken += 1;
+      } else {
+        hide();
+      }
+      return;
     }
+    lookupToken += 1;
   }
 
   function onNoteEditingChange(editing) {
     noteEditing = editing === true;
-    if (noteEditing) clearHideTimer();
+    if (noteEditing) {
+      clearHideTimer();
+    } else if (pendingCustomAppends === 0 && deferredDictionaryInvalidationRevision >= 0) {
+      hide();
+    }
   }
 
   function adoptDictionaryState(stored) {

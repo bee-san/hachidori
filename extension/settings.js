@@ -1081,7 +1081,12 @@ function bindDictionaryAlias(row, entry) {
 function bindDictionaryEnabled(row, entry) {
   const enabled = row.querySelector(".dict-enabled");
   enabled.checked = entry.enabled;
-  enabled.setAttribute("aria-label", `Enabled for ${entry.title}`);
+  enabled.setAttribute(
+    "aria-label",
+    isManagedCustomDictionary(entry)
+      ? `Enabled for ${entry.title} (managed; always enabled)`
+      : `Enabled for ${entry.title}`,
+  );
   enabled.title = `Enabled for ${entry.title}`;
   if (isManagedCustomDictionary(entry)) {
     enabled.checked = true;
@@ -1124,6 +1129,12 @@ function bindDictionaryOrder(row, entry, index) {
   position.setAttribute("aria-label", `Position for ${dictionaryLabel(entry)}`);
   move.setAttribute("aria-label", `Move ${dictionaryLabel(entry)} to position`);
   move.title = `Move ${dictionaryLabel(entry)} to position`;
+  if (fixed) {
+    up.setAttribute("aria-label", `Move ${entry.title} up (managed; fixed first)`);
+    down.setAttribute("aria-label", `Move ${entry.title} down (managed; fixed first)`);
+    position.setAttribute("aria-label", `Position for ${dictionaryLabel(entry)} (managed; fixed first)`);
+    move.setAttribute("aria-label", `Move ${dictionaryLabel(entry)} (managed; fixed first)`);
+  }
   const moveToPosition = () => {
     const target = Number(position.value);
     if (!fixed
@@ -1167,7 +1178,10 @@ function renderDictionaryRow(template, entry, index) {
   addCountBadge(badges, "Pitch", entry.pitchCount);
   addCountBadge(badges, "Kanji", entry.kanjiCount);
   addCountBadge(badges, "Media", entry.mediaCount);
-  row.querySelector(".dict-metadata").textContent = dictionaryMetadata(entry);
+  const metadata = dictionaryMetadata(entry);
+  row.querySelector(".dict-metadata").textContent = isManagedCustomDictionary(entry)
+    ? `Managed · always enabled and first · ${metadata}`
+    : metadata;
   bindDictionaryUpdate(row, entry);
 
   bindDictionaryAlias(row, entry);

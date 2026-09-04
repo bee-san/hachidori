@@ -15,6 +15,7 @@ import {
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
 } from "./custom-dictionary.js";
+import { sameJsonValue } from "./json-value.js";
 
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
@@ -572,27 +573,6 @@ async function readCustomStorage() {
   };
 }
 
-function sameJsonValue(left, right) {
-  if (left === right) {
-    return true;
-  }
-  if (left === null || right === null
-      || typeof left !== "object" || typeof right !== "object") {
-    return false;
-  }
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left)
-      && Array.isArray(right)
-      && left.length === right.length
-      && left.every((value, index) => sameJsonValue(value, right[index]));
-  }
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  return leftKeys.length === rightKeys.length
-    && leftKeys.every((key) =>
-      Object.hasOwn(right, key) && sameJsonValue(left[key], right[key]));
-}
-
 function sameDictionaries(left, right) {
   return sameJsonValue(left, right);
 }
@@ -652,6 +632,7 @@ async function commitCustomStorage(snapshot, source, semanticRevision, dictionar
     const result = { ...reply };
     delete result.type;
     delete result.requestId;
+    delete result.generation;
     return result;
   } catch (commitError) {
     let current;
@@ -1060,17 +1041,7 @@ async function customPackageSatisfies(state, semanticRevision, entryCount) {
       || custom?.enabled !== true
       || custom?.revision !== semanticRevision
       || custom?.termCount !== entryCount
-      || custom?.frequencyCount !== 0
-      || custom?.pitchCount !== 0
-      || custom?.kanjiCount !== 0
-      || custom?.mediaCount !== 0
-      || custom?.isUpdatable !== false
-      || custom?.indexUrl !== null
-      || custom?.downloadUrl !== null
-      || custom?.lastUpdateCheck !== null
-      || !isGenerationRoot(dictionaryRoot(custom) ?? "")
-      || state.dictionaries.some((dictionary, index) =>
-        index > 0 && dictionary?.title === CUSTOM_DICTIONARY_TITLE)) {
+      || !isGenerationRoot(dictionaryRoot(custom) ?? "")) {
     return false;
   }
   try {
@@ -1081,7 +1052,15 @@ async function customPackageSatisfies(state, semanticRevision, entryCount) {
         || generated.frequencyCount !== 0
         || generated.pitchCount !== 0
         || generated.kanjiCount !== 0
-        || generated.mediaCount !== 0) {
+        || generated.mediaCount !== 0
+        || generated.isUpdatable !== false
+        || generated.indexUrl !== null
+        || generated.downloadUrl !== null
+        || generated.language !== "ja"
+        || !sameDictionaries(
+          state.dictionaries,
+          withCustomDictionary(state.dictionaries, generated),
+        )) {
       return false;
     }
     loadDictionaries(state.dictionaries, { strict: true });

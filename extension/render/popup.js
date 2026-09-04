@@ -1074,7 +1074,9 @@
 
       const form = documentRef.createElement("form");
       form.className = "gsm-hoshidicts-note-form";
+      form.id = `${idPrefix}-note-form`;
       form.hidden = true;
+      button.setAttribute("aria-controls", form.id);
 
       function createField(labelText, name, multiline = false) {
         const label = documentRef.createElement("label");
@@ -1122,6 +1124,8 @@
 
       function setPending(value) {
         pending = value;
+        form.setAttribute("aria-busy", String(pending));
+        save.textContent = pending ? "Saving…" : "Save";
         for (const control of [term, reading, definition, cancel, save]) {
           control.disabled = pending;
         }
@@ -1190,9 +1194,10 @@
         error.hidden = true;
         error.textContent = "";
         setPending(true);
+        let saved = false;
         try {
           await onAddCustomEntry(entry);
-          close();
+          saved = true;
         } catch (appendError) {
           error.textContent = typeof appendError?.message === "string"
             ? appendError.message
@@ -1202,6 +1207,7 @@
         } finally {
           setPending(false);
         }
+        if (saved) close();
       });
 
       return { actions, button, close, form };

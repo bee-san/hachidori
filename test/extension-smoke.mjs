@@ -710,11 +710,14 @@ function loadBackgroundScript(sandbox) {
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
   const customDictionary = readFileSync(resolve(EXTENSION, "custom-dictionary.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const jsonValue = readFileSync(resolve(EXTENSION, "json-value.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.Uint8Array ??= Uint8Array;
   sandbox.Uint32Array ??= Uint32Array;
@@ -724,7 +727,8 @@ function loadBackgroundScript(sandbox) {
   context.globalThis = context;
   runInContext(
     `${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${managedSource.replace(/^export\s+/gmu, "")}\n${background}`,
+      + `${customDictionary}\n${jsonValue}\n`
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
   );
@@ -1123,7 +1127,6 @@ async function customEngineStage() {
   );
 
   const beforeFailedSave = await sendWorker("hd_custom_read");
-  const statusBeforeFailedSave = await request("hd_status");
   const rootsBeforeFailedSave = generationRoots();
   storage.failNextSet("injected custom storage failure");
   const failedSave = await request("hd_custom_save", {
@@ -1131,13 +1134,21 @@ async function customEngineStage() {
     text: `${lostSource}failure, \u3057\u3063\u3071\u3044, failure\r\n`,
   });
   const afterFailedSave = await sendWorker("hd_custom_read");
+  const statusAfterFailedSave = await request("hd_status");
   check(
     "a failed custom commit restores the working generation without debris",
     failedSave.ok === false
-      && failedSave.generation === statusBeforeFailedSave.generation
+      && failedSave.generation === statusAfterFailedSave.generation
+      && failedSave.generation > 0
       && JSON.stringify(afterFailedSave) === JSON.stringify(beforeFailedSave)
       && JSON.stringify(generationRoots()) === JSON.stringify(rootsBeforeFailedSave),
-    JSON.stringify({ failedSave, beforeFailedSave, afterFailedSave, roots: generationRoots() }),
+    JSON.stringify({
+      failedSave,
+      statusAfterFailedSave,
+      beforeFailedSave,
+      afterFailedSave,
+      roots: generationRoots(),
+    }),
   );
 
   const invariantPeer = await request("hd_import", {
@@ -3728,7 +3739,7 @@ async function main() {
     "Note refresh skips a replaced view or detached page anchor",
     noteContent?.replaced?.refreshCount === 0
       && noteContent.replaced.backExpression === "\u98df\u3079\u305f"
-      && noteContent.replaced.popupHidden === false
+      && noteContent.replaced.popupHidden === true
       && noteContent.detached?.refreshCount === 0
       && noteContent.detached.resolved === true,
     JSON.stringify({ replaced: noteContent?.replaced, detached: noteContent?.detached }),

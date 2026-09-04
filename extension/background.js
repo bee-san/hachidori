@@ -17,6 +17,7 @@ import {
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
 } from "./custom-dictionary.js";
+import { sameJsonValue } from "./json-value.js";
 
 /*
  * Service worker for Hachidori.
@@ -225,24 +226,6 @@ function pruneGroupMemberships(value, dictionaries) {
   });
 }
 
-function sameJsonValue(left, right) {
-  if (left === right) return true;
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left)
-      && Array.isArray(right)
-      && left.length === right.length
-      && left.every((value, index) => sameJsonValue(value, right[index]));
-  }
-  if (!left || !right || typeof left !== "object" || typeof right !== "object") {
-    return false;
-  }
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  return leftKeys.length === rightKeys.length
-    && leftKeys.every((key) =>
-      Object.hasOwn(right, key) && sameJsonValue(left[key], right[key]));
-}
-
 function assertDictionaryState(state) {
   if (state !== null && state?.schemaVersion !== DICTIONARY_STATE_SCHEMA_VERSION) {
     throw new Error(`unsupported dictionary state schema ${String(state?.schemaVersion)}`);
@@ -296,6 +279,23 @@ function assertCustomDictionaryCommit(dictionaries) {
   if (dictionaries.some((dictionary, index) =>
     index !== customIndexes[0] && dictionary?.title === CUSTOM_DICTIONARY_TITLE)) {
     throw new Error(`a dictionary named ${CUSTOM_DICTIONARY_TITLE} is already installed`);
+  }
+}
+
+function assertCustomSourceState(dictionaries, semanticRevision, entryCount) {
+  const custom = dictionaries.filter((dictionary) => dictionary?.id === CUSTOM_DICTIONARY_ID);
+  if (entryCount === 0) {
+    if (custom.length !== 0) {
+      throw new Error("a zero-entry custom source cannot retain its managed package");
+    }
+    return;
+  }
+  assertCustomDictionaryCommit(dictionaries);
+  const entry = custom[0];
+  if (custom.length !== 1
+      || entry?.revision !== semanticRevision
+      || entry?.termCount !== entryCount) {
+    throw new Error("the custom dictionary package does not match its source semantics");
   }
 }
 
@@ -435,12 +435,16 @@ const WORKER_HANDLERS = {
         state: current,
       };
     }
-    const calculatedRevision = await customDictionarySemanticRevision(
-      parseCustomDictionary(message.text).entries,
-    );
+    const parsed = parseCustomDictionary(message.text);
+    const calculatedRevision = await customDictionarySemanticRevision(parsed.entries);
     if (calculatedRevision !== message.semanticRevision) {
       throw new Error("the custom dictionary semantic revision does not match its source");
     }
+    assertCustomSourceState(
+      changesDictionaryState ? message.dictionaries : current?.dictionaries ?? [],
+      calculatedRevision,
+      parsed.entries.length,
+    );
 
     const documentChanged = document.text !== message.text
       || document.semanticRevision !== message.semanticRevision;
