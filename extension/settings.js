@@ -4,6 +4,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import {
+  createDictionaryGroupController,
+  normaliseDictionaryGroups,
+} from "./dictionary-groups.js";
+
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
@@ -13,8 +18,6 @@ const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
 // settings page can be left open.
 const STATUS_RETRY_MS = 5000;
-const { createController: createDictionaryGroupController, normaliseDictionaryGroups } =
-  globalThis.HD_DICTIONARY_GROUPS;
 
 const DEFAULT_OPTIONS = {
   scanLength: 16,

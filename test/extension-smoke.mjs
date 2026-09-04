@@ -585,6 +585,14 @@ function loadClassicScript(file, sandbox) {
   return context;
 }
 
+function loadSettingsScript(window) {
+  const groups = readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
+  const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "");
+  window.eval(`${groups}\n${settings}`);
+}
+
 // content.js cannot be driven here (it needs a page), so the one thing worth
 // checking statically is that the layers clamping an option agree on its range.
 // They are four separate literals, and a narrower one in the content script
@@ -661,13 +669,14 @@ function checkRecommendedDictionaries() {
 }
 
 function checkDictionaryGroupModule() {
-  const html = readFileSync(resolve(EXTENSION, "settings.html"), "utf8");
-  const groups = html.indexOf('src="dictionary-groups.js"');
-  const settings = html.indexOf('src="settings.js"');
+  const groups = readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8");
+  const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8");
   check(
-    "settings loads its dictionary-group module before the page entrypoint",
-    groups >= 0 && groups < settings,
-    `dictionary-groups.js at ${groups}; settings.js at ${settings}`,
+    "settings imports its dictionary-group module",
+    groups.includes("export function createDictionaryGroupController")
+      && groups.includes("export function normaliseDictionaryGroups")
+      && settings.includes('from "./dictionary-groups.js"'),
+    settings.slice(0, 240),
   );
 }
 
@@ -2099,8 +2108,7 @@ async function settingsBatchImportStage() {
       onChanged: { addListener() {} },
     },
   };
-  window.eval(readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8"));
-  window.eval(readFileSync(resolve(EXTENSION, "settings.js"), "utf8"));
+  loadSettingsScript(window);
 
   const deadline = Date.now() + 2000;
   while (!window.document.getElementById("engine-status")?.textContent?.startsWith("Ready")
@@ -2268,8 +2276,7 @@ async function settingsConflictStage() {
       },
     },
   };
-  window.eval(readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8"));
-  window.eval(readFileSync(resolve(EXTENSION, "settings.js"), "utf8"));
+  loadSettingsScript(window);
 
   const deadline = Date.now() + 2000;
   let displayName = null;
