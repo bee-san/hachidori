@@ -31,6 +31,7 @@ import {
   EXPECTED,
   TRAINED_TERMS,
   TRAINED_TITLE,
+  buildRecommendedZip,
   buildTitledZip,
   buildTrainedZip,
 } from "./make-fixture.mjs";
@@ -641,30 +642,85 @@ function checkOptionRanges() {
 }
 
 const RECOMMENDED_DICTIONARIES = [
-  ["Jitendex", "https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip"],
-  ["JMdict (English)", "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_english.zip"],
-  ["Bee's Ultimate Kanji Dictionary", "https://github.com/bee-san/bees-ultimate-kanji-dictionary/releases/latest/download/bees-ultimate-kanji-dictionary.zip"],
-  ["Jiten Frequency", "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan"],
+  {
+    sourceId: "jitendex",
+    name: "Jitendex",
+    publisherUrl: "https://jitendex.org/",
+    downloadUrl: "https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip",
+    indexUrl: "https://jitendex.org/static/yomitan.json",
+    title: "Jitendex.org [2026-08-11]",
+    revision: "2026.08.11.0",
+    capabilities: ["term", "media"],
+  },
+  {
+    sourceId: "jmnedict",
+    name: "JMnedict for Yomitan",
+    publisherUrl: "https://github.com/yomidevs/jmdict-yomitan",
+    downloadUrl: "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMnedict.zip",
+    indexUrl: "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMnedict.json",
+    title: "JMnedict [2026-09-04]",
+    revision: "JMnedict.2026-09-04",
+    capabilities: ["term"],
+  },
+  {
+    sourceId: "bees-ultimate-kanji-dictionary",
+    name: "Bee's Ultimate Kanji Dictionary",
+    publisherUrl: "https://github.com/bee-san/bees-ultimate-kanji-dictionary",
+    downloadUrl: "https://github.com/bee-san/bees-ultimate-kanji-dictionary/releases/latest/download/bees-ultimate-kanji-dictionary.zip",
+    indexUrl: "https://raw.githubusercontent.com/bee-san/bees-ultimate-kanji-dictionary/main/dist/index.json",
+    title: "Bee's Ultimate Kanji Dictionary",
+    revision: "2026.09.02",
+    capabilities: ["term", "freq", "media"],
+  },
+  {
+    sourceId: "jiten",
+    name: "Jiten Frequency Dictionary",
+    publisherUrl: "https://jiten.moe/frequency-dictionaries",
+    downloadUrl: "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
+    indexUrl: "https://api.jiten.moe/api/frequency-list/index",
+    title: "Jiten",
+    revision: "Jiten 26-09-02",
+    capabilities: ["freq"],
+  },
 ];
 
 function checkRecommendedDictionaries() {
-  const html = readFileSync(resolve(EXTENSION, "settings.html"), "utf8");
-  const anchors = [...html.matchAll(/<a\s+([^>]*\bclass="recommended-dictionary-link"[^>]*)>([^<]+)<\/a>/gu)];
-  const actual = anchors.map(([, attributes, name]) => [
-    name,
-    /\bhref="([^"]+)"/u.exec(attributes)?.[1] ?? "",
-  ]);
+  const cataloguePath = resolve(EXTENSION, "recommended-dictionaries.js");
+  if (!existsSync(cataloguePath)) {
+    fail("the recommended catalogue exists", `${cataloguePath} is missing`);
+    return;
+  }
+  pass("the recommended catalogue exists");
+  const sandbox = createContext({});
+  sandbox.globalThis = sandbox;
+  runInContext(readFileSync(cataloguePath, "utf8"), sandbox, { filename: "recommended-dictionaries.js" });
+  const catalogue = sandbox.HD_RECOMMENDED_DICTIONARIES ?? [];
+  const actual = catalogue.map((entry) => ({
+    sourceId: entry.sourceId,
+    name: entry.name,
+    publisherUrl: entry.publisherUrl,
+    downloadUrl: entry.downloadUrl,
+    indexUrl: entry.indexUrl,
+    capabilities: [...entry.capabilities],
+  }));
+  const expected = RECOMMENDED_DICTIONARIES.map(({ title, revision, ...entry }) => entry);
   check(
-    "settings exposes exactly four canonical recommended dictionary downloads",
-    JSON.stringify(actual) === JSON.stringify(RECOMMENDED_DICTIONARIES),
+    "the catalogue names exactly four trusted recommendations and their publishers",
+    JSON.stringify(actual) === JSON.stringify(expected),
     JSON.stringify(actual),
   );
+  const html = readFileSync(resolve(EXTENSION, "settings.html"), "utf8");
   check(
-    "recommended dictionary downloads open safely in a new tab",
-    anchors.length === RECOMMENDED_DICTIONARIES.length
-      && anchors.every(([, attributes]) => attributes.includes('target="_blank"')
-        && attributes.includes('rel="noopener noreferrer"')),
-    anchors.map(([, attributes]) => attributes).join("\n"),
+    "settings has one clean-install action and a distinct partial retry action",
+    (html.match(/id="install-recommended"/gu) ?? []).length === 1
+      && (html.match(/Install all recommended dictionaries/gu) ?? []).length === 1
+      && (html.match(/id="retry-recommended"/gu) ?? []).length === 1,
+    "the starter/retry controls were missing or duplicated",
+  );
+  check(
+    "settings keeps local import outside the hideable starter card",
+    html.indexOf('id="import-file"') < html.indexOf('id="recommended-starter"'),
+    "the local picker moved inside the starter card",
   );
 }
 
@@ -1037,6 +1093,92 @@ async function main() {
   const afterLogicalImport = await request("hd_status");
   equal("one logical package loads all four native capabilities", afterLogicalImport.dictionaryCount, 4);
   check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
+
+  section("trusted recommended imports");
+  const recommended = RECOMMENDED_DICTIONARIES[0];
+  const recommendedFields = {
+    sourceId: recommended.sourceId,
+    finalUrl: recommended.downloadUrl,
+  };
+  const recommendedArchive = (overrides = {}) => createObjectURL(buildRecommendedZip({
+    title: recommended.title,
+    revision: recommended.revision,
+    indexUrl: recommended.indexUrl,
+    downloadUrl: recommended.downloadUrl,
+    capabilities: recommended.capabilities,
+    ...overrides,
+  }));
+  const rejectRecommended = async (name, fields, overrides, importedTitle) => {
+    const before = await storedDictionaryState();
+    const reply = await request("hd_import", {
+      blobUrl: recommendedArchive(overrides),
+      fileName: `${name}.zip`,
+      ...fields,
+    });
+    const after = await storedDictionaryState();
+    check(
+      name,
+      reply.ok === false && JSON.stringify(after) === JSON.stringify(before),
+      JSON.stringify({ reply, before, after }),
+    );
+    // Keeps this stage isolated when run against a pre-feature engine during
+    // test-first development, where the trust fields are simply ignored.
+    await request("hd_remove", { title: importedTitle });
+  };
+  await rejectRecommended(
+    "recommended import rejects an unknown catalogue source before publication",
+    { sourceId: "not-in-the-catalogue", finalUrl: recommended.downloadUrl },
+    {},
+    recommended.title,
+  );
+  await rejectRecommended(
+    "recommended import rejects a final URL outside its catalogue entry",
+    { sourceId: recommended.sourceId, finalUrl: "https://example.invalid/not-jitendex.zip" },
+    {},
+    recommended.title,
+  );
+  await rejectRecommended(
+    "recommended import rejects a mismatched title before publication",
+    recommendedFields,
+    { title: "Not Jitendex" },
+    "Not Jitendex",
+  );
+  await rejectRecommended(
+    "recommended import rejects mismatched capabilities before publication",
+    recommendedFields,
+    { capabilities: ["term"] },
+    recommended.title,
+  );
+
+  const trustedImport = await request("hd_import", {
+    blobUrl: recommendedArchive(),
+    fileName: "jitendex-yomitan.zip",
+    ...recommendedFields,
+    // Message-owned metadata must never override the built-in catalogue.
+    catalogue: {
+      indexUrl: "https://example.invalid/forged-index.json",
+      downloadUrl: "https://example.invalid/forged.zip",
+    },
+  });
+  const trustedState = await storedDictionaryState();
+  const trustedPackage = trustedState.dictionaries.find(
+    (dictionary) => dictionary.sourceId === recommended.sourceId,
+  );
+  check(
+    "recommended import publishes its revision and catalogue-owned source atomically",
+    trustedImport.ok === true
+      && trustedImport.report?.success === true
+      && trustedPackage?.title === recommended.title
+      && trustedPackage?.revision === recommended.revision
+      && trustedPackage?.sourceId === recommended.sourceId
+      && trustedPackage?.isUpdatable === true
+      && trustedPackage?.indexUrl === recommended.indexUrl
+      && trustedPackage?.downloadUrl === recommended.downloadUrl
+      && trustedPackage?.termCount === 1
+      && trustedPackage?.mediaCount === 1,
+    JSON.stringify({ trustedImport, trustedState }),
+  );
+  await request("hd_remove", { title: recommended.title });
 
   // Model an actual pre-D9 install: legacy rows named a canonical title path,
   // before immutable UUID generation roots existed.
@@ -1778,6 +1920,44 @@ async function main() {
     settingsConflict?.groups?.externalFocusPreserved === true,
     JSON.stringify(settingsConflict?.groups),
   );
+  const recommendedSettings = await settingsRecommendedImportStage();
+  check(
+    "settings install the trusted catalogue sequentially and retry only missing entries",
+    recommendedSettings?.clean.starterHidden === false
+      && recommendedSettings.clean.installHidden === false
+      && recommendedSettings.clean.retryHidden === true
+      && recommendedSettings.clean.localImportVisible === true
+      && JSON.stringify(recommendedSettings.clean.links.map(({ name, href }) => [name, href]))
+        === JSON.stringify(RECOMMENDED_DICTIONARIES.map((entry) => [entry.name, entry.publisherUrl]))
+      && recommendedSettings.clean.links.every(({ target, rel }) =>
+        target === "_blank" && rel.split(/\s+/u).includes("noopener") && rel.split(/\s+/u).includes("noreferrer"))
+      && JSON.stringify(recommendedSettings.fetches.slice(0, 4).map(({ sourceId }) => sourceId))
+        === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
+      && recommendedSettings.fetches.every(({ sourceId, state }) =>
+        state.includes(`Downloading ${RECOMMENDED_DICTIONARIES.find((entry) => entry.sourceId === sourceId).name}`))
+      && recommendedSettings.imports.every(({ sourceId, finalUrl, state }) => {
+        const entry = RECOMMENDED_DICTIONARIES.find((candidate) => candidate.sourceId === sourceId);
+        return finalUrl === entry.downloadUrl && state.includes(`Importing ${entry.name}`);
+      })
+      && recommendedSettings.maxActiveDownloads === 1
+      && recommendedSettings.maxActiveImports === 1
+      && recommendedSettings.firstOutcomes.length === 4
+      && JSON.stringify(recommendedSettings.firstOutcomes.map(({ error }) => error))
+        === JSON.stringify([false, true, true, false])
+      && recommendedSettings.partial.state
+        === "Finished 4 of 4 recommended dictionaries — 2 imported, 2 failed."
+      && recommendedSettings.starterHiddenAfterFirst === true
+      && recommendedSettings.partial.starterHidden === true
+      && recommendedSettings.partial.retryHidden === false
+      && JSON.stringify(recommendedSettings.partial.sourceIds)
+        === JSON.stringify(["jitendex", "jiten"])
+      && JSON.stringify(recommendedSettings.retrySourceIds)
+        === JSON.stringify(["jmnedict", "bees-ultimate-kanji-dictionary"])
+      && JSON.stringify(recommendedSettings.completeSourceIds)
+        === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
+      && recommendedSettings.retryHiddenWhenComplete === true,
+    JSON.stringify(recommendedSettings),
+  );
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -2163,6 +2343,201 @@ async function settingsBatchImportStage() {
     controlsRestored: input.disabled === false,
     stateReads,
     statusReads,
+  };
+  dom.window.close();
+  return result;
+}
+
+async function settingsRecommendedImportStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) {
+    return null;
+  }
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+    url: `${EXTENSION_ORIGIN}/settings.html`,
+  });
+  const { window } = dom;
+  let state = { schemaVersion: 1, revision: 0, dictionaries: [] };
+  let storageListener = null;
+  const fetches = [];
+  const imports = [];
+  const fetchAttempts = new Map();
+  const importAttempts = new Map();
+  let activeDownloads = 0;
+  let maxActiveDownloads = 0;
+  let activeImports = 0;
+  let maxActiveImports = 0;
+  let starterHiddenAfterFirst = false;
+
+  window.URL.createObjectURL = (file) => `blob:recommended/${file.name}`;
+  window.URL.revokeObjectURL = () => {};
+  window.fetch = async (url) => {
+    const entry = RECOMMENDED_DICTIONARIES.find((candidate) => candidate.downloadUrl === url);
+    if (!entry) {
+      throw new Error(`unexpected recommended URL ${url}`);
+    }
+    activeDownloads += 1;
+    maxActiveDownloads = Math.max(maxActiveDownloads, activeDownloads);
+    const attempt = (fetchAttempts.get(entry.sourceId) ?? 0) + 1;
+    fetchAttempts.set(entry.sourceId, attempt);
+    fetches.push({
+      sourceId: entry.sourceId,
+      state: window.document.getElementById("import-state")?.textContent ?? "",
+    });
+    await new Promise((done) => window.setTimeout(done, 0));
+    activeDownloads -= 1;
+    if (entry.sourceId === "jmnedict" && attempt === 1) {
+      return { ok: false, status: 503, url };
+    }
+    return {
+      ok: true,
+      status: 200,
+      url,
+      async blob() {
+        return new window.Blob([entry.sourceId], { type: "application/zip" });
+      },
+    };
+  };
+  window.chrome = {
+    runtime: {
+      id: "hachidorirecommendedsmoke",
+      async sendMessage(message) {
+        if (message.type === "hd_state_read") {
+          return { ok: true, state: structuredClone(state) };
+        }
+        if (message.type === "hd_status") {
+          return { ok: true, ready: true, loading: false, dictionaryCount: state.dictionaries.length };
+        }
+        if (message.type === "hd_options_write") {
+          return { ok: true, options: structuredClone(message.options) };
+        }
+        if (message.type === "hd_import") {
+          activeImports += 1;
+          maxActiveImports = Math.max(maxActiveImports, activeImports);
+          const entry = RECOMMENDED_DICTIONARIES.find(
+            (candidate) => candidate.sourceId === message.sourceId,
+          );
+          const attempt = (importAttempts.get(message.sourceId) ?? 0) + 1;
+          importAttempts.set(message.sourceId, attempt);
+          imports.push({
+            sourceId: message.sourceId,
+            finalUrl: message.finalUrl,
+            fileName: message.fileName,
+            state: window.document.getElementById("import-state")?.textContent ?? "",
+          });
+          await new Promise((done) => window.setTimeout(done, 0));
+          activeImports -= 1;
+          if (message.sourceId === "bees-ultimate-kanji-dictionary" && attempt === 1) {
+            return { ok: false, error: "simulated import failure", report: { success: false } };
+          }
+          const counts = {
+            termCount: entry.capabilities.includes("term") ? 1 : 0,
+            frequencyCount: entry.capabilities.includes("freq") ? 1 : 0,
+            pitchCount: entry.capabilities.includes("pitch") ? 1 : 0,
+            kanjiCount: entry.capabilities.includes("kanji") ? 1 : 0,
+            mediaCount: entry.capabilities.includes("media") ? 1 : 0,
+          };
+          const dictionary = genericPackage({
+            id: `recommended-${entry.sourceId}`,
+            title: entry.title,
+            revision: entry.revision,
+            sourceId: entry.sourceId,
+            isUpdatable: true,
+            indexUrl: entry.indexUrl,
+            downloadUrl: entry.downloadUrl,
+            ...counts,
+          });
+          state = {
+            schemaVersion: 1,
+            revision: state.revision + 1,
+            dictionaries: [
+              ...state.dictionaries.filter((candidate) => candidate.sourceId !== entry.sourceId),
+              dictionary,
+            ],
+          };
+          storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+          if (state.dictionaries.length === 1) {
+            starterHiddenAfterFirst = window.document.getElementById("recommended-starter")?.hidden === true;
+          }
+          return { ok: true, report: { success: true, title: entry.title, ...counts } };
+        }
+        throw new Error(`unexpected recommended settings request ${message.type}`);
+      },
+    },
+    storage: {
+      local: {
+        async get() {
+          return { options: { kanjiClickDictionary: "" } };
+        },
+      },
+      onChanged: {
+        addListener(listener) {
+          storageListener = listener;
+        },
+      },
+    },
+  };
+  window.eval(readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "settings.js"), "utf8"));
+
+  const deadline = Date.now() + 2000;
+  while (!window.document.getElementById("engine-status")?.textContent?.startsWith("Ready")
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  const links = [...window.document.querySelectorAll("a.recommended-dictionary-link")].map((anchor) => ({
+    name: anchor.textContent,
+    href: anchor.href,
+    target: anchor.target,
+    rel: anchor.rel,
+  }));
+  const clean = {
+    starterHidden: window.document.getElementById("recommended-starter")?.hidden,
+    installHidden: window.document.getElementById("install-recommended")?.hidden,
+    retryHidden: window.document.getElementById("recommended-retry")?.hidden,
+    localImportVisible: window.document.getElementById("import-file")?.closest(".file-button")?.hidden !== true,
+    links,
+  };
+
+  window.document.getElementById("install-recommended")?.click();
+  while (!(window.document.getElementById("import-state")?.textContent ?? "").startsWith(
+    "Finished 4 of 4 recommended dictionaries",
+  ) && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  const firstOutcomes = [...window.document.querySelectorAll("#import-detail .import-result")].map((item) => ({
+    text: item.textContent,
+    error: item.classList.contains("is-error"),
+  }));
+  const partial = {
+    state: window.document.getElementById("import-state")?.textContent ?? "",
+    starterHidden: window.document.getElementById("recommended-starter")?.hidden,
+    retryHidden: window.document.getElementById("recommended-retry")?.hidden,
+    sourceIds: state.dictionaries.map((dictionary) => dictionary.sourceId),
+  };
+
+  const retryStart = fetches.length;
+  window.document.getElementById("retry-recommended")?.click();
+  while (!(window.document.getElementById("import-state")?.textContent ?? "").startsWith(
+    "Finished 2 of 2 recommended dictionaries",
+  ) && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  const result = {
+    clean,
+    fetches,
+    imports,
+    firstOutcomes,
+    partial,
+    retrySourceIds: fetches.slice(retryStart).map(({ sourceId }) => sourceId),
+    completeSourceIds: state.dictionaries.map((dictionary) => dictionary.sourceId),
+    retryHiddenWhenComplete: window.document.getElementById("recommended-retry")?.hidden,
+    starterHiddenAfterFirst,
+    maxActiveDownloads,
+    maxActiveImports,
   };
   dom.window.close();
   return result;
