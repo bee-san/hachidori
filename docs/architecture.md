@@ -63,7 +63,7 @@ archive, and refreshes dictionary state and engine status once after the batch.
 Recommended downloads use that same sequence. Settings passes only the frozen
 catalogue ID and the response's final URL; before committing the candidate, the
 engine resolves the ID itself and validates the final URL, title, update index,
-revision, and exact capability set. Only then does the package gain its optional
+revision, and defining capability. Only then does the package gain its optional
 `sourceId` and catalogue-owned update URLs.
 
 If a compare-and-set result is unknown because both the commit reply and its readback fail, both the previous and candidate roots are retained. Revisioned manifest paths are authoritative on restart: the engine strict-loads those paths and removes unreferenced generations rather than adopting them from disk. The IDBFS startup path also resolves imports left by the older `.hdw-import` protocol. The archive input itself is not retained.
