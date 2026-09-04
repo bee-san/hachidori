@@ -1242,6 +1242,17 @@ async function main() {
     }
     observedEngine.FS.writeFile(`${legacyRemovalPath}/${name}`, bytes);
   }
+  const stagedBesideLegacyPath = `${legacyRemovalPath}/${FIXTURE_TITLE}`;
+  observedEngine.FS.mkdir(stagedBesideLegacyPath);
+  for (const name of observedEngine.FS.readdir(`/dicts/${FIXTURE_TITLE}`)) {
+    if (name !== "." && name !== "..") {
+      observedEngine.FS.rename(
+        `/dicts/${FIXTURE_TITLE}/${name}`,
+        `${stagedBesideLegacyPath}/${name}`,
+      );
+    }
+  }
+  observedEngine.FS.rmdir(`/dicts/${FIXTURE_TITLE}`);
   const beforeLegacyRemovalReload = await storedDictionaryState();
   await storage.api().local.set({
     dictionaryState: {
@@ -1256,9 +1267,11 @@ async function main() {
   const legacyRemovalReload = await request("hd_reload");
   const afterLegacyRemovalReload = await storedDictionaryState();
   check(
-    "removal recovery preserves a pre-reservation .hdw-remove dictionary",
+    "removal recovery preserves a legacy .hdw-remove dictionary and restores its staged child",
     legacyRemovalReload.ok === true
       && observedEngine.FS.analyzePath(`${legacyRemovalPath}/.hoshidicts_3`).exists
+      && observedEngine.FS.analyzePath(`/dicts/${FIXTURE_TITLE}/.hoshidicts_3`).exists
+      && !observedEngine.FS.analyzePath(stagedBesideLegacyPath).exists
       && afterLegacyRemovalReload.dictionaries.some((dictionary) => dictionary.title === legacyRemovalTitle),
     JSON.stringify({ legacyRemovalReload, afterLegacyRemovalReload }),
   );

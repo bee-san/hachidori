@@ -411,17 +411,13 @@ async function recoverPendingRemovals(snapshot) {
   if (!exists(REMOVAL_ROOT)) {
     return;
   }
-  // `.hdw-remove` was a valid title before this staging directory existed.
-  // Its version marker distinguishes that legacy dictionary from transaction
-  // state, so upgrading must leave it intact.
-  if (hasDictionaryMarker(REMOVAL_ROOT)) {
-    return;
-  }
   const stored = snapshot.state?.dictionaries ?? snapshot.legacyDictionaries ?? [];
   const retainedTitles = new Set(stored.map((dictionary) => text(dictionary?.title)));
   let changed = false;
   for (const title of engine.FS.readdir(REMOVAL_ROOT)) {
-    if (title === "." || title === ".." || !usableDictionaryTitle(title)) {
+    const stagedPath = `${REMOVAL_ROOT}/${title}`;
+    if (title === "." || title === ".." || !usableDictionaryTitle(title)
+        || !isDirectory(engine.FS.stat(stagedPath))) {
       continue;
     }
     changed = settleStagedRemoval(title, retainedTitles.has(title)) || changed;
