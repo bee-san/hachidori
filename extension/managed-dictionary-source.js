@@ -98,7 +98,7 @@ export function managedDictionaryMatches(dictionary, fingerprint) {
     && current.source.downloadUrl === fingerprint?.source?.downloadUrl;
 }
 
-export function recommendedDownloadUrlMatches(source, value) {
+function recommendedAssetUrlMatches(source, value, declaredUrl, assetName) {
   let finalUrl;
   try {
     finalUrl = new URL(value);
@@ -108,7 +108,7 @@ export function recommendedDownloadUrlMatches(source, value) {
   if (finalUrl.protocol !== "https:" || finalUrl.username !== "" || finalUrl.password !== "") {
     return false;
   }
-  if (finalUrl.href === new URL(source.downloadUrl).href) {
+  if (finalUrl.href === new URL(declaredUrl).href) {
     return true;
   }
   if (source.githubRepository === null) {
@@ -118,7 +118,7 @@ export function recommendedDownloadUrlMatches(source, value) {
     const prefix = `/${source.githubRepository}/releases/download/`;
     const rest = finalUrl.pathname.startsWith(prefix) ? finalUrl.pathname.slice(prefix.length) : "";
     return rest.includes("/")
-      && decodeURIComponent(rest.slice(rest.lastIndexOf("/") + 1)) === source.archiveName;
+      && decodeURIComponent(rest.slice(rest.lastIndexOf("/") + 1)) === assetName;
   }
   if (finalUrl.hostname !== "release-assets.githubusercontent.com") {
     return false;
@@ -131,5 +131,20 @@ export function recommendedDownloadUrlMatches(source, value) {
     ?? finalUrl.searchParams.get("rscd")
     ?? "";
   const match = /(?:^|;)\s*filename="?([^";]+)"?/iu.exec(disposition);
-  return match?.[1] === source.archiveName;
+  return match?.[1] === assetName;
+}
+
+export function recommendedDownloadUrlMatches(source, value) {
+  return recommendedAssetUrlMatches(
+    source,
+    value,
+    source.downloadUrl,
+    source.archiveName,
+  );
+}
+
+export function recommendedIndexUrlMatches(source, value) {
+  const index = new URL(source.indexUrl);
+  const assetName = decodeURIComponent(index.pathname.slice(index.pathname.lastIndexOf("/") + 1));
+  return recommendedAssetUrlMatches(source, value, index.href, assetName);
 }

@@ -5,6 +5,8 @@ import {
   managedDictionaryFingerprint,
   managedDictionaryMatches,
   managedUpdateSchedule,
+  recommendedDictionarySource,
+  recommendedIndexUrlMatches,
 } from "./managed-dictionary-source.js";
 
 /*
@@ -354,7 +356,11 @@ async function remoteUpdate(candidate) {
   if (!response.ok) {
     throw new Error(`update index request failed with HTTP ${response.status}`);
   }
-  if (httpsUrl(response.url) === null) {
+  if (source.kind === "recommended"
+      && !recommendedIndexUrlMatches(recommendedDictionarySource(source.sourceId), response.url)) {
+    throw new Error("update index downloaded from an unexpected final URL");
+  }
+  if (source.kind === "generic" && httpsUrl(response.url) === null) {
     throw new Error("update index redirected to a non-HTTPS URL");
   }
   const index = await response.json();

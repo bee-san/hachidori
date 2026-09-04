@@ -35,6 +35,7 @@ import {
   buildTitledZip,
   buildTrainedZip,
 } from "./make-fixture.mjs";
+import { recommendedIndexUrlMatches } from "../extension/managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1482,6 +1483,41 @@ async function main() {
   check("managed update fixture adds a stable-id group", grouped?.ok === true, JSON.stringify(grouped));
 
   const archiveRequests = { count: 0 };
+  const untrustedIndexRevision = "2026.09.06.0";
+  remoteJson(
+    recommended.indexUrl,
+    { revision: untrustedIndexRevision },
+    200,
+    "https://unrelated.example/update-index.json",
+  );
+  const untrustedIndexCheck = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_check",
+  });
+  const untrustedIndexState = await storedDictionaryState();
+  const untrustedIndexPackage = untrustedIndexState.dictionaries.find((entry) => entry.id === managedId);
+  const untrustedIndexOutcome = untrustedIndexCheck?.outcomes?.find((entry) => entry.id === managedId);
+  const jmnedictSource = RECOMMENDED_CATALOGUE.find((entry) => entry.sourceId === "jmnedict");
+  check(
+    "recommended update indexes stay pinned to their catalogue repository",
+    untrustedIndexCheck?.ok === true
+      && untrustedIndexOutcome?.status === "check-failed"
+      && untrustedIndexOutcome.error?.includes("unexpected final URL")
+      && untrustedIndexPackage?.revision === reloadedManagedPackage.revision
+      && untrustedIndexPackage?.path === reloadedManagedPackage.path
+      && untrustedIndexPackage?.lastUpdateCheck?.status === "check-failed"
+      && archiveRequests.count === 0
+      && recommendedIndexUrlMatches(
+        jmnedictSource,
+        "https://github.com/yomidevs/jmdict-yomitan/releases/download/JMnedict.2026-09-04/JMnedict.json",
+      )
+      && !recommendedIndexUrlMatches(
+        jmnedictSource,
+        "https://github.com/unrelated/project/releases/download/JMnedict.2026-09-04/JMnedict.json",
+      ),
+    JSON.stringify({ untrustedIndexCheck, untrustedIndexState, archiveRequests }),
+  );
+
   const checkedRevision = "2026.09.07.0";
   remoteJson(recommended.indexUrl, { revision: checkedRevision });
   remoteArchive(
