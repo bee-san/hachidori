@@ -1,3 +1,5 @@
+import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
+
 /*
  * Service worker for Hachidori.
  *
@@ -16,6 +18,7 @@
 
 const OFFSCREEN_DOCUMENT = "offscreen.html";
 const TARGET = "hoshidicts-offscreen";
+const UPDATE_TARGET = "hachidori-updates";
 
 // Requests the worker answers itself. A second target is what keeps them out of
 // the relay below: a message from the offscreen document carrying TARGET is
@@ -27,8 +30,19 @@ const WORKER_TARGET = "hoshidicts-worker";
 const DICTIONARY_STATE_KEY = "dictionaryState";
 const LEGACY_DICTIONARIES_KEY = "dictionaries";
 const OPTIONS_KEY = "options";
+const UPDATE_SETTINGS_KEY = "dictionaryUpdates";
+const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
 const DICTIONARY_STATE_SCHEMA_VERSION = 1;
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
+const UPDATE_SCHEDULE_MINUTES = Object.freeze({
+  hourly: 60,
+  daily: 24 * 60,
+  weekly: 7 * 24 * 60,
+  monthly: 30 * 24 * 60,
+});
+const RECOMMENDED_BY_ID = new Map(
+  RECOMMENDED_DICTIONARIES.map((entry) => [entry.sourceId, entry]),
+);
 
 // A relayed request can arrive in the window between createDocument() resolving
 // and offscreen.js running its module body, where nothing is listening yet.
@@ -129,6 +143,49 @@ async function readDictionaryStorage() {
         : null,
     options: stored?.[OPTIONS_KEY],
   };
+}
+
+function httpsUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.username === "" && url.password === ""
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function normaliseUpdateSettings(value) {
+  const schedule = value?.schedule === "off"
+    || Object.prototype.hasOwnProperty.call(UPDATE_SCHEDULE_MINUTES, value?.schedule)
+    ? value.schedule
+    : "off";
+  return {
+    schedule,
+    lastCheckedAt: typeof value?.lastCheckedAt === "string" ? value.lastCheckedAt : null,
+  };
+}
+
+async function readUpdateSettings() {
+  const stored = await chrome.storage.local.get(UPDATE_SETTINGS_KEY);
+  return normaliseUpdateSettings(stored?.[UPDATE_SETTINGS_KEY]);
+}
+
+function updateSource(dictionary) {
+  const recommended = RECOMMENDED_BY_ID.get(dictionary?.sourceId) ?? null;
+  if (recommended !== null) {
+    return {
+      sourceId: recommended.sourceId,
+      indexUrl: recommended.indexUrl,
+      downloadUrl: recommended.downloadUrl,
+    };
+  }
+  const indexUrl = httpsUrl(dictionary?.indexUrl);
+  const downloadUrl = httpsUrl(dictionary?.downloadUrl);
+  return dictionary?.isUpdatable === true && indexUrl !== null && downloadUrl !== null
+    ? { sourceId: null, indexUrl, downloadUrl }
+    : null;
 }
 
 function hasCapability(dictionary, kind) {
@@ -277,6 +334,215 @@ function serialiseStorage(job) {
   return run;
 }
 
+async function writeUpdateSettings(update) {
+  return serialiseStorage(async () => {
+    const current = await readUpdateSettings();
+    const settings = update(current);
+    await chrome.storage.local.set({ [UPDATE_SETTINGS_KEY]: settings });
+    return settings;
+  });
+}
+
+async function updateDictionaryCheck(id, lastUpdateCheck) {
+  return serialiseStorage(async () => {
+    const { state } = await readDictionaryStorage();
+    const index = state?.dictionaries?.findIndex((dictionary) => dictionary?.id === id) ?? -1;
+    if (index < 0) {
+      return null;
+    }
+    const dictionaries = [...state.dictionaries];
+    dictionaries[index] = { ...dictionaries[index], lastUpdateCheck };
+    const reply = await WORKER_HANDLERS.hd_state_cas({
+      baseRevision: state.revision,
+      dictionaries,
+    });
+    if (reply.ok === false) {
+      throw new Error(reply.error || "the dictionary update state could not be saved");
+    }
+    return reply.state.dictionaries.find((dictionary) => dictionary?.id === id) ?? null;
+  });
+}
+
+async function managedCandidates(dictionaryIds) {
+  const selected = dictionaryIds === null ? null : new Set(dictionaryIds);
+  const { state } = await serialiseStorage(readDictionaryStorage);
+  return (state?.dictionaries ?? []).flatMap((dictionary) => {
+    if (selected !== null && !selected.has(dictionary?.id)) {
+      return [];
+    }
+    const source = updateSource(dictionary);
+    return source === null ? [] : [{
+      id: dictionary.id,
+      title: dictionary.displayName || dictionary.title,
+      revision: dictionary.revision,
+      ...source,
+    }];
+  });
+}
+
+async function remoteRevision(candidate) {
+  const response = await fetch(candidate.indexUrl, { credentials: "omit" });
+  if (!response.ok) {
+    throw new Error(`update index request failed with HTTP ${response.status}`);
+  }
+  const index = await response.json();
+  if (typeof index?.revision !== "string" || index.revision === "") {
+    throw new Error("update index did not declare a revision");
+  }
+  return index.revision;
+}
+
+let updateRequestCounter = 0;
+
+async function installManagedCandidate(candidate, revision) {
+  updateRequestCounter += 1;
+  const reply = await relay({
+    target: TARGET,
+    type: "hd_import",
+    requestId: `managed-update-${updateRequestCounter}`,
+    managedId: candidate.id,
+    sourceId: candidate.sourceId,
+    expectedRevision: revision,
+    fileName: candidate.title,
+  });
+  if (!reply?.ok || !reply.report?.success) {
+    throw new Error(reply?.error || reply?.report?.error || "the dictionary update failed");
+  }
+}
+
+async function runManagedUpdateCycle({ dictionaryIds = null, install = false } = {}) {
+  const candidates = await managedCandidates(dictionaryIds);
+  const checkedAt = new Date().toISOString();
+  const outcomes = [];
+
+  for (const candidate of candidates) {
+    let revision;
+    try {
+      revision = await remoteRevision(candidate);
+    } catch (error) {
+      const message = describe(error);
+      await updateDictionaryCheck(candidate.id, {
+        checkedAt,
+        status: "check-failed",
+        remoteRevision: null,
+        error: message,
+      });
+      outcomes.push({ id: candidate.id, status: "check-failed", error: message });
+      continue;
+    }
+
+    if (revision === candidate.revision) {
+      await updateDictionaryCheck(candidate.id, {
+        checkedAt,
+        status: "up-to-date",
+        remoteRevision: revision,
+        error: null,
+      });
+      outcomes.push({ id: candidate.id, status: "up-to-date" });
+      continue;
+    }
+
+    const available = {
+      checkedAt,
+      status: "update-available",
+      remoteRevision: revision,
+      error: null,
+    };
+    await updateDictionaryCheck(candidate.id, available);
+    if (!install) {
+      outcomes.push({ id: candidate.id, status: "update-available" });
+      continue;
+    }
+
+    try {
+      await installManagedCandidate(candidate, revision);
+      await updateDictionaryCheck(candidate.id, {
+        checkedAt,
+        status: "up-to-date",
+        remoteRevision: revision,
+        error: null,
+      });
+      outcomes.push({ id: candidate.id, status: "updated" });
+    } catch (error) {
+      const message = describe(error);
+      await updateDictionaryCheck(candidate.id, { ...available, error: message });
+      outcomes.push({ id: candidate.id, status: "update-available", error: message });
+    }
+  }
+
+  const settings = await writeUpdateSettings((current) => ({
+    ...current,
+    lastCheckedAt: checkedAt,
+  }));
+  return { outcomes, settings };
+}
+
+let updateTail = Promise.resolve();
+
+function queueManagedUpdate(options) {
+  const run = updateTail.then(
+    () => runManagedUpdateCycle(options),
+    () => runManagedUpdateCycle(options),
+  );
+  updateTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+let alarmTail = Promise.resolve();
+
+function reconcileUpdateAlarm() {
+  const run = alarmTail.then(async () => {
+    const settings = await readUpdateSettings();
+    const periodInMinutes = UPDATE_SCHEDULE_MINUTES[settings.schedule] ?? null;
+    const existing = await chrome.alarms.get(UPDATE_ALARM);
+    if (periodInMinutes === null) {
+      if (existing) await chrome.alarms.clear(UPDATE_ALARM);
+      return;
+    }
+    if (existing?.periodInMinutes === periodInMinutes) {
+      return;
+    }
+    if (existing) await chrome.alarms.clear(UPDATE_ALARM);
+    await chrome.alarms.create(UPDATE_ALARM, { periodInMinutes });
+  });
+  alarmTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+const UPDATE_HANDLERS = {
+  async hd_updates_read() {
+    return { settings: await readUpdateSettings() };
+  },
+
+  async hd_updates_schedule(message) {
+    const schedule = message?.schedule;
+    if (schedule !== "off"
+        && !Object.prototype.hasOwnProperty.call(UPDATE_SCHEDULE_MINUTES, schedule)) {
+      throw new Error("the dictionary update schedule is invalid");
+    }
+    const settings = await writeUpdateSettings((current) => ({ ...current, schedule }));
+    await reconcileUpdateAlarm();
+    return { settings };
+  },
+
+  async hd_updates_check() {
+    return queueManagedUpdate({ install: false });
+  },
+
+  async hd_updates_install(message) {
+    if (!Array.isArray(message?.dictionaryIds)) {
+      throw new Error("the dictionary update request carried no dictionary IDs");
+    }
+    return queueManagedUpdate({ dictionaryIds: message.dictionaryIds, install: true });
+  },
+};
+
 function failureReply(message, error) {
   return {
     type: `${message?.type ?? "hd_unknown"}_result`,
@@ -320,12 +586,60 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+// Update cycles relay imports back through the engine, which calls into the
+// storage handlers above while committing. Keep this listener outside
+// serialiseStorage() so the engine can complete that callback.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || message.target !== UPDATE_TARGET) {
+    return false;
+  }
+  const type = typeof message.type === "string" ? message.type : "";
+  if (!Object.prototype.hasOwnProperty.call(UPDATE_HANDLERS, type)) {
+    sendResponse(failureReply(message, new Error(`unknown update request type ${JSON.stringify(type)}`)));
+    return false;
+  }
+  Promise.resolve(UPDATE_HANDLERS[type](message)).then(
+    (result) => {
+      const { ok = true, error = null, ...payload } = result ?? {};
+      sendResponse({ type: `${type}_result`, requestId: message.requestId ?? null, ok, error, ...payload });
+    },
+    (error) => {
+      sendResponse(failureReply(message, error));
+    },
+  );
+  return true;
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== UPDATE_ALARM) {
+    return;
+  }
+  void readUpdateSettings().then((settings) => {
+    if (settings.schedule !== "off") {
+      return queueManagedUpdate({ install: true });
+    }
+    return undefined;
+  }).catch((error) => {
+    console.error("hoshidicts: scheduled dictionary updates failed:", describe(error));
+  });
+});
+
 function warmUp() {
   ensureOffscreen().catch((error) => {
     console.error("hoshidicts: could not create the offscreen document:", describe(error));
+  });
+  reconcileUpdateAlarm().catch((error) => {
+    console.error("hoshidicts: could not reconcile the dictionary update alarm:", describe(error));
   });
 }
 
 // Load the dictionaries before the first hover asks for them.
 chrome.runtime.onInstalled.addListener(warmUp);
 chrome.runtime.onStartup.addListener(warmUp);
+
+// Alarms may be cleared across browser restarts. Module evaluation is the one
+// startup path every MV3 worker takes, including starts not caused by either
+// lifecycle event above.
+reconcileUpdateAlarm().catch((error) => {
+  console.error("hoshidicts: could not reconcile the dictionary update alarm:", describe(error));
+});

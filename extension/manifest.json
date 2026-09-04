@@ -12,6 +12,7 @@
     "128": "icons/hachidori-128.png"
   },
   "permissions": [
+    "alarms",
     "offscreen",
     "storage",
     "unlimitedStorage"

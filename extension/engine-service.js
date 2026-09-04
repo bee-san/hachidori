@@ -375,6 +375,17 @@ function optionalText(value) {
   return typeof value === "string" && value !== "" ? value : null;
 }
 
+function httpsUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.username === "" && url.password === ""
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function recommendedSourceForImport(message) {
   const sourceId = optionalText(message?.sourceId);
   const finalUrl = optionalText(message?.finalUrl);
@@ -385,7 +396,7 @@ function recommendedSourceForImport(message) {
   if (!source) {
     throw new Error("the recommended import names an unknown catalogue source");
   }
-  if (finalUrl === null || !recommendedFinalUrlMatches(source, finalUrl)) {
+  if (finalUrl !== null && !recommendedFinalUrlMatches(source, finalUrl)) {
     throw new Error(`${source.name} downloaded from an unexpected final URL`);
   }
   return source;
@@ -575,17 +586,7 @@ async function readStoredDictionaries() {
 }
 
 function sameDictionaries(left, right) {
-  return left.length === right.length && left.every((dictionary, index) => {
-    const other = right[index];
-    if (dictionary === null || other === null
-        || typeof dictionary !== "object" || typeof other !== "object") {
-      return dictionary === other;
-    }
-    const keys = Object.keys(dictionary);
-    return keys.length === Object.keys(other).length
-      && keys.every((key) => Object.hasOwn(other, key)
-        && dictionary[key] === other[key]);
-  });
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 // A service worker can commit the CAS and disappear before its reply reaches
@@ -935,9 +936,23 @@ function normaliseReport(raw) {
   return report;
 }
 
-function withImport(stored, generated, recommendedSource) {
-  let existingIndex = recommendedSource === null ? -1 : stored.findIndex((dictionary) =>
-    optionalText(dictionary?.sourceId) === recommendedSource.sourceId);
+function withImport(stored, generated, recommendedSource, managedSource) {
+  let existingIndex = managedSource === null ? -1 : stored.findIndex((dictionary) =>
+    dictionary?.id === managedSource.id);
+  if (managedSource !== null) {
+    const existing = stored[existingIndex];
+    if (existingIndex < 0
+        || existing?.isUpdatable !== true
+        || httpsUrl(existing?.indexUrl) !== managedSource.indexUrl
+        || httpsUrl(existing?.downloadUrl) !== managedSource.downloadUrl
+        || (recommendedSource !== null && existing?.sourceId !== recommendedSource.sourceId)) {
+      throw new Error("the managed dictionary changed while its update was being prepared");
+    }
+  }
+  if (existingIndex < 0 && recommendedSource !== null) {
+    existingIndex = stored.findIndex((dictionary) =>
+      optionalText(dictionary?.sourceId) === recommendedSource.sourceId);
+  }
   if (existingIndex < 0 && generated.indexUrl !== null) {
     existingIndex = stored.findIndex((dictionary) => dictionary?.indexUrl === generated.indexUrl);
   }
@@ -972,16 +987,33 @@ async function cleanupCommittedDictionaries(committed) {
   }
 }
 
-async function commitImportedGeneration(generationRoot, report, recommendedSource) {
+async function commitImportedGeneration(
+  generationRoot,
+  report,
+  recommendedSource,
+  managedSource,
+  expectedRevision,
+) {
   const generated = await packageFromIndex(`${generationRoot}/${report.title}`);
   if (generated.title !== report.title) {
     throw new Error("the imported dictionary title changed while it was being committed");
+  }
+  if (expectedRevision !== null && generated.revision !== expectedRevision) {
+    throw new Error("the downloaded dictionary revision did not match its update index");
+  }
+  if (managedSource !== null && httpsUrl(generated.indexUrl) !== managedSource.indexUrl) {
+    throw new Error("the downloaded dictionary did not match its update source");
   }
   if (recommendedSource !== null) {
     validateRecommendedImport(recommendedSource, report, generated);
   }
   const committed = await commitDictionaryCandidate((snapshot) =>
-    withImport(snapshot.state?.dictionaries ?? [], generated, recommendedSource));
+    withImport(
+      snapshot.state?.dictionaries ?? [],
+      generated,
+      recommendedSource,
+      managedSource,
+    ));
   publishLoadedDictionaries(committed.loadedCount);
   reloadError = null;
   await cleanupCommittedDictionaries(committed.state);
@@ -1076,6 +1108,27 @@ async function importDictionaryArchive(response, archivePath, generationRoot, im
       // Never written, or already gone.
     }
   }
+}
+
+async function managedSourceForImport(message, recommendedSource) {
+  const id = optionalText(message?.managedId);
+  if (id === null) {
+    return null;
+  }
+  const dictionary = (await readStoredDictionaries()).find((entry) => entry?.id === id);
+  const indexUrl = httpsUrl(dictionary?.indexUrl);
+  const downloadUrl = httpsUrl(dictionary?.downloadUrl);
+  if (dictionary?.isUpdatable !== true || indexUrl === null || downloadUrl === null) {
+    throw new Error("the managed dictionary no longer has an update source");
+  }
+  if (recommendedSource !== null && dictionary?.sourceId !== recommendedSource.sourceId) {
+    throw new Error("the managed dictionary no longer matches its catalogue source");
+  }
+  return {
+    id,
+    indexUrl: recommendedSource?.indexUrl ?? indexUrl,
+    downloadUrl: recommendedSource?.downloadUrl ?? downloadUrl,
+  };
 }
 
 const HANDLERS = {
@@ -1192,16 +1245,35 @@ const HANDLERS = {
   async hd_import(message) {
     requireEngine();
     const blobUrl = text(message.blobUrl);
-    const fileName = text(message.fileName) || "the archive";
     const importLowRam = typeof message.lowRam === "boolean" ? message.lowRam : lowRam;
-    if (blobUrl === "") {
+    const recommendedSource = recommendedSourceForImport(message);
+    const managedSource = await managedSourceForImport(message, recommendedSource);
+    if (blobUrl !== "" && recommendedSource !== null
+        && !recommendedFinalUrlMatches(recommendedSource, optionalText(message.finalUrl))) {
+      throw new Error(`${recommendedSource.name} downloaded from an unexpected final URL`);
+    }
+    if (blobUrl === "" && managedSource === null) {
       throw new Error("the import request carried no archive URL");
     }
-    const recommendedSource = recommendedSourceForImport(message);
-
-    const response = await fetch(blobUrl);
+    const expectedRevision = optionalText(message.expectedRevision);
+    if (blobUrl === "" && expectedRevision === null) {
+      throw new Error("the managed import request carried no expected revision");
+    }
+    const fileName = text(message.fileName)
+      || recommendedSource?.archiveName
+      || "the archive";
+    const response = await fetch(blobUrl || managedSource.downloadUrl, { credentials: "omit" });
     if (!response.ok) {
       throw new Error(`could not read ${fileName}: HTTP ${response.status}`);
+    }
+    if (blobUrl === "") {
+      const finalUrl = optionalText(response.url);
+      const trusted = recommendedSource === null
+        ? httpsUrl(finalUrl) !== null
+        : recommendedFinalUrlMatches(recommendedSource, finalUrl);
+      if (!trusted) {
+        throw new Error(`${fileName} downloaded from an unexpected final URL`);
+      }
     }
     const generationRoot = createGenerationRoot();
     // Unload before importing: the loaded dictionaries are mapped into the same
@@ -1230,7 +1302,13 @@ const HANDLERS = {
       }
       if (report.success) {
         await persistFilesystem();
-        await commitImportedGeneration(generationRoot, report, recommendedSource);
+        await commitImportedGeneration(
+          generationRoot,
+          report,
+          recommendedSource,
+          managedSource,
+          expectedRevision,
+        );
       } else {
         const failure = new Error(report.error || `${fileName} could not be imported`);
         rollbackAttempted = true;
