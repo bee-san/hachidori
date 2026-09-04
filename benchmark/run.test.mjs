@@ -34,6 +34,72 @@ test("benchmark runner documents its reproducible inputs and output", () => {
   assert.match(result.stdout, /raw\.jsonl/);
 });
 
+test("benchmark defaults follow the current account cache", () => {
+  const root = mkdtempSync(join(tmpdir(), "hachidori-portable-browser-"));
+  try {
+    const cache = join(root, "cache");
+    const chrome = join(
+      cache,
+      "hachidori-browsers",
+      "chrome",
+      "linux-999.0.0.0",
+      "chrome-linux64",
+      "chrome",
+    );
+    const puppeteerRoot = join(cache, "hachidori-e2e", "node_modules", "puppeteer-core");
+    const puppeteer = join(puppeteerRoot, "lib", "puppeteer", "puppeteer-core.js");
+    const archive = join(root, "dict.zip");
+    const config = join(root, "config.json");
+    const output = join(root, "output");
+
+    mkdirSync(resolve(chrome, ".."), { recursive: true });
+    mkdirSync(resolve(puppeteer, ".."), { recursive: true });
+    writeFileSync(chrome, "#!/bin/sh\nexit 0\n");
+    chmodSync(chrome, 0o755);
+    writeFileSync(
+      join(puppeteerRoot, "package.json"),
+      JSON.stringify({ name: "puppeteer-core", version: "1.0.0" }),
+    );
+    writeFileSync(puppeteer, "export const launch = true;\n");
+    writeFileSync(archive, "archive bytes");
+    writeFileSync(config, JSON.stringify({
+      corpora: [{ id: "tiny", archive: "dict.zip" }],
+      queries: [{ id: "word", text: "食べる", expect: "hit" }],
+      warmups: 0,
+      samples: 1,
+    }));
+
+    const environment = {
+      ...process.env,
+      HOME: join(root, "home"),
+      XDG_CACHE_HOME: cache,
+    };
+    delete environment.HACHIDORI_CHROME;
+    delete environment.HACHIDORI_PUPPETEER;
+    delete environment.CHROME_BIN;
+    const result = spawnSync(process.execPath, [
+      RUNNER,
+      "--config", config,
+      "--output", output,
+      "--dry-run",
+    ], { encoding: "utf8", env: environment });
+
+    assert.equal(result.status, 0, result.stderr);
+    const definition = JSON.parse(readFileSync(join(output, "run-definition.json"), "utf8"));
+    assert.equal(definition.runtime.chromePath, chrome);
+    assert.equal(definition.runtime.puppeteerPath, puppeteer);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("browser harness defaults do not name a developer home directory", () => {
+  for (const relativePath of ["run.mjs", "../test/chrome-fallback.mjs"]) {
+    const source = readFileSync(resolve(import.meta.dirname, relativePath), "utf8");
+    assert.doesNotMatch(source, /\/home\/skerraut\//, relativePath);
+  }
+});
+
 test("standard suite pins Jitendex and Pixiv Light as separate import cells", () => {
   const suitePath = resolve(import.meta.dirname, "jitendex-pixiv-light.json");
   const raw = JSON.parse(readFileSync(suitePath, "utf8"));

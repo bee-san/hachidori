@@ -6,9 +6,9 @@
  */
 
 import assert from "node:assert/strict";
-import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -35,10 +35,54 @@ const TEST_EXTENSION = scratchPath(
   "hachidori-fallback-extension-",
 );
 const FIXTURE = resolve(ROOT, "test/fixtures/hachidori-fixture.zip");
+const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
+
+function cachedChrome() {
+  const suffixes = process.platform === "linux"
+    ? [["chrome-linux64", "chrome"]]
+    : process.platform === "darwin"
+      ? [
+          ["chrome-mac-arm64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"],
+          ["chrome-mac-x64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"],
+        ]
+      : process.platform === "win32"
+        ? [["chrome-win64", "chrome.exe"], ["chrome-win32", "chrome.exe"]]
+        : [];
+  for (const name of ["hachidori-browsers", "hdw-browsers"]) {
+    const root = resolve(CACHE, name, "chrome");
+    if (!existsSync(root)) continue;
+    const builds = readdirSync(root).sort((left, right) =>
+      right.localeCompare(left, undefined, { numeric: true }));
+    for (const build of builds) {
+      for (const suffix of suffixes) {
+        const candidate = resolve(root, build, ...suffix);
+        if (existsSync(candidate)) return candidate;
+      }
+    }
+  }
+  return "";
+}
+
+function installedChrome() {
+  const candidates = process.platform === "linux"
+    ? ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"]
+    : process.platform === "darwin"
+      ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+      : process.platform === "win32"
+        ? [resolve(process.env.PROGRAMFILES || "C:/Program Files", "Google/Chrome/Application/chrome.exe")]
+        : [];
+  return candidates.find(existsSync) || "";
+}
+
 const CHROME = process.env.HACHIDORI_CHROME
-  || "/home/skerraut/.cache/hachidori-browsers/chrome/linux-152.0.7977.75/chrome-linux64/chrome";
+  || process.env.CHROME_BIN
+  || cachedChrome()
+  || installedChrome();
+const PUPPETEER_CANDIDATES = ["hachidori-e2e", "hdw-e2e"].map((name) =>
+  resolve(CACHE, name, "node_modules", "puppeteer-core", "lib", "puppeteer", "puppeteer-core.js"));
 const PUPPETEER = process.env.HACHIDORI_PUPPETEER
-  || "/home/skerraut/.cache/hachidori-e2e/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js";
+  || PUPPETEER_CANDIDATES.find(existsSync)
+  || PUPPETEER_CANDIDATES[0];
 const PROFILE = scratchPath(
   process.env.HACHIDORI_FALLBACK_PROFILE || `${tmpdir()}/hachidori-fallback-profile-${process.pid}`,
   "hachidori-fallback-profile-",

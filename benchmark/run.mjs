@@ -6,10 +6,12 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, relative, resolve } from "node:path";
 
@@ -40,8 +42,49 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
 const EXTENSION = resolve(REPO, "extension");
-const DEFAULT_CHROME = "/home/skerraut/.cache/hdw-browsers/chrome/linux-152.0.7977.75/chrome-linux64/chrome";
-const DEFAULT_PUPPETEER = "/home/skerraut/.cache/hdw-e2e/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js";
+const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
+
+function cachedChrome() {
+  const suffixes = process.platform === "linux"
+    ? [["chrome-linux64", "chrome"]]
+    : process.platform === "darwin"
+      ? [
+          ["chrome-mac-arm64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"],
+          ["chrome-mac-x64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"],
+        ]
+      : process.platform === "win32"
+        ? [["chrome-win64", "chrome.exe"], ["chrome-win32", "chrome.exe"]]
+        : [];
+  for (const name of ["hachidori-browsers", "hdw-browsers"]) {
+    const root = resolve(CACHE, name, "chrome");
+    if (!existsSync(root)) continue;
+    const builds = readdirSync(root).sort((left, right) =>
+      right.localeCompare(left, undefined, { numeric: true }));
+    for (const build of builds) {
+      for (const suffix of suffixes) {
+        const candidate = resolve(root, build, ...suffix);
+        if (existsSync(candidate)) return candidate;
+      }
+    }
+  }
+  return "";
+}
+
+function installedChrome() {
+  const candidates = process.platform === "linux"
+    ? ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"]
+    : process.platform === "darwin"
+      ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+      : process.platform === "win32"
+        ? [resolve(process.env.PROGRAMFILES || "C:/Program Files", "Google/Chrome/Application/chrome.exe")]
+        : [];
+  return candidates.find(existsSync) || "";
+}
+
+const DEFAULT_CHROME = process.env.CHROME_BIN || cachedChrome() || installedChrome();
+const PUPPETEER_CANDIDATES = ["hachidori-e2e", "hdw-e2e"].map((name) =>
+  resolve(CACHE, name, "node_modules", "puppeteer-core", "lib", "puppeteer", "puppeteer-core.js"));
+const DEFAULT_PUPPETEER = PUPPETEER_CANDIDATES.find(existsSync) || PUPPETEER_CANDIDATES[0];
 
 const HELP = `Hachidori browser benchmark
 
