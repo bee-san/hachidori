@@ -18,7 +18,7 @@ export const RECOMMENDED_DICTIONARIES = Object.freeze(
       githubRepository: "stephenmk/stephenmk.github.io",
       githubRepositoryId: "744330420",
       requiredCapability: "term",
-      titlePattern: "^Jitendex\\.org \\[\\d{4}-\\d{2}-\\d{2}\\]$",
+      titlePattern: String.raw`^Jitendex\.org \[\d{4}-\d{2}-\d{2}\]$`,
     },
     {
       sourceId: "jmnedict",
@@ -33,7 +33,7 @@ export const RECOMMENDED_DICTIONARIES = Object.freeze(
       githubRepository: "yomidevs/jmdict-yomitan",
       githubRepositoryId: "696075636",
       requiredCapability: "term",
-      titlePattern: "^JMnedict \\[\\d{4}-\\d{2}-\\d{2}\\]$",
+      titlePattern: String.raw`^JMnedict \[\d{4}-\d{2}-\d{2}\]$`,
     },
     {
       sourceId: "bees-ultimate-kanji-dictionary",
