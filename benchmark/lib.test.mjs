@@ -15,6 +15,7 @@ import {
   renderMarkdown,
   sha256Canonical,
   summarizeValues,
+  validateStoredDictionaries,
   validateRows,
 } from "./lib.mjs";
 
@@ -90,6 +91,40 @@ test("canonical JSON and its hash ignore object insertion order", () => {
   assert.notEqual(sha256Canonical({ text: "海" }), sha256Canonical({ text: "海" }));
   assert.throws(() => canonicalJson({ value: Number.NaN }), /non-finite/i);
   assert.throws(() => canonicalJson({ value: undefined }), /undefined/i);
+});
+
+test("stored dictionary evidence follows the logical package state", () => {
+  const report = {
+    title: "Fixture",
+    termCount: 6,
+    frequencyCount: 2,
+    pitchCount: 2,
+    kanjiCount: 1,
+    mediaCount: 3,
+  };
+  const packageRow = {
+    id: "0123456789abcdef0123456789abcdef",
+    title: report.title,
+    path: "/dicts/.hdw-generation-12345678-1234-4123-8123-123456789abc/Fixture",
+    enabled: true,
+    termCount: report.termCount,
+    frequencyCount: report.frequencyCount,
+    pitchCount: report.pitchCount,
+    kanjiCount: report.kanjiCount,
+    mediaCount: report.mediaCount,
+  };
+
+  assert.deepEqual(validateStoredDictionaries([packageRow], report, 4), [packageRow]);
+  assert.throws(
+    () => validateStoredDictionaries([
+      { title: report.title, path: "/dicts/Fixture", kind: "term", enabled: true },
+    ], report, 4),
+    /logical dictionary package/i,
+  );
+  assert.throws(
+    () => validateStoredDictionaries([packageRow], report, 3),
+    /capabilities/i,
+  );
 });
 
 test("analyzeLookupPass validates expectations and hashes semantics rather than timing metadata", () => {
@@ -369,7 +404,17 @@ function strictValidationFixture() {
     importReport,
     importReportSignature: sha256Canonical(importReport),
     dictionaryCount: 1,
-    storedDictionaries: [{ title: "fixture", path: "/dicts/fixture", kind: "term", enabled: true }],
+    storedDictionaries: [{
+      id: "0123456789abcdef0123456789abcdef",
+      title: "fixture",
+      path: "/dicts/.hdw-generation-12345678-1234-4123-8123-123456789abc/fixture",
+      enabled: true,
+      termCount: 1,
+      frequencyCount: 0,
+      pitchCount: 0,
+      kanjiCount: 0,
+      mediaCount: 0,
+    }],
     lookupQueryIds: ordered.map((query) => query.id),
     lookupQueryFixtureSha256: sha256Canonical(ordered),
     importRequestId: "import-request",

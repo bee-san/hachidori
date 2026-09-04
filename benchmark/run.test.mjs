@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
+import { EXPECTED as FIXTURE_EXPECTED } from "../test/make-fixture.mjs";
 import { normalizeConfig, sha256Canonical } from "./lib.mjs";
 
 const RUNNER = resolve(import.meta.dirname, "run.mjs");
@@ -98,6 +99,12 @@ test("browser harness defaults do not name a developer home directory", () => {
     const source = readFileSync(resolve(import.meta.dirname, relativePath), "utf8");
     assert.doesNotMatch(source, /\/home\/skerraut\//, relativePath);
   }
+});
+
+test("tiny acceptance benchmark matches the generated fixture", () => {
+  const config = JSON.parse(readFileSync(resolve(import.meta.dirname, "fixture.json"), "utf8"));
+
+  assert.deepEqual(config.corpora[0].expectedReport, FIXTURE_EXPECTED);
 });
 
 test("standard suite pins Jitendex and Pixiv Light as separate import cells", () => {

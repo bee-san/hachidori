@@ -74,28 +74,37 @@ export function orderQueries(queries, { seed, corpus }) {
 }
 
 export function validateStoredDictionaries(rows, report, expectedCount) {
-  if (!Array.isArray(rows) || rows.length !== expectedCount) {
-    throw new Error(`storage has ${rows?.length ?? "no"} dictionary rows, expected ${expectedCount}`);
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new Error(`storage has ${rows?.length ?? "no"} logical dictionary packages, expected 1`);
   }
-  const expectedKinds = [
-    ["term", report.termCount],
-    ["freq", report.frequencyCount],
-    ["pitch", report.pitchCount],
-    ["kanji", report.kanjiCount],
-  ].filter(([, count]) => count > 0).map(([kind]) => kind).sort();
-  const expectedPath = `/dicts/${report.title}`;
-  const normalized = rows.map((row, index) => {
-    if (!row || row.title !== report.title || row.enabled !== true
-      || row.path !== expectedPath || typeof row.kind !== "string") {
-      throw new Error(`storage dictionary row ${index} has an invalid contract`);
-    }
-    return { title: row.title, path: row.path, kind: row.kind, enabled: row.enabled };
-  }).sort((left, right) => left.kind.localeCompare(right.kind));
-  const kinds = normalized.map((row) => row.kind);
-  if (canonicalJson(kinds) !== canonicalJson(expectedKinds)) {
-    throw new Error(`storage dictionary kinds ${canonicalJson(kinds)}, expected ${canonicalJson(expectedKinds)}`);
+  const expectedCapabilities = [
+    report.termCount,
+    report.frequencyCount,
+    report.pitchCount,
+    report.kanjiCount,
+  ].filter((count) => count > 0).length;
+  if (expectedCapabilities !== expectedCount) {
+    throw new Error(`stored package has ${expectedCapabilities} capabilities, expected ${expectedCount}`);
   }
-  return normalized;
+  const row = rows[0];
+  const suffix = `/${report.title}`;
+  const root = typeof row?.path === "string" && row.path.endsWith(suffix)
+    ? row.path.slice(0, -suffix.length)
+    : "";
+  const generationRoot = /^\/dicts\/\.hdw-generation-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+  const countKeys = ["termCount", "frequencyCount", "pitchCount", "kanjiCount", "mediaCount"];
+  if (!row || !/^[0-9a-f]{32}$/u.test(row.id) || row.title !== report.title
+    || row.enabled !== true || !generationRoot.test(root)
+    || countKeys.some((key) => row[key] !== report[key])) {
+    throw new Error("stored dictionary has an invalid logical dictionary package contract");
+  }
+  return [{
+    id: row.id,
+    title: row.title,
+    path: row.path,
+    enabled: row.enabled,
+    ...Object.fromEntries(countKeys.map((key) => [key, row[key]])),
+  }];
 }
 
 export function analyzeLookupPass(queries, observations, corpus, expectedDictionaryCount) {
