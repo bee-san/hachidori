@@ -601,21 +601,22 @@ function installFetch() {
   };
 }
 
-function remoteJson(url, value, status = 200) {
+function remoteJson(url, value, status = 200, finalUrl = url) {
   remoteResponses.set(url, async () => ({
     ok: status >= 200 && status < 300,
     status,
-    url,
+    url: finalUrl,
     async json() {
-      return structuredClone(value);
+      return structuredClone(typeof value === "function" ? await value() : value);
     },
   }));
 }
 
-function remoteArchive(url, bytes, finalUrl = url, observed = null) {
+function remoteArchive(url, bytes, finalUrl = url, observed = null, beforeFirstChunk = null) {
   remoteResponses.set(url, async () => {
     if (observed) observed.count += 1;
     let offset = 0;
+    let firstChunk = true;
     return {
       ok: true,
       status: 200,
@@ -624,6 +625,10 @@ function remoteArchive(url, bytes, finalUrl = url, observed = null) {
       body: {
         getReader: () => ({
           async read() {
+            if (firstChunk) {
+              firstChunk = false;
+              await beforeFirstChunk?.();
+            }
             if (offset >= bytes.byteLength) return { done: true, value: undefined };
             const value = bytes.subarray(offset, Math.min(offset + 257, bytes.byteLength));
             offset += value.byteLength;
@@ -1058,12 +1063,22 @@ async function main() {
     return module;
   };
   let loseNextStateCasReply = false;
+  let failAfterCommittedRevision = null;
   engineService.configureEngineService(
     async (message) => {
       const reply = await offscreenChrome.runtime.sendMessage(message);
       if (loseNextStateCasReply && message.type === "hd_state_cas") {
         loseNextStateCasReply = false;
         throw new Error("injected lost CAS reply");
+      }
+      if (message.type === "hd_state_cas"
+          && reply?.ok === true
+          && failAfterCommittedRevision !== null
+          && reply.state?.dictionaries?.some(
+            (dictionary) => dictionary.revision === failAfterCommittedRevision.revision,
+          )) {
+        storage.failNextSet(failAfterCommittedRevision.error);
+        failAfterCommittedRevision = null;
       }
       return reply;
     },
@@ -1587,28 +1602,29 @@ async function main() {
   const communityTitle = "Community Dictionary";
   const communityIndexUrl = "https://example.test/community/index.json";
   const communityDownloadUrl = "https://example.test/community/archive.zip";
+  const communityZip = ({
+    title = communityTitle,
+    revision,
+    indexUrl = communityIndexUrl,
+    downloadUrl = communityDownloadUrl,
+  }) => buildRecommendedZip({ title, revision, indexUrl, downloadUrl, capabilities: ["term"] });
   const communityImport = await request("hd_import", {
-    blobUrl: createObjectURL(buildRecommendedZip({
-      title: communityTitle,
-      revision: "community-1",
-      indexUrl: communityIndexUrl,
-      downloadUrl: communityDownloadUrl,
-      capabilities: ["term"],
-    })),
+    blobUrl: createObjectURL(communityZip({ revision: "community-1" })),
     fileName: "community.zip",
   });
   const communityState = await storedDictionaryState();
   const community = communityState.dictionaries.find((entry) => entry.title === communityTitle);
-  remoteJson(communityIndexUrl, { revision: "community-2" });
+  const rotatingCommunityDownloadUrl = "https://example.test/community/releases/community-2.zip";
+  const rotatingArchiveRequests = { count: 0 };
+  remoteJson(communityIndexUrl, {
+    revision: "community-2",
+    downloadUrl: rotatingCommunityDownloadUrl,
+  });
   remoteArchive(
-    communityDownloadUrl,
-    buildRecommendedZip({
-      title: communityTitle,
-      revision: "community-2",
-      indexUrl: communityIndexUrl,
-      downloadUrl: communityDownloadUrl,
-      capabilities: ["term"],
-    }),
+    rotatingCommunityDownloadUrl,
+    communityZip({ revision: "community-2" }),
+    rotatingCommunityDownloadUrl,
+    rotatingArchiveRequests,
   );
   const communityUpdate = await pageChrome.runtime.sendMessage({
     target: updateTarget,
@@ -1618,15 +1634,310 @@ async function main() {
   const updatedCommunityState = await storedDictionaryState();
   const updatedCommunity = updatedCommunityState.dictionaries.find((entry) => entry.id === community?.id);
   check(
-    "a local import with a complete HTTPS update descriptor uses the same managed transaction",
+    "a generic managed source can select a rotating HTTPS archive from its remote index",
     communityImport.ok === true
       && community?.sourceId === undefined
       && community?.isUpdatable === true
       && communityUpdate?.ok === true
       && updatedCommunity?.revision === "community-2"
       && updatedCommunity?.id === community.id
-      && updatedCommunity?.lastUpdateCheck?.status === "up-to-date",
-    JSON.stringify({ communityImport, community, communityUpdate, updatedCommunityState }),
+      && updatedCommunity?.lastUpdateCheck?.status === "up-to-date"
+      && updatedCommunity?.indexUrl === communityIndexUrl
+      && updatedCommunity?.downloadUrl === communityDownloadUrl
+      && rotatingArchiveRequests.count === 1,
+    JSON.stringify({
+      communityImport,
+      community,
+      communityUpdate,
+      updatedCommunityState,
+      rotatingArchiveRequests,
+    }),
+  );
+
+  const editCommunity = async (patch) => {
+    const current = await storedDictionaryState();
+    return pageChrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type: "hd_state_cas",
+      baseRevision: current.revision,
+      dictionaries: current.dictionaries.map((dictionary) =>
+        dictionary.id === community.id ? { ...dictionary, ...patch } : dictionary),
+    });
+  };
+
+  const transportStart = (await storedDictionaryState()).dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  remoteJson(communityIndexUrl, {
+    revision: "community-3",
+    downloadUrl: "http://example.test/community-3.zip",
+  });
+  const insecureDownload = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  remoteJson(
+    communityIndexUrl,
+    { revision: "community-3" },
+    200,
+    "http://example.test/community-index.json",
+  );
+  const insecureIndexRedirect = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  remoteJson(communityIndexUrl, {
+    revision: "community-3",
+    downloadUrl: rotatingCommunityDownloadUrl,
+  });
+  remoteArchive(
+    rotatingCommunityDownloadUrl,
+    communityZip({ revision: "community-3" }),
+    "http://example.test/community-3.zip",
+  );
+  const insecureArchiveRedirect = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const transportState = await storedDictionaryState();
+  const transportCommunity = transportState.dictionaries.find((entry) => entry.id === community.id);
+  check(
+    "generic updates reject non-HTTPS index redirects, archive redirects, and remote download URLs",
+    insecureDownload?.outcomes?.[0]?.status === "check-failed"
+      && insecureDownload.outcomes[0].error?.includes("non-HTTPS download URL")
+      && insecureIndexRedirect?.outcomes?.[0]?.status === "check-failed"
+      && insecureIndexRedirect.outcomes[0].error?.includes("non-HTTPS")
+      && insecureArchiveRedirect?.outcomes?.[0]?.status === "update-available"
+      && insecureArchiveRedirect.outcomes[0].error?.includes("unexpected final URL")
+      && transportCommunity?.revision === "community-2"
+      && transportCommunity?.path === transportStart.path,
+    JSON.stringify({
+      insecureDownload,
+      insecureIndexRedirect,
+      insecureArchiveRedirect,
+      transportState,
+    }),
+  );
+
+  remoteJson(communityIndexUrl, { revision: "community-collision" });
+  remoteArchive(
+    communityDownloadUrl,
+    communityZip({ title: FIXTURE_TITLE, revision: "community-collision" }),
+  );
+  const beforeTitleCollision = await storedDictionaryState();
+  const titleCollisionUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const titleCollisionState = await storedDictionaryState();
+  const titleCollisionCommunity = titleCollisionState.dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  check(
+    "a managed replacement cannot take another installed package's title or logical ID",
+    titleCollisionUpdate?.ok === true
+      && titleCollisionUpdate.outcomes?.[0]?.error?.includes("already installed")
+      && titleCollisionCommunity?.title === communityTitle
+      && titleCollisionCommunity?.revision === "community-2"
+      && titleCollisionCommunity?.path === transportStart.path
+      && titleCollisionState.dictionaries.filter((entry) => entry.title === FIXTURE_TITLE).length === 1,
+    JSON.stringify({ beforeTitleCollision, titleCollisionUpdate, titleCollisionState }),
+  );
+  const collisionFixtureRestored = await request("hd_import", {
+    blobUrl: createObjectURL(communityZip({ revision: "community-2" })),
+    fileName: "community.zip",
+  });
+
+  const beforePathRace = (await storedDictionaryState()).dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  const pathRaceArchiveRequests = { count: 0 };
+  remoteArchive(
+    communityDownloadUrl,
+    communityZip({ revision: "community-3" }),
+    communityDownloadUrl,
+    pathRaceArchiveRequests,
+  );
+  let concurrentReimport = null;
+  remoteJson(communityIndexUrl, async () => {
+    concurrentReimport = await request("hd_import", {
+      blobUrl: createObjectURL(communityZip({ revision: "community-2" })),
+      fileName: "community.zip",
+    });
+    return { revision: "community-3" };
+  });
+  const stalePathUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const stalePathState = await storedDictionaryState();
+  const stalePathCommunity = stalePathState.dictionaries.find((entry) => entry.id === community.id);
+  check(
+    "a same-revision reimport invalidates a managed check captured from the old path",
+    collisionFixtureRestored?.ok === true
+      && concurrentReimport?.ok === true
+      && stalePathUpdate?.ok === true
+      && stalePathUpdate.outcomes?.[0]?.error?.includes("changed while")
+      && stalePathCommunity?.revision === "community-2"
+      && stalePathCommunity?.path !== beforePathRace.path
+      && stalePathCommunity?.lastUpdateCheck === null
+      && pathRaceArchiveRequests.count === 0,
+    JSON.stringify({
+      collisionFixtureRestored,
+      concurrentReimport,
+      stalePathUpdate,
+      stalePathState,
+      pathRaceArchiveRequests,
+    }),
+  );
+
+  const changedCommunityIndexUrl = "https://example.test/community-other/index.json";
+  const changedCommunityDownloadUrl = "https://example.test/community-other/archive.zip";
+  const staleSourceArchiveRequests = { count: 0 };
+  remoteArchive(
+    changedCommunityDownloadUrl,
+    buildRecommendedZip({
+      title: communityTitle,
+      revision: "community-3",
+      indexUrl: changedCommunityIndexUrl,
+      downloadUrl: changedCommunityDownloadUrl,
+      capabilities: ["term"],
+    }),
+    changedCommunityDownloadUrl,
+    staleSourceArchiveRequests,
+  );
+  let changedSource = null;
+  remoteJson(communityIndexUrl, async () => {
+    changedSource = await editCommunity({
+      revision: "community-4",
+      indexUrl: changedCommunityIndexUrl,
+      downloadUrl: changedCommunityDownloadUrl,
+      lastUpdateCheck: null,
+    });
+    return { revision: "community-3" };
+  });
+  const staleSourcePath = (await storedDictionaryState()).dictionaries.find(
+    (entry) => entry.id === community.id,
+  ).path;
+  const staleSourceUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const staleSourceState = await storedDictionaryState();
+  const staleSourceCommunity = staleSourceState.dictionaries.find((entry) => entry.id === community.id);
+  check(
+    "a stale check cannot downgrade a dictionary whose managed source changed before import",
+    changedSource?.ok === true
+      && staleSourceUpdate?.ok === true
+      && staleSourceUpdate.outcomes?.[0]?.error?.includes("changed while")
+      && staleSourceCommunity?.revision === "community-4"
+      && staleSourceCommunity?.path === staleSourcePath
+      && staleSourceCommunity?.indexUrl === changedCommunityIndexUrl
+      && staleSourceCommunity?.downloadUrl === changedCommunityDownloadUrl
+      && staleSourceCommunity?.lastUpdateCheck === null
+      && staleSourceArchiveRequests.count === 0,
+    JSON.stringify({ changedSource, staleSourceUpdate, staleSourceState, staleSourceArchiveRequests }),
+  );
+
+  const sourceRestored = await editCommunity({
+    revision: "community-2",
+    indexUrl: communityIndexUrl,
+    downloadUrl: communityDownloadUrl,
+    lastUpdateCheck: null,
+  });
+  const commitRaceArchiveRequests = { count: 0 };
+  let concurrentRevision = null;
+  remoteJson(communityIndexUrl, { revision: "community-3" });
+  remoteArchive(
+    communityDownloadUrl,
+    buildRecommendedZip({
+      title: communityTitle,
+      revision: "community-3",
+      indexUrl: communityIndexUrl,
+      downloadUrl: communityDownloadUrl,
+      capabilities: ["term"],
+    }),
+    communityDownloadUrl,
+    commitRaceArchiveRequests,
+    async () => {
+      concurrentRevision = await editCommunity({
+        revision: "community-4",
+        lastUpdateCheck: null,
+      });
+    },
+  );
+  const beforeCommitRace = (await storedDictionaryState()).dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  const staleCommitUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const staleCommitState = await storedDictionaryState();
+  const staleCommitCommunity = staleCommitState.dictionaries.find((entry) => entry.id === community.id);
+  check(
+    "a managed replacement revalidates the installed revision at the commit snapshot",
+    sourceRestored?.ok === true
+      && concurrentRevision?.ok === true
+      && staleCommitUpdate?.ok === true
+      && staleCommitUpdate.outcomes?.[0]?.error?.includes("changed while")
+      && staleCommitCommunity?.revision === "community-4"
+      && staleCommitCommunity?.path === beforeCommitRace.path
+      && staleCommitCommunity?.lastUpdateCheck === null
+      && commitRaceArchiveRequests.count === 1,
+    JSON.stringify({ sourceRestored, concurrentRevision, staleCommitUpdate, staleCommitState }),
+  );
+
+  const statusFixtureRestored = await editCommunity({
+    revision: "community-2",
+    indexUrl: communityIndexUrl,
+    downloadUrl: communityDownloadUrl,
+    lastUpdateCheck: null,
+  });
+  remoteJson(communityIndexUrl, { revision: "community-3" });
+  remoteArchive(
+    communityDownloadUrl,
+    buildRecommendedZip({
+      title: communityTitle,
+      revision: "community-3",
+      indexUrl: communityIndexUrl,
+      downloadUrl: communityDownloadUrl,
+      capabilities: ["term"],
+    }),
+  );
+  const beforeStatusFailure = (await storedDictionaryState()).dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  failAfterCommittedRevision = {
+    revision: "community-3",
+    error: "injected post-install settings failure",
+  };
+  const statusFailureUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const statusFailureState = await storedDictionaryState();
+  const statusFailureCommunity = statusFailureState.dictionaries.find((entry) => entry.id === community.id);
+  check(
+    "a successful replacement commits its up-to-date status before a later settings write",
+    statusFixtureRestored?.ok === true
+      && statusFailureUpdate?.ok === false
+      && statusFailureUpdate.error?.includes("injected post-install settings failure")
+      && statusFailureCommunity?.revision === "community-3"
+      && statusFailureCommunity?.path !== beforeStatusFailure.path
+      && statusFailureCommunity?.lastUpdateCheck?.status === "up-to-date"
+      && statusFailureCommunity.lastUpdateCheck.remoteRevision === "community-3"
+      && statusFailureCommunity.lastUpdateCheck.error === null
+      && failAfterCommittedRevision === null,
+    JSON.stringify({ statusFixtureRestored, statusFailureUpdate, statusFailureState }),
   );
   await request("hd_remove", { title: communityTitle });
   await request("hd_remove", { title: "Jitendex.org [2026-09-08]" });
