@@ -3432,6 +3432,7 @@ async function main() {
       && settingsCustom.liveValidation.saveEnabled === true
       && settingsCustom.liveValidation.latestErrors === true
       && settingsCustom.liveValidation.unchangedErrorsReused === true
+      && settingsCustom.liveValidation.reloadStatusPreserved === true
       && settingsCustom.eventFirstSave?.statusPreserved === true,
     JSON.stringify(settingsCustom),
   );
@@ -4834,6 +4835,18 @@ async function settingsCustomDictionaryStage() {
   await waitFor(() => status.textContent.includes("ready to save"));
   result.liveValidation.unchangedErrorsReused = errors.firstElementChild === firstError;
 
+  source.value += " edited";
+  source.dispatchEvent(new window.Event("input", { bubbles: true }));
+  holdFirstRead = true;
+  reload.click();
+  await waitFor(() => pendingRead !== null);
+  const loadingStatus = status.textContent;
+  await new Promise((done) => window.setTimeout(done, 200));
+  result.liveValidation.reloadStatusPreserved = status.textContent === loadingStatus
+    && loadingStatus.startsWith("Loading");
+  pendingRead?.();
+  await waitFor(() => !source.disabled && source.value === "external, そと, reload me\n");
+
   const eventFirstText = "valid, ばりっど, line\\nsecond\nbroken\n, よみ, missing term\n";
   source.value = eventFirstText;
   source.dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -4950,7 +4963,7 @@ async function settingsCustomDictionaryStage() {
     status: window.document.getElementById("custom-dictionary-status")?.textContent ?? "",
   };
   reload.click();
-  await waitFor(() => customReadRequests.length === 3
+  await waitFor(() => customReadRequests.length === 4
     && source.value === "newest source, さいしん, authoritative\n");
   result.finalReload = source.value;
 

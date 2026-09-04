@@ -457,6 +457,7 @@ function adoptCustomDictionaryState(value) {
 
 async function loadCustomDictionarySource() {
   if (customLoading || customSaving) return;
+  cancelCustomDictionaryValidation();
   customLoading = true;
   setCustomDictionaryStatus("Loading the saved custom dictionary source…");
   renderCustomDictionaryControls();
