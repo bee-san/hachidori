@@ -543,8 +543,29 @@ async function readStoredDictionaries() {
   return state?.dictionaries ?? [];
 }
 
+function sameJsonValue(left, right) {
+  if (left === right) {
+    return true;
+  }
+  if (left === null || right === null
+      || typeof left !== "object" || typeof right !== "object") {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameJsonValue(value, right[index]));
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key) =>
+      Object.hasOwn(right, key) && sameJsonValue(left[key], right[key]));
+}
+
 function sameDictionaries(left, right) {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return sameJsonValue(left, right);
 }
 
 // A service worker can commit the CAS and disappear before its reply reaches

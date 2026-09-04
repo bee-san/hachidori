@@ -335,6 +335,23 @@ function makeStorage() {
   const local = new Map();
   const changeListeners = [];
   let pendingSetFailure = null;
+  let sortDictionaryKeysOnRead = false;
+
+  function withSortedDictionaryKeys(value) {
+    if (Array.isArray(value)) {
+      return value.map(withSortedDictionaryKeys);
+    }
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+    const keys = "id" in value && "title" in value && "path" in value
+      ? Object.keys(value).sort()
+      : Object.keys(value);
+    return Object.fromEntries(keys.map((key) => [
+      key,
+      withSortedDictionaryKeys(value[key]),
+    ]));
+  }
 
   function read(query) {
     if (query === null || query === undefined) {
@@ -363,7 +380,8 @@ function makeStorage() {
     return {
       local: {
         get(query, callback) {
-          const value = structuredClone(read(query));
+          const stored = structuredClone(read(query));
+          const value = sortDictionaryKeysOnRead ? withSortedDictionaryKeys(stored) : stored;
           if (typeof callback === "function") {
             setTimeout(() => callback(value), 0);
             return undefined;
@@ -430,6 +448,9 @@ function makeStorage() {
     raw: local,
     failNextSet(message) {
       pendingSetFailure = new Error(message);
+    },
+    sortDictionaryKeysOnRead(value) {
+      sortDictionaryKeysOnRead = value;
     },
   };
 }
@@ -1444,8 +1465,15 @@ async function main() {
   );
 
   // The per-package update state is structured data. Losing the import CAS reply
-  // must still recognize the cloned readback as the exact committed value.
+  // must still recognize the cloned readback as the exact committed value. Real
+  // Chrome also returns stored object keys in a different order, which must not
+  // prevent the replaced generation from being collected after that readback.
+  const managedGenerationBeforeManual = ownedGenerationRoot(
+    checkedManaged.path,
+    checkedManaged.title,
+  );
   loseNextStateCasReply = true;
+  storage.sortDictionaryKeysOnRead(true);
   const manualUpdate = await Promise.race([
     pageChrome.runtime.sendMessage({
       target: updateTarget,
@@ -1454,8 +1482,10 @@ async function main() {
     }),
     new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 10000)),
   ]);
+  storage.sortDictionaryKeysOnRead(false);
   const manualState = await storedDictionaryState();
   const manuallyUpdated = manualState.dictionaries.find((entry) => entry.id === managedId);
+  const managedGenerationRowsAfterManual = idb.keys("/dicts");
   check(
     "manual Update rechecks and atomically replaces through the existing import transaction",
     manualUpdate?.ok === true
@@ -1467,8 +1497,17 @@ async function main() {
       && manuallyUpdated?.enabled === false
       && manuallyUpdated?.favorite === true
       && manuallyUpdated?.lastUpdateCheck?.status === "up-to-date"
+      && !managedGenerationRowsAfterManual.some((path) =>
+        path === managedGenerationBeforeManual
+          || path.startsWith(`${managedGenerationBeforeManual}/`))
       && JSON.stringify(manualState.groups) === JSON.stringify([managedGroup]),
-    JSON.stringify({ manualUpdate, manualState, archiveRequests }),
+    JSON.stringify({
+      manualUpdate,
+      manualState,
+      archiveRequests,
+      managedGenerationBeforeManual,
+      managedGenerationRowsAfterManual,
+    }),
   );
 
   const scheduled = await pageChrome.runtime.sendMessage({
