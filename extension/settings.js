@@ -911,7 +911,8 @@ function restoreManagementFocus(focus) {
 }
 
 function renderDictionaryState() {
-  const focus = pendingManagementFocus ?? focusedManagementControl();
+  const focus = focusedManagementControl()
+    ?? (document.activeElement === document.body ? pendingManagementFocus : null);
   pendingManagementFocus = null;
   dictionaries = dictionaryState.dictionaries;
   dictionaryRenderDeferred = false;
