@@ -359,17 +359,6 @@ function settleStagedRemoval(title, restore) {
   return true;
 }
 
-function settleRemovalFiles(title, retained) {
-  if (title === ".hdw-remove" && hasDictionaryMarker(REMOVAL_ROOT)) {
-    if (retained) {
-      return false;
-    }
-    removeTree(REMOVAL_ROOT);
-    return true;
-  }
-  return settleStagedRemoval(title, retained);
-}
-
 function count(value) {
   const number = Math.trunc(Number(value));
   return Number.isFinite(number) && number > 0 ? number : 0;
@@ -605,8 +594,8 @@ async function refreshReferencedPackages(stored) {
       throw new Error(`the committed dictionary state contains an invalid path: ${path}`);
     }
     const generated = await packageFromIndex(path);
-    if (generated.id !== storedPackage?.id || generated.title !== storedPackage?.title) {
-      throw new Error(`${path}/index.json does not match its committed dictionary identity`);
+    if (generated.title !== storedPackage?.title) {
+      throw new Error(`${path}/index.json does not match its committed dictionary title`);
     }
     entries.push(withStoredPresentation(generated, storedPackage));
   }
