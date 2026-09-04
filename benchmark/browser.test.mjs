@@ -8,6 +8,8 @@ import {
   assertIdleContinuity,
   chromeArguments,
   closeBrowserVerified,
+  isSuccessfulArchiveImportState,
+  isTerminalArchiveImportState,
   verifyBrowserCleanupAfterFailure,
 } from "./browser.mjs";
 
@@ -26,6 +28,18 @@ class FakeChild extends EventEmitter {
     return true;
   }
 }
+
+test("browser benchmark follows the multi-archive import completion state", () => {
+  const successful = "Finished 1 of 1 archive — 1 imported, 0 failed.";
+  const partialFailure = "Finished 3 of 3 archives — 2 imported, 1 failed.";
+
+  assert.equal(isTerminalArchiveImportState(successful), true);
+  assert.equal(isSuccessfulArchiveImportState(successful), true);
+  assert.equal(isTerminalArchiveImportState(partialFailure), true);
+  assert.equal(isSuccessfulArchiveImportState(partialFailure), false);
+  assert.equal(isTerminalArchiveImportState("Importing 1 of 1 archive…"), false);
+  assert.equal(isTerminalArchiveImportState("Imported Jitendex: 435,448 terms."), false);
+});
 
 test("closeBrowserVerified confirms exit and force-kills an unclosed browser", async () => {
   const cleanChild = new FakeChild();
