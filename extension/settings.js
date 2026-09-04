@@ -166,7 +166,7 @@ function pruneDictionarySelection() {
 }
 
 function normaliseDictionarySearch(value) {
-  return stringValue(value).normalize("NFKC").trim().toLocaleLowerCase();
+  return stringValue(value).normalize("NFKC").trim().toLowerCase();
 }
 
 function visibleDictionaries() {

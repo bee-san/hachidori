@@ -1650,7 +1650,8 @@ async function main() {
   );
   check(
     "settings search, visible selection, bulk changes, and every reorder path share stable package state",
-    settingsConflict?.management?.visibleIds?.join(",") === "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,cccccccccccccccccccccccccccccccc"
+    settingsConflict?.management?.localeIndependentVisibleIds?.join(",") === "11111111111111111111111111111111"
+      && settingsConflict.management.visibleIds?.join(",") === "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,cccccccccccccccccccccccccccccccc"
       && settingsConflict.management.selectedVisibleIds?.join(",") === settingsConflict.management.visibleIds.join(",")
       && settingsConflict.management.bulkRequests?.length === 4
       && settingsConflict.management.bulkRequests.every((request, index) =>
@@ -2196,6 +2197,15 @@ async function settingsConflictStage() {
     await new Promise((done) => window.setTimeout(done, 0));
   };
 
+  const localeLowerCase = window.String.prototype.toLocaleLowerCase;
+  window.String.prototype.toLocaleLowerCase = function toTurkishLowerCase() {
+    return localeLowerCase.call(this, "tr");
+  };
+  search.value = "HIDDEN O";
+  search.dispatchEvent(new window.Event("input", { bubbles: true }));
+  const localeIndependentVisibleIds = rowIds();
+  window.String.prototype.toLocaleLowerCase = localeLowerCase;
+
   search.value = " ＡｌＰｈＡ ";
   search.dispatchEvent(new window.Event("input", { bubbles: true }));
   const visibleIds = rowIds();
@@ -2280,6 +2290,7 @@ async function settingsConflictStage() {
   storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
 
   result.management = {
+    localeIndependentVisibleIds,
     visibleIds,
     selectedVisibleIds,
     bulkRequests,
