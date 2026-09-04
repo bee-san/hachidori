@@ -153,6 +153,11 @@ const PLANNED = [
   "importing a term-only single-kanji dictionary succeeds",
   "dictionary management filters and bulk-updates visible stable selections",
   "drag and keyboard position controls share the persisted lookup order",
+  "a delayed alias blur-then-click queues both dictionary edits",
+  "named groups normalize unique names and keep stable dictionary memberships",
+  "group and member order controls persist their shared state order",
+  "a real blur-then-click queues both group edits and retains focus",
+  "a newer external focus survives a group rerender",
   "the kanji dictionary chooser lists imported term and kanji dictionaries",
   "a combined archive exposes separate term and native kanji choices",
   "stale title-only kanji selections are pruned",
@@ -1082,6 +1087,257 @@ async function main() {
       && JSON.stringify(orderAfterKeyboardMove.order) === JSON.stringify(orderBeforeDrag.order)
       && orderAfterKeyboardMove.selected === true,
     JSON.stringify({ orderBeforeDrag, orderAfterDrag, orderAfterKeyboardMove }),
+  );
+
+  const aliasRowSelector = `#dict-list .dict-row[data-dictionary-id="${FIXTURE_ID}"]`;
+  const beforeAliasBlurAction = orderAfterKeyboardMove.revision;
+  await page.click(`${aliasRowSelector} .dict-display-name`);
+  await page.keyboard.down("Control");
+  await page.keyboard.press("A");
+  await page.keyboard.up("Control");
+  await page.keyboard.type("Blurred alias");
+  await page.click(`${aliasRowSelector} .dict-down`, { delay: 150 });
+  const aliasBlurAction = await page.evaluate(async ({ beforeRevision, dictionaryId }) => {
+    const deadline = Date.now() + 3000;
+    let current;
+    do {
+      current = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+      if (current.revision >= beforeRevision + 2) break;
+      await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+    } while (Date.now() < deadline);
+    return {
+      revision: current.revision,
+      alias: current.dictionaries.find((dictionary) => dictionary.id === dictionaryId)?.displayName,
+      lastDictionaryId: current.dictionaries.at(-1)?.id,
+      focusedDictionaryId: document.activeElement?.closest(".dict-row")?.dataset.dictionaryId,
+    };
+  }, { beforeRevision: beforeAliasBlurAction, dictionaryId: FIXTURE_ID });
+  check(
+    "a delayed alias blur-then-click queues both dictionary edits",
+    aliasBlurAction.revision >= beforeAliasBlurAction + 2
+      && aliasBlurAction.alias === "Blurred alias"
+      && aliasBlurAction.lastDictionaryId === FIXTURE_ID
+      && aliasBlurAction.focusedDictionaryId === FIXTURE_ID,
+    JSON.stringify({ beforeAliasBlurAction, aliasBlurAction }),
+  );
+  await page.click(`${aliasRowSelector} .dict-up`);
+  await page.waitForFunction(async ({ dictionaryId, revision }) => {
+    const current = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+    return current.revision > revision && current.dictionaries[0]?.id === dictionaryId;
+  }, { timeout: 10_000, polling: 100 }, {
+    dictionaryId: FIXTURE_ID,
+    revision: aliasBlurAction.revision,
+  });
+
+  const groupManagement = await page.evaluate(async ({ fixtureId, genericId, fixtureAlias }) => {
+    const nameInput = document.getElementById("dict-group-name-new");
+    const createButton = document.getElementById("dict-group-create");
+    const error = document.getElementById("dict-group-error");
+    if (!(nameInput instanceof HTMLInputElement)
+        || !(createButton instanceof HTMLButtonElement)
+        || !(error instanceof HTMLElement)) {
+      return { error: "dictionary group controls were missing" };
+    }
+
+    const state = async () => (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+    const waitFor = async (revision, matches) => {
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        const current = await state();
+        if (current.revision > revision && matches(current)) return current;
+        await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+      }
+      throw new Error("dictionary group state did not settle");
+    };
+    const groupRow = (id) => [...document.querySelectorAll("#dict-group-list .dict-group")]
+      .find((row) => row.dataset.groupId === id);
+    const memberRow = (groupId, dictionaryId) => [...groupRow(groupId)
+      ?.querySelectorAll(".dict-group-member") ?? []]
+      .find((row) => row.dataset.dictionaryId === dictionaryId);
+    const addMember = async (groupId, dictionaryId) => {
+      const before = await state();
+      const row = groupRow(groupId);
+      const select = row.querySelector(".dict-group-add-select");
+      select.value = dictionaryId;
+      row.querySelector(".dict-group-add").click();
+      return waitFor(before.revision, (current) => current.groups
+        .find((group) => group.id === groupId)?.dictionaryIds.includes(dictionaryId));
+    };
+
+    let current = await state();
+    nameInput.value = "  Ｓtudy\t  Deck ";
+    createButton.click();
+    current = await waitFor(current.revision, (candidate) => candidate.groups?.length === 1);
+    const studyGroupId = current.groups[0].id;
+    const normalisedName = current.groups[0].name;
+    const createRevision = current.revision;
+
+    nameInput.value = "study deck";
+    createButton.click();
+    const duplicateError = error.textContent;
+    nameInput.value = " Ａｌｌ ";
+    createButton.click();
+    const reservedError = error.textContent;
+    const invalidRevision = (await state()).revision;
+
+    nameInput.value = "Grammar";
+    createButton.click();
+    current = await waitFor(current.revision, (candidate) => candidate.groups?.length === 2);
+    const grammarGroupId = current.groups.find((group) => group.name === "Grammar").id;
+    const grammarUp = groupRow(grammarGroupId).querySelector(".dict-group-up");
+    grammarUp.focus();
+    grammarUp.click();
+    current = await waitFor(current.revision, (candidate) => candidate.groups?.[0]?.id === grammarGroupId);
+    const groupOrderAfterMove = current.groups.map((group) => group.name);
+    const groupMoveFocusRetained = document.activeElement?.classList.contains("dict-group-down") === true
+      && document.activeElement.closest(".dict-group")?.dataset.groupId === grammarGroupId;
+
+    const rename = groupRow(studyGroupId).querySelector(".dict-group-name");
+    rename.value = "Reading";
+    rename.dispatchEvent(new Event("change", { bubbles: true }));
+    current = await waitFor(current.revision, (candidate) => candidate.groups
+      .find((group) => group.id === studyGroupId)?.name === "Reading");
+
+    const studyAdd = groupRow(studyGroupId).querySelector(".dict-group-add");
+    studyAdd.focus();
+    current = await addMember(studyGroupId, fixtureId);
+    const groupAddFocusRetained = document.activeElement?.classList.contains("dict-group-add") === true
+      && document.activeElement.closest(".dict-group")?.dataset.groupId === studyGroupId;
+    current = await addMember(studyGroupId, genericId);
+    const membershipBeforeMove = current.groups
+      .find((group) => group.id === studyGroupId).dictionaryIds;
+    const genericUp = memberRow(studyGroupId, genericId).querySelector(".dict-group-member-up");
+    genericUp.focus();
+    genericUp.click();
+    current = await waitFor(current.revision, (candidate) => candidate.groups
+      .find((group) => group.id === studyGroupId)?.dictionaryIds[0] === genericId);
+    const membershipAfterMove = current.groups
+      .find((group) => group.id === studyGroupId).dictionaryIds;
+    const memberMoveFocusRetained = document.activeElement?.classList.contains("dict-group-member-down") === true
+      && document.activeElement.closest(".dict-group-member")?.dataset.dictionaryId === genericId;
+
+    const aliasInput = [...document.querySelectorAll("#dict-list .dict-row")]
+      .find((row) => row.dataset.dictionaryId === fixtureId)
+      ?.querySelector(".dict-display-name");
+    const beforeAlias = current.revision;
+    aliasInput.value = "Grouped alias";
+    aliasInput.dispatchEvent(new Event("change", { bubbles: true }));
+    current = await waitFor(beforeAlias, (candidate) => candidate.dictionaries
+      .find((dictionary) => dictionary.id === fixtureId)?.displayName === "Grouped alias");
+    const membershipAfterAlias = current.groups
+      .find((group) => group.id === studyGroupId).dictionaryIds;
+    const groupedAliasLabel = memberRow(studyGroupId, fixtureId)
+      ?.querySelector(".dict-group-member-name")?.textContent;
+
+    const restoredAliasInput = [...document.querySelectorAll("#dict-list .dict-row")]
+      .find((row) => row.dataset.dictionaryId === fixtureId)
+      ?.querySelector(".dict-display-name");
+    restoredAliasInput.value = fixtureAlias;
+    restoredAliasInput.dispatchEvent(new Event("change", { bubbles: true }));
+    current = await waitFor(current.revision, (candidate) => candidate.dictionaries
+      .find((dictionary) => dictionary.id === fixtureId)?.displayName === fixtureAlias);
+
+    return {
+      studyGroupId,
+      normalisedName,
+      duplicateError,
+      reservedError,
+      createRevision,
+      invalidRevision,
+      groupOrderAfterMove,
+      groupMoveFocusRetained,
+      groupAddFocusRetained,
+      finalGroupOrder: current.groups.map((group) => group.name),
+      membershipBeforeMove,
+      membershipAfterMove,
+      memberMoveFocusRetained,
+      membershipAfterAlias,
+      groupedAliasLabel,
+    };
+  }, { fixtureId: FIXTURE_ID, genericId: GENERIC_KANJI_ID, fixtureAlias: FIXTURE_ALIAS });
+  check(
+    "named groups normalize unique names and keep stable dictionary memberships",
+    groupManagement.normalisedName === "Study Deck"
+      && groupManagement.duplicateError?.includes("already exists")
+      && groupManagement.reservedError?.includes("reserved")
+      && groupManagement.invalidRevision === groupManagement.createRevision
+      && groupManagement.groupMoveFocusRetained === true
+      && groupManagement.groupAddFocusRetained === true
+      && groupManagement.memberMoveFocusRetained === true
+      && JSON.stringify(groupManagement.membershipAfterAlias)
+        === JSON.stringify(groupManagement.membershipAfterMove)
+      && groupManagement.groupedAliasLabel === "Grouped alias",
+    JSON.stringify(groupManagement),
+  );
+  check(
+    "group and member order controls persist their shared state order",
+    JSON.stringify(groupManagement.groupOrderAfterMove) === JSON.stringify(["Grammar", "Study Deck"])
+      && JSON.stringify(groupManagement.finalGroupOrder) === JSON.stringify(["Grammar", "Reading"])
+      && JSON.stringify(groupManagement.membershipBeforeMove) === JSON.stringify([FIXTURE_ID, GENERIC_KANJI_ID])
+      && JSON.stringify(groupManagement.membershipAfterMove) === JSON.stringify([GENERIC_KANJI_ID, FIXTURE_ID]),
+    JSON.stringify(groupManagement),
+  );
+
+  const editedGroupSelector = `[data-group-id="${groupManagement.studyGroupId}"]`;
+  const beforeBlurAction = await page.evaluate(async () =>
+    (await chrome.storage.local.get("dictionaryState")).dictionaryState.revision);
+  await page.click(`${editedGroupSelector} .dict-group-name`);
+  await page.keyboard.down("Control");
+  await page.keyboard.press("A");
+  await page.keyboard.up("Control");
+  await page.keyboard.type("Focused reading");
+  await page.click(`${editedGroupSelector} .dict-group-up`, { delay: 150 });
+  const blurAction = await page.evaluate(async ({ beforeRevision, groupId }) => {
+    const deadline = Date.now() + 3000;
+    let current;
+    do {
+      current = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+      if (current.revision >= beforeRevision + 2) break;
+      await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+    } while (Date.now() < deadline);
+    return {
+      revision: current.revision,
+      name: current.groups.find((group) => group.id === groupId)?.name,
+      firstGroupId: current.groups[0]?.id,
+      focusedGroupId: document.activeElement?.closest(".dict-group")?.dataset.groupId,
+    };
+  }, { beforeRevision: beforeBlurAction, groupId: groupManagement.studyGroupId });
+  check(
+    "a real blur-then-click queues both group edits and retains focus",
+    blurAction.revision >= beforeBlurAction + 2
+      && blurAction.name === "Focused reading"
+      && blurAction.firstGroupId === groupManagement.studyGroupId
+      && blurAction.focusedGroupId === groupManagement.studyGroupId,
+    JSON.stringify({ beforeBlurAction, blurAction }),
+  );
+
+  const externalFocus = await page.evaluate(async (groupId) => {
+    const before = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+    const input = document.querySelector(`[data-group-id="${groupId}"] .dict-group-name`);
+    const search = document.getElementById("dict-search");
+    input.focus();
+    input.value = "Externally focused reading";
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    search.focus();
+
+    const deadline = Date.now() + 3000;
+    let current;
+    do {
+      current = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+      if (current.revision > before.revision) break;
+      await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+    } while (Date.now() < deadline);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+    return {
+      focusedId: document.activeElement?.id,
+      name: current.groups.find((group) => group.id === groupId)?.name,
+    };
+  }, groupManagement.studyGroupId);
+  check(
+    "a newer external focus survives a group rerender",
+    externalFocus.focusedId === "dict-search"
+      && externalFocus.name === "Externally focused reading",
+    JSON.stringify(externalFocus),
   );
 
   const kanjiChooser = await page.evaluate(() => {

@@ -170,6 +170,24 @@ function normaliseDictionarySelections(value, dictionaries) {
   return options;
 }
 
+function pruneGroupMemberships(value, dictionaries) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const installedIds = new Set(dictionaries.map((dictionary) => dictionary.id));
+  return value.map((group) => {
+    const seen = new Set();
+    const dictionaryIds = Array.isArray(group.dictionaryIds)
+      ? group.dictionaryIds.filter((id) => {
+        if (!installedIds.has(id) || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      })
+      : [];
+    return { ...group, dictionaryIds };
+  });
+}
+
 // The engine or settings page reads state, changes it, and sends it back a
 // message round trip later. A caller includes the revision it read so a stale
 // write cannot discard a change made by another extension context.
@@ -185,6 +203,9 @@ const WORKER_HANDLERS = {
     }
     if (!Array.isArray(message?.dictionaries)) {
       throw new TypeError("the dictionary state write request carried no list");
+    }
+    if (message.groups !== undefined && !Array.isArray(message.groups)) {
+      throw new TypeError("the dictionary state write request carried invalid groups");
     }
 
     const { state: current, legacyDictionaries, options: currentOptions } = await readDictionaryStorage();
@@ -205,6 +226,7 @@ const WORKER_HANDLERS = {
       schemaVersion: DICTIONARY_STATE_SCHEMA_VERSION,
       revision: currentRevision + 1,
       dictionaries: message.dictionaries,
+      groups: pruneGroupMemberships(message.groups ?? current?.groups, message.dictionaries),
     };
     const values = { [DICTIONARY_STATE_KEY]: state };
     if (currentOptions !== undefined) {

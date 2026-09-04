@@ -203,10 +203,13 @@
         return [];
       }
       return [{
+        id: typeof entry.id === "string" ? entry.id : "",
         title,
         displayName: typeof entry.displayName === "string" && entry.displayName.trim() !== ""
           ? entry.displayName.trim()
           : null,
+        path: typeof entry.path === "string" ? entry.path : "",
+        revision: typeof entry.revision === "string" ? entry.revision : "",
         enabled: entry.enabled !== false,
         favorite: entry.favorite === true,
         termCount: nonnegativeCount(entry.termCount),
@@ -219,6 +222,10 @@
       revision: Number.isInteger(state.revision) && state.revision >= 0 ? state.revision : 0,
       dictionaries: normalized,
     };
+  }
+
+  function sameDictionaries(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
   }
 
   function hasCapability(dictionary, kind) {
@@ -1501,8 +1508,8 @@
       const next = normalizeDictionaryState(changes.dictionaryState.newValue);
       if (next.revision > dictionaryStateRevision) {
         dictionaryStateRevision = next.revision;
-        dictionaryChanged = true;
-        changed = true;
+        dictionaryChanged = !sameDictionaries(next.dictionaries, dictionaries);
+        changed ||= dictionaryChanged;
         dictionaries = next.dictionaries;
       }
     }
@@ -1530,7 +1537,7 @@
         if (dictionaryStateRevision === requestedDictionaryStateRevision) {
           const next = normalizeDictionaryState(stored && stored.dictionaryState);
           dictionaryStateRevision = next.revision;
-          dictionaryChanged = JSON.stringify(next.dictionaries) !== JSON.stringify(dictionaries);
+          dictionaryChanged = !sameDictionaries(next.dictionaries, dictionaries);
           changed ||= dictionaryChanged;
           dictionaries = next.dictionaries;
         }

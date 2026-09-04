@@ -4,6 +4,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import {
+  createDictionaryGroupController,
+  normaliseDictionaryGroups,
+} from "./dictionary-groups.js";
+
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
@@ -32,7 +37,7 @@ const NUMBER_FIELDS = [
 
 const numberFormat = new Intl.NumberFormat();
 
-let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [] };
+let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] };
 let dictionaries = dictionaryState.dictionaries;
 let options = { ...DEFAULT_OPTIONS };
 let importing = false;
@@ -42,6 +47,8 @@ let pendingDictionaryCommits = 0;
 let dictionaryCommitTail = Promise.resolve();
 let dictionaryCommitFailed = false;
 let dictionaryRenderDeferred = false;
+let pendingManagementFocus = null;
+let managementPointerDown = false;
 let dictionarySearch = "";
 const selectedDictionaryIds = new Set();
 let draggedDictionaryId = null;
@@ -138,10 +145,12 @@ function normaliseDictionaryState(value) {
     throw new Error(`Unsupported dictionary state schema ${String(value?.schemaVersion)}`);
   }
   const revision = Number.isInteger(value?.revision) && value.revision >= 0 ? value.revision : 0;
+  const dictionaries = normaliseDictionaries(value?.dictionaries);
   return {
     schemaVersion: 1,
     revision,
-    dictionaries: normaliseDictionaries(value?.dictionaries),
+    dictionaries,
+    groups: normaliseDictionaryGroups(value?.groups, dictionaries),
   };
 }
 
@@ -310,6 +319,11 @@ function setControlsDisabled(disabled) {
   }
   for (const drag of document.querySelectorAll(".dict-drag")) {
     drag.draggable = !blocked;
+  }
+  for (const control of document.querySelectorAll(
+    "#dict-group-create-form input, #dict-group-create-form button, #dict-group-list input, #dict-group-list select, #dict-group-list button",
+  )) {
+    control.disabled = blocked || control.dataset.pinnedDisabled === "true";
   }
   element("dict-select-visible").disabled = blocked || visibleDictionaries().length === 0;
   for (const control of element("dict-controls").querySelectorAll(".dict-bulk-actions button")) {
@@ -532,20 +546,32 @@ function dictionaryMetadata(entry) {
   return details.join(" · ");
 }
 
+function updateItemById(current, id, update) {
+  const index = current.findIndex((entry) => entry.id === id);
+  if (index < 0) {
+    return null;
+  }
+  const replacement = update(current[index]);
+  if (replacement === current[index]) {
+    return null;
+  }
+  const next = [...current];
+  next[index] = replacement;
+  return next;
+}
+
 function updateDictionary(id, update) {
-  return (current) => {
-    const index = current.findIndex((entry) => entry.id === id);
-    if (index < 0) {
-      return null;
-    }
-    const replacement = update(current[index]);
-    if (replacement === current[index]) {
-      return null;
-    }
-    const next = [...current];
-    next[index] = replacement;
-    return next;
-  };
+  return (current) => updateItemById(current, id, update);
+}
+
+function moveListItem(values, index, target) {
+  if (index < 0 || target < 0 || target >= values.length || index === target) {
+    return null;
+  }
+  const next = [...values];
+  const [entry] = next.splice(index, 1);
+  next.splice(target, 0, entry);
+  return next;
 }
 
 function updateSelectedDictionaries(field, value, reloadEngine) {
@@ -563,24 +589,46 @@ function updateSelectedDictionaries(field, value, reloadEngine) {
   }, reloadEngine);
 }
 
-function focusedDictionaryControl() {
+function focusedManagementControl() {
   const active = document.activeElement;
-  const row = active?.closest?.(".dict-row");
-  if (!row?.dataset.dictionaryId) {
-    return null;
+  const dictionaryRow = active?.closest?.(".dict-row");
+  if (dictionaryRow?.dataset.dictionaryId) {
+    const controlClass = [
+      "dict-selected",
+      "dict-display-name",
+      "dict-enabled",
+      "dict-up",
+      "dict-down",
+      "dict-position-input",
+      "dict-move",
+      "dict-remove",
+    ].find((name) => active.classList.contains(name));
+    return controlClass
+      ? { kind: "dictionary", id: dictionaryRow.dataset.dictionaryId, controlClass }
+      : null;
   }
-  const controlClass = [
-    "dict-selected",
-    "dict-display-name",
-    "dict-enabled",
-    "dict-up",
-    "dict-down",
-    "dict-position-input",
-    "dict-move",
-    "dict-remove",
-  ]
-    .find((name) => active.classList.contains(name));
-  return controlClass ? { id: row.dataset.dictionaryId, controlClass } : null;
+
+  const groupRow = active?.closest?.(".dict-group");
+  if (!groupRow?.dataset.groupId) return null;
+  const memberRow = active.closest(".dict-group-member");
+  const controlClasses = memberRow
+    ? ["dict-group-member-up", "dict-group-member-down", "dict-group-member-remove"]
+    : ["dict-group-name", "dict-group-up", "dict-group-down", "dict-group-delete", "dict-group-add-select", "dict-group-add"];
+  const controlClass = controlClasses.find((name) => active.classList.contains(name));
+  if (!controlClass) return null;
+
+  const groupRows = [...groupRow.parentElement.children];
+  const focus = {
+    kind: memberRow ? "group-member" : "group",
+    groupId: groupRow.dataset.groupId,
+    groupIndex: groupRows.indexOf(groupRow),
+    controlClass,
+  };
+  if (memberRow) {
+    focus.dictionaryId = memberRow.dataset.dictionaryId;
+    focus.memberIndex = [...memberRow.parentElement.children].indexOf(memberRow);
+  }
+  return focus;
 }
 
 function renderDictionarySelection(visible) {
@@ -647,6 +695,17 @@ function bindDictionaryDrag(row, entry) {
   });
 }
 
+function renderDeferredAfterBlur(control) {
+  control.addEventListener("blur", () => {
+    if (!dictionaryRenderDeferred) {
+      return;
+    }
+    setTimeout(() => {
+      if (dictionaryRenderDeferred) renderChangedDictionaryState();
+    }, 0);
+  });
+}
+
 function bindDictionaryAlias(row, entry) {
   const input = row.querySelector(".dict-display-name");
   input.value = entry.displayName || "";
@@ -658,16 +717,7 @@ function bindDictionaryAlias(row, entry) {
     void commitDictionaries(updateDictionary(entry.id, (dictionary) =>
       dictionary.displayName === value ? dictionary : { ...dictionary, displayName: value }), false);
   });
-  input.addEventListener("blur", () => {
-    if (!dictionaryRenderDeferred) {
-      return;
-    }
-    setTimeout(() => {
-      if (!committing && dictionaryRenderDeferred) {
-        renderDictionaryState();
-      }
-    }, 0);
-  });
+  renderDeferredAfterBlur(input);
 }
 
 function bindDictionaryEnabled(row, entry) {
@@ -797,13 +847,7 @@ function moveDictionary(id, move) {
   void commitDictionaries((current) => {
     const index = current.findIndex((entry) => entry.id === id);
     const target = dictionaryMoveTarget(current, index, move);
-    if (index < 0 || target < 0 || target >= current.length || index === target) {
-      return null;
-    }
-    const next = [...current];
-    const [entry] = next.splice(index, 1);
-    next.splice(target, 0, entry);
-    return next;
+    return moveListItem(current, index, target);
   }, true);
 }
 
@@ -819,28 +863,69 @@ async function restoreAuthoritativeState(reply) {
   adoptDictionaryState(fresh.state);
 }
 
+function directionalFocus(row, controlClass, upClass, downClass) {
+  let control = row?.querySelector(`.${controlClass}`);
+  if (control?.disabled && controlClass === upClass) {
+    control = row.querySelector(`.${downClass}`);
+  } else if (control?.disabled && controlClass === downClass) {
+    control = row.querySelector(`.${upClass}`);
+  }
+  return control?.disabled ? null : control;
+}
+
+function restoreManagementFocus(focus) {
+  if (focus.kind === "dictionary") {
+    const row = [...element("dict-list").children]
+      .find((candidate) => candidate.dataset.dictionaryId === focus.id);
+    const control = directionalFocus(row, focus.controlClass, "dict-up", "dict-down")
+      ?? row?.querySelector(".dict-display-name");
+    control?.focus();
+    return;
+  }
+
+  const groupRows = [...element("dict-group-list").children];
+  const groupRow = groupRows.find((candidate) => candidate.dataset.groupId === focus.groupId)
+    ?? groupRows[Math.min(focus.groupIndex, groupRows.length - 1)];
+  if (!groupRow) {
+    element("dict-group-name-new").focus();
+    return;
+  }
+
+  if (focus.kind === "group") {
+    const control = directionalFocus(groupRow, focus.controlClass, "dict-group-up", "dict-group-down")
+      ?? groupRow.querySelector(".dict-group-name");
+    control?.focus();
+    return;
+  }
+
+  const memberRows = [...groupRow.querySelectorAll(".dict-group-member")];
+  const memberRow = memberRows.find((candidate) => candidate.dataset.dictionaryId === focus.dictionaryId)
+    ?? memberRows[Math.min(focus.memberIndex, memberRows.length - 1)];
+  const control = directionalFocus(
+    memberRow,
+    focus.controlClass,
+    "dict-group-member-up",
+    "dict-group-member-down",
+  ) ?? groupRow.querySelector(".dict-group-add-select:not(:disabled), .dict-group-name");
+  control?.focus();
+}
+
 function renderDictionaryState() {
-  const focus = focusedDictionaryControl();
+  const focus = focusedManagementControl()
+    ?? (document.activeElement === document.body ? pendingManagementFocus : null);
+  pendingManagementFocus = null;
   dictionaries = dictionaryState.dictionaries;
   dictionaryRenderDeferred = false;
   renderDictionaries();
+  dictionaryGroupController.render();
+  setControlsDisabled(importing);
   normaliseDictionarySelections();
   renderOptions();
-  if (focus) {
-    const row = [...element("dict-list").children]
-      .find((candidate) => candidate.dataset.dictionaryId === focus.id);
-    let control = row?.querySelector(`.${focus.controlClass}`);
-    if (control?.disabled && focus.controlClass === "dict-up") {
-      control = row.querySelector(".dict-down");
-    } else if (control?.disabled && focus.controlClass === "dict-down") {
-      control = row.querySelector(".dict-up");
-    }
-    (control?.disabled ? row?.querySelector(".dict-display-name") : control)?.focus();
-  }
+  if (focus) restoreManagementFocus(focus);
 }
 
-async function commitDictionaryChange(update, reloadEngine) {
-  const next = update(dictionaryState.dictionaries);
+async function commitDictionaryStateChange(update, reloadEngine) {
+  const next = update(dictionaryState);
   if (next === null) {
     return;
   }
@@ -848,10 +933,14 @@ async function commitDictionaryChange(update, reloadEngine) {
   try {
     const target = reloadEngine ? TARGET : WORKER_TARGET;
     const type = reloadEngine ? "hd_apply_state" : "hd_state_cas";
-    const reply = await send(type, {
+    const fields = {
       baseRevision,
-      dictionaries: next,
-    }, target);
+      dictionaries: next.dictionaries,
+    };
+    if (!reloadEngine) {
+      fields.groups = next.groups;
+    }
+    const reply = await send(type, fields, target);
     if (!reply.ok) {
       await restoreAuthoritativeState(reply);
       dictionaryCommitFailed = true;
@@ -871,17 +960,18 @@ async function commitDictionaryChange(update, reloadEngine) {
   }
 }
 
-function commitDictionaries(update, reloadEngine) {
+function queueDictionaryStateChange(update, reloadEngine) {
   if (pendingDictionaryCommits === 0) {
     dictionaryCommitFailed = false;
   }
   pendingDictionaryCommits += 1;
   committing = true;
+  pendingManagementFocus = focusedManagementControl() ?? pendingManagementFocus;
   setControlsDisabled(importing);
 
   const run = dictionaryCommitTail.then(
-    () => commitDictionaryChange(update, reloadEngine),
-    () => commitDictionaryChange(update, reloadEngine),
+    () => commitDictionaryStateChange(update, reloadEngine),
+    () => commitDictionaryStateChange(update, reloadEngine),
   );
   const settled = run.finally(async () => {
     pendingDictionaryCommits -= 1;
@@ -889,7 +979,7 @@ function commitDictionaries(update, reloadEngine) {
       return;
     }
     committing = false;
-    renderDictionaryState();
+    renderChangedDictionaryState();
     if (!dictionaryCommitFailed) {
       await refreshStatus();
     }
@@ -900,6 +990,30 @@ function commitDictionaries(update, reloadEngine) {
   );
   return settled;
 }
+
+function commitDictionaries(update, reloadEngine) {
+  return queueDictionaryStateChange((current) => {
+    const dictionaries = update(current.dictionaries);
+    return dictionaries === null ? null : { ...current, dictionaries };
+  }, reloadEngine);
+}
+
+function commitGroups(update) {
+  return queueDictionaryStateChange((current) => {
+    const groups = update(current.groups);
+    return groups === null ? null : { ...current, groups };
+  }, false);
+}
+
+const dictionaryGroupController = createDictionaryGroupController({
+  readState: () => dictionaryState,
+  readDictionaries: () => dictionaries,
+  commitGroups,
+  dictionaryLabel,
+  moveListItem,
+  updateItemById,
+  renderDeferredAfterBlur,
+});
 
 async function removeDictionary(title) {
   if (!window.confirm(`Remove ${title}? Its imported data is deleted and has to be imported again.`)) {
@@ -1063,6 +1177,22 @@ function attachHandlers() {
     updateSelectedDictionaries("favorite", false, false);
   });
 
+  element("dict-group-create-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    dictionaryGroupController.create();
+  });
+  document.querySelector("main").addEventListener("pointerdown", (event) => {
+    if (event.target.closest("#dict-list, #dict-group-list")) managementPointerDown = true;
+  });
+  const finishManagementPointer = () => {
+    managementPointerDown = false;
+    setTimeout(() => {
+      if (dictionaryRenderDeferred) renderChangedDictionaryState();
+    }, 0);
+  };
+  window.addEventListener("pointerup", finishManagementPointer, true);
+  window.addEventListener("pointercancel", finishManagementPointer, true);
+
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
     input.addEventListener("change", () => {
@@ -1104,14 +1234,14 @@ function attachHandlers() {
   chrome.storage.onChanged.addListener(handleStorageChange);
 }
 
-function dictionaryAliasIsBeingEdited() {
+function dictionaryNameIsBeingEdited() {
   const active = document.activeElement;
   return active instanceof HTMLInputElement
-    && active.classList.contains("dict-display-name");
+    && (active.classList.contains("dict-display-name") || active.classList.contains("dict-group-name"));
 }
 
 function renderChangedDictionaryState() {
-  if (committing || dictionaryAliasIsBeingEdited()) {
+  if (committing || managementPointerDown || dictionaryNameIsBeingEdited()) {
     dictionaryRenderDeferred = true;
     return;
   }

@@ -61,6 +61,7 @@ Open Hachidori's options page to:
 - choose whether each dictionary supplies terms, frequencies, pitch accents, or kanji;
 - search titles and aliases, select visible matches, and bulk enable, disable, favourite, or unfavourite them;
 - reorder dictionaries by dragging, with the arrow buttons, or by entering a position;
+- create ordered dictionary groups and arrange each group's dictionaries;
 - configure the hover key, delay, scan length, result limit, frequency ranking, and the dictionary opened when you click a kanji.
 
 Selected dictionaries import one at a time, with an outcome retained for every archive; a failure does not stop the rest. Large dictionaries can take several minutes, so keep the page open until the batch finishes.
