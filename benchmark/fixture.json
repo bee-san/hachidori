@@ -5,7 +5,7 @@
       "archive": "../test/fixtures/hachidori-fixture.zip",
       "expectedReport": {
         "title": "hachidori-fixture",
-        "termCount": 5,
+        "termCount": 6,
         "metaCount": 4,
         "frequencyCount": 2,
         "pitchCount": 2,

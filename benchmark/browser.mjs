@@ -622,8 +622,12 @@ export async function runBrowserSample({ item, corpus, config, definition, outpu
     const importReport = verifyImport(corpus, imported);
     const dictionaryCount = expectedDictionaryCount(corpus, importReport);
     const afterImport = await waitForReady(page, config.timeoutMs, dictionaryCount);
-    const stored = await page.evaluate(() => chrome.storage.local.get("dictionaries"));
-    const storedDictionaries = validateStoredDictionaries(stored?.dictionaries, importReport, dictionaryCount);
+    const stored = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
+    const storedDictionaries = validateStoredDictionaries(
+      stored?.dictionaryState?.dictionaries,
+      importReport,
+      dictionaryCount,
+    );
     const firstAfterImport = await firstLookup(page, queries, config, corpus.id, "post-import", dictionaryCount);
     const importUsableWallMs = firstAfterImport.completedAtMs - imported.userStartMs;
     if (!Number.isFinite(importUsableWallMs) || importUsableWallMs < imported.userVisibleWallMs) {
