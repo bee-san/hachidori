@@ -48,6 +48,7 @@ let dictionaryCommitTail = Promise.resolve();
 let dictionaryCommitFailed = false;
 let dictionaryRenderDeferred = false;
 let pendingManagementFocus = null;
+let groupPointerDown = false;
 let dictionarySearch = "";
 const selectedDictionaryIds = new Set();
 let draggedDictionaryId = null;
@@ -700,9 +701,7 @@ function renderDeferredAfterBlur(control) {
       return;
     }
     setTimeout(() => {
-      if (!committing && dictionaryRenderDeferred) {
-        renderDictionaryState();
-      }
+      if (dictionaryRenderDeferred) renderChangedDictionaryState();
     }, 0);
   });
 }
@@ -979,7 +978,7 @@ function queueDictionaryStateChange(update, reloadEngine) {
       return;
     }
     committing = false;
-    renderDictionaryState();
+    renderChangedDictionaryState();
     if (!dictionaryCommitFailed) {
       await refreshStatus();
     }
@@ -1181,6 +1180,17 @@ function attachHandlers() {
     event.preventDefault();
     dictionaryGroupController.create();
   });
+  element("dict-group-list").addEventListener("pointerdown", () => {
+    groupPointerDown = true;
+  });
+  const finishGroupPointer = () => {
+    groupPointerDown = false;
+    setTimeout(() => {
+      if (dictionaryRenderDeferred) renderChangedDictionaryState();
+    }, 0);
+  };
+  window.addEventListener("pointerup", finishGroupPointer, true);
+  window.addEventListener("pointercancel", finishGroupPointer, true);
 
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
@@ -1230,7 +1240,7 @@ function dictionaryNameIsBeingEdited() {
 }
 
 function renderChangedDictionaryState() {
-  if (committing || dictionaryNameIsBeingEdited()) {
+  if (committing || groupPointerDown || dictionaryNameIsBeingEdited()) {
     dictionaryRenderDeferred = true;
     return;
   }
