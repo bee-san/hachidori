@@ -319,7 +319,7 @@ function setControlsDisabled(disabled) {
   for (const control of document.querySelectorAll(
     "#dict-group-create-form input, #dict-group-create-form button, #dict-group-list input, #dict-group-list select, #dict-group-list button",
   )) {
-    control.disabled = blocked || committing || control.dataset.pinnedDisabled === "true";
+    control.disabled = blocked || control.dataset.pinnedDisabled === "true";
   }
   element("dict-select-visible").disabled = blocked || visibleDictionaries().length === 0;
   for (const control of element("dict-controls").querySelectorAll(".dict-bulk-actions button")) {
