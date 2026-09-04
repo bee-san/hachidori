@@ -39,7 +39,6 @@
     "descending",
     "disabled",
   ]);
-  const DICTIONARY_KINDS = new Set(["term", "freq", "pitch", "kanji"]);
   const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
 
   const POPUP_WIDTH_PX = 560;
@@ -134,7 +133,7 @@
   let activeTermRender = null;
   let lookupToken = 0;
   let optionsStorageRevision = 0;
-  let dictionariesStorageRevision = 0;
+  let dictionaryStateRevision = -1;
 
   function extensionAlive() {
     try {
@@ -190,15 +189,54 @@
     };
   }
 
-  function normalizeDictionaries(stored) {
-    if (!Array.isArray(stored)) {
-      return [];
-    }
-    return stored.flatMap((entry) => {
+  function nonnegativeCount(value) {
+    const count = Math.trunc(Number(value));
+    return Number.isFinite(count) && count > 0 ? count : 0;
+  }
+
+  function normalizeDictionaryState(stored) {
+    const state = stored && typeof stored === "object" ? stored : {};
+    const rows = Array.isArray(state.dictionaries) ? state.dictionaries : [];
+    const normalized = rows.flatMap((entry) => {
       const title = typeof entry?.title === "string" ? entry.title : "";
-      const kind = DICTIONARY_KINDS.has(entry?.kind) ? entry.kind : "term";
-      return title ? [{ title, kind, enabled: entry?.enabled !== false }] : [];
+      if (!title) {
+        return [];
+      }
+      return [{
+        title,
+        displayName: typeof entry.displayName === "string" && entry.displayName.trim() !== ""
+          ? entry.displayName.trim()
+          : null,
+        enabled: entry.enabled !== false,
+        favorite: entry.favorite === true,
+        termCount: nonnegativeCount(entry.termCount),
+        frequencyCount: nonnegativeCount(entry.frequencyCount),
+        pitchCount: nonnegativeCount(entry.pitchCount),
+        kanjiCount: nonnegativeCount(entry.kanjiCount),
+      }];
     });
+    return {
+      revision: Number.isInteger(state.revision) && state.revision >= 0 ? state.revision : 0,
+      dictionaries: normalized,
+    };
+  }
+
+  function hasCapability(dictionary, kind) {
+    if (kind === "freq") return dictionary.frequencyCount > 0;
+    if (kind === "pitch") return dictionary.pitchCount > 0;
+    if (kind === "kanji") return dictionary.kanjiCount > 0;
+    if (dictionary.termCount > 0) return true;
+    return dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0;
+  }
+
+  function dictionaryPresentation() {
+    return dictionaries
+      .filter((entry) => entry.enabled !== false)
+      .map((entry) => ({
+        title: entry.title,
+        favorite: entry.favorite,
+        ...(entry.displayName ? { displayName: entry.displayName } : {}),
+      }));
   }
 
   function selectedKanjiDictionaryCapability() {
@@ -207,15 +245,15 @@
     if (typeof title !== "string" || title === "") {
       return null;
     }
-    const selected = dictionaries.filter((entry) => entry.title === title && entry.enabled !== false);
-    if (selected.length === 0) {
+    const selected = dictionaries.find((entry) => entry.title === title && entry.enabled !== false);
+    if (!selected) {
       return null;
     }
     const requestedKind = typeof selection === "object" ? selection.kind : "";
     const kind = requestedKind === ""
-      ? selected.some((entry) => entry.kind === "kanji") ? "kanji" : "term"
+      ? hasCapability(selected, "kanji") ? "kanji" : "term"
       : requestedKind;
-    if (!selected.some((entry) => entry.kind === kind)) {
+    if (!hasCapability(selected, kind)) {
       return null;
     }
     return { kind, title };
@@ -1044,7 +1082,7 @@
     return {
       averageFrequency: false,
       definitionBlurState: "revealed",
-      dictionaryPresentation: [],
+      dictionaryPresentation: dictionaryPresentation(),
       dictionaryTabGroups: [],
       generation: currentGeneration,
       hidePopupGrammarTags: false,
@@ -1283,7 +1321,7 @@
     }
     try {
       view.renderKanji({ ...kanji, entries }, candidate, {
-        dictionaryPresentation: [],
+        dictionaryPresentation: dictionaryPresentation(),
         highlightText: highlightText || character,
         onBack: previous
           ? () => restoreTermRender(previous, returnFocus)
@@ -1439,25 +1477,37 @@
     positionPopup();
   }
 
+  function invalidateStoredState(dictionaryChanged) {
+    if (dictionaryChanged && popup && !popup.hidden) {
+      hide();
+    } else {
+      lookupToken += 1;
+    }
+  }
+
   function onStorageChanged(changes, area) {
     if (disposed || area !== "local") {
       return;
     }
     let changed = false;
+    let dictionaryChanged = false;
     if (changes.options) {
       optionsStorageRevision += 1;
       const next = normalizeOptions(changes.options.newValue);
       changed ||= JSON.stringify(next) !== JSON.stringify(options);
       options = next;
     }
-    if (changes.dictionaries) {
-      dictionariesStorageRevision += 1;
-      const next = normalizeDictionaries(changes.dictionaries.newValue);
-      changed ||= JSON.stringify(next) !== JSON.stringify(dictionaries);
-      dictionaries = next;
+    if (changes.dictionaryState) {
+      const next = normalizeDictionaryState(changes.dictionaryState.newValue);
+      if (next.revision > dictionaryStateRevision) {
+        dictionaryStateRevision = next.revision;
+        dictionaryChanged = true;
+        changed = true;
+        dictionaries = next.dictionaries;
+      }
     }
     if (changed) {
-      lookupToken += 1;
+      invalidateStoredState(dictionaryChanged);
     }
   }
 
@@ -1465,24 +1515,27 @@
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);
       const requestedOptionsRevision = optionsStorageRevision;
-      const requestedDictionariesRevision = dictionariesStorageRevision;
-      chrome.storage.local.get({ dictionaries: [], options: DEFAULT_OPTIONS }, (stored) => {
+      const requestedDictionaryStateRevision = dictionaryStateRevision;
+      chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS }, (stored) => {
         if (disposed || chrome.runtime.lastError) {
           return;
         }
         let changed = false;
+        let dictionaryChanged = false;
         if (optionsStorageRevision === requestedOptionsRevision) {
           const next = normalizeOptions(stored && stored.options);
           changed ||= JSON.stringify(next) !== JSON.stringify(options);
           options = next;
         }
-        if (dictionariesStorageRevision === requestedDictionariesRevision) {
-          const next = normalizeDictionaries(stored && stored.dictionaries);
-          changed ||= JSON.stringify(next) !== JSON.stringify(dictionaries);
-          dictionaries = next;
+        if (dictionaryStateRevision === requestedDictionaryStateRevision) {
+          const next = normalizeDictionaryState(stored && stored.dictionaryState);
+          dictionaryStateRevision = next.revision;
+          dictionaryChanged = JSON.stringify(next.dictionaries) !== JSON.stringify(dictionaries);
+          changed ||= dictionaryChanged;
+          dictionaries = next.dictionaries;
         }
         if (changed) {
-          lookupToken += 1;
+          invalidateStoredState(dictionaryChanged);
         }
       });
     } catch {

@@ -922,38 +922,41 @@ check('glossaries compressed against the trained dictionary decompress', () => {
   );
 });
 
-// dict.zstd is not optional once the marker says _4: query.cpp builds a DDict out
-// of whatever it reads there, an absent or truncated file gives it an empty one,
-// and then every glossary in the dictionary decompresses to "". add_dict cannot
-// observe that -- the load "succeeds" -- so the refusal has to happen in
-// dictionary_files_present, or the reader gets a popup with a headword, tags and
-// no definitions and nothing anywhere reports an error.
+// dict.zstd is not optional once the marker says _4. The binding rejects an
+// absent or empty file, and the query engine validates non-empty bytes as a full
+// trained dictionary before it reports the load successful.
+const trainedDictionaryPath = `${TRAINED_DIR}/dict.zstd`;
+const trainedDictionaryBytes = M.FS.readFile(trainedDictionaryPath);
 for (const [what, write] of [
   ['missing', null],
   ['zero length', new Uint8Array(0)],
+  ['invalid', new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])],
 ]) {
   check(`add_dict refuses a .hoshidicts_4 directory whose dict.zstd is ${what}`, () => {
-    const path = `${TRAINED_DIR}/dict.zstd`;
-    const saved = M.FS.readFile(path);
     reset();
-    M.FS.unlink(path);
+    M.FS.unlink(trainedDictionaryPath);
     if (write !== null) {
-      M.FS.writeFile(path, write);
+      M.FS.writeFile(trainedDictionaryPath, write);
     }
     try {
       eq(addDict(TRAINED_DIR, 0), 0, 'add_dict should refuse the directory');
       ok(lastError().includes(TRAINED_DIR), `hdw_last_error should name the directory: ${lastError()}`);
-      // What the refusal is protecting against: with the file gone the load
-      // reports success and hands back empty glossaries instead.
       eq(lookup('食べたかった').dictionaryCount, 0, 'nothing should be loaded');
     } finally {
-      M.FS.writeFile(path, saved);
+      if (M.FS.analyzePath(trainedDictionaryPath).exists) {
+        M.FS.unlink(trainedDictionaryPath);
+      }
+      M.FS.writeFile(trainedDictionaryPath, trainedDictionaryBytes);
     }
-    reset();
-    eq(addDict(TRAINED_DIR, 0), 1, `add_dict with dict.zstd restored: ${lastError()}`);
-    eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
   });
 }
+
+check('the restored trained dictionary remains loadable', () => {
+  same([...M.FS.readFile(trainedDictionaryPath)], [...trainedDictionaryBytes], 'restored dict.zstd bytes');
+  reset();
+  eq(addDict(TRAINED_DIR, 0), 1, `add_dict with dict.zstd restored: ${lastError()}`);
+  eq(lookup('食べたかった').results[0].term.expression, '食べる', 'expression');
+});
 
 // The compatibility case, stated on its own rather than inferred from the earlier
 // groups: after upgrading the engine a user still has .hoshidicts_3 directories

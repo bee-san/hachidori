@@ -305,12 +305,6 @@ int dictionary_version(const std::filesystem::path& dir) {
   return 0;
 }
 
-// DictionaryQuery::add_dict signals every failure by silently returning, and the
-// per-kind dictionary vectors are private, so hdw_add_dict cannot observe the
-// outcome directly. Checking the on-disk layout up front catches the case that
-// actually happens -- a missing or half-written /dicts entry -- but not a corrupt
-// hash table or an unparseable index.json.
-//
 // The marker list must track the versions query.cpp still reads. dict.zstd
 // belongs to exactly one of them: the importer writes .hoshidicts_4 only when it
 // trained a zstd dictionary for the term banks, and then compresses every
@@ -393,6 +387,7 @@ uint64_t meta_count(const SummaryMetaCount &counts, const std::string &mode) {
 // gives it a scratch directory instead and moves the finished dictionary into
 // place afterwards.
 constexpr std::string_view STAGING_DIR = ".hdw-import";
+constexpr std::string_view REMOVAL_DIR = ".hdw-remove";
 constexpr std::string_view STAGING_WORK = "new";
 constexpr std::string_view STAGING_REPLACED = "replaced";
 constexpr std::string_view BACKUP_READY = ".backup-ready";
@@ -413,13 +408,12 @@ struct RemoveOnExit {
   }
 };
 
-// STAGING_DIR is excluded because the import is assembled inside it: a title
-// naming it would make the staging root its own destination.
+// Internal staging directories cannot also be dictionary destinations.
 bool usable_as_directory_name(std::string_view title) {
   return !title.empty() && title != "." && title != ".." &&
-         title != STAGING_DIR && title.find('/') == std::string_view::npos &&
-         title.find('\\') == std::string_view::npos &&
-         title.find('\0') == std::string_view::npos;
+         title != STAGING_DIR && title != REMOVAL_DIR &&
+         !title.contains('/') && !title.contains('\\') &&
+         !title.contains('\0');
 }
 
 std::string unusable_title_error(std::string_view title) {
@@ -830,25 +824,31 @@ EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind) {
     }
     switch (kind) {
       case 0:
-        e.query.add_term_dict(dict_path);
+        if (!e.query.add_term_dict(dict_path)) {
+          set_error("term dictionary rejected: " + dict_path);
+          return 0;
+        }
         e.term_paths.push_back(dict_path);
         break;
-      case 1: {
-        const size_t before = e.query.get_freq_dict_order().size();
-        e.query.add_freq_dict(dict_path);
-        if (e.query.get_freq_dict_order().size() == before) {
+      case 1:
+        if (!e.query.add_freq_dict(dict_path)) {
           set_error("frequency dictionary rejected: " + dict_path);
           return 0;
         }
         e.frequency_paths.push_back(dict_path);
         break;
-      }
       case 2:
-        e.query.add_pitch_dict(dict_path);
+        if (!e.query.add_pitch_dict(dict_path)) {
+          set_error("pitch dictionary rejected: " + dict_path);
+          return 0;
+        }
         e.pitch_paths.push_back(dict_path);
         break;
       default:
-        e.query.add_kanji_dict(dict_path);
+        if (!e.query.add_kanji_dict(dict_path)) {
+          set_error("kanji dictionary rejected: " + dict_path);
+          return 0;
+        }
         break;
     }
     e.dictionary_count += 1;

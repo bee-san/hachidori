@@ -59,26 +59,35 @@ Dictionary import follows one logical transaction:
 
 Startup recovery resolves any interrupted replacement before dictionary discovery. The archive input is not stored after a successful import; only generated indexes and extension metadata remain.
 
+Removal stages a dictionary's flat files under `/dicts/.hdw-remove`, moving its
+version marker first so an interrupted source is never discovered as complete.
+The state CAS then decides recovery: retained packages move their marker back
+last, while committed removals delete the staged files. This uses file moves
+because direct OPFS does not support renaming whole directories.
+
 ## Storage ownership
 
 | Data | Owner | Storage |
 | --- | --- | --- |
 | Generated dictionary indexes | engine worker or fallback engine | direct OPFS or IDBFS under `/dicts` |
-| Dictionary title, path, kind, order, enabled state | service worker | `chrome.storage.local` key `dictionaries` |
-| Scan length, result limit, modifier, delay, frequency ordering | extension pages | `chrome.storage.local` key `options` |
+| Revisioned logical-package inventory, order, presentation, capabilities, and source metadata | service worker | `chrome.storage.local` key `dictionaryState` |
+| Scan length, result limit, modifier, delay, frequency ordering, and dictionary selectors | service worker writes; extension pages read | `chrome.storage.local` key `options` |
 
-The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write.
+The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 
 ## Runtime messages
 
 | Message | Purpose |
 | --- | --- |
 | `hd_import` | Import one Yomitan ZIP and return an exact report |
+| `hd_apply_state` | Load an engine-affecting package change, then compare-and-set it atomically |
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
 | `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, and threading mode |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |
-| `hd_dicts_read` | Read dictionary metadata through the service worker |
-| `hd_dicts_write` | Compare-and-set dictionary metadata through the service worker |
+| `hd_remove` | Stage a package's files, commit its removal, then delete the staged copy |
+| `hd_state_read` | Read revisioned dictionary state through the service worker |
+| `hd_state_cas` | Compare-and-set revisioned dictionary state through the service worker |
+| `hd_options_write` | Save options through the worker and prune invalid dictionary selectors |
 
 ## Build outputs
 

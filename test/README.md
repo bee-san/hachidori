@@ -134,13 +134,11 @@ repetitive glossaries so the training has structure to find) is the other side.
 Both markers are then loaded together, from one query object, because that is the
 state of a profile after an engine upgrade.
 
-`dict.zstd` is the one file whose absence nothing downstream can report:
-`query.cpp` builds a `ZSTD_DDict` out of whatever it finds there, an absent or
-truncated file yields an empty one, and then every glossary in the dictionary
-decompresses to `""` while `add_dict` reports success. So
-`dictionary_files_present()` in `wasm/bindings.cpp` requires a non-empty
-`dict.zstd` whenever the marker is `_4`, and refuses the directory otherwise —
-asserted in both directions in `node-smoke.mjs`.
+`dict.zstd` is mandatory when the marker is `_4`.
+`dictionary_files_present()` rejects an absent or empty file, and `query.cpp`
+loads non-empty bytes in Zstd's full-dictionary mode so arbitrary bytes cannot
+masquerade as a trained dictionary. Both layers are asserted in
+`node-smoke.mjs`.
 
 `index.json`'s size varies with `importDate`, which is a wall-clock millisecond
 timestamp; the rest is deterministic. If the counts above change, check whether a
@@ -153,7 +151,7 @@ report and the expected counts on every run.
 
 The real test. Loads the threaded bundle by default or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-97 checks, ordered by dependency. Exits 0 on success,
+99 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -220,9 +218,8 @@ What it proves, in order:
    the same time, from one query object, which is the state of a profile after an
    engine upgrade — and both asserted through a real lookup whose glossary bytes
    only come back if the dictionary the importer trained was found. Then the other
-   direction: a `_4` directory whose `dict.zstd` is missing or zero-length must be
-   *refused* by `add_dict`, because loading it succeeds and returns an empty
-   glossary for every term.
+   direction: a `_4` directory whose `dict.zstd` is missing, empty, or not a
+   valid trained dictionary must be *refused* by `add_dict`.
 10. **Interrupted installation recovery.** Synthetic transaction trees cover a
     partial old-dictionary backup, a committed backup beside a partial new
     destination, a complete new destination beside its retained backup, and an
@@ -249,7 +246,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 86 checks, all of
+full request→reply round trip per contract-C message type. 107 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -259,7 +256,7 @@ The fakes cover only the Chrome surface the extension actually touches:
 | fake | why |
 | --- | --- |
 | message bus | models the two rules `background.js` depends on — `sendMessage` never delivers to the sender, and an extension context never reaches a content script. That is what makes the `relayed: true` guard testable. |
-| `chrome.storage.local` | in-memory, with `onChanged`, so the reconcile path and the `settings.js` ↔ `background.js` sharing of the `dictionaries` key are real. Given to the worker and the settings page only: an offscreen document has no storage. |
+| `chrome.storage.local` | in-memory, with `onChanged`, so revision conflicts, legacy migration, and the service worker's ownership of `dictionaryState` are real. Given to the worker and the settings page only: an offscreen document has no storage. |
 | `indexedDB` | one object store keyed by path plus a `timestamp` index, which is all Emscripten's IDBFS uses. Enough to prove `FS.syncfs(false)` actually wrote something. |
 | `fetch` | serves `blob:` URLs out of a map (the import path) and `chrome-extension://` URLs off disk (`render/reader.css`) |
 
@@ -276,19 +273,23 @@ What it proves, in order:
    options page accepted and stored. `content.js` needs a page and is not loaded
    here, so this one check is static: it greps the four literals and fails if they
    disagree.
-1. **Boot and relay.** `hd_status` has exactly the eight documented envelope
+1. **Boot and relay.** `hd_status` has exactly the ten documented envelope
    keys, echoes its `requestId`, and reaches `ready`. `createDocument` runs once
    and never concurrently. `background.js` stamps `relayed` on its forwarded copy
    and senders never do.
 2. **Storage ownership and import.** The offscreen document's fake `chrome` has
    `runtime` only, as a real one does, so a storage call from `offscreen.js` fails
    here the way it fails in Chrome; a static check backs that up for the paths
-   this file does not exercise, and `hd_dicts_read` is answered by the worker
+   this file does not exercise, and `hd_state_read` is answered by the worker
    without ever being relayed. Then `hd_import` of `hachidori-fixture.zip` succeeds,
    `hd_import_result` carries all nine `ImportReport` fields, the counts match the
-   baseline above, `chrome.storage.local.dictionaries` gets one schema-D row per
-   kind the archive carries, and IndexedDB is non-empty afterwards.
-3. **Every read path** with the fixture registered under all four kinds:
+   baseline above, `chrome.storage.local.dictionaryState` gets one logical package
+   with generated-index metadata and its exact stable ID, four legacy kind rows
+   migrate once, stale CAS writes are rejected, invalid selectors are pruned in
+   the same worker-owned transaction, and IndexedDB is non-empty afterwards. The
+   Settings fixture also covers an external alias edit, two queued row actions,
+   focus restoration, conflict rollback, and the removal control barrier.
+3. **Every read path** with the logical fixture package expanded to all four native kinds:
    `hd_lookup` and selected-dictionary `hd_lookup_dictionary` (payload keys,
    deinflection trace, glossary still a raw string,
    frequencies, pitches), `hd_kanji` (including the string `onyomi`/`kunyomi`/
@@ -316,12 +317,12 @@ What it proves, in order:
    of one term-bank row, so each of its elements must land in its own
    `li.gloss-item` — appending them into one parent runs two senses together with
    no separator, which is asserted against the fixture's own two-sense entry.
-7. **`hd_remove`** — directory gone, storage row gone, nothing loaded, and
-   removing an unknown title does not bump `generation`. Plus the failure case,
-   through an injected `chrome.storage.local.set` rejection: `hd_remove` unloads
-   every dictionary before it deletes anything, so if a later step throws it has
-   to reload what survived, or every tab reports no dictionaries until the user
-   next edits a row.
+7. **`hd_remove`** — directory gone, logical package gone, nothing loaded, and
+   removing an unknown title does not bump `generation`. The fake rejects whole
+   directory renames, matching OPFS, so removal has to stage flat files and move
+   the version marker in the safe order. The failure case injects a
+   `chrome.storage.local.set` rejection: `hd_remove` must restore both those files
+   and the live engine. The internal `.hdw-remove` title is also rejected.
 8. **A trained (`.hoshidicts_4`) dictionary through the extension layer.**
    Everything above imports the 6-row fixture, which is under the zstd training
    floor, so nothing outside `node-smoke.mjs` had ever seen the layout the current
@@ -336,7 +337,7 @@ What it proves, in order:
 
 ### jsdom
 
-Step 4 needs jsdom. It is not a repo dependency — it lives in the same
+The renderer integration stage needs jsdom. It is not a repo dependency — it lives in the same
 out-of-repo tree as `puppeteer-core`, so a checkout carries neither:
 
 ```sh
@@ -415,7 +416,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 51 assertions, and the summary line
+`PLANNED` at the top of the file names all 54 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -467,10 +468,18 @@ text it sits in, so that loop stops at the first read that has it.
   that negative check from going green by itself.
 - `#import-file` is checked for `type="file"` and an `accept` list containing
   `.zip`, not just for existing.
-- The post-restart `hd_status` must report `dictionaryCount === 5`: one per kind
-  the combined fixture registers, plus the generic fixture's term capability.
-  `>= 1` also passes for a reload that lost the frequency and pitch dictionaries
-  and would then answer a bare lookup with no tags.
+- Reimport keeps the logical package's stable ID, alias, enabled/favourite state,
+  managed update source, and last-check state. The Settings row then exposes its
+  canonical title, alias, metadata, and all five capability badges, while the
+  actual checkbox is used for both an enable and a disable commit.
+- Stable IDs are checked against the two fixtures' exact title-derived values,
+  not only against a hexadecimal shape, and the two IDs must differ.
+- The favourite package's popup tab uses its alias while lookups and stored state
+  continue to use the canonical dictionary title.
+- The post-restart `hd_status` must report `dictionaryCount === 4`: every kind
+  the combined fixture registers, while the deliberately disabled generic
+  package stays disabled. `>= 1` also passes for a reload that lost frequency
+  and pitch data and would then answer a bare lookup with no tags.
 - The OPFS path is imported, replaced in place, killed with `SIGKILL`, restored,
   queried again, and removed. The removal must clear settings rows, delete the
   directory, and turn the same query into a checked miss.

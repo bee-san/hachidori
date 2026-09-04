@@ -34,6 +34,12 @@ const FIXTURE_TERM_SELECTION = { title: "hachidori-fixture", kind: "term" };
 const GENERIC_KANJI_SELECTION_VALUE = JSON.stringify(GENERIC_KANJI_SELECTION);
 const FIXTURE_KANJI_SELECTION_VALUE = JSON.stringify(FIXTURE_KANJI_SELECTION);
 const FIXTURE_TERM_SELECTION_VALUE = JSON.stringify(FIXTURE_TERM_SELECTION);
+const FIXTURE_ID = "921c9971654f69cd1ad6d0e2f89b990c";
+const GENERIC_KANJI_ID = "6b513edb59015829bb5bb3e91e41d357";
+const FIXTURE_ALIAS = "Fixture Alias";
+const MANAGED_INDEX_URL = "https://example.test/hachidori-fixture-index.json";
+const MANAGED_DOWNLOAD_URL = "https://example.test/hachidori-fixture.zip";
+const LAST_UPDATE_CHECK = "2026-09-04T09:30:00.000Z";
 const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
 
 function cachedChrome() {
@@ -115,11 +121,12 @@ const PLANNED = [
   "the imported dictionary is persisted in OPFS",
   "the imported dictionary is recorded in chrome.storage.local",
   "re-importing the same dictionary replaces it safely in OPFS",
-  "the dictionary list renders the imported dictionary",
+  "the dictionary list renders its alias, metadata, and five capability badges",
+  "the Settings enabled control re-enables the preserved package",
   "importing a term-only single-kanji dictionary succeeds",
   "the kanji dictionary chooser lists imported term and kanji dictionaries",
   "a combined archive exposes separate term and native kanji choices",
-  "a stale title-only kanji selection survives a chooser change",
+  "stale title-only kanji selections are pruned",
   "a legacy title-only kanji selection migrates to and persists its native capability",
   "the selected kanji dictionary is saved",
   "hovering an inflected verb shows a popup",
@@ -127,11 +134,13 @@ const PLANNED = [
   "the popup deinflects 食べたかった to 食べる",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
+  "the dictionary alias labels its popup tab without replacing the canonical key",
   "selected term dictionary wins even when maximum results is one",
   "Back preserves the complete clicked-kanji drill-down history",
   "Back restores the term results after a generic kanji lookup",
   "clicked-kanji navigation moves and restores keyboard focus",
   "Back restores focus to the exact clicked duplicate kanji",
+  "the Settings enabled control disables one logical package",
   "a disabled selected term dictionary falls back to native kanji",
   "a combined archive can use its term entries for clicked kanji",
   "selecting a kanji-bank dictionary keeps the native kanji view",
@@ -252,6 +261,7 @@ async function popupReader(page) {
           bold: Array.from(this.querySelectorAll("*"))
             .filter(el => Number.parseInt(view.getComputedStyle(el).fontWeight, 10) >= 600)
             .map(el => el.tagName.toLowerCase() + ":" + flat(el)),
+          tabs: Array.from(this.querySelectorAll(".gsm-hoshidicts-tab"), flat),
           hasBack: this.querySelector(".gsm-hoshidicts-kanji-back") !== null,
           focusedClass: this.getRootNode().activeElement?.className || "",
           focusedKanjiIndex: Array.from(this.querySelectorAll(".gsm-hoshidicts-kanji-link"))
@@ -340,6 +350,77 @@ async function hoverForPopup(page, popup, selector, { charFraction = 0.15, attem
     if (state !== null) return state;
   }
   return null;
+}
+
+async function setDictionaryEnabledInSettings(page, title, enabled) {
+  const started = await page.evaluate(async ({ dictionaryTitle, nextEnabled }) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const row = [...document.querySelectorAll("#dict-list .dict-row")].find((candidate) =>
+      candidate.querySelector(".dict-display-name")?.placeholder === dictionaryTitle);
+    const checkbox = row?.querySelector(".dict-enabled");
+    const dictionary = dictionaryState?.dictionaries?.find((entry) => entry.title === dictionaryTitle);
+    if (!(checkbox instanceof HTMLInputElement) || !dictionary) {
+      return { error: "dictionary row or state was missing" };
+    }
+    if (checkbox.checked === nextEnabled || dictionary.enabled === nextEnabled) {
+      return { error: "dictionary was not in the expected starting state" };
+    }
+    const baseRevision = dictionaryState.revision;
+    checkbox.click();
+    return { baseRevision };
+  }, { dictionaryTitle: title, nextEnabled: enabled });
+  if (!Number.isInteger(started?.baseRevision)) {
+    return started;
+  }
+  const settled = await page.waitForFunction(async ({ baseRevision, dictionaryTitle, nextEnabled }) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const dictionary = dictionaryState?.dictionaries?.find((entry) => entry.title === dictionaryTitle);
+    const row = [...document.querySelectorAll("#dict-list .dict-row")].find((candidate) =>
+      candidate.querySelector(".dict-display-name")?.placeholder === dictionaryTitle);
+    const checkbox = row?.querySelector(".dict-enabled");
+    return dictionaryState?.revision > baseRevision
+      && dictionary?.enabled === nextEnabled
+      && checkbox?.checked === nextEnabled
+      && checkbox.disabled === false
+      ? { id: dictionary.id, revision: dictionaryState.revision }
+      : false;
+  }, { timeout: 15_000, polling: 100 }, {
+    baseRevision: started.baseRevision,
+    dictionaryTitle: title,
+    nextEnabled: enabled,
+  }).then((handle) => handle.jsonValue()).catch(() => null);
+  return { ...started, settled };
+}
+
+async function setDictionaryAliasInSettings(page, title, alias) {
+  const started = await page.evaluate(async ({ dictionaryTitle, nextAlias }) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const row = [...document.querySelectorAll("#dict-list .dict-row")].find((candidate) =>
+      candidate.querySelector(".dict-display-name")?.placeholder === dictionaryTitle);
+    const input = row?.querySelector(".dict-display-name");
+    if (!(input instanceof HTMLInputElement)) {
+      return { error: "dictionary row was missing" };
+    }
+    const baseRevision = dictionaryState.revision;
+    input.value = nextAlias;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return { baseRevision };
+  }, { dictionaryTitle: title, nextAlias: alias });
+  if (!Number.isInteger(started?.baseRevision)) {
+    return started;
+  }
+  const settled = await page.waitForFunction(async ({ baseRevision, dictionaryTitle, nextAlias }) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const dictionary = dictionaryState?.dictionaries?.find((entry) => entry.title === dictionaryTitle);
+    return dictionaryState?.revision > baseRevision && dictionary?.displayName === nextAlias
+      ? { id: dictionary.id, revision: dictionaryState.revision }
+      : false;
+  }, { timeout: 15_000, polling: 100 }, {
+    baseRevision: started.baseRevision,
+    dictionaryTitle: title,
+    nextAlias: alias,
+  }).then((handle) => handle.jsonValue()).catch(() => null);
+  return { ...started, settled };
 }
 
 async function main() {
@@ -639,17 +720,60 @@ async function main() {
       || path.endsWith("hachidori-fixture/.hoshidicts_4")),
     `OPFS paths: ${JSON.stringify(opfsFiles)}`);
 
-  const stored = await page.evaluate(() => chrome.storage.local.get("dictionaries"));
-  const dicts = stored?.dictionaries ?? [];
-  // The fixture is a combined archive: terms, frequencies, pitches and a kanji
-  // bank in one zip. The engine indexes each kind separately, so one row per kind
-  // is what makes all of it queryable -- see the frequency assertion below.
-  // Compared field by field: CDP serialisation does not preserve key order.
+  const stored = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
+  const dictionaryState = stored?.dictionaryState;
+  const dicts = dictionaryState?.dictionaries ?? [];
+  const fixturePackage = dicts[0];
+  const fixtureId = fixturePackage?.id ?? "";
+  // The fixture has term, frequency, pitch, kanji and media data, but is one
+  // installed package. Native dictionaryCount still counts its four query kinds.
   check("the imported dictionary is recorded in chrome.storage.local",
-    dicts.map(d => `${d.title}|${d.path}|${d.kind}|${d.enabled}`).join(",") ===
-      ["term", "freq", "pitch", "kanji"]
-        .map(kind => `hachidori-fixture|/dicts/hachidori-fixture|${kind}|true`).join(","),
-    `dictionaries: ${JSON.stringify(dicts)}`);
+    dictionaryState?.schemaVersion === 1
+      && Number.isInteger(dictionaryState.revision)
+      && dictionaryState.revision > 0
+      && dicts.length === 1
+      && fixtureId === FIXTURE_ID
+      && fixturePackage.title === "hachidori-fixture"
+      && fixturePackage.displayName === null
+      && fixturePackage.path === "/dicts/hachidori-fixture"
+      && fixturePackage.enabled === true
+      && fixturePackage.favorite === false
+      && fixturePackage.revision === "test-1"
+      && fixturePackage.isUpdatable === false
+      && fixturePackage.indexUrl === null
+      && fixturePackage.downloadUrl === null
+      && fixturePackage.language === "ja"
+      && fixturePackage.termCount === 6
+      && fixturePackage.frequencyCount === 2
+      && fixturePackage.pitchCount === 2
+      && fixturePackage.kanjiCount === 1
+      && fixturePackage.mediaCount === 1
+      && typeof fixturePackage.installedAt === "string"
+      && Number.isFinite(Date.parse(fixturePackage.installedAt))
+      && fixturePackage.lastUpdateCheck === null,
+    `dictionaryState: ${JSON.stringify(dictionaryState)}`);
+
+  const aliasChanged = await setDictionaryAliasInSettings(page, "hachidori-fixture", FIXTURE_ALIAS);
+  const stateBeforeReimport = await page.evaluate(async (presentation) => {
+    const { dictionaryState: current } = await chrome.storage.local.get("dictionaryState");
+    return chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen",
+      type: "hd_apply_state",
+      requestId: "e2e-preserve-reimport-state",
+      baseRevision: current.revision,
+      dictionaries: current.dictionaries.map((dictionary) => ({
+        ...dictionary,
+        ...(dictionary.title === "hachidori-fixture" ? presentation : {}),
+      })),
+    });
+  }, {
+    enabled: false,
+    favorite: true,
+    isUpdatable: true,
+    indexUrl: MANAGED_INDEX_URL,
+    downloadUrl: MANAGED_DOWNLOAD_URL,
+    lastUpdateCheck: LAST_UPDATE_CHECK,
+  });
 
   await page.evaluate(() => {
     document.getElementById("import-file").value = "";
@@ -661,13 +785,73 @@ async function main() {
     const text = (document.getElementById("import-state")?.textContent || "").trim();
     return text === "" || text === "…" || /^(importing|working)/i.test(text) ? false : text;
   }, { timeout: 120_000, polling: 250 }).then(handle => handle.jsonValue()).catch(() => "(never settled)");
-  check("re-importing the same dictionary replaces it safely in OPFS", /^Imported /.test(replacementState),
-    `#import-state: ${replacementState}`);
+  const replacedState = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
+  const replacedPackage = replacedState?.dictionaryState?.dictionaries?.[0];
+  check("re-importing the same dictionary replaces it safely in OPFS",
+    aliasChanged?.settled?.id === FIXTURE_ID
+      && stateBeforeReimport?.ok === true
+      && /^Imported /.test(replacementState)
+      && replacedState?.dictionaryState?.dictionaries?.length === 1
+      && replacedState.dictionaryState.revision > dictionaryState.revision
+      && replacedPackage?.id === FIXTURE_ID
+      && replacedPackage?.displayName === FIXTURE_ALIAS
+      && replacedPackage?.enabled === false
+      && replacedPackage?.favorite === true
+      && replacedPackage?.isUpdatable === true
+      && replacedPackage?.indexUrl === MANAGED_INDEX_URL
+      && replacedPackage?.downloadUrl === MANAGED_DOWNLOAD_URL
+      && replacedPackage?.lastUpdateCheck === LAST_UPDATE_CHECK,
+    `alias change: ${JSON.stringify(aliasChanged)}; state before reimport: ${JSON.stringify(stateBeforeReimport)}; #import-state: ${replacementState};`
+      + ` dictionaryState: ${JSON.stringify(replacedState?.dictionaryState)}`);
 
-  const rowText = await page.evaluate(() =>
-    (document.getElementById("dict-list")?.textContent || "").replace(/\s+/g, " ").trim());
-  check("the dictionary list renders the imported dictionary",
-    rowText.includes("hachidori-fixture"), `#dict-list: ${rowText.slice(0, 300)}`);
+  await page.waitForFunction((alias) => {
+    const row = document.querySelector("#dict-list .dict-row");
+    return row?.querySelector(".dict-title")?.textContent === alias
+      && row.querySelectorAll(".dict-badge").length === 5;
+  }, { timeout: 10_000, polling: 100 }, FIXTURE_ALIAS).catch(() => {});
+  const renderedDictionary = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll("#dict-list .dict-row")];
+    const row = rows[0];
+    return {
+      count: rows.length,
+      title: row?.querySelector(".dict-title")?.textContent ?? "",
+      canonical: row?.querySelector(".dict-canonical")?.textContent ?? "",
+      alias: row?.querySelector(".dict-display-name")?.value ?? "",
+      enabled: row?.querySelector(".dict-enabled")?.checked,
+      favorite: row?.querySelector(".dict-favorite")?.hidden === false,
+      badges: [...(row?.querySelectorAll(".dict-badge") ?? [])].map((badge) => ({
+        capability: badge.dataset.capability,
+        text: badge.textContent,
+      })),
+      metadata: row?.querySelector(".dict-metadata")?.textContent ?? "",
+    };
+  });
+  check("the dictionary list renders its alias, metadata, and five capability badges",
+    renderedDictionary.count === 1
+      && renderedDictionary.title === FIXTURE_ALIAS
+      && renderedDictionary.canonical === "hachidori-fixture"
+      && renderedDictionary.alias === FIXTURE_ALIAS
+      && renderedDictionary.enabled === false
+      && renderedDictionary.favorite === true
+      && JSON.stringify(renderedDictionary.badges) === JSON.stringify([
+        { capability: "terms", text: "Terms 6" },
+        { capability: "frequency", text: "Frequency 2" },
+        { capability: "pitch", text: "Pitch 2" },
+        { capability: "kanji", text: "Kanji 1" },
+        { capability: "media", text: "Media 1" },
+      ])
+      && renderedDictionary.metadata.includes("Revision test-1")
+      && renderedDictionary.metadata.includes("ja")
+      && renderedDictionary.metadata.includes("Imported ")
+      && renderedDictionary.metadata.includes("Update source available"),
+    `#dict-list: ${JSON.stringify(renderedDictionary)}`);
+
+  const fixtureEnabled = await setDictionaryEnabledInSettings(page, "hachidori-fixture", true);
+  check(
+    "the Settings enabled control re-enables the preserved package",
+    fixtureEnabled?.settled?.id === FIXTURE_ID,
+    JSON.stringify(fixtureEnabled),
+  );
 
   await input.uploadFile(GENERIC_KANJI_FIXTURE);
   const genericImportState = await page.waitForFunction((title) => {
@@ -676,10 +860,16 @@ async function main() {
   }, { timeout: 120_000, polling: 500 }, GENERIC_KANJI_TITLE)
     .then(handle => handle.jsonValue())
     .catch(() => "(never settled)");
+  const afterGenericImport = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
+  const genericPackage = afterGenericImport?.dictionaryState?.dictionaries?.find(
+    (dictionary) => dictionary.title === GENERIC_KANJI_TITLE,
+  );
   check(
     "importing a term-only single-kanji dictionary succeeds",
-    genericImportState.includes(GENERIC_KANJI_TITLE),
-    `#import-state: ${genericImportState}`,
+    genericImportState.includes(GENERIC_KANJI_TITLE)
+      && genericPackage?.id === GENERIC_KANJI_ID
+      && genericPackage.id !== fixtureId,
+    `#import-state: ${genericImportState}; dictionaryState: ${JSON.stringify(afterGenericImport?.dictionaryState)}`,
   );
 
   const kanjiChooser = await page.evaluate(() => {
@@ -713,21 +903,15 @@ async function main() {
         options: { ...storedOptions, kanjiClickDictionary: title },
       });
     }, staleTitle);
-    const ready = await page.waitForFunction((title) =>
-      document.getElementById("opt-kanji-dictionary")?.value === title,
-    { timeout: 10_000, polling: 100 }, staleTitle).then(() => true).catch(() => false);
-    let preserved = false;
-    if (ready) {
-      await page.select("#opt-kanji-dictionary", staleTitle);
-      preserved = await page.waitForFunction(async (title) =>
-        (await chrome.storage.local.get("options")).options?.kanjiClickDictionary === title,
-      { timeout: 10_000, polling: 100 }, staleTitle).then(() => true).catch(() => false);
-    }
-    staleChoiceResults.push({ preserved, ready, title: staleTitle });
+    const pruned = await page.waitForFunction(async () =>
+      document.getElementById("opt-kanji-dictionary")?.value === ""
+        && (await chrome.storage.local.get("options")).options?.kanjiClickDictionary === "",
+    { timeout: 10_000, polling: 100 }).then(() => true).catch(() => false);
+    staleChoiceResults.push({ pruned, title: staleTitle });
   }
   check(
-    "a stale title-only kanji selection survives a chooser change",
-    staleChoiceResults.every(({ preserved, ready }) => ready && preserved),
+    "stale title-only kanji selections are pruned",
+    staleChoiceResults.every(({ pruned }) => pruned),
     JSON.stringify(staleChoiceResults),
   );
 
@@ -817,6 +1001,14 @@ async function main() {
     `popup text: ${verbState.text.slice(0, 400)}`);
   check("the popup renders the frequency tag from term_meta_bank",
     verbState.text.includes("142"), `popup text: ${verbState.text.slice(0, 400)}`);
+  check(
+    "the dictionary alias labels its popup tab without replacing the canonical key",
+    Array.isArray(verbState.tabs)
+      && verbState.tabs.includes(FIXTURE_ALIAS)
+      && !verbState.tabs.includes("hachidori-fixture")
+      && replacedPackage?.title === "hachidori-fixture",
+    `popup tabs: ${JSON.stringify(verbState.tabs)}`,
+  );
 
   const clickedKanji = await popup.click(".gsm-hoshidicts-kanji-link");
   let genericKanjiState = null;
@@ -890,19 +1082,13 @@ async function main() {
     JSON.stringify({ duplicateTermState, duplicateKanjiState, duplicateRestoredState }),
   );
 
-  await page.evaluate(async (title) => {
-    const stored = await chrome.storage.local.get("dictionaries");
-    await chrome.storage.local.set({
-      dictionaries: stored.dictionaries.map(entry =>
-        entry.title === title ? { ...entry, enabled: false } : entry),
-    });
-    await chrome.runtime.sendMessage({
-      requestId: "e2e-disable-generic-kanji",
-      target: "hoshidicts-offscreen",
-      type: "hd_reload",
-    });
-  }, GENERIC_KANJI_TITLE);
-  await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
+  const genericDisabled = await setDictionaryEnabledInSettings(page, GENERIC_KANJI_TITLE, false);
+  check(
+    "the Settings enabled control disables one logical package",
+    genericDisabled?.settled?.id === GENERIC_KANJI_ID,
+    JSON.stringify(genericDisabled),
+  );
+  const refreshedAfterDisable = await hover("#duplicate");
   const clickedDisabledKanji = await popup.click(".gsm-hoshidicts-kanji-link");
   let disabledKanjiState = null;
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -915,30 +1101,22 @@ async function main() {
   }
   check(
     "a disabled selected term dictionary falls back to native kanji",
-    clickedDisabledKanji
+    refreshedAfterDisable !== null
+      && clickedDisabledKanji
       && disabledKanjiState?.hasBack === true
       && !disabledKanjiState.text.includes(GENERIC_KANJI_GLOSSARY),
     `popup state: ${JSON.stringify(await popup.state())}`,
   );
   await popup.click(".gsm-hoshidicts-kanji-back");
-  await page.evaluate(async (title) => {
-    const stored = await chrome.storage.local.get("dictionaries");
-    await chrome.storage.local.set({
-      dictionaries: stored.dictionaries.map(entry =>
-        entry.title === title ? { ...entry, enabled: true } : entry),
-    });
-    await chrome.runtime.sendMessage({
-      requestId: "e2e-enable-generic-kanji",
-      target: "hoshidicts-offscreen",
-      type: "hd_reload",
-    });
-  }, GENERIC_KANJI_TITLE);
 
   await page.select("#opt-kanji-dictionary", FIXTURE_TERM_SELECTION_VALUE);
   await page.waitForFunction(async (selection) => {
     const saved = (await chrome.storage.local.get("options")).options?.kanjiClickDictionary;
     return saved?.title === selection.title && saved?.kind === selection.kind;
   }, { timeout: 10_000, polling: 100 }, FIXTURE_TERM_SELECTION);
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  const refreshedForCombinedTerm = await hover("#duplicate");
   const clickedCombinedTerm = await popup.click(".gsm-hoshidicts-kanji-link");
   let combinedTermState = null;
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -951,8 +1129,9 @@ async function main() {
   }
   check(
     "a combined archive can use its term entries for clicked kanji",
-    clickedCombinedTerm
-      && combinedTermState?.hasBack === true
+    refreshedForCombinedTerm !== null
+      && clickedCombinedTerm
+      && combinedTermState !== null
       && !combinedTermState.text.includes("Meaningsfoodeatmeal"),
     `popup state: ${JSON.stringify(await popup.state())}`,
   );
@@ -967,7 +1146,7 @@ async function main() {
   let nativeKanjiState = null;
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = await popup.state();
-    if (state?.text.includes("food") && state.text.includes("hachidori-fixture")) {
+    if (state?.text.includes("food") && state.text.includes(FIXTURE_ALIAS)) {
       nativeKanjiState = state;
       break;
     }
@@ -1083,16 +1262,21 @@ async function main() {
   page.on("console", m => diagnostics.push(`[settings2] ${m.type()}: ${m.text()}`));
   await page.goto(settingsUrl, { waitUntil: "domcontentloaded" });
 
-  const persisted = await page.waitForFunction(() => {
+  const persisted = await page.waitForFunction(async (id) => {
     const t = (document.getElementById("dict-list")?.textContent || "");
-    return t.includes("hachidori-fixture") ? true : false;
-  }, { timeout: 90_000, polling: 500 }).then(() => true).catch(() => false);
+    const { dictionaryState: state } = await chrome.storage.local.get("dictionaryState");
+    return t.includes("hachidori-fixture")
+      && state?.dictionaries?.some(dictionary =>
+        dictionary.id === id && dictionary.title === "hachidori-fixture")
+      ? true
+      : false;
+  }, { timeout: 90_000, polling: 500 }, fixtureId).then(() => true).catch(() => false);
   check("the settings page lists the dictionary again after a restart", persisted,
-    "hachidori-fixture did not reappear in #dict-list after relaunching with the same profile");
+    "hachidori-fixture and its stable package ID did not reappear after restart");
 
-  // #dict-list above comes out of chrome.storage.local, which persists in the
-  // profile regardless of OPFS; only a dictionaryCount reported by the fresh
-  // engine proves that the imported files came back.
+  // #dict-list above reflects worker-owned chrome.storage.local state, which
+  // persists regardless of OPFS; only a dictionaryCount from the fresh engine
+  // proves that the imported files came back.
   const reloadCount = await page.evaluate(async () => {
     const deadline = Date.now() + 90_000;
     let reply;
@@ -1105,11 +1289,10 @@ async function main() {
       await new Promise(r => setTimeout(r, 500));
     }
   }).catch(e => ({ error: String(e) }));
-  // All five loaded capabilities, not "at least one": the combined fixture
-  // registers term, freq, pitch and kanji, and the generic fixture registers one
-  // more term row.
+  // The disabled generic package stays disabled across restart; the combined
+  // fixture still restores all four of its native capabilities.
   check("the dictionary survives a browser restart via OPFS",
-    reloadCount?.dictionaryCount === 5,
+    reloadCount?.dictionaryCount === 4,
     `hd_status reply: ${JSON.stringify(reloadCount)}`);
 
   const tab2 = await browser.newPage();
@@ -1135,11 +1318,13 @@ async function main() {
     title: "hachidori-fixture",
   })).catch(error => ({ error: String(error) }));
   const removed = await page.waitForFunction(async () => {
-    const stored = await chrome.storage.local.get("dictionaries");
+    const stored = await chrome.storage.local.get("dictionaryState");
     const status = await chrome.runtime.sendMessage({
       target: "hoshidicts-offscreen", type: "hd_status", requestId: "e2e-remove-status",
     });
-    return (stored.dictionaries ?? []).length === 0 && status?.ok && status.dictionaryCount === 0;
+    return (stored.dictionaryState?.dictionaries ?? []).length === 0
+      && status?.ok
+      && status.dictionaryCount === 0;
   }, { timeout: 90_000, polling: 250 }).then(() => true).catch(() => false);
   check("removing the dictionary clears its settings rows", removeReply?.ok === true && removed,
     `remove reply: ${JSON.stringify(removeReply)}`);
