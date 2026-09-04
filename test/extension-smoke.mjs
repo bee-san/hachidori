@@ -1442,6 +1442,50 @@ async function main() {
     [true, 4],
   );
 
+  const stateBeforeRejectedReimport = await storedDictionaryState();
+  const pathBeforeRejectedReimport = stateBeforeRejectedReimport.dictionaries[0].path;
+  const filesBeforeRejectedReimport = idb.keys("/dicts")
+    .filter((path) => path.startsWith(`${pathBeforeRejectedReimport}/`))
+    .sort();
+  storage.failNextSet("injected reimport state CAS failure");
+  const rejectedReimport = await request("hd_import", {
+    blobUrl: createObjectURL(buildTitledZip(FIXTURE_TITLE)),
+    fileName: "rejected-reimport.zip",
+  });
+  const stateAfterRejectedReimport = await storedDictionaryState();
+  const statusAfterRejectedReimport = await request("hd_status");
+  const mediaAfterRejectedReimport = await request("hd_media", {
+    dictionary: FIXTURE_TITLE,
+    path: "media/kanji.png",
+  });
+  const filesAfterRejectedReimport = idb.keys("/dicts")
+    .filter((path) => path.startsWith(`${pathBeforeRejectedReimport}/`))
+    .sort();
+  equal(
+    "a failed reimport state CAS preserves the prior stored path and data",
+    [
+      rejectedReimport.ok,
+      stateAfterRejectedReimport,
+      statusAfterRejectedReimport.dictionaryCount,
+      mediaAfterRejectedReimport.dataUrl,
+      filesAfterRejectedReimport,
+    ],
+    [
+      false,
+      stateBeforeRejectedReimport,
+      4,
+      media.dataUrl,
+      filesBeforeRejectedReimport,
+    ],
+  );
+
+  // Restore the fixture so this deliberately failing regression does not turn
+  // the existing renderer and removal checks into unrelated follow-on failures.
+  await request("hd_import", {
+    blobUrl: createObjectURL(zip),
+    fileName: "restore-after-rejected-reimport.zip",
+  });
+
   section("renderer against real engine output");
   // 漢字 is the fixture's structured-content entry, the only one carrying an <img>.
   const imageLookup = await request("hd_lookup", {
@@ -1623,6 +1667,73 @@ async function main() {
     "glossaries compressed against the trained dictionary survive the round trip",
     trainedLookup.results?.[0]?.term?.glossaries?.map((g) => [g.dictionary, g.glossary]),
     [[TRAINED_TITLE, JSON.stringify(trainedGlossary)]],
+  );
+
+  const unreferencedTitle = "hachidori-unreferenced-restart-fixture";
+  const unreferencedImport = await request("hd_import", {
+    blobUrl: createObjectURL(buildTitledZip(unreferencedTitle)),
+    fileName: `${unreferencedTitle}.zip`,
+  });
+  const stateWithUnreferenced = await storedDictionaryState();
+  const unreferencedStateWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: stateWithUnreferenced.revision,
+    dictionaries: stateWithUnreferenced.dictionaries.filter(
+      (dictionary) => dictionary.title !== unreferencedTitle,
+    ),
+  });
+  const revisionedState = unreferencedStateWrite.state;
+
+  const restartedEngineService = await import(
+    `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}?restart`
+  );
+  restartedEngineService.configureEngineService(
+    (message) => offscreenChrome.runtime.sendMessage(message),
+    { createHoshidicts, storageBackend: "idbfs", lowRam: true },
+  );
+  let restartCounter = 0;
+  const restartRequest = (type, fields = {}) => {
+    restartCounter += 1;
+    return restartedEngineService.handleEngineMessage({
+      type,
+      requestId: `restart-${restartCounter}`,
+      ...fields,
+    });
+  };
+  restartedEngineService.startEngine();
+  let restartedStatus = await restartRequest("hd_status");
+  const restartDeadline = Date.now() + 30000;
+  while (!(restartedStatus.ok && restartedStatus.ready && !restartedStatus.loading)
+      && Date.now() < restartDeadline) {
+    await new Promise((done) => setTimeout(done, 25));
+    restartedStatus = await restartRequest("hd_status");
+  }
+  const stateAfterRestart = await storedDictionaryState();
+  const restartedReload = await restartRequest("hd_reload");
+  const stateAfterRestartedReload = await storedDictionaryState();
+  equal(
+    "a revisioned restart and reload refuse to auto-adopt an unreferenced on-disk dictionary",
+    [
+      unreferencedImport.ok,
+      unreferencedStateWrite.ok,
+      restartedStatus.ok,
+      restartedStatus.dictionaryCount,
+      stateAfterRestart,
+      restartedReload.ok,
+      restartedReload.dictionaryCount,
+      stateAfterRestartedReload,
+    ],
+    [
+      true,
+      true,
+      true,
+      1,
+      revisionedState,
+      true,
+      1,
+      revisionedState,
+    ],
   );
 
   console.log(`\n${passed} passed, ${failed} failed`);
