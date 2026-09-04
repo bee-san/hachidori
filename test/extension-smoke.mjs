@@ -26,7 +26,13 @@ import { homedir } from "node:os";
 // The trained fixture is built in memory rather than read out of test/fixtures:
 // the .zip on disk is only there for the browser test, which needs a real file to
 // hand to an <input type=file>.
-import { EXPECTED, TRAINED_TERMS, TRAINED_TITLE, buildTrainedZip } from "./make-fixture.mjs";
+import {
+  EXPECTED,
+  TRAINED_TERMS,
+  TRAINED_TITLE,
+  buildTitledZip,
+  buildTrainedZip,
+} from "./make-fixture.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -636,10 +642,10 @@ async function main() {
   );
   const engineServiceSource = readFileSync(resolve(EXTENSION, "engine-service.js"), "utf8");
   check(
-    "fallback imports keep temporary archives inside the private dictionary filesystem",
-    !engineServiceSource.includes('const IMPORT_ZIP = "/tmp/')
-      && /const IMPORT_ZIP = `\$\{DICT_ROOT\}\/[^"]+`;/u.test(engineServiceSource),
-    "the fallback import archive is still rooted in a shared temporary directory",
+    "fallback imports keep scratch archives outside the dictionary-title namespace",
+    engineServiceSource.includes('const IMPORT_ZIP = "/.hdw-archive.zip";')
+      && engineServiceSource.includes("const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;"),
+    "the fallback import archive can collide with a dictionary title",
   );
   const bindingsSource = readFileSync(resolve(ROOT, "wasm/bindings.cpp"), "utf8");
   check(
@@ -902,6 +908,23 @@ async function main() {
     "reconciliation restores kinds added by a same-title replacement",
     [reloaded.ok, reloaded.dictionaryCount, (await storedDictionaries()).map((row) => row.kind)],
     [true, 4, ["term", "freq", "pitch", "kanji"]],
+  );
+
+  const scratchTitle = ".hdw-archive.zip";
+  const scratchTitleImport = await request("hd_import", {
+    blobUrl: createObjectURL(buildTitledZip(scratchTitle)),
+    fileName: `${scratchTitle}.zip`,
+  });
+  check(
+    "a fallback scratch archive cannot collide with an accepted dictionary title",
+    scratchTitleImport.ok === true && scratchTitleImport.report?.title === scratchTitle,
+    JSON.stringify(scratchTitleImport),
+  );
+  const scratchTitleRemoval = await request("hd_remove", { title: scratchTitle });
+  check(
+    "the scratch-title regression dictionary can be removed normally",
+    scratchTitleRemoval.ok === true,
+    JSON.stringify(scratchTitleRemoval),
   );
 
   section("lookup, kanji, styles, media");
