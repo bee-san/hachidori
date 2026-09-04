@@ -2388,8 +2388,8 @@ async function main() {
   if (!editorAdoptedNotes) {
     throw new Error("Settings did not adopt the Note-appended custom source");
   }
+  await page.bringToFront();
   if (process.env.HACHIDORI_CUSTOM_SCREENSHOT) {
-    await page.bringToFront();
     await page.setViewport({ width: 960, height: 900 });
     const customCard = await page.$('section[aria-labelledby="custom-dictionary-heading"]');
     await customCard.screenshot({ path: process.env.HACHIDORI_CUSTOM_SCREENSHOT });
