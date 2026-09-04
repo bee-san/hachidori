@@ -279,6 +279,31 @@ function hasDictionaryMarker(path) {
   return MARKER_FILES.some((marker) => exists(`${path}/${marker}`));
 }
 
+function removeUnreferencedDictionaryRoot(name, referencedRoots) {
+  if (name === "." || name === "..") {
+    return false;
+  }
+  const path = `${DICT_ROOT}/${name}`;
+  let stat;
+  try {
+    stat = engine.FS.stat(path);
+  } catch (error) {
+    return false;
+  }
+  if (!isDirectory(stat)) {
+    return false;
+  }
+  if (GENERATION_NAME.test(name)) {
+    if (referencedRoots.has(path)) {
+      return false;
+    }
+  } else if (!hasDictionaryMarker(path) || referencedRoots.has(path)) {
+    return false;
+  }
+  removeTree(path);
+  return true;
+}
+
 async function cleanupUnreferencedDictionaries(dictionaries) {
   const referencedRoots = new Set(dictionaries.map((dictionary) => dictionaryRoot(dictionary)));
   if (referencedRoots.has(null)) {
@@ -286,30 +311,7 @@ async function cleanupUnreferencedDictionaries(dictionaries) {
   }
   let changed = false;
   for (const name of engine.FS.readdir(DICT_ROOT)) {
-    if (name === "." || name === "..") {
-      continue;
-    }
-    const path = `${DICT_ROOT}/${name}`;
-    let stat;
-    try {
-      stat = engine.FS.stat(path);
-    } catch (error) {
-      continue;
-    }
-    if (!isDirectory(stat)) {
-      continue;
-    }
-    if (GENERATION_NAME.test(name)) {
-      if (!referencedRoots.has(path)) {
-        removeTree(path);
-        changed = true;
-      }
-      continue;
-    }
-    if (hasDictionaryMarker(path) && !referencedRoots.has(path)) {
-      removeTree(path);
-      changed = true;
-    }
+    changed = removeUnreferencedDictionaryRoot(name, referencedRoots) || changed;
   }
   if (changed) {
     await persistFilesystem();
@@ -490,7 +492,7 @@ function sameDictionaries(left, right) {
     }
     const keys = Object.keys(dictionary);
     return keys.length === Object.keys(other).length
-      && keys.every((key) => Object.prototype.hasOwnProperty.call(other, key)
+      && keys.every((key) => Object.hasOwn(other, key)
         && dictionary[key] === other[key]);
   });
 }
@@ -935,6 +937,33 @@ export async function streamResponseToFile(FS, response, path) {
   return written;
 }
 
+async function importDictionaryArchive(response, archivePath, generationRoot, importLowRam, fileName) {
+  const FS = engine.FS;
+  try {
+    const archiveBytes = await streamResponseToFile(FS, response, archivePath);
+    if (archiveBytes === 0) {
+      throw new Error(`${fileName} is empty`);
+    }
+    return normaliseReport(
+      parseJson(
+        engine.ccall(
+          "hdw_import",
+          "string",
+          ["string", "string", "number"],
+          [archivePath, generationRoot, importLowRam ? 1 : 0],
+        ),
+        "hdw_import",
+      ),
+    );
+  } finally {
+    try {
+      FS.unlink(archivePath);
+    } catch (error) {
+      // Never written, or already gone.
+    }
+  }
+}
+
 const HANDLERS = {
   async hd_lookup(message) {
     await ensureLoaded();
@@ -1048,7 +1077,6 @@ const HANDLERS = {
 
   async hd_import(message) {
     requireEngine();
-    const FS = engine.FS;
     const blobUrl = text(message.blobUrl);
     const fileName = text(message.fileName) || "the archive";
     const importLowRam = typeof message.lowRam === "boolean" ? message.lowRam : lowRam;
@@ -1070,29 +1098,13 @@ const HANDLERS = {
     let report;
     let rollbackAttempted = false;
     try {
-      try {
-        const archiveBytes = await streamResponseToFile(FS, response, archivePath);
-        if (archiveBytes === 0) {
-          throw new Error(`${fileName} is empty`);
-        }
-        report = normaliseReport(
-          parseJson(
-            engine.ccall(
-              "hdw_import",
-              "string",
-              ["string", "string", "number"],
-              [archivePath, generationRoot, importLowRam ? 1 : 0],
-            ),
-            "hdw_import",
-          ),
-        );
-      } finally {
-        try {
-          FS.unlink(archivePath);
-        } catch (error) {
-          // Never written, or already gone.
-        }
-      }
+      report = await importDictionaryArchive(
+        response,
+        archivePath,
+        generationRoot,
+        importLowRam,
+        fileName,
+      );
 
       if (report.success && report.title === "") {
         // hdw_import refuses a title it cannot use as a folder name, so this is
