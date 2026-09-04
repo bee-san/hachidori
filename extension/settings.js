@@ -299,6 +299,9 @@ function setControlsDisabled(disabled) {
   for (const control of document.querySelectorAll(".dict-row select, .dict-row input, .dict-row button")) {
     control.disabled = blocked || control.dataset.pinnedDisabled === "true";
   }
+  for (const drag of document.querySelectorAll(".dict-drag")) {
+    drag.draggable = !blocked;
+  }
   element("dict-select-visible").disabled = blocked || visibleDictionaries().length === 0;
   for (const control of element("dict-controls").querySelectorAll(".dict-bulk-actions button")) {
     control.disabled = blocked || selectedDictionaryIds.size === 0;

@@ -427,6 +427,11 @@ code {
   cursor: grabbing;
 }
 
+.dict-drag[draggable="false"] {
+  cursor: default;
+  opacity: 0.4;
+}
+
 .dict-rank {
   padding-top: 2px;
   color: var(--text-dim);

@@ -2105,11 +2105,15 @@ async function settingsConflictStage() {
     await new Promise((done) => window.setTimeout(done, 5));
   }
   const removalControlsBlocked = [...window.document.querySelectorAll("#dict-list input, #dict-list button")]
-    .every((control) => control.disabled);
+    .every((control) => control.disabled)
+    && [...window.document.querySelectorAll("#dict-list .dict-drag")]
+      .every((drag) => drag.draggable === false);
   releaseRemove?.();
   await new Promise((done) => window.setTimeout(done, 0));
   const removalControlsRestored = [...window.document.querySelectorAll("#dict-list input, #dict-list button")]
-    .some((control) => !control.disabled);
+    .some((control) => !control.disabled)
+    && [...window.document.querySelectorAll("#dict-list .dict-drag")]
+      .every((drag) => drag.draggable === true);
 
   const result = {
     draftSurvived,
