@@ -1257,6 +1257,9 @@ const HANDLERS = {
     const importLowRam = typeof message.lowRam === "boolean" ? message.lowRam : lowRam;
     const recommendedSource = recommendedSourceForImport(message);
     const managedSource = await managedSourceForImport(message, recommendedSource);
+    if (managedSource !== null && blobUrl !== "") {
+      throw new Error("the managed import request carried a blob URL");
+    }
     if (blobUrl !== "" && recommendedSource !== null
         && !recommendedDownloadUrlMatches(recommendedSource, optionalText(message.finalUrl))) {
       throw new Error(`${recommendedSource.name} downloaded from an unexpected final URL`);

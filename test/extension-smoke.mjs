@@ -2084,6 +2084,42 @@ async function main() {
       && failAfterCommittedRevision === null,
     JSON.stringify({ statusFixtureRestored, statusFailureUpdate, statusFailureState }),
   );
+
+  const injectedBlobRowsBefore = idb.keys("/dicts").sort();
+  const injectedBlobImport = await request("hd_import", {
+    blobUrl: createObjectURL(communityZip({ revision: "community-injected" })),
+    fileName: "injected-managed-update.zip",
+    managedFingerprint: {
+      id: statusFailureCommunity.id,
+      path: statusFailureCommunity.path,
+      revision: statusFailureCommunity.revision,
+      source: {
+        kind: "generic",
+        sourceId: null,
+        indexUrl: communityIndexUrl,
+        downloadUrl: communityDownloadUrl,
+      },
+    },
+    archiveUrl: communityDownloadUrl,
+    expectedRevision: "community-injected",
+    checkedAt: "2026-09-04T12:00:00.000Z",
+  });
+  const injectedBlobStateAfter = await storedDictionaryState();
+  const injectedBlobRowsAfter = idb.keys("/dicts").sort();
+  check(
+    "the managed import protocol rejects an injected blob archive",
+    injectedBlobImport?.ok === false
+      && injectedBlobImport.error?.includes("blob URL")
+      && JSON.stringify(injectedBlobStateAfter) === JSON.stringify(statusFailureState)
+      && JSON.stringify(injectedBlobRowsAfter) === JSON.stringify(injectedBlobRowsBefore),
+    JSON.stringify({
+      injectedBlobImport,
+      statusFailureState,
+      injectedBlobStateAfter,
+      injectedBlobRowsBefore,
+      injectedBlobRowsAfter,
+    }),
+  );
   await request("hd_remove", { title: communityTitle });
   await request("hd_remove", { title: "Jitendex.org [2026-09-08]" });
   await request("hd_remove", { title: localUpdateTitle });
