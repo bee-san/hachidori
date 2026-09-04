@@ -1762,6 +1762,17 @@ async function main() {
      && settingsConflict.directDictionaryWrites === 0,
     JSON.stringify(settingsConflict?.groups),
   );
+  check(
+    "queued group creates and renames revalidate normalized unique names",
+    settingsConflict?.groups?.queuedCreateNames?.length === 1
+      && settingsConflict.groups.queuedCreateError?.includes("already exists")
+      && settingsConflict.groups.queuedCreateRequestCount === 1
+      && settingsConflict.groups.queuedRenameNames?.filter((name) => name === "Shared name").length === 1
+      && settingsConflict.groups.queuedRenameNames?.includes("Rename two")
+      && settingsConflict.groups.queuedRenameError?.includes("already exists")
+      && settingsConflict.groups.queuedRenameRequestCount === 1,
+    JSON.stringify(settingsConflict?.groups),
+  );
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -2630,6 +2641,45 @@ async function settingsConflictStage() {
   groupRow(grammarGroupId).querySelector(".dict-group-delete").click();
   await waitForRequestCount(9);
 
+  const finalGroups = structuredClone(state.groups);
+  const requestTypes = casRequests.map((request) => request.type);
+  const dictionarySnapshots = casRequests.map((request) =>
+    request.dictionaries.map((dictionary) => dictionary.id));
+
+  casRequests.length = 0;
+  newGroupName.value = "Queued group";
+  createGroup.click();
+  newGroupName.value = " queued\tgroup ";
+  createGroup.click();
+  await waitForRequestCount(1);
+  const queuedCreateNames = state.groups
+    .filter((group) => group.name.toLowerCase() === "queued group")
+    .map((group) => group.name);
+  const queuedCreateError = groupError.textContent;
+  const queuedCreateRequestCount = casRequests.length;
+
+  state = {
+    ...state,
+    revision: state.revision + 1,
+    groups: [
+      { id: "rename-one", name: "Rename one", dictionaryIds: [] },
+      { id: "rename-two", name: "Rename two", dictionaryIds: [] },
+    ],
+  };
+  storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+  casRequests.length = 0;
+
+  const firstRename = groupRow("rename-one").querySelector(".dict-group-name");
+  const secondRename = groupRow("rename-two").querySelector(".dict-group-name");
+  firstRename.value = "Shared name";
+  firstRename.dispatchEvent(new window.Event("change", { bubbles: true }));
+  secondRename.value = " shared\tname ";
+  secondRename.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await waitForRequestCount(1);
+  const queuedRenameNames = state.groups.map((group) => group.name);
+  const queuedRenameError = groupError.textContent;
+  const queuedRenameRequestCount = casRequests.length;
+
   result.groups = {
     normalisedGroupName,
     duplicateError,
@@ -2645,9 +2695,15 @@ async function settingsConflictStage() {
     memberRemoveFocusRetained,
     membershipAfterAlias,
     renamedMemberLabel,
-    finalGroups: structuredClone(state.groups),
-    requestTypes: casRequests.map((request) => request.type),
-    dictionarySnapshots: casRequests.map((request) => request.dictionaries.map((dictionary) => dictionary.id)),
+    finalGroups,
+    requestTypes,
+    dictionarySnapshots,
+    queuedCreateNames,
+    queuedCreateError,
+    queuedCreateRequestCount,
+    queuedRenameNames,
+    queuedRenameError,
+    queuedRenameRequestCount,
   };
   result.directDictionaryWrites = directDictionaryWrites;
   dom.window.close();
