@@ -3628,6 +3628,73 @@ async function main() {
     JSON.stringify(staleInitialStorageRenders),
   );
 
+  const noteContent = await contentNoteStage();
+  check(
+    "content Note callbacks replay exact ordinary and internal-link requests with newer state",
+    noteContent?.callbacksWired === true
+      && noteContent.eventFirst?.request?.type === "hd_lookup"
+      && noteContent.eventFirst.request.text === "\u5185\u90e8\u8a9e"
+      && noteContent.eventFirst.request.maxResults === 7
+      && noteContent.eventFirst.request.scanLength === 9
+      && noteContent.eventFirst.request.options?.frequencyDictionary === "Frequency A"
+      && noteContent.eventFirst.request.options?.frequencyOrder === "descending"
+      && noteContent.eventFirst.request.options?.primaryReading === "\u306a\u3044\u3076\u3054"
+      && noteContent.eventFirst.selectedDictionaryTab?.dictionary === "Projected"
+      && noteContent.eventFirst.stateRevision === 3
+      && noteContent.eventFirst.displayName === "event-newer"
+      && noteContent.eventFirst.popupHidden === false
+      && noteContent.replyFirst?.request?.type === "hd_lookup"
+      && noteContent.replyFirst.request.text === "\u98df\u3079\u305f"
+      && noteContent.replyFirst.stateRevision === 4
+      && noteContent.replyFirst.displayName === "reply-newer",
+    JSON.stringify(noteContent),
+  );
+  check(
+    "content Note refresh preserves clicked-kanji dictionary intent and Back context",
+    noteContent?.termKanji?.request?.type === "hd_lookup_dictionary"
+      && noteContent.termKanji.request.dictionary === "Generic"
+      && noteContent.termKanji.request.text === "\u98df"
+      && noteContent.termKanji.request.scanLength === 1
+      && noteContent.termKanji.request.maxResults === 7
+      && noteContent.termKanji.request.options?.frequencyDictionary === "Frequency A"
+      && noteContent.termKanji.request.options?.frequencyOrder === "descending"
+      && noteContent.termKanji.hasBack === true
+      && noteContent.termKanji.backExpression === "\u98df\u3079\u305f"
+      && noteContent.kanji?.request?.type === "hd_kanji"
+      && noteContent.kanji.request.character === "\u98df"
+      && noteContent.kanji.renderedDictionaries?.join(",") === "Generic"
+      && noteContent.kanji.hasBack === true,
+    JSON.stringify(noteContent),
+  );
+  check(
+    "a successful Note append cannot become retryable when lookup refresh fails",
+    noteContent?.refreshFailure?.resolved === true
+      && noteContent.refreshFailure.appendCount === 1
+      && noteContent.refreshFailure.refreshCount === 1,
+    JSON.stringify(noteContent?.refreshFailure),
+  );
+  check(
+    "Note refresh skips a replaced view or detached page anchor",
+    noteContent?.replaced?.refreshCount === 0
+      && noteContent.replaced.backExpression === "\u98df\u3079\u305f"
+      && noteContent.replaced.popupHidden === false
+      && noteContent.detached?.refreshCount === 0
+      && noteContent.detached.resolved === true,
+    JSON.stringify({ replaced: noteContent?.replaced, detached: noteContent?.detached }),
+  );
+  check(
+    "Note editing cancels hover dismissal and consumes Escape before popup capture",
+    noteContent?.guards?.pendingBeforeEditing === true
+      && noteContent.guards.pendingWhileEditing === false
+      && noteContent.guards.caretCalls === 0
+      && noteContent.guards.firstEscapeHidden === false
+      && noteContent.guards.firstEscapeClears === 0
+      && noteContent.guards.secondEscapeHidden === true
+      && noteContent.guards.secondEscapeClears === 1
+      && noteContent.guards.closeCalls === 2,
+    JSON.stringify(noteContent?.guards),
+  );
+
   section("hd_remove");
   const rename = observedEngine.FS.rename.bind(observedEngine.FS);
   observedEngine.FS.rename = (source, destination) => {
@@ -5449,6 +5516,587 @@ async function staleKanjiResponseStage(invalidation) {
   const result = { renders, popupHidden: popup.hidden };
   dom.window.close();
   return result;
+}
+
+async function contentNoteStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) {
+    return null;
+  }
+  const { JSDOM } = jsdom;
+  const settle = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
+
+  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }) {
+    const dom = new JSDOM(
+      "<!doctype html><body><span id=anchor>\u98df\u3079\u305f</span></body>",
+      {
+        pretendToBeVisual: true,
+        runScripts: "outside-only",
+        url: "https://example.test/",
+      },
+    );
+    const { window } = dom;
+    let storageListener = null;
+    let popupCallbacks = null;
+    let editing = false;
+    let closeNext = false;
+    let closeCalls = 0;
+    let clearCount = 0;
+    const pending = [];
+    const sent = [];
+    const renders = [];
+
+    function stopEditing() {
+      if (!editing || typeof popupCallbacks?.onNoteEditingChange !== "function") return;
+      editing = false;
+      popupCallbacks.onNoteEditingChange(false);
+    }
+
+    const view = {
+      clear() {
+        clearCount += 1;
+        stopEditing();
+      },
+      closeNoteForm() {
+        closeCalls += 1;
+        if (!closeNext) return false;
+        closeNext = false;
+        stopEditing();
+        return true;
+      },
+      destroy() {},
+      renderKanji(value, candidate, context) {
+        stopEditing();
+        renders.push({ kind: "kanji", value, candidate, context });
+      },
+      renderNotice(value, candidate) {
+        stopEditing();
+        renders.push({ kind: "notice", value, candidate, context: {} });
+      },
+      renderResults(results, candidate, context) {
+        stopEditing();
+        renders.push({ kind: "terms", results, candidate, context });
+      },
+      setToolbarPosition() {},
+    };
+    window.HDGlossary = {
+      appendExpressionRuby() {},
+      appendTextOnlyGlossary() {},
+      applyDictionaryStyles() { return []; },
+      parseTagList() { return []; },
+    };
+    window.HDPopup = {
+      createPopupView(options) {
+        popupCallbacks = options;
+        return view;
+      },
+      createSourceHighlighter() {
+        return { apply() {}, clearAll() {} };
+      },
+    };
+    const initialState = {
+      schemaVersion: 1,
+      revision: 1,
+      dictionaries: [genericPackage({
+        favorite: true,
+        kanjiCount: kanjiClickDictionary?.kind === "kanji" ? 1 : 0,
+      })],
+    };
+    window.chrome = {
+      runtime: {
+        id: "hachidoricontnotesmoke",
+        lastError: null,
+        getURL: (path) => `chrome-extension://hachidoricontnotesmoke/${path}`,
+        sendMessage(request, callback) {
+          sent.push(JSON.parse(JSON.stringify(request)));
+          if (request.type === "hd_styles") {
+            callback({
+              generation: 2,
+              ok: true,
+              requestId: request.requestId,
+              styles: [],
+              type: "hd_styles_result",
+            });
+            return;
+          }
+          pending.push({ callback, request });
+        },
+      },
+      storage: {
+        local: {
+          get(defaults, callback) {
+            callback({
+              ...defaults,
+              dictionaryState: initialState,
+              options: {
+                frequencyDictionary: "Frequency A",
+                frequencyOrder: "descending",
+                hoverDelayMs: 0,
+                kanjiClickDictionary,
+                maxResults: 7,
+                modifier: "none",
+                scanLength: 9,
+              },
+            });
+          },
+        },
+        onChanged: {
+          addListener(listener) { storageListener = listener; },
+          removeListener() {},
+        },
+      },
+    };
+    const marker = "  start();\n}());";
+    const source = readFileSync(resolve(EXTENSION, "content.js"), "utf8");
+    const instrumented = source.replace(marker, `
+  globalThis.__hachidoriContentNoteSmoke = {
+    install() {
+      buildUi({ sheet: null, text: "" });
+      uiPromise = Promise.resolve();
+      currentGeneration = 1;
+      styleGeneration = 1;
+      return popup;
+    },
+    hideTimerPending() { return hideTimer !== null; },
+    onInternalLink,
+    onKeyDown,
+    runLookup,
+    scanPointer,
+    scheduleHide,
+    showKanji,
+    snapshot() {
+      return {
+        dictionaryStateRevision,
+        dictionaries: dictionaries.map((dictionary) => ({ ...dictionary })),
+        popupHidden: popup?.hidden === true,
+      };
+    },
+  };
+  start();
+}());`);
+    if (instrumented === source) {
+      dom.window.close();
+      throw new Error("content.js Note instrumentation marker was not found");
+    }
+    window.eval(instrumented);
+    const driver = window.__hachidoriContentNoteSmoke;
+    const popup = driver.install();
+    const anchor = window.document.getElementById("anchor");
+    const candidate = {
+      anchor,
+      matchOffset: 0,
+      query: "\u98df\u3079\u305f",
+      scanEntries: [{
+        node: anchor.firstChild,
+        offset: 0,
+        sourceLength: 3,
+        text: "\u98df\u3079\u305f",
+      }],
+      sentence: "\u98df\u3079\u305f",
+      sourceElements: [anchor],
+      vertical: false,
+    };
+
+    function take(type) {
+      const index = pending.findIndex(({ request }) => request.type === type);
+      return index < 0 ? null : pending.splice(index, 1)[0];
+    }
+
+    function reply(item, payload = {}, ok = true) {
+      if (item === null) throw new Error("the expected content request was not queued");
+      item.callback({
+        generation: 2,
+        ok,
+        requestId: item.request.requestId,
+        type: `${item.request.type}_result`,
+        ...payload,
+      });
+    }
+
+    function term(expression, dictionary = "Generic") {
+      return {
+        matched: expression,
+        term: {
+          expression,
+          reading: "\u3088\u307f",
+          glossaries: [{ dictionary, glossary: "definition" }],
+        },
+      };
+    }
+
+    function state(revision, displayName) {
+      return {
+        schemaVersion: 1,
+        revision,
+        dictionaries: [
+          genericPackage({
+            displayName,
+            favorite: true,
+            kanjiCount: kanjiClickDictionary?.kind === "kanji" ? 1 : 0,
+          }),
+          genericPackage({
+            id: CUSTOM_DICTIONARY_ID,
+            title: CUSTOM_DICTIONARY_TITLE,
+            displayName: null,
+            path: `/dicts/custom-${revision}/${CUSTOM_DICTIONARY_TITLE}`,
+            revision: `custom-${revision}`,
+          }),
+        ],
+      };
+    }
+
+    function emitState(value) {
+      storageListener?.({ dictionaryState: { newValue: value } }, "local");
+    }
+
+    function emitOptions(value) {
+      storageListener?.({ options: { newValue: value } }, "local");
+    }
+
+    function requestPayload(request) {
+      const { requestId, target, ...payload } = request;
+      return payload;
+    }
+
+    async function initialLookup() {
+      const operation = driver.runLookup(candidate);
+      const request = take("hd_lookup");
+      reply(request, { dictionaryCount: 1, results: [term(candidate.query)] });
+      await operation;
+      return request;
+    }
+
+    return {
+      anchor,
+      candidate,
+      callbacks: () => popupCallbacks,
+      close() { dom.window.close(); },
+      driver,
+      edit(value) {
+        editing = value === true;
+        popupCallbacks.onNoteEditingChange(editing);
+      },
+      emitOptions,
+      emitState,
+      initialLookup,
+      pending,
+      popup,
+      render: () => renders.at(-1),
+      renders,
+      reply,
+      requestPayload,
+      sent,
+      settle,
+      state,
+      stats() { return { clearCount, closeCalls }; },
+      take,
+      term,
+      setCloseNext(value) { closeNext = value === true; },
+    };
+  }
+
+  const probe = await createHarness();
+  const callbacksWired = typeof probe.callbacks()?.onAddCustomEntry === "function"
+    && typeof probe.callbacks()?.onNoteEditingChange === "function";
+  probe.close();
+  if (!callbacksWired) return { callbacksWired };
+
+  async function eventFirstCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    const internal = harness.driver.onInternalLink({
+      primaryReading: "\u306a\u3044\u3076\u3054",
+      query: "\u5185\u90e8\u8a9e",
+    });
+    const linked = harness.take("hd_lookup");
+    harness.reply(linked, {
+      dictionaryCount: 2,
+      results: [
+        harness.term("\u5185\u90e8\u8a9e"),
+        harness.term("\u5185\u90e8\u8a9e", "Projected"),
+      ],
+    });
+    await (internal || harness.settle());
+    harness.render().context.onDictionaryTabSelected({ dictionary: "Projected" });
+    harness.edit(true);
+    harness.emitOptions({
+      frequencyDictionary: "Different",
+      frequencyOrder: "ascending",
+      hoverDelayMs: 0,
+      kanjiClickDictionary: "",
+      maxResults: 2,
+      modifier: "none",
+      scanLength: 2,
+    });
+    const append = harness.callbacks().onAddCustomEntry({
+      definition: "inside",
+      reading: "\u306a\u3044\u3076\u3054",
+      term: "\u5185\u90e8\u8a9e",
+    });
+    const appendRequest = harness.take("hd_custom_append");
+    harness.emitState(harness.state(3, "event-newer"));
+    harness.reply(appendRequest, {
+      document: { revision: 2, semanticRevision: "two", text: "" },
+      state: harness.state(2, "reply-older"),
+    });
+    await harness.settle();
+    const refresh = harness.take("hd_lookup");
+    const request = harness.requestPayload(refresh.request);
+    harness.reply(refresh, {
+      dictionaryCount: 2,
+      results: [harness.term("\u5185\u90e8\u8a9e", "Projected")],
+    });
+    await append;
+    const snapshot = harness.driver.snapshot();
+    const result = {
+      displayName: snapshot.dictionaries[0]?.displayName,
+      popupHidden: snapshot.popupHidden,
+      request,
+      selectedDictionaryTab: harness.render().context.selectedDictionaryTab,
+      stateRevision: snapshot.dictionaryStateRevision,
+    };
+    harness.close();
+    return result;
+  }
+
+  async function replyFirstCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    harness.edit(true);
+    const append = harness.callbacks().onAddCustomEntry({
+      definition: "ate",
+      reading: "\u305f\u3079\u305f",
+      term: "\u98df\u3079\u305f",
+    });
+    const appendRequest = harness.take("hd_custom_append");
+    harness.reply(appendRequest, {
+      document: { revision: 4, semanticRevision: "four", text: "" },
+      state: harness.state(4, "reply-newer"),
+    });
+    await harness.settle();
+    harness.emitState(harness.state(3, "event-older"));
+    const refresh = harness.take("hd_lookup");
+    const request = harness.requestPayload(refresh.request);
+    harness.reply(refresh, { dictionaryCount: 1, results: [harness.term("\u98df\u3079\u305f")] });
+    await append;
+    const snapshot = harness.driver.snapshot();
+    const result = {
+      displayName: snapshot.dictionaries[0]?.displayName,
+      request,
+      stateRevision: snapshot.dictionaryStateRevision,
+    };
+    harness.close();
+    return result;
+  }
+
+  async function termKanjiCase(replaceBeforeReply = false) {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    const clicked = harness.callbacks().onKanjiClick("\u98df", null, null, null);
+    const selected = harness.take("hd_lookup_dictionary");
+    harness.reply(selected, {
+      dictionaryCount: 1,
+      results: [harness.term("clicked")],
+    });
+    await clicked;
+    const clickedRender = harness.render();
+    harness.edit(true);
+    const append = harness.callbacks().onAddCustomEntry({
+      definition: "food",
+      reading: "\u3057\u3087\u304f",
+      term: "\u98df",
+    });
+    const appendRequest = harness.take("hd_custom_append");
+    if (replaceBeforeReply) clickedRender.context.onBack();
+    harness.reply(appendRequest, {
+      document: { revision: 2, semanticRevision: "two", text: "" },
+      state: harness.state(2, "after-note"),
+    });
+    await harness.settle();
+    const refresh = harness.take("hd_lookup_dictionary");
+    let request = null;
+    if (refresh !== null) {
+      request = harness.requestPayload(refresh.request);
+      harness.reply(refresh, {
+        dictionaryCount: 1,
+        results: [harness.term("clicked refreshed")],
+      });
+    }
+    await append;
+    const refreshed = harness.render();
+    let backExpression = refreshed.results?.[0]?.term?.expression ?? "";
+    const hasBack = typeof refreshed.context?.onBack === "function";
+    if (!replaceBeforeReply && hasBack) {
+      refreshed.context.onBack();
+      backExpression = harness.render().results?.[0]?.term?.expression ?? "";
+    }
+    const result = {
+      backExpression,
+      hasBack,
+      popupHidden: harness.driver.snapshot().popupHidden,
+      refreshCount: refresh === null ? 0 : 1,
+      request,
+    };
+    harness.close();
+    return result;
+  }
+
+  async function kanjiCase() {
+    const harness = await createHarness({ title: "Generic", kind: "kanji" });
+    await harness.initialLookup();
+    const clicked = harness.callbacks().onKanjiClick("\u98df", null, null, null);
+    const selected = harness.take("hd_kanji");
+    harness.reply(selected, {
+      kanji: {
+        character: "\u98df",
+        entries: [{ dictionary: "Generic" }, { dictionary: "Other" }],
+      },
+    });
+    await clicked;
+    harness.edit(true);
+    const append = harness.callbacks().onAddCustomEntry({
+      definition: "food",
+      reading: "\u3057\u3087\u304f",
+      term: "\u98df",
+    });
+    const appendRequest = harness.take("hd_custom_append");
+    harness.reply(appendRequest, {
+      document: { revision: 2, semanticRevision: "two", text: "" },
+      state: harness.state(2, "after-note"),
+    });
+    await harness.settle();
+    const refresh = harness.take("hd_kanji");
+    const request = harness.requestPayload(refresh.request);
+    harness.reply(refresh, {
+      kanji: {
+        character: "\u98df",
+        entries: [{ dictionary: "Generic" }, { dictionary: "Other" }],
+      },
+    });
+    await append;
+    const result = {
+      hasBack: typeof harness.render().context?.onBack === "function",
+      renderedDictionaries: harness.render().value.entries.map(({ dictionary }) => dictionary),
+      request,
+    };
+    harness.close();
+    return result;
+  }
+
+  async function refreshFailureCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    harness.edit(true);
+    const append = harness.callbacks().onAddCustomEntry({
+      definition: "ate",
+      reading: "\u305f\u3079\u305f",
+      term: "\u98df\u3079\u305f",
+    });
+    const appendRequest = harness.take("hd_custom_append");
+    harness.reply(appendRequest, {
+      document: { revision: 2, semanticRevision: "two", text: "" },
+      state: harness.state(2, "after-note"),
+    });
+    await harness.settle();
+    const refresh = harness.take("hd_lookup");
+    harness.reply(refresh, { error: "injected refresh failure" }, false);
+    let resolved = true;
+    try {
+      await append;
+    } catch {
+      resolved = false;
+    }
+    const result = {
+      appendCount: harness.sent.filter(({ type }) => type === "hd_custom_append").length,
+      refreshCount: refresh === null ? 0 : 1,
+      resolved,
+    };
+    harness.close();
+    return result;
+  }
+
+  async function detachedCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    harness.edit(true);
+    const append = harness.callbacks().onAddCustomEntry({
+      definition: "ate",
+      reading: "\u305f\u3079\u305f",
+      term: "\u98df\u3079\u305f",
+    });
+    const appendRequest = harness.take("hd_custom_append");
+    harness.anchor.remove();
+    harness.reply(appendRequest, {
+      document: { revision: 2, semanticRevision: "two", text: "" },
+      state: harness.state(2, "after-note"),
+    });
+    await harness.settle();
+    const refresh = harness.take("hd_lookup");
+    let resolved = true;
+    try {
+      await append;
+    } catch {
+      resolved = false;
+    }
+    const result = { refreshCount: refresh === null ? 0 : 1, resolved };
+    harness.close();
+    return result;
+  }
+
+  async function guardCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    harness.driver.scheduleHide();
+    const pendingBeforeEditing = harness.driver.hideTimerPending();
+    harness.edit(true);
+    const pendingWhileEditing = harness.driver.hideTimerPending();
+    let caretCalls = 0;
+    harness.popup.ownerDocument.caretRangeFromPoint = () => {
+      caretCalls += 1;
+      return null;
+    };
+    harness.driver.scanPointer({
+      clientX: 200,
+      clientY: 200,
+      modifierHeld: true,
+      target: harness.popup.ownerDocument.body,
+    });
+    harness.setCloseNext(true);
+    harness.popup.ownerDocument.dispatchEvent(new harness.popup.ownerDocument.defaultView.KeyboardEvent(
+      "keydown",
+      { bubbles: true, cancelable: true, key: "Escape" },
+    ));
+    const firstEscapeHidden = harness.driver.snapshot().popupHidden;
+    const firstEscapeClears = harness.stats().clearCount;
+    harness.popup.ownerDocument.dispatchEvent(new harness.popup.ownerDocument.defaultView.KeyboardEvent(
+      "keydown",
+      { bubbles: true, cancelable: true, key: "Escape" },
+    ));
+    const result = {
+      caretCalls,
+      closeCalls: harness.stats().closeCalls,
+      firstEscapeClears,
+      firstEscapeHidden,
+      pendingBeforeEditing,
+      pendingWhileEditing,
+      secondEscapeClears: harness.stats().clearCount,
+      secondEscapeHidden: harness.driver.snapshot().popupHidden,
+    };
+    harness.close();
+    return result;
+  }
+
+  return {
+    callbacksWired,
+    detached: await detachedCase(),
+    eventFirst: await eventFirstCase(),
+    guards: await guardCase(),
+    kanji: await kanjiCase(),
+    refreshFailure: await refreshFailureCase(),
+    replaced: await termKanjiCase(true),
+    replyFirst: await replyFirstCase(),
+    termKanji: await termKanjiCase(false),
+  };
 }
 
 // The renderer is the one consumer that reads contract B field by field, so it
