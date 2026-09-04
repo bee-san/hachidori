@@ -7,9 +7,9 @@
 # imports test/fixtures/hachidori-fixture.zip with hoshidicts-cli, and dumps the same
 # words node-smoke.mjs looks up. Two things come out of that:
 #
-#   * the Emscripten portability patches carried on the submodule's `wasm` branch
-#     are #ifdef __EMSCRIPTEN__ guarded, so a native build proves they did not
-#     change native behaviour;
+#   * the Emscripten portability patches carried on the submodule's
+#     `perf/threaded-import` branch are #ifdef __EMSCRIPTEN__ guarded, so a
+#     native build proves they did not change native behaviour;
 #   * the wasm output has something independent to be compared against, instead
 #     of only being compared to expectations written by the same person.
 #

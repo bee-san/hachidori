@@ -2,26 +2,27 @@
 
 # Hachidori test harness
 
-Ten pieces, run in this order. The JavaScript checks use Node built-ins except
+Eleven pieces, run in this order. The JavaScript checks use Node built-ins except
 `extension-smoke.mjs`, which needs jsdom. The browser checks need Chrome and
 `puppeteer-core`; those dependencies stay outside the repository.
 
 ```sh
 cd /path/to/hachidori
 
-./wasm/build.sh                  # 1. produces threaded OPFS and fallback IDBFS bundles
-node test/make-fixture.mjs       # 2. writes test/fixtures/
-node test/node-smoke.mjs         # 3. threaded C ABI contract test
-HACHIDORI_WASM_VARIANT=fallback node test/node-smoke.mjs # 4. fallback C ABI contract test
-node test/threaded-bridge-smoke.mjs # 5. threaded bridge admission/control test
-node test/extension-smoke.mjs    # 6. the extension's own JS against that wasm
-node --test benchmark/*.test.mjs # 7. fail-closed benchmark framework tests
-node test/chrome-e2e.mjs         # 8. pthread/OPFS path in a real Chrome
-node test/chrome-fallback.mjs    # 9. capability fallback through IDBFS in real Chrome
-./test/baseline.sh               # 10. optional native cross-check
+node test/submodule-identity.mjs # 1. submodule/runtime identity is internally consistent
+./wasm/build.sh                  # 2. produces threaded OPFS and fallback IDBFS bundles
+node test/make-fixture.mjs       # 3. writes test/fixtures/
+node test/node-smoke.mjs         # 4. threaded C ABI contract test
+HACHIDORI_WASM_VARIANT=fallback node test/node-smoke.mjs # 5. fallback C ABI contract test
+node test/threaded-bridge-smoke.mjs # 6. threaded bridge admission/control test
+node test/extension-smoke.mjs    # 7. the extension's own JS against that wasm
+node --test benchmark/*.test.mjs # 8. fail-closed benchmark framework tests
+node test/chrome-e2e.mjs         # 9. pthread/OPFS path in a real Chrome
+node test/chrome-fallback.mjs    # 10. capability fallback through IDBFS in real Chrome
+./test/baseline.sh               # 11. optional native cross-check
 ```
 
-Step 2 is optional on its own: `node-smoke.mjs` imports the generator and builds
+Step 3 is optional on its own: `node-smoke.mjs` imports the generator and builds
 the fixture bytes in memory, and also writes them to `test/fixtures/` as a side
 effect so `baseline.sh` has files to work with. Run it alone when you want to
 inspect the zip or hand it to another tool.
@@ -29,6 +30,19 @@ inspect the zip or hand it to another tool.
 Everything either script writes goes to `test/fixtures/` and `test/tmp/`. Neither
 touches `third_party/hoshidicts`; `baseline.sh` configures it out-of-tree and
 fails if `git status` in the submodule comes back dirty.
+
+---
+
+## `submodule-identity.mjs`
+
+Guards that the `third_party/hoshidicts` submodule's declared tracking branch in
+`.gitmodules` stays consistent with the runtime gitlink the superproject pins. 3
+checks: the declared url resolves to the engine repository, the pinned gitlink is
+reachable from the declared tracking branch, and the gitlink is that branch's
+tip. If the tracked branch drifts off the runtime branch, a
+`git submodule update --remote` would silently rewind the engine to an older
+commit; this check fails closed instead. Uses Node built-ins and the local git
+clone only. Prints `<n> passed, <n> failed`.
 
 ---
 
