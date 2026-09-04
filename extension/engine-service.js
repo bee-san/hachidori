@@ -1,4 +1,11 @@
-import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
+import {
+  httpsUrl,
+  MANAGED_DICTIONARY_CHANGED,
+  managedDictionaryFingerprint,
+  managedDictionaryMatches,
+  recommendedDictionarySource,
+  recommendedDownloadUrlMatches,
+} from "./managed-dictionary-source.js";
 
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
@@ -18,9 +25,6 @@ const GENERATION_PREFIX = ".hdw-generation-";
 const GENERATION_NAME = /^\.hdw-generation-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const IMPORT_ZIP = "/.hdw-archive.zip";
 const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
-const RECOMMENDED_BY_ID = new Map(
-  RECOMMENDED_DICTIONARIES.map((entry) => [entry.sourceId, entry]),
-);
 
 // Index into this array is the `kind` argument of hdw_add_dict.
 const KINDS = ["term", "freq", "pitch", "kanji"];
@@ -381,49 +385,14 @@ function recommendedSourceForImport(message) {
   if (sourceId === null && finalUrl === null) {
     return null;
   }
-  const source = RECOMMENDED_BY_ID.get(sourceId);
+  const source = recommendedDictionarySource(sourceId);
   if (!source) {
     throw new Error("the recommended import names an unknown catalogue source");
   }
-  if (finalUrl === null || !recommendedFinalUrlMatches(source, finalUrl)) {
+  if (finalUrl !== null && !recommendedDownloadUrlMatches(source, finalUrl)) {
     throw new Error(`${source.name} downloaded from an unexpected final URL`);
   }
   return source;
-}
-
-function recommendedFinalUrlMatches(source, value) {
-  let finalUrl;
-  try {
-    finalUrl = new URL(value);
-  } catch {
-    return false;
-  }
-  if (finalUrl.protocol !== "https:" || finalUrl.username !== "" || finalUrl.password !== "") {
-    return false;
-  }
-  if (finalUrl.href === new URL(source.downloadUrl).href) {
-    return true;
-  }
-  if (source.githubRepository === null) {
-    return false;
-  }
-  if (finalUrl.hostname === "github.com") {
-    const prefix = `/${source.githubRepository}/releases/download/`;
-    const rest = finalUrl.pathname.startsWith(prefix) ? finalUrl.pathname.slice(prefix.length) : "";
-    return rest.includes("/") && decodeURIComponent(rest.slice(rest.lastIndexOf("/") + 1)) === source.archiveName;
-  }
-  if (finalUrl.hostname !== "release-assets.githubusercontent.com") {
-    return false;
-  }
-  const assetPrefix = `/github-production-release-asset/${source.githubRepositoryId}/`;
-  if (!finalUrl.pathname.startsWith(assetPrefix)) {
-    return false;
-  }
-  const disposition = finalUrl.searchParams.get("response-content-disposition")
-    ?? finalUrl.searchParams.get("rscd")
-    ?? "";
-  const match = /(?:^|;)\s*filename="?([^";]+)"?/iu.exec(disposition);
-  return match?.[1] === source.archiveName;
 }
 
 function capabilities(value) {
@@ -574,18 +543,29 @@ async function readStoredDictionaries() {
   return state?.dictionaries ?? [];
 }
 
+function sameJsonValue(left, right) {
+  if (left === right) {
+    return true;
+  }
+  if (left === null || right === null
+      || typeof left !== "object" || typeof right !== "object") {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameJsonValue(value, right[index]));
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key) =>
+      Object.hasOwn(right, key) && sameJsonValue(left[key], right[key]));
+}
+
 function sameDictionaries(left, right) {
-  return left.length === right.length && left.every((dictionary, index) => {
-    const other = right[index];
-    if (dictionary === null || other === null
-        || typeof dictionary !== "object" || typeof other !== "object") {
-      return dictionary === other;
-    }
-    const keys = Object.keys(dictionary);
-    return keys.length === Object.keys(other).length
-      && keys.every((key) => Object.hasOwn(other, key)
-        && dictionary[key] === other[key]);
-  });
+  return sameJsonValue(left, right);
 }
 
 // A service worker can commit the CAS and disappear before its reply reaches
@@ -819,7 +799,7 @@ async function reloadFromStorage() {
     const committed = await reconcile();
     publishLoadedDictionaries(committed.loadedCount);
     reloadError = null;
-    await cleanupCommittedDictionaries(committed.state);
+    await cleanupCommittedDictionaries();
   } catch (error) {
     reloadError = asError(error);
     throw reloadError;
@@ -935,9 +915,19 @@ function normaliseReport(raw) {
   return report;
 }
 
-function withImport(stored, generated, recommendedSource) {
-  let existingIndex = recommendedSource === null ? -1 : stored.findIndex((dictionary) =>
-    optionalText(dictionary?.sourceId) === recommendedSource.sourceId);
+function withImport(stored, generated, recommendedSource, managedSource) {
+  let existingIndex = managedSource === null ? -1 : stored.findIndex((dictionary) =>
+    dictionary?.id === managedSource.fingerprint.id);
+  if (managedSource !== null) {
+    const existing = stored[existingIndex];
+    if (existingIndex < 0 || !managedDictionaryMatches(existing, managedSource.fingerprint)) {
+      throw new Error(MANAGED_DICTIONARY_CHANGED);
+    }
+  }
+  if (existingIndex < 0 && recommendedSource !== null) {
+    existingIndex = stored.findIndex((dictionary) =>
+      optionalText(dictionary?.sourceId) === recommendedSource.sourceId);
+  }
   if (existingIndex < 0 && generated.indexUrl !== null) {
     existingIndex = stored.findIndex((dictionary) => dictionary?.indexUrl === generated.indexUrl);
   }
@@ -950,20 +940,41 @@ function withImport(stored, generated, recommendedSource) {
       ? generated
       : withRecommendedSource(generated, recommendedSource)];
   }
+  const collision = stored.some((dictionary, index) =>
+    index !== existingIndex
+      && (dictionary?.id === generated.id || text(dictionary?.title) === generated.title));
+  if (collision) {
+    throw new Error(`a dictionary named ${generated.title} is already installed`);
+  }
   const next = [...stored];
-  const replacement = withStoredPresentation(generated, stored[existingIndex]);
+  let replacement = {
+    ...withStoredPresentation(generated, stored[existingIndex]),
+    lastUpdateCheck: null,
+  };
+  if (managedSource !== null) {
+    replacement = {
+      ...replacement,
+      isUpdatable: true,
+      indexUrl: managedSource.fingerprint.source.indexUrl,
+      downloadUrl: managedSource.fingerprint.source.downloadUrl,
+      lastUpdateCheck: {
+        checkedAt: managedSource.checkedAt,
+        status: "up-to-date",
+        remoteRevision: generated.revision,
+        error: null,
+      },
+    };
+  }
   next[existingIndex] = recommendedSource === null
     ? replacement
     : withRecommendedSource(replacement, recommendedSource);
   return next;
 }
 
-async function cleanupCommittedDictionaries(committed) {
+async function cleanupCommittedDictionaries() {
   try {
     const { state } = await readDictionaryStorage();
-    if (state === null
-        || state.revision !== committed.revision
-        || !sameDictionaries(state.dictionaries, committed.dictionaries)) {
+    if (state === null) {
       return;
     }
     await cleanupUnreferencedDictionaries(state.dictionaries);
@@ -972,19 +983,37 @@ async function cleanupCommittedDictionaries(committed) {
   }
 }
 
-async function commitImportedGeneration(generationRoot, report, recommendedSource) {
+async function commitImportedGeneration(
+  generationRoot,
+  report,
+  recommendedSource,
+  managedSource,
+  expectedRevision,
+) {
   const generated = await packageFromIndex(`${generationRoot}/${report.title}`);
   if (generated.title !== report.title) {
     throw new Error("the imported dictionary title changed while it was being committed");
+  }
+  if (expectedRevision !== null && generated.revision !== expectedRevision) {
+    throw new Error("the downloaded dictionary revision did not match its update index");
+  }
+  if (managedSource !== null
+      && httpsUrl(generated.indexUrl) !== managedSource.fingerprint.source.indexUrl) {
+    throw new Error("the downloaded dictionary did not match its update source");
   }
   if (recommendedSource !== null) {
     validateRecommendedImport(recommendedSource, report, generated);
   }
   const committed = await commitDictionaryCandidate((snapshot) =>
-    withImport(snapshot.state?.dictionaries ?? [], generated, recommendedSource));
+    withImport(
+      snapshot.state?.dictionaries ?? [],
+      generated,
+      recommendedSource,
+      managedSource,
+    ));
   publishLoadedDictionaries(committed.loadedCount);
   reloadError = null;
-  await cleanupCommittedDictionaries(committed.state);
+  await cleanupCommittedDictionaries();
   return committed.state;
 }
 
@@ -1076,6 +1105,99 @@ async function importDictionaryArchive(response, archivePath, generationRoot, im
       // Never written, or already gone.
     }
   }
+}
+
+async function managedSourceForImport(message, recommendedSource) {
+  const requested = message?.managedFingerprint;
+  if (requested === null || requested === undefined) {
+    return null;
+  }
+  const dictionary = (await readStoredDictionaries()).find((entry) => entry?.id === requested?.id);
+  if (!managedDictionaryMatches(dictionary, requested)) {
+    throw new Error(MANAGED_DICTIONARY_CHANGED);
+  }
+  const fingerprint = managedDictionaryFingerprint(dictionary);
+  const isRecommended = fingerprint.source.kind === "recommended";
+  if ((isRecommended && recommendedSource?.sourceId !== fingerprint.source.sourceId)
+      || (!isRecommended && recommendedSource !== null)) {
+    throw new Error(MANAGED_DICTIONARY_CHANGED);
+  }
+  const archiveUrl = httpsUrl(message?.archiveUrl);
+  if (archiveUrl === null
+      || (isRecommended && archiveUrl !== fingerprint.source.downloadUrl)) {
+    throw new Error("the managed dictionary update carried an invalid archive URL");
+  }
+  const checkedAt = typeof message?.checkedAt === "string" && message.checkedAt !== ""
+    ? message.checkedAt
+    : null;
+  if (checkedAt === null) {
+    throw new Error("the managed dictionary update carried no check time");
+  }
+  return {
+    fingerprint,
+    archiveUrl,
+    checkedAt,
+  };
+}
+
+function validateLocalImportRequest(message, managedSource, recommendedSource) {
+  if (managedSource !== null) {
+    throw new Error("the managed import request carried a blob URL");
+  }
+  if (recommendedSource !== null
+      && !recommendedDownloadUrlMatches(recommendedSource, optionalText(message.finalUrl))) {
+    throw new Error(`${recommendedSource.name} downloaded from an unexpected final URL`);
+  }
+}
+
+function validateManagedImportRequest(managedSource, expectedRevision) {
+  if (managedSource === null) {
+    throw new Error("the import request carried no archive URL");
+  }
+  if (expectedRevision === null) {
+    throw new Error("the managed import request carried no expected revision");
+  }
+}
+
+async function prepareImportRequest(message) {
+  const blobUrl = text(message.blobUrl);
+  const importLowRam = typeof message.lowRam === "boolean" ? message.lowRam : lowRam;
+  const recommendedSource = recommendedSourceForImport(message);
+  const managedSource = await managedSourceForImport(message, recommendedSource);
+  const expectedRevision = optionalText(message.expectedRevision);
+  const remote = blobUrl === "";
+  if (remote) {
+    validateManagedImportRequest(managedSource, expectedRevision);
+  } else {
+    validateLocalImportRequest(message, managedSource, recommendedSource);
+  }
+  return {
+    archiveUrl: remote ? managedSource.archiveUrl : blobUrl,
+    expectedRevision,
+    fileName: text(message.fileName) || recommendedSource?.archiveName || "the archive",
+    importLowRam,
+    managedSource,
+    recommendedSource,
+    remote,
+  };
+}
+
+function remoteArchiveFinalUrlMatches(request, finalUrl) {
+  return request.recommendedSource === null
+    ? httpsUrl(finalUrl) !== null
+    : recommendedDownloadUrlMatches(request.recommendedSource, finalUrl);
+}
+
+async function fetchImportArchive(request) {
+  const response = await fetch(request.archiveUrl, { credentials: "omit" });
+  if (!response.ok) {
+    throw new Error(`could not read ${request.fileName}: HTTP ${response.status}`);
+  }
+  if (request.remote
+      && !remoteArchiveFinalUrlMatches(request, optionalText(response.url))) {
+    throw new Error(`${request.fileName} downloaded from an unexpected final URL`);
+  }
+  return response;
 }
 
 const HANDLERS = {
@@ -1191,18 +1313,15 @@ const HANDLERS = {
 
   async hd_import(message) {
     requireEngine();
-    const blobUrl = text(message.blobUrl);
-    const fileName = text(message.fileName) || "the archive";
-    const importLowRam = typeof message.lowRam === "boolean" ? message.lowRam : lowRam;
-    if (blobUrl === "") {
-      throw new Error("the import request carried no archive URL");
-    }
-    const recommendedSource = recommendedSourceForImport(message);
-
-    const response = await fetch(blobUrl);
-    if (!response.ok) {
-      throw new Error(`could not read ${fileName}: HTTP ${response.status}`);
-    }
+    const request = await prepareImportRequest(message);
+    const response = await fetchImportArchive(request);
+    const {
+      expectedRevision,
+      fileName,
+      importLowRam,
+      managedSource,
+      recommendedSource,
+    } = request;
     const generationRoot = createGenerationRoot();
     // Unload before importing: the loaded dictionaries are mapped into the same
     // 32-bit address space the importer needs. Public count/generation state is
@@ -1230,7 +1349,13 @@ const HANDLERS = {
       }
       if (report.success) {
         await persistFilesystem();
-        await commitImportedGeneration(generationRoot, report, recommendedSource);
+        await commitImportedGeneration(
+          generationRoot,
+          report,
+          recommendedSource,
+          managedSource,
+          expectedRevision,
+        );
       } else {
         const failure = new Error(report.error || `${fileName} could not be imported`);
         rollbackAttempted = true;
@@ -1351,7 +1476,7 @@ const HANDLERS = {
     if (reply.ok === true) {
       publishLoadedDictionaries(loadedCount);
       reloadError = null;
-      await cleanupCommittedDictionaries(reply.state);
+      await cleanupCommittedDictionaries();
       return {};
     }
 

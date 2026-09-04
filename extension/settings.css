@@ -314,6 +314,40 @@ code {
   font-size: 12.5px;
 }
 
+.update-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 18px;
+}
+
+.update-schedule-field {
+  min-width: 220px;
+}
+
+.update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.update-last-checked,
+.update-state {
+  margin: 0;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.update-state.is-ready,
+.dict-update-status.is-ready {
+  color: var(--ok);
+}
+
+.update-state.is-error,
+.dict-update-status.is-error {
+  color: var(--error);
+}
+
 /* Indeterminate for the current archive: hdw_import has no byte progress
    callback. The status line reports completed archives across the batch. */
 .track {
@@ -512,10 +546,15 @@ code {
 }
 
 .dict-canonical,
-.dict-metadata {
+.dict-metadata,
+.dict-update-status {
   color: var(--text-dim);
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.dict-update-status.is-available {
+  color: var(--accent);
 }
 
 .dict-badges {

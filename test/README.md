@@ -249,7 +249,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 130 checks, all of
+full request→reply round trip per contract-C message type. 152 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -261,11 +261,12 @@ The fakes cover only the Chrome surface the extension actually touches:
 | message bus | models the two rules `background.js` depends on — `sendMessage` never delivers to the sender, and an extension context never reaches a content script. That is what makes the `relayed: true` guard testable. |
 | `chrome.storage.local` | in-memory, with `onChanged`, so revision conflicts, legacy migration, and the service worker's ownership of `dictionaryState` are real. Given to the worker and the settings page only: an offscreen document has no storage. |
 | `indexedDB` | one object store keyed by path plus a `timestamp` index, which is all Emscripten's IDBFS uses. Enough to prove `FS.syncfs(false)` actually wrote something. |
-| `fetch` | serves `blob:` URLs out of a map (the import path), `chrome-extension://` URLs off disk (`render/reader.css`), and deterministic responses for Settings catalogue downloads |
+| `fetch` | serves `blob:` URLs out of a map (the import path), `chrome-extension://` URLs off disk (`render/reader.css`), and deterministic catalogue and managed-update responses |
 
-Each script gets its own `chrome` object. `background.js` and the render modules
-have no `import` statements, so they run in a `node:vm` context; `offscreen.js` is
-a real ES module and reads the shared global, which is the one wired to the bus as
+Each script gets its own `chrome` object. The harness concatenates the shared
+managed-source module into `background.js`, strips those ES-module boundaries,
+and runs the worker and render code in `node:vm`; `offscreen.js` is a real ES
+module and reads the shared global, which is the one wired to the bus as
 `"offscreen"`.
 
 What it proves, in order:
@@ -302,25 +303,34 @@ What it proves, in order:
    pins the four catalogue entries and publisher links, download/import phases,
    atomic source validation, immediate starter-card hiding, failure continuation,
    and a retry containing only missing entries.
-3. **Every read path** with the logical fixture package expanded to all four native kinds:
+3. **Managed dictionary updates.** Manual checks cover every managed package,
+   including disabled packages, without downloading an archive; per-package and
+   global results persist. Manual installs and the one global alarm both recheck
+   before replacing a generation, preserve presentation and groups, commit
+   successful status atomically, and retain a working generation after failure.
+   Generic and
+   catalogue-pinned source rules, final URLs, rotating HTTPS archives, stale
+   fingerprints, title collisions, lost replies, concurrent group-only state,
+   injected blob archives, cleanup, and alarm recreation are all exercised.
+4. **Every read path** with the logical fixture package expanded to all four native kinds:
    `hd_lookup` and selected-dictionary `hd_lookup_dictionary` (payload keys,
    deinflection trace, glossary still a raw string,
    frequencies, pitches), `hd_kanji` (including the string `onyomi`/`kunyomi`/
    `tags` of contract B and the `null` for a miss), `hd_styles`, `hd_media` (a
    `data:` URL matching the pattern `glossary.js` accepts, and `null` for an
    absent path).
-4. **A no-match lookup still reports the real `dictionaryCount`.** `content.js`
+5. **A no-match lookup still reports the real `dictionaryCount`.** `content.js`
    renders "no dictionaries imported" on 0, and 0 is also what the engine's error
    fallback returns, so `offscreen.js` reads `hdw_last_error` after every
    string-returning call and fails the request rather than forwarding an
    ambiguous empty.
-5. **Error paths.** An unknown type is answered as `<type>_result` with
+6. **Error paths.** An unknown type is answered as `<type>_result` with
    `ok: false` rather than dropped; a non-zip import fails with a report attached
    and leaves the previously loaded set intact; an import with no blob URL is
    rejected rather than thrown. A valid import with a declared length above the
    former byte cap succeeds, and a counting filesystem sink receives an actual
    streamed body one byte beyond that boundary.
-6. **The renderer against the engine's own bytes.** This is the check that a
+7. **The renderer against the engine's own bytes.** This is the check that a
    hand-written payload cannot make: the actual `hd_lookup` / `hd_kanji` /
    `hd_styles` / `hd_media` replies go into the real `createPopupView`, and the
    headword, the parsed structured content, the `data-hoshidicts-dictionary`
@@ -330,13 +340,13 @@ What it proves, in order:
    of one term-bank row, so each of its elements must land in its own
    `li.gloss-item` — appending them into one parent runs two senses together with
    no separator, which is asserted against the fixture's own two-sense entry.
-7. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
+8. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
    and removing an unknown title does not bump `generation`. Removal strict-loads
    the remaining manifest and commits it before deleting the old root. The
    failure case injects a `chrome.storage.local.set` rejection: the original
    generation and live engine must remain intact. Startup recovery also preserves
    a legitimate legacy dictionary whose title is `.hdw-remove`.
-8. **A trained (`.hoshidicts_4`) dictionary through the extension layer.**
+9. **A trained (`.hoshidicts_4`) dictionary through the extension layer.**
    Everything above imports the 6-row fixture, which is under the zstd training
    floor, so nothing outside `node-smoke.mjs` had ever seen the layout the current
    engine writes for a real dictionary. `buildTrainedZip()` goes through
@@ -415,6 +425,14 @@ opt-in), then relaunches against the same profile and hovers again with no
 re-import — which is the only test that proves direct OPFS persistence through a
 full Chrome restart.
 
+Managed-update indexes are intercepted on the service-worker CDP target and
+archives on the offscreen-document target, which also covers its engine worker;
+the harness deliberately does not intercept the dedicated worker directly. The
+browser assertions prove check-only behavior for enabled and disabled packages,
+persisted Settings status, atomic Update all replacement, the one global periodic
+alarm, scheduled installation for a disabled package, failure rollback without
+OPFS debris, and alarm recreation after the exact worker version stops.
+
 ### the profile
 
 `/tmp/hachidori-e2e-profile-<pid>` unless `HACHIDORI_PROFILE` says otherwise, and the path is
@@ -434,7 +452,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 67 assertions, and the summary line
+`PLANNED` at the top of the file names all 75 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -454,15 +472,15 @@ the stack, every assertion that never ran, and the offscreen document's console.
 
 ### no sleeps
 
-There is no `setTimeout` standing in for synchronisation. The content script
+There is no fixed sleep standing in for synchronisation. The content script
 builds its host lazily on the first hover, so there is nothing in the DOM to wait
 for beforehand and a mouse move that lands before its listeners attach is simply
 lost; `hoverForPopup()` therefore re-fires `mousemove` (stepping off the word and
 back on, because `mousemove` needs a position change) until the popup is
-actually visible. The only remaining `setTimeout`s are the polls inside
-`waitForVisible`/`waitForHidden` and the one that re-reads the popup while
-`hd_media` is still answering — the `<img>` can arrive a beat after the glossary
-text it sits in, so that loop stops at the first read that has it.
+actually visible. Bounded polls wait for observable DOM, storage, OPFS, CDP, or
+alarm state. The scheduled-update cases create real near-future Chrome alarms
+and wait for both package state and the global completed-check timestamp; the
+`<img>` poll likewise stops at the first read that contains the media response.
 
 ### what the assertions are pinned to
 
@@ -488,9 +506,10 @@ text it sits in, so that loop stops at the first read that has it.
   containing `.zip`, not just for existing. The three-file selection must retain
   success, failure, and success outcomes in order and clear the picker afterwards.
 - Reimport in that batch keeps the logical package's stable ID, position, alias,
-  enabled/favourite state, managed update source, and last-check state. The
-  Settings row then exposes its canonical title, alias, metadata, and all five
-  capability badges, while the actual checkbox is used for both an enable and a
+  enabled/favourite state, and managed update source while clearing stale
+  generation-bound check state. The Settings row then exposes its canonical
+  title, alias, metadata, and all five capability badges, while the actual
+  checkbox is used for both an enable and a
   disable commit.
 - Stable IDs are checked against the two fixtures' exact title-derived values,
   not only against a hexadecimal shape, and the two IDs must differ.
@@ -505,6 +524,11 @@ text it sits in, so that loop stops at the first read that has it.
   committed generation must be restored, queried again, and removed; removal
   clears settings rows, deletes its root, and turns the same query into a checked
   miss.
+- The managed-update block counts both index and archive requests. **Check now**
+  must touch both indexes and neither archive; Update all and alarm-triggered
+  runs must replace the intended disabled package while preserving its stable
+  identity and presentation. A revision mismatch must leave the exact OPFS path
+  set unchanged and the engine ready before the service worker is restarted.
 
 Two things about reading the popup:
 

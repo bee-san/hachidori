@@ -49,6 +49,34 @@
         </p>
       </section>
 
+      <section class="card" aria-labelledby="updates-heading">
+        <div class="card-head">
+          <h2 id="updates-heading">Dictionary updates</h2>
+          <p class="hint">
+            Check every managed source now, or let Hachidori check and install updates on one global schedule.
+            Dictionaries imported without an update source stay local-only.
+          </p>
+        </div>
+        <div class="update-controls">
+          <label class="field update-schedule-field">
+            <span class="field-label">Automatic updates</span>
+            <select id="update-schedule">
+              <option value="off">Off</option>
+              <option value="hourly">Every hour</option>
+              <option value="daily">Every day</option>
+              <option value="weekly">Every week</option>
+              <option value="monthly">Every month</option>
+            </select>
+          </label>
+          <div class="update-actions">
+            <button type="button" class="ghost" id="update-check-now">Check now</button>
+            <button type="button" class="primary-button" id="update-all" disabled>Update all available</button>
+          </div>
+        </div>
+        <p class="update-last-checked" id="update-last-checked">Never checked.</p>
+        <output class="update-state" id="update-state" aria-live="polite"></output>
+      </section>
+
       <section class="card" aria-labelledby="dictionaries-heading">
         <div class="card-head">
           <h2 id="dictionaries-heading">Dictionaries</h2>
@@ -186,6 +214,7 @@
           <span class="dict-canonical"></span>
           <div class="dict-badges" aria-label="Dictionary entry counts"></div>
           <span class="dict-metadata"></span>
+          <span class="dict-update-status"></span>
           <label class="dict-alias">
             <span class="cell-label">Display name</span>
             <input class="dict-display-name" type="text" autocomplete="off" aria-label="Display name" title="Display name" />
@@ -203,6 +232,7 @@
             <input class="dict-position-input" type="number" min="1" step="1" />
           </label>
           <button type="button" class="ghost dict-move">Move</button>
+          <button type="button" class="ghost dict-update" hidden>Update</button>
           <button type="button" class="ghost danger dict-remove" aria-label="Remove" title="Remove">Remove</button>
         </span>
       </li>

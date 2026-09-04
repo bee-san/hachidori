@@ -8,10 +8,15 @@ import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
 } from "./dictionary-groups.js";
+import {
+  managedDictionarySource,
+  managedUpdateSchedule,
+} from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
+const UPDATE_TARGET = "hachidori-updates";
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
 const MODIFIERS = ["none", "shift", "ctrl", "alt"];
 const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
@@ -41,7 +46,9 @@ const numberFormat = new Intl.NumberFormat();
 let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] };
 let dictionaries = dictionaryState.dictionaries;
 let options = { ...DEFAULT_OPTIONS };
+let updateSettings = { schedule: "off", lastCheckedAt: null };
 let importing = false;
+let updating = false;
 let removing = false;
 let committing = false;
 let pendingDictionaryCommits = 0;
@@ -154,6 +161,13 @@ function normaliseDictionaryState(value) {
     revision,
     dictionaries,
     groups: normaliseDictionaryGroups(value?.groups, dictionaries),
+  };
+}
+
+function normaliseUpdateSettings(value) {
+  return {
+    schedule: managedUpdateSchedule(value?.schedule) ?? "off",
+    lastCheckedAt: typeof value?.lastCheckedAt === "string" ? value.lastCheckedAt : null,
   };
 }
 
@@ -299,6 +313,39 @@ function setImportState(message, tone) {
   element("import-progress").hidden = tone !== "busy";
 }
 
+function setUpdateState(message, tone = "") {
+  const state = element("update-state");
+  state.textContent = message;
+  state.classList.toggle("is-error", tone === "error");
+  state.classList.toggle("is-ready", tone === "ready");
+}
+
+function isUpdateCheckable(dictionary) {
+  return managedDictionarySource(dictionary) !== null;
+}
+
+function availableUpdates() {
+  return dictionaries.filter((dictionary) =>
+    isUpdateCheckable(dictionary) && dictionary.lastUpdateCheck?.status === "update-available");
+}
+
+function renderUpdateControls() {
+  const schedule = element("update-schedule");
+  if (schedule !== document.activeElement) {
+    schedule.value = updateSettings.schedule;
+  }
+  const checked = updateSettings.lastCheckedAt === null
+    ? null
+    : new Date(updateSettings.lastCheckedAt);
+  element("update-last-checked").textContent = checked !== null && !Number.isNaN(checked.getTime())
+    ? `Last checked ${checked.toLocaleString()}.`
+    : "Never checked.";
+  const busy = updating || importing || removing || committing;
+  element("update-all").disabled = busy || availableUpdates().length === 0;
+  element("update-check-now").disabled = busy;
+  schedule.disabled = busy;
+}
+
 function clearImportResults() {
   const detail = element("import-detail");
   detail.textContent = "";
@@ -344,7 +391,7 @@ function renderRecommendedActions() {
 }
 
 function setControlsDisabled(disabled) {
-  const blocked = disabled || removing;
+  const blocked = disabled || removing || updating;
   element("import-file").disabled = blocked || committing;
   element("install-recommended").disabled = blocked || committing;
   element("retry-recommended").disabled = blocked || committing;
@@ -363,6 +410,7 @@ function setControlsDisabled(disabled) {
   for (const control of element("dict-controls").querySelectorAll(".dict-bulk-actions button")) {
     control.disabled = blocked || selectedDictionaryIds.size === 0;
   }
+  renderUpdateControls();
 }
 
 function elapsedSince(started) {
@@ -576,8 +624,44 @@ function dictionaryMetadata(entry) {
       details.push(`Imported ${installed.toLocaleString()}`);
     }
   }
-  details.push(entry.isUpdatable && entry.indexUrl && entry.downloadUrl ? "Update source available" : "Local archive");
+  details.push(isUpdateCheckable(entry) ? "Update source available" : "Local archive");
   return details.join(" · ");
+}
+
+function dictionaryUpdateStatus(entry) {
+  if (!isUpdateCheckable(entry)) {
+    return { text: "Not update-checkable", tone: "" };
+  }
+  const check = entry.lastUpdateCheck;
+  if (check?.status === "up-to-date") {
+    return { text: "Up to date", tone: "ready" };
+  }
+  if (check?.status === "update-available") {
+    const revision = check.remoteRevision ? `: ${check.remoteRevision}` : "";
+    const failure = check.error ? ` · Update failed: ${check.error}` : "";
+    return { text: `Update available${revision}${failure}`, tone: "available" };
+  }
+  if (check?.status === "check-failed") {
+    return { text: `Check failed: ${check.error || "unknown error"}`, tone: "error" };
+  }
+  return { text: "Not checked", tone: "" };
+}
+
+function bindDictionaryUpdate(row, entry) {
+  const status = dictionaryUpdateStatus(entry);
+  const output = row.querySelector(".dict-update-status");
+  output.textContent = status.text;
+  output.classList.toggle("is-ready", status.tone === "ready");
+  output.classList.toggle("is-available", status.tone === "available");
+  output.classList.toggle("is-error", status.tone === "error");
+
+  const update = row.querySelector(".dict-update");
+  update.hidden = entry.lastUpdateCheck?.status !== "update-available" || !isUpdateCheckable(entry);
+  update.setAttribute("aria-label", `Update ${dictionaryLabel(entry)}`);
+  update.title = `Update ${dictionaryLabel(entry)}`;
+  update.addEventListener("click", () => {
+    void runManagedUpdate("hd_updates_install", [entry.id]);
+  });
 }
 
 function updateItemById(current, id, update) {
@@ -635,6 +719,7 @@ function focusedManagementControl() {
       "dict-down",
       "dict-position-input",
       "dict-move",
+      "dict-update",
       "dict-remove",
     ].find((name) => active.classList.contains(name));
     return controlClass
@@ -830,6 +915,7 @@ function renderDictionaryRow(template, entry, index) {
   addCountBadge(badges, "Kanji", entry.kanjiCount);
   addCountBadge(badges, "Media", entry.mediaCount);
   row.querySelector(".dict-metadata").textContent = dictionaryMetadata(entry);
+  bindDictionaryUpdate(row, entry);
 
   bindDictionaryAlias(row, entry);
   bindDictionaryEnabled(row, entry);
@@ -1220,6 +1306,64 @@ function installMissingRecommendedDictionaries() {
   }
 }
 
+function updateOutcomeSummary(type, outcomes) {
+  const failed = outcomes.filter((outcome) => outcome.status === "check-failed" || outcome.error).length;
+  if (type === "hd_updates_check") {
+    const available = outcomes.filter((outcome) => outcome.status === "update-available").length;
+    const dictionariesLabel = outcomes.length === 1 ? "managed dictionary" : "managed dictionaries";
+    const updatesLabel = available === 1 ? "update" : "updates";
+    return {
+      message: `Checked ${outcomes.length} ${dictionariesLabel} — ${available} ${updatesLabel} available, ${failed} failed.`,
+      tone: failed === 0 ? "ready" : "error",
+    };
+  }
+  const updated = outcomes.filter((outcome) => outcome.status === "updated").length;
+  const updatesLabel = outcomes.length === 1 ? "dictionary update" : "dictionary updates";
+  return {
+    message: `Finished ${outcomes.length} ${updatesLabel} — ${updated} updated, ${failed} failed.`,
+    tone: failed === 0 ? "ready" : "error",
+  };
+}
+
+async function runManagedUpdate(type, dictionaryIds = null) {
+  if (updating) {
+    return;
+  }
+  updating = true;
+  setControlsDisabled(true);
+  setUpdateState(type === "hd_updates_check" ? "Checking managed dictionaries…" : "Updating dictionaries…");
+  try {
+    const fields = dictionaryIds === null ? {} : { dictionaryIds };
+    const reply = await send(type, fields, UPDATE_TARGET);
+    if (!reply.ok) {
+      throw new Error(reply.error || "the dictionary update operation failed");
+    }
+    updateSettings = normaliseUpdateSettings(reply.settings);
+    await reloadDictionaries();
+    const summary = updateOutcomeSummary(type, reply.outcomes ?? []);
+    setUpdateState(summary.message, summary.tone);
+  } catch (error) {
+    setUpdateState(`Dictionary updates failed: ${describe(error)}`, "error");
+  } finally {
+    updating = false;
+    setControlsDisabled(importing);
+  }
+}
+
+async function writeUpdateSchedule(schedule) {
+  try {
+    const reply = await send("hd_updates_schedule", { schedule }, UPDATE_TARGET);
+    if (!reply.ok) {
+      throw new Error(reply.error || "the dictionary update schedule could not be saved");
+    }
+    updateSettings = normaliseUpdateSettings(reply.settings);
+    renderUpdateControls();
+  } catch (error) {
+    element("update-schedule").value = updateSettings.schedule;
+    setUpdateState(`Could not save the update schedule: ${describe(error)}`, "error");
+  }
+}
+
 function attachHandlers() {
   const file = element("import-file");
   file.addEventListener("change", () => {
@@ -1278,6 +1422,15 @@ function attachHandlers() {
 
   element("install-recommended").addEventListener("click", installMissingRecommendedDictionaries);
   element("retry-recommended").addEventListener("click", installMissingRecommendedDictionaries);
+  element("update-check-now").addEventListener("click", () => {
+    void runManagedUpdate("hd_updates_check");
+  });
+  element("update-all").addEventListener("click", () => {
+    void runManagedUpdate("hd_updates_install", availableUpdates().map((dictionary) => dictionary.id));
+  });
+  element("update-schedule").addEventListener("change", (event) => {
+    void writeUpdateSchedule(event.target.value);
+  });
 
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
@@ -1371,6 +1524,10 @@ function handleStorageChange(changes, area) {
   if (changes.options) {
     handleOptionsChange(changes.options);
   }
+  if (changes.dictionaryUpdates) {
+    updateSettings = normaliseUpdateSettings(changes.dictionaryUpdates.newValue);
+    renderUpdateControls();
+  }
 }
 
 // Lookup options are read per request by the content script, so nothing needs a
@@ -1389,13 +1546,15 @@ async function writeOptions() {
 
 async function start() {
   renderRecommendedCatalogue();
-  const stored = await chrome.storage.local.get("options");
+  const stored = await chrome.storage.local.get(["options", "dictionaryUpdates"]);
   options = normaliseOptions(stored.options);
+  updateSettings = normaliseUpdateSettings(stored.dictionaryUpdates);
   attachHandlers();
   if (await reloadDictionaries()) {
     await writeOptions();
   }
   renderOptions();
+  renderUpdateControls();
   await refreshStatus();
 }
 

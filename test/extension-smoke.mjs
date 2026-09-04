@@ -35,6 +35,7 @@ import {
   buildTitledZip,
   buildTrainedZip,
 } from "./make-fixture.mjs";
+import { recommendedIndexUrlMatches } from "../extension/managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -335,6 +336,23 @@ function makeStorage() {
   const local = new Map();
   const changeListeners = [];
   let pendingSetFailure = null;
+  let sortDictionaryKeysOnRead = false;
+
+  function withSortedDictionaryKeys(value) {
+    if (Array.isArray(value)) {
+      return value.map(withSortedDictionaryKeys);
+    }
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+    const keys = "id" in value && "title" in value && "path" in value
+      ? Object.keys(value).sort()
+      : Object.keys(value);
+    return Object.fromEntries(keys.map((key) => [
+      key,
+      withSortedDictionaryKeys(value[key]),
+    ]));
+  }
 
   function read(query) {
     if (query === null || query === undefined) {
@@ -363,7 +381,8 @@ function makeStorage() {
     return {
       local: {
         get(query, callback) {
-          const value = structuredClone(read(query));
+          const stored = structuredClone(read(query));
+          const value = sortDictionaryKeysOnRead ? withSortedDictionaryKeys(stored) : stored;
           if (typeof callback === "function") {
             setTimeout(() => callback(value), 0);
             return undefined;
@@ -431,14 +450,60 @@ function makeStorage() {
     failNextSet(message) {
       pendingSetFailure = new Error(message);
     },
+    sortDictionaryKeysOnRead(value) {
+      sortDictionaryKeysOnRead = value;
+    },
+  };
+}
+
+function makeEvent() {
+  const listeners = [];
+  return {
+    addListener(listener) {
+      listeners.push(listener);
+    },
+    removeListener(listener) {
+      const index = listeners.indexOf(listener);
+      if (index >= 0) listeners.splice(index, 1);
+    },
+    fire(...args) {
+      for (const listener of [...listeners]) listener(...args);
+    },
+  };
+}
+
+function makeAlarms() {
+  const values = new Map();
+  const onAlarm = makeEvent();
+  return {
+    api: {
+      async clear(name) {
+        return values.delete(name);
+      },
+      create(name, info) {
+        values.set(name, { name, ...structuredClone(info) });
+      },
+      async get(name) {
+        return values.has(name) ? structuredClone(values.get(name)) : undefined;
+      },
+      onAlarm,
+    },
+    fire(name) {
+      const alarm = values.get(name);
+      if (alarm) onAlarm.fire(structuredClone(alarm));
+    },
+    values,
   };
 }
 
 const offscreenState = { created: 0, exists: false, concurrent: 0, peakConcurrent: 0 };
 
-function makeChrome(owner, bus, storage) {
-  const events = () => ({ addListener() {}, removeListener() {} });
+function makeChrome(owner, bus, storage, alarms = makeAlarms()) {
+  const onInstalled = makeEvent();
+  const onStartup = makeEvent();
   return {
+    alarms: alarms.api,
+    __events: { onInstalled, onStartup },
     runtime: {
       id: "hachidorismokeextensionid",
       lastError: undefined,
@@ -454,8 +519,8 @@ function makeChrome(owner, bus, storage) {
         },
         removeListener() {},
       },
-      onInstalled: events(),
-      onStartup: events(),
+      onInstalled,
+      onStartup,
       sendMessage(message, callback) {
         const promise = bus.sendMessage(owner, message);
         if (typeof callback !== "function") {
@@ -496,11 +561,15 @@ function makeChrome(owner, bus, storage) {
 
 const blobUrls = new Map();
 const declaredLengthUrls = new Map();
+const remoteResponses = new Map();
 let nextBlobId = 0;
 
 function installFetch() {
   globalThis.fetch = async (input) => {
     const url = String(input);
+    if (remoteResponses.has(url)) {
+      return remoteResponses.get(url)(url);
+    }
     if (declaredLengthUrls.has(url)) {
       const { contentLength, bytes } = declaredLengthUrls.get(url);
       let offset = 0;
@@ -554,6 +623,46 @@ function installFetch() {
   };
 }
 
+function remoteJson(url, value, status = 200, finalUrl = url) {
+  remoteResponses.set(url, async () => ({
+    ok: status >= 200 && status < 300,
+    status,
+    url: finalUrl,
+    async json() {
+      return structuredClone(typeof value === "function" ? await value() : value);
+    },
+  }));
+}
+
+function remoteArchive(url, bytes, finalUrl = url, observed = null, beforeFirstChunk = null) {
+  remoteResponses.set(url, async () => {
+    if (observed) observed.count += 1;
+    let offset = 0;
+    let firstChunk = true;
+    return {
+      ok: true,
+      status: 200,
+      url: finalUrl,
+      headers: { get: () => null },
+      body: {
+        getReader: () => ({
+          async read() {
+            if (firstChunk) {
+              firstChunk = false;
+              await beforeFirstChunk?.();
+            }
+            if (offset >= bytes.byteLength) return { done: true, value: undefined };
+            const value = bytes.subarray(offset, Math.min(offset + 257, bytes.byteLength));
+            offset += value.byteLength;
+            return { done: false, value };
+          },
+          releaseLock() {},
+        }),
+      },
+    };
+  });
+}
+
 function createObjectURL(bytes) {
   nextBlobId += 1;
   const url = `blob:${EXTENSION_ORIGIN}/smoke-${nextBlobId}`;
@@ -587,14 +696,37 @@ function loadClassicScript(file, sandbox) {
   return context;
 }
 
+function loadBackgroundScript(sandbox) {
+  const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
+  const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
+  const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "");
+  const context = createContext(sandbox);
+  context.globalThis = context;
+  runInContext(
+    `${recommended.replace(/^export\s+/gmu, "")}\n`
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${background}`,
+    context,
+    { filename: resolve(EXTENSION, "background.js") },
+  );
+  return context;
+}
+
 function loadSettingsScript(window) {
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
+  const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
+    .replace(/^export\s+/gmu, "");
   const groups = readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
-  window.eval(`${recommended.replace(/^export\s+/gmu, "")}\n${groups}\n${settings}`);
+  window.eval(
+    `${recommended.replace(/^export\s+/gmu, "")}\n${managedSource}\n${groups}\n${settings}`,
+  );
 }
 
 // content.js cannot be driven here (it needs a page), so the one thing worth
@@ -702,6 +834,12 @@ function checkRecommendedDictionaries() {
     return;
   }
   pass("the recommended catalogue exists");
+  const manifest = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"));
+  check(
+    "the extension requests the browser alarm permission for managed updates",
+    manifest.permissions?.includes("alarms") === true,
+    JSON.stringify(manifest.permissions),
+  );
   const catalogueContract = (entry) => ({
     sourceId: entry.sourceId,
     name: entry.name,
@@ -826,6 +964,7 @@ async function main() {
 
   const bus = makeBus();
   const storage = makeStorage();
+  const alarms = makeAlarms();
 
   // offscreen.js is a real ES module, so it reads `chrome` off the shared global;
   // the scripts loaded into a vm context get their own chrome.
@@ -835,16 +974,17 @@ async function main() {
   // too. Withholding the rest is what lets this harness catch a call that only
   // fails in a browser: offscreen.js reading chrome.storage.local looked correct
   // here for as long as the fake handed it one.
-  const offscreenChrome = makeChrome("offscreen", bus, storage);
+  const offscreenChrome = makeChrome("offscreen", bus, storage, alarms);
   delete offscreenChrome.storage;
   delete offscreenChrome.offscreen;
   delete offscreenChrome.runtime.getContexts;
   globalThis.chrome = offscreenChrome;
 
-  const swChrome = makeChrome("sw", bus, storage);
-  loadClassicScript(resolve(EXTENSION, "background.js"), {
+  const swChrome = makeChrome("sw", bus, storage, alarms);
+  loadBackgroundScript({
     chrome: swChrome,
     console,
+    fetch: globalThis.fetch,
     setTimeout,
     clearTimeout,
     Promise,
@@ -858,9 +998,10 @@ async function main() {
     RegExp,
     Math,
     Date,
+    URL,
   });
 
-  const pageChrome = makeChrome("page", bus, storage);
+  const pageChrome = makeChrome("page", bus, storage, alarms);
   let counter = 0;
   async function request(type, fields = {}) {
     counter += 1;
@@ -953,12 +1094,40 @@ async function main() {
     return module;
   };
   let loseNextStateCasReply = false;
+  let failAfterCommittedRevision = null;
+  let advanceGroupsAfterCommittedRevision = null;
+  let advancedStateDuringCleanup = null;
   engineService.configureEngineService(
     async (message) => {
       const reply = await offscreenChrome.runtime.sendMessage(message);
+      if (message.type === "hd_state_cas"
+          && reply?.ok === true
+          && advanceGroupsAfterCommittedRevision !== null
+          && reply.state?.dictionaries?.some(
+            (dictionary) => dictionary.revision === advanceGroupsAfterCommittedRevision.revision,
+          )) {
+        const advance = advanceGroupsAfterCommittedRevision;
+        advanceGroupsAfterCommittedRevision = null;
+        advancedStateDuringCleanup = await offscreenChrome.runtime.sendMessage({
+          target: "hoshidicts-worker",
+          type: "hd_state_cas",
+          baseRevision: reply.state.revision,
+          dictionaries: reply.state.dictionaries,
+          groups: advance.groups,
+        });
+      }
       if (loseNextStateCasReply && message.type === "hd_state_cas") {
         loseNextStateCasReply = false;
         throw new Error("injected lost CAS reply");
+      }
+      if (message.type === "hd_state_cas"
+          && reply?.ok === true
+          && failAfterCommittedRevision !== null
+          && reply.state?.dictionaries?.some(
+            (dictionary) => dictionary.revision === failAfterCommittedRevision.revision,
+          )) {
+        storage.failNextSet(failAfterCommittedRevision.error);
+        failAfterCommittedRevision = null;
       }
       return reply;
     },
@@ -1256,6 +1425,34 @@ async function main() {
       && localUpdatePackage?.favorite === true,
     JSON.stringify({ localUpdateImport, localUpdateState }),
   );
+  const collisionRowsBefore = idb.keys("/dicts")
+    .filter((path) => path.includes("/dicts/.hdw-generation-"))
+    .sort();
+  const collidingLocalReimport = await request("hd_import", {
+    blobUrl: recommendedArchive({
+      title: FIXTURE_TITLE,
+      revision: "2026.09.06.collision",
+    }),
+    fileName: "colliding-local-reimport.zip",
+  });
+  const collisionState = await storedDictionaryState();
+  const collisionRowsAfter = idb.keys("/dicts")
+    .filter((path) => path.includes("/dicts/.hdw-generation-"))
+    .sort();
+  check(
+    "a local reimport matched by source cannot take another package's canonical title",
+    collidingLocalReimport.ok === false
+      && collidingLocalReimport.error?.includes("already installed")
+      && JSON.stringify(collisionState) === JSON.stringify(localUpdateState)
+      && JSON.stringify(collisionRowsAfter) === JSON.stringify(collisionRowsBefore),
+    JSON.stringify({
+      collidingLocalReimport,
+      localUpdateState,
+      collisionState,
+      collisionRowsBefore,
+      collisionRowsAfter,
+    }),
+  );
   const managedReload = await request("hd_reload");
   const reloadedManagedState = await storedDictionaryState();
   const reloadedManagedPackage = reloadedManagedState.dictionaries[trustedIndex];
@@ -1270,6 +1467,697 @@ async function main() {
       && reloadedManagedPackage?.favorite === true,
     JSON.stringify({ managedReload, reloadedManagedState }),
   );
+
+  section("managed dictionary updates");
+  const updateTarget = "hachidori-updates";
+  const updateAlarmName = "hachidori-managed-dictionary-updates";
+  const managedId = reloadedManagedPackage.id;
+  const managedGroup = { id: "managed", name: "Managed", dictionaryIds: [managedId] };
+  const grouped = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: reloadedManagedState.revision,
+    dictionaries: reloadedManagedState.dictionaries,
+    groups: [managedGroup],
+  });
+  check("managed update fixture adds a stable-id group", grouped?.ok === true, JSON.stringify(grouped));
+
+  const archiveRequests = { count: 0 };
+  const untrustedIndexRevision = "2026.09.06.0";
+  remoteJson(
+    recommended.indexUrl,
+    { revision: untrustedIndexRevision },
+    200,
+    "https://unrelated.example/update-index.json",
+  );
+  const untrustedIndexCheck = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_check",
+  });
+  const untrustedIndexState = await storedDictionaryState();
+  const untrustedIndexPackage = untrustedIndexState.dictionaries.find((entry) => entry.id === managedId);
+  const untrustedIndexOutcome = untrustedIndexCheck?.outcomes?.find((entry) => entry.id === managedId);
+  const jmnedictSource = RECOMMENDED_CATALOGUE.find((entry) => entry.sourceId === "jmnedict");
+  check(
+    "recommended update indexes stay pinned to their catalogue repository",
+    untrustedIndexCheck?.ok === true
+      && untrustedIndexOutcome?.status === "check-failed"
+      && untrustedIndexOutcome.error?.includes("unexpected final URL")
+      && untrustedIndexPackage?.revision === reloadedManagedPackage.revision
+      && untrustedIndexPackage?.path === reloadedManagedPackage.path
+      && untrustedIndexPackage?.lastUpdateCheck?.status === "check-failed"
+      && archiveRequests.count === 0
+      && recommendedIndexUrlMatches(
+        jmnedictSource,
+        "https://github.com/yomidevs/jmdict-yomitan/releases/download/JMnedict.2026-09-04/JMnedict.json",
+      )
+      && !recommendedIndexUrlMatches(
+        jmnedictSource,
+        "https://github.com/unrelated/project/releases/download/JMnedict.2026-09-04/JMnedict.json",
+      ),
+    JSON.stringify({ untrustedIndexCheck, untrustedIndexState, archiveRequests }),
+  );
+
+  const checkedRevision = "2026.09.07.0";
+  remoteJson(recommended.indexUrl, { revision: checkedRevision });
+  remoteArchive(
+    recommended.downloadUrl,
+    buildRecommendedZip({
+      title: "Jitendex.org [2026-09-07]",
+      revision: checkedRevision,
+      indexUrl: recommended.indexUrl,
+      downloadUrl: recommended.downloadUrl,
+      capabilities: recommended.capabilities,
+    }),
+    recommended.downloadUrl,
+    archiveRequests,
+  );
+  const checked = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_check",
+  });
+  const checkedState = await storedDictionaryState();
+  const checkedManaged = checkedState.dictionaries.find((entry) => entry.id === managedId);
+  const checkedLocal = checkedState.dictionaries.find((entry) => entry.id === importedPackage.id);
+  const checkedGlobals = (await storage.api().local.get("dictionaryUpdates")).dictionaryUpdates;
+  check(
+    "Check now records a disabled managed package without downloading and skips local archives",
+    checked?.ok === true
+      && checkedManaged?.enabled === false
+      && checkedManaged?.lastUpdateCheck?.status === "update-available"
+      && checkedManaged.lastUpdateCheck.remoteRevision === checkedRevision
+      && checkedLocal?.lastUpdateCheck === null
+      && archiveRequests.count === 0
+      && Number.isFinite(Date.parse(checkedGlobals?.lastCheckedAt)),
+    JSON.stringify({ checked, checkedState, checkedGlobals, archiveRequests }),
+  );
+
+  // The per-package update state is structured data. Losing the import CAS reply
+  // must still recognize the cloned readback as the exact committed value. Real
+  // Chrome also returns stored object keys in a different order, which must not
+  // prevent the replaced generation from being collected after that readback.
+  const managedGenerationBeforeManual = ownedGenerationRoot(
+    checkedManaged.path,
+    checkedManaged.title,
+  );
+  loseNextStateCasReply = true;
+  storage.sortDictionaryKeysOnRead(true);
+  const manualUpdate = await Promise.race([
+    pageChrome.runtime.sendMessage({
+      target: updateTarget,
+      type: "hd_updates_install",
+      dictionaryIds: [managedId],
+    }),
+    new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 10000)),
+  ]);
+  storage.sortDictionaryKeysOnRead(false);
+  const manualState = await storedDictionaryState();
+  const manuallyUpdated = manualState.dictionaries.find((entry) => entry.id === managedId);
+  const managedGenerationRowsAfterManual = idb.keys("/dicts");
+  check(
+    "manual Update rechecks and atomically replaces through the existing import transaction",
+    manualUpdate?.ok === true
+      && manualUpdate.timeout !== true
+      && archiveRequests.count === 1
+      && manuallyUpdated?.revision === checkedRevision
+      && manuallyUpdated?.id === managedId
+      && manuallyUpdated?.displayName === "Starter terms"
+      && manuallyUpdated?.enabled === false
+      && manuallyUpdated?.favorite === true
+      && manuallyUpdated?.lastUpdateCheck?.status === "up-to-date"
+      && !managedGenerationRowsAfterManual.some((path) =>
+        path === managedGenerationBeforeManual
+          || path.startsWith(`${managedGenerationBeforeManual}/`))
+      && JSON.stringify(manualState.groups) === JSON.stringify([managedGroup]),
+    JSON.stringify({
+      manualUpdate,
+      manualState,
+      archiveRequests,
+      managedGenerationBeforeManual,
+      managedGenerationRowsAfterManual,
+    }),
+  );
+
+  const cleanupRaceRevision = "2026.09.07.1";
+  const cleanupRaceGroup = { ...managedGroup, name: "Managed after update" };
+  const cleanupRaceGeneration = ownedGenerationRoot(
+    manuallyUpdated.path,
+    manuallyUpdated.title,
+  );
+  const cleanupArchiveRequests = { count: 0 };
+  remoteJson(recommended.indexUrl, { revision: cleanupRaceRevision });
+  remoteArchive(
+    recommended.downloadUrl,
+    buildRecommendedZip({
+      title: "Jitendex.org [2026-09-07]",
+      revision: cleanupRaceRevision,
+      indexUrl: recommended.indexUrl,
+      downloadUrl: recommended.downloadUrl,
+      capabilities: recommended.capabilities,
+    }),
+    recommended.downloadUrl,
+    cleanupArchiveRequests,
+  );
+  advanceGroupsAfterCommittedRevision = {
+    revision: cleanupRaceRevision,
+    groups: [cleanupRaceGroup],
+  };
+  const cleanupRaceUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [managedId],
+  });
+  const cleanupRaceState = await storedDictionaryState();
+  const cleanupRacePackage = cleanupRaceState.dictionaries.find((entry) => entry.id === managedId);
+  const cleanupRaceRows = idb.keys("/dicts");
+  check(
+    "generation cleanup follows an authoritative group-only state advance",
+    cleanupRaceUpdate?.ok === true
+      && cleanupArchiveRequests.count === 1
+      && advancedStateDuringCleanup?.ok === true
+      && cleanupRacePackage?.revision === cleanupRaceRevision
+      && JSON.stringify(cleanupRaceState.groups) === JSON.stringify([cleanupRaceGroup])
+      && !cleanupRaceRows.some((path) =>
+        path === cleanupRaceGeneration || path.startsWith(`${cleanupRaceGeneration}/`)),
+    JSON.stringify({
+      cleanupRaceUpdate,
+      cleanupRaceState,
+      cleanupArchiveRequests,
+      advancedStateDuringCleanup,
+      cleanupRaceGeneration,
+      cleanupRaceRows,
+    }),
+  );
+
+  const scheduled = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_schedule",
+    schedule: "hourly",
+  });
+  const hourlyAlarm = await alarms.api.get(updateAlarmName);
+  check(
+    "one global schedule creates one browser alarm",
+    scheduled?.ok === true
+      && scheduled.settings?.schedule === "hourly"
+      && hourlyAlarm?.periodInMinutes === 60
+      && alarms.values.size === 1,
+    JSON.stringify({ scheduled, hourlyAlarm, alarms: [...alarms.values.values()] }),
+  );
+
+  const alarmRevision = "2026.09.08.0";
+  remoteJson(recommended.indexUrl, { revision: alarmRevision });
+  remoteArchive(
+    recommended.downloadUrl,
+    buildRecommendedZip({
+      title: "Jitendex.org [2026-09-08]",
+      revision: alarmRevision,
+      indexUrl: recommended.indexUrl,
+      downloadUrl: recommended.downloadUrl,
+      capabilities: recommended.capabilities,
+    }),
+    recommended.downloadUrl,
+    archiveRequests,
+  );
+  alarms.fire(updateAlarmName);
+  const alarmDeadline = Date.now() + 10000;
+  let alarmState = await storedDictionaryState();
+  while ((alarmState.dictionaries.find((entry) => entry.id === managedId)?.revision !== alarmRevision
+      || alarmState.dictionaries.find((entry) => entry.id === managedId)?.lastUpdateCheck?.status !== "up-to-date")
+      && Date.now() < alarmDeadline) {
+    await new Promise((done) => setTimeout(done, 25));
+    alarmState = await storedDictionaryState();
+  }
+  const alarmUpdated = alarmState.dictionaries.find((entry) => entry.id === managedId);
+  check(
+    "the scheduled alarm auto-installs available updates without deadlocking storage",
+    alarmUpdated?.revision === alarmRevision
+      && alarmUpdated?.lastUpdateCheck?.status === "up-to-date"
+      && archiveRequests.count === 2
+      && alarmUpdated.id === managedId
+      && alarmUpdated.displayName === "Starter terms"
+      && alarmUpdated.enabled === false
+      && alarmUpdated.favorite === true
+      && JSON.stringify(alarmState.groups) === JSON.stringify([cleanupRaceGroup]),
+    JSON.stringify({ alarmState, archiveRequests }),
+  );
+
+  await alarms.api.clear(updateAlarmName);
+  swChrome.__events.onStartup.fire();
+  const alarmRepairDeadline = Date.now() + 2000;
+  let repairedAlarm = await alarms.api.get(updateAlarmName);
+  while (!repairedAlarm && Date.now() < alarmRepairDeadline) {
+    await new Promise((done) => setTimeout(done, 10));
+    repairedAlarm = await alarms.api.get(updateAlarmName);
+  }
+  check(
+    "service-worker startup recreates a missing configured alarm",
+    repairedAlarm?.periodInMinutes === 60 && alarms.values.size === 1,
+    JSON.stringify({ repairedAlarm, alarms: [...alarms.values.values()] }),
+  );
+
+  const failedRevision = "2026.09.09.0";
+  const beforeFailedAlarm = await storedDictionaryState();
+  const beforeFailedPackage = beforeFailedAlarm.dictionaries.find((entry) => entry.id === managedId);
+  remoteJson(recommended.indexUrl, { revision: failedRevision });
+  remoteArchive(
+    recommended.downloadUrl,
+    buildRecommendedZip({
+      title: "Jitendex.org [2026-09-09]",
+      revision: "wrong-revision",
+      indexUrl: recommended.indexUrl,
+      downloadUrl: recommended.downloadUrl,
+      capabilities: recommended.capabilities,
+    }),
+    recommended.downloadUrl,
+    archiveRequests,
+  );
+  alarms.fire(updateAlarmName);
+  const failureDeadline = Date.now() + 10000;
+  let failedAlarmState = await storedDictionaryState();
+  while (!failedAlarmState.dictionaries.find((entry) => entry.id === managedId)?.lastUpdateCheck?.error
+      && Date.now() < failureDeadline) {
+    await new Promise((done) => setTimeout(done, 25));
+    failedAlarmState = await storedDictionaryState();
+  }
+  const failedAlarmPackage = failedAlarmState.dictionaries.find((entry) => entry.id === managedId);
+  check(
+    "a failed scheduled replacement retains the old generation and reports the available revision",
+    failedAlarmPackage?.revision === alarmRevision
+      && failedAlarmPackage?.path === beforeFailedPackage.path
+      && failedAlarmPackage?.lastUpdateCheck?.status === "update-available"
+      && failedAlarmPackage?.lastUpdateCheck?.remoteRevision === failedRevision
+      && failedAlarmPackage?.lastUpdateCheck?.error?.includes("revision")
+      && JSON.stringify(failedAlarmState.groups) === JSON.stringify([cleanupRaceGroup]),
+    JSON.stringify({ beforeFailedAlarm, failedAlarmState }),
+  );
+
+  remoteJson(recommended.indexUrl, {}, 503);
+  const failedCheck = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_check",
+  });
+  const failedCheckState = await storedDictionaryState();
+  const failedCheckPackage = failedCheckState.dictionaries.find((entry) => entry.id === managedId);
+  check(
+    "an index failure is recorded per item without changing the installed revision",
+    failedCheck?.ok === true
+      && failedCheckPackage?.revision === alarmRevision
+      && failedCheckPackage?.lastUpdateCheck?.status === "check-failed"
+      && failedCheckPackage?.lastUpdateCheck?.error?.includes("HTTP 503"),
+    JSON.stringify({ failedCheck, failedCheckState }),
+  );
+
+  const scheduleOff = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_schedule",
+    schedule: "off",
+  });
+  check(
+    "turning periodic checks off clears the one managed-update alarm",
+    scheduleOff?.ok === true
+      && scheduleOff.settings?.schedule === "off"
+      && await alarms.api.get(updateAlarmName) === undefined,
+    JSON.stringify({ scheduleOff, alarms: [...alarms.values.values()] }),
+  );
+
+  const communityTitle = "Community Dictionary";
+  const communityIndexUrl = "https://example.test/community/index.json";
+  const communityDownloadUrl = "https://example.test/community/archive.zip";
+  const communityZip = ({
+    title = communityTitle,
+    revision,
+    indexUrl = communityIndexUrl,
+    downloadUrl = communityDownloadUrl,
+  }) => buildRecommendedZip({ title, revision, indexUrl, downloadUrl, capabilities: ["term"] });
+  const communityImport = await request("hd_import", {
+    blobUrl: createObjectURL(communityZip({ revision: "community-1" })),
+    fileName: "community.zip",
+  });
+  const communityState = await storedDictionaryState();
+  const community = communityState.dictionaries.find((entry) => entry.title === communityTitle);
+  const rotatingCommunityDownloadUrl = "https://example.test/community/releases/community-2.zip";
+  const rotatingArchiveRequests = { count: 0 };
+  remoteJson(communityIndexUrl, {
+    revision: "community-2",
+    downloadUrl: rotatingCommunityDownloadUrl,
+  });
+  remoteArchive(
+    rotatingCommunityDownloadUrl,
+    communityZip({ revision: "community-2" }),
+    rotatingCommunityDownloadUrl,
+    rotatingArchiveRequests,
+  );
+  const communityUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community?.id],
+  });
+  const updatedCommunityState = await storedDictionaryState();
+  const updatedCommunity = updatedCommunityState.dictionaries.find((entry) => entry.id === community?.id);
+  check(
+    "a generic managed source can select a rotating HTTPS archive from its remote index",
+    communityImport.ok === true
+      && community?.sourceId === undefined
+      && community?.isUpdatable === true
+      && communityUpdate?.ok === true
+      && updatedCommunity?.revision === "community-2"
+      && updatedCommunity?.id === community.id
+      && updatedCommunity?.lastUpdateCheck?.status === "up-to-date"
+      && updatedCommunity?.indexUrl === communityIndexUrl
+      && updatedCommunity?.downloadUrl === communityDownloadUrl
+      && rotatingArchiveRequests.count === 1,
+    JSON.stringify({
+      communityImport,
+      community,
+      communityUpdate,
+      updatedCommunityState,
+      rotatingArchiveRequests,
+    }),
+  );
+
+  const editCommunity = async (patch) => {
+    const current = await storedDictionaryState();
+    return pageChrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type: "hd_state_cas",
+      baseRevision: current.revision,
+      dictionaries: current.dictionaries.map((dictionary) =>
+        dictionary.id === community.id ? { ...dictionary, ...patch } : dictionary),
+    });
+  };
+
+  const transportStart = (await storedDictionaryState()).dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  remoteJson(communityIndexUrl, {
+    revision: "community-3",
+    downloadUrl: "http://example.test/community-3.zip",
+  });
+  const insecureDownload = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  remoteJson(
+    communityIndexUrl,
+    { revision: "community-3" },
+    200,
+    "http://example.test/community-index.json",
+  );
+  const insecureIndexRedirect = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  remoteJson(communityIndexUrl, {
+    revision: "community-3",
+    downloadUrl: rotatingCommunityDownloadUrl,
+  });
+  remoteArchive(
+    rotatingCommunityDownloadUrl,
+    communityZip({ revision: "community-3" }),
+    "http://example.test/community-3.zip",
+  );
+  const insecureArchiveRedirect = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const transportState = await storedDictionaryState();
+  const transportCommunity = transportState.dictionaries.find((entry) => entry.id === community.id);
+  check(
+    "generic updates reject non-HTTPS index redirects, archive redirects, and remote download URLs",
+    insecureDownload?.outcomes?.[0]?.status === "check-failed"
+      && insecureDownload.outcomes[0].error?.includes("non-HTTPS download URL")
+      && insecureIndexRedirect?.outcomes?.[0]?.status === "check-failed"
+      && insecureIndexRedirect.outcomes[0].error?.includes("non-HTTPS")
+      && insecureArchiveRedirect?.outcomes?.[0]?.status === "update-available"
+      && insecureArchiveRedirect.outcomes[0].error?.includes("unexpected final URL")
+      && transportCommunity?.revision === "community-2"
+      && transportCommunity?.path === transportStart.path,
+    JSON.stringify({
+      insecureDownload,
+      insecureIndexRedirect,
+      insecureArchiveRedirect,
+      transportState,
+    }),
+  );
+
+  remoteJson(communityIndexUrl, { revision: "community-collision" });
+  remoteArchive(
+    communityDownloadUrl,
+    communityZip({ title: FIXTURE_TITLE, revision: "community-collision" }),
+  );
+  const beforeTitleCollision = await storedDictionaryState();
+  const titleCollisionUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const titleCollisionState = await storedDictionaryState();
+  const titleCollisionCommunity = titleCollisionState.dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  check(
+    "a managed replacement cannot take another installed package's title or logical ID",
+    titleCollisionUpdate?.ok === true
+      && titleCollisionUpdate.outcomes?.[0]?.error?.includes("already installed")
+      && titleCollisionCommunity?.title === communityTitle
+      && titleCollisionCommunity?.revision === "community-2"
+      && titleCollisionCommunity?.path === transportStart.path
+      && titleCollisionState.dictionaries.filter((entry) => entry.title === FIXTURE_TITLE).length === 1,
+    JSON.stringify({ beforeTitleCollision, titleCollisionUpdate, titleCollisionState }),
+  );
+  const collisionFixtureRestored = await request("hd_import", {
+    blobUrl: createObjectURL(communityZip({ revision: "community-2" })),
+    fileName: "community.zip",
+  });
+
+  const beforePathRace = (await storedDictionaryState()).dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  const pathRaceArchiveRequests = { count: 0 };
+  remoteArchive(
+    communityDownloadUrl,
+    communityZip({ revision: "community-3" }),
+    communityDownloadUrl,
+    pathRaceArchiveRequests,
+  );
+  let concurrentReimport = null;
+  remoteJson(communityIndexUrl, async () => {
+    concurrentReimport = await request("hd_import", {
+      blobUrl: createObjectURL(communityZip({ revision: "community-2" })),
+      fileName: "community.zip",
+    });
+    return { revision: "community-3" };
+  });
+  const stalePathUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const stalePathState = await storedDictionaryState();
+  const stalePathCommunity = stalePathState.dictionaries.find((entry) => entry.id === community.id);
+  check(
+    "a same-revision reimport invalidates a managed check captured from the old path",
+    collisionFixtureRestored?.ok === true
+      && concurrentReimport?.ok === true
+      && stalePathUpdate?.ok === true
+      && stalePathUpdate.outcomes?.[0]?.error?.includes("changed while")
+      && stalePathCommunity?.revision === "community-2"
+      && stalePathCommunity?.path !== beforePathRace.path
+      && stalePathCommunity?.lastUpdateCheck === null
+      && pathRaceArchiveRequests.count === 0,
+    JSON.stringify({
+      collisionFixtureRestored,
+      concurrentReimport,
+      stalePathUpdate,
+      stalePathState,
+      pathRaceArchiveRequests,
+    }),
+  );
+
+  const changedCommunityIndexUrl = "https://example.test/community-other/index.json";
+  const changedCommunityDownloadUrl = "https://example.test/community-other/archive.zip";
+  const staleSourceArchiveRequests = { count: 0 };
+  remoteArchive(
+    changedCommunityDownloadUrl,
+    buildRecommendedZip({
+      title: communityTitle,
+      revision: "community-3",
+      indexUrl: changedCommunityIndexUrl,
+      downloadUrl: changedCommunityDownloadUrl,
+      capabilities: ["term"],
+    }),
+    changedCommunityDownloadUrl,
+    staleSourceArchiveRequests,
+  );
+  let changedSource = null;
+  remoteJson(communityIndexUrl, async () => {
+    changedSource = await editCommunity({
+      revision: "community-4",
+      indexUrl: changedCommunityIndexUrl,
+      downloadUrl: changedCommunityDownloadUrl,
+      lastUpdateCheck: null,
+    });
+    return { revision: "community-3" };
+  });
+  const staleSourcePath = (await storedDictionaryState()).dictionaries.find(
+    (entry) => entry.id === community.id,
+  ).path;
+  const staleSourceUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const staleSourceState = await storedDictionaryState();
+  const staleSourceCommunity = staleSourceState.dictionaries.find((entry) => entry.id === community.id);
+  check(
+    "a stale check cannot downgrade a dictionary whose managed source changed before import",
+    changedSource?.ok === true
+      && staleSourceUpdate?.ok === true
+      && staleSourceUpdate.outcomes?.[0]?.error?.includes("changed while")
+      && staleSourceCommunity?.revision === "community-4"
+      && staleSourceCommunity?.path === staleSourcePath
+      && staleSourceCommunity?.indexUrl === changedCommunityIndexUrl
+      && staleSourceCommunity?.downloadUrl === changedCommunityDownloadUrl
+      && staleSourceCommunity?.lastUpdateCheck === null
+      && staleSourceArchiveRequests.count === 0,
+    JSON.stringify({ changedSource, staleSourceUpdate, staleSourceState, staleSourceArchiveRequests }),
+  );
+
+  const sourceRestored = await editCommunity({
+    revision: "community-2",
+    indexUrl: communityIndexUrl,
+    downloadUrl: communityDownloadUrl,
+    lastUpdateCheck: null,
+  });
+  const commitRaceArchiveRequests = { count: 0 };
+  let concurrentRevision = null;
+  remoteJson(communityIndexUrl, { revision: "community-3" });
+  remoteArchive(
+    communityDownloadUrl,
+    buildRecommendedZip({
+      title: communityTitle,
+      revision: "community-3",
+      indexUrl: communityIndexUrl,
+      downloadUrl: communityDownloadUrl,
+      capabilities: ["term"],
+    }),
+    communityDownloadUrl,
+    commitRaceArchiveRequests,
+    async () => {
+      concurrentRevision = await editCommunity({
+        revision: "community-4",
+        lastUpdateCheck: null,
+      });
+    },
+  );
+  const beforeCommitRace = (await storedDictionaryState()).dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  const staleCommitUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const staleCommitState = await storedDictionaryState();
+  const staleCommitCommunity = staleCommitState.dictionaries.find((entry) => entry.id === community.id);
+  check(
+    "a managed replacement revalidates the installed revision at the commit snapshot",
+    sourceRestored?.ok === true
+      && concurrentRevision?.ok === true
+      && staleCommitUpdate?.ok === true
+      && staleCommitUpdate.outcomes?.[0]?.error?.includes("changed while")
+      && staleCommitCommunity?.revision === "community-4"
+      && staleCommitCommunity?.path === beforeCommitRace.path
+      && staleCommitCommunity?.lastUpdateCheck === null
+      && commitRaceArchiveRequests.count === 1,
+    JSON.stringify({ sourceRestored, concurrentRevision, staleCommitUpdate, staleCommitState }),
+  );
+
+  const statusFixtureRestored = await editCommunity({
+    revision: "community-2",
+    indexUrl: communityIndexUrl,
+    downloadUrl: communityDownloadUrl,
+    lastUpdateCheck: null,
+  });
+  remoteJson(communityIndexUrl, { revision: "community-3" });
+  remoteArchive(
+    communityDownloadUrl,
+    buildRecommendedZip({
+      title: communityTitle,
+      revision: "community-3",
+      indexUrl: communityIndexUrl,
+      downloadUrl: communityDownloadUrl,
+      capabilities: ["term"],
+    }),
+  );
+  const beforeStatusFailure = (await storedDictionaryState()).dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  failAfterCommittedRevision = {
+    revision: "community-3",
+    error: "injected post-install settings failure",
+  };
+  const statusFailureUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const statusFailureState = await storedDictionaryState();
+  const statusFailureCommunity = statusFailureState.dictionaries.find((entry) => entry.id === community.id);
+  check(
+    "a successful replacement commits its up-to-date status before a later settings write",
+    statusFixtureRestored?.ok === true
+      && statusFailureUpdate?.ok === false
+      && statusFailureUpdate.error?.includes("injected post-install settings failure")
+      && statusFailureCommunity?.revision === "community-3"
+      && statusFailureCommunity?.path !== beforeStatusFailure.path
+      && statusFailureCommunity?.lastUpdateCheck?.status === "up-to-date"
+      && statusFailureCommunity.lastUpdateCheck.remoteRevision === "community-3"
+      && statusFailureCommunity.lastUpdateCheck.error === null
+      && failAfterCommittedRevision === null,
+    JSON.stringify({ statusFixtureRestored, statusFailureUpdate, statusFailureState }),
+  );
+
+  const injectedBlobRowsBefore = idb.keys("/dicts").sort();
+  const injectedBlobImport = await request("hd_import", {
+    blobUrl: createObjectURL(communityZip({ revision: "community-injected" })),
+    fileName: "injected-managed-update.zip",
+    managedFingerprint: {
+      id: statusFailureCommunity.id,
+      path: statusFailureCommunity.path,
+      revision: statusFailureCommunity.revision,
+      source: {
+        kind: "generic",
+        sourceId: null,
+        indexUrl: communityIndexUrl,
+        downloadUrl: communityDownloadUrl,
+      },
+    },
+    archiveUrl: communityDownloadUrl,
+    expectedRevision: "community-injected",
+    checkedAt: "2026-09-04T12:00:00.000Z",
+  });
+  const injectedBlobStateAfter = await storedDictionaryState();
+  const injectedBlobRowsAfter = idb.keys("/dicts").sort();
+  check(
+    "the managed import protocol rejects an injected blob archive",
+    injectedBlobImport?.ok === false
+      && injectedBlobImport.error?.includes("blob URL")
+      && JSON.stringify(injectedBlobStateAfter) === JSON.stringify(statusFailureState)
+      && JSON.stringify(injectedBlobRowsAfter) === JSON.stringify(injectedBlobRowsBefore),
+    JSON.stringify({
+      injectedBlobImport,
+      statusFailureState,
+      injectedBlobStateAfter,
+      injectedBlobRowsBefore,
+      injectedBlobRowsAfter,
+    }),
+  );
+  await request("hd_remove", { title: communityTitle });
+  await request("hd_remove", { title: "Jitendex.org [2026-09-08]" });
   await request("hd_remove", { title: localUpdateTitle });
   await request("hd_remove", { title: updatedTitle });
   await request("hd_remove", { title: recommended.title });
@@ -2054,6 +2942,29 @@ async function main() {
       && recommendedSettings.legacyIndexOnlySkipped === true,
     JSON.stringify(recommendedSettings),
   );
+  const managedUpdateSettings = await settingsManagedUpdatesStage();
+  check(
+    "settings expose one global schedule and per-package managed update actions",
+    managedUpdateSettings?.initial.schedule === "weekly"
+      && managedUpdateSettings.initial.lastChecked.includes("9/4/2026")
+      && managedUpdateSettings.initial.managedStatus.includes("Update available")
+      && managedUpdateSettings.initial.managedUpdateHidden === false
+      && managedUpdateSettings.initial.insecureMetadata.includes("Local archive")
+      && managedUpdateSettings.initial.insecureStatus === "Not update-checkable"
+      && managedUpdateSettings.initial.insecureUpdateHidden === true
+      && managedUpdateSettings.initial.localStatus === "Not update-checkable"
+      && managedUpdateSettings.initial.localUpdateHidden === true
+      && managedUpdateSettings.checkRequest?.type === "hd_updates_check"
+      && managedUpdateSettings.checkedState.includes("1 update available")
+      && managedUpdateSettings.oneRequest?.type === "hd_updates_install"
+      && managedUpdateSettings.oneRequest.dictionaryIds?.join(",") === "managed-id"
+      && managedUpdateSettings.afterOneStatus.startsWith("Up to date")
+      && managedUpdateSettings.allRequest?.type === "hd_updates_install"
+      && managedUpdateSettings.allRequest.dictionaryIds?.join(",") === "managed-id"
+      && managedUpdateSettings.scheduleRequest?.type === "hd_updates_schedule"
+      && managedUpdateSettings.scheduleRequest.schedule === "daily",
+    JSON.stringify(managedUpdateSettings),
+  );
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -2650,6 +3561,232 @@ async function settingsRecommendedImportStage() {
   result.legacyIndexOnlySkipped =
     window.document.getElementById("recommended-retry")?.hidden === true
     && fetches.length === fetchCountBeforeLegacyRetry;
+  dom.window.close();
+  return result;
+}
+
+async function settingsManagedUpdatesStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) {
+    return null;
+  }
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+    url: `${EXTENSION_ORIGIN}/settings.html`,
+  });
+  const { window } = dom;
+  let state = {
+    schemaVersion: 1,
+    revision: 4,
+    dictionaries: [
+      genericPackage({
+        id: "managed-id",
+        title: "Managed terms",
+        enabled: false,
+        isUpdatable: true,
+        indexUrl: "https://example.test/managed/index.json",
+        downloadUrl: "https://example.test/managed/archive.zip",
+        lastUpdateCheck: {
+          checkedAt: "2026-09-04T10:00:00.000Z",
+          status: "update-available",
+          remoteRevision: "test-2",
+          error: null,
+        },
+      }),
+      genericPackage({
+        id: "insecure-id",
+        title: "Insecure source",
+        isUpdatable: true,
+        indexUrl: "http://example.test/insecure/index.json",
+        downloadUrl: "http://example.test/insecure/archive.zip",
+        lastUpdateCheck: {
+          checkedAt: "2026-09-04T10:00:00.000Z",
+          status: "update-available",
+          remoteRevision: "test-2",
+          error: null,
+        },
+      }),
+      genericPackage({ id: "local-id", title: "Local terms" }),
+    ],
+    groups: [],
+  };
+  let updateSettings = { schedule: "weekly", lastCheckedAt: "2026-09-04T10:00:00.000Z" };
+  let storageListener = null;
+  const updateRequests = [];
+
+  const publishState = (dictionary) => {
+    state = {
+      ...state,
+      revision: state.revision + 1,
+      dictionaries: state.dictionaries.map((entry) => entry.id === dictionary.id ? dictionary : entry),
+    };
+    storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+  };
+  window.chrome = {
+    runtime: {
+      id: "hachidoriupdatessettingssmoke",
+      async sendMessage(message) {
+        if (message.type === "hd_state_read") {
+          return { ok: true, state: structuredClone(state) };
+        }
+        if (message.type === "hd_status") {
+          return { ok: true, ready: true, loading: false, dictionaryCount: 1 };
+        }
+        if (message.type === "hd_options_write") {
+          return { ok: true, options: structuredClone(message.options) };
+        }
+        if (message.type === "hd_updates_schedule") {
+          updateRequests.push(structuredClone(message));
+          updateSettings = { ...updateSettings, schedule: message.schedule };
+          storageListener?.({
+            dictionaryUpdates: { newValue: structuredClone(updateSettings) },
+          }, "local");
+          return { ok: true, settings: structuredClone(updateSettings) };
+        }
+        if (message.type === "hd_updates_check") {
+          updateRequests.push(structuredClone(message));
+          await new Promise((done) => window.setTimeout(done, 0));
+          const managed = state.dictionaries.find((entry) => entry.id === "managed-id");
+          publishState({
+            ...managed,
+            lastUpdateCheck: {
+              checkedAt: "2026-09-04T11:00:00.000Z",
+              status: "update-available",
+              remoteRevision: "test-2",
+              error: null,
+            },
+          });
+          updateSettings = { ...updateSettings, lastCheckedAt: "2026-09-04T11:00:00.000Z" };
+          storageListener?.({
+            dictionaryUpdates: { newValue: structuredClone(updateSettings) },
+          }, "local");
+          return {
+            ok: true,
+            settings: structuredClone(updateSettings),
+            outcomes: [{ id: "managed-id", status: "update-available" }],
+          };
+        }
+        if (message.type === "hd_updates_install") {
+          updateRequests.push(structuredClone(message));
+          await new Promise((done) => window.setTimeout(done, 0));
+          const managed = state.dictionaries.find((entry) => entry.id === "managed-id");
+          publishState({
+            ...managed,
+            revision: "test-2",
+            lastUpdateCheck: {
+              checkedAt: "2026-09-04T11:05:00.000Z",
+              status: "up-to-date",
+              remoteRevision: "test-2",
+              error: null,
+            },
+          });
+          return {
+            ok: true,
+            settings: structuredClone(updateSettings),
+            outcomes: [{ id: "managed-id", status: "updated" }],
+          };
+        }
+        throw new Error(`unexpected managed-update settings request ${message.type}`);
+      },
+    },
+    storage: {
+      local: {
+        async get() {
+          return {
+            options: { kanjiClickDictionary: "" },
+            dictionaryUpdates: structuredClone(updateSettings),
+          };
+        },
+      },
+      onChanged: {
+        addListener(listener) {
+          storageListener = listener;
+        },
+      },
+    },
+  };
+  loadSettingsScript(window);
+
+  const deadline = Date.now() + 2000;
+  while (!window.document.getElementById("engine-status")?.textContent?.startsWith("Ready")
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  const managedRow = () => window.document.querySelector('[data-dictionary-id="managed-id"]');
+  const insecureRow = () => window.document.querySelector('[data-dictionary-id="insecure-id"]');
+  const localRow = () => window.document.querySelector('[data-dictionary-id="local-id"]');
+  const result = {
+    initial: {
+      schedule: window.document.getElementById("update-schedule")?.value,
+      lastChecked: window.document.getElementById("update-last-checked")?.textContent ?? "",
+      managedStatus: managedRow()?.querySelector(".dict-update-status")?.textContent ?? "",
+      managedUpdateHidden: managedRow()?.querySelector(".dict-update")?.hidden,
+      insecureMetadata: insecureRow()?.querySelector(".dict-metadata")?.textContent ?? "",
+      insecureStatus: insecureRow()?.querySelector(".dict-update-status")?.textContent ?? "",
+      insecureUpdateHidden: insecureRow()?.querySelector(".dict-update")?.hidden,
+      localStatus: localRow()?.querySelector(".dict-update-status")?.textContent ?? "",
+      localUpdateHidden: localRow()?.querySelector(".dict-update")?.hidden,
+    },
+  };
+
+  window.document.getElementById("update-check-now")?.click();
+  while (!updateRequests.some((request) => request.type === "hd_updates_check")
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  while (window.document.getElementById("update-check-now")?.disabled && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  result.checkRequest = updateRequests.find((request) => request.type === "hd_updates_check");
+  result.checkedState = window.document.getElementById("update-state")?.textContent ?? "";
+
+  managedRow()?.querySelector(".dict-update")?.click();
+  while (updateRequests.filter((request) => request.type === "hd_updates_install").length < 1
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  while (managedRow()?.querySelector(".dict-update-status")?.textContent?.includes("Update available")
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  result.oneRequest = updateRequests.find((request) => request.type === "hd_updates_install");
+  result.afterOneStatus = managedRow()?.querySelector(".dict-update-status")?.textContent ?? "";
+
+  const managed = state.dictionaries.find((entry) => entry.id === "managed-id");
+  publishState({
+    ...managed,
+    revision: "test-1",
+    lastUpdateCheck: {
+      checkedAt: "2026-09-04T12:00:00.000Z",
+      status: "update-available",
+      remoteRevision: "test-2",
+      error: null,
+    },
+  });
+  await new Promise((done) => window.setTimeout(done, 0));
+  window.document.getElementById("update-all")?.click();
+  while (updateRequests.filter((request) => request.type === "hd_updates_install").length < 2
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  while (window.document.getElementById("update-check-now")?.disabled && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  result.allRequest = updateRequests.filter((request) => request.type === "hd_updates_install")[1];
+
+  const schedule = window.document.getElementById("update-schedule");
+  if (schedule) {
+    schedule.value = "daily";
+    schedule.dispatchEvent(new window.Event("change", { bubbles: true }));
+  }
+  while (!updateRequests.some((request) => request.type === "hd_updates_schedule")
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  await new Promise((done) => window.setTimeout(done, 0));
+  result.scheduleRequest = updateRequests.find((request) => request.type === "hd_updates_schedule");
   dom.window.close();
   return result;
 }
