@@ -39,6 +39,7 @@ import { recommendedIndexUrlMatches } from "../extension/managed-dictionary-sour
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 import {
   CUSTOM_DICTIONARY_ID,
+  CUSTOM_DICTIONARY_SOURCE_KEY,
   CUSTOM_DICTIONARY_TITLE,
   buildCustomDictionaryZip,
   customDictionarySemanticRevision,
@@ -342,6 +343,7 @@ function makeBus() {
 function makeStorage() {
   const local = new Map();
   const changeListeners = [];
+  const gets = [];
   const sets = [];
   let pendingSetFailure = null;
   let sortDictionaryKeysOnRead = false;
@@ -389,6 +391,7 @@ function makeStorage() {
     return {
       local: {
         get(query, callback) {
+          gets.push(structuredClone(query));
           const stored = structuredClone(read(query));
           const value = sortDictionaryKeysOnRead ? withSortedDictionaryKeys(stored) : stored;
           if (typeof callback === "function") {
@@ -455,6 +458,7 @@ function makeStorage() {
 
   return {
     api,
+    gets,
     raw: local,
     sets,
     failNextSet(message) {
@@ -769,7 +773,10 @@ async function customBackgroundStage() {
   });
 
   const initialState = await send("hd_state_cas", { baseRevision: 0, dictionaries: [] });
+  await send("hd_state_read");
+  const ordinaryReadKeys = storage.gets.at(-1);
   const empty = await send("hd_custom_read");
+  const customReadKeys = storage.gets.at(-1);
   const source = "\u98df\u3079\u308b, \u305f\u3079\u308b, to eat\r\n";
   const semanticRevision = await customDictionarySemanticRevision(
     parseCustomDictionary(source).entries,
@@ -840,6 +847,8 @@ async function customBackgroundStage() {
     disableThroughOrdinaryCas,
     empty,
     initialState,
+    ordinaryReadKeys,
+    customReadKeys,
     omittedChangedState,
     staleChangedPackage,
     afterRejectedDivergence,
@@ -1472,6 +1481,17 @@ async function main() {
     },
     state: customBackground.initialState.state,
   });
+  check(
+    "ordinary state reads leave the lazy custom source off the hot path",
+    Array.isArray(customBackground.ordinaryReadKeys)
+      && !customBackground.ordinaryReadKeys.includes(CUSTOM_DICTIONARY_SOURCE_KEY)
+      && Array.isArray(customBackground.customReadKeys)
+      && customBackground.customReadKeys.includes(CUSTOM_DICTIONARY_SOURCE_KEY),
+    JSON.stringify({
+      ordinary: customBackground.ordinaryReadKeys,
+      custom: customBackground.customReadKeys,
+    }),
+  );
   check(
     "custom source and dictionary state commit in one storage write",
     customBackground.committed.ok === true

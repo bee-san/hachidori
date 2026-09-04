@@ -263,7 +263,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 184 checks, all of
+full request→reply round trip per contract-C message type. 185 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -293,7 +293,8 @@ What it proves, in order:
    here, so this one check is static: it greps the four literals and fails if they
    disagree.
 1. **Managed custom dictionary.** The source document and package state commit
-   as one revision-checked write, stale Settings saves fail without merging,
+   as one revision-checked write, ordinary state reads leave the potentially
+   large source off their hot path, stale Settings saves fail without merging,
    queued Note appends read the latest source, and lost replies need an exact
    pair readback. Real-WASM compilation covers multibyte text, escapes,
    duplicates, multiple 1,000-row banks, semantic no-op repair, zero-row

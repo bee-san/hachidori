@@ -137,13 +137,14 @@ async function relay(message) {
   throw failure ?? new Error("offscreen document unreachable");
 }
 
-async function readDictionaryStorage() {
-  const stored = await chrome.storage.local.get([
+async function readDictionaryStorage(includeCustomDocument = false) {
+  const keys = [
     DICTIONARY_STATE_KEY,
     LEGACY_DICTIONARIES_KEY,
     OPTIONS_KEY,
-    CUSTOM_DICTIONARY_SOURCE_KEY,
-  ]);
+  ];
+  if (includeCustomDocument) keys.push(CUSTOM_DICTIONARY_SOURCE_KEY);
+  const stored = await chrome.storage.local.get(keys);
   const state = stored?.[DICTIONARY_STATE_KEY] ?? null;
   return {
     state,
@@ -152,7 +153,9 @@ async function readDictionaryStorage() {
         ? stored[LEGACY_DICTIONARIES_KEY]
         : null,
     options: stored?.[OPTIONS_KEY],
-    customDocument: stored?.[CUSTOM_DICTIONARY_SOURCE_KEY] ?? null,
+    customDocument: includeCustomDocument
+      ? stored?.[CUSTOM_DICTIONARY_SOURCE_KEY] ?? null
+      : undefined,
   };
 }
 
@@ -380,7 +383,7 @@ const WORKER_HANDLERS = {
   },
 
   async hd_custom_read() {
-    const { state, customDocument } = await readDictionaryStorage();
+    const { state, customDocument } = await readDictionaryStorage(true);
     assertDictionaryState(state);
     return {
       document: normaliseCustomDictionaryDocument(customDocument),
@@ -413,7 +416,7 @@ const WORKER_HANDLERS = {
       legacyDictionaries,
       options: currentOptions,
       customDocument: storedDocument,
-    } = await readDictionaryStorage();
+    } = await readDictionaryStorage(true);
     assertDictionaryState(current);
     const document = normaliseCustomDictionaryDocument(storedDocument);
     if (message.baseDocumentRevision !== document.revision) {
