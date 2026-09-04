@@ -1523,9 +1523,8 @@ async function main() {
   );
 
   const stateBeforeRejectedReimport = await storedDictionaryState();
-  const pathBeforeRejectedReimport = stateBeforeRejectedReimport.dictionaries[0].path;
-  const filesBeforeRejectedReimport = idb.keys("/dicts")
-    .filter((path) => path.startsWith(`${pathBeforeRejectedReimport}/`))
+  const generationRowsBeforeRejectedReimport = idb.keys("/dicts")
+    .filter((path) => path.startsWith("/dicts/.hdw-generation-"))
     .sort();
   storage.failNextSet("injected reimport state CAS failure");
   const rejectedReimport = await request("hd_import", {
@@ -1538,8 +1537,8 @@ async function main() {
     dictionary: FIXTURE_TITLE,
     path: "media/kanji.png",
   });
-  const filesAfterRejectedReimport = idb.keys("/dicts")
-    .filter((path) => path.startsWith(`${pathBeforeRejectedReimport}/`))
+  const generationRowsAfterRejectedReimport = idb.keys("/dicts")
+    .filter((path) => path.startsWith("/dicts/.hdw-generation-"))
     .sort();
   equal(
     "a failed reimport state CAS preserves the prior stored path and data",
@@ -1548,14 +1547,14 @@ async function main() {
       stateAfterRejectedReimport,
       statusAfterRejectedReimport.dictionaryCount,
       mediaAfterRejectedReimport.dataUrl,
-      filesAfterRejectedReimport,
+      generationRowsAfterRejectedReimport,
     ],
     [
       false,
       stateBeforeRejectedReimport,
       4,
       media.dataUrl,
-      filesBeforeRejectedReimport,
+      generationRowsBeforeRejectedReimport,
     ],
   );
 
@@ -1689,8 +1688,8 @@ async function main() {
   // zstd-training floor and therefore lands in the pre-4 layout. Nothing outside
   // node-smoke.mjs had ever seen the layout the current engine writes for a real
   // dictionary: a .hoshidicts_4 marker, a dict.zstd, and glossaries compressed
-  // against it. That layout has to survive offscreen.js's own marker list and the
-  // IDBFS round trip, neither of which node-smoke.mjs touches.
+  // against it. That layout has to survive the extension's strict-load and IDBFS
+  // round trip, neither of which node-smoke.mjs touches.
   const trainedImport = await request("hd_import", {
     blobUrl: createObjectURL(buildTrainedZip()),
     fileName: "hachidori-fixture-trained.zip",
@@ -1700,10 +1699,8 @@ async function main() {
     [trainedImport.ok, trainedImport.report?.title, trainedImport.report?.termCount],
     [true, TRAINED_TITLE, TRAINED_TERMS.length],
   );
-  // reloadFromStorage() -> reconcile() -> listImported() runs on the way out of
-  // hd_import, and listImported() only recognises a directory by its marker: a
-  // MARKER_FILES that does not name .hoshidicts_4 drops the row that was just
-  // written and this count is 0.
+  // The import is not published until its exact manifest path strict-loads. A
+  // runtime that does not recognise .hoshidicts_4 rejects this package instead.
   const trainedStatus = await request("hd_status");
   equal(
     "offscreen.js recognises the .hoshidicts_4 directory as a dictionary",
@@ -1756,6 +1753,9 @@ async function main() {
     fileName: `${unreferencedTitle}.zip`,
   });
   const stateWithUnreferenced = await storedDictionaryState();
+  const unreferencedPathBeforeStateRemoval = stateWithUnreferenced.dictionaries.find(
+    (dictionary) => dictionary.title === unreferencedTitle,
+  )?.path ?? "";
   const unreferencedStateWrite = await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
     type: "hd_state_cas",
@@ -1796,10 +1796,14 @@ async function main() {
   const stateAfterRestart = await storedDictionaryState();
   const restartedReload = await restartRequest("hd_reload");
   const stateAfterRestartedReload = await storedDictionaryState();
+  const unreferencedGenerationPersisted = idb.keys("/dicts").some((path) =>
+    path === unreferencedPathBeforeStateRemoval
+      || path.startsWith(`${unreferencedPathBeforeStateRemoval}/`));
   equal(
     "a revisioned restart and reload refuse to auto-adopt an unreferenced on-disk dictionary",
     [
       unreferencedImport.ok,
+      ownedGenerationRoot(unreferencedPathBeforeStateRemoval, unreferencedTitle) !== "",
       unreferencedStateWrite.ok,
       ownedGenerationRoot(fallbackPathBeforeRestart, TRAINED_TITLE) !== "",
       restartedStatus.ok,
@@ -1810,12 +1814,14 @@ async function main() {
       restartedReload.dictionaryCount,
       stateAfterRestartedReload?.dictionaries?.[0]?.path,
       stateAfterRestartedReload,
+      unreferencedGenerationPersisted,
     ],
     [
       true,
       true,
       true,
       true,
+      true,
       1,
       fallbackPathBeforeRestart,
       revisionedState,
@@ -1823,6 +1829,7 @@ async function main() {
       1,
       fallbackPathBeforeRestart,
       revisionedState,
+      false,
     ],
   );
 
