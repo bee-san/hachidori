@@ -148,6 +148,8 @@ const PLANNED = [
   "the dictionary list renders its alias, metadata, and five capability badges",
   "the Settings enabled control re-enables the preserved package",
   "importing a term-only single-kanji dictionary succeeds",
+  "dictionary management filters and bulk-updates visible stable selections",
+  "drag and keyboard position controls share the persisted lookup order",
   "the kanji dictionary chooser lists imported term and kanji dictionaries",
   "a combined archive exposes separate term and native kanji choices",
   "stale title-only kanji selections are pruned",
@@ -907,6 +909,127 @@ async function main() {
       && genericPackage?.id === GENERIC_KANJI_ID
       && genericPackage.id !== fixtureId,
     `#import-state: ${genericImportState}; dictionaryState: ${JSON.stringify(afterGenericImport?.dictionaryState)}`,
+  );
+
+  await page.waitForFunction(() => document.querySelectorAll("#dict-list .dict-row").length === 2, {
+    timeout: 10_000,
+    polling: 100,
+  });
+  const managementStarted = await page.evaluate(async (fixtureId) => {
+    const { dictionaryState: current } = await chrome.storage.local.get("dictionaryState");
+    const search = document.getElementById("dict-search");
+    search.value = "ＦＩＸＴＵＲＥ ＡＬＩＡＳ";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    const visibleIds = [...document.querySelectorAll("#dict-list .dict-row")]
+      .map((row) => row.dataset.dictionaryId);
+    document.getElementById("dict-select-visible").click();
+    const selectedIds = [...document.querySelectorAll("#dict-list .dict-row")]
+      .filter((row) => row.querySelector(".dict-selected")?.checked)
+      .map((row) => row.dataset.dictionaryId);
+    document.getElementById("dict-bulk-disable").click();
+    return {
+      baseRevision: current.revision,
+      fixtureId,
+      query: search.value,
+      selectedIds,
+      visibleIds,
+    };
+  }, FIXTURE_ID);
+  const managementDisabled = await page.waitForFunction(async ({ baseRevision, fixtureId }) => {
+    const { dictionaryState: current } = await chrome.storage.local.get("dictionaryState");
+    const fixture = current?.dictionaries?.find((dictionary) => dictionary.id === fixtureId);
+    const other = current?.dictionaries?.find((dictionary) => dictionary.id !== fixtureId);
+    const selected = document.querySelector("#dict-list .dict-selected")?.checked === true;
+    return current?.revision > baseRevision
+      && fixture?.enabled === false
+      && other?.enabled === true
+      && selected
+      && document.getElementById("dict-search")?.value === "ＦＩＸＴＵＲＥ ＡＬＩＡＳ"
+      ? { revision: current.revision }
+      : false;
+  }, { timeout: 10_000, polling: 100 }, managementStarted).then((handle) => handle.jsonValue());
+  await page.click("#dict-bulk-enable");
+  const managementEnabled = await page.waitForFunction(async ({ revision, fixtureId }) => {
+    const { dictionaryState: current } = await chrome.storage.local.get("dictionaryState");
+    const fixture = current?.dictionaries?.find((dictionary) => dictionary.id === fixtureId);
+    return current?.revision > revision && fixture?.enabled === true
+      ? { revision: current.revision }
+      : false;
+  }, { timeout: 10_000, polling: 100 }, {
+    fixtureId: FIXTURE_ID,
+    revision: managementDisabled.revision,
+  }).then((handle) => handle.jsonValue());
+  check(
+    "dictionary management filters and bulk-updates visible stable selections",
+    managementStarted.query === "ＦＩＸＴＵＲＥ ＡＬＩＡＳ"
+      && JSON.stringify(managementStarted.visibleIds) === JSON.stringify([FIXTURE_ID])
+      && JSON.stringify(managementStarted.selectedIds) === JSON.stringify([FIXTURE_ID])
+      && managementDisabled.revision > managementStarted.baseRevision
+      && managementEnabled.revision > managementDisabled.revision,
+    JSON.stringify({ managementStarted, managementDisabled, managementEnabled }),
+  );
+
+  await page.evaluate(() => {
+    const search = document.getElementById("dict-search");
+    search.value = "";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const orderBeforeDrag = await page.evaluate(async () => {
+    const { dictionaryState: current } = await chrome.storage.local.get("dictionaryState");
+    return {
+      order: current.dictionaries.map((dictionary) => dictionary.id),
+      revision: current.revision,
+    };
+  });
+  const dragHandle = await page.$(
+    `#dict-list .dict-row[data-dictionary-id="${GENERIC_KANJI_ID}"] .dict-drag`,
+  );
+  const dragTarget = await page.$(
+    `#dict-list .dict-row[data-dictionary-id="${FIXTURE_ID}"]`,
+  );
+  await page.setDragInterception(true);
+  await dragHandle.dragAndDrop(dragTarget);
+  await page.setDragInterception(false);
+  const orderAfterDrag = await page.waitForFunction(async ({ fixtureId, genericId, revision }) => {
+    const { dictionaryState: current } = await chrome.storage.local.get("dictionaryState");
+    const order = current?.dictionaries?.map((dictionary) => dictionary.id);
+    return current?.revision > revision && order?.[0] === genericId && order?.[1] === fixtureId
+      ? { order, revision: current.revision }
+      : false;
+  }, { timeout: 10_000, polling: 100 }, {
+    fixtureId: FIXTURE_ID,
+    genericId: GENERIC_KANJI_ID,
+    revision: orderBeforeDrag.revision,
+  }).then((handle) => handle.jsonValue());
+  await page.evaluate((fixtureId) => {
+    const row = [...document.querySelectorAll("#dict-list .dict-row")]
+      .find((candidate) => candidate.dataset.dictionaryId === fixtureId);
+    const position = row.querySelector(".dict-position-input");
+    position.value = "1";
+    position.focus();
+  }, FIXTURE_ID);
+  await page.keyboard.press("Enter");
+  const orderAfterKeyboardMove = await page.waitForFunction(async ({ fixtureId, genericId, revision }) => {
+    const { dictionaryState: current } = await chrome.storage.local.get("dictionaryState");
+    const order = current?.dictionaries?.map((dictionary) => dictionary.id);
+    const selected = [...document.querySelectorAll("#dict-list .dict-row")]
+      .find((row) => row.dataset.dictionaryId === fixtureId)
+      ?.querySelector(".dict-selected")?.checked === true;
+    return current?.revision > revision && order?.[0] === fixtureId && order?.[1] === genericId && selected
+      ? { order, revision: current.revision, selected }
+      : false;
+  }, { timeout: 10_000, polling: 100 }, {
+    fixtureId: FIXTURE_ID,
+    genericId: GENERIC_KANJI_ID,
+    revision: orderAfterDrag.revision,
+  }).then((handle) => handle.jsonValue());
+  check(
+    "drag and keyboard position controls share the persisted lookup order",
+    JSON.stringify(orderBeforeDrag.order) === JSON.stringify([FIXTURE_ID, GENERIC_KANJI_ID])
+      && JSON.stringify(orderAfterDrag.order) === JSON.stringify([GENERIC_KANJI_ID, FIXTURE_ID])
+      && JSON.stringify(orderAfterKeyboardMove.order) === JSON.stringify(orderBeforeDrag.order)
+      && orderAfterKeyboardMove.selected === true,
+    JSON.stringify({ orderBeforeDrag, orderAfterDrag, orderAfterKeyboardMove }),
   );
 
   const kanjiChooser = await page.evaluate(() => {

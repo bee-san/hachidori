@@ -246,7 +246,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 110 checks, all of
+full request→reply round trip per contract-C message type. 111 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -287,8 +287,9 @@ What it proves, in order:
    with generated-index metadata and its exact stable ID, four legacy kind rows
    migrate once, stale CAS writes are rejected, invalid selectors are pruned in
    the same worker-owned transaction, and IndexedDB is non-empty afterwards. The
-   Settings fixture also covers an external alias edit, two queued row actions,
-   focus restoration, conflict rollback, and the removal control barrier.
+   Settings fixture also covers normalized dictionary search, stable visible
+   selection, bulk state changes, every reorder path, queued moves, external
+   selection pruning, alias-edit preservation, conflict rollback, and removal.
 3. **Every read path** with the logical fixture package expanded to all four native kinds:
    `hd_lookup` and selected-dictionary `hd_lookup_dictionary` (payload keys,
    deinflection trace, glossary still a raw string,
@@ -388,8 +389,9 @@ above installs Chrome for Testing in the default cache; the harness also checks
 naming the variable if either is missing.
 
 It launches Chrome with `--load-extension`, imports the combined and term-only
-kanji fixtures through the real `#import-file` input on `settings.html`, verifies
-capability-aware chooser migration and clicked-kanji navigation, and hovers real
+kanji fixtures through the real `#import-file` input on `settings.html`, exercises
+filtered bulk management, a real pointer drag, and keyboard position movement,
+verifies capability-aware chooser migration and clicked-kanji navigation, and hovers real
 text with a real mouse on a page served over `http://127.0.0.1` (content scripts do not run on
 `chrome-extension://`, `about:blank`, or `file://` without a per-extension
 opt-in), then relaunches against the same profile and hovers again with no
@@ -415,7 +417,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 54 assertions, and the summary line
+`PLANNED` at the top of the file names all 56 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
