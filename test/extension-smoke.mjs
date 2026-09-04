@@ -3427,6 +3427,16 @@ async function main() {
   }
   const settingsCustom = await settingsCustomDictionaryStage();
   check(
+    "settings coalesces source validation while saving the exact current draft",
+    settingsCustom?.liveValidation?.deferred === true
+      && settingsCustom.liveValidation.saveEnabled === true
+      && settingsCustom.liveValidation.latestErrors === true
+      && settingsCustom.liveValidation.unchangedErrorsReused === true
+      && settingsCustom.liveValidation.reloadStatusPreserved === true
+      && settingsCustom.eventFirstSave?.statusPreserved === true,
+    JSON.stringify(settingsCustom),
+  );
+  check(
     "settings lazily loads the newest custom source across event and reply ordering",
     settingsCustom?.startup?.customReadCount === 0
       && settingsCustom.startup.formHidden === true
@@ -4806,6 +4816,37 @@ async function settingsCustomDictionaryStage() {
   await waitFor(() => customReadRequests.length === 2 && source.value === "external, そと, reload me\n");
   result.reloadedValue = source.value;
 
+  const errors = window.document.getElementById("custom-dictionary-errors");
+  const status = window.document.getElementById("custom-dictionary-status");
+  for (const text of ["broken", "broken\n, reading, definition", "valid, reading, definition\nbroken\n, reading, definition"]) {
+    source.value = text;
+    source.dispatchEvent(new window.Event("input", { bubbles: true }));
+  }
+  result.liveValidation = {
+    deferred: errors.childElementCount === 0,
+    saveEnabled: !save.disabled,
+  };
+  await waitFor(() => errors.childElementCount === 2 && status.textContent.includes("ready to save"));
+  result.liveValidation.latestErrors = JSON.stringify([...errors.children].map((item) => item.textContent))
+    === JSON.stringify(["Line 2: expected two commas", "Line 3: term is empty"]);
+  const firstError = errors.firstElementChild;
+  source.value = source.value.replace("valid", "edited");
+  source.dispatchEvent(new window.Event("input", { bubbles: true }));
+  await waitFor(() => status.textContent.includes("ready to save"));
+  result.liveValidation.unchangedErrorsReused = errors.firstElementChild === firstError;
+
+  source.value += " edited";
+  source.dispatchEvent(new window.Event("input", { bubbles: true }));
+  holdFirstRead = true;
+  reload.click();
+  await waitFor(() => pendingRead !== null);
+  const loadingStatus = status.textContent;
+  await new Promise((done) => window.setTimeout(done, 200));
+  result.liveValidation.reloadStatusPreserved = status.textContent === loadingStatus
+    && loadingStatus.startsWith("Loading");
+  pendingRead?.();
+  await waitFor(() => !source.disabled && source.value === "external, そと, reload me\n");
+
   const eventFirstText = "valid, ばりっど, line\\nsecond\nbroken\n, よみ, missing term\n";
   source.value = eventFirstText;
   source.dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -4844,7 +4885,10 @@ async function settingsCustomDictionaryStage() {
   });
   await waitFor(() => !source.disabled
     && window.document.getElementById("custom-dictionary-status")?.textContent?.includes("Saved"));
+  const savedStatus = status.textContent;
+  await new Promise((done) => window.setTimeout(done, 200));
   result.eventFirstSave = {
+    statusPreserved: status.textContent === savedStatus && savedStatus.includes("Saved"),
     baseRevision: customSaveRequests[0]?.baseDocumentRevision,
     text: customSaveRequests[0]?.text,
     value: source.value,
@@ -4919,7 +4963,7 @@ async function settingsCustomDictionaryStage() {
     status: window.document.getElementById("custom-dictionary-status")?.textContent ?? "",
   };
   reload.click();
-  await waitFor(() => customReadRequests.length === 3
+  await waitFor(() => customReadRequests.length === 4
     && source.value === "newest source, さいしん, authoritative\n");
   result.finalReload = source.value;
 
@@ -6442,18 +6486,21 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
   });
   popup.querySelector('[role="tab"][data-dictionary="Dictionary B"]')?.click();
   const termNoteButton = popup.querySelector(".gsm-hoshidicts-note-button");
-  const bottomNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
+  const termFormWasLazy = popup.querySelector(".gsm-hoshidicts-note-form") === null
+    && view.closeNoteForm() === false;
   const resultToolbar = popup.querySelector(".gsm-hoshidicts-result-chrome");
   Object.defineProperty(popup, "scrollHeight", { configurable: true, value: 480 });
   view.setToolbarPosition("bottom");
-  const bottomChildren = [...popup.children];
   popup.scrollTop = 0;
   termNoteButton?.click();
+  const bottomNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
+  const bottomChildren = [...popup.children];
   const openedAtBottom = popup.scrollTop;
   view.setToolbarPosition("top");
   check(
     "the bottom Note form stays beside its toolbar and opens at the active edge",
-    bottomChildren.at(-2) === bottomNoteForm
+    termFormWasLazy
+      && bottomChildren.at(-2) === bottomNoteForm
       && bottomChildren.at(-1) === resultToolbar
       && openedAtBottom === popup.scrollHeight
       && popup.children[0] === resultToolbar
@@ -6601,11 +6648,13 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
     JSON.stringify(popup.textContent.slice(0, 200)),
   );
   const kanjiNoteButton = popup.querySelector(".gsm-hoshidicts-note-button");
+  const kanjiFormWasLazy = popup.querySelector(".gsm-hoshidicts-note-form") === null;
   kanjiNoteButton?.click();
   const kanjiNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
   check(
     "the kanji view uses the same Note form with a glyph-only prefill",
-    kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-term")?.value === kanji.character
+    kanjiFormWasLazy
+      && kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-term")?.value === kanji.character
       && kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-reading")?.value === ""
       && kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-definition")?.value === "",
     JSON.stringify({

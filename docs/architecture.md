@@ -125,7 +125,10 @@ there is no separate test-only or in-memory dictionary backend.
 
 The source document is stored separately with a monotonic document revision and
 an ordered-entry semantic hash. Settings loads it only when the editor opens. A
-stale editor save is refused, while a popup Note append enters the engine
+typing burst defers full-source validation until 150 ms of inactivity; dirty
+state updates immediately, and Save cancels the preview and validates the exact
+submitted source. Unchanged diagnostics retain their DOM nodes. A stale editor
+save is refused, while a popup Note append enters the engine
 mutation queue before reading the latest source. A semantic no-op skips
 compilation only when the committed fixed-ID package and generation still match
 every invariant; otherwise the same source repairs the package. No valid rows
@@ -139,7 +142,8 @@ and first position. Presentation-only conflicts are retried against current
 state without merging a stale source revision. A lost reply is accepted only
 after an exact source/state-pair readback.
 
-The term and kanji popup views share one fixed Note form. Its prefill comes from
+The term and kanji popup views share one fixed Note form, constructed only when
+opened so ordinary lookups do not build hidden editor controls. Its prefill comes from
 the currently projected primary result, and a successful append refreshes only
 the exact still-current request descriptor and page anchor. Dictionary storage
 events adopt only newer revisions; editing defers popup invalidation until close

@@ -263,7 +263,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 185 checks, all of
+full request→reply round trip per contract-C message type. 186 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -300,7 +300,8 @@ What it proves, in order:
    duplicates, multiple 1,000-row banks, semantic no-op repair, zero-row
    removal, presentation-conflict retry, fixed-ID/title protection, and cleanup.
    Settings and popup harnesses cover lazy newest-only source adoption,
-   malformed-line reporting, pinned controls, shared term/kanji Note behavior,
+   coalesced complete malformed-line reporting, immediate-save validation,
+   pinned controls, lazily constructed shared term/kanji Note behavior,
    exact-view refresh and Back context, Escape/hover guards, and successful
    append followed by failed refresh.
 2. **Boot and relay.** `hd_status` has exactly the ten documented envelope

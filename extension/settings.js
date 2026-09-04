@@ -55,6 +55,8 @@ let options = { ...DEFAULT_OPTIONS };
 let updateSettings = { schedule: "off", lastCheckedAt: null };
 let customDocument = null;
 let customBaseDocument = null;
+let customBaseEditorText = "";
+let customValidationTimer = null;
 let customEditorLoaded = false;
 let customLoading = false;
 let customSaving = false;
@@ -346,23 +348,31 @@ function setCustomDictionaryStatus(message, tone = "") {
 
 function renderCustomDictionaryErrors(errors) {
   const list = element("custom-dictionary-errors");
-  list.textContent = "";
-  for (const error of Array.isArray(errors) ? errors : []) {
-    const item = document.createElement("li");
-    item.textContent = `Line ${String(error?.lineNumber)}: ${stringValue(error?.reason, "invalid entry")}`;
-    list.appendChild(item);
+  const messages = (Array.isArray(errors) ? errors : []).map((error) =>
+    `Line ${String(error?.lineNumber)}: ${stringValue(error?.reason, "invalid entry")}`);
+  if (list.childElementCount === messages.length
+      && messages.every((message, index) => list.children[index].textContent === message)) {
+    return;
   }
+  const items = document.createDocumentFragment();
+  for (const message of messages) {
+    const item = document.createElement("li");
+    item.textContent = message;
+    items.appendChild(item);
+  }
+  list.replaceChildren(items);
   list.hidden = list.childElementCount === 0;
 }
 
 function customDictionaryDirty() {
   return customEditorLoaded
     && customBaseDocument !== null
-    && customDictionaryDraftSource() !== customBaseDocument.text;
+    && element("custom-dictionary-source").value !== customBaseEditorText;
 }
 
 function customDictionaryDraftSource() {
-  const source = element("custom-dictionary-source").value.replace(/\r\n?|\n/gu, "\n");
+  // Textareas expose LF-normalized text; restore the document's newline only on save.
+  const source = element("custom-dictionary-source").value;
   return customDraftNewline === "\r\n" ? source.replaceAll("\n", "\r\n") : source;
 }
 
@@ -385,8 +395,14 @@ function showCustomDictionaryEditor(visible) {
   open.textContent = visible ? "Close source editor" : "Open source editor";
 }
 
-function renderCustomDictionaryValidation() {
-  const parsed = parseCustomDictionary(customDictionaryDraftSource());
+function cancelCustomDictionaryValidation() {
+  clearTimeout(customValidationTimer);
+  customValidationTimer = null;
+}
+
+function renderCustomDictionaryValidation(source = element("custom-dictionary-source").value) {
+  cancelCustomDictionaryValidation();
+  const parsed = parseCustomDictionary(source);
   renderCustomDictionaryErrors(parsed.errors);
   return parsed;
 }
@@ -396,6 +412,7 @@ function resetCustomDictionaryDraft(documentValue) {
   customDraftStale = false;
   customDraftNewline = documentValue.text.includes("\r\n") ? "\r\n" : "\n";
   element("custom-dictionary-source").value = documentValue.text;
+  customBaseEditorText = element("custom-dictionary-source").value;
   renderCustomDictionaryValidation();
   renderCustomDictionaryControls();
 }
@@ -440,6 +457,7 @@ function adoptCustomDictionaryState(value) {
 
 async function loadCustomDictionarySource() {
   if (customLoading || customSaving) return;
+  cancelCustomDictionaryValidation();
   customLoading = true;
   setCustomDictionaryStatus("Loading the saved custom dictionary source…");
   renderCustomDictionaryControls();
@@ -491,11 +509,12 @@ async function saveCustomDictionarySource(event) {
   }
 
   const source = customDictionaryDraftSource();
-  const parsed = renderCustomDictionaryValidation();
+  const parsed = renderCustomDictionaryValidation(source);
   const pending = {
     baseRevision: customBaseDocument.revision,
     source,
     parsed,
+    editorText: element("custom-dictionary-source").value,
   };
   customSaving = true;
   setCustomDictionaryStatus("Saving and compiling the custom dictionary…");
@@ -527,6 +546,7 @@ async function saveCustomDictionarySource(event) {
       throw new Error("the saved custom dictionary source did not match the submitted draft");
     }
     customBaseDocument = saved;
+    customBaseEditorText = pending.editorText;
     const newerDocumentExists = customDocument !== null
       && (customDocument.revision > saved.revision
         || customDocument.text !== saved.text
@@ -1654,17 +1674,22 @@ function attachHandlers() {
     void loadCustomDictionarySource();
   });
   element("custom-dictionary-source").addEventListener("input", () => {
-    const parsed = renderCustomDictionaryValidation();
+    cancelCustomDictionaryValidation();
     if (customDraftStale) {
       markCustomDictionaryStale();
-    } else if (customDictionaryDirty()) {
+    } else {
+      setCustomDictionaryStatus(customDictionaryDirty() ? "Unsaved changes." : "No unsaved changes.");
+    }
+    renderCustomDictionaryControls();
+    // Keep full-document parsing and diagnostics off the typing path. Saving
+    // cancels this preview and validates the exact submitted source immediately.
+    customValidationTimer = setTimeout(() => {
+      const parsed = renderCustomDictionaryValidation();
+      if (customDraftStale || !customDictionaryDirty()) return;
       setCustomDictionaryStatus(
         `${parsed.entries.length} valid ${parsed.entries.length === 1 ? "entry" : "entries"} ready to save.`,
       );
-    } else {
-      setCustomDictionaryStatus("No unsaved changes.");
-    }
-    renderCustomDictionaryControls();
+    }, 150);
   });
 
   const file = element("import-file");
