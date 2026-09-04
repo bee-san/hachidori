@@ -959,11 +959,15 @@ function renderDictionaryGroupRow(group, index) {
 
   const up = row.querySelector(".dict-group-up");
   const down = row.querySelector(".dict-group-down");
+  const remove = row.querySelector(".dict-group-delete");
   up.dataset.pinnedDisabled = String(index === 0);
   down.dataset.pinnedDisabled = String(index === dictionaryState.groups.length - 1);
+  up.setAttribute("aria-label", `Move ${group.name} up`);
+  down.setAttribute("aria-label", `Move ${group.name} down`);
+  remove.setAttribute("aria-label", `Delete ${group.name}`);
   up.addEventListener("click", () => moveDictionaryGroup(group.id, -1));
   down.addEventListener("click", () => moveDictionaryGroup(group.id, 1));
-  row.querySelector(".dict-group-delete").addEventListener("click", () => {
+  remove.addEventListener("click", () => {
     void commitGroups((current) => current.filter((entry) => entry.id !== group.id));
   });
 

@@ -534,9 +534,12 @@ code {
 
 .dict-group-error {
   grid-column: 1 / -1;
-  min-height: 1.5em;
   color: var(--error);
   font-size: 12.5px;
+}
+
+.dict-group-error:empty {
+  display: none;
 }
 
 .dict-group-list,
@@ -581,6 +584,10 @@ code {
 
 .dict-group-add-select {
   min-width: 0;
+}
+
+.dict-group-add {
+  white-space: nowrap;
 }
 
 .dict-group-members {
