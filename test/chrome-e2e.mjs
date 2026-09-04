@@ -1244,7 +1244,7 @@ async function main() {
   await page.keyboard.press("A");
   await page.keyboard.up("Control");
   await page.keyboard.type("Focused reading");
-  await page.click(`${editedGroupSelector} .dict-group-up`);
+  await page.click(`${editedGroupSelector} .dict-group-up`, { delay: 150 });
   const blurAction = await page.evaluate(async ({ beforeRevision, groupId }) => {
     const deadline = Date.now() + 3000;
     let current;
