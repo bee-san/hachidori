@@ -10,6 +10,14 @@
 const TARGET = "hoshidicts-offscreen";
 const MAX_PENDING_REQUESTS = 128;
 const PROBE_TIMEOUT_MS = 10_000;
+const MUTATION_TYPES = new Set([
+  "hd_import",
+  "hd_apply_state",
+  "hd_reload",
+  "hd_remove",
+  "hd_custom_save",
+  "hd_custom_append",
+]);
 
 function supportsSharedWasmMemory() {
   if (globalThis.crossOriginIsolated !== true
@@ -31,7 +39,7 @@ let worker = null;
 let localEngine = null;
 let nextRequestId = 0;
 let workerError = null;
-let activeImportRequestId = null;
+let activeMutationRequestId = null;
 let lastWorkerStatus = {
   ready: false,
   loading: true,
@@ -69,7 +77,7 @@ function failedResponse(message, error) {
 function failWorker(error) {
   if (workerError !== null) return;
   workerError = describe(error) || "the Hoshidicts engine worker stopped";
-  activeImportRequestId = null;
+  activeMutationRequestId = null;
   console.error(`hoshidicts: engine worker failed: ${workerError}`);
   for (const [id, request] of pending) {
     pending.delete(id);
@@ -140,7 +148,7 @@ function startWorkerEngine() {
     const request = pending.get(data.id);
     if (request === undefined) return;
     pending.delete(data.id);
-    if (data.id === activeImportRequestId) activeImportRequestId = null;
+    if (data.id === activeMutationRequestId) activeMutationRequestId = null;
     if (data.response?.type === "hd_status_result") {
       lastWorkerStatus = {
         ready: data.response.ready === true,
@@ -192,19 +200,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return undefined;
     }
     if (message?.type === "hd_status"
-        && (activeImportRequestId !== null || pending.size >= MAX_PENDING_REQUESTS)) {
+        && (activeMutationRequestId !== null || pending.size >= MAX_PENDING_REQUESTS)) {
       sendResponse({
         type: "hd_status_result",
         requestId: message.requestId ?? null,
         ok: true,
         error: null,
         ...lastWorkerStatus,
-        loading: activeImportRequestId !== null || lastWorkerStatus.loading,
+        loading: activeMutationRequestId !== null || lastWorkerStatus.loading,
       });
       return undefined;
     }
-    if (activeImportRequestId !== null) {
-      sendResponse(failedResponse(message, "the dictionary engine is busy importing"));
+    if (activeMutationRequestId !== null) {
+      sendResponse(failedResponse(message, "the dictionary engine is busy mutating"));
       return undefined;
     }
     if (pending.size >= MAX_PENDING_REQUESTS) {
@@ -213,7 +221,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     nextRequestId += 1;
     pending.set(nextRequestId, { message, sendResponse });
-    if (message.type === "hd_import") activeImportRequestId = nextRequestId;
+    if (MUTATION_TYPES.has(message.type)) activeMutationRequestId = nextRequestId;
     worker.postMessage({ channel: "engine-request", id: nextRequestId, message });
     return undefined;
   }).catch((error) => sendResponse(failedResponse(message, describe(error))));
