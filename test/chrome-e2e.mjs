@@ -157,6 +157,7 @@ const PLANNED = [
   "named groups normalize unique names and keep stable dictionary memberships",
   "group and member order controls persist their shared state order",
   "a real blur-then-click queues both group edits and retains focus",
+  "a newer external focus survives a group rerender",
   "the kanji dictionary chooser lists imported term and kanji dictionaries",
   "a combined archive exposes separate term and native kanji choices",
   "stale title-only kanji selections are pruned",
@@ -1308,6 +1309,35 @@ async function main() {
       && blurAction.firstGroupId === groupManagement.studyGroupId
       && blurAction.focusedGroupId === groupManagement.studyGroupId,
     JSON.stringify({ beforeBlurAction, blurAction }),
+  );
+
+  const externalFocus = await page.evaluate(async (groupId) => {
+    const before = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+    const input = document.querySelector(`[data-group-id="${groupId}"] .dict-group-name`);
+    const search = document.getElementById("dict-search");
+    input.focus();
+    input.value = "Externally focused reading";
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    search.focus();
+
+    const deadline = Date.now() + 3000;
+    let current;
+    do {
+      current = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+      if (current.revision > before.revision) break;
+      await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+    } while (Date.now() < deadline);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+    return {
+      focusedId: document.activeElement?.id,
+      name: current.groups.find((group) => group.id === groupId)?.name,
+    };
+  }, groupManagement.studyGroupId);
+  check(
+    "a newer external focus survives a group rerender",
+    externalFocus.focusedId === "dict-search"
+      && externalFocus.name === "Externally focused reading",
+    JSON.stringify(externalFocus),
   );
 
   const kanjiChooser = await page.evaluate(() => {

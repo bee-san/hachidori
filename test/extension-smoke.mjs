@@ -1773,6 +1773,11 @@ async function main() {
       && settingsConflict.groups.queuedRenameRequestCount === 1,
     JSON.stringify(settingsConflict?.groups),
   );
+  check(
+    "group rerenders preserve newer focus outside the management lists",
+    settingsConflict?.groups?.externalFocusPreserved === true,
+    JSON.stringify(settingsConflict?.groups),
+  );
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -2600,9 +2605,12 @@ async function settingsConflictStage() {
     && window.document.activeElement.closest(".dict-group")?.dataset.groupId === grammarGroupId;
 
   const studyName = groupRow(studyGroupId).querySelector(".dict-group-name");
+  studyName.focus();
   studyName.value = "Reading";
   studyName.dispatchEvent(new window.Event("change", { bubbles: true }));
+  search.focus();
   await waitForRequestCount(4);
+  const externalFocusPreserved = window.document.activeElement === search;
 
   const studyAdd = groupRow(studyGroupId).querySelector(".dict-group-add");
   studyAdd.focus();
@@ -2688,6 +2696,7 @@ async function settingsConflictStage() {
     requestsAfterReserved,
     groupOrderAfterMove,
     groupMoveFocusRetained,
+    externalFocusPreserved,
     groupAddFocusRetained,
     membershipBeforeMove,
     membershipAfterMove,
