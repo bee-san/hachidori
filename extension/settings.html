@@ -49,6 +49,51 @@
         </p>
       </section>
 
+      <section class="card" aria-labelledby="custom-dictionary-heading">
+        <div class="card-head">
+          <h2 id="custom-dictionary-heading">Custom dictionary</h2>
+          <p class="hint">
+            Keep personal entries as <code>term, reading, definition</code>, one per line. The first two
+            commas divide the fields, blank and <code>#</code> comment lines are ignored, and
+            <code>\n</code> adds a newline inside a definition. Malformed lines are reported and skipped
+            while valid entries are saved.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="ghost custom-dictionary-open"
+          id="custom-dictionary-open"
+          aria-controls="custom-dictionary-form"
+          aria-expanded="false"
+        >Open source editor</button>
+        <form class="custom-dictionary-form" id="custom-dictionary-form" hidden>
+          <label class="custom-dictionary-source-field">
+            <span class="field-label">Source</span>
+            <textarea
+              id="custom-dictionary-source"
+              rows="12"
+              spellcheck="false"
+              aria-describedby="custom-dictionary-status"
+            ></textarea>
+          </label>
+          <div class="custom-dictionary-actions">
+            <button type="submit" class="primary-button" id="custom-dictionary-save">Save dictionary</button>
+            <button type="button" class="ghost" id="custom-dictionary-reload">Reload saved source</button>
+          </div>
+        </form>
+        <output
+          class="custom-dictionary-status"
+          id="custom-dictionary-status"
+          aria-live="polite"
+        ></output>
+        <ol
+          class="custom-dictionary-errors"
+          id="custom-dictionary-errors"
+          aria-label="Malformed custom dictionary lines"
+          hidden
+        ></ol>
+      </section>
+
       <section class="card" aria-labelledby="updates-heading">
         <div class="card-head">
           <h2 id="updates-heading">Dictionary updates</h2>
