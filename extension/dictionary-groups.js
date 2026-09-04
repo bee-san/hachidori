@@ -21,6 +21,10 @@ function element(id) {
   return document.getElementById(id);
 }
 
+function setError(message) {
+  element("dict-group-error").textContent = message;
+}
+
 function bindMoveButtons(row, prefix, index, length, label, move) {
   const up = row.querySelector(`.${prefix}-up`);
   const down = row.querySelector(`.${prefix}-down`);
@@ -60,10 +64,6 @@ export function createDictionaryGroupController({
   updateItemById,
   renderDeferredAfterBlur,
 }) {
-  function setError(message) {
-    element("dict-group-error").textContent = message;
-  }
-
   function nameError(name, excludedId = null) {
     if (name === "") return "Enter a group name.";
     const key = groupNameKey(name);
