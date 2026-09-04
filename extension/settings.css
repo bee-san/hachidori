@@ -543,7 +543,7 @@ code {
   gap: 6px;
 }
 
-.dict-position-input {
+.dict-position .dict-position-input {
   width: 4.5em;
   padding: 6px 8px;
   border: 1px solid var(--border-strong);

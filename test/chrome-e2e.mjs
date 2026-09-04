@@ -146,6 +146,7 @@ const PLANNED = [
   "the imported dictionary is recorded in chrome.storage.local",
   "re-importing the same dictionary replaces it safely in OPFS",
   "the dictionary list renders its alias, metadata, and five capability badges",
+  "the dictionary position input stays compact on a narrow Settings page",
   "the Settings enabled control re-enables the preserved package",
   "importing a term-only single-kanji dictionary succeeds",
   "dictionary management filters and bulk-updates visible stable selections",
@@ -884,6 +885,35 @@ async function main() {
       && renderedDictionary.metadata.includes("Imported ")
       && renderedDictionary.metadata.includes("Update source available"),
     `#dict-list: ${JSON.stringify(renderedDictionary)}`);
+
+  await page.setViewport({ width: 480, height: 900 });
+  const narrowPosition = await page.evaluate(() => {
+    const row = document.querySelector("#dict-list .dict-row");
+    const actions = row?.querySelector(".dict-actions");
+    const input = row?.querySelector(".dict-position-input");
+    const inputRect = input?.getBoundingClientRect();
+    const actionsRect = actions?.getBoundingClientRect();
+    const rowRect = row?.getBoundingClientRect();
+    const inputStyle = input ? getComputedStyle(input) : null;
+    return {
+      actionsRight: actionsRect?.right ?? 0,
+      contentWidth: Number.parseFloat(inputStyle?.width ?? "0"),
+      fontSize: Number.parseFloat(inputStyle?.fontSize ?? "0"),
+      inputWidth: inputRect?.width ?? 0,
+      pageWidth: document.documentElement.clientWidth,
+      rowRight: rowRect?.right ?? 0,
+      scrollWidth: document.documentElement.scrollWidth,
+    };
+  });
+  check(
+    "the dictionary position input stays compact on a narrow Settings page",
+    narrowPosition.inputWidth > 0
+      && Math.abs(narrowPosition.inputWidth - (narrowPosition.fontSize * 4.5)) <= 1
+      && narrowPosition.actionsRight <= narrowPosition.rowRight + 1
+      && narrowPosition.scrollWidth === narrowPosition.pageWidth,
+    JSON.stringify(narrowPosition),
+  );
+  await page.setViewport({ width: 800, height: 600 });
 
   const fixtureEnabled = await setDictionaryEnabledInSettings(page, "hachidori-fixture", true);
   check(
