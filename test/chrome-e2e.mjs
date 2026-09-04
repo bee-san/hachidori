@@ -134,17 +134,25 @@ runInContext(
   { filename: "recommended-dictionaries.js" },
 );
 const RECOMMENDED_FIXTURE_METADATA = {
-  jitendex: { title: "Jitendex.org [2026-08-11]", revision: "2026.08.11.0" },
-  jmnedict: { title: "JMnedict [2026-09-04]", revision: "JMnedict.2026-09-04" },
+  jitendex: {
+    title: "Jitendex.org [2026-08-11]",
+    revision: "2026.08.11.0",
+    capabilities: ["term", "media"],
+  },
+  jmnedict: {
+    title: "JMnedict [2026-09-04]",
+    revision: "JMnedict.2026-09-04",
+    capabilities: ["term"],
+  },
   "bees-ultimate-kanji-dictionary": {
     title: "Bee's Ultimate Kanji Dictionary",
     revision: "2026.09.02",
+    capabilities: ["term", "freq", "media"],
   },
-  jiten: { title: "Jiten", revision: "Jiten 26-09-02" },
+  jiten: { title: "Jiten", revision: "Jiten 26-09-02", capabilities: ["freq"] },
 };
 const RECOMMENDED_DICTIONARIES = catalogueContext.HD_RECOMMENDED_DICTIONARIES.map((entry) => ({
   ...entry,
-  capabilities: [...entry.capabilities],
   ...RECOMMENDED_FIXTURE_METADATA[entry.sourceId],
 }));
 const RECOMMENDED_LINKS = RECOMMENDED_DICTIONARIES.map(({ name, publisherUrl }) => [name, publisherUrl]);

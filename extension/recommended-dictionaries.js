@@ -17,8 +17,8 @@
       archiveName: "jitendex-yomitan.zip",
       githubRepository: "stephenmk/stephenmk.github.io",
       githubRepositoryId: "744330420",
+      requiredCapability: "term",
       titlePattern: "^Jitendex\\.org \\[\\d{4}-\\d{2}-\\d{2}\\]$",
-      capabilities: ["term", "media"],
     },
     {
       sourceId: "jmnedict",
@@ -32,8 +32,8 @@
       archiveName: "JMnedict.zip",
       githubRepository: "yomidevs/jmdict-yomitan",
       githubRepositoryId: "696075636",
+      requiredCapability: "term",
       titlePattern: "^JMnedict \\[\\d{4}-\\d{2}-\\d{2}\\]$",
-      capabilities: ["term"],
     },
     {
       sourceId: "bees-ultimate-kanji-dictionary",
@@ -47,8 +47,8 @@
       archiveName: "bees-ultimate-kanji-dictionary.zip",
       githubRepository: "bee-san/bees-ultimate-kanji-dictionary",
       githubRepositoryId: "1335822804",
+      requiredCapability: "term",
       titlePattern: "^Bee's Ultimate Kanji Dictionary$",
-      capabilities: ["term", "freq", "media"],
     },
     {
       sourceId: "jiten",
@@ -61,13 +61,10 @@
       archiveName: "jiten-frequency.zip",
       githubRepository: null,
       githubRepositoryId: null,
+      requiredCapability: "freq",
       titlePattern: "^Jiten$",
-      capabilities: ["freq"],
     },
-  ].map((entry) => Object.freeze({
-    ...entry,
-    capabilities: Object.freeze(entry.capabilities),
-  }));
+  ].map((entry) => Object.freeze(entry));
 
   Object.defineProperty(globalThis, "HD_RECOMMENDED_DICTIONARIES", {
     value: Object.freeze(entries),

@@ -456,8 +456,8 @@ function validateRecommendedImport(source, report, generated) {
   if (generated.revision === "") {
     throw new Error(`${source.name} archive did not declare a revision`);
   }
-  if (JSON.stringify(capabilities(report)) !== JSON.stringify(source.capabilities)) {
-    throw new Error(`${source.name} archive did not match its expected capabilities`);
+  if (!capabilities(report).includes(source.requiredCapability)) {
+    throw new Error(`${source.name} archive did not contain its expected capability`);
   }
 }
 

@@ -650,6 +650,7 @@ const RECOMMENDED_DICTIONARIES = [
     downloadUrl: "https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip",
     indexUrl: "https://jitendex.org/static/yomitan.json",
     githubRepositoryId: "744330420",
+    requiredCapability: "term",
     title: "Jitendex.org [2026-08-11]",
     revision: "2026.08.11.0",
     capabilities: ["term", "media"],
@@ -661,6 +662,7 @@ const RECOMMENDED_DICTIONARIES = [
     downloadUrl: "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMnedict.zip",
     indexUrl: "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMnedict.json",
     githubRepositoryId: "696075636",
+    requiredCapability: "term",
     title: "JMnedict [2026-09-04]",
     revision: "JMnedict.2026-09-04",
     capabilities: ["term"],
@@ -672,6 +674,7 @@ const RECOMMENDED_DICTIONARIES = [
     downloadUrl: "https://github.com/bee-san/bees-ultimate-kanji-dictionary/releases/latest/download/bees-ultimate-kanji-dictionary.zip",
     indexUrl: "https://raw.githubusercontent.com/bee-san/bees-ultimate-kanji-dictionary/main/dist/index.json",
     githubRepositoryId: "1335822804",
+    requiredCapability: "term",
     title: "Bee's Ultimate Kanji Dictionary",
     revision: "2026.09.02",
     capabilities: ["term", "freq", "media"],
@@ -683,6 +686,7 @@ const RECOMMENDED_DICTIONARIES = [
     downloadUrl: "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
     indexUrl: "https://api.jiten.moe/api/frequency-list/index",
     githubRepositoryId: null,
+    requiredCapability: "freq",
     title: "Jiten",
     revision: "Jiten 26-09-02",
     capabilities: ["freq"],
@@ -700,16 +704,17 @@ function checkRecommendedDictionaries() {
   sandbox.globalThis = sandbox;
   runInContext(readFileSync(cataloguePath, "utf8"), sandbox, { filename: "recommended-dictionaries.js" });
   const catalogue = sandbox.HD_RECOMMENDED_DICTIONARIES ?? [];
-  const actual = catalogue.map((entry) => ({
+  const catalogueContract = (entry) => ({
     sourceId: entry.sourceId,
     name: entry.name,
     publisherUrl: entry.publisherUrl,
     downloadUrl: entry.downloadUrl,
     indexUrl: entry.indexUrl,
     githubRepositoryId: entry.githubRepositoryId,
-    capabilities: [...entry.capabilities],
-  }));
-  const expected = RECOMMENDED_DICTIONARIES.map(({ title, revision, ...entry }) => entry);
+    requiredCapability: entry.requiredCapability,
+  });
+  const actual = catalogue.map(catalogueContract);
+  const expected = RECOMMENDED_DICTIONARIES.map(catalogueContract);
   check(
     "the catalogue names exactly four trusted recommendations and their publishers",
     JSON.stringify(actual) === JSON.stringify(expected),
@@ -1167,12 +1172,12 @@ async function main() {
   await rejectRecommended(
     "recommended import rejects mismatched capabilities before publication",
     recommendedFields,
-    { capabilities: ["term"] },
+    { capabilities: ["freq"] },
     recommended.title,
   );
 
   const trustedImport = await request("hd_import", {
-    blobUrl: recommendedArchive(),
+    blobUrl: recommendedArchive({ capabilities: ["term", "freq", "media"] }),
     fileName: "jitendex-yomitan.zip",
     ...recommendedFields,
     // Message-owned metadata must never override the built-in catalogue.
@@ -1196,6 +1201,7 @@ async function main() {
       && trustedPackage?.indexUrl === recommended.indexUrl
       && trustedPackage?.downloadUrl === recommended.downloadUrl
       && trustedPackage?.termCount === 1
+      && trustedPackage?.frequencyCount === 1
       && trustedPackage?.mediaCount === 1,
     JSON.stringify({ trustedImport, trustedState }),
   );
