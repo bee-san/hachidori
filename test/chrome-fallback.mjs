@@ -10,6 +10,12 @@ import { cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } 
 import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import {
+  CUSTOM_DICTIONARY_ID,
+  CUSTOM_DICTIONARY_SOURCE_KEY,
+  CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION,
+  CUSTOM_DICTIONARY_TITLE,
+} from "../extension/custom-dictionary.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE_EXTENSION = resolve(ROOT, "extension");
@@ -35,6 +41,7 @@ const TEST_EXTENSION = scratchPath(
   "hachidori-fallback-extension-",
 );
 const FIXTURE = resolve(ROOT, "test/fixtures/hachidori-fixture.zip");
+const CUSTOM_SOURCE = "# Fallback persistence\n保存語, ほぞんご, persisted by the custom dictionary\n";
 const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
 
 function cachedChrome() {
@@ -129,7 +136,7 @@ async function openSettings(browser, id) {
 }
 
 async function inspect(page) {
-  return page.evaluate(async () => {
+  return page.evaluate(async ({ dictionaryId, dictionaryTitle, sourceKey }) => {
     const request = (type, fields = {}) => chrome.runtime.sendMessage({
       target: "hoshidicts-offscreen",
       type,
@@ -143,6 +150,15 @@ async function inspect(page) {
       scanLength: 16,
       options: {},
     });
+    const customLookup = await request("hd_lookup_dictionary", {
+      dictionary: dictionaryTitle,
+      text: "保存語",
+    });
+    const stored = await chrome.storage.local.get([sourceKey, "dictionaryState"]);
+    const dictionaries = stored.dictionaryState?.dictionaries ?? [];
+    const customDictionary = dictionaries.find(
+      (dictionary) => dictionary.id === dictionaryId,
+    );
     const root = await navigator.storage.getDirectory();
     const opfsEntries = [];
     for await (const [name] of root.entries()) opfsEntries.push(name);
@@ -150,8 +166,45 @@ async function inspect(page) {
       crossOriginIsolated: globalThis.crossOriginIsolated,
       status,
       lookup,
+      customDictionary,
+      customDictionaryFirst: dictionaries[0]?.id === dictionaryId,
+      customLookup,
+      customSource: stored[sourceKey] ?? null,
       opfsEntries,
     };
+  }, {
+    dictionaryId: CUSTOM_DICTIONARY_ID,
+    dictionaryTitle: CUSTOM_DICTIONARY_TITLE,
+    sourceKey: CUSTOM_DICTIONARY_SOURCE_KEY,
+  });
+}
+
+async function saveCustomDictionary(page) {
+  await page.click("#custom-dictionary-open");
+  await page.waitForFunction(() => {
+    const form = document.getElementById("custom-dictionary-form");
+    const status = document.getElementById("custom-dictionary-status")?.textContent ?? "";
+    return form?.hidden === false && status === "Loaded source revision 0.";
+  }, { timeout: 30_000, polling: 100 });
+  await page.$eval("#custom-dictionary-source", (textarea, source) => {
+    textarea.value = source;
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  }, CUSTOM_SOURCE);
+  await page.click("#custom-dictionary-save");
+  await page.waitForFunction(async ({ dictionaryId, sourceKey, sourceText }) => {
+    const stored = await chrome.storage.local.get([sourceKey, "dictionaryState"]);
+    const custom = stored.dictionaryState?.dictionaries?.[0];
+    const status = document.getElementById("custom-dictionary-status")?.textContent ?? "";
+    return stored[sourceKey]?.revision === 1
+      && stored[sourceKey]?.text === sourceText
+      && custom?.id === dictionaryId
+      && custom.enabled === true
+      && custom.termCount === 1
+      && status.includes("rebuilt the custom dictionary");
+  }, { timeout: 120_000, polling: 250 }, {
+    dictionaryId: CUSTOM_DICTIONARY_ID,
+    sourceKey: CUSTOM_DICTIONARY_SOURCE_KEY,
+    sourceText: CUSTOM_SOURCE,
   });
 }
 
@@ -174,35 +227,60 @@ try {
     () => document.querySelector("#engine-status")?.textContent?.includes("1 dictionary enabled"),
     { timeout: 90_000 },
   );
+  await saveCustomDictionary(page);
   let observed = await inspect(page);
   assert.equal(observed.crossOriginIsolated, false);
   assert.equal(observed.status.ok, true);
   assert.equal(observed.status.storageBackend, "idbfs");
   assert.equal(observed.status.threaded, false);
   assert.equal(observed.lookup.ok, true);
-  assert.equal(observed.lookup.dictionaryCount, 4);
+  assert.equal(observed.lookup.dictionaryCount, 5);
   assert.equal(observed.lookup.results[0]?.deinflected, "食べる");
   assert.equal(observed.lookup.results[0]?.term?.frequencies?.[0]?.frequencies?.[0]?.value, 142);
+  assert.equal(observed.customDictionary?.id, CUSTOM_DICTIONARY_ID);
+  assert.equal(observed.customDictionary?.title, CUSTOM_DICTIONARY_TITLE);
+  assert.equal(observed.customDictionaryFirst, true);
+  assert.equal(observed.customDictionary?.enabled, true);
+  assert.equal(observed.customDictionary?.termCount, 1);
+  assert.equal(observed.customSource?.schemaVersion, CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION);
+  assert.equal(observed.customSource?.revision, 1);
+  assert.equal(observed.customSource?.text, CUSTOM_SOURCE);
+  assert.equal(observed.customDictionary?.revision, observed.customSource?.semanticRevision);
+  assert.equal(observed.customLookup?.ok, true);
+  assert.equal(observed.customLookup?.results?.[0]?.term?.expression, "保存語");
+  assert.match(JSON.stringify(observed.customLookup), /persisted by the custom dictionary/u);
   assert.deepEqual(observed.opfsEntries, []);
+  const customPath = observed.customDictionary.path;
   await browser.close();
 
   browser = await launch();
   await extensionId(browser);
   page = await openSettings(browser, id);
   await page.waitForFunction(
-    () => document.querySelector("#engine-status")?.textContent?.includes("1 dictionary enabled"),
+    () => document.querySelector("#engine-status")?.textContent?.includes("2 dictionaries enabled"),
     { timeout: 90_000 },
   );
   observed = await inspect(page);
   assert.equal(observed.crossOriginIsolated, false);
   assert.equal(observed.status.storageBackend, "idbfs");
   assert.equal(observed.status.threaded, false);
-  assert.equal(observed.lookup.dictionaryCount, 4);
+  assert.equal(observed.lookup.dictionaryCount, 5);
   assert.equal(observed.lookup.results[0]?.deinflected, "食べる");
+  assert.equal(observed.customDictionary?.id, CUSTOM_DICTIONARY_ID);
+  assert.equal(observed.customDictionary?.title, CUSTOM_DICTIONARY_TITLE);
+  assert.equal(observed.customDictionaryFirst, true);
+  assert.equal(observed.customDictionary?.enabled, true);
+  assert.equal(observed.customDictionary?.termCount, 1);
+  assert.equal(observed.customDictionary?.path, customPath);
+  assert.equal(observed.customSource?.schemaVersion, CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION);
+  assert.equal(observed.customSource?.revision, 1);
+  assert.equal(observed.customSource?.text, CUSTOM_SOURCE);
+  assert.equal(observed.customDictionary?.revision, observed.customSource?.semanticRevision);
+  assert.equal(observed.customLookup?.results?.[0]?.term?.expression, "保存語");
   assert.deepEqual(observed.opfsEntries, []);
 
   passed = true;
-  console.log("single-thread IDBFS fallback imported, persisted, and restored without OPFS");
+  console.log("single-thread IDBFS fallback imported, compiled custom source, and restored without OPFS");
 } finally {
   if (browser !== undefined) await browser.close().catch(() => {});
   if (passed) {
