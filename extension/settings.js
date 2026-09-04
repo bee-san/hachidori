@@ -615,24 +615,46 @@ function updateSelectedDictionaries(field, value, reloadEngine) {
   }, reloadEngine);
 }
 
-function focusedDictionaryControl() {
+function focusedManagementControl() {
   const active = document.activeElement;
-  const row = active?.closest?.(".dict-row");
-  if (!row?.dataset.dictionaryId) {
-    return null;
+  const dictionaryRow = active?.closest?.(".dict-row");
+  if (dictionaryRow?.dataset.dictionaryId) {
+    const controlClass = [
+      "dict-selected",
+      "dict-display-name",
+      "dict-enabled",
+      "dict-up",
+      "dict-down",
+      "dict-position-input",
+      "dict-move",
+      "dict-remove",
+    ].find((name) => active.classList.contains(name));
+    return controlClass
+      ? { kind: "dictionary", id: dictionaryRow.dataset.dictionaryId, controlClass }
+      : null;
   }
-  const controlClass = [
-    "dict-selected",
-    "dict-display-name",
-    "dict-enabled",
-    "dict-up",
-    "dict-down",
-    "dict-position-input",
-    "dict-move",
-    "dict-remove",
-  ]
-    .find((name) => active.classList.contains(name));
-  return controlClass ? { id: row.dataset.dictionaryId, controlClass } : null;
+
+  const groupRow = active?.closest?.(".dict-group");
+  if (!groupRow?.dataset.groupId) return null;
+  const memberRow = active.closest(".dict-group-member");
+  const controlClasses = memberRow
+    ? ["dict-group-member-up", "dict-group-member-down", "dict-group-member-remove"]
+    : ["dict-group-name", "dict-group-up", "dict-group-down", "dict-group-delete", "dict-group-add-select", "dict-group-add"];
+  const controlClass = controlClasses.find((name) => active.classList.contains(name));
+  if (!controlClass) return null;
+
+  const groupRows = [...groupRow.parentElement.children];
+  const focus = {
+    kind: memberRow ? "group-member" : "group",
+    groupId: groupRow.dataset.groupId,
+    groupIndex: groupRows.indexOf(groupRow),
+    controlClass,
+  };
+  if (memberRow) {
+    focus.dictionaryId = memberRow.dataset.dictionaryId;
+    focus.memberIndex = [...memberRow.parentElement.children].indexOf(memberRow);
+  }
+  return focus;
 }
 
 function renderDictionarySelection(visible) {
@@ -1035,25 +1057,62 @@ async function restoreAuthoritativeState(reply) {
   adoptDictionaryState(fresh.state);
 }
 
+function directionalFocus(row, controlClass, upClass, downClass) {
+  let control = row?.querySelector(`.${controlClass}`);
+  if (control?.disabled && controlClass === upClass) {
+    control = row.querySelector(`.${downClass}`);
+  } else if (control?.disabled && controlClass === downClass) {
+    control = row.querySelector(`.${upClass}`);
+  }
+  return control?.disabled ? null : control;
+}
+
+function restoreManagementFocus(focus) {
+  if (focus.kind === "dictionary") {
+    const row = [...element("dict-list").children]
+      .find((candidate) => candidate.dataset.dictionaryId === focus.id);
+    const control = directionalFocus(row, focus.controlClass, "dict-up", "dict-down")
+      ?? row?.querySelector(".dict-display-name");
+    control?.focus();
+    return;
+  }
+
+  const groupRows = [...element("dict-group-list").children];
+  const groupRow = groupRows.find((candidate) => candidate.dataset.groupId === focus.groupId)
+    ?? groupRows[Math.min(focus.groupIndex, groupRows.length - 1)];
+  if (!groupRow) {
+    element("dict-group-name-new").focus();
+    return;
+  }
+
+  if (focus.kind === "group") {
+    const control = directionalFocus(groupRow, focus.controlClass, "dict-group-up", "dict-group-down")
+      ?? groupRow.querySelector(".dict-group-name");
+    control?.focus();
+    return;
+  }
+
+  const memberRows = [...groupRow.querySelectorAll(".dict-group-member")];
+  const memberRow = memberRows.find((candidate) => candidate.dataset.dictionaryId === focus.dictionaryId)
+    ?? memberRows[Math.min(focus.memberIndex, memberRows.length - 1)];
+  const control = directionalFocus(
+    memberRow,
+    focus.controlClass,
+    "dict-group-member-up",
+    "dict-group-member-down",
+  ) ?? groupRow.querySelector(".dict-group-add-select:not(:disabled), .dict-group-name");
+  control?.focus();
+}
+
 function renderDictionaryState() {
-  const focus = focusedDictionaryControl();
+  const focus = focusedManagementControl();
   dictionaries = dictionaryState.dictionaries;
   dictionaryRenderDeferred = false;
   renderDictionaries();
   renderDictionaryGroups();
   normaliseDictionarySelections();
   renderOptions();
-  if (focus) {
-    const row = [...element("dict-list").children]
-      .find((candidate) => candidate.dataset.dictionaryId === focus.id);
-    let control = row?.querySelector(`.${focus.controlClass}`);
-    if (control?.disabled && focus.controlClass === "dict-up") {
-      control = row.querySelector(".dict-down");
-    } else if (control?.disabled && focus.controlClass === "dict-down") {
-      control = row.querySelector(".dict-up");
-    }
-    (control?.disabled ? row?.querySelector(".dict-display-name") : control)?.focus();
-  }
+  if (focus) restoreManagementFocus(focus);
 }
 
 async function commitDictionaryStateChange(update, reloadEngine) {
