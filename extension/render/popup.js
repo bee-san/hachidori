@@ -1072,6 +1072,24 @@
       actions.className = "gsm-hoshidicts-entry-actions";
       actions.appendChild(button);
 
+      let editor = null;
+      button.addEventListener("click", () => {
+        if (!editor) {
+          editor = createNoteForm(button, readPrefill);
+          applyToolbarLayout();
+        }
+        if (editor.form.hidden) editor.open();
+        else editor.close();
+      });
+      return {
+        actions,
+        button,
+        close: (restoreFocus) => editor?.close(restoreFocus) ?? false,
+        get form() { return editor?.form ?? null; },
+      };
+    }
+
+    function createNoteForm(button, readPrefill) {
       const form = documentRef.createElement("form");
       form.className = "gsm-hoshidicts-note-form";
       form.id = `${idPrefix}-note-form`;
@@ -1166,10 +1184,6 @@
         popup.scrollTop = toolbarPosition === "bottom" ? popup.scrollHeight : 0;
       }
 
-      button.addEventListener("click", () => {
-        if (form.hidden) open();
-        else close();
-      });
       cancel.addEventListener("click", () => close());
       form.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && close()) {
@@ -1210,7 +1224,7 @@
         if (saved) close();
       });
 
-      return { actions, button, close, form };
+      return { close, open, form };
     }
 
     function setSourceHighlightEnabled(enabled) {
@@ -1785,7 +1799,7 @@
       navigation.appendChild(glyph);
       primaryHeader.append(navigation, noteControls.actions);
       const toolbar = createResultChrome(primaryHeader);
-      popup.append(toolbar, noteControls.form);
+      popup.append(toolbar);
 
       for (const kanjiEntry of kanji.entries) {
         const entry = documentRef.createElement("article");
@@ -1985,7 +1999,7 @@
       }));
       currentNoteControls = noteControls;
       const toolbar = createResultChrome(primaryHeader, metadataStrip);
-      popup.append(toolbar, noteControls.form, panel);
+      popup.append(toolbar, panel);
       setRenderedToolbar(toolbar);
 
       const tabButtons = [];
