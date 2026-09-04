@@ -20,13 +20,13 @@ import { existsSync, rmSync, mkdirSync, readdirSync, readFileSync } from "node:f
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
-import { createContext, runInContext } from "node:vm";
 
 import {
   GENERIC_KANJI_GLOSSARY,
   GENERIC_KANJI_TITLE,
   buildRecommendedZip,
 } from "./make-fixture.mjs";
+import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -126,13 +126,6 @@ const PROFILE = process.env.HACHIDORI_PROFILE || `/tmp/hachidori-e2e-profile-${p
 const HIGHLIGHT_NAME = (readFileSync(resolve(EXTENSION, "content.js"), "utf8")
   .match(/HIGHLIGHT_NAME\s*=\s*"([^"]+)"/) || [])[1];
 
-const catalogueContext = createContext({});
-catalogueContext.globalThis = catalogueContext;
-runInContext(
-  readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8"),
-  catalogueContext,
-  { filename: "recommended-dictionaries.js" },
-);
 const RECOMMENDED_FIXTURE_METADATA = {
   jitendex: {
     title: "Jitendex.org [2026-08-11]",
@@ -151,7 +144,7 @@ const RECOMMENDED_FIXTURE_METADATA = {
   },
   jiten: { title: "Jiten", revision: "Jiten 26-09-02", capabilities: ["freq"] },
 };
-const RECOMMENDED_DICTIONARIES = catalogueContext.HD_RECOMMENDED_DICTIONARIES.map((entry) => ({
+const RECOMMENDED_DICTIONARIES = RECOMMENDED_CATALOGUE.map((entry) => ({
   ...entry,
   ...RECOMMENDED_FIXTURE_METADATA[entry.sourceId],
 }));

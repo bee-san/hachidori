@@ -35,6 +35,7 @@ import {
   buildTitledZip,
   buildTrainedZip,
 } from "./make-fixture.mjs";
+import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -591,8 +592,9 @@ function loadSettingsScript(window) {
   const groups = readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "");
-  window.eval(`${recommended}\n${groups}\n${settings}`);
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
+  window.eval(`${recommended.replace(/^export\s+/gmu, "")}\n${groups}\n${settings}`);
 }
 
 // content.js cannot be driven here (it needs a page), so the one thing worth
@@ -700,10 +702,6 @@ function checkRecommendedDictionaries() {
     return;
   }
   pass("the recommended catalogue exists");
-  const sandbox = createContext({});
-  sandbox.globalThis = sandbox;
-  runInContext(readFileSync(cataloguePath, "utf8"), sandbox, { filename: "recommended-dictionaries.js" });
-  const catalogue = sandbox.HD_RECOMMENDED_DICTIONARIES ?? [];
   const catalogueContract = (entry) => ({
     sourceId: entry.sourceId,
     name: entry.name,
@@ -713,7 +711,7 @@ function checkRecommendedDictionaries() {
     githubRepositoryId: entry.githubRepositoryId,
     requiredCapability: entry.requiredCapability,
   });
-  const actual = catalogue.map(catalogueContract);
+  const actual = RECOMMENDED_CATALOGUE.map(catalogueContract);
   const expected = RECOMMENDED_DICTIONARIES.map(catalogueContract);
   check(
     "the catalogue names exactly four trusted recommendations and their publishers",
