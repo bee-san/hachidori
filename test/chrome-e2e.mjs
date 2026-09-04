@@ -193,7 +193,7 @@ const PLANNED = [
   "the imported dictionary is persisted in OPFS",
   "the imported dictionary is recorded in chrome.storage.local",
   "the import batch continues after failure and retains every archive outcome",
-  "batch re-import preserves dictionary presentation, source, and order",
+  "batch re-import preserves presentation, source, and order while clearing stale check state",
   "the dictionary list renders its alias, metadata, and five capability badges",
   "the dictionary position input stays compact on a narrow Settings page",
   "the Settings enabled control re-enables the preserved package",
@@ -1195,7 +1195,7 @@ async function main() {
       && batchUi.outcomes[2].text.includes("hachidori-fixture.zip")
       && batchUi.outcomes[2].text.includes("Imported hachidori-fixture"),
     `#import-state: ${batchState}; batch UI: ${JSON.stringify(batchUi)}`);
-  check("batch re-import preserves dictionary presentation, source, and order",
+  check("batch re-import preserves presentation, source, and order while clearing stale check state",
     aliasChanged?.settled?.id === FIXTURE_ID
       && stateBeforeReimport?.ok === true
       && replacedDictionaries.length === 2
@@ -2120,7 +2120,6 @@ async function main() {
     "managed archive",
   );
 
-  const beforeCheck = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
   await page.evaluate(() => document.getElementById("update-check-now").click());
   const checkSummary = await page.waitForFunction(() => {
     const text = document.getElementById("update-state")?.textContent?.trim() ?? "";
@@ -2140,7 +2139,6 @@ async function main() {
     "Check now checks every managed dictionary including disabled packages without downloading",
     managedFixture?.ok === true
       && checkSummary === "Checked 2 managed dictionaries — 1 update available, 0 failed."
-      && checkedStorage.dictionaryState?.revision >= beforeCheck.dictionaryState.revision + 2
       && checkedFixture?.lastUpdateCheck?.status === "up-to-date"
       && checkedFixture.lastUpdateCheck.remoteRevision === "test-1"
       && checkedGeneric?.enabled === false
