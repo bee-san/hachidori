@@ -54,7 +54,7 @@ target_link_options(hoshidicts_wasm PRIVATE
     -sMAXIMUM_MEMORY=4GB
     -sSTACK_SIZE=8MB
     -sFORCE_FILESYSTEM=1
-    -sEXPORTED_FUNCTIONS=_malloc,_free,_hdw_init_storage,_hdw_import,_hdw_reset,_hdw_add_dict,_hdw_lookup,_hdw_kanji,_hdw_styles,_hdw_media,_hdw_media_data,_hdw_last_error
+    -sEXPORTED_FUNCTIONS=_malloc,_free,_hdw_init_storage,_hdw_import,_hdw_reset,_hdw_add_dict,_hdw_lookup,_hdw_lookup_dictionary,_hdw_kanji,_hdw_styles,_hdw_media,_hdw_media_data,_hdw_last_error
 )
 
 if(HACHIDORI_PTHREADS)

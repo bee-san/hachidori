@@ -50,11 +50,12 @@ clone only. Prints `<n> passed, <n> failed`.
 
 Generates `test/fixtures/hachidori-fixture.zip`, a Yomitan format-3 dictionary,
 `hachidori-fixture-trained.zip` (enough term rows to cross the zstd-training floor),
-and `hachidori-fixture-many-banks.zip` (twenty banks for the bounded scheduler). It
-also writes malformed, missing-index, non-ZIP, and parent-title archives for the
-error and path-safety checks. The ZIP container is written by hand with
-`node:zlib` — the engine's reader only needs local file headers, a central
-directory and raw deflate streams, and that is about 80 lines.
+`hachidori-fixture-many-banks.zip` (twenty banks for the bounded scheduler), and
+`hachidori-generic-kanji-fixture.zip` (a term-only dictionary with single-kanji
+entries). It also writes malformed, missing-index, non-ZIP, and parent-title
+archives for the error and path-safety checks. The ZIP container is written by
+hand with `node:zlib` — the engine's reader only needs local file headers, a
+central directory and raw deflate streams, and that is about 80 lines.
 
 The `.zip` is checked against `third_party/hoshidicts/src/json/yomitan_parser.cpp`
 and `src/importer.cpp`, not guessed. `python3 -m zipfile` and the native CLI both
@@ -96,7 +97,7 @@ editing a bank cannot silently desync the expectation.
 
 ```
 title           hachidori-fixture
-termCount       5
+termCount       6
 metaCount       4
 frequencyCount  2
 pitchCount      2
@@ -125,7 +126,7 @@ against it. That changes the directory: the marker becomes `.hoshidicts_4` and a
 and no `dict.zstd`, which is byte-for-byte what every dictionary imported by a
 pre-`.hoshidicts_4` engine looks like.
 
-`hachidori-fixture.zip` has five term rows, deliberately under that floor, so it stays
+`hachidori-fixture.zip` has six term rows, deliberately under that floor, so it stays
 the compatibility case; `TRAINING_SAMPLE_FLOOR` pins that, and `node-smoke.mjs` fails
 loudly if `TERMS` grows past it instead of silently retiring the coverage.
 `hachidori-fixture-trained.zip` (`buildTrainedZip()`, 49 rows with deliberately
@@ -152,7 +153,7 @@ report and the expected counts on every run.
 
 The real test. Loads the threaded bundle by default or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-94 checks, ordered by dependency. Exits 0 on success,
+97 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -213,7 +214,7 @@ What it proves, in order:
    and after, and no staging debris is left behind), and a re-import that fails
    after the title is parsed leaves the installed copy complete, loadable and
    answering lookups.
-9. **Both on-disk layouts, side by side.** The 5-row fixture lands in the pre-4
+9. **Both on-disk layouts, side by side.** The 6-row fixture lands in the pre-4
    layout and the 49-row one trains a zstd dictionary, so `.hoshidicts_3` with no
    `dict.zstd` and `.hoshidicts_4` with one are both imported, both loaded — at
    the same time, from one query object, which is the state of a profile after an
@@ -228,6 +229,9 @@ What it proves, in order:
     interrupted first install. Initialization restores the complete previous
     files when needed, preserves a fully published replacement, removes
     incomplete destinations, and leaves no transaction debris.
+11. **`hdw_lookup_dictionary`.** A dictionary-scoped lookup refuses a path that
+    is not loaded, preserves the normal lookup response contract and global
+    capability count, and returns definitions from only the selected term path.
 
 Two behaviours worth knowing, both asserted so they cannot drift silently:
 
@@ -245,7 +249,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 81 checks, all of
+full request→reply round trip per contract-C message type. 86 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -267,7 +271,7 @@ a real ES module and reads the shared global, which is the one wired to the bus 
 What it proves, in order:
 
 0. **Option ranges.** `scanLength` and `maxResults` are clamped in four separate
-   places (`settings.html`, `settings.js`, `content.js`, `offscreen.js`) and a
+   places (`settings.html`, `settings.js`, `content.js`, `engine-service.js`) and a
    narrower bound in the content script silently shrinks the result set the
    options page accepted and stored. `content.js` needs a page and is not loaded
    here, so this one check is static: it greps the four literals and fails if they
@@ -285,7 +289,8 @@ What it proves, in order:
    baseline above, `chrome.storage.local.dictionaries` gets one schema-D row per
    kind the archive carries, and IndexedDB is non-empty afterwards.
 3. **Every read path** with the fixture registered under all four kinds:
-   `hd_lookup` (payload keys, deinflection trace, glossary still a raw string,
+   `hd_lookup` and selected-dictionary `hd_lookup_dictionary` (payload keys,
+   deinflection trace, glossary still a raw string,
    frequencies, pitches), `hd_kanji` (including the string `onyomi`/`kunyomi`/
    `tags` of contract B and the `null` for a miss), `hd_styles`, `hd_media` (a
    `data:` URL matching the pattern `glossary.js` accepts, and `null` for an
@@ -318,7 +323,7 @@ What it proves, in order:
    to reload what survived, or every tab reports no dictionaries until the user
    next edits a row.
 8. **A trained (`.hoshidicts_4`) dictionary through the extension layer.**
-   Everything above imports the 5-row fixture, which is under the zstd training
+   Everything above imports the 6-row fixture, which is under the zstd training
    floor, so nothing outside `node-smoke.mjs` had ever seen the layout the current
    engine writes for a real dictionary. `buildTrainedZip()` goes through
    `hd_import`, and then: `listImported()` has to recognise the directory by its
@@ -382,9 +387,10 @@ above installs Chrome for Testing in the default cache; the harness also checks
 `HACHIDORI_PUPPETEER`, and `HACHIDORI_PROFILE`; the run aborts with a message
 naming the variable if either is missing.
 
-It launches Chrome with `--load-extension`, imports the fixture through the real
-`#import-file` input on `settings.html`, hovers real text with a real mouse on a
-page served over `http://127.0.0.1` (content scripts do not run on
+It launches Chrome with `--load-extension`, imports the combined and term-only
+kanji fixtures through the real `#import-file` input on `settings.html`, verifies
+capability-aware chooser migration and clicked-kanji navigation, and hovers real
+text with a real mouse on a page served over `http://127.0.0.1` (content scripts do not run on
 `chrome-extension://`, `about:blank`, or `file://` without a per-extension
 opt-in), then relaunches against the same profile and hovers again with no
 re-import — which is the only test that proves direct OPFS persistence through a
@@ -409,7 +415,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 37 assertions, and the summary line
+`PLANNED` at the top of the file names all 51 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -461,9 +467,10 @@ text it sits in, so that loop stops at the first read that has it.
   that negative check from going green by itself.
 - `#import-file` is checked for `type="file"` and an `accept` list containing
   `.zip`, not just for existing.
-- The post-restart `hd_status` must report `dictionaryCount === 4`, one per kind
-  the fixture registers. `>= 1` also passes for a reload that lost the frequency
-  and pitch dictionaries and would then answer a bare lookup with no tags.
+- The post-restart `hd_status` must report `dictionaryCount === 5`: one per kind
+  the combined fixture registers, plus the generic fixture's term capability.
+  `>= 1` also passes for a reload that lost the frequency and pitch dictionaries
+  and would then answer a bare lookup with no tags.
 - The OPFS path is imported, replaced in place, killed with `SIGKILL`, restored,
   queried again, and removed. The removal must clear settings rows, delete the
   directory, and turn the same query into a checked miss.

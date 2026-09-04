@@ -164,6 +164,9 @@ struct Engine {
   Deinflector deinflector;
   Lookup lookup{query, deinflector};
   size_t dictionary_count = 0;
+  std::vector<std::string> term_paths;
+  std::vector<std::string> frequency_paths;
+  std::vector<std::string> pitch_paths;
 };
 
 std::optional<Engine>& engine_slot() {
@@ -828,6 +831,7 @@ EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind) {
     switch (kind) {
       case 0:
         e.query.add_term_dict(dict_path);
+        e.term_paths.push_back(dict_path);
         break;
       case 1: {
         const size_t before = e.query.get_freq_dict_order().size();
@@ -836,10 +840,12 @@ EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind) {
           set_error("frequency dictionary rejected: " + dict_path);
           return 0;
         }
+        e.frequency_paths.push_back(dict_path);
         break;
       }
       case 2:
         e.query.add_pitch_dict(dict_path);
+        e.pitch_paths.push_back(dict_path);
         break;
       default:
         e.query.add_kanji_dict(dict_path);
@@ -870,6 +876,46 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_lookup(const char* text, int max_results, i
       // max_results cap, otherwise ranking is decided by an arbitrary prefix.
       const auto results =
           e.lookup.lookup(query_text, max_results, static_cast<size_t>(scan_length), options);
+      response.results.reserve(results.size());
+      for (const auto& result : results) {
+        response.results.push_back(convert_result(result));
+      }
+    }
+    out = to_json(response);
+  } catch (...) {
+    set_error(describe_current_exception());
+    out = R"({"results":[],"dictionaryCount":0})";
+  }
+  return out.c_str();
+}
+
+EMSCRIPTEN_KEEPALIVE const char* hdw_lookup_dictionary(const char* text, const char* dictionary_path,
+                                                       int max_results, size_t scan_length,
+                                                       const char* options_json) {
+  static std::string out;
+  clear_error();
+
+  try {
+    auto& e = engine();
+    WireLookupResponse response;
+    response.dictionaryCount = e.dictionary_count;
+
+    const std::string query_text{text == nullptr ? "" : text};
+    const std::string selected_path{dictionary_path == nullptr ? "" : dictionary_path};
+    if (!query_text.empty() && max_results > 0 && scan_length > 0 &&
+        std::ranges::find(e.term_paths, selected_path) != e.term_paths.end()) {
+      DictionaryQuery selected_query;
+      selected_query.add_term_dict(selected_path);
+      for (const auto& path : e.frequency_paths) {
+        selected_query.add_freq_dict(path);
+      }
+      for (const auto& path : e.pitch_paths) {
+        selected_query.add_pitch_dict(path);
+      }
+      Lookup selected_lookup{selected_query, e.deinflector};
+      const LookupOptions options = parse_options(options_json);
+      const auto results = selected_lookup.lookup(
+          query_text, max_results, static_cast<size_t>(scan_length), options);
       response.results.reserve(results.size());
       for (const auto& result : results) {
         response.results.push_back(convert_result(result));

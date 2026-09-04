@@ -360,7 +360,7 @@
         button.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
-          onKanjiClick(character);
+          onKanjiClick(character, button);
         });
         target.appendChild(button);
       }

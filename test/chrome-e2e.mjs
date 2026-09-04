@@ -21,10 +21,19 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 
+import { GENERIC_KANJI_GLOSSARY, GENERIC_KANJI_TITLE } from "./make-fixture.mjs";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
 const EXTENSION = resolve(REPO, "extension");
 const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
+const GENERIC_KANJI_FIXTURE = resolve(HERE, "fixtures/hachidori-generic-kanji-fixture.zip");
+const GENERIC_KANJI_SELECTION = { title: GENERIC_KANJI_TITLE, kind: "term" };
+const FIXTURE_KANJI_SELECTION = { title: "hachidori-fixture", kind: "kanji" };
+const FIXTURE_TERM_SELECTION = { title: "hachidori-fixture", kind: "term" };
+const GENERIC_KANJI_SELECTION_VALUE = JSON.stringify(GENERIC_KANJI_SELECTION);
+const FIXTURE_KANJI_SELECTION_VALUE = JSON.stringify(FIXTURE_KANJI_SELECTION);
+const FIXTURE_TERM_SELECTION_VALUE = JSON.stringify(FIXTURE_TERM_SELECTION);
 const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
 
 function cachedChrome() {
@@ -107,11 +116,25 @@ const PLANNED = [
   "the imported dictionary is recorded in chrome.storage.local",
   "re-importing the same dictionary replaces it safely in OPFS",
   "the dictionary list renders the imported dictionary",
+  "importing a term-only single-kanji dictionary succeeds",
+  "the kanji dictionary chooser lists imported term and kanji dictionaries",
+  "a combined archive exposes separate term and native kanji choices",
+  "a stale title-only kanji selection survives a chooser change",
+  "a legacy title-only kanji selection migrates to and persists its native capability",
+  "the selected kanji dictionary is saved",
   "hovering an inflected verb shows a popup",
   "the content script attached its closed-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
+  "selected term dictionary wins even when maximum results is one",
+  "Back preserves the complete clicked-kanji drill-down history",
+  "Back restores the term results after a generic kanji lookup",
+  "clicked-kanji navigation moves and restores keyboard focus",
+  "Back restores focus to the exact clicked duplicate kanji",
+  "a disabled selected term dictionary falls back to native kanji",
+  "a combined archive can use its term entries for clicked kanji",
+  "selecting a kanji-bank dictionary keeps the native kanji view",
   `the hovered word is highlighted under CSS.highlights["${HIGHLIGHT_NAME}"]`,
   "Escape hides the popup",
   "dismissing the popup clears the extension's highlight",
@@ -164,6 +187,7 @@ const PAGE_HTML = `<!doctype html>
 </style></head>
 <body>
   <p><span id="verb">食べたかった</span></p>
+  <p><span id="duplicate">食食</span></p>
   <p><span id="kanjiword">漢字</span></p>
   <p><span id="latin">hello world</span></p>
   <p><ruby id="rubyword">漢字<rt>かんじ</rt></ruby></p>
@@ -228,6 +252,10 @@ async function popupReader(page) {
           bold: Array.from(this.querySelectorAll("*"))
             .filter(el => Number.parseInt(view.getComputedStyle(el).fontWeight, 10) >= 600)
             .map(el => el.tagName.toLowerCase() + ":" + flat(el)),
+          hasBack: this.querySelector(".gsm-hoshidicts-kanji-back") !== null,
+          focusedClass: this.getRootNode().activeElement?.className || "",
+          focusedKanjiIndex: Array.from(this.querySelectorAll(".gsm-hoshidicts-kanji-link"))
+            .indexOf(this.getRootNode().activeElement),
         };
       }`,
     });
@@ -259,7 +287,37 @@ async function popupReader(page) {
     }
   }
 
-  return { state, visible, waitForVisible, waitForHidden };
+  async function click(selector) {
+    const { root } = await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
+    let nodeId = null;
+    const walk = node => {
+      const attributes = node.attributes || [];
+      for (let i = 0; i < attributes.length; i += 2) {
+        if (attributes[i] === "class" && String(attributes[i + 1]).includes("gsm-hoshidicts-popup")) {
+          nodeId = node.nodeId;
+        }
+      }
+      for (const shadow of node.shadowRoots || []) walk(shadow);
+      for (const child of node.children || []) walk(child);
+    };
+    walk(root);
+    if (nodeId === null) return false;
+    const { object } = await cdp.send("DOM.resolveNode", { nodeId });
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId,
+      returnByValue: true,
+      arguments: [{ value: selector }],
+      functionDeclaration: `function (target) {
+        const element = this.querySelector(target);
+        if (!element) return false;
+        element.click();
+        return true;
+      }`,
+    });
+    return result.value === true;
+  }
+
+  return { click, state, visible, waitForVisible, waitForHidden };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -295,7 +353,7 @@ async function main() {
   if (!HIGHLIGHT_NAME) {
     fatal("could not read HIGHLIGHT_NAME out of extension/content.js");
   }
-  if (!existsSync(FIXTURE)) {
+  if (!existsSync(FIXTURE) || !existsSync(GENERIC_KANJI_FIXTURE)) {
     const r = spawnSync(process.execPath, [resolve(HERE, "make-fixture.mjs")], { encoding: "utf8" });
     if (r.status !== 0) fatal(`make-fixture.mjs failed:\n${r.stdout}\n${r.stderr}`);
   }
@@ -611,6 +669,112 @@ async function main() {
   check("the dictionary list renders the imported dictionary",
     rowText.includes("hachidori-fixture"), `#dict-list: ${rowText.slice(0, 300)}`);
 
+  await input.uploadFile(GENERIC_KANJI_FIXTURE);
+  const genericImportState = await page.waitForFunction((title) => {
+    const text = (document.getElementById("import-state")?.textContent || "").trim();
+    return text.startsWith("Imported ") && text.includes(title) ? text : false;
+  }, { timeout: 120_000, polling: 500 }, GENERIC_KANJI_TITLE)
+    .then(handle => handle.jsonValue())
+    .catch(() => "(never settled)");
+  check(
+    "importing a term-only single-kanji dictionary succeeds",
+    genericImportState.includes(GENERIC_KANJI_TITLE),
+    `#import-state: ${genericImportState}`,
+  );
+
+  const kanjiChooser = await page.evaluate(() => {
+    const select = document.getElementById("opt-kanji-dictionary");
+    return {
+      exists: select instanceof HTMLSelectElement,
+      options: select
+        ? Array.from(select.options, option => ({ text: option.textContent, value: option.value }))
+        : [],
+    };
+  });
+  check(
+    "the kanji dictionary chooser lists imported term and kanji dictionaries",
+    kanjiChooser.exists
+      && kanjiChooser.options.some(({ value }) => value === FIXTURE_KANJI_SELECTION_VALUE)
+      && kanjiChooser.options.some(({ value }) => value === GENERIC_KANJI_SELECTION_VALUE),
+    JSON.stringify(kanjiChooser),
+  );
+  check(
+    "a combined archive exposes separate term and native kanji choices",
+    kanjiChooser.options.some(({ value }) => value === FIXTURE_KANJI_SELECTION_VALUE)
+      && kanjiChooser.options.some(({ value }) => value === FIXTURE_TERM_SELECTION_VALUE),
+    JSON.stringify(kanjiChooser),
+  );
+
+  const staleChoiceResults = [];
+  for (const staleTitle of ["legacy selection {not-json", "123"]) {
+    await page.evaluate(async (title) => {
+      const storedOptions = (await chrome.storage.local.get("options")).options;
+      await chrome.storage.local.set({
+        options: { ...storedOptions, kanjiClickDictionary: title },
+      });
+    }, staleTitle);
+    const ready = await page.waitForFunction((title) =>
+      document.getElementById("opt-kanji-dictionary")?.value === title,
+    { timeout: 10_000, polling: 100 }, staleTitle).then(() => true).catch(() => false);
+    let preserved = false;
+    if (ready) {
+      await page.select("#opt-kanji-dictionary", staleTitle);
+      preserved = await page.waitForFunction(async (title) =>
+        (await chrome.storage.local.get("options")).options?.kanjiClickDictionary === title,
+      { timeout: 10_000, polling: 100 }, staleTitle).then(() => true).catch(() => false);
+    }
+    staleChoiceResults.push({ preserved, ready, title: staleTitle });
+  }
+  check(
+    "a stale title-only kanji selection survives a chooser change",
+    staleChoiceResults.every(({ preserved, ready }) => ready && preserved),
+    JSON.stringify(staleChoiceResults),
+  );
+
+  await page.evaluate(async () => {
+    const storedOptions = (await chrome.storage.local.get("options")).options;
+    await chrome.storage.local.set({
+      options: { ...storedOptions, kanjiClickDictionary: "hachidori-fixture" },
+    });
+  });
+  const migratedLegacySelection = await page.waitForFunction(async (value) => {
+    const selected = document.getElementById("opt-kanji-dictionary")?.value;
+    const saved = (await chrome.storage.local.get("options")).options?.kanjiClickDictionary;
+    return selected === value && saved?.title === "hachidori-fixture" && saved?.kind === "kanji";
+  }, { timeout: 10_000, polling: 100 }, FIXTURE_KANJI_SELECTION_VALUE)
+    .then(() => true)
+    .catch(() => false);
+  check(
+    "a legacy title-only kanji selection migrates to and persists its native capability",
+    migratedLegacySelection,
+    `chooser and storage: ${JSON.stringify(await page.evaluate(async () => ({
+      value: document.getElementById("opt-kanji-dictionary")?.value,
+      saved: (await chrome.storage.local.get("options")).options?.kanjiClickDictionary,
+    })))}`,
+  );
+
+  let savedKanjiDictionary = false;
+  if (kanjiChooser.exists && kanjiChooser.options.some(({ value }) => value === GENERIC_KANJI_SELECTION_VALUE)) {
+    await page.select("#opt-kanji-dictionary", GENERIC_KANJI_SELECTION_VALUE);
+    savedKanjiDictionary = await page.waitForFunction(async (selection) => {
+      const saved = (await chrome.storage.local.get("options")).options?.kanjiClickDictionary;
+      return saved?.title === selection.title && saved?.kind === selection.kind;
+    }, { timeout: 10_000, polling: 100 }, GENERIC_KANJI_SELECTION)
+      .then(() => true)
+      .catch(() => false);
+  }
+  check(
+    "the selected kanji dictionary is saved",
+    savedKanjiDictionary,
+    `chooser: ${JSON.stringify(kanjiChooser)}`,
+  );
+  await page.evaluate(async () => {
+    const storedOptions = (await chrome.storage.local.get("options")).options;
+    await chrome.storage.local.set({
+      options: { ...storedOptions, maxResults: 1 },
+    });
+  });
+
   // ------------------------------------------------------------------- hover
   const tab = await browser.newPage();
   tab.on("console", m => diagnostics.push(`[page] ${m.type()}: ${m.text()}`));
@@ -653,6 +817,170 @@ async function main() {
     `popup text: ${verbState.text.slice(0, 400)}`);
   check("the popup renders the frequency tag from term_meta_bank",
     verbState.text.includes("142"), `popup text: ${verbState.text.slice(0, 400)}`);
+
+  const clickedKanji = await popup.click(".gsm-hoshidicts-kanji-link");
+  let genericKanjiState = null;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const state = await popup.state();
+    if (state?.text.includes(GENERIC_KANJI_GLOSSARY)) {
+      genericKanjiState = state;
+      break;
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+  check(
+    "selected term dictionary wins even when maximum results is one",
+    clickedKanji
+      && genericKanjiState?.hasBack === true
+      && genericKanjiState.text.includes(GENERIC_KANJI_TITLE)
+      && !genericKanjiState.text.includes("food"),
+    `popup state: ${JSON.stringify(await popup.state())}`,
+  );
+  const clickedNestedKanji = await popup.click(".gsm-hoshidicts-kanji-link");
+  await new Promise(resolvePromise => setTimeout(resolvePromise, 500));
+  const clickedNestedBack = await popup.click(".gsm-hoshidicts-kanji-back");
+  const restoredIntermediateState = await popup.state();
+  check(
+    "Back preserves the complete clicked-kanji drill-down history",
+    clickedNestedKanji
+      && clickedNestedBack
+      && restoredIntermediateState?.hasBack === true
+      && restoredIntermediateState.text.includes(GENERIC_KANJI_GLOSSARY),
+    `popup state: ${JSON.stringify(restoredIntermediateState)}`,
+  );
+  const clickedBack = await popup.click(".gsm-hoshidicts-kanji-back");
+  const restoredTermState = await popup.state();
+  check(
+    "Back restores the term results after a generic kanji lookup",
+    genericKanjiState !== null
+      && clickedBack
+      && restoredTermState?.text.includes("to eat")
+      && !restoredTermState.text.includes(GENERIC_KANJI_GLOSSARY),
+    `popup state: ${JSON.stringify(restoredTermState)}`,
+  );
+  check(
+    "clicked-kanji navigation moves and restores keyboard focus",
+    genericKanjiState?.focusedClass.includes("gsm-hoshidicts-kanji-back")
+      && restoredTermState?.focusedClass.includes("gsm-hoshidicts-kanji-link"),
+    JSON.stringify({ genericKanjiState, restoredTermState }),
+  );
+
+  await tab.keyboard.press("Escape");
+  await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
+  const duplicateTermState = await hover("#duplicate");
+  const clickedSecondDuplicate = await popup.click(".gsm-hoshidicts-kanji-link:nth-of-type(2)");
+  let duplicateKanjiState = null;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const state = await popup.state();
+    if (state?.text.includes(GENERIC_KANJI_GLOSSARY)) {
+      duplicateKanjiState = state;
+      break;
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+  const duplicateBack = await popup.click(".gsm-hoshidicts-kanji-back");
+  const duplicateRestoredState = await popup.state();
+  check(
+    "Back restores focus to the exact clicked duplicate kanji",
+    duplicateTermState?.text.includes("duplicate-kanji focus fixture")
+      && clickedSecondDuplicate
+      && duplicateKanjiState?.hasBack === true
+      && duplicateBack
+      && duplicateRestoredState?.focusedKanjiIndex === 1,
+    JSON.stringify({ duplicateTermState, duplicateKanjiState, duplicateRestoredState }),
+  );
+
+  await page.evaluate(async (title) => {
+    const stored = await chrome.storage.local.get("dictionaries");
+    await chrome.storage.local.set({
+      dictionaries: stored.dictionaries.map(entry =>
+        entry.title === title ? { ...entry, enabled: false } : entry),
+    });
+    await chrome.runtime.sendMessage({
+      requestId: "e2e-disable-generic-kanji",
+      target: "hoshidicts-offscreen",
+      type: "hd_reload",
+    });
+  }, GENERIC_KANJI_TITLE);
+  await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
+  const clickedDisabledKanji = await popup.click(".gsm-hoshidicts-kanji-link");
+  let disabledKanjiState = null;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const state = await popup.state();
+    if (state?.text.includes("food")) {
+      disabledKanjiState = state;
+      break;
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+  check(
+    "a disabled selected term dictionary falls back to native kanji",
+    clickedDisabledKanji
+      && disabledKanjiState?.hasBack === true
+      && !disabledKanjiState.text.includes(GENERIC_KANJI_GLOSSARY),
+    `popup state: ${JSON.stringify(await popup.state())}`,
+  );
+  await popup.click(".gsm-hoshidicts-kanji-back");
+  await page.evaluate(async (title) => {
+    const stored = await chrome.storage.local.get("dictionaries");
+    await chrome.storage.local.set({
+      dictionaries: stored.dictionaries.map(entry =>
+        entry.title === title ? { ...entry, enabled: true } : entry),
+    });
+    await chrome.runtime.sendMessage({
+      requestId: "e2e-enable-generic-kanji",
+      target: "hoshidicts-offscreen",
+      type: "hd_reload",
+    });
+  }, GENERIC_KANJI_TITLE);
+
+  await page.select("#opt-kanji-dictionary", FIXTURE_TERM_SELECTION_VALUE);
+  await page.waitForFunction(async (selection) => {
+    const saved = (await chrome.storage.local.get("options")).options?.kanjiClickDictionary;
+    return saved?.title === selection.title && saved?.kind === selection.kind;
+  }, { timeout: 10_000, polling: 100 }, FIXTURE_TERM_SELECTION);
+  const clickedCombinedTerm = await popup.click(".gsm-hoshidicts-kanji-link");
+  let combinedTermState = null;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const state = await popup.state();
+    if (state?.text.includes("unrelated term-dictionary definition")) {
+      combinedTermState = state;
+      break;
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+  check(
+    "a combined archive can use its term entries for clicked kanji",
+    clickedCombinedTerm
+      && combinedTermState?.hasBack === true
+      && !combinedTermState.text.includes("Meaningsfoodeatmeal"),
+    `popup state: ${JSON.stringify(await popup.state())}`,
+  );
+  await popup.click(".gsm-hoshidicts-kanji-back");
+
+  await page.select("#opt-kanji-dictionary", FIXTURE_KANJI_SELECTION_VALUE);
+  await page.waitForFunction(async (selection) => {
+    const saved = (await chrome.storage.local.get("options")).options?.kanjiClickDictionary;
+    return saved?.title === selection.title && saved?.kind === selection.kind;
+  }, { timeout: 10_000, polling: 100 }, FIXTURE_KANJI_SELECTION);
+  const clickedNativeKanji = await popup.click(".gsm-hoshidicts-kanji-link");
+  let nativeKanjiState = null;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const state = await popup.state();
+    if (state?.text.includes("food") && state.text.includes("hachidori-fixture")) {
+      nativeKanjiState = state;
+      break;
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+  check(
+    "selecting a kanji-bank dictionary keeps the native kanji view",
+    clickedNativeKanji
+      && nativeKanjiState?.hasBack === true
+      && !nativeKanjiState.text.includes(GENERIC_KANJI_GLOSSARY),
+    `popup state: ${JSON.stringify(await popup.state())}`,
+  );
+  await popup.click(".gsm-hoshidicts-kanji-back");
 
   // The pointer is still on 食べたかった here, so the extension's own highlight
   // must be registered with at least one range. Asserting CSS.highlights exists
@@ -777,11 +1105,11 @@ async function main() {
       await new Promise(r => setTimeout(r, 500));
     }
   }).catch(e => ({ error: String(e) }));
-  // All four kinds, not "at least one": the fixture registers term, freq, pitch
-  // and kanji, and a reload that brought back only some of them would still
-  // answer a bare 食べる lookup while silently losing the frequency tags.
+  // All five loaded capabilities, not "at least one": the combined fixture
+  // registers term, freq, pitch and kanji, and the generic fixture registers one
+  // more term row.
   check("the dictionary survives a browser restart via OPFS",
-    reloadCount?.dictionaryCount === 4,
+    reloadCount?.dictionaryCount === 5,
     `hd_status reply: ${JSON.stringify(reloadCount)}`);
 
   const tab2 = await browser.newPage();
@@ -794,6 +1122,12 @@ async function main() {
     !!afterRestart && afterRestart.includes("食べる"),
     `popup text: ${afterRestart ? afterRestart.slice(0, 300) : "(no popup)"}`);
 
+  await page.evaluate((title) => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen",
+    type: "hd_remove",
+    requestId: "e2e-remove-generic-kanji",
+    title,
+  }), GENERIC_KANJI_TITLE);
   const removeReply = await page.evaluate(() => chrome.runtime.sendMessage({
     target: "hoshidicts-offscreen",
     type: "hd_remove",

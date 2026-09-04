@@ -1242,6 +1242,7 @@
         compactDefinitionSummaryDictionary = null,
         showPitchAccentFurigana = true,
         pitchAccentFuriganaDictionary = null,
+        onBack = null,
       } = {}
     ) {
       const header = element || documentRef.createElement("header");
@@ -1261,7 +1262,7 @@
         expression,
         expressionText,
         readingText,
-        (character) => onKanjiClick(character, result, candidate),
+        (character, sourceLink) => onKanjiClick(character, result, candidate, sourceLink),
         {
           enabled: showPitchAccentFurigana,
           groups: result.term.pitches,
@@ -1293,7 +1294,20 @@
           headword.appendChild(summary);
         }
       }
-      header.appendChild(headword);
+      if (primary && typeof onBack === "function") {
+        const navigation = documentRef.createElement("div");
+        navigation.className = "gsm-hoshidicts-kanji-navigation";
+        const back = documentRef.createElement("button");
+        back.type = "button";
+        back.className = "gsm-hoshidicts-kanji-back";
+        back.textContent = "Back";
+        back.setAttribute("aria-label", "Back to previous results");
+        back.addEventListener("click", onBack);
+        navigation.append(back, headword);
+        header.appendChild(navigation);
+      } else {
+        header.appendChild(headword);
+      }
       return { element: header };
     }
 
@@ -1359,6 +1373,7 @@
             typeof renderContext.pitchAccentFuriganaDictionary === "string"
               ? renderContext.pitchAccentFuriganaDictionary
               : null,
+          onBack: resultIndex === 0 ? renderContext.onBack : null,
         });
         if (resultIndex !== 0) {
           entry.appendChild(renderedHeader.element);
@@ -1572,7 +1587,7 @@
         back.type = "button";
         back.className = "gsm-hoshidicts-kanji-back";
         back.textContent = "Back";
-        back.setAttribute("aria-label", "Back to term results");
+        back.setAttribute("aria-label", "Back to previous results");
         back.addEventListener("click", renderOptions.onBack);
         navigation.appendChild(back);
       }
