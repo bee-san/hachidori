@@ -19,6 +19,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -41,6 +42,7 @@ const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
 const EXTENSION_ORIGIN = "chrome-extension://hachidorismokeextensionid";
 
 const FIXTURE_TITLE = "hachidori-fixture";
+const GENERATION_ROOT_PATTERN = /^\/dicts\/\.hdw-generation-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const DICTIONARY_PACKAGE_KEYS = [
   "displayName",
   "downloadUrl",
@@ -61,6 +63,14 @@ const DICTIONARY_PACKAGE_KEYS = [
   "termCount",
   "title",
 ];
+
+function ownedGenerationRoot(path, title) {
+  const suffix = `/${title}`;
+  const root = typeof path === "string" && path.endsWith(suffix)
+    ? path.slice(0, -suffix.length)
+    : "";
+  return GENERATION_ROOT_PATTERN.test(root) ? root : "";
+}
 
 function genericPackage(overrides = {}) {
   return {
@@ -832,6 +842,8 @@ async function main() {
   );
   let forwardedLowRam = null;
   let observedEngine = null;
+  let loadedDictionaryPaths = new Set();
+  let peakLoadedDictionaryPaths = 0;
   const createObservedHoshidicts = async (...args) => {
     const module = await createHoshidicts(...args);
     observedEngine = module;
@@ -840,7 +852,17 @@ async function main() {
       if (name === "hdw_import") {
         forwardedLowRam = argumentValues[2];
       }
-      return ccall(name, returnType, argumentTypes, argumentValues);
+      const result = ccall(name, returnType, argumentTypes, argumentValues);
+      if (name === "hdw_reset") {
+        loadedDictionaryPaths = new Set();
+      } else if (name === "hdw_add_dict" && result) {
+        loadedDictionaryPaths.add(argumentValues[0]);
+        peakLoadedDictionaryPaths = Math.max(
+          peakLoadedDictionaryPaths,
+          loadedDictionaryPaths.size,
+        );
+      }
+      return result;
     };
     return module;
   };
@@ -972,7 +994,7 @@ async function main() {
       && /^[0-9a-f]{32}$/u.test(importedPackage?.id ?? "")
       && importedPackage.title === FIXTURE_TITLE
       && importedPackage.displayName === null
-      && importedPackage.path === `/dicts/${FIXTURE_TITLE}`
+      && ownedGenerationRoot(importedPackage.path, FIXTURE_TITLE) !== ""
       && importedPackage.enabled === true
       && importedPackage.favorite === false
       && importedPackage.revision === "test-1"
@@ -994,6 +1016,18 @@ async function main() {
   equal("one logical package loads all four native capabilities", afterLogicalImport.dictionaryCount, 4);
   check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
 
+  // Model an actual pre-D9 install: legacy rows named a canonical title path,
+  // before immutable UUID generation roots existed.
+  const legacyPath = `/dicts/${FIXTURE_TITLE}`;
+  observedEngine.FS.mkdir(legacyPath);
+  for (const name of observedEngine.FS.readdir(importedPackage.path)) {
+    if (name !== "." && name !== "..") {
+      observedEngine.FS.writeFile(
+        `${legacyPath}/${name}`,
+        observedEngine.FS.readFile(`${importedPackage.path}/${name}`),
+      );
+    }
+  }
   await storage.api().local.remove("dictionaryState");
   await storage.api().local.set({
     dictionaries: ["term", "freq", "pitch", "kanji"].map((kind, index) => ({
@@ -1213,6 +1247,29 @@ async function main() {
       && new Set(canonicallyEquivalentPackages.map((dictionary) => dictionary.id)).size === 2,
     JSON.stringify(canonicallyEquivalentPackages),
   );
+  const stateWithThreePackages = await storedDictionaryState();
+  peakLoadedDictionaryPaths = 0;
+  const allDisabled = await request("hd_apply_state", {
+    baseRevision: stateWithThreePackages.revision,
+    dictionaries: stateWithThreePackages.dictionaries.map((dictionary) => ({
+      ...dictionary,
+      enabled: false,
+    })),
+  });
+  const disabledValidationPeak = peakLoadedDictionaryPaths;
+  const disabledStatusAfterValidation = await request("hd_status");
+  const restoredThreePackages = await request("hd_apply_state", {
+    baseRevision: allDisabled.state.revision,
+    dictionaries: stateWithThreePackages.dictionaries,
+  });
+  check(
+    "disabled packages are validated independently before publishing an empty load set",
+    allDisabled.ok === true
+      && disabledStatusAfterValidation.dictionaryCount === 0
+      && disabledValidationPeak === 1
+      && restoredThreePackages.ok === true,
+    JSON.stringify({ allDisabled, disabledValidationPeak, restoredThreePackages }),
+  );
   for (const title of canonicallyEquivalentTitles) {
     await request("hd_remove", { title });
   }
@@ -1287,25 +1344,83 @@ async function main() {
     JSON.stringify({ removedLegacyRemovalRoot, afterLegacyRemoval }),
   );
 
-  const invalidLoadPath = "/dicts/invalid-native-load";
+  const invalidLoadTitle = "invalid-native-load";
+  const invalidGenerationRoot = "/dicts/.hdw-generation-00000000-0000-4000-8000-000000000000";
+  const invalidLoadPath = `${invalidGenerationRoot}/${invalidLoadTitle}`;
+  const invalidImportDate = 0;
+  observedEngine.FS.mkdir(invalidGenerationRoot);
   observedEngine.FS.mkdir(invalidLoadPath);
   observedEngine.FS.writeFile(`${invalidLoadPath}/.hoshidicts_3`, new Uint8Array());
   observedEngine.FS.writeFile(`${invalidLoadPath}/index.json`, JSON.stringify({
-    title: "invalid-native-load",
+    title: invalidLoadTitle,
     revision: "test-1",
+    importDate: invalidImportDate,
     counts: { terms: { total: 1 } },
   }));
+  const stateBeforeInvalidLoad = await storedDictionaryState();
+  const invalidPackage = {
+    id: createHash("sha256").update(invalidLoadTitle).digest("hex").slice(0, 32),
+    title: invalidLoadTitle,
+    displayName: null,
+    path: invalidLoadPath,
+    enabled: true,
+    favorite: false,
+    revision: "test-1",
+    isUpdatable: false,
+    indexUrl: null,
+    downloadUrl: null,
+    language: null,
+    termCount: 1,
+    frequencyCount: 0,
+    pitchCount: 0,
+    kanjiCount: 0,
+    mediaCount: 0,
+    installedAt: new Date(invalidImportDate).toISOString(),
+    lastUpdateCheck: null,
+  };
+  const invalidStateWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: stateBeforeInvalidLoad.revision,
+    dictionaries: [...stateBeforeInvalidLoad.dictionaries, invalidPackage],
+  });
+  const authoritativeInvalidState = invalidStateWrite.state;
   const invalidReload = await request("hd_reload");
+  const stateAfterInvalidReload = await storedDictionaryState();
   check(
-    "reload rejects an enabled package that the native engine cannot load",
-    invalidReload.ok === false && invalidReload.error?.includes("could not load"),
-    JSON.stringify(invalidReload),
+    "reload rejects an authoritative invalid package without pruning its state",
+    invalidStateWrite.ok === true
+      && authoritativeInvalidState.dictionaries.length === stateBeforeInvalidLoad.dictionaries.length + 1
+      && invalidReload.ok === false
+      && invalidReload.error?.includes("could not load")
+      && JSON.stringify(stateAfterInvalidReload) === JSON.stringify(authoritativeInvalidState),
+    JSON.stringify({ invalidStateWrite, invalidReload, stateAfterInvalidReload }),
   );
+  const repairedStateWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: stateAfterInvalidReload.revision,
+    dictionaries: stateAfterInvalidReload.dictionaries.filter(
+      (dictionary) => dictionary.title !== invalidLoadTitle,
+    ),
+  });
   observedEngine.FS.unlink(`${invalidLoadPath}/index.json`);
   observedEngine.FS.unlink(`${invalidLoadPath}/.hoshidicts_3`);
   observedEngine.FS.rmdir(invalidLoadPath);
+  observedEngine.FS.rmdir(invalidGenerationRoot);
   const repairedReload = await request("hd_reload");
-  check("reload recovers after the invalid package is removed", repairedReload.ok === true, JSON.stringify(repairedReload));
+  const stateAfterRepair = await storedDictionaryState();
+  check(
+    "reload recovers after the invalid package is explicitly removed",
+    repairedStateWrite.ok === true
+      && !repairedStateWrite.state.dictionaries.some(
+        (dictionary) => dictionary.title === invalidLoadTitle,
+      )
+      && repairedReload.ok === true
+      && repairedReload.dictionaryCount === 4
+      && JSON.stringify(stateAfterRepair) === JSON.stringify(repairedStateWrite.state),
+    JSON.stringify({ repairedStateWrite, repairedReload, stateAfterRepair }),
+  );
 
   section("lookup, kanji, styles, media");
   const lookup = await request("hd_lookup", {
@@ -1442,6 +1557,49 @@ async function main() {
     [true, 4],
   );
 
+  const stateBeforeRejectedReimport = await storedDictionaryState();
+  const generationRowsBeforeRejectedReimport = idb.keys("/dicts")
+    .filter((path) => path.startsWith("/dicts/.hdw-generation-"))
+    .sort();
+  storage.failNextSet("injected reimport state CAS failure");
+  const rejectedReimport = await request("hd_import", {
+    blobUrl: createObjectURL(buildTitledZip(FIXTURE_TITLE)),
+    fileName: "rejected-reimport.zip",
+  });
+  const stateAfterRejectedReimport = await storedDictionaryState();
+  const statusAfterRejectedReimport = await request("hd_status");
+  const mediaAfterRejectedReimport = await request("hd_media", {
+    dictionary: FIXTURE_TITLE,
+    path: "media/kanji.png",
+  });
+  const generationRowsAfterRejectedReimport = idb.keys("/dicts")
+    .filter((path) => path.startsWith("/dicts/.hdw-generation-"))
+    .sort();
+  equal(
+    "a failed reimport state CAS preserves the prior stored path and data",
+    [
+      rejectedReimport.ok,
+      stateAfterRejectedReimport,
+      statusAfterRejectedReimport.dictionaryCount,
+      mediaAfterRejectedReimport.dataUrl,
+      generationRowsAfterRejectedReimport,
+    ],
+    [
+      false,
+      stateBeforeRejectedReimport,
+      4,
+      media.dataUrl,
+      generationRowsBeforeRejectedReimport,
+    ],
+  );
+
+  // Restore the fixture so this deliberately failing regression does not turn
+  // the existing renderer and removal checks into unrelated follow-on failures.
+  await request("hd_import", {
+    blobUrl: createObjectURL(zip),
+    fileName: "restore-after-rejected-reimport.zip",
+  });
+
   section("renderer against real engine output");
   // 漢字 is the fixture's structured-content entry, the only one carrying an <img>.
   const imageLookup = await request("hd_lookup", {
@@ -1565,8 +1723,8 @@ async function main() {
   // zstd-training floor and therefore lands in the pre-4 layout. Nothing outside
   // node-smoke.mjs had ever seen the layout the current engine writes for a real
   // dictionary: a .hoshidicts_4 marker, a dict.zstd, and glossaries compressed
-  // against it. That layout has to survive offscreen.js's own marker list and the
-  // IDBFS round trip, neither of which node-smoke.mjs touches.
+  // against it. That layout has to survive the extension's strict-load and IDBFS
+  // round trip, neither of which node-smoke.mjs touches.
   const trainedImport = await request("hd_import", {
     blobUrl: createObjectURL(buildTrainedZip()),
     fileName: "hachidori-fixture-trained.zip",
@@ -1576,10 +1734,8 @@ async function main() {
     [trainedImport.ok, trainedImport.report?.title, trainedImport.report?.termCount],
     [true, TRAINED_TITLE, TRAINED_TERMS.length],
   );
-  // reloadFromStorage() -> reconcile() -> listImported() runs on the way out of
-  // hd_import, and listImported() only recognises a directory by its marker: a
-  // MARKER_FILES that does not name .hoshidicts_4 drops the row that was just
-  // written and this count is 0.
+  // The import is not published until its exact manifest path strict-loads. A
+  // runtime that does not recognise .hoshidicts_4 rejects this package instead.
   const trainedStatus = await request("hd_status");
   equal(
     "offscreen.js recognises the .hoshidicts_4 directory as a dictionary",
@@ -1592,7 +1748,7 @@ async function main() {
     "the trained import writes one term-only logical package",
     trainedState?.dictionaries?.length === 1
       && trainedPackage?.title === TRAINED_TITLE
-      && trainedPackage?.path === `/dicts/${TRAINED_TITLE}`
+      && ownedGenerationRoot(trainedPackage?.path, TRAINED_TITLE) !== ""
       && trainedPackage?.enabled === true
       && trainedPackage?.termCount === TRAINED_TERMS.length
       && trainedPackage?.frequencyCount === 0
@@ -1603,11 +1759,12 @@ async function main() {
   );
   // The trained dictionary has to be in the store IDBFS repopulates from, not
   // just on the in-memory filesystem where the import ran.
-  const persisted = idb.keys("/dicts").filter((key) => key.startsWith(`/dicts/${TRAINED_TITLE}/`));
+  const trainedPath = trainedPackage?.path ?? "";
+  const persisted = idb.keys("/dicts").filter((key) => key.startsWith(`${trainedPath}/`));
   check(
     "syncfs(false) persisted the marker and dict.zstd, not just the banks",
-    persisted.includes(`/dicts/${TRAINED_TITLE}/dict.zstd`)
-      && persisted.includes(`/dicts/${TRAINED_TITLE}/.hoshidicts_4`),
+    persisted.includes(`${trainedPath}/dict.zstd`)
+      && persisted.includes(`${trainedPath}/.hoshidicts_4`),
     JSON.stringify(persisted.sort()),
   );
   // The real assertion: these bytes only come back if the dictionary the importer
@@ -1623,6 +1780,92 @@ async function main() {
     "glossaries compressed against the trained dictionary survive the round trip",
     trainedLookup.results?.[0]?.term?.glossaries?.map((g) => [g.dictionary, g.glossary]),
     [[TRAINED_TITLE, JSON.stringify(trainedGlossary)]],
+  );
+
+  const unreferencedTitle = "hachidori-unreferenced-restart-fixture";
+  const unreferencedImport = await request("hd_import", {
+    blobUrl: createObjectURL(buildTitledZip(unreferencedTitle)),
+    fileName: `${unreferencedTitle}.zip`,
+  });
+  const stateWithUnreferenced = await storedDictionaryState();
+  const unreferencedPathBeforeStateRemoval = stateWithUnreferenced.dictionaries.find(
+    (dictionary) => dictionary.title === unreferencedTitle,
+  )?.path ?? "";
+  const unreferencedStateWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: stateWithUnreferenced.revision,
+    dictionaries: stateWithUnreferenced.dictionaries.filter(
+      (dictionary) => dictionary.title !== unreferencedTitle,
+    ),
+  });
+  const revisionedState = unreferencedStateWrite.state;
+  const fallbackPathBeforeRestart = revisionedState.dictionaries.find(
+    (dictionary) => dictionary.title === TRAINED_TITLE,
+  )?.path;
+
+  const restartedEngineService = await import(
+    `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}?restart`
+  );
+  restartedEngineService.configureEngineService(
+    (message) => offscreenChrome.runtime.sendMessage(message),
+    { createHoshidicts, storageBackend: "idbfs", lowRam: true },
+  );
+  let restartCounter = 0;
+  const restartRequest = (type, fields = {}) => {
+    restartCounter += 1;
+    return restartedEngineService.handleEngineMessage({
+      type,
+      requestId: `restart-${restartCounter}`,
+      ...fields,
+    });
+  };
+  restartedEngineService.startEngine();
+  let restartedStatus = await restartRequest("hd_status");
+  const restartDeadline = Date.now() + 30000;
+  while (!(restartedStatus.ok && restartedStatus.ready && !restartedStatus.loading)
+      && Date.now() < restartDeadline) {
+    await new Promise((done) => setTimeout(done, 25));
+    restartedStatus = await restartRequest("hd_status");
+  }
+  const stateAfterRestart = await storedDictionaryState();
+  const restartedReload = await restartRequest("hd_reload");
+  const stateAfterRestartedReload = await storedDictionaryState();
+  const unreferencedGenerationPersisted = idb.keys("/dicts").some((path) =>
+    path === unreferencedPathBeforeStateRemoval
+      || path.startsWith(`${unreferencedPathBeforeStateRemoval}/`));
+  equal(
+    "a revisioned restart and reload refuse to auto-adopt an unreferenced on-disk dictionary",
+    [
+      unreferencedImport.ok,
+      ownedGenerationRoot(unreferencedPathBeforeStateRemoval, unreferencedTitle) !== "",
+      unreferencedStateWrite.ok,
+      ownedGenerationRoot(fallbackPathBeforeRestart, TRAINED_TITLE) !== "",
+      restartedStatus.ok,
+      restartedStatus.dictionaryCount,
+      stateAfterRestart?.dictionaries?.[0]?.path,
+      stateAfterRestart,
+      restartedReload.ok,
+      restartedReload.dictionaryCount,
+      stateAfterRestartedReload?.dictionaries?.[0]?.path,
+      stateAfterRestartedReload,
+      unreferencedGenerationPersisted,
+    ],
+    [
+      true,
+      true,
+      true,
+      true,
+      true,
+      1,
+      fallbackPathBeforeRestart,
+      revisionedState,
+      true,
+      1,
+      fallbackPathBeforeRestart,
+      revisionedState,
+      false,
+    ],
   );
 
   console.log(`\n${passed} passed, ${failed} failed`);

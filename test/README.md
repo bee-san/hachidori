@@ -246,7 +246,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 107 checks, all of
+full request→reply round trip per contract-C message type. 110 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -317,23 +317,22 @@ What it proves, in order:
    of one term-bank row, so each of its elements must land in its own
    `li.gloss-item` — appending them into one parent runs two senses together with
    no separator, which is asserted against the fixture's own two-sense entry.
-7. **`hd_remove`** — directory gone, logical package gone, nothing loaded, and
-   removing an unknown title does not bump `generation`. The fake rejects whole
-   directory renames, matching OPFS, so removal has to stage flat files and move
-   the version marker in the safe order. The failure case injects a
-   `chrome.storage.local.set` rejection: `hd_remove` must restore both those files
-   and the live engine. The internal `.hdw-remove` title is also rejected.
+7. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
+   and removing an unknown title does not bump `generation`. Removal strict-loads
+   the remaining manifest and commits it before deleting the old root. The
+   failure case injects a `chrome.storage.local.set` rejection: the original
+   generation and live engine must remain intact. Startup recovery also preserves
+   a legitimate legacy dictionary whose title is `.hdw-remove`.
 8. **A trained (`.hoshidicts_4`) dictionary through the extension layer.**
    Everything above imports the 6-row fixture, which is under the zstd training
    floor, so nothing outside `node-smoke.mjs` had ever seen the layout the current
    engine writes for a real dictionary. `buildTrainedZip()` goes through
-   `hd_import`, and then: `listImported()` has to recognise the directory by its
-   marker (a `MARKER_FILES` in `offscreen.js` that does not name `.hoshidicts_4`
-   makes `reconcile()` drop the row it just wrote, and `dictionaryCount` is 0), the
-   IndexedDB the fake stands in for has to have both the marker and `dict.zstd`
-   keyed under it — those are the files IDBFS repopulates from after a restart —
-   and `hd_lookup` has to hand back the glossary bytes, which only decompress if
-   `dict.zstd` was found and loaded.
+   `hd_import`, and then its exact manifest path must strict-load, the IndexedDB
+   fake has to contain both the marker and `dict.zstd` under that generation root
+   — those are the files IDBFS repopulates after a restart — and `hd_lookup` has
+   to return the glossary bytes, which only decompress if `dict.zstd` was found
+   and loaded. The restart case also proves an explicitly unreferenced generation
+   is deleted rather than adopted from disk.
 
 ### jsdom
 
@@ -480,9 +479,11 @@ text it sits in, so that loop stops at the first read that has it.
   the combined fixture registers, while the deliberately disabled generic
   package stays disabled. `>= 1` also passes for a reload that lost frequency
   and pitch data and would then answer a bare lookup with no tags.
-- The OPFS path is imported, replaced in place, killed with `SIGKILL`, restored,
-  queried again, and removed. The removal must clear settings rows, delete the
-  directory, and turn the same query into a checked miss.
+- The OPFS path is imported into a fresh generation, replaced by another fresh
+  generation, and killed with `SIGKILL` after the old root is retired. The
+  committed generation must be restored, queried again, and removed; removal
+  clears settings rows, deletes its root, and turns the same query into a checked
+  miss.
 
 Two things about reading the popup:
 

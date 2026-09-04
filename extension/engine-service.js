@@ -12,6 +12,8 @@
 const WORKER_TARGET = "hoshidicts-worker";
 const DICT_ROOT = "/dicts";
 const REMOVAL_ROOT = `${DICT_ROOT}/.hdw-remove`;
+const GENERATION_PREFIX = ".hdw-generation-";
+const GENERATION_NAME = /^\.hdw-generation-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const IMPORT_ZIP = "/.hdw-archive.zip";
 const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
 
@@ -89,6 +91,17 @@ function describe(error) {
 
 function asError(error) {
   return error instanceof Error ? error : new Error(describe(error));
+}
+
+class UnknownDictionaryStateCommitError extends Error {
+  constructor(commitError, readError) {
+    super(
+      `dictionary state commit outcome is unknown: ${describe(commitError)}; `
+      + `readback failed: ${describe(readError)}`,
+    );
+    this.name = "UnknownDictionaryStateCommitError";
+    this.cause = commitError;
+  }
 }
 
 function text(value) {
@@ -194,8 +207,42 @@ function exists(path) {
   }
 }
 
-function hasDictionaryMarker(path) {
-  return MARKER_FILES.some((marker) => exists(`${path}/${marker}`));
+function createGenerationRoot() {
+  const path = `${DICT_ROOT}/${GENERATION_PREFIX}${globalThis.crypto.randomUUID()}`;
+  if (exists(path)) {
+    throw new Error("the new dictionary generation path already exists");
+  }
+  return path;
+}
+
+function isGenerationRoot(path) {
+  const prefix = `${DICT_ROOT}/`;
+  return path.startsWith(prefix)
+    && GENERATION_NAME.test(path.slice(prefix.length));
+}
+
+function dictionaryRoot(dictionary) {
+  const title = text(dictionary?.title);
+  const path = text(dictionary?.path);
+  if (title === ""
+      || title === "."
+      || title === ".."
+      || title === ".hdw-import"
+      || title.includes("/")
+      || title.includes("\\")
+      || title.includes("\0")) {
+    return null;
+  }
+  if (path === `${DICT_ROOT}/${title}`) {
+    return path;
+  }
+  const separator = path.lastIndexOf("/");
+  const root = path.slice(0, separator);
+  return separator > DICT_ROOT.length
+    && path === `${root}/${title}`
+    && isGenerationRoot(root)
+    ? root
+    : null;
 }
 
 function isDirectory(stat) {
@@ -225,6 +272,59 @@ function removeTree(path) {
 function removeEmptyDirectory(path) {
   if (exists(path) && engine.FS.readdir(path).every((name) => name === "." || name === "..")) {
     engine.FS.rmdir(path);
+  }
+}
+
+function hasDictionaryMarker(path) {
+  return MARKER_FILES.some((marker) => exists(`${path}/${marker}`));
+}
+
+function removeUnreferencedDictionaryRoot(name, referencedRoots) {
+  if (name === "." || name === "..") {
+    return false;
+  }
+  const path = `${DICT_ROOT}/${name}`;
+  let stat;
+  try {
+    stat = engine.FS.stat(path);
+  } catch (error) {
+    return false;
+  }
+  if (!isDirectory(stat)) {
+    return false;
+  }
+  if (GENERATION_NAME.test(name)) {
+    if (referencedRoots.has(path)) {
+      return false;
+    }
+  } else if (!hasDictionaryMarker(path) || referencedRoots.has(path)) {
+    return false;
+  }
+  removeTree(path);
+  return true;
+}
+
+async function cleanupUnreferencedDictionaries(dictionaries) {
+  const referencedRoots = new Set(dictionaries.map((dictionary) => dictionaryRoot(dictionary)));
+  if (referencedRoots.has(null)) {
+    throw new Error("the committed dictionary state contains an invalid path");
+  }
+  let changed = false;
+  for (const name of engine.FS.readdir(DICT_ROOT)) {
+    changed = removeUnreferencedDictionaryRoot(name, referencedRoots) || changed;
+  }
+  if (changed) {
+    await persistFilesystem();
+  }
+}
+
+async function discardGeneration(path) {
+  if (!isGenerationRoot(path)) {
+    throw new Error("refusing to discard a path outside the dictionary generation namespace");
+  }
+  if (exists(path)) {
+    removeTree(path);
+    await persistFilesystem();
   }
 }
 
@@ -259,17 +359,6 @@ function settleStagedRemoval(title, restore) {
   }
   removeEmptyDirectory(REMOVAL_ROOT);
   return true;
-}
-
-function settleRemovalFiles(title, retained) {
-  if (title === ".hdw-remove" && hasDictionaryMarker(REMOVAL_ROOT)) {
-    if (retained) {
-      return false;
-    }
-    removeTree(REMOVAL_ROOT);
-    return true;
-  }
-  return settleStagedRemoval(title, retained);
 }
 
 function count(value) {
@@ -324,14 +413,17 @@ async function packageFromIndex(path) {
   };
 }
 
-async function listImported() {
+async function listLegacyImported(legacy) {
   const FS = engine.FS;
   const dictionaries = [];
-  for (const name of FS.readdir(DICT_ROOT)) {
-    if (name === "." || name === "..") {
+  const expectedTitles = new Set(
+    legacy.map((row) => text(row?.title)).filter((title) => title !== ""),
+  );
+  for (const title of expectedTitles) {
+    const path = `${DICT_ROOT}/${title}`;
+    if (dictionaryRoot({ title, path }) === null) {
       continue;
     }
-    const path = `${DICT_ROOT}/${name}`;
     let stat;
     try {
       stat = FS.stat(path);
@@ -339,7 +431,11 @@ async function listImported() {
       continue;
     }
     if (isDirectory(stat) && hasDictionaryMarker(path)) {
-      dictionaries.push(await packageFromIndex(path));
+      const dictionary = await packageFromIndex(path);
+      if (dictionary.title !== title) {
+        throw new Error(`${path}/index.json does not match its legacy dictionary title`);
+      }
+      dictionaries.push(dictionary);
     }
   }
   return dictionaries;
@@ -388,7 +484,17 @@ async function readStoredDictionaries() {
 }
 
 function sameDictionaries(left, right) {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return left.length === right.length && left.every((dictionary, index) => {
+    const other = right[index];
+    if (dictionary === null || other === null
+        || typeof dictionary !== "object" || typeof other !== "object") {
+      return dictionary === other;
+    }
+    const keys = Object.keys(dictionary);
+    return keys.length === Object.keys(other).length
+      && keys.every((key) => Object.hasOwn(other, key)
+        && dictionary[key] === other[key]);
+  });
 }
 
 // A service worker can commit the CAS and disappear before its reply reaches
@@ -397,13 +503,24 @@ function sameDictionaries(left, right) {
 async function commitDictionaryState(baseRevision, dictionaries) {
   try {
     return await ask("hd_state_cas", { baseRevision, dictionaries });
-  } catch (error) {
-    const { state } = await readDictionaryStorage();
+  } catch (commitError) {
+    let state;
+    try {
+      ({ state } = await readDictionaryStorage());
+    } catch (readError) {
+      throw new UnknownDictionaryStateCommitError(commitError, readError);
+    }
     if (state?.revision === baseRevision + 1
         && sameDictionaries(state.dictionaries, dictionaries)) {
       return { ok: true, state };
     }
-    throw error;
+    const currentRevision = state?.revision ?? 0;
+    return {
+      ok: false,
+      conflict: currentRevision !== baseRevision,
+      error: describe(commitError),
+      state,
+    };
   }
 }
 
@@ -427,14 +544,17 @@ async function recoverPendingRemovals(snapshot) {
   }
 }
 
-// `modify` must be a pure function of the storage snapshot, because a write the
-// worker refuses is retried against a fresh read.
-async function updateDictionaryState(modify) {
+// `buildCandidate` must derive its list from the supplied snapshot: a refused
+// write is rebuilt against the authoritative state before it is attempted again.
+// Loading happens before the CAS so a disabled corrupt package cannot be
+// published merely because the live engine would otherwise skip it.
+async function commitDictionaryCandidate(buildCandidate) {
   for (let attempt = 0; ; attempt += 1) {
     const snapshot = await readDictionaryStorage();
-    const next = await modify(snapshot);
+    const next = await buildCandidate(snapshot);
+    const loadedCount = loadDictionaries(next, { strict: true });
     if (snapshot.state !== null && sameDictionaries(next, snapshot.state.dictionaries)) {
-      return snapshot.state;
+      return { state: snapshot.state, loadedCount };
     }
     const baseRevision = snapshot.state?.revision ?? 0;
     const reply = await commitDictionaryState(baseRevision, next);
@@ -444,7 +564,7 @@ async function updateDictionaryState(modify) {
           || !Array.isArray(reply.state?.dictionaries)) {
         throw new Error("the service worker returned invalid committed dictionary state");
       }
-      return reply.state;
+      return { state: reply.state, loadedCount };
     }
     if (reply.conflict !== true || attempt + 1 >= STORAGE_ATTEMPTS) {
       throw new Error(reply.error || "the service worker could not save dictionary state");
@@ -465,25 +585,21 @@ function withStoredPresentation(generated, stored) {
   };
 }
 
-// Storage holds the load order, the engine holds the data; either can be ahead
-// of the other after a crash, so trust generated index.json for metadata and
-// storage for order and presentation.
-function reconcilePackages(stored, onDisk) {
+// Once revisioned state exists, its paths are the commit record. Refresh
+// generated metadata from those exact paths, but never discover another path
+// and silently publish it.
+async function refreshReferencedPackages(stored) {
   const entries = [];
-  const listed = new Set();
   for (const storedPackage of stored) {
-    const title = text(storedPackage?.title);
-    const generated = onDisk.get(title);
-    if (generated !== undefined && !listed.has(title)) {
-      listed.add(title);
-      entries.push(withStoredPresentation(generated, storedPackage));
+    const path = text(storedPackage?.path);
+    if (dictionaryRoot(storedPackage) === null) {
+      throw new Error(`the committed dictionary state contains an invalid path: ${path}`);
     }
-  }
-  for (const [title, generated] of onDisk) {
-    if (!listed.has(title)) {
-      listed.add(title);
-      entries.push(generated);
+    const generated = await packageFromIndex(path);
+    if (generated.title !== storedPackage?.title) {
+      throw new Error(`${path}/index.json does not match its committed dictionary title`);
     }
+    entries.push(withStoredPresentation(generated, storedPackage));
   }
   return entries;
 }
@@ -521,14 +637,16 @@ function migrateLegacyPackages(legacy, onDisk) {
 
 async function reconcile() {
   await recoverPendingRemovals(await readDictionaryStorage());
-  const onDisk = new Map((await listImported()).map((dictionary) => [dictionary.title, dictionary]));
-  const state = await updateDictionaryState((snapshot) => {
+  return commitDictionaryCandidate(async (snapshot) => {
     if (snapshot.state !== null) {
-      return reconcilePackages(snapshot.state.dictionaries, onDisk);
+      return refreshReferencedPackages(snapshot.state.dictionaries);
     }
-    return migrateLegacyPackages(snapshot.legacyDictionaries ?? [], onDisk);
+    const legacy = snapshot.legacyDictionaries ?? [];
+    const onDisk = new Map(
+      (await listLegacyImported(legacy)).map((dictionary) => [dictionary.title, dictionary]),
+    );
+    return migrateLegacyPackages(legacy, onDisk);
   });
-  return state.dictionaries;
 }
 
 function kindsForPackage(dictionary) {
@@ -543,11 +661,10 @@ function kindsForPackage(dictionary) {
   return kinds.length === 0 ? ["term"] : kinds;
 }
 
-function loadDictionaries(dictionaries, { strict = false } = {}) {
-  engine.ccall("hdw_reset", null, [], []);
+function addDictionaries(dictionaries, includeDisabled, strict) {
   let loadedCount = 0;
   for (const dictionary of dictionaries) {
-    if (dictionary.enabled === false) {
+    if (!includeDisabled && dictionary.enabled === false) {
       continue;
     }
     for (const kindName of kindsForPackage(dictionary)) {
@@ -566,6 +683,25 @@ function loadDictionaries(dictionaries, { strict = false } = {}) {
   return loadedCount;
 }
 
+function loadDictionaries(dictionaries, { strict = false } = {}) {
+  for (const dictionary of dictionaries) {
+    if (dictionaryRoot(dictionary) === null) {
+      throw new Error(`refusing to load an invalid dictionary path: ${text(dictionary?.path)}`);
+    }
+  }
+  if (strict) {
+    for (const dictionary of dictionaries) {
+      if (dictionary.enabled !== false) {
+        continue;
+      }
+      engine.ccall("hdw_reset", null, [], []);
+      addDictionaries([dictionary], true, true);
+    }
+  }
+  engine.ccall("hdw_reset", null, [], []);
+  return addDictionaries(dictionaries, false, strict);
+}
+
 function publishLoadedDictionaries(loadedCount) {
   dictionaryCount = loadedCount;
   generation += 1;
@@ -578,78 +714,18 @@ async function restoreCommittedDictionaries(state = null) {
   }
   publishLoadedDictionaries(loadDictionaries(committed.dictionaries, { strict: true }));
   reloadError = null;
+  return committed;
 }
 
-async function loadRemovalCandidate(state, dictionaries) {
-  try {
-    return loadDictionaries(dictionaries, { strict: true });
-  } catch (error) {
-    await restoreCommittedDictionaries(state);
-    throw error;
-  }
-}
-
-function stageDictionaryRemoval(title) {
-  if (title === ".hdw-remove" && hasDictionaryMarker(REMOVAL_ROOT)) {
-    return;
-  }
-  const installedPath = `${DICT_ROOT}/${title}`;
-  if (!exists(installedPath)) {
-    return;
-  }
-  if (!exists(REMOVAL_ROOT)) {
-    engine.FS.mkdir(REMOVAL_ROOT);
-  }
-  moveDictionaryFiles(installedPath, `${REMOVAL_ROOT}/${title}`, false);
-}
-
-async function settleRemovalForState(title, state) {
-  const retained = state.dictionaries.some(
-    (dictionary) => text(dictionary?.title) === title,
-  );
-  if (settleRemovalFiles(title, retained)) {
-    await persistFilesystem();
-  }
-  await restoreCommittedDictionaries(state);
-}
-
-async function commitRemovalState(snapshot, title, remaining) {
-  const reply = await commitDictionaryState(snapshot.state.revision, remaining);
-  if (reply.ok === true) {
-    return null;
-  }
-  if (reply.conflict !== true || reply.state === null) {
-    throw new Error(reply.error || "the dictionary removal could not be saved");
-  }
-  await settleRemovalForState(title, reply.state);
-  return {
-    ok: false,
-    conflict: true,
-    error: reply.error || "the dictionary state changed during removal",
-    state: reply.state,
-  };
-}
-
-async function rollbackRemoval(snapshot, title, readCurrentState) {
-  let state = snapshot.state;
-  if (readCurrentState) {
-    ({ state } = await readDictionaryStorage());
-    if (state === null) {
-      throw new Error("the dictionary state is unavailable during removal rollback");
-    }
-  }
-  await settleRemovalForState(title, state);
-}
-
-// The only thing that can fail here is the storage round trip through the
-// service worker -- the worker can be torn down between the request and the
-// reply, and reconcile() gives up after three refused writes. The engine is
-// untouched by that, so it stays usable; what it has loaded is not, hence the
-// error is kept for hd_status to report and for the next request to retry.
+// Reconciliation loads a fully validated candidate before publishing it. Keep
+// any failure for hd_status to report and for the next request to retry; public
+// count/generation state still describes the last published load set.
 async function reloadFromStorage() {
   try {
-    publishLoadedDictionaries(loadDictionaries(await reconcile(), { strict: true }));
+    const committed = await reconcile();
+    publishLoadedDictionaries(committed.loadedCount);
     reloadError = null;
+    await cleanupCommittedDictionaries(committed.state);
   } catch (error) {
     reloadError = asError(error);
     throw reloadError;
@@ -699,23 +775,26 @@ async function boot() {
       }
       engine.FS.mount(engine.IDBFS, {}, DICT_ROOT);
       await syncfs(true);
-    } else {
-      const initialized = engine.ccall(
-        "hdw_init_storage",
-        "number",
-        ["number"],
-        [storageBackend === "opfs" ? 1 : 0],
-      );
-      if (initialized !== 1) {
-        throwIfEngineFailed("hdw_init_storage");
-        throw new Error("hdw_init_storage failed");
-      }
-      if (storageBackend === "opfs") {
-        try {
-          engine.FS.unlink(OPFS_IMPORT_ZIP);
-        } catch {
-          // No archive was left by an interrupted import.
-        }
+    }
+    const initialized = engine.ccall(
+      "hdw_init_storage",
+      "number",
+      ["number"],
+      [storageBackend === "opfs" ? 1 : 0],
+    );
+    if (initialized !== 1) {
+      throwIfEngineFailed("hdw_init_storage");
+      throw new Error("hdw_init_storage failed");
+    }
+    if (storageBackend === "idbfs") {
+      // The populated filesystem may contain a transaction written by the old
+      // canonical-path importer; persist native recovery before reconciliation.
+      await persistFilesystem();
+    } else if (storageBackend === "opfs") {
+      try {
+        engine.FS.unlink(OPFS_IMPORT_ZIP);
+      } catch {
+        // No archive was left by an interrupted import.
       }
     }
     ready = true;
@@ -773,9 +852,54 @@ function withImport(stored, generated) {
   return next;
 }
 
-async function recordImport(report) {
-  const generated = await packageFromIndex(`${DICT_ROOT}/${report.title}`);
-  await updateDictionaryState((snapshot) => withImport(snapshot.state?.dictionaries ?? [], generated));
+async function cleanupCommittedDictionaries(committed) {
+  try {
+    const { state } = await readDictionaryStorage();
+    if (state === null
+        || state.revision !== committed.revision
+        || !sameDictionaries(state.dictionaries, committed.dictionaries)) {
+      return;
+    }
+    await cleanupUnreferencedDictionaries(state.dictionaries);
+  } catch (error) {
+    console.warn(`hoshidicts: could not remove unreferenced dictionaries: ${describe(error)}`);
+  }
+}
+
+async function commitImportedGeneration(generationRoot, report) {
+  const generated = await packageFromIndex(`${generationRoot}/${report.title}`);
+  if (generated.title !== report.title) {
+    throw new Error("the imported dictionary title changed while it was being committed");
+  }
+  const committed = await commitDictionaryCandidate((snapshot) =>
+    withImport(snapshot.state?.dictionaries ?? [], generated));
+  publishLoadedDictionaries(committed.loadedCount);
+  reloadError = null;
+  await cleanupCommittedDictionaries(committed.state);
+  return committed.state;
+}
+
+async function rollbackImportedGeneration(generationRoot, failure) {
+  let committed = null;
+  let restoreError = null;
+  try {
+    committed = await restoreCommittedDictionaries();
+  } catch (error) {
+    restoreError = error;
+    reloadError = asError(error);
+  }
+  const retained = committed?.dictionaries.some((dictionary) =>
+    dictionaryRoot(dictionary) === generationRoot) === true;
+  if (committed !== null && !retained) {
+    try {
+      await discardGeneration(generationRoot);
+    } catch (error) {
+      console.warn(`hoshidicts: could not discard ${generationRoot}: ${describe(error)}`);
+    }
+  }
+  if (restoreError !== null) {
+    throw new Error(`${describe(failure)}; dictionary rollback failed: ${describe(restoreError)}`);
+  }
 }
 
 function toBase64(bytes) {
@@ -816,6 +940,33 @@ export async function streamResponseToFile(FS, response, path) {
     reader.releaseLock?.();
   }
   return written;
+}
+
+async function importDictionaryArchive(response, archivePath, generationRoot, importLowRam, fileName) {
+  const FS = engine.FS;
+  try {
+    const archiveBytes = await streamResponseToFile(FS, response, archivePath);
+    if (archiveBytes === 0) {
+      throw new Error(`${fileName} is empty`);
+    }
+    return normaliseReport(
+      parseJson(
+        engine.ccall(
+          "hdw_import",
+          "string",
+          ["string", "string", "number"],
+          [archivePath, generationRoot, importLowRam ? 1 : 0],
+        ),
+        "hdw_import",
+      ),
+    );
+  } finally {
+    try {
+      FS.unlink(archivePath);
+    } catch (error) {
+      // Never written, or already gone.
+    }
+  }
 }
 
 const HANDLERS = {
@@ -898,16 +1049,16 @@ const HANDLERS = {
     return { kanji: text(kanji?.character) === "" ? null : kanji };
   },
 
-  hd_styles() {
-    requireEngine();
+  async hd_styles() {
+    await ensureLoaded();
     const json = engine.ccall("hdw_styles", "string", [], []);
     throwIfEngineFailed("hdw_styles");
     const styles = parseJson(json, "hdw_styles");
     return { styles: Array.isArray(styles) ? styles : [] };
   },
 
-  hd_media(message) {
-    requireEngine();
+  async hd_media(message) {
+    await ensureLoaded();
     const dictionary = text(message.dictionary);
     const path = text(message.path);
     if (dictionary === "" || path === "") {
@@ -931,7 +1082,6 @@ const HANDLERS = {
 
   async hd_import(message) {
     requireEngine();
-    const FS = engine.FS;
     const blobUrl = text(message.blobUrl);
     const fileName = text(message.fileName) || "the archive";
     const importLowRam = typeof message.lowRam === "boolean" ? message.lowRam : lowRam;
@@ -943,40 +1093,23 @@ const HANDLERS = {
     if (!response.ok) {
       throw new Error(`could not read ${fileName}: HTTP ${response.status}`);
     }
+    const generationRoot = createGenerationRoot();
     // Unload before importing: the loaded dictionaries are mapped into the same
-    // 32-bit address space the importer needs, and re-importing a title writes
-    // over files the query still holds open. Lookups cannot be served during an
-    // import anyway, since they queue behind it.
+    // 32-bit address space the importer needs. Public count/generation state is
+    // not changed until either the candidate or the committed state is loaded.
     engine.ccall("hdw_reset", null, [], []);
-    dictionaryCount = 0;
-    generation += 1;
 
     const archivePath = storageBackend === "opfs" ? OPFS_IMPORT_ZIP : IMPORT_ZIP;
     let report;
+    let rollbackAttempted = false;
     try {
-      try {
-        const archiveBytes = await streamResponseToFile(FS, response, archivePath);
-        if (archiveBytes === 0) {
-          throw new Error(`${fileName} is empty`);
-        }
-        report = normaliseReport(
-          parseJson(
-            engine.ccall(
-              "hdw_import",
-              "string",
-              ["string", "string", "number"],
-              [archivePath, DICT_ROOT, importLowRam ? 1 : 0],
-            ),
-            "hdw_import",
-          ),
-        );
-      } finally {
-        try {
-          FS.unlink(archivePath);
-        } catch (error) {
-          // Never written, or already gone.
-        }
-      }
+      report = await importDictionaryArchive(
+        response,
+        archivePath,
+        generationRoot,
+        importLowRam,
+        fileName,
+      );
 
       if (report.success && report.title === "") {
         // hdw_import refuses a title it cannot use as a folder name, so this is
@@ -987,17 +1120,23 @@ const HANDLERS = {
       }
       if (report.success) {
         await persistFilesystem();
-        await recordImport(report);
+        await commitImportedGeneration(generationRoot, report);
+      } else {
+        const failure = new Error(report.error || `${fileName} could not be imported`);
+        rollbackAttempted = true;
+        await rollbackImportedGeneration(generationRoot, failure);
       }
-    } finally {
-      // reloadFromStorage() has recorded the failure in reloadError, which
-      // hd_status reports and the next lookup retries; logging here would
-      // otherwise be the only trace, in a document with no console anyone reads.
-      try {
-        await reloadFromStorage();
-      } catch (error) {
-        console.error(`hoshidicts: could not reload after the import: ${describe(error)}`);
+    } catch (error) {
+      if (error instanceof UnknownDictionaryStateCommitError) {
+        // Storage may already reference the new path. Neither generation is safe
+        // to delete until an authoritative read succeeds.
+        reloadError = error;
+        throw error;
       }
+      if (!rollbackAttempted) {
+        await rollbackImportedGeneration(generationRoot, error);
+      }
+      throw error;
     }
 
     if (!report.success) {
@@ -1072,31 +1211,26 @@ const HANDLERS = {
     const remaining = snapshot.state.dictionaries.filter(
       (dictionary) => text(dictionary?.title) !== title,
     );
-    const installedPath = `${DICT_ROOT}/${title}`;
-    if (remaining.length === snapshot.state.dictionaries.length && !exists(installedPath)) {
+    if (remaining.length === snapshot.state.dictionaries.length) {
       // Nothing to do, and reloading for nothing would invalidate the renderer's
       // media cache.
       return {};
     }
 
-    const loadedCount = await loadRemovalCandidate(snapshot.state, remaining);
-
-    let casAttempted = false;
+    let loadedCount;
+    let reply;
     try {
-      stageDictionaryRemoval(title);
-      await persistFilesystem();
-
-      casAttempted = true;
-      const conflict = await commitRemovalState(snapshot, title, remaining);
-      if (conflict !== null) {
-        return conflict;
-      }
-
-      publishLoadedDictionaries(loadedCount);
-      reloadError = null;
+      loadedCount = loadDictionaries(remaining, { strict: true });
+      reply = await commitDictionaryState(snapshot.state.revision, remaining);
     } catch (error) {
+      if (error instanceof UnknownDictionaryStateCommitError) {
+        // The manifest may already exclude the package. Keep its files until an
+        // authoritative read can decide whether they are still committed.
+        reloadError = error;
+        throw error;
+      }
       try {
-        await rollbackRemoval(snapshot, title, casAttempted);
+        await restoreCommittedDictionaries(snapshot.state);
       } catch (restoreError) {
         reloadError = asError(restoreError);
         throw new Error(`${describe(error)}; removal rollback failed: ${describe(restoreError)}`);
@@ -1104,16 +1238,31 @@ const HANDLERS = {
       throw error;
     }
 
-    // The package is no longer reachable through storage or the live engine.
-    // Cleanup may be retried by reconcile() after a crash or filesystem error.
-    try {
-      if (settleRemovalFiles(title, false)) {
-        await persistFilesystem();
-      }
-    } catch (error) {
-      console.warn(`hoshidicts: could not finish removing ${title}: ${describe(error)}`);
+    if (reply.ok === true) {
+      publishLoadedDictionaries(loadedCount);
+      reloadError = null;
+      await cleanupCommittedDictionaries(reply.state);
+      return {};
     }
-    return {};
+
+    const authoritative = reply.conflict === true && reply.state !== null
+      ? reply.state
+      : snapshot.state;
+    try {
+      await restoreCommittedDictionaries(authoritative);
+    } catch (restoreError) {
+      reloadError = asError(restoreError);
+      throw new Error(
+        `${reply.error || "the dictionary removal could not be saved"}; `
+        + `removal rollback failed: ${describe(restoreError)}`,
+      );
+    }
+    return {
+      ok: false,
+      conflict: reply.conflict === true,
+      error: reply.error || "the dictionary removal could not be saved",
+      state: reply.state,
+    };
   },
 
   hd_status() {

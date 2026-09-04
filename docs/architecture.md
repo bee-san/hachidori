@@ -50,20 +50,20 @@ Dictionary import follows one logical transaction:
 
 1. `settings.html` receives the ZIP through its real file input and sends `hd_import`.
 2. The service worker transfers the archive to the offscreen document.
-3. The engine worker imports Yomitan banks through the Hoshidicts C++ importer.
-4. Generated files are written under a temporary dictionary path.
-5. The old path is moved aside, the completed path is promoted, and recovery markers guard interrupted swaps.
-6. Dictionary metadata is committed through a compare-and-set message handled by the service worker.
-7. The engine reloads enabled dictionaries and replies with the import report and new generation.
+3. The engine worker imports Yomitan banks through the Hoshidicts C++ importer into a fresh `/dicts/.hdw-generation-<UUID>/<title>` root. A committed root is never overwritten in place.
+4. The generated files are flushed to the storage backend before metadata can reference them.
+5. The candidate's exact manifest path is strict-loaded, including disabled packages, before the service worker compare-and-set commits it.
+6. Only a confirmed commit publishes the new dictionary count and generation.
+7. The engine re-reads authoritative state before garbage-collecting unreferenced generation roots.
 8. The settings page renders success only after that reply.
 
-Startup recovery resolves any interrupted replacement before dictionary discovery. The archive input is not stored after a successful import; only generated indexes and extension metadata remain.
+If a compare-and-set result is unknown because both the commit reply and its readback fail, both the previous and candidate roots are retained. Revisioned manifest paths are authoritative on restart: the engine strict-loads those paths and removes unreferenced generations rather than adopting them from disk. The IDBFS startup path also resolves imports left by the older `.hdw-import` protocol. The archive input itself is not retained.
 
-Removal stages a dictionary's flat files under `/dicts/.hdw-remove`, moving its
-version marker first so an interrupted source is never discovered as complete.
-The state CAS then decides recovery: retained packages move their marker back
-last, while committed removals delete the staged files. This uses file moves
-because direct OPFS does not support renaming whole directories.
+Removal first strict-loads the remaining manifest, then commits it, publishes the
+new state, and finally garbage-collects the removed generation. The
+`/dicts/.hdw-remove` handling remains only for recovery of dictionaries stranded
+by the older removal protocol, including a legacy dictionary whose real title
+was `.hdw-remove`.
 
 ## Storage ownership
 
