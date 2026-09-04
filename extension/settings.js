@@ -42,6 +42,7 @@ let pendingDictionaryCommits = 0;
 let dictionaryCommitTail = Promise.resolve();
 let dictionaryCommitFailed = false;
 let dictionaryRenderDeferred = false;
+let pendingManagementFocus = null;
 let dictionarySearch = "";
 const selectedDictionaryIds = new Set();
 let draggedDictionaryId = null;
@@ -1105,7 +1106,8 @@ function restoreManagementFocus(focus) {
 }
 
 function renderDictionaryState() {
-  const focus = focusedManagementControl();
+  const focus = pendingManagementFocus ?? focusedManagementControl();
+  pendingManagementFocus = null;
   dictionaries = dictionaryState.dictionaries;
   dictionaryRenderDeferred = false;
   renderDictionaries();
@@ -1157,6 +1159,7 @@ function queueDictionaryStateChange(update, reloadEngine) {
   }
   pendingDictionaryCommits += 1;
   committing = true;
+  pendingManagementFocus ??= focusedManagementControl();
   setControlsDisabled(importing);
 
   const run = dictionaryCommitTail.then(
