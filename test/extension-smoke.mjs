@@ -6257,7 +6257,29 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
   });
   popup.querySelector('[role="tab"][data-dictionary="Dictionary B"]')?.click();
   const termNoteButton = popup.querySelector(".gsm-hoshidicts-note-button");
+  const bottomNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
+  const resultToolbar = popup.querySelector(".gsm-hoshidicts-result-chrome");
+  Object.defineProperty(popup, "scrollHeight", { configurable: true, value: 480 });
+  view.setToolbarPosition("bottom");
+  const bottomChildren = [...popup.children];
+  popup.scrollTop = 0;
   termNoteButton?.click();
+  const openedAtBottom = popup.scrollTop;
+  view.setToolbarPosition("top");
+  check(
+    "the bottom Note form stays beside its toolbar and opens at the active edge",
+    bottomChildren.at(-2) === bottomNoteForm
+      && bottomChildren.at(-1) === resultToolbar
+      && openedAtBottom === popup.scrollHeight
+      && popup.children[0] === resultToolbar
+      && popup.children[1] === bottomNoteForm,
+    JSON.stringify({
+      bottomOrder: bottomChildren.map(({ className }) => className),
+      openedAtBottom,
+      scrollHeight: popup.scrollHeight,
+      topOrder: [...popup.children].map(({ className }) => className),
+    }),
+  );
   const termNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
   const termInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-term");
   const readingInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-reading");
