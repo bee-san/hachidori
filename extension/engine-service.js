@@ -11,8 +11,7 @@
 
 const WORKER_TARGET = "hoshidicts-worker";
 const DICT_ROOT = "/dicts";
-const IMPORT_ZIP = "/tmp/import.zip";
-const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
+const IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
 
 // Index into this array is the `kind` argument of hdw_add_dict.
 const KINDS = ["term", "freq", "pitch", "kanji"];
@@ -453,7 +452,7 @@ async function boot() {
       }
       if (storageBackend === "opfs") {
         try {
-          engine.FS.unlink(OPFS_IMPORT_ZIP);
+          engine.FS.unlink(IMPORT_ZIP);
         } catch {
           // No archive was left by an interrupted import.
         }
@@ -724,7 +723,7 @@ const HANDLERS = {
     dictionaryCount = 0;
     generation += 1;
 
-    const archivePath = storageBackend === "opfs" ? OPFS_IMPORT_ZIP : IMPORT_ZIP;
+    const archivePath = IMPORT_ZIP;
     let report;
     try {
       try {

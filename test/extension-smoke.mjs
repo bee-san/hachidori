@@ -629,6 +629,18 @@ async function main() {
       && probeSource.includes(".move("),
     "the direct-OPFS path lacks a worker-side sync-access and move probe",
   );
+  check(
+    "the OPFS probe uses collision-resistant temporary names",
+    probeSource.includes("crypto.randomUUID()") && !probeSource.includes("Math.random()"),
+    "the OPFS probe still derives a temporary path from Math.random()",
+  );
+  const engineServiceSource = readFileSync(resolve(EXTENSION, "engine-service.js"), "utf8");
+  check(
+    "fallback imports keep temporary archives inside the private dictionary filesystem",
+    !engineServiceSource.includes('const IMPORT_ZIP = "/tmp/')
+      && /const IMPORT_ZIP = `\$\{DICT_ROOT\}\/[^"]+`;/u.test(engineServiceSource),
+    "the fallback import archive is still rooted in a shared temporary directory",
+  );
   const bindingsSource = readFileSync(resolve(ROOT, "wasm/bindings.cpp"), "utf8");
   check(
     "the OPFS durability barrier opens writable sync-access handles before fsync",

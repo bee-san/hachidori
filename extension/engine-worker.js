@@ -43,7 +43,10 @@ configureEngineService(requestHost, {
 });
 startEngine();
 
-globalThis.onmessage = (event) => {
+// A dedicated worker has exactly one creator and MessageEvent.origin is empty,
+// so there is no cross-origin sender to validate. The private channel value is
+// still checked before either response or engine request data is accepted.
+globalThis.onmessage = (event) => { // NOSONAR
   const data = event.data;
   if (data?.channel === "host-response") {
     const pending = pendingHostRequests.get(data.id);
