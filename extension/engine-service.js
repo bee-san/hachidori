@@ -221,8 +221,28 @@ function isGenerationRoot(path) {
     && GENERATION_NAME.test(path.slice(prefix.length));
 }
 
-function pathBelongsToRoot(path, root) {
-  return path === root || path.startsWith(`${root}/`);
+function dictionaryRoot(dictionary) {
+  const title = text(dictionary?.title);
+  const path = text(dictionary?.path);
+  if (title === ""
+      || title === "."
+      || title === ".."
+      || title === ".hdw-import"
+      || title.includes("/")
+      || title.includes("\\")
+      || title.includes("\0")) {
+    return null;
+  }
+  if (path === `${DICT_ROOT}/${title}`) {
+    return path;
+  }
+  const separator = path.lastIndexOf("/");
+  const root = path.slice(0, separator);
+  return separator > DICT_ROOT.length
+    && path === `${root}/${title}`
+    && isGenerationRoot(root)
+    ? root
+    : null;
 }
 
 function isDirectory(stat) {
@@ -260,7 +280,10 @@ function hasDictionaryMarker(path) {
 }
 
 async function cleanupUnreferencedDictionaries(dictionaries) {
-  const referenced = new Set(dictionaries.map((dictionary) => text(dictionary?.path)));
+  const referencedRoots = new Set(dictionaries.map((dictionary) => dictionaryRoot(dictionary)));
+  if (referencedRoots.has(null)) {
+    throw new Error("the committed dictionary state contains an invalid path");
+  }
   let changed = false;
   for (const name of engine.FS.readdir(DICT_ROOT)) {
     if (name === "." || name === "..") {
@@ -277,14 +300,13 @@ async function cleanupUnreferencedDictionaries(dictionaries) {
       continue;
     }
     if (GENERATION_NAME.test(name)) {
-      const retained = [...referenced].some((candidate) => pathBelongsToRoot(candidate, path));
-      if (!retained) {
+      if (!referencedRoots.has(path)) {
         removeTree(path);
         changed = true;
       }
       continue;
     }
-    if (hasDictionaryMarker(path) && !referenced.has(path)) {
+    if (hasDictionaryMarker(path) && !referencedRoots.has(path)) {
       removeTree(path);
       changed = true;
     }
@@ -402,49 +424,30 @@ async function packageFromIndex(path) {
 
 async function listLegacyImported(legacy) {
   const FS = engine.FS;
-  const dictionaries = new Map();
+  const dictionaries = [];
   const expectedTitles = new Set(
     legacy.map((row) => text(row?.title)).filter((title) => title !== ""),
   );
-  for (const name of FS.readdir(DICT_ROOT)) {
-    if (name === "." || name === "..") {
+  for (const title of expectedTitles) {
+    const path = `${DICT_ROOT}/${title}`;
+    if (dictionaryRoot({ title, path }) === null) {
       continue;
     }
-    const path = `${DICT_ROOT}/${name}`;
     let stat;
     try {
       stat = FS.stat(path);
     } catch (error) {
       continue;
     }
-    if (isDirectory(stat) && MARKER_FILES.some((marker) => exists(`${path}/${marker}`))) {
+    if (isDirectory(stat) && hasDictionaryMarker(path)) {
       const dictionary = await packageFromIndex(path);
-      if (expectedTitles.has(dictionary.title)) {
-        // A legacy row originally referred to this canonical title path. A
-        // generated path is only its recovery fallback when the canonical copy
-        // is absent.
-        dictionaries.set(dictionary.title, dictionary);
+      if (dictionary.title !== title) {
+        throw new Error(`${path}/index.json does not match its legacy dictionary title`);
       }
-      continue;
-    }
-    if (!isDirectory(stat) || !GENERATION_NAME.test(name) || expectedTitles.size === 0) {
-      continue;
-    }
-    for (const child of FS.readdir(path)) {
-      if (child === "." || child === "..") {
-        continue;
-      }
-      const childPath = `${path}/${child}`;
-      if (!exists(childPath) || !isDirectory(FS.stat(childPath)) || !hasDictionaryMarker(childPath)) {
-        continue;
-      }
-      const dictionary = await packageFromIndex(childPath);
-      if (expectedTitles.has(dictionary.title) && !dictionaries.has(dictionary.title)) {
-        dictionaries.set(dictionary.title, dictionary);
-      }
+      dictionaries.push(dictionary);
     }
   }
-  return [...dictionaries.values()];
+  return dictionaries;
 }
 
 async function ask(type, fields = {}) {
@@ -588,8 +591,8 @@ async function refreshReferencedPackages(stored) {
   const entries = [];
   for (const storedPackage of stored) {
     const path = text(storedPackage?.path);
-    if (path === "") {
-      throw new Error("the committed dictionary state contains an empty path");
+    if (dictionaryRoot(storedPackage) === null) {
+      throw new Error(`the committed dictionary state contains an invalid path: ${path}`);
     }
     const generated = await packageFromIndex(path);
     if (generated.id !== storedPackage?.id || generated.title !== storedPackage?.title) {
@@ -680,6 +683,11 @@ function addDictionaries(dictionaries, includeDisabled, strict) {
 }
 
 function loadDictionaries(dictionaries, { strict = false } = {}) {
+  for (const dictionary of dictionaries) {
+    if (dictionaryRoot(dictionary) === null) {
+      throw new Error(`refusing to load an invalid dictionary path: ${text(dictionary?.path)}`);
+    }
+  }
   engine.ccall("hdw_reset", null, [], []);
   if (strict && dictionaries.some((dictionary) => dictionary.enabled === false)) {
     addDictionaries(dictionaries, true, true);
@@ -875,7 +883,7 @@ async function rollbackImportedGeneration(generationRoot, failure) {
     reloadError = asError(error);
   }
   const retained = committed?.dictionaries.some((dictionary) =>
-    pathBelongsToRoot(text(dictionary?.path), generationRoot)) === true;
+    dictionaryRoot(dictionary) === generationRoot) === true;
   if (committed !== null && !retained) {
     try {
       await discardGeneration(generationRoot);
