@@ -287,10 +287,19 @@ function setImportState(message, tone) {
   element("import-progress").hidden = tone !== "busy";
 }
 
-function setImportDetail(message) {
+function clearImportResults() {
   const detail = element("import-detail");
-  detail.textContent = message ?? "";
-  detail.hidden = !message;
+  detail.textContent = "";
+  detail.hidden = true;
+}
+
+function appendImportResult(fileName, message, tone) {
+  const detail = element("import-detail");
+  const result = document.createElement("li");
+  result.className = `import-result is-${tone}`;
+  result.textContent = `${fileName} — ${message}`;
+  detail.appendChild(result);
+  detail.hidden = false;
 }
 
 function setControlsDisabled(disabled) {
@@ -953,18 +962,14 @@ function summariseReport(report) {
   return counts.length === 0 ? "no entries" : counts.join(", ");
 }
 
-async function runImport(file) {
-  if (importing) {
-    return;
-  }
-  importing = true;
-  setControlsDisabled(true);
-  setImportDetail("");
-
+async function importFile(file, index, total) {
   const blobUrl = URL.createObjectURL(file);
   const started = Date.now();
   const tick = () => {
-    setImportState(`Importing ${file.name} — ${elapsedSince(started)} elapsed`, "busy");
+    setImportState(
+      `Importing ${file.name} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsedSince(started)} elapsed`,
+      "busy",
+    );
   };
   tick();
   const ticker = setInterval(tick, 1000);
@@ -973,35 +978,59 @@ async function runImport(file) {
     const reply = await send("hd_import", { blobUrl, fileName: file.name });
     const report = reply.report ?? {};
     if (reply.ok && report.success) {
-      setImportState(`Imported ${report.title} in ${elapsedSince(started)}.`, "ready");
-      setImportDetail(`${report.title}: ${summariseReport(report)}.`);
-      await reloadDictionaries();
-    } else {
-      setImportState(`${file.name} could not be imported.`, "error");
-      setImportDetail(reply.error ?? report.error ?? "The engine gave no reason.");
+      appendImportResult(file.name, `Imported ${report.title}: ${summariseReport(report)}.`, "ready");
+      return true;
     }
+    const reason = reply.error ?? report.error ?? "The engine gave no reason.";
+    appendImportResult(file.name, `Could not be imported: ${reason}`, "error");
   } catch (error) {
-    setImportState(`${file.name} could not be imported.`, "error");
-    setImportDetail(describe(error));
+    appendImportResult(file.name, `Could not be imported: ${describe(error)}`, "error");
   } finally {
     clearInterval(ticker);
     // The offscreen document has read the bytes by now; holding the URL any
     // longer just pins the file.
     URL.revokeObjectURL(blobUrl);
+  }
+  return false;
+}
+
+async function runImports(files) {
+  if (importing) {
+    return;
+  }
+  importing = true;
+  setControlsDisabled(true);
+  clearImportResults();
+
+  let imported = 0;
+  try {
+    for (const [index, file] of files.entries()) {
+      if (await importFile(file, index, files.length)) {
+        imported += 1;
+      }
+    }
+    const failed = files.length - imported;
+    const archiveLabel = files.length === 1 ? "archive" : "archives";
+    setImportState(
+      `Finished ${files.length} of ${files.length} ${archiveLabel} — ${imported} imported, ${failed} failed.`,
+      failed === 0 ? "ready" : "error",
+    );
+    await reloadDictionaries();
+    await refreshStatus();
+  } finally {
     importing = false;
     setControlsDisabled(false);
   }
-  await refreshStatus();
 }
 
 function attachHandlers() {
   const file = element("import-file");
   file.addEventListener("change", () => {
-    const picked = file.files?.[0];
-    // Clear it so picking the same file again still fires a change event.
+    const picked = [...(file.files ?? [])];
+    // Snapshot before clearing so picking the same batch again fires a change event.
     file.value = "";
-    if (picked) {
-      runImport(picked);
+    if (picked.length > 0) {
+      void runImports(picked);
     }
   });
 
