@@ -153,6 +153,7 @@ const PLANNED = [
   "importing a term-only single-kanji dictionary succeeds",
   "dictionary management filters and bulk-updates visible stable selections",
   "drag and keyboard position controls share the persisted lookup order",
+  "a delayed alias blur-then-click queues both dictionary edits",
   "named groups normalize unique names and keep stable dictionary memberships",
   "group and member order controls persist their shared state order",
   "a real blur-then-click queues both group edits and retains focus",
@@ -1086,6 +1087,46 @@ async function main() {
       && orderAfterKeyboardMove.selected === true,
     JSON.stringify({ orderBeforeDrag, orderAfterDrag, orderAfterKeyboardMove }),
   );
+
+  const aliasRowSelector = `#dict-list .dict-row[data-dictionary-id="${FIXTURE_ID}"]`;
+  const beforeAliasBlurAction = orderAfterKeyboardMove.revision;
+  await page.click(`${aliasRowSelector} .dict-display-name`);
+  await page.keyboard.down("Control");
+  await page.keyboard.press("A");
+  await page.keyboard.up("Control");
+  await page.keyboard.type("Blurred alias");
+  await page.click(`${aliasRowSelector} .dict-down`, { delay: 150 });
+  const aliasBlurAction = await page.evaluate(async ({ beforeRevision, dictionaryId }) => {
+    const deadline = Date.now() + 3000;
+    let current;
+    do {
+      current = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+      if (current.revision >= beforeRevision + 2) break;
+      await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+    } while (Date.now() < deadline);
+    return {
+      revision: current.revision,
+      alias: current.dictionaries.find((dictionary) => dictionary.id === dictionaryId)?.displayName,
+      lastDictionaryId: current.dictionaries.at(-1)?.id,
+      focusedDictionaryId: document.activeElement?.closest(".dict-row")?.dataset.dictionaryId,
+    };
+  }, { beforeRevision: beforeAliasBlurAction, dictionaryId: FIXTURE_ID });
+  check(
+    "a delayed alias blur-then-click queues both dictionary edits",
+    aliasBlurAction.revision >= beforeAliasBlurAction + 2
+      && aliasBlurAction.alias === "Blurred alias"
+      && aliasBlurAction.lastDictionaryId === FIXTURE_ID
+      && aliasBlurAction.focusedDictionaryId === FIXTURE_ID,
+    JSON.stringify({ beforeAliasBlurAction, aliasBlurAction }),
+  );
+  await page.click(`${aliasRowSelector} .dict-up`);
+  await page.waitForFunction(async ({ dictionaryId, revision }) => {
+    const current = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+    return current.revision > revision && current.dictionaries[0]?.id === dictionaryId;
+  }, { timeout: 10_000, polling: 100 }, {
+    dictionaryId: FIXTURE_ID,
+    revision: aliasBlurAction.revision,
+  });
 
   const groupManagement = await page.evaluate(async ({ fixtureId, genericId, fixtureAlias }) => {
     const nameInput = document.getElementById("dict-group-name-new");
