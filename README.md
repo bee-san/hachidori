@@ -67,11 +67,25 @@ Open Hachidori's options page to:
 - search titles and aliases, select visible matches, and bulk enable, disable, favourite, or unfavourite them;
 - reorder dictionaries by dragging, with the arrow buttons, or by entering a position;
 - create ordered dictionary groups and arrange each group's dictionaries;
+- check managed dictionaries for updates or install them on one global schedule;
 - configure the hover key, delay, scan length, result limit, frequency ranking, and the dictionary opened when you click a kanji.
 
 Selected dictionaries import one at a time, with an outcome retained for every archive; a failure does not stop the rest. The starter installer behaves the same way and retries only recommendations that are still missing. Large dictionaries can take several minutes, so keep the page open until the batch finishes.
 
 The kanji dictionary chooser accepts both traditional Yomitan kanji dictionaries and term dictionaries with single-kanji entries.
+
+<p align="center">
+  <img src="docs/assets/managed-dictionary-updates.png" alt="Hachidori Options showing the global managed-update controls and persisted per-dictionary update status" width="760">
+</p>
+
+Recommended dictionaries and imported dictionaries that declare complete HTTPS
+update sources are managed. **Check now** queries every managed dictionary,
+including disabled ones, and records availability without downloading an
+archive. Install one available update, install them all, or choose one global
+hourly, daily, weekly, or monthly schedule; scheduled checks install available
+updates automatically. Local archives without an update source remain
+local-only. Replacements keep the package's identity, position, alias,
+enabled/favourite state, and group memberships.
 
 ## Benchmarks
 
@@ -106,7 +120,13 @@ Choose Hachidori when you want the shortest path from a Yomitan dictionary to a 
 
 Lookups make no network calls. Your dictionaries and lookup text stay in Chrome, and the bundled WebAssembly engine queries them locally.
 
-The optional starter action downloads its four named archives directly from the publishers linked on the Options page. Importing your own ZIP and every lookup remain local. Imported dictionaries are persisted in Chrome's extension storage.
+The optional starter action downloads its four named archives directly from the
+publishers linked on the Options page. Manual update checks and scheduled update
+runs request managed dictionaries' HTTPS indexes; installing an update also
+downloads its HTTPS archive. A generic index may select a new HTTPS archive URL,
+while recommended sources remain pinned to their built-in catalogue entries.
+Importing a local ZIP and every lookup remain local. Imported dictionaries are
+persisted in Chrome's extension storage.
 
 Only import dictionaries you trust. Hachidori validates the archive title before the engine creates its on-disk directory, but dictionary-supplied content and CSS still come from the archive you choose.
 

@@ -14,6 +14,7 @@ settings.html / content.js
   └─ chrome.runtime.sendMessage
        └─ background.js (MV3 service worker)
             ├─ owns chrome.storage.local dictionary metadata
+            ├─ checks managed update indexes and owns one periodic alarm
             ├─ creates or reconnects to offscreen.html
             └─ relays requests without holding engine state
                  └─ offscreen.js
@@ -36,7 +37,10 @@ On supported Chrome builds, `offscreen.js` starts a dedicated module worker afte
 
 `engine-worker.js` loads the pthread WebAssembly build. WasmFS mounts direct OPFS at `/dicts`, so the C++ engine reads its generated indexes without copying them through IndexedDB or the JavaScript heap. The extension manifest supplies the cross-origin isolation policy required by shared Wasm memory and exposes the generated pthread worker asset.
 
-The worker serializes engine mutations and bounds pending requests. Imports reject concurrent work with a busy response rather than letting lookup and dictionary replacement race. The offscreen bridge also bounds its queue and preserves a last-known status response while an import occupies the engine worker.
+The worker serializes engine mutations and bounds pending requests. Imports,
+reimports, managed replacements, removals, and reloads cannot race each other.
+The offscreen bridge also bounds its queue and preserves a last-known status
+response while a mutation occupies the engine worker.
 
 ## Compatibility path
 
@@ -74,12 +78,44 @@ new state, and finally garbage-collects the removed generation. The
 by the older removal protocol, including a legacy dictionary whose real title
 was `.hdw-remove`.
 
+## Managed update cycle
+
+The service worker derives managed candidates from `dictionaryState`, including
+disabled packages. Recommended candidates use the source pinned in the built-in
+catalogue; generic candidates need complete credential-free HTTPS index and
+archive descriptors. These trust and schedule rules live in one native ES
+module shared by the worker, engine, and Settings page.
+
+**Check now** fetches each candidate's index and records `up-to-date`,
+`update-available`, or `check-failed` against that package generation. It does
+not download archives. There is one global Off/hourly/daily/weekly/monthly
+setting and one Chrome alarm. An alarm runs the same checks and automatically
+installs available revisions, including revisions for disabled packages.
+
+An install carries the checked package ID, generation path, installed revision,
+source descriptor, check time, expected remote revision, and selected archive
+URL into the engine mutation queue. Recommended archives remain
+catalogue-pinned; a generic index may select a different credential-free HTTPS
+archive URL. The engine validates the response's final URL and generated index,
+then revalidates the complete fingerprint at the commit snapshot. The fresh
+generation and its `up-to-date` status are published in the same package CAS;
+an ordinary reimport clears generation-bound check state. A stale check or
+failure status is applied only while its captured fingerprint still matches.
+
+The background storage queue is not held while the offscreen engine downloads,
+imports, or commits. Presentation-only edits may advance state during that work,
+so the engine cleans generations against the latest authoritative package paths
+after publication. A title collision, changed fingerprint, wrong archive
+revision, or failed import leaves the working generation loaded and reports the
+failure without publishing the candidate.
+
 ## Storage ownership
 
 | Data | Owner | Storage |
 | --- | --- | --- |
 | Generated dictionary indexes | engine worker or fallback engine | direct OPFS or IDBFS under `/dicts` |
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
+| Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
 | Scan length, result limit, modifier, delay, frequency ordering, and dictionary selectors | service worker writes; extension pages read | `chrome.storage.local` key `options` |
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
@@ -102,6 +138,9 @@ pruning are one compare-and-set transaction rather than two coordinated writes.
 | `hd_state_read` | Read revisioned dictionary state through the service worker |
 | `hd_state_cas` | Compare-and-set revisioned dictionary state through the service worker |
 | `hd_options_write` | Save options through the worker and prune invalid dictionary selectors |
+| `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
+| `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
+| `hd_updates_install` | Recheck and install the requested available managed packages |
 
 ## Build outputs
 
