@@ -3427,6 +3427,15 @@ async function main() {
   }
   const settingsCustom = await settingsCustomDictionaryStage();
   check(
+    "settings coalesces source validation while saving the exact current draft",
+    settingsCustom?.liveValidation?.deferred === true
+      && settingsCustom.liveValidation.saveEnabled === true
+      && settingsCustom.liveValidation.latestErrors === true
+      && settingsCustom.liveValidation.unchangedErrorsReused === true
+      && settingsCustom.eventFirstSave?.statusPreserved === true,
+    JSON.stringify(settingsCustom),
+  );
+  check(
     "settings lazily loads the newest custom source across event and reply ordering",
     settingsCustom?.startup?.customReadCount === 0
       && settingsCustom.startup.formHidden === true
@@ -4806,6 +4815,25 @@ async function settingsCustomDictionaryStage() {
   await waitFor(() => customReadRequests.length === 2 && source.value === "external, そと, reload me\n");
   result.reloadedValue = source.value;
 
+  const errors = window.document.getElementById("custom-dictionary-errors");
+  const status = window.document.getElementById("custom-dictionary-status");
+  for (const text of ["broken", "broken\n, reading, definition", "valid, reading, definition\nbroken\n, reading, definition"]) {
+    source.value = text;
+    source.dispatchEvent(new window.Event("input", { bubbles: true }));
+  }
+  result.liveValidation = {
+    deferred: errors.childElementCount === 0,
+    saveEnabled: !save.disabled,
+  };
+  await waitFor(() => errors.childElementCount === 2 && status.textContent.includes("ready to save"));
+  result.liveValidation.latestErrors = JSON.stringify([...errors.children].map((item) => item.textContent))
+    === JSON.stringify(["Line 2: expected two commas", "Line 3: term is empty"]);
+  const firstError = errors.firstElementChild;
+  source.value = source.value.replace("valid", "edited");
+  source.dispatchEvent(new window.Event("input", { bubbles: true }));
+  await waitFor(() => status.textContent.includes("ready to save"));
+  result.liveValidation.unchangedErrorsReused = errors.firstElementChild === firstError;
+
   const eventFirstText = "valid, ばりっど, line\\nsecond\nbroken\n, よみ, missing term\n";
   source.value = eventFirstText;
   source.dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -4844,7 +4872,10 @@ async function settingsCustomDictionaryStage() {
   });
   await waitFor(() => !source.disabled
     && window.document.getElementById("custom-dictionary-status")?.textContent?.includes("Saved"));
+  const savedStatus = status.textContent;
+  await new Promise((done) => window.setTimeout(done, 200));
   result.eventFirstSave = {
+    statusPreserved: status.textContent === savedStatus && savedStatus.includes("Saved"),
     baseRevision: customSaveRequests[0]?.baseDocumentRevision,
     text: customSaveRequests[0]?.text,
     value: source.value,
