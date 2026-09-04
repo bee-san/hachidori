@@ -56,6 +56,9 @@ entries). It also writes malformed, missing-index, non-ZIP, and parent-title
 archives for the error and path-safety checks. The ZIP container is written by
 hand with `node:zlib` — the engine's reader only needs local file headers, a
 central directory and raw deflate streams, and that is about 80 lines.
+The exported `buildRecommendedZip()` helper builds the small in-memory archives
+used when tests intercept the four recommendation URLs; it does not contact the
+publishers.
 
 The `.zip` is checked against `third_party/hoshidicts/src/json/yomitan_parser.cpp`
 and `src/importer.cpp`, not guessed. `python3 -m zipfile` and the native CLI both
@@ -399,7 +402,7 @@ naming the variable if either is missing.
 
 It launches Chrome with `--load-extension`, intercepts the four production
 recommendation URLs with deterministic ZIP fixtures, proves failure continuation,
-trusted source metadata, reload hiding, and missing-only retry, then clears those
+trusted source metadata, reload/restart hiding, and missing-only retry, then clears those
 fixtures. It next uses the real `#import-file` on `settings.html` for a valid
 archive and a three-file batch containing a term-only kanji dictionary, a
 malformed ZIP, and a same-title reimport. It verifies the ordered per-file

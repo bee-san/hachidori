@@ -1112,16 +1112,20 @@ async function main() {
   }));
   const rejectRecommended = async (name, fields, overrides, importedTitle) => {
     const before = await storedDictionaryState();
+    const rowsBefore = idb.keys("/dicts").filter((path) => path.includes("/dicts/.hdw-generation-")).sort();
     const reply = await request("hd_import", {
       blobUrl: recommendedArchive(overrides),
       fileName: `${name}.zip`,
       ...fields,
     });
     const after = await storedDictionaryState();
+    const rowsAfter = idb.keys("/dicts").filter((path) => path.includes("/dicts/.hdw-generation-")).sort();
     check(
       name,
-      reply.ok === false && JSON.stringify(after) === JSON.stringify(before),
-      JSON.stringify({ reply, before, after }),
+      reply.ok === false
+        && JSON.stringify(after) === JSON.stringify(before)
+        && JSON.stringify(rowsAfter) === JSON.stringify(rowsBefore),
+      JSON.stringify({ reply, before, after, rowsBefore, rowsAfter }),
     );
     // Keeps this stage isolated when run against a pre-feature engine during
     // test-first development, where the trust fields are simply ignored.

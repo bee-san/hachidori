@@ -215,6 +215,7 @@ const PLANNED = [
   "hovering non-Japanese text shows no popup",
   "the same hover shows a popup again after the non-Japanese one",
   "the settings page lists the dictionary again after a restart",
+  "the starter card stays hidden after a browser restart",
   "the dictionary survives a browser restart via OPFS",
   "lookups work after a restart with no re-import",
   "removing the dictionary clears its settings rows",
@@ -1944,6 +1945,15 @@ async function main() {
     persistedPackage?.path === replacedPackage.path
       && ownedGenerationRoot(persistedPackage.path, "hachidori-fixture") === replacedFixtureGeneration,
     `expected path: ${JSON.stringify(replacedPackage.path)}; persisted package: ${JSON.stringify(persistedPackage)}`);
+  const restartedSettingsUi = await page.evaluate(() => ({
+    localInputVisible: document.getElementById("import-file")?.closest(".file-button")?.hidden !== true,
+    starterHidden: document.getElementById("recommended-starter")?.hidden,
+  }));
+  check(
+    "the starter card stays hidden after a browser restart",
+    restartedSettingsUi.starterHidden === true && restartedSettingsUi.localInputVisible === true,
+    JSON.stringify(restartedSettingsUi),
+  );
 
   // #dict-list above reflects worker-owned chrome.storage.local state, which
   // persists regardless of OPFS; only a dictionaryCount from the fresh engine
