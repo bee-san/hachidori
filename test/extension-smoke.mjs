@@ -3346,6 +3346,60 @@ async function main() {
         `  NODE_PATH=${DEFAULT_JSDOM_TREE}/node_modules node test/extension-smoke.mjs`,
     );
   }
+  const settingsCustom = await settingsCustomDictionaryStage();
+  check(
+    "settings lazily loads the newest custom source across event and reply ordering",
+    settingsCustom?.startup?.customReadCount === 0
+      && settingsCustom.startup.formHidden === true
+      && settingsCustom.startup.sourceFetchedDirectly === false
+      && settingsCustom.startup.sourceHasMaximumLength === false
+      && settingsCustom.eventBeforeReadReply?.value === "newer event, にゅー, wins\n"
+      && settingsCustom.eventBeforeReadReply.expanded === "true"
+      && settingsCustom.eventBeforeReadReply.readCount === 1
+      && settingsCustom.eventFirstSave?.baseRevision === 7
+      && settingsCustom.eventFirstSave.text === settingsCustom.eventFirstSave.value
+      && settingsCustom.eventFirstSave.saveDisabled === true
+      && settingsCustom.replyBeforeEvent?.saveDisabled === true
+      && settingsCustom.equalEventIgnored === true,
+    JSON.stringify(settingsCustom),
+  );
+  check(
+    "settings refuses stale custom drafts and reports every malformed line",
+    settingsCustom?.staleDraft?.value === "draft, どらふと, keep me\n"
+      && settingsCustom.staleDraft.focused === true
+      && settingsCustom.staleDraft.saveDisabled === true
+      && settingsCustom.staleDraft.saveRefused === true
+      && settingsCustom.staleDraft.status.includes("changed")
+      && settingsCustom.reloadedValue === "external, そと, reload me\n"
+      && JSON.stringify(settingsCustom.eventFirstSave?.diagnostics)
+        === JSON.stringify(["Line 2: expected two commas", "Line 3: term is empty"])
+      && settingsCustom.staleReply?.value === "stale reply, ふるい, preserve this\n"
+      && settingsCustom.staleReply.saveDisabled === true
+      && settingsCustom.staleReply.status.includes("changed")
+      && settingsCustom.finalReload === "newest source, さいしん, authoritative\n",
+    JSON.stringify(settingsCustom),
+  );
+  check(
+    "settings pins the managed custom package while leaving presentation editable",
+    settingsCustom?.fixedControls?.first === true
+      && settingsCustom.fixedControls.selectedDisabled === true
+      && settingsCustom.fixedControls.enabled === true
+      && settingsCustom.fixedControls.enabledDisabled === true
+      && settingsCustom.fixedControls.draggable === false
+      && settingsCustom.fixedControls.upDisabled === true
+      && settingsCustom.fixedControls.downDisabled === true
+      && settingsCustom.fixedControls.positionDisabled === true
+      && settingsCustom.fixedControls.moveDisabled === true
+      && settingsCustom.fixedControls.removeHidden === true
+      && settingsCustom.fixedControls.aliasDisabled === false
+      && settingsCustom.fixedControls.ordinaryUpDisabled === true
+      && settingsCustom.fixedControls.ordinaryPositionMin === "2"
+      && JSON.stringify(settingsCustom.bulkState) === JSON.stringify([
+        { id: CUSTOM_DICTIONARY_ID, enabled: true },
+        { id: "ordinary-id", enabled: false },
+      ]),
+    JSON.stringify(settingsCustom),
+  );
   const settingsConflict = await settingsConflictStage();
   check(
     "settings preserve a concurrent alias draft, queue its next action, and restore a rejected edit",
@@ -4358,6 +4412,329 @@ async function settingsManagedUpdatesStage() {
   }
   await new Promise((done) => window.setTimeout(done, 0));
   result.scheduleRequest = updateRequests.find((request) => request.type === "hd_updates_schedule");
+  dom.window.close();
+  return result;
+}
+
+async function settingsCustomDictionaryStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) {
+    return null;
+  }
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+    url: `${EXTENSION_ORIGIN}/settings.html`,
+  });
+  const { window } = dom;
+  const customPackage = genericPackage({
+    id: CUSTOM_DICTIONARY_ID,
+    title: CUSTOM_DICTIONARY_TITLE,
+    path: `/dicts/custom-generation/${CUSTOM_DICTIONARY_TITLE}`,
+    revision: "a".repeat(64),
+    enabled: true,
+    termCount: 1,
+  });
+  let state = {
+    schemaVersion: 1,
+    revision: 40,
+    dictionaries: [customPackage, genericPackage({ id: "ordinary-id", title: "Ordinary" })],
+    groups: [],
+  };
+  let customDocument = {
+    schemaVersion: 1,
+    revision: 5,
+    semanticRevision: "a".repeat(64),
+    text: "initial, いにしゃる, first\n",
+  };
+  let storageListener = null;
+  let holdFirstRead = true;
+  let pendingRead = null;
+  let pendingSave = null;
+  const customReadRequests = [];
+  const customSaveRequests = [];
+  const stateRequests = [];
+  const storageGetKeys = [];
+  const publish = (changes) => storageListener?.(changes, "local");
+  const readReply = () => ({
+    ok: true,
+    document: structuredClone(customDocument),
+    state: structuredClone(state),
+  });
+
+  window.chrome = {
+    runtime: {
+      id: "hachidoricustomsettingssmoke",
+      async sendMessage(message) {
+        if (message.type === "hd_state_read") {
+          return { ok: true, state: structuredClone(state) };
+        }
+        if (message.type === "hd_status") {
+          return { ok: true, ready: true, loading: false, dictionaryCount: 2 };
+        }
+        if (message.type === "hd_options_write") {
+          return { ok: true, options: structuredClone(message.options) };
+        }
+        if (message.type === "hd_custom_read") {
+          customReadRequests.push(structuredClone(message));
+          if (holdFirstRead) {
+            holdFirstRead = false;
+            const olderReply = readReply();
+            return new Promise((resolveRead) => {
+              pendingRead = () => {
+                pendingRead = null;
+                resolveRead(olderReply);
+              };
+            });
+          }
+          return readReply();
+        }
+        if (message.type === "hd_custom_save") {
+          customSaveRequests.push(structuredClone(message));
+          return new Promise((resolveSave) => {
+            pendingSave = resolveSave;
+          });
+        }
+        if (message.type === "hd_apply_state") {
+          stateRequests.push(structuredClone(message));
+          state = {
+            ...state,
+            revision: state.revision + 1,
+            dictionaries: structuredClone(message.dictionaries),
+          };
+          publish({ dictionaryState: { newValue: structuredClone(state) } });
+          return { ok: true, state: structuredClone(state) };
+        }
+        throw new Error(`unexpected custom settings request ${message.type}`);
+      },
+    },
+    storage: {
+      local: {
+        async get(keys) {
+          storageGetKeys.push(structuredClone(keys));
+          return { options: { kanjiClickDictionary: "" } };
+        },
+      },
+      onChanged: {
+        addListener(listener) {
+          storageListener = listener;
+        },
+      },
+    },
+  };
+  loadSettingsScript(window);
+
+  const waitFor = async (predicate) => {
+    const deadline = Date.now() + 2000;
+    while (!predicate() && Date.now() < deadline) {
+      await new Promise((done) => window.setTimeout(done, 5));
+    }
+  };
+  await waitFor(() => window.document.getElementById("engine-status")?.textContent?.startsWith("Ready"));
+  const open = window.document.getElementById("custom-dictionary-open");
+  const form = window.document.getElementById("custom-dictionary-form");
+  const source = window.document.getElementById("custom-dictionary-source");
+  const save = window.document.getElementById("custom-dictionary-save");
+  const reload = window.document.getElementById("custom-dictionary-reload");
+  if (!open || !form || !source || !save || !reload) {
+    dom.window.close();
+    return {
+      error: "the custom dictionary editor controls did not render",
+      customReadCount: customReadRequests.length,
+      storageGetKeys,
+    };
+  }
+
+  const result = {
+    startup: {
+      customReadCount: customReadRequests.length,
+      formHidden: form.hidden,
+      sourceFetchedDirectly: storageGetKeys.some((keys) =>
+        Array.isArray(keys) && keys.includes("customDictionarySource")),
+      sourceHasMaximumLength: source.hasAttribute("maxlength"),
+    },
+  };
+
+  open.click();
+  await waitFor(() => pendingRead !== null);
+  customDocument = {
+    ...customDocument,
+    revision: 6,
+    semanticRevision: "b".repeat(64),
+    text: "newer event, にゅー, wins\n",
+  };
+  publish({ customDictionarySource: { newValue: structuredClone(customDocument) } });
+  pendingRead?.();
+  await waitFor(() => form.hidden === false && source.value === customDocument.text);
+  result.eventBeforeReadReply = {
+    value: source.value,
+    expanded: open.getAttribute("aria-expanded"),
+    readCount: customReadRequests.length,
+  };
+
+  const customRow = () => window.document.querySelector(`[data-dictionary-id="${CUSTOM_DICTIONARY_ID}"]`);
+  const ordinaryRow = () => window.document.querySelector('[data-dictionary-id="ordinary-id"]');
+  const fixed = customRow();
+  const ordinary = ordinaryRow();
+  result.fixedControls = {
+    first: fixed?.previousElementSibling === null,
+    selectedDisabled: fixed?.querySelector(".dict-selected")?.disabled,
+    enabled: fixed?.querySelector(".dict-enabled")?.checked,
+    enabledDisabled: fixed?.querySelector(".dict-enabled")?.disabled,
+    draggable: fixed?.querySelector(".dict-drag")?.draggable,
+    upDisabled: fixed?.querySelector(".dict-up")?.disabled,
+    downDisabled: fixed?.querySelector(".dict-down")?.disabled,
+    positionDisabled: fixed?.querySelector(".dict-position-input")?.disabled,
+    moveDisabled: fixed?.querySelector(".dict-move")?.disabled,
+    removeHidden: fixed?.querySelector(".dict-remove")?.hidden,
+    aliasDisabled: fixed?.querySelector(".dict-display-name")?.disabled,
+    ordinaryUpDisabled: ordinary?.querySelector(".dict-up")?.disabled,
+    ordinaryPositionMin: ordinary?.querySelector(".dict-position-input")?.min,
+  };
+  window.document.getElementById("dict-select-visible")?.click();
+  window.document.getElementById("dict-bulk-disable")?.click();
+  await waitFor(() => stateRequests.length === 1);
+  result.bulkState = stateRequests[0]?.dictionaries?.map(({ id, enabled }) => ({ id, enabled }));
+
+  source.focus();
+  source.value = "draft, どらふと, keep me\n";
+  source.dispatchEvent(new window.Event("input", { bubbles: true }));
+  customDocument = {
+    ...customDocument,
+    revision: 7,
+    semanticRevision: "c".repeat(64),
+    text: "external, そと, reload me\n",
+  };
+  publish({ customDictionarySource: { newValue: structuredClone(customDocument) } });
+  const savesBeforeStaleSubmit = customSaveRequests.length;
+  form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await new Promise((done) => window.setTimeout(done, 0));
+  result.staleDraft = {
+    value: source.value,
+    focused: window.document.activeElement === source,
+    saveDisabled: save.disabled,
+    saveRefused: customSaveRequests.length === savesBeforeStaleSubmit,
+    status: window.document.getElementById("custom-dictionary-status")?.textContent ?? "",
+  };
+
+  reload.click();
+  await waitFor(() => customReadRequests.length === 2 && source.value === customDocument.text);
+  result.reloadedValue = source.value;
+
+  const eventFirstText = "valid, ばりっど, line\\nsecond\nbroken\n, よみ, missing term\n";
+  source.value = eventFirstText;
+  source.dispatchEvent(new window.Event("input", { bubbles: true }));
+  form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await waitFor(() => pendingSave !== null && customSaveRequests.length === 1);
+  const eventFirstParsed = parseCustomDictionary(eventFirstText);
+  customDocument = {
+    schemaVersion: 1,
+    revision: 8,
+    semanticRevision: "d".repeat(64),
+    text: eventFirstText,
+  };
+  state = {
+    ...state,
+    revision: state.revision + 1,
+    dictionaries: state.dictionaries.map((dictionary) =>
+      dictionary.id === CUSTOM_DICTIONARY_ID
+        ? { ...dictionary, revision: customDocument.semanticRevision, termCount: eventFirstParsed.entries.length }
+        : dictionary),
+  };
+  publish({
+    customDictionarySource: { newValue: structuredClone(customDocument) },
+    dictionaryState: { newValue: structuredClone(state) },
+  });
+  const resolveEventFirst = pendingSave;
+  pendingSave = null;
+  resolveEventFirst?.({
+    ok: true,
+    document: structuredClone(customDocument),
+    state: structuredClone(state),
+    errors: structuredClone(eventFirstParsed.errors),
+    rebuilt: true,
+    removed: false,
+    report: { termCount: eventFirstParsed.entries.length },
+  });
+  await waitFor(() => !source.disabled
+    && window.document.getElementById("custom-dictionary-status")?.textContent?.includes("Saved"));
+  result.eventFirstSave = {
+    baseRevision: customSaveRequests[0]?.baseDocumentRevision,
+    text: customSaveRequests[0]?.text,
+    value: source.value,
+    saveDisabled: save.disabled,
+    diagnostics: [...window.document.querySelectorAll("#custom-dictionary-errors li")]
+      .map((item) => item.textContent),
+  };
+
+  const replyFirstText = `${eventFirstText}reply first, へんじ, later event\n`;
+  source.value = replyFirstText;
+  source.dispatchEvent(new window.Event("input", { bubbles: true }));
+  form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await waitFor(() => pendingSave !== null && customSaveRequests.length === 2);
+  const replyFirstParsed = parseCustomDictionary(replyFirstText);
+  customDocument = {
+    schemaVersion: 1,
+    revision: 9,
+    semanticRevision: "e".repeat(64),
+    text: replyFirstText,
+  };
+  state = { ...state, revision: state.revision + 1 };
+  const resolveReplyFirst = pendingSave;
+  pendingSave = null;
+  resolveReplyFirst?.({
+    ok: true,
+    document: structuredClone(customDocument),
+    state: structuredClone(state),
+    errors: structuredClone(replyFirstParsed.errors),
+    rebuilt: true,
+    removed: false,
+    report: { termCount: replyFirstParsed.entries.length },
+  });
+  await waitFor(() => !source.disabled && source.value === replyFirstText && save.disabled);
+  result.replyBeforeEvent = {
+    value: source.value,
+    saveDisabled: save.disabled,
+  };
+  publish({
+    customDictionarySource: { newValue: structuredClone(customDocument) },
+    dictionaryState: { newValue: structuredClone(state) },
+  });
+  await new Promise((done) => window.setTimeout(done, 0));
+  result.equalEventIgnored = source.value === replyFirstText && save.disabled;
+
+  const staleReplyDraft = "stale reply, ふるい, preserve this\n";
+  source.value = staleReplyDraft;
+  source.dispatchEvent(new window.Event("input", { bubbles: true }));
+  form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await waitFor(() => pendingSave !== null && customSaveRequests.length === 3);
+  customDocument = {
+    schemaVersion: 1,
+    revision: 10,
+    semanticRevision: "f".repeat(64),
+    text: "newest source, さいしん, authoritative\n",
+  };
+  const resolveStale = pendingSave;
+  pendingSave = null;
+  resolveStale?.({
+    ok: false,
+    stale: true,
+    error: "the custom dictionary source changed while it was being saved",
+    document: structuredClone(customDocument),
+    state: structuredClone(state),
+  });
+  await waitFor(() => !source.disabled
+    && window.document.getElementById("custom-dictionary-status")?.textContent?.includes("changed"));
+  result.staleReply = {
+    value: source.value,
+    saveDisabled: save.disabled,
+    status: window.document.getElementById("custom-dictionary-status")?.textContent ?? "",
+  };
+  reload.click();
+  await waitFor(() => customReadRequests.length === 3 && source.value === customDocument.text);
+  result.finalReload = source.value;
+
   dom.window.close();
   return result;
 }
