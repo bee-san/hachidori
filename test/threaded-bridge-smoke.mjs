@@ -97,29 +97,47 @@ for (const message of engine.messages.splice(0)) {
 }
 await Promise.all(queued.slice(0, 128));
 
-const importing = send("hd_import", "import-1");
-await new Promise((resolve) => setImmediate(resolve));
-const importMessage = engine.messages.at(-1);
-assert.equal(importMessage.message.type, "hd_import");
+const mutationTypes = [
+  "hd_import",
+  "hd_apply_state",
+  "hd_reload",
+  "hd_remove",
+  "hd_custom_save",
+  "hd_custom_append",
+];
 
-const status = await send("hd_status", "status-during-import");
-assert.equal(status.ok, true);
-assert.equal(status.loading, true);
-assert.equal(status.threaded, true);
-assert.equal(status.storageBackend, "opfs");
+for (const [index, type] of mutationTypes.entries()) {
+  const requestId = `mutation-${index}`;
+  const mutating = send(type, requestId);
+  await new Promise((resolve) => setImmediate(resolve));
+  const mutationMessage = engine.messages.at(-1);
+  assert.equal(mutationMessage.message.type, type);
 
-assert.deepEqual(await send("hd_lookup", "lookup-during-import"), {
-  type: "hd_lookup_result",
-  requestId: "lookup-during-import",
-  ok: false,
-  error: "the dictionary engine is busy importing",
-});
+  const status = await send("hd_status", `status-during-${type}`);
+  assert.equal(status.ok, true);
+  assert.equal(status.loading, true);
+  assert.equal(status.threaded, true);
+  assert.equal(status.storageBackend, "opfs");
 
-engine.emit("message", {
-  channel: "engine-response",
-  id: importMessage.id,
-  response: { type: "hd_import_result", requestId: "import-1", ok: true, report: { success: true } },
-});
-assert.equal((await importing).ok, true);
+  assert.deepEqual(await send("hd_lookup", `lookup-during-${type}`), {
+    type: "hd_lookup_result",
+    requestId: `lookup-during-${type}`,
+    ok: false,
+    error: "the dictionary engine is busy mutating",
+  });
+  assert.deepEqual(await send("hd_remove", `remove-during-${type}`), {
+    type: "hd_remove_result",
+    requestId: `remove-during-${type}`,
+    ok: false,
+    error: "the dictionary engine is busy mutating",
+  });
 
-console.log("threaded bridge caps pending requests and answers status while import blocks");
+  engine.emit("message", {
+    channel: "engine-response",
+    id: mutationMessage.id,
+    response: { type: `${type}_result`, requestId, ok: true },
+  });
+  assert.equal((await mutating).ok, true);
+}
+
+console.log("threaded bridge caps requests and answers status while mutations block");
