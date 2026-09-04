@@ -32,7 +32,7 @@ const NUMBER_FIELDS = [
 
 const numberFormat = new Intl.NumberFormat();
 
-let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [] };
+let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] };
 let dictionaries = dictionaryState.dictionaries;
 let options = { ...DEFAULT_OPTIONS };
 let importing = false;
@@ -133,15 +133,50 @@ function normaliseDictionaries(value) {
   return value.map(normaliseDictionary).filter((entry) => entry !== null);
 }
 
+function normaliseGroupName(value) {
+  return stringValue(value).normalize("NFKC").trim().replace(/\s+/gu, " ");
+}
+
+function groupNameKey(value) {
+  return normaliseGroupName(value).toLowerCase();
+}
+
+const ALL_GROUP_NAME_KEY = groupNameKey("All");
+
+function normaliseDictionaryGroups(value, installedDictionaries) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const installedIds = new Set(installedDictionaries.map((dictionary) => dictionary.id));
+  return value.map((group) => {
+    const id = stringValue(group?.id);
+    const name = normaliseGroupName(group?.name);
+    if (id === "" || name === "") {
+      return null;
+    }
+    const seen = new Set();
+    const dictionaryIds = Array.isArray(group?.dictionaryIds)
+      ? group.dictionaryIds.filter((dictionaryId) => {
+        if (!installedIds.has(dictionaryId) || seen.has(dictionaryId)) return false;
+        seen.add(dictionaryId);
+        return true;
+      })
+      : [];
+    return { id, name, dictionaryIds };
+  }).filter((group) => group !== null);
+}
+
 function normaliseDictionaryState(value) {
   if (value?.schemaVersion !== 1) {
     throw new Error(`Unsupported dictionary state schema ${String(value?.schemaVersion)}`);
   }
   const revision = Number.isInteger(value?.revision) && value.revision >= 0 ? value.revision : 0;
+  const dictionaries = normaliseDictionaries(value?.dictionaries);
   return {
     schemaVersion: 1,
     revision,
-    dictionaries: normaliseDictionaries(value?.dictionaries),
+    dictionaries,
+    groups: normaliseDictionaryGroups(value?.groups, dictionaries),
   };
 }
 
@@ -310,6 +345,11 @@ function setControlsDisabled(disabled) {
   }
   for (const drag of document.querySelectorAll(".dict-drag")) {
     drag.draggable = !blocked;
+  }
+  for (const control of document.querySelectorAll(
+    "#dict-group-create-form input, #dict-group-create-form button, #dict-group-list input, #dict-group-list select, #dict-group-list button",
+  )) {
+    control.disabled = blocked || committing || control.dataset.pinnedDisabled === "true";
   }
   element("dict-select-visible").disabled = blocked || visibleDictionaries().length === 0;
   for (const control of element("dict-controls").querySelectorAll(".dict-bulk-actions button")) {
@@ -532,20 +572,32 @@ function dictionaryMetadata(entry) {
   return details.join(" · ");
 }
 
+function updateItemById(current, id, update) {
+  const index = current.findIndex((entry) => entry.id === id);
+  if (index < 0) {
+    return null;
+  }
+  const replacement = update(current[index]);
+  if (replacement === current[index]) {
+    return null;
+  }
+  const next = [...current];
+  next[index] = replacement;
+  return next;
+}
+
 function updateDictionary(id, update) {
-  return (current) => {
-    const index = current.findIndex((entry) => entry.id === id);
-    if (index < 0) {
-      return null;
-    }
-    const replacement = update(current[index]);
-    if (replacement === current[index]) {
-      return null;
-    }
-    const next = [...current];
-    next[index] = replacement;
-    return next;
-  };
+  return (current) => updateItemById(current, id, update);
+}
+
+function moveListItem(values, index, target) {
+  if (index < 0 || target < 0 || target >= values.length || index === target) {
+    return null;
+  }
+  const next = [...values];
+  const [entry] = next.splice(index, 1);
+  next.splice(target, 0, entry);
+  return next;
 }
 
 function updateSelectedDictionaries(field, value, reloadEngine) {
@@ -647,6 +699,19 @@ function bindDictionaryDrag(row, entry) {
   });
 }
 
+function renderDeferredAfterBlur(control) {
+  control.addEventListener("blur", () => {
+    if (!dictionaryRenderDeferred) {
+      return;
+    }
+    setTimeout(() => {
+      if (!committing && dictionaryRenderDeferred) {
+        renderDictionaryState();
+      }
+    }, 0);
+  });
+}
+
 function bindDictionaryAlias(row, entry) {
   const input = row.querySelector(".dict-display-name");
   input.value = entry.displayName || "";
@@ -658,16 +723,7 @@ function bindDictionaryAlias(row, entry) {
     void commitDictionaries(updateDictionary(entry.id, (dictionary) =>
       dictionary.displayName === value ? dictionary : { ...dictionary, displayName: value }), false);
   });
-  input.addEventListener("blur", () => {
-    if (!dictionaryRenderDeferred) {
-      return;
-    }
-    setTimeout(() => {
-      if (!committing && dictionaryRenderDeferred) {
-        renderDictionaryState();
-      }
-    }, 0);
-  });
+  renderDeferredAfterBlur(input);
 }
 
 function bindDictionaryEnabled(row, entry) {
@@ -783,6 +839,168 @@ function renderDictionaries() {
   setControlsDisabled(importing);
 }
 
+function setDictionaryGroupError(message) {
+  element("dict-group-error").textContent = message;
+}
+
+function dictionaryGroupNameError(name, excludedId = null) {
+  if (name === "") {
+    return "Enter a group name.";
+  }
+  const key = groupNameKey(name);
+  if (key === ALL_GROUP_NAME_KEY) {
+    return "All is reserved and cannot be used as a group name.";
+  }
+  if (dictionaryState.groups.some((group) => group.id !== excludedId && groupNameKey(group.name) === key)) {
+    return "A group with this name already exists.";
+  }
+  return "";
+}
+
+function changeDictionaryGroup(id, update) {
+  void commitGroups((current) => updateItemById(current, id, update));
+}
+
+function moveDictionaryGroup(id, step) {
+  void commitGroups((current) => {
+    const index = current.findIndex((group) => group.id === id);
+    return moveListItem(current, index, index + step);
+  });
+}
+
+function moveDictionaryGroupMember(groupId, dictionaryId, step) {
+  changeDictionaryGroup(groupId, (group) => {
+    const index = group.dictionaryIds.indexOf(dictionaryId);
+    const dictionaryIds = moveListItem(group.dictionaryIds, index, index + step);
+    return dictionaryIds === null ? group : { ...group, dictionaryIds };
+  });
+}
+
+function renderDictionaryGroupMember(group, dictionary, index) {
+  const template = element("dict-group-member-template");
+  const row = template.content.firstElementChild.cloneNode(true);
+  const label = dictionaryLabel(dictionary);
+  row.dataset.dictionaryId = dictionary.id;
+  row.querySelector(".dict-group-member-name").textContent = label;
+  const canonical = row.querySelector(".dict-group-member-canonical");
+  canonical.textContent = dictionary.displayName ? dictionary.title : "";
+  canonical.hidden = !dictionary.displayName;
+
+  const up = row.querySelector(".dict-group-member-up");
+  const down = row.querySelector(".dict-group-member-down");
+  up.dataset.pinnedDisabled = String(index === 0);
+  down.dataset.pinnedDisabled = String(index === group.dictionaryIds.length - 1);
+  up.setAttribute("aria-label", `Move ${label} up in ${group.name}`);
+  down.setAttribute("aria-label", `Move ${label} down in ${group.name}`);
+  up.addEventListener("click", () => moveDictionaryGroupMember(group.id, dictionary.id, -1));
+  down.addEventListener("click", () => moveDictionaryGroupMember(group.id, dictionary.id, 1));
+
+  const remove = row.querySelector(".dict-group-member-remove");
+  remove.setAttribute("aria-label", `Remove ${label} from ${group.name}`);
+  remove.addEventListener("click", () => {
+    changeDictionaryGroup(group.id, (current) => ({
+      ...current,
+      dictionaryIds: current.dictionaryIds.filter((id) => id !== dictionary.id),
+    }));
+  });
+  return row;
+}
+
+function bindDictionaryGroupName(row, group) {
+  const input = row.querySelector(".dict-group-name");
+  input.value = group.name;
+  input.setAttribute("aria-label", `Name for ${group.name}`);
+  input.addEventListener("change", () => {
+    const name = normaliseGroupName(input.value);
+    const error = dictionaryGroupNameError(name, group.id);
+    if (error) {
+      input.value = group.name;
+      setDictionaryGroupError(error);
+      return;
+    }
+    setDictionaryGroupError("");
+    changeDictionaryGroup(group.id, (current) =>
+      current.name === name ? current : { ...current, name });
+  });
+  renderDeferredAfterBlur(input);
+}
+
+function bindDictionaryGroupAdd(row, group) {
+  const select = row.querySelector(".dict-group-add-select");
+  const add = row.querySelector(".dict-group-add");
+  const available = dictionaries.filter((dictionary) => !group.dictionaryIds.includes(dictionary.id));
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = available.length === 0 ? "All dictionaries added" : "Choose a dictionary";
+  select.appendChild(placeholder);
+  for (const dictionary of available) {
+    const option = document.createElement("option");
+    option.value = dictionary.id;
+    option.textContent = dictionaryLabel(dictionary);
+    select.appendChild(option);
+  }
+  select.dataset.pinnedDisabled = String(available.length === 0);
+  add.dataset.pinnedDisabled = String(available.length === 0);
+  add.addEventListener("click", () => {
+    const dictionaryId = select.value;
+    if (dictionaryId === "") return;
+    changeDictionaryGroup(group.id, (current) => ({
+      ...current,
+      dictionaryIds: [...current.dictionaryIds, dictionaryId],
+    }));
+  });
+}
+
+function renderDictionaryGroupRow(group, index) {
+  const template = element("dict-group-template");
+  const row = template.content.firstElementChild.cloneNode(true);
+  row.dataset.groupId = group.id;
+  bindDictionaryGroupName(row, group);
+
+  const up = row.querySelector(".dict-group-up");
+  const down = row.querySelector(".dict-group-down");
+  up.dataset.pinnedDisabled = String(index === 0);
+  down.dataset.pinnedDisabled = String(index === dictionaryState.groups.length - 1);
+  up.addEventListener("click", () => moveDictionaryGroup(group.id, -1));
+  down.addEventListener("click", () => moveDictionaryGroup(group.id, 1));
+  row.querySelector(".dict-group-delete").addEventListener("click", () => {
+    void commitGroups((current) => current.filter((entry) => entry.id !== group.id));
+  });
+
+  bindDictionaryGroupAdd(row, group);
+  const members = row.querySelector(".dict-group-members");
+  const installedById = new Map(dictionaries.map((dictionary) => [dictionary.id, dictionary]));
+  group.dictionaryIds.forEach((dictionaryId, memberIndex) => {
+    members.appendChild(renderDictionaryGroupMember(group, installedById.get(dictionaryId), memberIndex));
+  });
+  row.querySelector(".dict-group-members-empty").hidden = group.dictionaryIds.length > 0;
+  return row;
+}
+
+function renderDictionaryGroups() {
+  const list = element("dict-group-list");
+  list.textContent = "";
+  dictionaryState.groups.forEach((group, index) => {
+    list.appendChild(renderDictionaryGroupRow(group, index));
+  });
+  element("dict-group-empty").hidden = dictionaryState.groups.length > 0;
+  setControlsDisabled(importing);
+}
+
+function createDictionaryGroup() {
+  const input = element("dict-group-name-new");
+  const name = normaliseGroupName(input.value);
+  const error = dictionaryGroupNameError(name);
+  if (error) {
+    setDictionaryGroupError(error);
+    return;
+  }
+  const group = { id: crypto.randomUUID(), name, dictionaryIds: [] };
+  input.value = "";
+  setDictionaryGroupError("");
+  void commitGroups((current) => [...current, group]);
+}
+
 function dictionaryMoveTarget(current, index, move) {
   if (move.targetId) {
     return current.findIndex((entry) => entry.id === move.targetId);
@@ -797,13 +1015,7 @@ function moveDictionary(id, move) {
   void commitDictionaries((current) => {
     const index = current.findIndex((entry) => entry.id === id);
     const target = dictionaryMoveTarget(current, index, move);
-    if (index < 0 || target < 0 || target >= current.length || index === target) {
-      return null;
-    }
-    const next = [...current];
-    const [entry] = next.splice(index, 1);
-    next.splice(target, 0, entry);
-    return next;
+    return moveListItem(current, index, target);
   }, true);
 }
 
@@ -824,6 +1036,7 @@ function renderDictionaryState() {
   dictionaries = dictionaryState.dictionaries;
   dictionaryRenderDeferred = false;
   renderDictionaries();
+  renderDictionaryGroups();
   normaliseDictionarySelections();
   renderOptions();
   if (focus) {
@@ -839,8 +1052,8 @@ function renderDictionaryState() {
   }
 }
 
-async function commitDictionaryChange(update, reloadEngine) {
-  const next = update(dictionaryState.dictionaries);
+async function commitDictionaryStateChange(update, reloadEngine) {
+  const next = update(dictionaryState);
   if (next === null) {
     return;
   }
@@ -848,10 +1061,14 @@ async function commitDictionaryChange(update, reloadEngine) {
   try {
     const target = reloadEngine ? TARGET : WORKER_TARGET;
     const type = reloadEngine ? "hd_apply_state" : "hd_state_cas";
-    const reply = await send(type, {
+    const fields = {
       baseRevision,
-      dictionaries: next,
-    }, target);
+      dictionaries: next.dictionaries,
+    };
+    if (!reloadEngine) {
+      fields.groups = next.groups;
+    }
+    const reply = await send(type, fields, target);
     if (!reply.ok) {
       await restoreAuthoritativeState(reply);
       dictionaryCommitFailed = true;
@@ -871,7 +1088,7 @@ async function commitDictionaryChange(update, reloadEngine) {
   }
 }
 
-function commitDictionaries(update, reloadEngine) {
+function queueDictionaryStateChange(update, reloadEngine) {
   if (pendingDictionaryCommits === 0) {
     dictionaryCommitFailed = false;
   }
@@ -880,8 +1097,8 @@ function commitDictionaries(update, reloadEngine) {
   setControlsDisabled(importing);
 
   const run = dictionaryCommitTail.then(
-    () => commitDictionaryChange(update, reloadEngine),
-    () => commitDictionaryChange(update, reloadEngine),
+    () => commitDictionaryStateChange(update, reloadEngine),
+    () => commitDictionaryStateChange(update, reloadEngine),
   );
   const settled = run.finally(async () => {
     pendingDictionaryCommits -= 1;
@@ -899,6 +1116,20 @@ function commitDictionaries(update, reloadEngine) {
     () => undefined,
   );
   return settled;
+}
+
+function commitDictionaries(update, reloadEngine) {
+  return queueDictionaryStateChange((current) => {
+    const dictionaries = update(current.dictionaries);
+    return dictionaries === null ? null : { ...current, dictionaries };
+  }, reloadEngine);
+}
+
+function commitGroups(update) {
+  return queueDictionaryStateChange((current) => {
+    const groups = update(current.groups);
+    return groups === null ? null : { ...current, groups };
+  }, false);
 }
 
 async function removeDictionary(title) {
@@ -1063,6 +1294,11 @@ function attachHandlers() {
     updateSelectedDictionaries("favorite", false, false);
   });
 
+  element("dict-group-create-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    createDictionaryGroup();
+  });
+
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
     input.addEventListener("change", () => {
@@ -1104,14 +1340,14 @@ function attachHandlers() {
   chrome.storage.onChanged.addListener(handleStorageChange);
 }
 
-function dictionaryAliasIsBeingEdited() {
+function dictionaryNameIsBeingEdited() {
   const active = document.activeElement;
   return active instanceof HTMLInputElement
-    && active.classList.contains("dict-display-name");
+    && (active.classList.contains("dict-display-name") || active.classList.contains("dict-group-name"));
 }
 
 function renderChangedDictionaryState() {
-  if (committing || dictionaryAliasIsBeingEdited()) {
+  if (committing || dictionaryNameIsBeingEdited()) {
     dictionaryRenderDeferred = true;
     return;
   }

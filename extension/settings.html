@@ -93,6 +93,26 @@
         <p class="empty-state" id="dict-empty">Nothing imported yet.</p>
       </section>
 
+      <section class="card" aria-labelledby="dictionary-groups-heading">
+        <div class="card-head">
+          <h2 id="dictionary-groups-heading">Dictionary groups</h2>
+          <p class="hint">
+            Build reusable ordered sets from your installed dictionaries. Groups are shared across
+            every page.
+          </p>
+        </div>
+        <form class="dict-group-create" id="dict-group-create-form">
+          <label>
+            <span class="field-label">New group</span>
+            <input id="dict-group-name-new" type="text" autocomplete="off" />
+          </label>
+          <button type="submit" class="ghost" id="dict-group-create">Create group</button>
+          <output class="dict-group-error" id="dict-group-error" aria-live="polite"></output>
+        </form>
+        <ol class="dict-group-list" id="dict-group-list"></ol>
+        <p class="empty-state compact" id="dict-group-empty">No groups yet.</p>
+      </section>
+
       <section class="card" aria-labelledby="lookup-heading">
         <div class="card-head">
           <h2 id="lookup-heading">Lookup</h2>
@@ -196,6 +216,42 @@
           </label>
           <button type="button" class="ghost dict-move">Move</button>
           <button type="button" class="ghost danger dict-remove" aria-label="Remove" title="Remove">Remove</button>
+        </span>
+      </li>
+    </template>
+
+    <template id="dict-group-template">
+      <li class="dict-group">
+        <div class="dict-group-head">
+          <label class="dict-group-name-field">
+            <span class="cell-label">Group name</span>
+            <input class="dict-group-name" type="text" autocomplete="off" />
+          </label>
+          <span class="dict-group-actions">
+            <button type="button" class="ghost dict-group-up" aria-label="Move group up" title="Move group up">&#8593;</button>
+            <button type="button" class="ghost dict-group-down" aria-label="Move group down" title="Move group down">&#8595;</button>
+            <button type="button" class="ghost danger dict-group-delete">Delete</button>
+          </span>
+        </div>
+        <div class="dict-group-add-row">
+          <select class="dict-group-add-select" aria-label="Dictionary to add"></select>
+          <button type="button" class="ghost dict-group-add">Add dictionary</button>
+        </div>
+        <ol class="dict-group-members"></ol>
+        <p class="dict-group-members-empty">No dictionaries in this group.</p>
+      </li>
+    </template>
+
+    <template id="dict-group-member-template">
+      <li class="dict-group-member">
+        <span class="dict-group-member-label">
+          <span class="dict-group-member-name"></span>
+          <span class="dict-group-member-canonical"></span>
+        </span>
+        <span class="dict-group-member-actions">
+          <button type="button" class="ghost dict-group-member-up" aria-label="Move dictionary up" title="Move dictionary up">&#8593;</button>
+          <button type="button" class="ghost dict-group-member-down" aria-label="Move dictionary down" title="Move dictionary down">&#8595;</button>
+          <button type="button" class="ghost dict-group-member-remove">Remove</button>
         </span>
       </li>
     </template>
