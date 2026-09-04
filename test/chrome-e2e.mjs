@@ -45,7 +45,15 @@ const GENERIC_KANJI_ID = "6b513edb59015829bb5bb3e91e41d357";
 const FIXTURE_ALIAS = "Fixture Alias";
 const MANAGED_INDEX_URL = "https://example.test/hachidori-fixture-index.json";
 const MANAGED_DOWNLOAD_URL = "https://example.test/hachidori-fixture.zip";
-const LAST_UPDATE_CHECK = "2026-09-04T09:30:00.000Z";
+const GENERIC_MANAGED_INDEX_URL = "https://example.test/generic-kanji-index.json";
+const GENERIC_MANAGED_DOWNLOAD_URL = "https://example.test/generic-kanji.zip";
+const MANAGED_UPDATE_ALARM = "hachidori-managed-dictionary-updates";
+const LAST_UPDATE_CHECK = Object.freeze({
+  checkedAt: "2026-09-04T09:30:00.000Z",
+  status: "update-available",
+  remoteRevision: "test-2",
+  error: null,
+});
 const GENERATION_ROOT_PATTERN = /^\/dicts\/\.hdw-generation-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
 
@@ -70,6 +78,19 @@ function generationExists(paths, dictionaryPath) {
 function generationIsAbsent(paths, generationRoot) {
   const relative = opfsPath(generationRoot);
   return !paths.some((path) => path === relative || path.startsWith(`${relative}/`));
+}
+
+async function waitForGenerationAbsent(page, generationRoot) {
+  const directory = opfsPath(generationRoot);
+  return page.waitForFunction(async (name) => {
+    const root = await navigator.storage.getDirectory();
+    try {
+      await root.getDirectoryHandle(name);
+      return false;
+    } catch (error) {
+      return error?.name === "NotFoundError";
+    }
+  }, { timeout: 15_000, polling: 100 }, directory).then(() => true).catch(() => false);
 }
 
 function cachedChrome() {
@@ -246,6 +267,106 @@ function check(name, ok, detail = "") {
   if (!ok) failed++;
   const mark = ok ? "ok  " : "FAIL";
   console.log(`${mark} ${name}${detail && !ok ? `\n       ${detail}` : ""}`);
+}
+
+async function interceptFetches(target, routes, label) {
+  const session = await target.createCDPSession();
+  session.on("Fetch.requestPaused", (event) => {
+    void (async () => {
+      const route = routes.get(event.request.url);
+      if (!route) {
+        await session.send("Fetch.continueRequest", { requestId: event.requestId });
+        return;
+      }
+      route.requests += 1;
+      const body = Buffer.isBuffer(route.body) ? route.body : Buffer.from(route.body);
+      await session.send("Fetch.fulfillRequest", {
+        requestId: event.requestId,
+        responseCode: route.status,
+        responseHeaders: [
+          { name: "Access-Control-Allow-Origin", value: "*" },
+          { name: "Content-Type", value: route.contentType },
+          { name: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        ],
+        body: body.toString("base64"),
+      });
+    })().catch(async (error) => {
+      diagnostics.push(`[${label} mock] ${error?.stack ?? error}`);
+      await session.send("Fetch.failRequest", {
+        requestId: event.requestId,
+        errorReason: "Failed",
+      }).catch(() => {});
+    });
+  });
+  await session.send("Fetch.enable", {
+    patterns: [...routes.keys()].map((urlPattern) => ({ urlPattern, requestStage: "Request" })),
+  });
+  return session;
+}
+
+function setJsonResponse(route, value, status = 200) {
+  route.status = status;
+  route.contentType = "application/json";
+  route.body = JSON.stringify(value);
+}
+
+function setArchiveResponse(route, bytes, status = 200) {
+  route.status = status;
+  route.contentType = "application/zip";
+  route.body = bytes;
+}
+
+async function replaceInputText(page, selector, value) {
+  await page.$eval(selector, (input) => {
+    input.focus();
+    input.select();
+  });
+  await page.keyboard.type(value);
+}
+
+async function waitForCdpTarget(session, predicate, timeout = 30_000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const { targetInfos } = await session.send("Target.getTargets");
+    const target = targetInfos.find(predicate);
+    if (target !== undefined) {
+      return target;
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  }
+  return null;
+}
+
+async function waitForCdpTargetGone(session, targetId, timeout = 30_000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const { targetInfos } = await session.send("Target.getTargets");
+    if (!targetInfos.some((target) => target.targetId === targetId)) {
+      return true;
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  }
+  return false;
+}
+
+function waitForRunningServiceWorker(session, scriptUrl, timeout = 30_000) {
+  return new Promise((resolveWorker) => {
+    const timer = setTimeout(() => {
+      session.off("ServiceWorker.workerVersionUpdated", onVersionUpdated);
+      resolveWorker(null);
+    }, timeout);
+    const onVersionUpdated = ({ versions }) => {
+      const worker = versions.find((version) =>
+        version.scriptURL === scriptUrl && version.runningStatus === "running");
+      if (worker === undefined) {
+        return;
+      }
+      clearTimeout(timer);
+      session.off("ServiceWorker.workerVersionUpdated", onVersionUpdated);
+      resolveWorker(worker);
+    };
+    session.on("ServiceWorker.workerVersionUpdated", onVersionUpdated);
+  });
 }
 
 async function listOpfsPaths(page) {
@@ -584,14 +705,19 @@ async function main() {
     }
   }
 
+  const watchedServiceWorkers = new Map();
   function watch(browser) {
     browser.on("targetcreated", async target => {
       watchOffscreen(target);
       try {
         const worker = await target.worker?.();
         worker?.on?.("console", m => diagnostics.push(`[sw] ${m.text()}`));
+        if (worker && target.type() === "service_worker") {
+          watchedServiceWorkers.set(target, worker);
+        }
       } catch { /* not a worker target */ }
     });
+    browser.on("targetdestroyed", target => watchedServiceWorkers.delete(target));
     // The offscreen document is created from onInstalled, which can win the race
     // against the listener above.
     for (const target of browser.targets()) watchOffscreen(target);
@@ -1051,6 +1177,7 @@ async function main() {
     replacedPackage?.path,
     "hachidori-fixture",
   );
+  await waitForGenerationAbsent(page, firstFixtureGeneration);
   const opfsAfterBatch = await listOpfsPaths(page);
   check("the import batch continues after failure and retains every archive outcome",
     batchState === "Finished 3 of 3 archives — 2 imported, 1 failed."
@@ -1086,7 +1213,7 @@ async function main() {
       && replacedPackage?.isUpdatable === true
       && replacedPackage?.indexUrl === MANAGED_INDEX_URL
       && replacedPackage?.downloadUrl === MANAGED_DOWNLOAD_URL
-      && replacedPackage?.lastUpdateCheck === LAST_UPDATE_CHECK,
+      && replacedPackage?.lastUpdateCheck === null,
     `alias change: ${JSON.stringify(aliasChanged)}; state before reimport: ${JSON.stringify(stateBeforeReimport)};`
       + ` dictionaryState: ${JSON.stringify(replacedState?.dictionaryState)}; OPFS paths: ${JSON.stringify(opfsAfterBatch)}`);
 
@@ -1299,11 +1426,7 @@ async function main() {
 
   const aliasRowSelector = `#dict-list .dict-row[data-dictionary-id="${FIXTURE_ID}"]`;
   const beforeAliasBlurAction = orderAfterKeyboardMove.revision;
-  await page.click(`${aliasRowSelector} .dict-display-name`);
-  await page.keyboard.down("Control");
-  await page.keyboard.press("A");
-  await page.keyboard.up("Control");
-  await page.keyboard.type("Blurred alias");
+  await replaceInputText(page, `${aliasRowSelector} .dict-display-name`, "Blurred alias");
   await page.click(`${aliasRowSelector} .dict-down`, { delay: 150 });
   const aliasBlurAction = await page.evaluate(async ({ beforeRevision, dictionaryId }) => {
     const deadline = Date.now() + 3000;
@@ -1489,11 +1612,7 @@ async function main() {
   const editedGroupSelector = `[data-group-id="${groupManagement.studyGroupId}"]`;
   const beforeBlurAction = await page.evaluate(async () =>
     (await chrome.storage.local.get("dictionaryState")).dictionaryState.revision);
-  await page.click(`${editedGroupSelector} .dict-group-name`);
-  await page.keyboard.down("Control");
-  await page.keyboard.press("A");
-  await page.keyboard.up("Control");
-  await page.keyboard.type("Focused reading");
+  await replaceInputText(page, `${editedGroupSelector} .dict-group-name`, "Focused reading");
   await page.click(`${editedGroupSelector} .dict-group-up`, { delay: 150 });
   const blurAction = await page.evaluate(async ({ beforeRevision, groupId }) => {
     const deadline = Date.now() + 3000;
@@ -1917,6 +2036,470 @@ async function main() {
   check("the same hover shows a popup again after the non-Japanese one",
     control !== null && control.plain.includes("食べる"),
     `popup text: ${control ? control.plain.slice(0, 200) : "(no popup)"}`);
+
+  // ---------------------------------------------------------- managed updates
+  // The generic-kanji package is already disabled at this point. Giving it a
+  // complete generic source makes the manual check prove that enabled state is
+  // irrelevant, while the combined fixture proves that every other managed
+  // package was checked too. The engine owns this state change so its loaded set
+  // and the worker-owned manifest cannot diverge.
+  const managedFixture = await page.evaluate(async ({ dictionaryId, indexUrl, downloadUrl }) => {
+    const { dictionaryState: current } = await chrome.storage.local.get("dictionaryState");
+    return chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen",
+      type: "hd_apply_state",
+      requestId: "e2e-manage-generic-source",
+      baseRevision: current.revision,
+      dictionaries: current.dictionaries.map((dictionary) => dictionary.id === dictionaryId
+        ? {
+            ...dictionary,
+            isUpdatable: true,
+            indexUrl,
+            downloadUrl,
+            lastUpdateCheck: null,
+          }
+        : dictionary),
+    });
+  }, {
+    dictionaryId: GENERIC_KANJI_ID,
+    indexUrl: GENERIC_MANAGED_INDEX_URL,
+    downloadUrl: GENERIC_MANAGED_DOWNLOAD_URL,
+  });
+
+  // Wake the worker immediately before attaching Fetch. A long renderer pass is
+  // enough time for an MV3 worker to idle, so the target captured at launch is
+  // not assumed to still be authoritative here.
+  await page.evaluate(() => chrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_read",
+  }));
+  const updateWorkerTarget = await browser.waitForTarget(
+    (target) => target.type() === "service_worker"
+      && target.url() === `chrome-extension://${extensionId}/background.js`,
+    { timeout: 30_000 },
+  );
+  const updateOffscreenTarget = await browser.waitForTarget(
+    (target) => target.url() === `chrome-extension://${extensionId}/offscreen.html`,
+    { timeout: 30_000 },
+  );
+
+  const fixtureIndexRoute = { requests: 0 };
+  const genericIndexRoute = { requests: 0 };
+  const fixtureArchiveRoute = { requests: 0 };
+  const genericArchiveRoute = { requests: 0 };
+  setJsonResponse(fixtureIndexRoute, { revision: "test-1" });
+  setJsonResponse(genericIndexRoute, { revision: "test-2" });
+  setArchiveResponse(fixtureArchiveRoute, readFileSync(FIXTURE));
+  setArchiveResponse(genericArchiveRoute, buildRecommendedZip({
+    title: GENERIC_KANJI_TITLE,
+    revision: "test-2",
+    indexUrl: GENERIC_MANAGED_INDEX_URL,
+    downloadUrl: GENERIC_MANAGED_DOWNLOAD_URL,
+    capabilities: ["term"],
+  }));
+  const indexRoutes = new Map([
+    [MANAGED_INDEX_URL, fixtureIndexRoute],
+    [GENERIC_MANAGED_INDEX_URL, genericIndexRoute],
+  ]);
+  const archiveRoutes = new Map([
+    [MANAGED_DOWNLOAD_URL, fixtureArchiveRoute],
+    [GENERIC_MANAGED_DOWNLOAD_URL, genericArchiveRoute],
+  ]);
+
+  // Indexes are fetched by background.js; archives are fetched below the
+  // offscreen document, whose Fetch domain also covers its dedicated module
+  // worker. Attaching to engine-worker.js itself is both unnecessary and racy.
+  const updateIndexSession = await interceptFetches(
+    updateWorkerTarget,
+    indexRoutes,
+    "managed index",
+  );
+  const updateArchiveSession = await interceptFetches(
+    updateOffscreenTarget,
+    archiveRoutes,
+    "managed archive",
+  );
+
+  const beforeCheck = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
+  await page.evaluate(() => document.getElementById("update-check-now").click());
+  const checkSummary = await page.waitForFunction(() => {
+    const text = document.getElementById("update-state")?.textContent?.trim() ?? "";
+    return text.startsWith("Checked 2 managed dictionaries") ? text : false;
+  }, { timeout: 30_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => "(never settled)");
+  const checkedStorage = await page.evaluate(() => chrome.storage.local.get([
+    "dictionaryState",
+    "dictionaryUpdates",
+  ]));
+  const checkedFixture = checkedStorage.dictionaryState?.dictionaries?.find(
+    (dictionary) => dictionary.id === FIXTURE_ID,
+  );
+  const checkedGeneric = checkedStorage.dictionaryState?.dictionaries?.find(
+    (dictionary) => dictionary.id === GENERIC_KANJI_ID,
+  );
+  check(
+    "Check now checks every managed dictionary including disabled packages without downloading",
+    managedFixture?.ok === true
+      && checkSummary === "Checked 2 managed dictionaries — 1 update available, 0 failed."
+      && checkedStorage.dictionaryState?.revision >= beforeCheck.dictionaryState.revision + 2
+      && checkedFixture?.lastUpdateCheck?.status === "up-to-date"
+      && checkedFixture.lastUpdateCheck.remoteRevision === "test-1"
+      && checkedGeneric?.enabled === false
+      && checkedGeneric?.lastUpdateCheck?.status === "update-available"
+      && checkedGeneric.lastUpdateCheck.remoteRevision === "test-2"
+      && fixtureIndexRoute.requests === 1
+      && genericIndexRoute.requests === 1
+      && fixtureArchiveRoute.requests === 0
+      && genericArchiveRoute.requests === 0
+      && Number.isFinite(Date.parse(checkedStorage.dictionaryUpdates?.lastCheckedAt)),
+    JSON.stringify({
+      managedFixture,
+      checkSummary,
+      checkedStorage,
+      requests: {
+        fixtureIndex: fixtureIndexRoute.requests,
+        genericIndex: genericIndexRoute.requests,
+        fixtureArchive: fixtureArchiveRoute.requests,
+        genericArchive: genericArchiveRoute.requests,
+      },
+    }),
+  );
+
+  // Reload rather than trusting the storage-event render that followed the
+  // check. This proves the controls hydrate from persisted per-package and
+  // global check state.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const persistedUpdateUi = await page.waitForFunction(async ({ fixtureId, genericId }) => {
+    const rows = [...document.querySelectorAll("#dict-list .dict-row")];
+    const byId = (id) => rows.find((row) => row.dataset.dictionaryId === id);
+    const fixture = byId(fixtureId);
+    const generic = byId(genericId);
+    const stored = await chrome.storage.local.get("dictionaryUpdates");
+    const lastCheckedAt = stored.dictionaryUpdates?.lastCheckedAt;
+    const expectedLastChecked = Number.isFinite(Date.parse(lastCheckedAt))
+      ? `Last checked ${new Date(lastCheckedAt).toLocaleString()}.`
+      : "";
+    const value = {
+      expectedLastChecked,
+      fixtureStatus: fixture?.querySelector(".dict-update-status")?.textContent ?? "",
+      fixtureUpdateHidden: fixture?.querySelector(".dict-update")?.hidden,
+      genericStatus: generic?.querySelector(".dict-update-status")?.textContent ?? "",
+      genericUpdateHidden: generic?.querySelector(".dict-update")?.hidden,
+      lastChecked: document.getElementById("update-last-checked")?.textContent ?? "",
+      updateAllDisabled: document.getElementById("update-all")?.disabled,
+    };
+    return value.fixtureStatus === "Up to date"
+      && value.genericStatus === "Update available: test-2"
+      && value.lastChecked === expectedLastChecked
+      ? value
+      : false;
+  }, { timeout: 30_000, polling: 100 }, {
+    fixtureId: FIXTURE_ID,
+    genericId: GENERIC_KANJI_ID,
+  }).then((handle) => handle.jsonValue()).catch(() => null);
+  check(
+    "managed update controls render persisted availability and last-checked state",
+    persistedUpdateUi?.expectedLastChecked.startsWith("Last checked ") === true
+      && persistedUpdateUi.fixtureUpdateHidden === true
+      && persistedUpdateUi.genericUpdateHidden === false
+      && persistedUpdateUi.updateAllDisabled === false,
+    JSON.stringify(persistedUpdateUi),
+  );
+
+  if (process.env.HACHIDORI_UPDATE_SCREENSHOT) {
+    await page.setViewport({ width: 960, height: 900 });
+    const clip = await page.evaluate(() => {
+      const updateCard = document.querySelector('section[aria-labelledby="updates-heading"]');
+      const dictionaryCard = document.querySelector('section[aria-labelledby="dictionaries-heading"]');
+      const first = updateCard.getBoundingClientRect();
+      const last = dictionaryCard.getBoundingClientRect();
+      return {
+        x: first.left,
+        y: first.top + window.scrollY,
+        width: first.width,
+        height: last.bottom - first.top,
+      };
+    });
+    await page.screenshot({ path: process.env.HACHIDORI_UPDATE_SCREENSHOT, clip });
+  }
+
+  const beforeUpdateState = checkedStorage.dictionaryState;
+  const beforeUpdatePackage = checkedGeneric;
+  const beforeUpdateGeneration = ownedGenerationRoot(
+    beforeUpdatePackage?.path,
+    GENERIC_KANJI_TITLE,
+  );
+  await page.evaluate(() => document.getElementById("update-all").click());
+  const manualUpdateSummary = await page.waitForFunction((dictionaryId) => {
+    const text = document.getElementById("update-state")?.textContent?.trim() ?? "";
+    return chrome.storage.local.get("dictionaryState").then(({ dictionaryState }) => {
+      const dictionary = dictionaryState?.dictionaries?.find((entry) => entry.id === dictionaryId);
+      return dictionary?.revision === "test-2" && text.startsWith("Finished 1 dictionary update")
+        ? text
+        : false;
+    });
+  }, { timeout: 90_000, polling: 100 }, GENERIC_KANJI_ID)
+    .then((handle) => handle.jsonValue())
+    .catch(() => "(never settled)");
+  const afterUpdateState = (await page.evaluate(() =>
+    chrome.storage.local.get("dictionaryState"))).dictionaryState;
+  const afterUpdatePackage = afterUpdateState?.dictionaries?.find(
+    (dictionary) => dictionary.id === GENERIC_KANJI_ID,
+  );
+  const afterUpdateGeneration = ownedGenerationRoot(
+    afterUpdatePackage?.path,
+    GENERIC_KANJI_TITLE,
+  );
+  const opfsAfterUpdate = await listOpfsPaths(page);
+  check(
+    "Update all atomically replaces a managed generation and preserves presentation",
+    manualUpdateSummary === "Finished 1 dictionary update — 1 updated, 0 failed."
+      && genericArchiveRoute.requests === 1
+      && afterUpdatePackage?.id === beforeUpdatePackage?.id
+      && afterUpdatePackage?.path !== beforeUpdatePackage?.path
+      && afterUpdatePackage?.revision === "test-2"
+      && afterUpdatePackage?.displayName === beforeUpdatePackage?.displayName
+      && afterUpdatePackage?.enabled === beforeUpdatePackage?.enabled
+      && afterUpdatePackage?.favorite === beforeUpdatePackage?.favorite
+      && afterUpdatePackage?.isUpdatable === beforeUpdatePackage?.isUpdatable
+      && afterUpdatePackage?.indexUrl === beforeUpdatePackage?.indexUrl
+      && afterUpdatePackage?.downloadUrl === beforeUpdatePackage?.downloadUrl
+      && afterUpdatePackage?.lastUpdateCheck?.status === "up-to-date"
+      && JSON.stringify(afterUpdateState.dictionaries.map((dictionary) => dictionary.id))
+        === JSON.stringify(beforeUpdateState.dictionaries.map((dictionary) => dictionary.id))
+      && JSON.stringify(afterUpdateState.groups) === JSON.stringify(beforeUpdateState.groups)
+      && afterUpdateGeneration !== ""
+      && generationExists(opfsAfterUpdate, afterUpdatePackage.path)
+      && generationIsAbsent(opfsAfterUpdate, beforeUpdateGeneration),
+    JSON.stringify({
+      manualUpdateSummary,
+      beforeUpdatePackage,
+      afterUpdatePackage,
+      groupsBefore: beforeUpdateState.groups,
+      groupsAfter: afterUpdateState.groups,
+      opfsAfterUpdate,
+      archiveRequests: genericArchiveRoute.requests,
+    }),
+  );
+
+  await page.select("#update-schedule", "hourly");
+  const scheduledAlarm = await page.waitForFunction(async (alarmName) => {
+    const { dictionaryUpdates } = await chrome.storage.local.get("dictionaryUpdates");
+    const alarms = await chrome.alarms.getAll();
+    const alarm = alarms.find((candidate) => candidate.name === alarmName);
+    return dictionaryUpdates?.schedule === "hourly" && alarm?.periodInMinutes === 60
+      ? { alarm, alarms, dictionaryUpdates }
+      : false;
+  }, { timeout: 30_000, polling: 100 }, MANAGED_UPDATE_ALARM)
+    .then((handle) => handle.jsonValue())
+    .catch(() => null);
+  check(
+    "one global update interval creates one periodic browser alarm",
+    scheduledAlarm?.alarms?.length === 1
+      && scheduledAlarm.alarm.name === MANAGED_UPDATE_ALARM
+      && scheduledAlarm.alarm.periodInMinutes === 60,
+    JSON.stringify(scheduledAlarm),
+  );
+
+  setJsonResponse(genericIndexRoute, { revision: "test-3" });
+  setArchiveResponse(genericArchiveRoute, buildRecommendedZip({
+    title: GENERIC_KANJI_TITLE,
+    revision: "test-3",
+    indexUrl: GENERIC_MANAGED_INDEX_URL,
+    downloadUrl: GENERIC_MANAGED_DOWNLOAD_URL,
+    capabilities: ["term"],
+  }));
+  const archiveRequestsBeforeAlarm = genericArchiveRoute.requests;
+  await page.evaluate(async (alarmName) => {
+    await chrome.alarms.clear(alarmName);
+    await chrome.alarms.create(alarmName, { when: Date.now() + 1000 });
+  }, MANAGED_UPDATE_ALARM);
+  const alarmUpdateResult = await page.waitForFunction(async ({ dictionaryId, previousCheckedAt }) => {
+    const { dictionaryState, dictionaryUpdates } = await chrome.storage.local.get([
+      "dictionaryState",
+      "dictionaryUpdates",
+    ]);
+    const dictionary = dictionaryState?.dictionaries?.find((entry) => entry.id === dictionaryId);
+    return dictionary?.revision === "test-3"
+      && dictionary.lastUpdateCheck?.status === "up-to-date"
+      && Date.parse(dictionaryUpdates?.lastCheckedAt) > Date.parse(previousCheckedAt)
+      ? { dictionaryState, dictionaryUpdates }
+      : false;
+  }, { timeout: 90_000, polling: 100 }, {
+    dictionaryId: GENERIC_KANJI_ID,
+    previousCheckedAt: scheduledAlarm?.dictionaryUpdates?.lastCheckedAt,
+  })
+    .then((handle) => handle.jsonValue())
+    .catch(() => null);
+  const alarmUpdateState = alarmUpdateResult?.dictionaryState;
+  const alarmUpdatedPackage = alarmUpdateState?.dictionaries?.find(
+    (dictionary) => dictionary.id === GENERIC_KANJI_ID,
+  );
+  check(
+    "a real browser alarm installs updates for disabled managed dictionaries",
+    alarmUpdatedPackage?.revision === "test-3"
+      && alarmUpdatedPackage?.enabled === false
+      && alarmUpdatedPackage?.id === GENERIC_KANJI_ID
+      && alarmUpdatedPackage?.displayName === afterUpdatePackage?.displayName
+      && alarmUpdatedPackage?.favorite === afterUpdatePackage?.favorite
+      && genericArchiveRoute.requests === archiveRequestsBeforeAlarm + 1
+      && JSON.stringify(alarmUpdateState.groups) === JSON.stringify(afterUpdateState.groups),
+    JSON.stringify({
+      alarmUpdatedPackage,
+      archiveRequestsBeforeAlarm,
+      archiveRequestsAfterAlarm: genericArchiveRoute.requests,
+      groups: alarmUpdateState?.groups,
+    }),
+  );
+
+  const beforeFailedAlarmState = alarmUpdateState;
+  const beforeFailedAlarmPackage = alarmUpdatedPackage;
+  const beforeFailedAlarmPaths = await listOpfsPaths(page);
+  setJsonResponse(genericIndexRoute, { revision: "test-4" });
+  setArchiveResponse(genericArchiveRoute, buildRecommendedZip({
+    title: GENERIC_KANJI_TITLE,
+    revision: "wrong-test-4",
+    indexUrl: GENERIC_MANAGED_INDEX_URL,
+    downloadUrl: GENERIC_MANAGED_DOWNLOAD_URL,
+    capabilities: ["term"],
+  }));
+  await page.evaluate(async (alarmName) => {
+    await chrome.alarms.clear(alarmName);
+    await chrome.alarms.create(alarmName, { when: Date.now() + 1000 });
+  }, MANAGED_UPDATE_ALARM);
+  const failedAlarmResult = await page.waitForFunction(async ({ dictionaryId, previousCheckedAt }) => {
+    const { dictionaryState, dictionaryUpdates } = await chrome.storage.local.get([
+      "dictionaryState",
+      "dictionaryUpdates",
+    ]);
+    const dictionary = dictionaryState?.dictionaries?.find((entry) => entry.id === dictionaryId);
+    return dictionary?.lastUpdateCheck?.remoteRevision === "test-4"
+      && typeof dictionary.lastUpdateCheck?.error === "string"
+      && Date.parse(dictionaryUpdates?.lastCheckedAt) > Date.parse(previousCheckedAt)
+      ? { dictionaryState, dictionaryUpdates }
+      : false;
+  }, { timeout: 90_000, polling: 100 }, {
+    dictionaryId: GENERIC_KANJI_ID,
+    previousCheckedAt: alarmUpdateResult?.dictionaryUpdates?.lastCheckedAt,
+  })
+    .then((handle) => handle.jsonValue())
+    .catch(() => null);
+  const failedAlarmState = failedAlarmResult?.dictionaryState;
+  const failedAlarmPackage = failedAlarmState?.dictionaries?.find(
+    (dictionary) => dictionary.id === GENERIC_KANJI_ID,
+  );
+  const afterFailedAlarmPaths = await listOpfsPaths(page);
+  const statusAfterFailedAlarm = await page.evaluate(() => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen",
+    type: "hd_status",
+    requestId: "e2e-failed-update-status",
+  }));
+  check(
+    "a failed scheduled update preserves the working generation without OPFS debris",
+    failedAlarmPackage?.revision === beforeFailedAlarmPackage?.revision
+      && failedAlarmPackage?.path === beforeFailedAlarmPackage?.path
+      && failedAlarmPackage?.lastUpdateCheck?.status === "update-available"
+      && failedAlarmPackage?.lastUpdateCheck?.remoteRevision === "test-4"
+      && failedAlarmPackage?.lastUpdateCheck?.error?.includes("revision")
+      && JSON.stringify(failedAlarmState?.groups) === JSON.stringify(beforeFailedAlarmState?.groups)
+      && JSON.stringify(afterFailedAlarmPaths) === JSON.stringify(beforeFailedAlarmPaths)
+      && !afterFailedAlarmPaths.includes(".hdw-archive.zip")
+      && failedAlarmPackage !== undefined
+      && generationExists(afterFailedAlarmPaths, failedAlarmPackage.path)
+      && statusAfterFailedAlarm?.ok === true
+      && statusAfterFailedAlarm?.ready === true
+      && statusAfterFailedAlarm?.dictionaryCount === 4,
+    JSON.stringify({
+      beforeFailedAlarmPackage,
+      failedAlarmPackage,
+      beforeFailedAlarmPaths,
+      afterFailedAlarmPaths,
+      statusAfterFailedAlarm,
+    }),
+  );
+
+  const alarmGone = await page.waitForFunction(async (alarmName) =>
+    (await chrome.alarms.get(alarmName)) === undefined,
+  { timeout: 30_000, polling: 100 }, MANAGED_UPDATE_ALARM)
+    .then(() => true)
+    .catch(() => false);
+  await Promise.all([
+    updateIndexSession.send("Fetch.disable"),
+    updateArchiveSession.send("Fetch.disable"),
+  ]);
+  await Promise.all([
+    updateIndexSession.detach(),
+    updateArchiveSession.detach(),
+  ]);
+  const updateWorkerDiagnostics = watchedServiceWorkers.get(updateWorkerTarget);
+  if (updateWorkerDiagnostics) {
+    await updateWorkerDiagnostics.client.detach();
+    watchedServiceWorkers.delete(updateWorkerTarget);
+  }
+  const browserCdp = await browser.target().createCDPSession();
+  const targetInfos = await browserCdp.send("Target.getTargets");
+  const workerTargetInfo = targetInfos.targetInfos.find((target) =>
+    target.type === "service_worker"
+      && target.url === `chrome-extension://${extensionId}/background.js`);
+  const serviceWorkerCdp = await page.createCDPSession();
+  const workerScriptUrl = `chrome-extension://${extensionId}/background.js`;
+  const runningWorkerPromise = waitForRunningServiceWorker(serviceWorkerCdp, workerScriptUrl);
+  await serviceWorkerCdp.send("ServiceWorker.enable");
+  const runningWorker = await runningWorkerPromise;
+  const stopWorkerReply = runningWorker === null
+    ? { error: "the running managed-update service worker version was not found" }
+    : await serviceWorkerCdp.send("ServiceWorker.stopWorker", {
+        versionId: runningWorker.versionId,
+      });
+  const stoppedWorker = runningWorker?.targetId !== undefined
+    && await waitForCdpTargetGone(browserCdp, runningWorker.targetId);
+  const restartedWorkerPromise = waitForCdpTarget(browserCdp, (target) =>
+    target.type === "service_worker"
+      && target.url === `chrome-extension://${extensionId}/background.js`
+      && target.targetId !== runningWorker?.targetId);
+  const restartedPage = await page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 })
+    .then(() => true)
+    .catch((error) => ({ error: String(error) }));
+  const restartedWorker = await restartedWorkerPromise;
+  const restartWakeReply = await page.evaluate(() => Promise.race([
+    chrome.runtime.sendMessage({
+      target: "hoshidicts-worker",
+      type: "hd_state_read",
+    }),
+    new Promise((resolveWake) => setTimeout(() => resolve({ timeout: true }), 10_000)),
+  ])).catch((error) => ({ error: String(error) }));
+  const recreatedAlarm = await page.waitForFunction(async (alarmName) => {
+    const alarms = await chrome.alarms.getAll();
+    const alarm = alarms.find((candidate) => candidate.name === alarmName);
+    return alarm?.periodInMinutes === 60 ? { alarm, alarms } : false;
+  }, { timeout: 30_000, polling: 100 }, MANAGED_UPDATE_ALARM)
+    .then((handle) => handle.jsonValue())
+    .catch(() => null);
+  await serviceWorkerCdp.send("ServiceWorker.disable");
+  await serviceWorkerCdp.detach();
+  await browserCdp.detach();
+  check(
+    "worker restart recreates the configured managed-update alarm",
+    alarmGone
+      && workerTargetInfo !== undefined
+      && stoppedWorker === true
+      && restartedPage === true
+      && restartWakeReply?.ok === true
+      && restartedWorker?.url === `chrome-extension://${extensionId}/background.js`
+      && recreatedAlarm?.alarms?.length === 1
+      && recreatedAlarm.alarm.name === MANAGED_UPDATE_ALARM
+      && recreatedAlarm.alarm.periodInMinutes === 60,
+    JSON.stringify({
+      alarmGone,
+      workerTargetInfo,
+      runningWorker,
+      stopWorkerReply,
+      stoppedWorker,
+      restartedPage,
+      restartWakeReply,
+      restartedWorker,
+      recreatedAlarm,
+    }),
+  );
 
   const chromeProcess = browser.process();
   const chromeKilled = new Promise((resolveKilled) => chromeProcess.once("close", resolveKilled));
