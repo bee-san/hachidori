@@ -59,7 +59,8 @@ Open Hachidori's options page to:
 
 - import one or more Yomitan dictionaries;
 - choose whether each dictionary supplies terms, frequencies, pitch accents, or kanji;
-- reorder dictionaries to control result priority;
+- search titles and aliases, select visible matches, and bulk enable, disable, favourite, or unfavourite them;
+- reorder dictionaries by dragging, with the arrow buttons, or by entering a position;
 - configure the hover key, delay, scan length, result limit, frequency ranking, and the dictionary opened when you click a kanji.
 
 Large dictionaries can take several minutes to import. Keep the options page open until the import finishes.

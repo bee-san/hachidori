@@ -1648,6 +1648,34 @@ async function main() {
       && settingsConflict.removalControlsRestored === true,
     JSON.stringify(settingsConflict),
   );
+  check(
+    "settings search, visible selection, bulk changes, and every reorder path share stable package state",
+    settingsConflict?.management?.localeIndependentVisibleIds?.join(",") === "11111111111111111111111111111111"
+      && settingsConflict.management.visibleIds?.join(",") === "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,cccccccccccccccccccccccccccccccc"
+      && settingsConflict.management.selectedVisibleIds?.join(",") === settingsConflict.management.visibleIds.join(",")
+      && settingsConflict.management.bulkRequests?.length === 4
+      && settingsConflict.management.bulkRequests.every((request, index) =>
+        request.type === (index < 2 ? "hd_apply_state" : "hd_state_cas"))
+      && settingsConflict.management.bulkHiddenUntouched === true
+      && settingsConflict.management.bulkValues?.join(",") === "false,false,false,true,true,true,true,true,true,false,false,false"
+      && JSON.stringify(settingsConflict.management.queuedOrderTitles) === JSON.stringify([
+        ["ＡＬＰＨＡ", "Hidden one", "Alpha alias", "Ａｌｐｈａ notes", "Hidden two"],
+        ["ＡＬＰＨＡ", "Hidden one", "Ａｌｐｈａ notes", "Alpha alias", "Hidden two"],
+      ])
+      && settingsConflict.management.orderRequests?.every((request) => request.type === "hd_apply_state")
+      && JSON.stringify(settingsConflict.management.orderTitles) === JSON.stringify([
+        ["ＡＬＰＨＡ", "Alpha alias", "Hidden one", "Hidden two", "Ａｌｐｈａ notes"],
+        ["Ａｌｐｈａ notes", "ＡＬＰＨＡ", "Alpha alias", "Hidden one", "Hidden two"],
+        ["Ａｌｐｈａ notes", "Alpha alias", "ＡＬＰＨＡ", "Hidden one", "Hidden two"],
+        ["Alpha alias", "Ａｌｐｈａ notes", "ＡＬＰＨＡ", "Hidden one", "Hidden two"],
+      ])
+      && settingsConflict.management.hiddenOrderPreserved === true
+      && settingsConflict.management.searchAfterOperations === " ＡｌＰｈＡ "
+      && settingsConflict.management.selectedAfterOperations?.join(",") === settingsConflict.management.visibleIds.join(",")
+      && settingsConflict.management.selectedAfterExternalChange?.join(",") === "cccccccccccccccccccccccccccccccc,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      && settingsConflict.management.visibleAfterExternalChange?.join(",") === "cccccccccccccccccccccccccccccccc,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    JSON.stringify(settingsConflict?.management),
+  );
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -1928,9 +1956,21 @@ async function settingsConflictStage() {
   };
   let storageListener = null;
   const casRequests = [];
+  let rejectNextApply = true;
+  let holdNextApply = false;
+  let releaseHeldApply = null;
   let directDictionaryWrites = 0;
   let removeStarted = false;
   let releaseRemove = null;
+  const acceptState = (nextDictionaries) => {
+    state = {
+      schemaVersion: 1,
+      revision: state.revision + 1,
+      dictionaries: structuredClone(nextDictionaries),
+    };
+    storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+    return { ok: true, state: structuredClone(state) };
+  };
   window.chrome = {
     runtime: {
       id: "hachidorisettingssmoke",
@@ -1944,13 +1984,7 @@ async function settingsConflictStage() {
             baseRevision: message.baseRevision,
             dictionaries: structuredClone(message.dictionaries),
           });
-          state = {
-            schemaVersion: 1,
-            revision: state.revision + 1,
-            dictionaries: structuredClone(message.dictionaries),
-          };
-          storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
-          return { ok: true, state: structuredClone(state) };
+          return acceptState(message.dictionaries);
         }
         if (message.type === "hd_apply_state") {
           casRequests.push({
@@ -1958,6 +1992,19 @@ async function settingsConflictStage() {
             baseRevision: message.baseRevision,
             dictionaries: structuredClone(message.dictionaries),
           });
+          if (!rejectNextApply) {
+            if (!holdNextApply) {
+              return acceptState(message.dictionaries);
+            }
+            holdNextApply = false;
+            return new Promise((resolveApply) => {
+              releaseHeldApply = () => {
+                releaseHeldApply = null;
+                resolveApply(acceptState(message.dictionaries));
+              };
+            });
+          }
+          rejectNextApply = false;
           state = {
             schemaVersion: 1,
             revision: state.revision + 1,
@@ -2059,16 +2106,20 @@ async function settingsConflictStage() {
     await new Promise((done) => window.setTimeout(done, 5));
   }
   const removalControlsBlocked = [...window.document.querySelectorAll("#dict-list input, #dict-list button")]
-    .every((control) => control.disabled);
+    .every((control) => control.disabled)
+    && [...window.document.querySelectorAll("#dict-list .dict-drag")]
+      .every((drag) => drag.draggable === false);
   releaseRemove?.();
   await new Promise((done) => window.setTimeout(done, 0));
   const removalControlsRestored = [...window.document.querySelectorAll("#dict-list input, #dict-list button")]
-    .some((control) => !control.disabled);
+    .some((control) => !control.disabled)
+    && [...window.document.querySelectorAll("#dict-list .dict-drag")]
+      .every((drag) => drag.draggable === true);
 
   const result = {
     draftSurvived,
     secondActionTargetSurvived,
-    casRequests,
+    casRequests: structuredClone(casRequests),
     directDictionaryWrites,
     enabled: window.document.querySelector("#dict-list .dict-enabled")?.checked,
     kanjiChoice: [...window.document.querySelectorAll("#opt-kanji-dictionary option")]
@@ -2081,6 +2132,180 @@ async function settingsConflictStage() {
     removalControlsBlocked,
     removalControlsRestored,
   };
+
+  casRequests.length = 0;
+  const ids = {
+    alpha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    beta: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    gamma: "cccccccccccccccccccccccccccccccc",
+    hiddenOne: "11111111111111111111111111111111",
+    hiddenTwo: "22222222222222222222222222222222",
+  };
+  const managementDictionaries = [
+    genericPackage({ id: ids.alpha, title: "ＡＬＰＨＡ", path: "/dicts/ＡＬＰＨＡ" }),
+    genericPackage({ id: ids.hiddenOne, title: "Hidden one", path: "/dicts/Hidden one" }),
+    genericPackage({
+      id: ids.beta,
+      title: "Beta",
+      displayName: "Alpha alias",
+      path: "/dicts/Beta",
+    }),
+    genericPackage({ id: ids.hiddenTwo, title: "Hidden two", path: "/dicts/Hidden two" }),
+    genericPackage({
+      id: ids.gamma,
+      title: "Gamma",
+      displayName: "Ａｌｐｈａ notes",
+      path: "/dicts/Gamma",
+    }),
+  ];
+  state = {
+    schemaVersion: 1,
+    revision: state.revision + 1,
+    dictionaries: managementDictionaries,
+  };
+  storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+  await new Promise((done) => window.setTimeout(done, 0));
+
+  const search = window.document.getElementById("dict-search");
+  const selectAll = window.document.getElementById("dict-select-visible");
+  const bulkButtonIds = [
+    "dict-bulk-disable",
+    "dict-bulk-enable",
+    "dict-bulk-favorite",
+    "dict-bulk-unfavorite",
+  ];
+  if (!(search instanceof window.HTMLInputElement)
+      || !(selectAll instanceof window.HTMLInputElement)
+      || bulkButtonIds.some((id) => !(window.document.getElementById(id) instanceof window.HTMLButtonElement))) {
+    result.management = { error: "dictionary management controls did not render" };
+    dom.window.close();
+    return result;
+  }
+
+  const rowIds = () => [...window.document.querySelectorAll("#dict-list .dict-row")]
+    .map((row) => row.dataset.dictionaryId);
+  const selectedRowIds = () => [...window.document.querySelectorAll("#dict-list .dict-row")]
+    .filter((row) => row.querySelector(".dict-selected")?.checked)
+    .map((row) => row.dataset.dictionaryId);
+  const rowFor = (id) => [...window.document.querySelectorAll("#dict-list .dict-row")]
+    .find((row) => row.dataset.dictionaryId === id);
+  const waitForRequestCount = async (count) => {
+    const requestDeadline = Date.now() + 2000;
+    while (casRequests.length < count && Date.now() < requestDeadline) {
+      await new Promise((done) => window.setTimeout(done, 5));
+    }
+    await new Promise((done) => window.setTimeout(done, 0));
+  };
+
+  const localeLowerCase = window.String.prototype.toLocaleLowerCase;
+  window.String.prototype.toLocaleLowerCase = function toTurkishLowerCase() {
+    return localeLowerCase.call(this, "tr");
+  };
+  search.value = "HIDDEN O";
+  search.dispatchEvent(new window.Event("input", { bubbles: true }));
+  const localeIndependentVisibleIds = rowIds();
+  window.String.prototype.toLocaleLowerCase = localeLowerCase;
+
+  search.value = " ＡｌＰｈＡ ";
+  search.dispatchEvent(new window.Event("input", { bubbles: true }));
+  const visibleIds = rowIds();
+  selectAll.click();
+  const selectedVisibleIds = selectedRowIds();
+
+  for (const [index, buttonId] of bulkButtonIds.entries()) {
+    window.document.getElementById(buttonId).click();
+    await waitForRequestCount(index + 1);
+  }
+  const bulkRequests = structuredClone(casRequests);
+  const selectedIds = [ids.alpha, ids.beta, ids.gamma];
+  const bulkValues = bulkRequests.flatMap((request, index) => selectedIds.map((id) => {
+    const dictionary = request.dictionaries.find((entry) => entry.id === id);
+    return index < 2 ? dictionary.enabled : dictionary.favorite;
+  }));
+  const bulkHiddenUntouched = bulkRequests.every((request) =>
+    [ids.hiddenOne, ids.hiddenTwo].every((id) => {
+      const dictionary = request.dictionaries.find((entry) => entry.id === id);
+      return dictionary.enabled === true && dictionary.favorite === false;
+    }));
+
+  holdNextApply = true;
+  const queuedUp = rowFor(ids.gamma).querySelector(".dict-up");
+  queuedUp.click();
+  await waitForRequestCount(5);
+  queuedUp.click();
+  releaseHeldApply?.();
+  await waitForRequestCount(6);
+  const queuedOrderTitles = casRequests.slice(4).map((request) =>
+    request.dictionaries.map((dictionary) => dictionary.displayName || dictionary.title));
+
+  state = {
+    schemaVersion: 1,
+    revision: state.revision + 1,
+    dictionaries: structuredClone(managementDictionaries),
+  };
+  storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+  casRequests.splice(4);
+
+  rowFor(ids.beta).querySelector(".dict-up").click();
+  await waitForRequestCount(5);
+
+  const position = rowFor(ids.gamma).querySelector(".dict-position-input");
+  position.value = "1";
+  position.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+  await waitForRequestCount(6);
+
+  const dragStart = new window.Event("dragstart", { bubbles: true, cancelable: true });
+  Object.defineProperty(dragStart, "dataTransfer", {
+    value: { effectAllowed: "", setData() {} },
+  });
+  rowFor(ids.alpha).querySelector(".dict-drag").dispatchEvent(dragStart);
+  rowFor(ids.beta).dispatchEvent(new window.Event("dragover", { bubbles: true, cancelable: true }));
+  rowFor(ids.beta).dispatchEvent(new window.Event("drop", { bubbles: true, cancelable: true }));
+  await waitForRequestCount(7);
+
+  rowFor(ids.gamma).querySelector(".dict-down").click();
+  await waitForRequestCount(8);
+
+  const orderRequests = casRequests.slice(4);
+  const orderTitles = orderRequests.map((request) =>
+    request.dictionaries.map((dictionary) => dictionary.displayName || dictionary.title));
+  const hiddenOrderPreserved = orderRequests.every((request) =>
+    request.dictionaries.findIndex((dictionary) => dictionary.id === ids.hiddenOne)
+      < request.dictionaries.findIndex((dictionary) => dictionary.id === ids.hiddenTwo));
+  const searchAfterOperations = search.value;
+  const selectedAfterOperations = selectedRowIds().sort();
+
+  const removedBeta = state.dictionaries.find((dictionary) => dictionary.id === ids.beta);
+  state = {
+    ...state,
+    revision: state.revision + 1,
+    dictionaries: state.dictionaries.filter((dictionary) => dictionary.id !== ids.beta),
+  };
+  storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+  state = {
+    ...state,
+    revision: state.revision + 1,
+    dictionaries: [...state.dictionaries.slice(0, 2), removedBeta, ...state.dictionaries.slice(2)],
+  };
+  storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+
+  result.management = {
+    localeIndependentVisibleIds,
+    visibleIds,
+    selectedVisibleIds,
+    bulkRequests,
+    bulkValues,
+    bulkHiddenUntouched,
+    queuedOrderTitles,
+    orderRequests,
+    orderTitles,
+    hiddenOrderPreserved,
+    searchAfterOperations,
+    selectedAfterOperations,
+    selectedAfterExternalChange: selectedRowIds(),
+    visibleAfterExternalChange: rowIds(),
+  };
+  result.directDictionaryWrites = directDictionaryWrites;
   dom.window.close();
   return result;
 }

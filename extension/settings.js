@@ -42,6 +42,9 @@ let pendingDictionaryCommits = 0;
 let dictionaryCommitTail = Promise.resolve();
 let dictionaryCommitFailed = false;
 let dictionaryRenderDeferred = false;
+let dictionarySearch = "";
+const selectedDictionaryIds = new Set();
+let draggedDictionaryId = null;
 let statusTimer = null;
 let requestCounter = 0;
 
@@ -149,7 +152,31 @@ function adoptDictionaryState(value) {
   }
   dictionaryState = next;
   dictionaries = dictionaryState.dictionaries;
+  pruneDictionarySelection();
   return true;
+}
+
+function pruneDictionarySelection() {
+  const installedIds = new Set(dictionaries.map((dictionary) => dictionary.id));
+  for (const id of selectedDictionaryIds) {
+    if (!installedIds.has(id)) {
+      selectedDictionaryIds.delete(id);
+    }
+  }
+}
+
+function normaliseDictionarySearch(value) {
+  return stringValue(value).normalize("NFKC").trim().toLowerCase();
+}
+
+function visibleDictionaries() {
+  const search = normaliseDictionarySearch(dictionarySearch);
+  if (search === "") {
+    return dictionaries;
+  }
+  return dictionaries.filter((dictionary) =>
+    [dictionary.title, dictionary.displayName].some((name) =>
+      normaliseDictionarySearch(name).includes(search)));
 }
 
 function hasCapability(dictionary, kind) {
@@ -271,6 +298,13 @@ function setControlsDisabled(disabled) {
   element("import-file").disabled = blocked || committing;
   for (const control of document.querySelectorAll(".dict-row select, .dict-row input, .dict-row button")) {
     control.disabled = blocked || control.dataset.pinnedDisabled === "true";
+  }
+  for (const drag of document.querySelectorAll(".dict-drag")) {
+    drag.draggable = !blocked;
+  }
+  element("dict-select-visible").disabled = blocked || visibleDictionaries().length === 0;
+  for (const control of element("dict-controls").querySelectorAll(".dict-bulk-actions button")) {
+    control.disabled = blocked || selectedDictionaryIds.size === 0;
   }
 }
 
@@ -505,113 +539,256 @@ function updateDictionary(id, update) {
   };
 }
 
+function updateSelectedDictionaries(field, value, reloadEngine) {
+  const ids = new Set(selectedDictionaryIds);
+  void commitDictionaries((current) => {
+    let changed = false;
+    const next = current.map((dictionary) => {
+      if (!ids.has(dictionary.id) || dictionary[field] === value) {
+        return dictionary;
+      }
+      changed = true;
+      return { ...dictionary, [field]: value };
+    });
+    return changed ? next : null;
+  }, reloadEngine);
+}
+
 function focusedDictionaryControl() {
   const active = document.activeElement;
   const row = active?.closest?.(".dict-row");
   if (!row?.dataset.dictionaryId) {
     return null;
   }
-  const controlClass = ["dict-display-name", "dict-enabled", "dict-up", "dict-down", "dict-remove"]
+  const controlClass = [
+    "dict-selected",
+    "dict-display-name",
+    "dict-enabled",
+    "dict-up",
+    "dict-down",
+    "dict-position-input",
+    "dict-move",
+    "dict-remove",
+  ]
     .find((name) => active.classList.contains(name));
   return controlClass ? { id: row.dataset.dictionaryId, controlClass } : null;
+}
+
+function renderDictionarySelection(visible) {
+  const visibleSelected = visible.filter((dictionary) => selectedDictionaryIds.has(dictionary.id)).length;
+  const selectVisible = element("dict-select-visible");
+  selectVisible.checked = visible.length > 0 && visibleSelected === visible.length;
+  selectVisible.indeterminate = visibleSelected > 0 && visibleSelected < visible.length;
+  element("dict-selection-count").textContent = `${selectedDictionaryIds.size} selected`;
+  element("dict-match-count").textContent = `${visible.length} of ${dictionaries.length}`;
+}
+
+function clearDictionaryDropTargets() {
+  for (const row of document.querySelectorAll("#dict-list .is-drop-target")) {
+    row.classList.remove("is-drop-target");
+  }
+}
+
+function bindDictionarySelection(row, entry) {
+  const selected = row.querySelector(".dict-selected");
+  selected.checked = selectedDictionaryIds.has(entry.id);
+  selected.setAttribute("aria-label", `Select ${dictionaryLabel(entry)}`);
+  selected.addEventListener("change", () => {
+    if (selected.checked) {
+      selectedDictionaryIds.add(entry.id);
+    } else {
+      selectedDictionaryIds.delete(entry.id);
+    }
+    renderDictionarySelection(visibleDictionaries());
+    setControlsDisabled(importing);
+  });
+}
+
+function bindDictionaryDrag(row, entry) {
+  const drag = row.querySelector(".dict-drag");
+  drag.title = `Drag ${dictionaryLabel(entry)} to reorder`;
+  drag.addEventListener("dragstart", (event) => {
+    draggedDictionaryId = entry.id;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", entry.id);
+    }
+  });
+  drag.addEventListener("dragend", () => {
+    draggedDictionaryId = null;
+    clearDictionaryDropTargets();
+  });
+  row.addEventListener("dragover", (event) => {
+    if (draggedDictionaryId && draggedDictionaryId !== entry.id) {
+      event.preventDefault();
+      clearDictionaryDropTargets();
+      row.classList.add("is-drop-target");
+    }
+  });
+  row.addEventListener("dragleave", () => {
+    row.classList.remove("is-drop-target");
+  });
+  row.addEventListener("drop", (event) => {
+    event.preventDefault();
+    clearDictionaryDropTargets();
+    if (draggedDictionaryId && draggedDictionaryId !== entry.id) {
+      moveDictionary(draggedDictionaryId, { targetId: entry.id });
+    }
+    draggedDictionaryId = null;
+  });
+}
+
+function bindDictionaryAlias(row, entry) {
+  const input = row.querySelector(".dict-display-name");
+  input.value = entry.displayName || "";
+  input.placeholder = entry.title;
+  input.setAttribute("aria-label", `Display name for ${entry.title}`);
+  input.title = `Display name for ${entry.title}`;
+  input.addEventListener("change", () => {
+    const value = input.value.trim() || null;
+    void commitDictionaries(updateDictionary(entry.id, (dictionary) =>
+      dictionary.displayName === value ? dictionary : { ...dictionary, displayName: value }), false);
+  });
+  input.addEventListener("blur", () => {
+    if (!dictionaryRenderDeferred) {
+      return;
+    }
+    setTimeout(() => {
+      if (!committing && dictionaryRenderDeferred) {
+        renderDictionaryState();
+      }
+    }, 0);
+  });
+}
+
+function bindDictionaryEnabled(row, entry) {
+  const enabled = row.querySelector(".dict-enabled");
+  enabled.checked = entry.enabled;
+  enabled.setAttribute("aria-label", `Enabled for ${entry.title}`);
+  enabled.title = `Enabled for ${entry.title}`;
+  enabled.addEventListener("change", () => {
+    const value = enabled.checked;
+    void commitDictionaries(updateDictionary(entry.id, (dictionary) =>
+      dictionary.enabled === value ? dictionary : { ...dictionary, enabled: value }), true);
+  });
+}
+
+function bindDictionaryOrder(row, entry, index) {
+  const up = row.querySelector(".dict-up");
+  const down = row.querySelector(".dict-down");
+  up.setAttribute("aria-label", `Move ${entry.title} up`);
+  up.title = `Move ${entry.title} up`;
+  down.setAttribute("aria-label", `Move ${entry.title} down`);
+  down.title = `Move ${entry.title} down`;
+  up.dataset.pinnedDisabled = String(index === 0);
+  down.dataset.pinnedDisabled = String(index === dictionaries.length - 1);
+  up.addEventListener("click", () => {
+    moveDictionary(entry.id, { step: -1 });
+  });
+  down.addEventListener("click", () => {
+    moveDictionary(entry.id, { step: 1 });
+  });
+
+  const position = row.querySelector(".dict-position-input");
+  const move = row.querySelector(".dict-move");
+  position.value = String(index + 1);
+  position.max = String(dictionaries.length);
+  position.setAttribute("aria-label", `Position for ${dictionaryLabel(entry)}`);
+  move.setAttribute("aria-label", `Move ${dictionaryLabel(entry)} to position`);
+  move.title = `Move ${dictionaryLabel(entry)} to position`;
+  const moveToPosition = () => {
+    const target = Number(position.value);
+    if (Number.isInteger(target) && target >= 1 && target <= dictionaries.length) {
+      moveDictionary(entry.id, { position: target });
+    } else {
+      position.value = String(index + 1);
+    }
+  };
+  position.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      moveToPosition();
+    }
+  });
+  move.addEventListener("click", moveToPosition);
+}
+
+function renderDictionaryRow(template, entry, index) {
+  const row = template.content.firstElementChild.cloneNode(true);
+  row.dataset.dictionaryId = entry.id;
+  row.classList.toggle("is-off", !entry.enabled);
+  row.querySelector(".dict-rank").textContent = String(index + 1);
+  bindDictionarySelection(row, entry);
+  bindDictionaryDrag(row, entry);
+
+  const title = row.querySelector(".dict-title");
+  title.textContent = dictionaryLabel(entry);
+  title.title = entry.path;
+
+  const canonical = row.querySelector(".dict-canonical");
+  canonical.textContent = entry.displayName ? entry.title : "";
+  canonical.hidden = !entry.displayName;
+  row.querySelector(".dict-favorite").hidden = !entry.favorite;
+
+  const badges = row.querySelector(".dict-badges");
+  addCountBadge(badges, "Terms", entry.termCount);
+  addCountBadge(badges, "Frequency", entry.frequencyCount);
+  addCountBadge(badges, "Pitch", entry.pitchCount);
+  addCountBadge(badges, "Kanji", entry.kanjiCount);
+  addCountBadge(badges, "Media", entry.mediaCount);
+  row.querySelector(".dict-metadata").textContent = dictionaryMetadata(entry);
+
+  bindDictionaryAlias(row, entry);
+  bindDictionaryEnabled(row, entry);
+  bindDictionaryOrder(row, entry, index);
+
+  const remove = row.querySelector(".dict-remove");
+  remove.setAttribute("aria-label", `Remove ${entry.title}`);
+  remove.title = `Remove ${entry.title}`;
+  remove.addEventListener("click", () => {
+    removeDictionary(entry.title);
+  });
+  return row;
 }
 
 function renderDictionaries() {
   const list = element("dict-list");
   const template = element("dict-row-template");
+  const visible = visibleDictionaries();
+  const visibleIds = new Set(visible.map((dictionary) => dictionary.id));
+  draggedDictionaryId = null;
   list.textContent = "";
 
   dictionaries.forEach((entry, index) => {
-    const row = template.content.firstElementChild.cloneNode(true);
-    row.dataset.dictionaryId = entry.id;
-    row.classList.toggle("is-off", !entry.enabled);
-    row.querySelector(".dict-rank").textContent = String(index + 1);
-
-    const title = row.querySelector(".dict-title");
-    title.textContent = dictionaryLabel(entry);
-    title.title = entry.path;
-
-    const canonical = row.querySelector(".dict-canonical");
-    canonical.textContent = entry.displayName ? entry.title : "";
-    canonical.hidden = !entry.displayName;
-
-    const favorite = row.querySelector(".dict-favorite");
-    favorite.hidden = !entry.favorite;
-
-    const badges = row.querySelector(".dict-badges");
-    addCountBadge(badges, "Terms", entry.termCount);
-    addCountBadge(badges, "Frequency", entry.frequencyCount);
-    addCountBadge(badges, "Pitch", entry.pitchCount);
-    addCountBadge(badges, "Kanji", entry.kanjiCount);
-    addCountBadge(badges, "Media", entry.mediaCount);
-
-    row.querySelector(".dict-metadata").textContent = dictionaryMetadata(entry);
-
-    const displayName = row.querySelector(".dict-display-name");
-    displayName.value = entry.displayName || "";
-    displayName.placeholder = entry.title;
-    displayName.setAttribute("aria-label", `Display name for ${entry.title}`);
-    displayName.title = `Display name for ${entry.title}`;
-    displayName.addEventListener("change", () => {
-      const value = displayName.value.trim() || null;
-      void commitDictionaries(updateDictionary(entry.id, (dictionary) =>
-        dictionary.displayName === value ? dictionary : { ...dictionary, displayName: value }), false);
-    });
-    displayName.addEventListener("blur", () => {
-      if (!dictionaryRenderDeferred) {
-        return;
-      }
-      setTimeout(() => {
-        if (!committing && dictionaryRenderDeferred) {
-          renderDictionaryState();
-        }
-      }, 0);
-    });
-
-    const enabled = row.querySelector(".dict-enabled");
-    enabled.checked = entry.enabled;
-    enabled.setAttribute("aria-label", `Enabled for ${entry.title}`);
-    enabled.title = `Enabled for ${entry.title}`;
-    enabled.addEventListener("change", () => {
-      const value = enabled.checked;
-      void commitDictionaries(updateDictionary(entry.id, (dictionary) =>
-        dictionary.enabled === value ? dictionary : { ...dictionary, enabled: value }), true);
-    });
-
-    const up = row.querySelector(".dict-up");
-    const down = row.querySelector(".dict-down");
-    up.setAttribute("aria-label", `Move ${entry.title} up`);
-    up.title = `Move ${entry.title} up`;
-    down.setAttribute("aria-label", `Move ${entry.title} down`);
-    down.title = `Move ${entry.title} down`;
-    up.dataset.pinnedDisabled = String(index === 0);
-    down.dataset.pinnedDisabled = String(index === dictionaries.length - 1);
-    up.addEventListener("click", () => {
-      moveDictionary(entry.id, -1);
-    });
-    down.addEventListener("click", () => {
-      moveDictionary(entry.id, 1);
-    });
-
-    const remove = row.querySelector(".dict-remove");
-    remove.setAttribute("aria-label", `Remove ${entry.title}`);
-    remove.title = `Remove ${entry.title}`;
-    remove.addEventListener("click", () => {
-      removeDictionary(entry.title);
-    });
-
-    list.appendChild(row);
+    if (!visibleIds.has(entry.id)) {
+      return;
+    }
+    list.appendChild(renderDictionaryRow(template, entry, index));
   });
 
-  element("dict-empty").hidden = dictionaries.length > 0;
+  element("dict-controls").hidden = dictionaries.length === 0;
+  const empty = element("dict-empty");
+  empty.textContent = dictionaries.length === 0 ? "Nothing imported yet." : "No dictionaries match your search.";
+  empty.hidden = visible.length > 0;
+  renderDictionarySelection(visible);
   setControlsDisabled(importing);
 }
 
-function moveDictionary(id, delta) {
+function dictionaryMoveTarget(current, index, move) {
+  if (move.targetId) {
+    return current.findIndex((entry) => entry.id === move.targetId);
+  }
+  if (move.step) {
+    return index + move.step;
+  }
+  return move.position - 1;
+}
+
+function moveDictionary(id, move) {
   void commitDictionaries((current) => {
     const index = current.findIndex((entry) => entry.id === id);
-    const target = index + delta;
-    if (index < 0 || target < 0 || target >= current.length) {
+    const target = dictionaryMoveTarget(current, index, move);
+    if (index < 0 || target < 0 || target >= current.length || index === target) {
       return null;
     }
     const next = [...current];
@@ -826,6 +1003,35 @@ function attachHandlers() {
     if (picked) {
       runImport(picked);
     }
+  });
+
+  element("dict-search").addEventListener("input", (event) => {
+    dictionarySearch = event.target.value;
+    renderDictionaries();
+  });
+
+  element("dict-select-visible").addEventListener("change", (event) => {
+    for (const dictionary of visibleDictionaries()) {
+      if (event.target.checked) {
+        selectedDictionaryIds.add(dictionary.id);
+      } else {
+        selectedDictionaryIds.delete(dictionary.id);
+      }
+    }
+    renderDictionaries();
+  });
+
+  element("dict-bulk-enable").addEventListener("click", () => {
+    updateSelectedDictionaries("enabled", true, true);
+  });
+  element("dict-bulk-disable").addEventListener("click", () => {
+    updateSelectedDictionaries("enabled", false, true);
+  });
+  element("dict-bulk-favorite").addEventListener("click", () => {
+    updateSelectedDictionaries("favorite", true, false);
+  });
+  element("dict-bulk-unfavorite").addEventListener("click", () => {
+    updateSelectedDictionaries("favorite", false, false);
   });
 
   for (const field of NUMBER_FIELDS) {
