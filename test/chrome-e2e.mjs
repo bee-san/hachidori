@@ -40,7 +40,31 @@ const FIXTURE_ALIAS = "Fixture Alias";
 const MANAGED_INDEX_URL = "https://example.test/hachidori-fixture-index.json";
 const MANAGED_DOWNLOAD_URL = "https://example.test/hachidori-fixture.zip";
 const LAST_UPDATE_CHECK = "2026-09-04T09:30:00.000Z";
+const GENERATION_ROOT_PATTERN = /^\/dicts\/\.hdw-generation-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
+
+function ownedGenerationRoot(path, title) {
+  const suffix = `/${title}`;
+  const root = typeof path === "string" && path.endsWith(suffix)
+    ? path.slice(0, -suffix.length)
+    : "";
+  return GENERATION_ROOT_PATTERN.test(root) ? root : "";
+}
+
+function opfsPath(path) {
+  return path.slice("/dicts/".length);
+}
+
+function generationExists(paths, dictionaryPath) {
+  const relative = opfsPath(dictionaryPath);
+  return paths.includes(`${relative}/.hoshidicts_3`)
+    || paths.includes(`${relative}/.hoshidicts_4`);
+}
+
+function generationIsAbsent(paths, generationRoot) {
+  const relative = opfsPath(generationRoot);
+  return !paths.some((path) => path === relative || path.startsWith(`${relative}/`));
+}
 
 function cachedChrome() {
   const root = resolve(CACHE, "hachidori-browsers/chrome");
@@ -178,6 +202,22 @@ function check(name, ok, detail = "") {
   if (!ok) failed++;
   const mark = ok ? "ok  " : "FAIL";
   console.log(`${mark} ${name}${detail && !ok ? `\n       ${detail}` : ""}`);
+}
+
+async function listOpfsPaths(page) {
+  return page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const paths = [];
+    const walk = async (directory, prefix) => {
+      for await (const [name, handle] of directory.entries()) {
+        const path = prefix === "" ? name : `${prefix}/${name}`;
+        paths.push(path);
+        if (handle.kind === "directory") await walk(handle, path);
+      }
+    };
+    await walk(root, "");
+    return paths.sort();
+  });
 }
 
 function fatal(message) {
@@ -702,29 +742,17 @@ async function main() {
   check("importing a Yomitan .zip from the settings page succeeds", importOk,
     `#import-state: ${importState}\n       #import-detail: ${importDetail}`);
 
-  const opfsFiles = await page.evaluate(async () => {
-    const root = await navigator.storage.getDirectory();
-    const paths = [];
-    const walk = async (directory, prefix) => {
-      for await (const [name, handle] of directory.entries()) {
-        const path = prefix === "" ? name : `${prefix}/${name}`;
-        paths.push(path);
-        if (handle.kind === "directory") await walk(handle, path);
-      }
-    };
-    await walk(root, "");
-    return paths.sort();
-  });
-  check("the imported dictionary is persisted in OPFS",
-    opfsFiles.some(path => path.endsWith("hachidori-fixture/.hoshidicts_3")
-      || path.endsWith("hachidori-fixture/.hoshidicts_4")),
-    `OPFS paths: ${JSON.stringify(opfsFiles)}`);
+  const opfsFiles = await listOpfsPaths(page);
 
   const stored = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
   const dictionaryState = stored?.dictionaryState;
   const dicts = dictionaryState?.dictionaries ?? [];
   const fixturePackage = dicts[0];
   const fixtureId = fixturePackage?.id ?? "";
+  const firstFixtureGeneration = ownedGenerationRoot(fixturePackage?.path, "hachidori-fixture");
+  check("the imported dictionary is persisted in OPFS",
+    firstFixtureGeneration !== "" && generationExists(opfsFiles, fixturePackage.path),
+    `dictionary path: ${JSON.stringify(fixturePackage?.path)}; OPFS paths: ${JSON.stringify(opfsFiles)}`);
   // The fixture has term, frequency, pitch, kanji and media data, but is one
   // installed package. Native dictionaryCount still counts its four query kinds.
   check("the imported dictionary is recorded in chrome.storage.local",
@@ -735,7 +763,7 @@ async function main() {
       && fixtureId === FIXTURE_ID
       && fixturePackage.title === "hachidori-fixture"
       && fixturePackage.displayName === null
-      && fixturePackage.path === "/dicts/hachidori-fixture"
+      && firstFixtureGeneration !== ""
       && fixturePackage.enabled === true
       && fixturePackage.favorite === false
       && fixturePackage.revision === "test-1"
@@ -787,6 +815,11 @@ async function main() {
   }, { timeout: 120_000, polling: 250 }).then(handle => handle.jsonValue()).catch(() => "(never settled)");
   const replacedState = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
   const replacedPackage = replacedState?.dictionaryState?.dictionaries?.[0];
+  const replacedFixtureGeneration = ownedGenerationRoot(
+    replacedPackage?.path,
+    "hachidori-fixture",
+  );
+  const opfsAfterReimport = await listOpfsPaths(page);
   check("re-importing the same dictionary replaces it safely in OPFS",
     aliasChanged?.settled?.id === FIXTURE_ID
       && stateBeforeReimport?.ok === true
@@ -794,6 +827,10 @@ async function main() {
       && replacedState?.dictionaryState?.dictionaries?.length === 1
       && replacedState.dictionaryState.revision > dictionaryState.revision
       && replacedPackage?.id === FIXTURE_ID
+      && replacedFixtureGeneration !== ""
+      && replacedPackage.path !== fixturePackage.path
+      && generationExists(opfsAfterReimport, replacedPackage.path)
+      && generationIsAbsent(opfsAfterReimport, firstFixtureGeneration)
       && replacedPackage?.displayName === FIXTURE_ALIAS
       && replacedPackage?.enabled === false
       && replacedPackage?.favorite === true
@@ -802,7 +839,7 @@ async function main() {
       && replacedPackage?.downloadUrl === MANAGED_DOWNLOAD_URL
       && replacedPackage?.lastUpdateCheck === LAST_UPDATE_CHECK,
     `alias change: ${JSON.stringify(aliasChanged)}; state before reimport: ${JSON.stringify(stateBeforeReimport)}; #import-state: ${replacementState};`
-      + ` dictionaryState: ${JSON.stringify(replacedState?.dictionaryState)}`);
+      + ` dictionaryState: ${JSON.stringify(replacedState?.dictionaryState)}; OPFS paths: ${JSON.stringify(opfsAfterReimport)}`);
 
   await page.waitForFunction((alias) => {
     const row = document.querySelector("#dict-list .dict-row");
@@ -1262,17 +1299,21 @@ async function main() {
   page.on("console", m => diagnostics.push(`[settings2] ${m.type()}: ${m.text()}`));
   await page.goto(settingsUrl, { waitUntil: "domcontentloaded" });
 
-  const persisted = await page.waitForFunction(async (id) => {
+  const persistedPackage = await page.waitForFunction(async (id, expectedPath) => {
     const t = (document.getElementById("dict-list")?.textContent || "");
     const { dictionaryState: state } = await chrome.storage.local.get("dictionaryState");
-    return t.includes("hachidori-fixture")
-      && state?.dictionaries?.some(dictionary =>
-        dictionary.id === id && dictionary.title === "hachidori-fixture")
-      ? true
+    const dictionary = state?.dictionaries?.find(candidate =>
+      candidate.id === id && candidate.title === "hachidori-fixture");
+    return t.includes("hachidori-fixture") && dictionary?.path === expectedPath
+      ? dictionary
       : false;
-  }, { timeout: 90_000, polling: 500 }, fixtureId).then(() => true).catch(() => false);
-  check("the settings page lists the dictionary again after a restart", persisted,
-    "hachidori-fixture and its stable package ID did not reappear after restart");
+  }, { timeout: 90_000, polling: 500 }, fixtureId, replacedPackage.path)
+    .then(handle => handle.jsonValue())
+    .catch(() => null);
+  check("the settings page lists the dictionary again after a restart",
+    persistedPackage?.path === replacedPackage.path
+      && ownedGenerationRoot(persistedPackage.path, "hachidori-fixture") === replacedFixtureGeneration,
+    `expected path: ${JSON.stringify(replacedPackage.path)}; persisted package: ${JSON.stringify(persistedPackage)}`);
 
   // #dict-list above reflects worker-owned chrome.storage.local state, which
   // persists regardless of OPFS; only a dictionaryCount from the fresh engine
@@ -1289,11 +1330,15 @@ async function main() {
       await new Promise(r => setTimeout(r, 500));
     }
   }).catch(e => ({ error: String(e) }));
+  const opfsAfterRestart = await listOpfsPaths(page);
   // The disabled generic package stays disabled across restart; the combined
   // fixture still restores all four of its native capabilities.
   check("the dictionary survives a browser restart via OPFS",
-    reloadCount?.dictionaryCount === 4,
-    `hd_status reply: ${JSON.stringify(reloadCount)}`);
+    reloadCount?.dictionaryCount === 4
+      && generationExists(opfsAfterRestart, replacedPackage.path)
+      && generationIsAbsent(opfsAfterRestart, firstFixtureGeneration),
+    `hd_status reply: ${JSON.stringify(reloadCount)}; latest path: ${JSON.stringify(replacedPackage.path)};`
+      + ` OPFS paths: ${JSON.stringify(opfsAfterRestart)}`);
 
   const tab2 = await browser.newPage();
   tab2.on("pageerror", e => diagnostics.push(`[page2] pageerror: ${e.message}`));
@@ -1329,17 +1374,10 @@ async function main() {
   check("removing the dictionary clears its settings rows", removeReply?.ok === true && removed,
     `remove reply: ${JSON.stringify(removeReply)}`);
 
-  const opfsRemoved = await page.evaluate(async () => {
-    const root = await navigator.storage.getDirectory();
-    try {
-      await root.getDirectoryHandle("hachidori-fixture");
-      return false;
-    } catch (error) {
-      return error?.name === "NotFoundError";
-    }
-  });
+  const opfsAfterRemoval = await listOpfsPaths(page);
+  const opfsRemoved = generationIsAbsent(opfsAfterRemoval, replacedFixtureGeneration);
   check("removing the dictionary deletes its OPFS directory", opfsRemoved,
-    "hachidori-fixture still exists in OPFS");
+    `${replacedFixtureGeneration} still exists in OPFS: ${JSON.stringify(opfsAfterRemoval)}`);
 
   const removedLookup = await page.evaluate(() => chrome.runtime.sendMessage({
     target: "hoshidicts-offscreen",

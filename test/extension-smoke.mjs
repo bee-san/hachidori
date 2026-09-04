@@ -42,6 +42,7 @@ const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
 const EXTENSION_ORIGIN = "chrome-extension://hachidorismokeextensionid";
 
 const FIXTURE_TITLE = "hachidori-fixture";
+const GENERATION_ROOT_PATTERN = /^\/dicts\/\.hdw-generation-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const DICTIONARY_PACKAGE_KEYS = [
   "displayName",
   "downloadUrl",
@@ -62,6 +63,14 @@ const DICTIONARY_PACKAGE_KEYS = [
   "termCount",
   "title",
 ];
+
+function ownedGenerationRoot(path, title) {
+  const suffix = `/${title}`;
+  const root = typeof path === "string" && path.endsWith(suffix)
+    ? path.slice(0, -suffix.length)
+    : "";
+  return GENERATION_ROOT_PATTERN.test(root) ? root : "";
+}
 
 function genericPackage(overrides = {}) {
   return {
@@ -973,7 +982,7 @@ async function main() {
       && /^[0-9a-f]{32}$/u.test(importedPackage?.id ?? "")
       && importedPackage.title === FIXTURE_TITLE
       && importedPackage.displayName === null
-      && importedPackage.path === `/dicts/${FIXTURE_TITLE}`
+      && ownedGenerationRoot(importedPackage.path, FIXTURE_TITLE) !== ""
       && importedPackage.enabled === true
       && importedPackage.favorite === false
       && importedPackage.revision === "test-1"
@@ -995,6 +1004,18 @@ async function main() {
   equal("one logical package loads all four native capabilities", afterLogicalImport.dictionaryCount, 4);
   check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
 
+  // Model an actual pre-D9 install: legacy rows named a canonical title path,
+  // before immutable UUID generation roots existed.
+  const legacyPath = `/dicts/${FIXTURE_TITLE}`;
+  observedEngine.FS.mkdir(legacyPath);
+  for (const name of observedEngine.FS.readdir(importedPackage.path)) {
+    if (name !== "." && name !== "..") {
+      observedEngine.FS.writeFile(
+        `${legacyPath}/${name}`,
+        observedEngine.FS.readFile(`${importedPackage.path}/${name}`),
+      );
+    }
+  }
   await storage.api().local.remove("dictionaryState");
   await storage.api().local.set({
     dictionaries: ["term", "freq", "pitch", "kanji"].map((kind, index) => ({
@@ -1289,8 +1310,10 @@ async function main() {
   );
 
   const invalidLoadTitle = "invalid-native-load";
-  const invalidLoadPath = `/dicts/${invalidLoadTitle}`;
+  const invalidGenerationRoot = "/dicts/.hdw-generation-00000000-0000-4000-8000-000000000000";
+  const invalidLoadPath = `${invalidGenerationRoot}/${invalidLoadTitle}`;
   const invalidImportDate = 0;
+  observedEngine.FS.mkdir(invalidGenerationRoot);
   observedEngine.FS.mkdir(invalidLoadPath);
   observedEngine.FS.writeFile(`${invalidLoadPath}/.hoshidicts_3`, new Uint8Array());
   observedEngine.FS.writeFile(`${invalidLoadPath}/index.json`, JSON.stringify({
@@ -1349,6 +1372,7 @@ async function main() {
   observedEngine.FS.unlink(`${invalidLoadPath}/index.json`);
   observedEngine.FS.unlink(`${invalidLoadPath}/.hoshidicts_3`);
   observedEngine.FS.rmdir(invalidLoadPath);
+  observedEngine.FS.rmdir(invalidGenerationRoot);
   const repairedReload = await request("hd_reload");
   const stateAfterRepair = await storedDictionaryState();
   check(
@@ -1692,7 +1716,7 @@ async function main() {
     "the trained import writes one term-only logical package",
     trainedState?.dictionaries?.length === 1
       && trainedPackage?.title === TRAINED_TITLE
-      && trainedPackage?.path === `/dicts/${TRAINED_TITLE}`
+      && ownedGenerationRoot(trainedPackage?.path, TRAINED_TITLE) !== ""
       && trainedPackage?.enabled === true
       && trainedPackage?.termCount === TRAINED_TERMS.length
       && trainedPackage?.frequencyCount === 0
@@ -1703,11 +1727,12 @@ async function main() {
   );
   // The trained dictionary has to be in the store IDBFS repopulates from, not
   // just on the in-memory filesystem where the import ran.
-  const persisted = idb.keys("/dicts").filter((key) => key.startsWith(`/dicts/${TRAINED_TITLE}/`));
+  const trainedPath = trainedPackage?.path ?? "";
+  const persisted = idb.keys("/dicts").filter((key) => key.startsWith(`${trainedPath}/`));
   check(
     "syncfs(false) persisted the marker and dict.zstd, not just the banks",
-    persisted.includes(`/dicts/${TRAINED_TITLE}/dict.zstd`)
-      && persisted.includes(`/dicts/${TRAINED_TITLE}/.hoshidicts_4`),
+    persisted.includes(`${trainedPath}/dict.zstd`)
+      && persisted.includes(`${trainedPath}/.hoshidicts_4`),
     JSON.stringify(persisted.sort()),
   );
   // The real assertion: these bytes only come back if the dictionary the importer
@@ -1740,6 +1765,9 @@ async function main() {
     ),
   });
   const revisionedState = unreferencedStateWrite.state;
+  const fallbackPathBeforeRestart = revisionedState.dictionaries.find(
+    (dictionary) => dictionary.title === TRAINED_TITLE,
+  )?.path;
 
   const restartedEngineService = await import(
     `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}?restart`
@@ -1773,21 +1801,27 @@ async function main() {
     [
       unreferencedImport.ok,
       unreferencedStateWrite.ok,
+      ownedGenerationRoot(fallbackPathBeforeRestart, TRAINED_TITLE) !== "",
       restartedStatus.ok,
       restartedStatus.dictionaryCount,
+      stateAfterRestart?.dictionaries?.[0]?.path,
       stateAfterRestart,
       restartedReload.ok,
       restartedReload.dictionaryCount,
+      stateAfterRestartedReload?.dictionaries?.[0]?.path,
       stateAfterRestartedReload,
     ],
     [
       true,
       true,
       true,
+      true,
       1,
+      fallbackPathBeforeRestart,
       revisionedState,
       true,
       1,
+      fallbackPathBeforeRestart,
       revisionedState,
     ],
   );
