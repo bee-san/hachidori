@@ -784,6 +784,24 @@ async function customBackgroundStage() {
     dictionaries: [customPackage],
   });
   const atomicKeys = storage.sets.at(-1);
+  const changedSource = `${source}追加, ついか, added\r\n`;
+  const changedSemanticRevision = await customDictionarySemanticRevision(
+    parseCustomDictionary(changedSource).entries,
+  );
+  const omittedChangedState = await send("hd_custom_cas", {
+    baseDocumentRevision: committed.document?.revision,
+    baseRevision: committed.state?.revision,
+    text: changedSource,
+    semanticRevision: changedSemanticRevision,
+  });
+  const staleChangedPackage = await send("hd_custom_cas", {
+    baseDocumentRevision: committed.document?.revision,
+    baseRevision: committed.state?.revision,
+    text: changedSource,
+    semanticRevision: changedSemanticRevision,
+    dictionaries: [customPackage],
+  });
+  const afterRejectedDivergence = await send("hd_custom_read");
   const removeThroughOrdinaryCas = await send("hd_state_cas", {
     baseRevision: committed.state?.revision,
     dictionaries: [],
@@ -818,6 +836,9 @@ async function customBackgroundStage() {
     disableThroughOrdinaryCas,
     empty,
     initialState,
+    omittedChangedState,
+    staleChangedPackage,
+    afterRejectedDivergence,
     removeThroughOrdinaryCas,
     removed,
     stale,
@@ -1450,6 +1471,16 @@ async function main() {
       && customBackground.committed.state?.dictionaries?.[0]?.enabled === true
       && JSON.stringify(customBackground.atomicKeys)
         === JSON.stringify(["customDictionarySource", "dictionaryState"]),
+    JSON.stringify(customBackground),
+  );
+  check(
+    "custom CAS binds changed source semantics to the fixed package state",
+    customBackground.omittedChangedState.ok === false
+      && customBackground.staleChangedPackage.ok === false
+      && JSON.stringify(customBackground.afterRejectedDivergence.document)
+        === JSON.stringify(customBackground.committed.document)
+      && JSON.stringify(customBackground.afterRejectedDivergence.state)
+        === JSON.stringify(customBackground.committed.state),
     JSON.stringify(customBackground),
   );
   check(
