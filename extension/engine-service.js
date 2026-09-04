@@ -11,6 +11,7 @@
 
 const WORKER_TARGET = "hoshidicts-worker";
 const DICT_ROOT = "/dicts";
+const REMOVAL_ROOT = `${DICT_ROOT}/.hdw-remove`;
 const IMPORT_ZIP = "/.hdw-archive.zip";
 const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
 
@@ -100,6 +101,7 @@ function usableDictionaryTitle(title) {
     title !== "." &&
     title !== ".." &&
     title !== ".hdw-import" &&
+    title !== ".hdw-remove" &&
     !title.includes("/") &&
     !title.includes("\\") &&
     !title.includes("\0")
@@ -216,24 +218,98 @@ function removeTree(path) {
   FS.rmdir(path);
 }
 
-function kindsFromIndex(path) {
-  try {
-    const json = new TextDecoder().decode(engine.FS.readFile(`${path}/index.json`));
-    const counts = parseJson(json, `${path}/index.json`);
-    const kinds = [];
-    if (Number(counts?.counts?.terms?.total) > 0) kinds.push("term");
-    if (Number(counts?.counts?.termMeta?.freq) > 0) kinds.push("freq");
-    if (Number(counts?.counts?.termMeta?.pitch) > 0 || Number(counts?.counts?.termMeta?.ipa) > 0) {
-      kinds.push("pitch");
-    }
-    if (Number(counts?.counts?.kanji?.total) > 0) kinds.push("kanji");
-    return kinds.length === 0 ? ["term"] : kinds;
-  } catch (error) {
-    return ["term"];
+function removeEmptyDirectory(path) {
+  if (exists(path) && engine.FS.readdir(path).every((name) => name === "." || name === "..")) {
+    engine.FS.rmdir(path);
   }
 }
 
-function listImported() {
+function moveDictionaryFiles(source, destination, markerLast) {
+  const FS = engine.FS;
+  if (!exists(destination)) {
+    FS.mkdir(destination);
+  }
+  const files = FS.readdir(source).filter((name) => name !== "." && name !== "..");
+  for (const name of files) {
+    if (isDirectory(FS.stat(`${source}/${name}`))) {
+      throw new Error("an imported dictionary contains an unsupported nested path");
+    }
+  }
+  const markers = files.filter((name) => MARKER_FILES.includes(name));
+  const data = files.filter((name) => !MARKER_FILES.includes(name));
+  for (const name of markerLast ? [...data, ...markers] : [...markers, ...data]) {
+    FS.rename(`${source}/${name}`, `${destination}/${name}`);
+  }
+  removeEmptyDirectory(source);
+}
+
+function settleStagedRemoval(title, restore) {
+  const stagedPath = `${REMOVAL_ROOT}/${title}`;
+  if (!exists(stagedPath)) {
+    return false;
+  }
+  if (restore) {
+    moveDictionaryFiles(stagedPath, `${DICT_ROOT}/${title}`, true);
+  } else {
+    removeTree(stagedPath);
+  }
+  removeEmptyDirectory(REMOVAL_ROOT);
+  return true;
+}
+
+function count(value) {
+  const number = Math.trunc(Number(value));
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function optionalText(value) {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+function installedAt(importDate, path) {
+  if (typeof importDate === "number" && Number.isFinite(importDate)) {
+    return new Date(importDate).toISOString();
+  }
+  const mtime = engine.FS.stat(`${path}/index.json`).mtime;
+  return new Date(mtime instanceof Date ? mtime.getTime() : Number(mtime) * 1000).toISOString();
+}
+
+async function stableDictionaryId(title) {
+  const bytes = new TextEncoder().encode(title.normalize("NFC"));
+  const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes));
+  return Array.from(digest.subarray(0, 16), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function packageFromIndex(path) {
+  const json = new TextDecoder().decode(engine.FS.readFile(`${path}/index.json`));
+  const index = parseJson(json, `${path}/index.json`);
+  const title = text(index?.title);
+  if (title === "") {
+    throw new Error(`${path}/index.json has no dictionary title`);
+  }
+  return {
+    id: await stableDictionaryId(title),
+    title,
+    displayName: null,
+    path,
+    enabled: true,
+    favorite: false,
+    revision: text(index?.revision),
+    isUpdatable: index?.isUpdatable === true,
+    indexUrl: optionalText(index?.indexUrl),
+    downloadUrl: optionalText(index?.downloadUrl),
+    language: optionalText(index?.sourceLanguage),
+    termCount: count(index?.counts?.terms?.total),
+    frequencyCount: count(index?.counts?.termMeta?.freq),
+    pitchCount: count(index?.counts?.termMeta?.pitch) + count(index?.counts?.termMeta?.ipa),
+    kanjiCount: count(index?.counts?.kanji?.total),
+    mediaCount: count(index?.counts?.media?.total),
+    installedAt: installedAt(index?.importDate, path),
+    lastUpdateCheck: null,
+  };
+}
+
+async function listImported() {
   const FS = engine.FS;
   const dictionaries = [];
   for (const name of FS.readdir(DICT_ROOT)) {
@@ -248,19 +324,10 @@ function listImported() {
       continue;
     }
     if (isDirectory(stat) && MARKER_FILES.some((marker) => exists(`${path}/${marker}`))) {
-      dictionaries.push({ title: name, kinds: kindsFromIndex(path) });
+      dictionaries.push(await packageFromIndex(path));
     }
   }
   return dictionaries;
-}
-
-function entryFor(title, stored) {
-  return {
-    title,
-    path: `${DICT_ROOT}/${title}`,
-    kind: KINDS.includes(stored?.kind) ? stored.kind : "term",
-    enabled: stored?.enabled !== false,
-  };
 }
 
 async function ask(type, fields = {}) {
@@ -278,108 +345,222 @@ async function ask(type, fields = {}) {
   return reply;
 }
 
-async function readStoredDictionaries() {
-  const reply = await ask("hd_dicts_read");
+async function readDictionaryStorage() {
+  const reply = await ask("hd_state_read");
   if (reply.ok !== true) {
-    throw new Error(reply.error || "the service worker could not read the dictionary list");
+    throw new Error(reply.error || "the service worker could not read dictionary state");
   }
-  if (!Array.isArray(reply.dictionaries)) {
-    throw new Error("the service worker returned no dictionary list");
+  if (reply.state !== null && (
+    reply.state?.schemaVersion !== 1
+    || !Number.isInteger(reply.state?.revision)
+    || reply.state.revision < 0
+    || !Array.isArray(reply.state?.dictionaries)
+  )) {
+    throw new Error("the service worker returned invalid dictionary state");
   }
-  return reply.dictionaries;
+  if (reply.legacyDictionaries !== null && !Array.isArray(reply.legacyDictionaries)) {
+    throw new Error("the service worker returned an invalid legacy dictionary list");
+  }
+  return {
+    state: reply.state,
+    legacyDictionaries: reply.legacyDictionaries,
+  };
 }
 
-// `modify` must be a pure function of the stored rows, because a write the worker
-// refuses is retried against a fresh read.
-async function updateStoredDictionaries(modify) {
-  for (let attempt = 0; ; attempt += 1) {
-    const base = await readStoredDictionaries();
-    const next = modify(base);
-    if (JSON.stringify(next) === JSON.stringify(base)) {
-      return next;
+async function readStoredDictionaries() {
+  const { state } = await readDictionaryStorage();
+  return state?.dictionaries ?? [];
+}
+
+function sameDictionaries(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+// A service worker can commit the CAS and disappear before its reply reaches
+// this worker. Read back that one exact revision so callers do not report a
+// failed change which storage already accepted.
+async function commitDictionaryState(baseRevision, dictionaries) {
+  try {
+    return await ask("hd_state_cas", { baseRevision, dictionaries });
+  } catch (error) {
+    const { state } = await readDictionaryStorage();
+    if (state?.revision === baseRevision + 1
+        && sameDictionaries(state.dictionaries, dictionaries)) {
+      return { ok: true, state };
     }
-    const reply = await ask("hd_dicts_write", { dictionaries: next, base });
+    throw error;
+  }
+}
+
+async function recoverPendingRemovals(snapshot) {
+  if (!exists(REMOVAL_ROOT)) {
+    return;
+  }
+  const stored = snapshot.state?.dictionaries ?? snapshot.legacyDictionaries ?? [];
+  const retainedTitles = new Set(stored.map((dictionary) => text(dictionary?.title)));
+  let changed = false;
+  for (const title of engine.FS.readdir(REMOVAL_ROOT)) {
+    if (title === "." || title === ".." || !usableDictionaryTitle(title)) {
+      continue;
+    }
+    changed = settleStagedRemoval(title, retainedTitles.has(title)) || changed;
+  }
+  if (changed) {
+    await persistFilesystem();
+  }
+}
+
+// `modify` must be a pure function of the storage snapshot, because a write the
+// worker refuses is retried against a fresh read.
+async function updateDictionaryState(modify) {
+  for (let attempt = 0; ; attempt += 1) {
+    const snapshot = await readDictionaryStorage();
+    const next = await modify(snapshot);
+    if (snapshot.state !== null && sameDictionaries(next, snapshot.state.dictionaries)) {
+      return snapshot.state;
+    }
+    const baseRevision = snapshot.state?.revision ?? 0;
+    const reply = await commitDictionaryState(baseRevision, next);
     if (reply.ok === true) {
-      return next;
+      if (reply.state?.schemaVersion !== 1
+          || !Number.isInteger(reply.state?.revision)
+          || !Array.isArray(reply.state?.dictionaries)) {
+        throw new Error("the service worker returned invalid committed dictionary state");
+      }
+      return reply.state;
     }
     if (reply.conflict !== true || attempt + 1 >= STORAGE_ATTEMPTS) {
-      throw new Error(reply.error || "the service worker could not save the dictionary list");
+      throw new Error(reply.error || "the service worker could not save dictionary state");
     }
   }
 }
 
-// What hdw_import reported for a title, kept for as long as this document lives
-// so that reconcileEntries() can adopt every bank of an archive whose storage
-// write never landed. Nothing else remembers: the report is gone once hd_import
-// has answered.
-const importedKinds = new Map();
-
-function adoptKinds(title, diskKinds) {
-  return importedKinds.get(title) ?? diskKinds;
+function withStoredPresentation(generated, stored) {
+  return {
+    ...generated,
+    displayName: typeof stored?.displayName === "string" ? stored.displayName : null,
+    enabled: stored?.enabled !== false,
+    favorite: stored?.favorite === true,
+    isUpdatable: stored?.isUpdatable === true || generated.isUpdatable,
+    indexUrl: stored?.indexUrl ?? generated.indexUrl,
+    downloadUrl: stored?.downloadUrl ?? generated.downloadUrl,
+    lastUpdateCheck: stored?.lastUpdateCheck ?? null,
+  };
 }
 
 // Storage holds the load order, the engine holds the data; either can be ahead
-// of the other after a crash, so trust the filesystem for existence and storage
-// for order and kind.
-function reconcileEntries(stored, onDisk) {
+// of the other after a crash, so trust generated index.json for metadata and
+// storage for order and presentation.
+function reconcilePackages(stored, onDisk) {
   const entries = [];
   const listed = new Set();
-  const storedByTitle = new Map();
-  for (const row of stored) {
+  for (const storedPackage of stored) {
+    const title = text(storedPackage?.title);
+    const generated = onDisk.get(title);
+    if (generated !== undefined && !listed.has(title)) {
+      listed.add(title);
+      entries.push(withStoredPresentation(generated, storedPackage));
+    }
+  }
+  for (const [title, generated] of onDisk) {
+    if (!listed.has(title)) {
+      listed.add(title);
+      entries.push(generated);
+    }
+  }
+  return entries;
+}
+
+function migrateLegacyPackages(legacy, onDisk) {
+  const orderedTitles = [];
+  const enabledByTitle = new Map();
+  for (const row of legacy) {
     const title = text(row?.title);
-    if (!onDisk.has(title)) {
+    if (title === "" || !onDisk.has(title)) {
       continue;
     }
-    const rows = storedByTitle.get(title) ?? [];
-    rows.push(row);
-    storedByTitle.set(title, rows);
+    if (!enabledByTitle.has(title)) {
+      orderedTitles.push(title);
+      enabledByTitle.set(title, false);
+    }
+    if (row?.enabled !== false) {
+      enabledByTitle.set(title, true);
+    }
   }
 
-  const appendTitle = (title, diskKinds) => {
-    if (listed.has(title)) {
-      return;
-    }
+  const entries = [];
+  const listed = new Set();
+  for (const title of orderedTitles) {
     listed.add(title);
-    const rows = storedByTitle.get(title) ?? [];
-    for (const kind of adoptKinds(title, diskKinds)) {
-      const storedRow = rows.find((row) => row?.kind === kind);
-      entries.push(entryFor(title, storedRow ?? { kind }));
-    }
-  };
-
-  for (const row of stored) {
-    const title = text(row?.title);
-    if (onDisk.has(title)) {
-      appendTitle(title, onDisk.get(title));
-    }
+    entries.push({ ...onDisk.get(title), enabled: enabledByTitle.get(title) });
   }
-  for (const [title, diskKinds] of onDisk) {
-    appendTitle(title, diskKinds);
+  for (const [title, generated] of onDisk) {
+    if (!listed.has(title)) {
+      entries.push(generated);
+    }
   }
   return entries;
 }
 
 async function reconcile() {
-  const onDisk = new Map(listImported().map(({ title, kinds }) => [title, kinds]));
-  return updateStoredDictionaries((stored) => reconcileEntries(stored, onDisk));
+  await recoverPendingRemovals(await readDictionaryStorage());
+  const onDisk = new Map((await listImported()).map((dictionary) => [dictionary.title, dictionary]));
+  const state = await updateDictionaryState((snapshot) => {
+    if (snapshot.state !== null) {
+      return reconcilePackages(snapshot.state.dictionaries, onDisk);
+    }
+    return migrateLegacyPackages(snapshot.legacyDictionaries ?? [], onDisk);
+  });
+  return state.dictionaries;
 }
 
-function loadDictionaries(entries) {
+function kindsForPackage(dictionary) {
+  const kinds = [
+    ["term", dictionary.termCount],
+    ["freq", dictionary.frequencyCount],
+    ["pitch", dictionary.pitchCount],
+    ["kanji", dictionary.kanjiCount],
+  ]
+    .filter(([, capabilityCount]) => Number(capabilityCount) > 0)
+    .map(([kind]) => kind);
+  return kinds.length === 0 ? ["term"] : kinds;
+}
+
+function loadDictionaries(dictionaries, { strict = false } = {}) {
   engine.ccall("hdw_reset", null, [], []);
-  let count = 0;
-  for (const entry of entries) {
-    const kind = KINDS.indexOf(entry.kind);
-    if (entry.enabled === false || kind < 0) {
+  let loadedCount = 0;
+  for (const dictionary of dictionaries) {
+    if (dictionary.enabled === false) {
       continue;
     }
-    if (engine.ccall("hdw_add_dict", "number", ["string", "number"], [entry.path, kind])) {
-      count += 1;
-    } else {
-      console.warn(`hoshidicts: could not load ${entry.path} as ${entry.kind}: ${lastError()}`);
+    for (const kindName of kindsForPackage(dictionary)) {
+      const kind = KINDS.indexOf(kindName);
+      if (engine.ccall("hdw_add_dict", "number", ["string", "number"], [dictionary.path, kind])) {
+        loadedCount += 1;
+      } else {
+        const error = `could not load ${dictionary.path} as ${kindName}: ${lastError()}`;
+        if (strict) {
+          throw new Error(error);
+        }
+        console.warn(`hoshidicts: ${error}`);
+      }
     }
   }
-  dictionaryCount = count;
+  return loadedCount;
+}
+
+function publishLoadedDictionaries(loadedCount) {
+  dictionaryCount = loadedCount;
   generation += 1;
+}
+
+async function restoreCommittedDictionaries(state = null) {
+  const committed = state ?? (await readDictionaryStorage()).state;
+  if (committed === null) {
+    throw new Error("the committed dictionary state is unavailable");
+  }
+  publishLoadedDictionaries(loadDictionaries(committed.dictionaries, { strict: true }));
+  reloadError = null;
 }
 
 // The only thing that can fail here is the storage round trip through the
@@ -389,7 +570,7 @@ function loadDictionaries(entries) {
 // error is kept for hd_status to report and for the next request to retry.
 async function reloadFromStorage() {
   try {
-    loadDictionaries(await reconcile());
+    publishLoadedDictionaries(loadDictionaries(await reconcile()));
     reloadError = null;
   } catch (error) {
     reloadError = asError(error);
@@ -503,52 +684,20 @@ function normaliseReport(raw) {
   return report;
 }
 
-// One archive can carry term, meta and kanji banks at once, and the engine keeps
-// a separate index per kind: registering the directory under only one of them
-// leaves the rest of the data imported but unreachable, and the settings page has
-// no control for adding a kind. So register every kind the importer actually
-// found, and let the reader turn the ones they do not want off.
-function kindsFor(report) {
-  const kinds = [
-    ["term", report.termCount],
-    ["freq", report.frequencyCount],
-    ["pitch", report.pitchCount],
-    ["kanji", report.kanjiCount],
-  ]
-    .filter(([, count]) => count > 0)
-    .map(([kind]) => kind);
-  // An archive the importer accepted with nothing countable in it is still a term
-  // dictionary as far as the reader is concerned.
-  return kinds.length === 0 ? ["term"] : kinds;
-}
-
-function withImport(stored, report) {
-  const entries = [];
-  const kinds = new Set();
-  for (const row of stored) {
-    if (text(row?.title) !== report.title) {
-      entries.push(row);
-      continue;
-    }
-    // Re-importing keeps the position and enabled state the reader chose.
-    const entry = entryFor(report.title, row);
-    if (kinds.has(entry.kind)) {
-      continue;
-    }
-    kinds.add(entry.kind);
-    entries.push(entry);
+function withImport(stored, generated) {
+  const existingIndex = stored.findIndex((dictionary) =>
+    dictionary?.id === generated.id || text(dictionary?.title) === generated.title);
+  if (existingIndex < 0) {
+    return [...stored, generated];
   }
-  for (const kind of kindsFor(report)) {
-    if (!kinds.has(kind)) {
-      kinds.add(kind);
-      entries.push(entryFor(report.title, { kind }));
-    }
-  }
-  return entries;
+  const next = [...stored];
+  next[existingIndex] = withStoredPresentation(generated, stored[existingIndex]);
+  return next;
 }
 
 async function recordImport(report) {
-  await updateStoredDictionaries((stored) => withImport(stored, report));
+  const generated = await packageFromIndex(`${DICT_ROOT}/${report.title}`);
+  await updateDictionaryState((snapshot) => withImport(snapshot.state?.dictionaries ?? [], generated));
 }
 
 function toBase64(bytes) {
@@ -626,7 +775,7 @@ const HANDLERS = {
     const title = text(message.dictionary);
     const entry = (await readStoredDictionaries()).find((candidate) =>
       candidate?.enabled !== false
-      && candidate?.kind === "term"
+      && kindsForPackage(candidate).includes("term")
       && candidate?.title === title);
     if (!entry) {
       return { results: [], dictionaryCount };
@@ -759,10 +908,6 @@ const HANDLERS = {
         report.error = `${fileName} declares no dictionary title`;
       }
       if (report.success) {
-        // Before recordImport, which is a message round trip and can fail: the
-        // files are already on disk by then, so the reload below would adopt the
-        // directory, and only this report knows which banks it holds.
-        importedKinds.set(report.title, kindsFor(report));
         await persistFilesystem();
         await recordImport(report);
       }
@@ -783,6 +928,50 @@ const HANDLERS = {
     return { report };
   },
 
+  async hd_apply_state(message) {
+    requireEngine();
+    if (!Number.isInteger(message?.baseRevision) || message.baseRevision < 0) {
+      throw new Error("the dictionary state change carried no valid base revision");
+    }
+    if (!Array.isArray(message?.dictionaries)) {
+      throw new Error("the dictionary state change carried no dictionary list");
+    }
+
+    let restorationAttempted = false;
+    try {
+      const loadedCount = loadDictionaries(message.dictionaries, { strict: true });
+      const reply = await commitDictionaryState(message.baseRevision, message.dictionaries);
+      if (reply.ok === true) {
+        publishLoadedDictionaries(loadedCount);
+        reloadError = null;
+        return { state: reply.state };
+      }
+      if (reply.conflict !== true || reply.state === null) {
+        throw new Error(reply.error || "the dictionary state could not be saved");
+      }
+      restorationAttempted = true;
+      await restoreCommittedDictionaries(reply.state);
+      return {
+        ok: false,
+        conflict: true,
+        error: reply.error || "the dictionary state changed while it was being written",
+        state: reply.state,
+      };
+    } catch (error) {
+      if (restorationAttempted) {
+        reloadError = asError(error);
+        throw error;
+      }
+      try {
+        const { state } = await readDictionaryStorage();
+        await restoreCommittedDictionaries(state);
+      } catch (restoreError) {
+        reloadError = asError(restoreError);
+      }
+      throw error;
+    }
+  },
+
   async hd_reload() {
     requireEngine();
     await reloadFromStorage();
@@ -795,36 +984,96 @@ const HANDLERS = {
     if (!usableDictionaryTitle(title)) {
       throw new Error("the remove request carried an unusable dictionary title");
     }
-    const stored = await readStoredDictionaries();
-    const remaining = stored.filter((row) => text(row?.title) !== title);
-    if (remaining.length === stored.length && !exists(`${DICT_ROOT}/${title}`)) {
+    const snapshot = await readDictionaryStorage();
+    if (snapshot.state === null) {
+      throw new Error("the dictionary state is unavailable");
+    }
+    await recoverPendingRemovals(snapshot);
+
+    const remaining = snapshot.state.dictionaries.filter(
+      (dictionary) => text(dictionary?.title) !== title,
+    );
+    const installedPath = `${DICT_ROOT}/${title}`;
+    if (remaining.length === snapshot.state.dictionaries.length && !exists(installedPath)) {
       // Nothing to do, and reloading for nothing would invalidate the renderer's
       // media cache.
       return {};
     }
 
-    // Unload first: the query keeps the dictionary's files open.
-    engine.ccall("hdw_reset", null, [], []);
-    dictionaryCount = 0;
-    generation += 1;
-
-    // Everything from here on can fail -- an OPFS node can refuse to go -- and
-    // the reset above has already dropped the
-    // dictionaries the user is keeping. Reload whatever survived either way, or
-    // every tab would report no dictionaries until the next storage edit.
+    let loadedCount;
     try {
-      removeTree(`${DICT_ROOT}/${title}`);
-      await persistFilesystem();
-      await updateStoredDictionaries((rows) => rows.filter((row) => text(row?.title) !== title));
-      importedKinds.delete(title);
-    } finally {
-      // As in hd_import: the failure is in reloadError, so hd_status says so and
-      // the next lookup retries rather than reporting no dictionaries.
-      try {
-        await reloadFromStorage();
-      } catch (error) {
-        console.error(`hoshidicts: could not reload after the removal: ${describe(error)}`);
+      loadedCount = loadDictionaries(remaining, { strict: true });
+    } catch (error) {
+      await restoreCommittedDictionaries(snapshot.state);
+      throw error;
+    }
+
+    const stagedPath = `${REMOVAL_ROOT}/${title}`;
+    let casAttempted = false;
+    try {
+      if (exists(installedPath)) {
+        if (!exists(REMOVAL_ROOT)) {
+          engine.FS.mkdir(REMOVAL_ROOT);
+        }
+        moveDictionaryFiles(installedPath, stagedPath, false);
       }
+      await persistFilesystem();
+
+      casAttempted = true;
+      const reply = await commitDictionaryState(snapshot.state.revision, remaining);
+      if (reply.ok !== true) {
+        if (reply.conflict !== true || reply.state === null) {
+          throw new Error(reply.error || "the dictionary removal could not be saved");
+        }
+        const retained = reply.state.dictionaries.some(
+          (dictionary) => text(dictionary?.title) === title,
+        );
+        if (settleStagedRemoval(title, retained)) {
+          await persistFilesystem();
+        }
+        await restoreCommittedDictionaries(reply.state);
+        return {
+          ok: false,
+          conflict: true,
+          error: reply.error || "the dictionary state changed during removal",
+          state: reply.state,
+        };
+      }
+
+      publishLoadedDictionaries(loadedCount);
+      reloadError = null;
+    } catch (error) {
+      try {
+        let state = snapshot.state;
+        if (casAttempted) {
+          const current = await readDictionaryStorage();
+          if (current.state === null) {
+            throw new Error("the dictionary state is unavailable during removal rollback");
+          }
+          state = current.state;
+        }
+        const retained = state.dictionaries.some(
+          (dictionary) => text(dictionary?.title) === title,
+        );
+        if (settleStagedRemoval(title, retained)) {
+          await persistFilesystem();
+        }
+        await restoreCommittedDictionaries(state);
+      } catch (restoreError) {
+        reloadError = asError(restoreError);
+        throw new Error(`${describe(error)}; removal rollback failed: ${describe(restoreError)}`);
+      }
+      throw error;
+    }
+
+    // The package is no longer reachable through storage or the live engine.
+    // Cleanup may be retried by reconcile() after a crash or filesystem error.
+    try {
+      if (settleStagedRemoval(title, false)) {
+        await persistFilesystem();
+      }
+    } catch (error) {
+      console.warn(`hoshidicts: could not finish removing ${title}: ${describe(error)}`);
     }
     return {};
   },

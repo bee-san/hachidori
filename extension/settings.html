@@ -144,24 +144,27 @@
     <template id="dict-row-template">
       <li class="dict-row">
         <span class="dict-rank" aria-hidden="true"></span>
-        <span class="dict-title"></span>
-        <label class="cell">
-          <span class="cell-label">Kind</span>
-          <select class="dict-kind">
-            <option value="term">Terms</option>
-            <option value="freq">Frequency</option>
-            <option value="pitch">Pitch accent</option>
-            <option value="kanji">Kanji</option>
-          </select>
-        </label>
+        <div class="dict-main">
+          <div class="dict-heading">
+            <span class="dict-title"></span>
+            <span class="dict-favorite" title="Favourite" aria-label="Favourite">&#9733;</span>
+          </div>
+          <span class="dict-canonical"></span>
+          <div class="dict-badges" aria-label="Dictionary entry counts"></div>
+          <span class="dict-metadata"></span>
+          <label class="dict-alias">
+            <span class="cell-label">Display name</span>
+            <input class="dict-display-name" type="text" autocomplete="off" aria-label="Display name" title="Display name" />
+          </label>
+        </div>
         <label class="cell toggle">
-          <input type="checkbox" class="dict-enabled" />
+          <input type="checkbox" class="dict-enabled" aria-label="Enabled" title="Enabled" />
           <span class="cell-label">Enabled</span>
         </label>
         <span class="dict-actions">
           <button type="button" class="ghost dict-up" aria-label="Move up" title="Move up">&#8593;</button>
           <button type="button" class="ghost dict-down" aria-label="Move down" title="Move down">&#8595;</button>
-          <button type="button" class="ghost danger dict-remove">Remove</button>
+          <button type="button" class="ghost danger dict-remove" aria-label="Remove" title="Remove">Remove</button>
         </span>
       </li>
     </template>

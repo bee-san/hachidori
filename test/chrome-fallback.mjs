@@ -170,7 +170,7 @@ try {
     { timeout: 120_000 },
   );
   await page.waitForFunction(
-    () => document.querySelector("#engine-status")?.textContent?.includes("4 dictionaries loaded"),
+    () => document.querySelector("#engine-status")?.textContent?.includes("1 dictionary enabled"),
     { timeout: 90_000 },
   );
   let observed = await inspect(page);
@@ -189,7 +189,7 @@ try {
   await extensionId(browser);
   page = await openSettings(browser, id);
   await page.waitForFunction(
-    () => document.querySelector("#engine-status")?.textContent?.includes("4 dictionaries loaded"),
+    () => document.querySelector("#engine-status")?.textContent?.includes("1 dictionary enabled"),
     { timeout: 90_000 },
   );
   observed = await inspect(page);

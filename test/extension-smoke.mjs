@@ -41,6 +41,50 @@ const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
 const EXTENSION_ORIGIN = "chrome-extension://hachidorismokeextensionid";
 
 const FIXTURE_TITLE = "hachidori-fixture";
+const DICTIONARY_PACKAGE_KEYS = [
+  "displayName",
+  "downloadUrl",
+  "enabled",
+  "favorite",
+  "frequencyCount",
+  "id",
+  "indexUrl",
+  "installedAt",
+  "isUpdatable",
+  "kanjiCount",
+  "language",
+  "lastUpdateCheck",
+  "mediaCount",
+  "path",
+  "pitchCount",
+  "revision",
+  "termCount",
+  "title",
+];
+
+function genericPackage(overrides = {}) {
+  return {
+    id: "0228c6d48ecf92b90092974400dbf390",
+    title: "Generic",
+    displayName: null,
+    path: "/dicts/Generic",
+    enabled: true,
+    favorite: false,
+    revision: "test-1",
+    isUpdatable: false,
+    indexUrl: null,
+    downloadUrl: null,
+    language: "ja",
+    termCount: 1,
+    frequencyCount: 0,
+    pitchCount: 0,
+    kanjiCount: 0,
+    mediaCount: 0,
+    installedAt: "2026-09-04T00:00:00.000Z",
+    lastUpdateCheck: null,
+    ...overrides,
+  };
+}
 // Where chrome-e2e.mjs already keeps puppeteer-core, so one out-of-repo tree
 // holds every test dependency. HACHIDORI_JSDOM or NODE_PATH override it.
 const DEFAULT_JSDOM_TREE = resolve(
@@ -328,6 +372,25 @@ function makeStorage() {
           }
           for (const listener of changeListeners) {
             setTimeout(() => listener(structuredClone(changes), "local"), 0);
+          }
+          if (typeof callback === "function") {
+            setTimeout(callback, 0);
+            return undefined;
+          }
+          return Promise.resolve();
+        },
+        remove(keys, callback) {
+          const changes = {};
+          for (const key of Array.isArray(keys) ? keys : [keys]) {
+            if (local.has(key)) {
+              changes[key] = { oldValue: structuredClone(local.get(key)) };
+              local.delete(key);
+            }
+          }
+          if (Object.keys(changes).length > 0) {
+            for (const listener of changeListeners) {
+              setTimeout(() => listener(structuredClone(changes), "local"), 0);
+            }
           }
           if (typeof callback === "function") {
             setTimeout(callback, 0);
@@ -768,8 +831,10 @@ async function main() {
     `file://${resolve(EXTENSION, "vendor", "hoshidicts.mjs").replace(/\\/gu, "/")}?service`
   );
   let forwardedLowRam = null;
+  let observedEngine = null;
   const createObservedHoshidicts = async (...args) => {
     const module = await createHoshidicts(...args);
+    observedEngine = module;
     const ccall = module.ccall.bind(module);
     module.ccall = (name, returnType, argumentTypes, argumentValues) => {
       if (name === "hdw_import") {
@@ -779,8 +844,16 @@ async function main() {
     };
     return module;
   };
+  let loseNextStateCasReply = false;
   engineService.configureEngineService(
-    (message) => offscreenChrome.runtime.sendMessage(message),
+    async (message) => {
+      const reply = await offscreenChrome.runtime.sendMessage(message);
+      if (loseNextStateCasReply && message.type === "hd_state_cas") {
+        loseNextStateCasReply = false;
+        throw new Error("injected lost CAS reply");
+      }
+      return reply;
+    },
     { createHoshidicts: createObservedHoshidicts, storageBackend: "idbfs", lowRam: true },
   );
   engineService.startEngine();
@@ -831,15 +904,20 @@ async function main() {
   );
 
   section("storage ownership and hd_import");
-  // The engine's view of this key now goes offscreen -> worker -> chrome.storage,
-  // so read it the way the settings page does: straight out of storage.
-  const storedDictionaries = async () => (await storage.api().local.get("dictionaries")).dictionaries ?? [];
-  equal("an empty profile lists no dictionaries", await storedDictionaries(), []);
-  const readBack = await pageChrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_dicts_read" });
+  // The engine's view of this key goes offscreen -> worker -> chrome.storage,
+  // while this harness can inspect the worker-owned storage map directly.
+  const storedDictionaryState = async () =>
+    (await storage.api().local.get("dictionaryState")).dictionaryState;
+  equal("an empty profile has revisioned dictionary state", await storedDictionaryState(), {
+    schemaVersion: 1,
+    revision: 1,
+    dictionaries: [],
+  });
+  const readBack = await pageChrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_read" });
   equal(
-    "the service worker answers hd_dicts_read without relaying it",
-    [readBack?.ok, readBack?.dictionaries, bus.log.some((row) => row.type === "hd_dicts_read" && row.relayed)],
-    [true, [], false],
+    "the service worker answers hd_state_read without relaying it",
+    [readBack?.ok, readBack?.state, bus.log.some((row) => row.type === "hd_state_read" && row.relayed)],
+    [true, { schemaVersion: 1, revision: 1, dictionaries: [] }, false],
   );
 
   const zip = new Uint8Array(await readFile(FIXTURE));
@@ -880,34 +958,225 @@ async function main() {
     ],
   );
 
-  // The fixture is a combined dictionary, and the engine indexes each kind
-  // separately: one storage row per kind found is what makes its frequencies,
-  // pitches and kanji resolvable rather than imported-but-unreachable.
-  equal(
-    "the import writes one storage row per kind, in schema-D shape",
-    await storedDictionaries(),
-    ["term", "freq", "pitch", "kanji"].map((kind) => ({
+  // The fixture carries four engine capabilities, but it is one installed
+  // package. The native dictionaryCount below deliberately remains four.
+  const importedState = await storedDictionaryState();
+  const importedPackage = importedState?.dictionaries?.[0];
+  check(
+    "the import writes one logical dictionary package with complete metadata",
+    importedState?.schemaVersion === 1
+      && Number.isInteger(importedState.revision)
+      && importedState.revision > 0
+      && importedState.dictionaries.length === 1
+      && JSON.stringify(Object.keys(importedPackage ?? {}).sort()) === JSON.stringify(DICTIONARY_PACKAGE_KEYS)
+      && /^[0-9a-f]{32}$/u.test(importedPackage?.id ?? "")
+      && importedPackage.title === FIXTURE_TITLE
+      && importedPackage.displayName === null
+      && importedPackage.path === `/dicts/${FIXTURE_TITLE}`
+      && importedPackage.enabled === true
+      && importedPackage.favorite === false
+      && importedPackage.revision === "test-1"
+      && importedPackage.isUpdatable === false
+      && importedPackage.indexUrl === null
+      && importedPackage.downloadUrl === null
+      && importedPackage.language === "ja"
+      && importedPackage.termCount === EXPECTED.termCount
+      && importedPackage.frequencyCount === EXPECTED.frequencyCount
+      && importedPackage.pitchCount === EXPECTED.pitchCount
+      && importedPackage.kanjiCount === EXPECTED.kanjiCount
+      && importedPackage.mediaCount === EXPECTED.mediaCount
+      && typeof importedPackage.installedAt === "string"
+      && Number.isFinite(Date.parse(importedPackage.installedAt))
+      && importedPackage.lastUpdateCheck === null,
+    JSON.stringify(importedState),
+  );
+  const afterLogicalImport = await request("hd_status");
+  equal("one logical package loads all four native capabilities", afterLogicalImport.dictionaryCount, 4);
+  check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
+
+  await storage.api().local.remove("dictionaryState");
+  await storage.api().local.set({
+    dictionaries: ["term", "freq", "pitch", "kanji"].map((kind, index) => ({
       title: FIXTURE_TITLE,
       path: `/dicts/${FIXTURE_TITLE}`,
       kind,
-      enabled: true,
+      enabled: index !== 0,
     })),
-  );
-  check("syncfs(false) wrote the dictionary to IndexedDB", idb.count("/dicts") > 0, `${idb.count("/dicts")} rows in ${idb.names()}`);
-
-  await storage.api().local.set({
-    dictionaries: [{
-      title: FIXTURE_TITLE,
-      path: `/dicts/${FIXTURE_TITLE}`,
-      kind: "term",
-      enabled: true,
-    }],
   });
-  const reloaded = await request("hd_reload");
+  const preMigrationOptions = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    options: {
+      frequencyDictionary: FIXTURE_TITLE,
+      kanjiClickDictionary: FIXTURE_TITLE,
+    },
+  });
   equal(
-    "reconciliation restores kinds added by a same-title replacement",
-    [reloaded.ok, reloaded.dictionaryCount, (await storedDictionaries()).map((row) => row.kind)],
-    [true, 4, ["term", "freq", "pitch", "kanji"]],
+    "an options write preserves valid dictionary selections before legacy state migrates",
+    [preMigrationOptions?.options?.frequencyDictionary, preMigrationOptions?.options?.kanjiClickDictionary],
+    [FIXTURE_TITLE, FIXTURE_TITLE],
+  );
+  const migratedReload = await request("hd_reload");
+  const migratedState = await storedDictionaryState();
+  const legacyAfterMigration = await storage.api().local.get("dictionaries");
+  const optionsAfterMigration = (await storage.api().local.get("options")).options;
+  check(
+    "legacy capability rows migrate once into the generated logical package",
+    migratedReload.ok === true
+      && migratedReload.dictionaryCount === 4
+      && migratedState?.schemaVersion === 1
+      && migratedState.revision === 1
+      && migratedState.dictionaries?.length === 1
+      && migratedState.dictionaries[0].id === importedPackage.id
+      && migratedState.dictionaries[0].enabled === true
+      && migratedState.dictionaries[0].frequencyCount === EXPECTED.frequencyCount
+      && optionsAfterMigration?.frequencyDictionary === FIXTURE_TITLE
+      && optionsAfterMigration?.kanjiClickDictionary?.title === FIXTURE_TITLE
+      && optionsAfterMigration?.kanjiClickDictionary?.kind === "kanji"
+      && !Object.prototype.hasOwnProperty.call(legacyAfterMigration, "dictionaries"),
+    JSON.stringify({ migratedReload, migratedState, legacyAfterMigration }),
+  );
+
+  const firstWriterDictionaries = migratedState.dictionaries.map((entry) => ({
+    ...entry,
+    favorite: true,
+  }));
+  const staleWriterDictionaries = migratedState.dictionaries.map((entry) => ({
+    ...entry,
+    displayName: "stale writer",
+  }));
+  const firstWriter = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: migratedState.revision,
+    dictionaries: firstWriterDictionaries,
+  });
+  const staleWriter = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: migratedState.revision,
+    dictionaries: staleWriterDictionaries,
+  });
+  const stateAfterConflict = await storedDictionaryState();
+  check(
+    "dictionary state has one serialized compare-and-swap owner",
+    firstWriter?.ok === true
+      && firstWriter.state?.revision === migratedState.revision + 1
+      && firstWriter.state?.dictionaries?.[0]?.favorite === true
+      && staleWriter?.ok === false
+      && staleWriter.conflict === true
+      && JSON.stringify(staleWriter.state) === JSON.stringify(firstWriter.state)
+      && JSON.stringify(stateAfterConflict) === JSON.stringify(firstWriter.state),
+    JSON.stringify({ firstWriter, staleWriter, stateAfterConflict }),
+  );
+
+  const incompleteDictionaries = stateAfterConflict.dictionaries.map((entry) => ({
+    ...entry,
+    frequencyCount: 0,
+    pitchCount: 0,
+    kanjiCount: 0,
+    mediaCount: 0,
+  }));
+  const selectedOptions = {
+    frequencyDictionary: FIXTURE_TITLE,
+    kanjiClickDictionary: { title: FIXTURE_TITLE, kind: "kanji" },
+  };
+  await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    options: selectedOptions,
+  });
+  await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_state_cas",
+    baseRevision: stateAfterConflict.revision,
+    dictionaries: incompleteDictionaries,
+  });
+  const optionsAfterCapabilityRemoval = (await storage.api().local.get("options")).options;
+  const staleOptionsWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    options: selectedOptions,
+  });
+  equal(
+    "state commits atomically prune invalid selectors and stale pages cannot restore them",
+    [
+      optionsAfterCapabilityRemoval?.frequencyDictionary,
+      optionsAfterCapabilityRemoval?.kanjiClickDictionary,
+      staleOptionsWrite?.options?.frequencyDictionary,
+      staleOptionsWrite?.options?.kanjiClickDictionary,
+    ],
+    ["", "", "", ""],
+  );
+  const reloaded = await request("hd_reload");
+  const reconciledState = await storedDictionaryState();
+  const reconciledPackage = reconciledState?.dictionaries?.[0];
+  equal(
+    "reconciliation restores package capabilities without changing its identity or presentation",
+    [
+      reloaded.ok,
+      reloaded.dictionaryCount,
+      reconciledState?.dictionaries?.length,
+      reconciledPackage?.id,
+      reconciledPackage?.favorite,
+      reconciledPackage?.termCount,
+      reconciledPackage?.frequencyCount,
+      reconciledPackage?.pitchCount,
+      reconciledPackage?.kanjiCount,
+      reconciledPackage?.mediaCount,
+    ],
+    [
+      true,
+      4,
+      1,
+      importedPackage.id,
+      true,
+      EXPECTED.termCount,
+      EXPECTED.frequencyCount,
+      EXPECTED.pitchCount,
+      EXPECTED.kanjiCount,
+      EXPECTED.mediaCount,
+    ],
+  );
+
+  const disabledDictionaries = reconciledState.dictionaries.map((dictionary) => ({
+    ...dictionary,
+    enabled: false,
+  }));
+  loseNextStateCasReply = true;
+  const disabled = await request("hd_apply_state", {
+    baseRevision: reconciledState.revision,
+    dictionaries: disabledDictionaries,
+  });
+  const disabledStatus = await request("hd_status");
+  check(
+    "a package-wide state change survives a lost CAS reply without splitting storage and native state",
+    disabled.ok === true
+      && disabled.state?.dictionaries?.[0]?.enabled === false
+      && disabledStatus.dictionaryCount === 0,
+    JSON.stringify({ disabled, disabledStatus }),
+  );
+  const staleEnable = await request("hd_apply_state", {
+    baseRevision: reconciledState.revision,
+    dictionaries: reconciledState.dictionaries,
+  });
+  const afterStaleEnable = await request("hd_status");
+  check(
+    "a stale package change restores the committed native load set",
+    staleEnable.ok === false
+      && staleEnable.conflict === true
+      && staleEnable.state?.dictionaries?.[0]?.enabled === false
+      && afterStaleEnable.dictionaryCount === 0,
+    JSON.stringify({ staleEnable, afterStaleEnable }),
+  );
+  const reenabled = await request("hd_apply_state", {
+    baseRevision: disabled.state.revision,
+    dictionaries: reconciledState.dictionaries,
+  });
+  check(
+    "an enabled logical package restores every native capability",
+    reenabled.ok === true && (await request("hd_status")).dictionaryCount === 4,
+    JSON.stringify(reenabled),
   );
 
   const scratchTitle = ".hdw-archive.zip";
@@ -925,6 +1194,16 @@ async function main() {
     "the scratch-title regression dictionary can be removed normally",
     scratchTitleRemoval.ok === true,
     JSON.stringify(scratchTitleRemoval),
+  );
+  const removalRootImport = await request("hd_import", {
+    blobUrl: createObjectURL(buildTitledZip(".hdw-remove")),
+    fileName: "reserved-removal-root.zip",
+  });
+  check(
+    "the removal staging root cannot be imported as a dictionary title",
+    removalRootImport.ok === false
+      && !(await storedDictionaryState()).dictionaries.some((entry) => entry.title === ".hdw-remove"),
+    JSON.stringify(removalRootImport),
   );
 
   section("lookup, kanji, styles, media");
@@ -1084,38 +1363,73 @@ async function main() {
         `  NODE_PATH=${DEFAULT_JSDOM_TREE}/node_modules node test/extension-smoke.mjs`,
     );
   }
+  const settingsConflict = await settingsConflictStage();
+  check(
+    "settings preserve a concurrent alias draft, queue its next action, and restore a rejected edit",
+    settingsConflict?.draftSurvived === true
+      && settingsConflict.secondActionTargetSurvived === true
+      && settingsConflict.casRequests?.length === 2
+      && settingsConflict.casRequests[0].type === "hd_state_cas"
+      && settingsConflict.casRequests[0].baseRevision === 8
+      && settingsConflict.casRequests[0].dictionaries[0].displayName === "My draft"
+      && settingsConflict.casRequests[0].dictionaries[0].favorite === true
+      && settingsConflict.casRequests[1].type === "hd_apply_state"
+      && settingsConflict.casRequests[1].baseRevision === 9
+      && settingsConflict.casRequests[1].dictionaries[0].displayName === "My draft"
+      && settingsConflict.casRequests[1].dictionaries[0].enabled === false
+      && settingsConflict.directDictionaryWrites === 0
+      && settingsConflict.enabled === true
+      && settingsConflict.kanjiChoice === true
+      && settingsConflict.title === "Concurrent final"
+      && settingsConflict.canonical === "Generic"
+      && settingsConflict.favorite === true
+      && settingsConflict.checkboxFocused === true
+      && settingsConflict.conflictStatus.includes("not saved")
+      && settingsConflict.removalControlsBlocked === true
+      && settingsConflict.removalControlsRestored === true,
+    JSON.stringify(settingsConflict),
+  );
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
-    Array.isArray(staleKanjiRenders) && staleKanjiRenders.length === 0,
+    Array.isArray(staleKanjiRenders?.renders) && staleKanjiRenders.renders.length === 0,
     JSON.stringify(staleKanjiRenders),
   );
   const staleBackRenders = await staleKanjiResponseStage("back");
   check(
     "Back invalidates an in-flight clicked-kanji lookup",
-    Array.isArray(staleBackRenders) && staleBackRenders.length === 1,
+    Array.isArray(staleBackRenders?.renders) && staleBackRenders.renders.length === 1,
     JSON.stringify(staleBackRenders),
   );
   const staleInitialStorageRenders = await staleKanjiResponseStage("initial-storage");
   check(
-    "initial storage hydration invalidates an in-flight clicked-kanji lookup",
-    Array.isArray(staleInitialStorageRenders) && staleInitialStorageRenders.length === 0,
+    "initial dictionary hydration invalidates the lookup and hides its stale popup",
+    Array.isArray(staleInitialStorageRenders?.renders)
+      && staleInitialStorageRenders.renders.length === 0
+      && staleInitialStorageRenders.popupHidden === true,
     JSON.stringify(staleInitialStorageRenders),
   );
 
   section("hd_remove");
-  // hd_remove unloads every dictionary before it deletes anything, so if the
-  // steps after that throw it must still reload what survived: otherwise every
-  // tab reports no dictionaries until the next storage edit. A storage row for a
-  // title that was never imported is the cheapest way in -- nothing on disk is
-  // touched, so the injected storage failure is the only failure.
-  const storedRows = await storedDictionaries();
-  await storage.api().local.set({
-    dictionaries: [...storedRows, { title: "ghost", path: "/dicts/ghost", kind: "term", enabled: true }],
-  });
+  const rename = observedEngine.FS.rename.bind(observedEngine.FS);
+  observedEngine.FS.rename = (source, destination) => {
+    if ((observedEngine.FS.stat(source).mode & 0o170000) === 0o040000) {
+      throw new Error("directory rename is unavailable");
+    }
+    return rename(source, destination);
+  };
+  // A storage failure after the real package has moved aside must restore both
+  // the generated files and the live engine before reporting failure.
+  const stateBeforeFailedRemove = await storedDictionaryState();
   storage.failNextSet("injected storage failure");
-  const failedRemove = await request("hd_remove", { title: "ghost" });
-  check("a remove whose storage write fails reports the failure", failedRemove.ok === false, JSON.stringify(failedRemove));
+  const failedRemove = await request("hd_remove", { title: FIXTURE_TITLE });
+  const stateAfterFailedRemove = await storedDictionaryState();
+  check(
+    "a remove whose storage write fails reports the failure",
+    failedRemove.ok === false
+      && JSON.stringify(stateAfterFailedRemove) === JSON.stringify(stateBeforeFailedRemove),
+    JSON.stringify({ failedRemove, stateAfterFailedRemove }),
+  );
   const afterFailedRemove = await request("hd_status");
   equal(
     "a failed remove reloads the dictionaries it unloaded",
@@ -1135,7 +1449,7 @@ async function main() {
   check("hd_remove succeeds", removed.ok === true, JSON.stringify(removed));
   const afterRemove = await request("hd_status");
   equal("nothing is loaded after a remove", [afterRemove.ready, afterRemove.dictionaryCount], [true, 0]);
-  equal("the storage rows are gone", await storedDictionaries(), []);
+  equal("the logical dictionary inventory is empty", (await storedDictionaryState()).dictionaries, []);
   const generationBefore = afterRemove.generation;
   const noop = await request("hd_remove", { title: "never imported" });
   const afterNoop = await request("hd_status");
@@ -1171,12 +1485,23 @@ async function main() {
     [trainedStatus.ok, trainedStatus.dictionaryCount],
     [true, 1],
   );
-  equal("the trained import writes one term row", await storedDictionaries(), [
-    { title: TRAINED_TITLE, path: `/dicts/${TRAINED_TITLE}`, kind: "term", enabled: true },
-  ]);
-  // dict.zstd is the one file whose absence the engine cannot report: query.cpp
-  // builds an empty DDict from it and every glossary decompresses to "". So it has
-  // to be in the store IDBFS repopulates from, not just on the in-memory FS.
+  const trainedState = await storedDictionaryState();
+  const trainedPackage = trainedState?.dictionaries?.[0];
+  check(
+    "the trained import writes one term-only logical package",
+    trainedState?.dictionaries?.length === 1
+      && trainedPackage?.title === TRAINED_TITLE
+      && trainedPackage?.path === `/dicts/${TRAINED_TITLE}`
+      && trainedPackage?.enabled === true
+      && trainedPackage?.termCount === TRAINED_TERMS.length
+      && trainedPackage?.frequencyCount === 0
+      && trainedPackage?.pitchCount === 0
+      && trainedPackage?.kanjiCount === 0
+      && trainedPackage?.mediaCount === 0,
+    JSON.stringify(trainedState),
+  );
+  // The trained dictionary has to be in the store IDBFS repopulates from, not
+  // just on the in-memory filesystem where the import ran.
   const persisted = idb.keys("/dicts").filter((key) => key.startsWith(`/dicts/${TRAINED_TITLE}/`));
   check(
     "syncfs(false) persisted the marker and dict.zstd, not just the banks",
@@ -1240,6 +1565,182 @@ async function loadJsdom() {
   }
 }
 
+async function settingsConflictStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) {
+    return null;
+  }
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+    url: `${EXTENSION_ORIGIN}/settings.html`,
+  });
+  const { window } = dom;
+  let state = {
+    schemaVersion: 1,
+    revision: 7,
+    dictionaries: [genericPackage()],
+  };
+  let storageListener = null;
+  const casRequests = [];
+  let directDictionaryWrites = 0;
+  let removeStarted = false;
+  let releaseRemove = null;
+  window.chrome = {
+    runtime: {
+      id: "hachidorisettingssmoke",
+      async sendMessage(message) {
+        if (message.type === "hd_state_read") {
+          return { ok: true, state: structuredClone(state) };
+        }
+        if (message.type === "hd_state_cas") {
+          casRequests.push({
+            type: message.type,
+            baseRevision: message.baseRevision,
+            dictionaries: structuredClone(message.dictionaries),
+          });
+          state = {
+            schemaVersion: 1,
+            revision: state.revision + 1,
+            dictionaries: structuredClone(message.dictionaries),
+          };
+          storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+          return { ok: true, state: structuredClone(state) };
+        }
+        if (message.type === "hd_apply_state") {
+          casRequests.push({
+            type: message.type,
+            baseRevision: message.baseRevision,
+            dictionaries: structuredClone(message.dictionaries),
+          });
+          state = {
+            schemaVersion: 1,
+            revision: state.revision + 1,
+            dictionaries: [{
+              ...state.dictionaries[0],
+              displayName: "Concurrent final",
+              enabled: true,
+              favorite: true,
+            }],
+          };
+          storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+          return {
+            ok: false,
+            conflict: true,
+            error: "simulated change from another settings page",
+            state: structuredClone(state),
+          };
+        }
+        if (message.type === "hd_status") {
+          return { ok: true, ready: true, loading: false, dictionaryCount: 0 };
+        }
+        if (message.type === "hd_options_write") {
+          return { ok: true, options: structuredClone(message.options) };
+        }
+        if (message.type === "hd_remove") {
+          removeStarted = true;
+          return new Promise((resolveRemove) => {
+            releaseRemove = () => resolveRemove({ ok: false, error: "simulated held removal" });
+          });
+        }
+        throw new Error(`unexpected settings request ${message.type}`);
+      },
+    },
+    storage: {
+      local: {
+        async get() {
+          return { options: { kanjiClickDictionary: "" } };
+        },
+        async set(values) {
+          if (values.dictionaryState !== undefined || values.dictionaries !== undefined) {
+            directDictionaryWrites += 1;
+          }
+        },
+      },
+      onChanged: {
+        addListener(listener) {
+          storageListener = listener;
+        },
+      },
+    },
+  };
+  window.eval(readFileSync(resolve(EXTENSION, "settings.js"), "utf8"));
+
+  const deadline = Date.now() + 2000;
+  let displayName = null;
+  while (Date.now() < deadline) {
+    displayName = window.document.querySelector("#dict-list .dict-display-name");
+    if (displayName) break;
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  if (!displayName) {
+    dom.window.close();
+    return { error: "the settings dictionary row did not render" };
+  }
+
+  displayName.focus();
+  displayName.value = "My draft";
+  state = {
+    ...state,
+    revision: 8,
+    dictionaries: [{
+      ...state.dictionaries[0],
+      displayName: "Other writer",
+      favorite: true,
+    }],
+  };
+  storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+  const draftSurvived = displayName.isConnected
+    && window.document.activeElement === displayName
+    && displayName.value === "My draft";
+
+  displayName.dispatchEvent(new window.Event("change", { bubbles: true }));
+  const checkbox = window.document.querySelector("#dict-list .dict-enabled");
+  const secondActionTargetSurvived = checkbox?.isConnected === true && checkbox.disabled === false;
+  checkbox?.focus();
+  checkbox.checked = false;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  const selectedValue = JSON.stringify({ title: "Generic", kind: "term" });
+  while (casRequests.length < 2 && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  await new Promise((done) => window.setTimeout(done, 0));
+  const conflictStatus = window.document.getElementById("engine-status")?.textContent ?? "";
+  const checkboxFocused = window.document.activeElement?.classList.contains("dict-enabled") === true;
+
+  window.confirm = () => true;
+  window.document.querySelector("#dict-list .dict-remove")?.click();
+  while (!removeStarted && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  const removalControlsBlocked = [...window.document.querySelectorAll("#dict-list input, #dict-list button")]
+    .every((control) => control.disabled);
+  releaseRemove?.();
+  await new Promise((done) => window.setTimeout(done, 0));
+  const removalControlsRestored = [...window.document.querySelectorAll("#dict-list input, #dict-list button")]
+    .some((control) => !control.disabled);
+
+  const result = {
+    draftSurvived,
+    secondActionTargetSurvived,
+    casRequests,
+    directDictionaryWrites,
+    enabled: window.document.querySelector("#dict-list .dict-enabled")?.checked,
+    kanjiChoice: [...window.document.querySelectorAll("#opt-kanji-dictionary option")]
+      .some((option) => option.value === selectedValue),
+    title: window.document.querySelector("#dict-list .dict-title")?.textContent,
+    canonical: window.document.querySelector("#dict-list .dict-canonical")?.textContent,
+    favorite: window.document.querySelector("#dict-list .dict-favorite")?.hidden === false,
+    checkboxFocused,
+    conflictStatus,
+    removalControlsBlocked,
+    removalControlsRestored,
+  };
+  dom.window.close();
+  return result;
+}
+
 async function staleKanjiResponseStage(invalidation) {
   const jsdom = await loadJsdom();
   if (jsdom === null) {
@@ -1256,6 +1757,11 @@ async function staleKanjiResponseStage(invalidation) {
   let initialStorageCallback = null;
   let pending = null;
   const firstSelection = { title: "Generic", kind: "term" };
+  const dictionaryState = {
+    schemaVersion: 1,
+    revision: 1,
+    dictionaries: [genericPackage()],
+  };
   window.chrome = {
     runtime: {
       id: "hachidoricontentsmoke",
@@ -1270,7 +1776,7 @@ async function staleKanjiResponseStage(invalidation) {
         get(defaults, callback) {
           const stored = {
             ...defaults,
-            dictionaries: [{ title: "Generic", kind: "term", enabled: true }],
+            dictionaryState,
             options: { ...defaults.options, kanjiClickDictionary: firstSelection },
           };
           if (invalidation === "initial-storage") {
@@ -1327,6 +1833,7 @@ async function staleKanjiResponseStage(invalidation) {
     },
     popup,
     {
+      clear() {},
       renderKanji(value) { renders.push(value); },
       renderResults(value) { renders.push(value); },
       setToolbarPosition() {},
@@ -1362,8 +1869,9 @@ async function staleKanjiResponseStage(invalidation) {
       };
   pending.callback(reply);
   await lookup;
+  const result = { renders, popupHidden: popup.hidden };
   dom.window.close();
-  return renders;
+  return result;
 }
 
 // The renderer is the one consumer that reads contract B field by field, so it
