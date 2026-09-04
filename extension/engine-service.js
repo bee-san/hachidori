@@ -493,7 +493,17 @@ async function readStoredDictionaries() {
 }
 
 function sameDictionaries(left, right) {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return left.length === right.length && left.every((dictionary, index) => {
+    const other = right[index];
+    if (dictionary === null || other === null
+        || typeof dictionary !== "object" || typeof other !== "object") {
+      return dictionary === other;
+    }
+    const keys = Object.keys(dictionary);
+    return keys.length === Object.keys(other).length
+      && keys.every((key) => Object.prototype.hasOwnProperty.call(other, key)
+        && dictionary[key] === other[key]);
+  });
 }
 
 // A service worker can commit the CAS and disappear before its reply reaches
