@@ -563,6 +563,64 @@ async function restoreCommittedDictionaries(state = null) {
   reloadError = null;
 }
 
+async function loadRemovalCandidate(state, dictionaries) {
+  try {
+    return loadDictionaries(dictionaries, { strict: true });
+  } catch (error) {
+    await restoreCommittedDictionaries(state);
+    throw error;
+  }
+}
+
+function stageDictionaryRemoval(title) {
+  const installedPath = `${DICT_ROOT}/${title}`;
+  if (!exists(installedPath)) {
+    return;
+  }
+  if (!exists(REMOVAL_ROOT)) {
+    engine.FS.mkdir(REMOVAL_ROOT);
+  }
+  moveDictionaryFiles(installedPath, `${REMOVAL_ROOT}/${title}`, false);
+}
+
+async function settleRemovalForState(title, state) {
+  const retained = state.dictionaries.some(
+    (dictionary) => text(dictionary?.title) === title,
+  );
+  if (settleStagedRemoval(title, retained)) {
+    await persistFilesystem();
+  }
+  await restoreCommittedDictionaries(state);
+}
+
+async function commitRemovalState(snapshot, title, remaining) {
+  const reply = await commitDictionaryState(snapshot.state.revision, remaining);
+  if (reply.ok === true) {
+    return null;
+  }
+  if (reply.conflict !== true || reply.state === null) {
+    throw new Error(reply.error || "the dictionary removal could not be saved");
+  }
+  await settleRemovalForState(title, reply.state);
+  return {
+    ok: false,
+    conflict: true,
+    error: reply.error || "the dictionary state changed during removal",
+    state: reply.state,
+  };
+}
+
+async function rollbackRemoval(snapshot, title, readCurrentState) {
+  let state = snapshot.state;
+  if (readCurrentState) {
+    ({ state } = await readDictionaryStorage());
+    if (state === null) {
+      throw new Error("the dictionary state is unavailable during removal rollback");
+    }
+  }
+  await settleRemovalForState(title, state);
+}
+
 // The only thing that can fail here is the storage round trip through the
 // service worker -- the worker can be torn down between the request and the
 // reply, and reconcile() gives up after three refused writes. The engine is
@@ -934,7 +992,7 @@ const HANDLERS = {
       throw new Error("the dictionary state change carried no valid base revision");
     }
     if (!Array.isArray(message?.dictionaries)) {
-      throw new Error("the dictionary state change carried no dictionary list");
+      throw new TypeError("the dictionary state change carried no dictionary list");
     }
 
     let restorationAttempted = false;
@@ -1000,65 +1058,24 @@ const HANDLERS = {
       return {};
     }
 
-    let loadedCount;
-    try {
-      loadedCount = loadDictionaries(remaining, { strict: true });
-    } catch (error) {
-      await restoreCommittedDictionaries(snapshot.state);
-      throw error;
-    }
+    const loadedCount = await loadRemovalCandidate(snapshot.state, remaining);
 
-    const stagedPath = `${REMOVAL_ROOT}/${title}`;
     let casAttempted = false;
     try {
-      if (exists(installedPath)) {
-        if (!exists(REMOVAL_ROOT)) {
-          engine.FS.mkdir(REMOVAL_ROOT);
-        }
-        moveDictionaryFiles(installedPath, stagedPath, false);
-      }
+      stageDictionaryRemoval(title);
       await persistFilesystem();
 
       casAttempted = true;
-      const reply = await commitDictionaryState(snapshot.state.revision, remaining);
-      if (reply.ok !== true) {
-        if (reply.conflict !== true || reply.state === null) {
-          throw new Error(reply.error || "the dictionary removal could not be saved");
-        }
-        const retained = reply.state.dictionaries.some(
-          (dictionary) => text(dictionary?.title) === title,
-        );
-        if (settleStagedRemoval(title, retained)) {
-          await persistFilesystem();
-        }
-        await restoreCommittedDictionaries(reply.state);
-        return {
-          ok: false,
-          conflict: true,
-          error: reply.error || "the dictionary state changed during removal",
-          state: reply.state,
-        };
+      const conflict = await commitRemovalState(snapshot, title, remaining);
+      if (conflict !== null) {
+        return conflict;
       }
 
       publishLoadedDictionaries(loadedCount);
       reloadError = null;
     } catch (error) {
       try {
-        let state = snapshot.state;
-        if (casAttempted) {
-          const current = await readDictionaryStorage();
-          if (current.state === null) {
-            throw new Error("the dictionary state is unavailable during removal rollback");
-          }
-          state = current.state;
-        }
-        const retained = state.dictionaries.some(
-          (dictionary) => text(dictionary?.title) === title,
-        );
-        if (settleStagedRemoval(title, retained)) {
-          await persistFilesystem();
-        }
-        await restoreCommittedDictionaries(state);
+        await rollbackRemoval(snapshot, title, casAttempted);
       } catch (restoreError) {
         reloadError = asError(restoreError);
         throw new Error(`${describe(error)}; removal rollback failed: ${describe(restoreError)}`);

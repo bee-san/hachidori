@@ -83,40 +83,51 @@ function nonnegativeCount(value) {
   return Number.isFinite(count) && count > 0 ? count : 0;
 }
 
+function stringValue(value, fallback = "") {
+  return typeof value === "string" ? value : fallback;
+}
+
+function nonemptyString(value) {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+function displayName(value) {
+  const name = stringValue(value).trim();
+  return name === "" ? null : name;
+}
+
+function normaliseDictionary(row) {
+  const title = stringValue(row?.title);
+  if (title === "") {
+    return null;
+  }
+  return {
+    id: stringValue(row?.id),
+    title,
+    displayName: displayName(row?.displayName),
+    path: nonemptyString(row?.path) ?? `/dicts/${title}`,
+    enabled: row?.enabled !== false,
+    favorite: row?.favorite === true,
+    revision: stringValue(row?.revision),
+    isUpdatable: row?.isUpdatable === true,
+    indexUrl: nonemptyString(row?.indexUrl),
+    downloadUrl: nonemptyString(row?.downloadUrl),
+    language: nonemptyString(row?.language),
+    termCount: nonnegativeCount(row?.termCount),
+    frequencyCount: nonnegativeCount(row?.frequencyCount),
+    pitchCount: nonnegativeCount(row?.pitchCount),
+    kanjiCount: nonnegativeCount(row?.kanjiCount),
+    mediaCount: nonnegativeCount(row?.mediaCount),
+    installedAt: stringValue(row?.installedAt),
+    lastUpdateCheck: row?.lastUpdateCheck ?? null,
+  };
+}
+
 function normaliseDictionaries(value) {
   if (!Array.isArray(value)) {
     return [];
   }
-  const entries = [];
-  for (const row of value) {
-    const title = typeof row?.title === "string" ? row.title : "";
-    if (title === "") {
-      continue;
-    }
-    entries.push({
-      id: typeof row?.id === "string" ? row.id : "",
-      title,
-      displayName: typeof row?.displayName === "string" && row.displayName.trim() !== ""
-        ? row.displayName.trim()
-        : null,
-      path: typeof row?.path === "string" && row.path !== "" ? row.path : `/dicts/${title}`,
-      enabled: row?.enabled !== false,
-      favorite: row?.favorite === true,
-      revision: typeof row?.revision === "string" ? row.revision : "",
-      isUpdatable: row?.isUpdatable === true,
-      indexUrl: typeof row?.indexUrl === "string" && row.indexUrl !== "" ? row.indexUrl : null,
-      downloadUrl: typeof row?.downloadUrl === "string" && row.downloadUrl !== "" ? row.downloadUrl : null,
-      language: typeof row?.language === "string" && row.language !== "" ? row.language : null,
-      termCount: nonnegativeCount(row?.termCount),
-      frequencyCount: nonnegativeCount(row?.frequencyCount),
-      pitchCount: nonnegativeCount(row?.pitchCount),
-      kanjiCount: nonnegativeCount(row?.kanjiCount),
-      mediaCount: nonnegativeCount(row?.mediaCount),
-      installedAt: typeof row?.installedAt === "string" ? row.installedAt : "",
-      lastUpdateCheck: row?.lastUpdateCheck ?? null,
-    });
-  }
-  return entries;
+  return value.map(normaliseDictionary).filter((entry) => entry !== null);
 }
 
 function normaliseDictionaryState(value) {
@@ -355,6 +366,48 @@ function renderFrequencyChoices() {
   select.value = previous;
 }
 
+function appendKanjiGroup(select, enabled, group, availableValues) {
+  if (group.titles.length === 0) {
+    return;
+  }
+  const optgroup = document.createElement("optgroup");
+  optgroup.label = group.label;
+  for (const title of group.titles) {
+    const dictionary = enabled.find((entry) => entry.title === title);
+    const option = document.createElement("option");
+    option.value = selectionValue({ title, kind: group.kind });
+    option.textContent = dictionary ? dictionaryLabel(dictionary) : title;
+    availableValues.add(option.value);
+    optgroup.appendChild(option);
+  }
+  select.appendChild(optgroup);
+}
+
+function selectedKanjiValue(previousSelection, withKanji, withTerms) {
+  if (previousSelection?.kind !== "") {
+    return selectionValue(previousSelection);
+  }
+  let kind = "";
+  if (withKanji.has(previousSelection.title)) {
+    kind = "kanji";
+  } else if (withTerms.has(previousSelection.title)) {
+    kind = "term";
+  }
+  return kind === ""
+    ? previousSelection.title
+    : selectionValue({ title: previousSelection.title, kind });
+}
+
+function appendStaleKanjiChoice(select, previousSelection, selectedValue, availableValues) {
+  if (!previousSelection || availableValues.has(selectedValue)) {
+    return;
+  }
+  const stale = document.createElement("option");
+  stale.value = selectedValue;
+  stale.textContent = `${previousSelection.title} (not available)`;
+  select.appendChild(stale);
+}
+
 function renderKanjiChoices() {
   const select = element("opt-kanji-dictionary");
   const previousSelection = selectionParts(options.kanjiClickDictionary);
@@ -382,37 +435,11 @@ function renderKanjiChoices() {
   ];
   const availableValues = new Set();
   for (const group of groups) {
-    if (group.titles.length === 0) {
-      continue;
-    }
-    const optgroup = document.createElement("optgroup");
-    optgroup.label = group.label;
-    for (const title of group.titles) {
-      const dictionary = enabled.find((entry) => entry.title === title);
-      const option = document.createElement("option");
-      option.value = selectionValue({ title, kind: group.kind });
-      option.textContent = dictionary ? dictionaryLabel(dictionary) : title;
-      availableValues.add(option.value);
-      optgroup.appendChild(option);
-    }
-    select.appendChild(optgroup);
+    appendKanjiGroup(select, enabled, group, availableValues);
   }
 
-  let selectedValue = selectionValue(previousSelection);
-  if (previousSelection?.kind === "") {
-    const migratedKind = withKanji.has(previousSelection.title)
-      ? "kanji"
-      : withTerms.has(previousSelection.title) ? "term" : "";
-    selectedValue = migratedKind === ""
-      ? previousSelection.title
-      : selectionValue({ title: previousSelection.title, kind: migratedKind });
-  }
-  if (previousSelection && !availableValues.has(selectedValue)) {
-    const stale = document.createElement("option");
-    stale.value = selectedValue;
-    stale.textContent = `${previousSelection.title} (not available)`;
-    select.appendChild(stale);
-  }
+  const selectedValue = selectedKanjiValue(previousSelection, withKanji, withTerms);
+  appendStaleKanjiChoice(select, previousSelection, selectedValue, availableValues);
   select.value = selectedValue;
 }
 
@@ -839,41 +866,60 @@ function attachHandlers() {
     event.returnValue = "";
   });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local") {
-      return;
-    }
-    if (changes.dictionaryState) {
-      let adopted;
-      try {
-        adopted = adoptDictionaryState(changes.dictionaryState.newValue);
-      } catch (error) {
-        setStatus(describe(error), "error");
-        return;
-      }
-      if (adopted) {
-        const active = document.activeElement;
-        const editingAlias = active instanceof HTMLInputElement
-          && active.classList.contains("dict-display-name");
-        if (committing || editingAlias) {
-          dictionaryRenderDeferred = true;
-        } else {
-          renderDictionaryState();
-        }
-      }
-    }
-    if (changes.options) {
-      const next = normaliseOptions(changes.options.newValue);
-      if (JSON.stringify(next) !== JSON.stringify(options)) {
-        options = next;
-        const changedSelections = normaliseDictionarySelections();
-        renderOptions();
-        if (changedSelections) {
-          void writeOptions();
-        }
-      }
-    }
-  });
+  chrome.storage.onChanged.addListener(handleStorageChange);
+}
+
+function dictionaryAliasIsBeingEdited() {
+  const active = document.activeElement;
+  return active instanceof HTMLInputElement
+    && active.classList.contains("dict-display-name");
+}
+
+function renderChangedDictionaryState() {
+  if (committing || dictionaryAliasIsBeingEdited()) {
+    dictionaryRenderDeferred = true;
+    return;
+  }
+  renderDictionaryState();
+}
+
+function handleDictionaryStateChange(change) {
+  let adopted;
+  try {
+    adopted = adoptDictionaryState(change.newValue);
+  } catch (error) {
+    setStatus(describe(error), "error");
+    return false;
+  }
+  if (adopted) {
+    renderChangedDictionaryState();
+  }
+  return true;
+}
+
+function handleOptionsChange(change) {
+  const next = normaliseOptions(change.newValue);
+  if (JSON.stringify(next) === JSON.stringify(options)) {
+    return;
+  }
+  options = next;
+  const changedSelections = normaliseDictionarySelections();
+  renderOptions();
+  if (changedSelections) {
+    void writeOptions();
+  }
+}
+
+function handleStorageChange(changes, area) {
+  if (area !== "local") {
+    return;
+  }
+  if (changes.dictionaryState && !handleDictionaryStateChange(changes.dictionaryState)) {
+    return;
+  }
+  if (changes.options) {
+    handleOptionsChange(changes.options);
+  }
 }
 
 // Lookup options are read per request by the content script, so nothing needs a

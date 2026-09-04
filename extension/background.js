@@ -184,7 +184,7 @@ const WORKER_HANDLERS = {
       throw new Error("the dictionary state write request carried no valid base revision");
     }
     if (!Array.isArray(message?.dictionaries)) {
-      throw new Error("the dictionary state write request carried no list");
+      throw new TypeError("the dictionary state write request carried no list");
     }
 
     const { state: current, legacyDictionaries, options: currentOptions } = await readDictionaryStorage();

@@ -412,9 +412,8 @@ struct RemoveOnExit {
 bool usable_as_directory_name(std::string_view title) {
   return !title.empty() && title != "." && title != ".." &&
          title != STAGING_DIR && title != REMOVAL_DIR &&
-         title.find('/') == std::string_view::npos &&
-         title.find('\\') == std::string_view::npos &&
-         title.find('\0') == std::string_view::npos;
+         !title.contains('/') && !title.contains('\\') &&
+         !title.contains('\0');
 }
 
 std::string unusable_title_error(std::string_view title) {
