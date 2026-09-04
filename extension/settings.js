@@ -363,7 +363,7 @@ function customDictionaryDirty() {
 
 function customDictionaryDraftSource() {
   const source = element("custom-dictionary-source").value.replace(/\r\n?|\n/gu, "\n");
-  return customDraftNewline === "\r\n" ? source.replace(/\n/gu, "\r\n") : source;
+  return customDraftNewline === "\r\n" ? source.replaceAll("\n", "\r\n") : source;
 }
 
 function renderCustomDictionaryControls() {

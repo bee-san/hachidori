@@ -302,6 +302,28 @@ function assertCustomSourceState(dictionaries, semanticRevision, entryCount) {
   }
 }
 
+function assertCustomDictionaryCasRequest(message) {
+  if (!Number.isInteger(message?.baseDocumentRevision)
+      || message.baseDocumentRevision < 0) {
+    throw new Error("the custom dictionary write carried no valid document revision");
+  }
+  if (!Number.isInteger(message?.baseRevision) || message.baseRevision < 0) {
+    throw new Error("the custom dictionary write carried no valid dictionary revision");
+  }
+  if (typeof message?.text !== "string"
+      || typeof message?.semanticRevision !== "string") {
+    throw new TypeError("the custom dictionary write carried no source document");
+  }
+  const changesDictionaryState = message.dictionaries !== undefined;
+  if (changesDictionaryState && !Array.isArray(message.dictionaries)) {
+    throw new TypeError("the custom dictionary write carried an invalid dictionary list");
+  }
+  if (message.groups !== undefined && !Array.isArray(message.groups)) {
+    throw new TypeError("the custom dictionary write carried invalid groups");
+  }
+  return changesDictionaryState;
+}
+
 function dictionaryCommit(current, currentOptions, dictionaries, groups) {
   const currentRevision = current?.revision ?? 0;
   const state = {
@@ -392,24 +414,7 @@ const WORKER_HANDLERS = {
   },
 
   async hd_custom_cas(message) {
-    if (!Number.isInteger(message?.baseDocumentRevision)
-        || message.baseDocumentRevision < 0) {
-      throw new Error("the custom dictionary write carried no valid document revision");
-    }
-    if (!Number.isInteger(message?.baseRevision) || message.baseRevision < 0) {
-      throw new Error("the custom dictionary write carried no valid dictionary revision");
-    }
-    if (typeof message?.text !== "string"
-        || typeof message?.semanticRevision !== "string") {
-      throw new TypeError("the custom dictionary write carried no source document");
-    }
-    const changesDictionaryState = message.dictionaries !== undefined;
-    if (changesDictionaryState && !Array.isArray(message.dictionaries)) {
-      throw new TypeError("the custom dictionary write carried an invalid dictionary list");
-    }
-    if (message.groups !== undefined && !Array.isArray(message.groups)) {
-      throw new TypeError("the custom dictionary write carried invalid groups");
-    }
+    const changesDictionaryState = assertCustomDictionaryCasRequest(message);
 
     const {
       state: current,

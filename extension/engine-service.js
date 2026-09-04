@@ -1070,10 +1070,7 @@ async function customPackageSatisfies(state, semanticRevision, entryCount) {
   }
 }
 
-function withImport(stored, generated, recommendedSource, managedSource) {
-  if (generated.title === CUSTOM_DICTIONARY_TITLE) {
-    throw new Error(`${CUSTOM_DICTIONARY_TITLE} is reserved for the managed custom dictionary`);
-  }
+function importReplacementIndex(stored, generated, recommendedSource, managedSource) {
   let existingIndex = managedSource === null ? -1 : stored.findIndex((dictionary) =>
     dictionary?.id === managedSource.fingerprint.id);
   if (managedSource !== null) {
@@ -1093,6 +1090,19 @@ function withImport(stored, generated, recommendedSource, managedSource) {
     existingIndex = stored.findIndex((dictionary) =>
       dictionary?.id === generated.id || text(dictionary?.title) === generated.title);
   }
+  return existingIndex;
+}
+
+function withImport(stored, generated, recommendedSource, managedSource) {
+  if (generated.title === CUSTOM_DICTIONARY_TITLE) {
+    throw new Error(`${CUSTOM_DICTIONARY_TITLE} is reserved for the managed custom dictionary`);
+  }
+  const existingIndex = importReplacementIndex(
+    stored,
+    generated,
+    recommendedSource,
+    managedSource,
+  );
   if (existingIndex < 0) {
     return [...stored, recommendedSource === null
       ? generated
@@ -1451,6 +1461,36 @@ async function commitCustomSourceOnly(initial, source, semanticRevision) {
   };
 }
 
+async function completeCustomRemoval(reply, removesPackage, loadedCount) {
+  if (removesPackage) {
+    publishLoadedDictionaries(loadedCount);
+    reloadError = null;
+    await cleanupCommittedDictionaries();
+  }
+  return { ...reply, rebuilt: false, removed: removesPackage };
+}
+
+async function rethrowCustomRemovalFailure(error, removesPackage) {
+  if (error instanceof UnknownDictionaryStateCommitError) {
+    reloadError = error;
+    throw error;
+  }
+  if (removesPackage) {
+    try {
+      await restoreCommittedDictionaries();
+    } catch (restoreError) {
+      reloadError = asError(restoreError);
+      throw new Error(`${describe(error)}; custom dictionary rollback failed: ${describe(restoreError)}`);
+    }
+  }
+  throw error;
+}
+
+function customRemovalLoadedCount(dictionaries, removesPackage) {
+  if (!removesPackage) return dictionaryCount;
+  return loadDictionaries(dictionaries, { strict: true });
+}
+
 async function commitCustomRemoval(initial, source, semanticRevision) {
   let snapshot = initial;
   for (let attempt = 0; attempt < STORAGE_ATTEMPTS; attempt += 1) {
@@ -1461,11 +1501,8 @@ async function commitCustomRemoval(initial, source, semanticRevision) {
       (dictionary) => dictionary?.id !== CUSTOM_DICTIONARY_ID,
     );
     const removesPackage = dictionaries.length !== snapshot.state.dictionaries.length;
-    let loadedCount = dictionaryCount;
     try {
-      if (removesPackage) {
-        loadedCount = loadDictionaries(dictionaries, { strict: true });
-      }
+      const loadedCount = customRemovalLoadedCount(dictionaries, removesPackage);
       const reply = await commitCustomStorage(
         snapshot,
         source,
@@ -1473,12 +1510,8 @@ async function commitCustomRemoval(initial, source, semanticRevision) {
         removesPackage ? dictionaries : undefined,
       );
       if (reply.ok === true) {
-        if (removesPackage) {
-          publishLoadedDictionaries(loadedCount);
-          reloadError = null;
-          await cleanupCommittedDictionaries();
-        }
-        return { ...reply, rebuilt: false, removed: removesPackage };
+        const completed = await completeCustomRemoval(reply, removesPackage, loadedCount);
+        return completed;
       }
       if (reply.conflict === true
           && reply.stale !== true
@@ -1491,19 +1524,7 @@ async function commitCustomRemoval(initial, source, semanticRevision) {
       if (removesPackage) await restoreCommittedDictionaries(reply.state ?? snapshot.state);
       return reply;
     } catch (error) {
-      if (error instanceof UnknownDictionaryStateCommitError) {
-        reloadError = error;
-        throw error;
-      }
-      if (removesPackage) {
-        try {
-          await restoreCommittedDictionaries();
-        } catch (restoreError) {
-          reloadError = asError(restoreError);
-          throw new Error(`${describe(error)}; custom dictionary rollback failed: ${describe(restoreError)}`);
-        }
-      }
-      throw error;
+      await rethrowCustomRemovalFailure(error, removesPackage);
     }
   }
   throw new Error("the dictionary state kept changing while the custom dictionary was removed");
@@ -1600,6 +1621,19 @@ async function saveCustomDictionary(snapshot, source) {
     }
     throw error;
   }
+}
+
+function removalTarget(dictionaries, id, title) {
+  const target = dictionaries.find((dictionary) =>
+    id === null ? text(dictionary?.title) === title : dictionary?.id === id);
+  if (target === undefined) return null;
+  if (text(target.title) !== title) {
+    throw new Error("the remove request dictionary ID and title do not match");
+  }
+  if (target.id === CUSTOM_DICTIONARY_ID) {
+    throw new Error("the managed custom dictionary can only be removed by saving an empty source");
+  }
+  return target;
 }
 
 const HANDLERS = {
@@ -1834,18 +1868,11 @@ const HANDLERS = {
     }
     await recoverPendingRemovals(snapshot);
 
-    const target = snapshot.state.dictionaries.find((dictionary) =>
-      id === null ? text(dictionary?.title) === title : dictionary?.id === id);
-    if (target === undefined) {
+    const target = removalTarget(snapshot.state.dictionaries, id, title);
+    if (target === null) {
       // Nothing to do, and reloading for nothing would invalidate the renderer's
       // media cache.
       return {};
-    }
-    if (text(target.title) !== title) {
-      throw new Error("the remove request dictionary ID and title do not match");
-    }
-    if (target.id === CUSTOM_DICTIONARY_ID) {
-      throw new Error("the managed custom dictionary can only be removed by saving an empty source");
     }
     const remaining = snapshot.state.dictionaries.filter(
       (dictionary) => dictionary?.id !== target.id,

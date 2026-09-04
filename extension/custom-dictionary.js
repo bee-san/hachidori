@@ -20,7 +20,7 @@ const ZIP_STORE = 0;
 const ZIP_DATE = 0x21;
 const ZIP_VERSION = 20;
 const UINT16_MAX = 0xffff;
-const UINT32_MAX = 0xffff_ffff;
+const UINT32_MAX = 0xff_ff_ff_ff;
 const encoder = new TextEncoder();
 
 function sourceText(value) {
@@ -147,8 +147,8 @@ export function parseCustomDictionary(value) {
 export function serializeCustomDictionaryEntry(value) {
   const { term, reading, definition } = normaliseEntry(value);
   const encodedDefinition = definition
-    .replace(/\\/gu, "\\\\")
-    .replace(/\n/gu, "\\n");
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\n", String.raw`\n`);
   return `${term}, ${reading}, ${encodedDefinition}`;
 }
 
@@ -175,7 +175,7 @@ const crcTable = (() => {
     for (let bit = 0; bit < 8; bit += 1) {
       value = (value & 1) === 0
         ? value >>> 1
-        : 0xedb8_8320 ^ (value >>> 1);
+        : 0xed_b8_83_20 ^ (value >>> 1);
     }
     table[index] = value >>> 0;
   }
@@ -207,7 +207,7 @@ function checkedZipSize(value) {
 }
 
 function writeLocalHeader(view, offset, file) {
-  view.setUint32(offset, 0x0403_4b50, true);
+  view.setUint32(offset, 0x04_03_4b_50, true);
   view.setUint16(offset + 4, ZIP_VERSION, true);
   view.setUint16(offset + 6, ZIP_UTF8_FLAG, true);
   view.setUint16(offset + 8, ZIP_STORE, true);
@@ -221,7 +221,7 @@ function writeLocalHeader(view, offset, file) {
 }
 
 function writeCentralHeader(view, offset, file) {
-  view.setUint32(offset, 0x0201_4b50, true);
+  view.setUint32(offset, 0x02_01_4b_50, true);
   view.setUint16(offset + 4, ZIP_VERSION, true);
   view.setUint16(offset + 6, ZIP_VERSION, true);
   view.setUint16(offset + 8, ZIP_UTF8_FLAG, true);
@@ -241,7 +241,7 @@ function writeCentralHeader(view, offset, file) {
 }
 
 function writeEndRecord(view, offset, entryCount, centralSize, centralOffset) {
-  view.setUint32(offset, 0x0605_4b50, true);
+  view.setUint32(offset, 0x06_05_4b_50, true);
   view.setUint16(offset + 4, 0, true);
   view.setUint16(offset + 6, 0, true);
   view.setUint16(offset + 8, entryCount, true);
