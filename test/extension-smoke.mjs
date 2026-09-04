@@ -695,7 +695,7 @@ function loadClassicScript(file, sandbox) {
   return context;
 }
 
-async function loadBackgroundScript(sandbox) {
+function loadBackgroundScript(sandbox) {
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
@@ -703,9 +703,9 @@ async function loadBackgroundScript(sandbox) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "");
   const context = createContext(sandbox);
   context.globalThis = context;
-  await runInContext(
-    `(async () => {\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${background}\n})()`,
+  runInContext(
+    `${recommended.replace(/^export\s+/gmu, "")}\n`
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
   );
@@ -980,7 +980,7 @@ async function main() {
   globalThis.chrome = offscreenChrome;
 
   const swChrome = makeChrome("sw", bus, storage, alarms);
-  await loadBackgroundScript({
+  loadBackgroundScript({
     chrome: swChrome,
     console,
     fetch: globalThis.fetch,

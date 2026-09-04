@@ -660,8 +660,12 @@ chrome.runtime.onStartup.addListener(warmUp);
 // Alarms may be cleared across browser restarts. Module evaluation is the one
 // startup path every MV3 worker takes, including starts not caused by either
 // lifecycle event above.
-try {
-  await reconcileUpdateAlarm();
-} catch (error) {
-  console.error("hoshidicts: could not reconcile the dictionary update alarm:", describe(error));
+async function initialiseUpdateAlarm() {
+  try {
+    await reconcileUpdateAlarm();
+  } catch (error) {
+    console.error("hoshidicts: could not reconcile the dictionary update alarm:", describe(error));
+  }
 }
+
+void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
