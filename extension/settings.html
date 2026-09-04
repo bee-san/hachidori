@@ -66,8 +66,28 @@
           <h2 id="dictionaries-heading">Dictionaries</h2>
           <p class="hint">
             This list is the load order, and load order decides ranking: results from the dictionary
-            at the top are offered first. Reorder with the arrows.
+            at the top are offered first. Reorder by dragging, with the arrows, or by position.
           </p>
+        </div>
+        <div class="dict-controls" id="dict-controls" hidden>
+          <label class="dict-search">
+            <span class="field-label">Search</span>
+            <input id="dict-search" type="search" autocomplete="off" placeholder="Title or alias" />
+            <span class="dict-match-count" id="dict-match-count" role="status"></span>
+          </label>
+          <div class="dict-selection-controls">
+            <label class="dict-select-all">
+              <input id="dict-select-visible" type="checkbox" />
+              <span>Select all visible</span>
+            </label>
+            <span class="dict-selection-count" id="dict-selection-count" aria-live="polite">0 selected</span>
+          </div>
+          <div class="dict-bulk-actions" aria-label="Bulk actions">
+            <button type="button" class="ghost" id="dict-bulk-enable">Enable</button>
+            <button type="button" class="ghost" id="dict-bulk-disable">Disable</button>
+            <button type="button" class="ghost" id="dict-bulk-favorite">Favourite</button>
+            <button type="button" class="ghost" id="dict-bulk-unfavorite">Unfavourite</button>
+          </div>
         </div>
         <ol class="dict-list" id="dict-list"></ol>
         <p class="empty-state" id="dict-empty">Nothing imported yet.</p>
@@ -143,7 +163,13 @@
 
     <template id="dict-row-template">
       <li class="dict-row">
-        <span class="dict-rank" aria-hidden="true"></span>
+        <label class="dict-row-select">
+          <input type="checkbox" class="dict-selected" />
+        </label>
+        <span class="dict-order">
+          <span class="dict-drag" draggable="true">&#10247;</span>
+          <span class="dict-rank" aria-hidden="true"></span>
+        </span>
         <div class="dict-main">
           <div class="dict-heading">
             <span class="dict-title"></span>
@@ -164,6 +190,11 @@
         <span class="dict-actions">
           <button type="button" class="ghost dict-up" aria-label="Move up" title="Move up">&#8593;</button>
           <button type="button" class="ghost dict-down" aria-label="Move down" title="Move down">&#8595;</button>
+          <label class="dict-position">
+            <span class="cell-label">Position</span>
+            <input class="dict-position-input" type="number" min="1" step="1" />
+          </label>
+          <button type="button" class="ghost dict-move">Move</button>
           <button type="button" class="ghost danger dict-remove" aria-label="Remove" title="Remove">Remove</button>
         </span>
       </li>
