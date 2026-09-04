@@ -6,8 +6,10 @@ These instructions apply to the entire repository.
 
 - Deliver every repository change through a pull request from a dedicated branch. Never push changes directly to `main`. Do not stop at a local commit or branch: push it and open the pull request.
 - Keep each pull request to one coherent outcome that can be understood, tested, and reviewed independently.
+- Commit frequently in small, coherent units. Prefer a failing focused contract test followed promptly by its implementation commit when test-first work is practical.
 - Prefer the smallest straightforward change that satisfies the request and fits the existing architecture.
 - Do not mix requested work with drive-by refactors, renames, formatting churn, dependency updates, or unrelated cleanup.
+- Deduplicate an invariant or algorithm when two runtime contexts genuinely need the same behavior; do not introduce a framework for a one-off.
 - Read `CONTRIBUTING.md` and the relevant architecture or test documentation before changing an unfamiliar area.
 
 ## Scope, tests, and guards
@@ -17,6 +19,42 @@ These instructions apply to the entire repository.
 - Dictionary archives are user-selected local inputs. Do not invent fixed limits for archive bytes, entry counts, expanded size, or compression ratios unless the task explicitly requires them. Preserve existing path and import-staging correctness boundaries.
 - Do not add broad or extensive test coverage by default. Add a focused regression test when behavior changes or a bug needs to stay fixed; do not duplicate coverage already provided by a suitable suite.
 - Avoid adding test-only dependencies or expanding fixtures unless the changed behavior genuinely needs them.
+
+## Dictionary-only issue #9 contract
+
+When implementing the dictionary-only scope from issue #9:
+
+- D1-D9 are the complete scope. Do not pull in E-series or Later features, profiles, backup/restore, per-dictionary schedules, statistics, definition blur, or configurable popup actions.
+- The issue owner's later comment overrides the original D6 prose: a scheduled update run checks and automatically installs available updates. Manual Check now still records availability without installing.
+- Keep one global update schedule: Off, hourly, daily, weekly, or monthly. Do not add per-dictionary policy, hidden profiles, alternate backends, or due-time machinery.
+- Preserve stable package IDs, canonical-title engine keys, order, alias, enabled/favourite state, groups, and trusted source metadata across reimports and updates. A package with several bank kinds remains one package.
+- Use the exact four recommended sources named by D2. Install them sequentially, skip installed sources, continue after a failure, and retry only missing sources. Store catalogue metadata only after final-URL, repository, title, revision, index, and defining-capability validation.
+- Keep shared catalogue/source trust rules in one native ES module used by every context that enforces them. Recommended sources remain catalogue-pinned; generic managed sources require complete HTTPS descriptors.
+- A generic update index may provide a new HTTPS `downloadUrl`; otherwise retain the installed fallback. Validate the index and archive final URLs, and bind one checked update plan through download and commit.
+- Bind a managed update to the exact package ID, generation path, installed revision, and source descriptor that was checked. Revalidate at the commit snapshot so a stale check cannot overwrite a concurrent reimport. Do not key this guard to the broad state revision because presentation-only edits may be preserved.
+- Persist a successful update's `up-to-date` status in the same package CAS as the replacement. Apply check/failure status only if the checked generation still matches. Reject a managed title change that collides with another installed package.
+- Dictionary groups use stable IDs. Names are unique after case/whitespace normalization and `All` is reserved. Group-only state writes must not invalidate lookups; rerenders must preserve deliberate keyboard focus.
+
+## Transaction boundaries
+
+- `background.js` owns serialized `chrome.storage.local` writes. The engine calls back into its worker handlers during a dictionary commit, so a handler must never hold the background storage queue while awaiting an engine import/update/custom mutation.
+- The engine mutation queue owns imports, reimports, managed updates, removals, custom compilation, native reloads, and generation cleanup. Keep status requests available while a long mutation runs.
+- Stage and persist a generation, strict-load it, publish state with CAS, then clean the superseded generation. On failure, restore the committed state and loaded set. If a CAS reply is lost, read back the exact expected commit before reporting failure or deleting either generation.
+- Reject canonical-title collisions before publication. Title-based lookup/media/style/removal cannot safely represent two packages with the same canonical title.
+- Keep options pruning and group-membership pruning in the same state commit as package removal.
+
+## Managed custom dictionary
+
+- Store the source document separately with a monotonic document revision and an ordered-entry semantic revision. A stale Settings save is refused; a Note append reads the latest source only after entering the mutation queue.
+- Parse the first two commas, ignore blank/comment lines, retain valid rows, order, and duplicates, and report every malformed line. Preserve CRLF on append. Decode `\\n` as newline and `\\\\` as a literal backslash without corrupting literal backslash-plus-`n`; serialize with the exact inverse.
+- Do not add arbitrary source, row, term, reading, definition, archive, or media caps. Checks required by the classic ZIP representation itself are format invariants, not product limits.
+- Build the production Yomitan ZIP deterministically with UTF-8 names/data, correct CRC/offset metadata, format 3, and 1,000-row term-bank chunks. Test that production builder through the real WASM importer, including multibyte text, escapes, and more than one bank.
+- Use a non-title-derived fixed custom package ID and canonical title. Protect and pin it by ID, enabled and first, in the central background CAS as well as the UI/engine. Public import cannot claim the reserved title; public removal cannot remove the managed package. A pre-existing local package with that title is a collision, not the managed package.
+- A semantic no-op skips recompilation only when the committed fixed-ID package and generation already satisfy every invariant. Source-only changes do not bump dictionary state or engine generation. Zero valid rows atomically save the source and remove the managed package.
+- Commit a semantic source change and dictionary state together in one revision-checked storage write, with exact-pair lost-reply readback. Retry dictionary-state conflicts against current presentation, but never retry or merge a stale source document.
+- Generalize the offscreen import lock to a mutation lock for custom saves/appends. Reuse private staging/import helpers; do not recursively invoke the public queued import handler.
+- The fixed Note form is shared by term and kanji views. Treat append success separately from best-effort lookup refresh so a refresh error cannot invite a duplicate retry. Refresh the exact current request/view only if it is still current and anchored, and make reply/state-event ordering harmless by adopting only newer committed revisions.
+- While the Note form is open, Escape closes the form before document capture can hide the popup, and hover-hide timers must not discard the draft.
 
 ## Repository map
 
@@ -45,3 +83,12 @@ Before opening the pull request:
 - Remove accidental generated files, fixture output, debug logging, and unrelated edits.
 - Use a clear title and a body that explains the problem, the chosen behavior, the important implementation details, and the validation performed.
 - Include screenshots for visible UI changes and call out intentional submodule or generated WebAssembly updates.
+
+Before merging a pull request:
+
+- Require a successful completed CI check and a clean merge state for the exact head SHA.
+- Require the current Codex review summary to be Completed for that exact head. Fix every substantive finding and resolve every review thread.
+- Query SonarQube Cloud directly and require zero unresolved issues, zero security hotspots, and zero new-code duplication. A green quality-gate badge alone is insufficient when it still reports issues.
+- Re-run the gate after every follow-up commit, including documentation-only fixes, then merge through GitHub and fast-forward the local `main` checkout.
+
+For real-Chrome update tests, intercept update-index fetches on the service-worker CDP target and archive fetches on the offscreen-document target, which also covers its dedicated engine worker. Do not attempt Fetch interception directly on the dedicated worker target.
