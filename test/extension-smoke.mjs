@@ -660,6 +660,17 @@ function checkRecommendedDictionaries() {
   );
 }
 
+function checkDictionaryGroupModule() {
+  const html = readFileSync(resolve(EXTENSION, "settings.html"), "utf8");
+  const groups = html.indexOf('src="dictionary-groups.js"');
+  const settings = html.indexOf('src="settings.js"');
+  check(
+    "settings loads its dictionary-group module before the page entrypoint",
+    groups >= 0 && groups < settings,
+    `dictionary-groups.js at ${groups}; settings.js at ${settings}`,
+  );
+}
+
 async function main() {
   const mjs = resolve(EXTENSION, "vendor/hoshidicts.mjs");
   const wasm = resolve(EXTENSION, "vendor/hoshidicts.wasm");
@@ -677,6 +688,7 @@ async function main() {
 
   section("recommended dictionaries");
   checkRecommendedDictionaries();
+  checkDictionaryGroupModule();
 
   // Only chrome.runtime exists in an offscreen document. A path that is never
   // exercised below would still be a boot failure in a browser, so this is a
@@ -2087,6 +2099,7 @@ async function settingsBatchImportStage() {
       onChanged: { addListener() {} },
     },
   };
+  window.eval(readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "settings.js"), "utf8"));
 
   const deadline = Date.now() + 2000;
@@ -2255,6 +2268,7 @@ async function settingsConflictStage() {
       },
     },
   };
+  window.eval(readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "settings.js"), "utf8"));
 
   const deadline = Date.now() + 2000;
