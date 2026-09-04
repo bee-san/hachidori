@@ -988,15 +988,24 @@
       if (!currentToolbar) {
         return;
       }
+      const noteForm = currentNoteControls?.form ?? null;
       // Only touch the DOM when the toolbar is not already in the desired
       // place. A no-op reposition must never detach a focused control, which
       // throws in jsdom and reorders under focus.
       if (toolbarPosition === "bottom") {
-        if (popup.lastElementChild !== currentToolbar) {
-          popup.append(currentToolbar);
+        if (
+          popup.lastElementChild !== currentToolbar
+          || (noteForm && currentToolbar.previousElementSibling !== noteForm)
+        ) {
+          if (noteForm) popup.append(noteForm, currentToolbar);
+          else popup.append(currentToolbar);
         }
-      } else if (popup.firstElementChild !== currentToolbar) {
-        popup.prepend(currentToolbar);
+      } else if (
+        popup.firstElementChild !== currentToolbar
+        || (noteForm && currentToolbar.nextElementSibling !== noteForm)
+      ) {
+        if (noteForm) popup.prepend(currentToolbar, noteForm);
+        else popup.prepend(currentToolbar);
       }
     }
 
@@ -1150,6 +1159,7 @@
         term.focus();
         term.select();
         positionPopup();
+        popup.scrollTop = toolbarPosition === "bottom" ? popup.scrollHeight : 0;
       }
 
       button.addEventListener("click", () => {
