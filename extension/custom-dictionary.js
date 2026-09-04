@@ -11,6 +11,8 @@ export const CUSTOM_DICTIONARY_ID = "e4c2e20a1a964b6cbd4ae3f87643c1f0";
 export const CUSTOM_DICTIONARY_TITLE = "Hachidori Custom Dictionary";
 export const CUSTOM_DICTIONARY_SOURCE_KEY = "customDictionarySource";
 export const CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION = 1;
+export const EMPTY_CUSTOM_DICTIONARY_SEMANTIC_REVISION =
+  "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945";
 
 const TERM_BANK_SIZE = 1_000;
 const ZIP_UTF8_FLAG = 0x0800;
@@ -26,6 +28,41 @@ function sourceText(value) {
     throw new TypeError("the custom dictionary source must be text");
   }
   return value;
+}
+
+export function emptyCustomDictionaryDocument() {
+  return {
+    schemaVersion: CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION,
+    revision: 0,
+    semanticRevision: EMPTY_CUSTOM_DICTIONARY_SEMANTIC_REVISION,
+    text: "",
+  };
+}
+
+export function normaliseCustomDictionaryDocument(value) {
+  if (value === null || value === undefined) {
+    return emptyCustomDictionaryDocument();
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("the custom dictionary document is invalid");
+  }
+  if (value.schemaVersion !== CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION) {
+    throw new Error(`unsupported custom dictionary source schema ${String(value.schemaVersion)}`);
+  }
+  if (!Number.isInteger(value.revision) || value.revision < 0) {
+    throw new TypeError("the custom dictionary document revision is invalid");
+  }
+  if (typeof value.text !== "string"
+      || typeof value.semanticRevision !== "string"
+      || !/^[0-9a-f]{64}$/u.test(value.semanticRevision)) {
+    throw new TypeError("the custom dictionary document content is invalid");
+  }
+  return {
+    schemaVersion: CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION,
+    revision: value.revision,
+    semanticRevision: value.semanticRevision,
+    text: value.text,
+  };
 }
 
 function decodeDefinition(value) {

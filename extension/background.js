@@ -8,6 +8,15 @@ import {
   recommendedDictionarySource,
   recommendedIndexUrlMatches,
 } from "./managed-dictionary-source.js";
+import {
+  CUSTOM_DICTIONARY_ID,
+  CUSTOM_DICTIONARY_SOURCE_KEY,
+  CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION,
+  CUSTOM_DICTIONARY_TITLE,
+  customDictionarySemanticRevision,
+  normaliseCustomDictionaryDocument,
+  parseCustomDictionary,
+} from "./custom-dictionary.js";
 
 /*
  * Service worker for Hachidori.
@@ -132,6 +141,7 @@ async function readDictionaryStorage() {
     DICTIONARY_STATE_KEY,
     LEGACY_DICTIONARIES_KEY,
     OPTIONS_KEY,
+    CUSTOM_DICTIONARY_SOURCE_KEY,
   ]);
   const state = stored?.[DICTIONARY_STATE_KEY] ?? null;
   return {
@@ -141,6 +151,7 @@ async function readDictionaryStorage() {
         ? stored[LEGACY_DICTIONARIES_KEY]
         : null,
     options: stored?.[OPTIONS_KEY],
+    customDocument: stored?.[CUSTOM_DICTIONARY_SOURCE_KEY] ?? null,
   };
 }
 
@@ -214,6 +225,107 @@ function pruneGroupMemberships(value, dictionaries) {
   });
 }
 
+function sameJsonValue(left, right) {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameJsonValue(value, right[index]));
+  }
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") {
+    return false;
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key) =>
+      Object.hasOwn(right, key) && sameJsonValue(left[key], right[key]));
+}
+
+function assertDictionaryState(state) {
+  if (state !== null && state?.schemaVersion !== DICTIONARY_STATE_SCHEMA_VERSION) {
+    throw new Error(`unsupported dictionary state schema ${String(state?.schemaVersion)}`);
+  }
+}
+
+function customPackageEngineState(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const engineState = { ...value };
+  delete engineState.displayName;
+  delete engineState.favorite;
+  return engineState;
+}
+
+function assertOrdinaryCustomTransition(currentDictionaries, nextDictionaries) {
+  const currentIndex = currentDictionaries.findIndex(
+    (dictionary) => dictionary?.id === CUSTOM_DICTIONARY_ID,
+  );
+  const nextIndexes = nextDictionaries.flatMap((dictionary, index) =>
+    dictionary?.id === CUSTOM_DICTIONARY_ID ? [index] : []);
+  if (currentIndex < 0 && nextIndexes.length === 0) return;
+  if (currentIndex < 0 || nextIndexes.length !== 1) {
+    throw new Error("the managed custom dictionary can only be changed by its source editor");
+  }
+  const current = currentDictionaries[currentIndex];
+  const next = nextDictionaries[nextIndexes[0]];
+  if (currentIndex !== 0
+      || current?.title !== CUSTOM_DICTIONARY_TITLE
+      || current?.enabled !== true
+      || nextIndexes[0] !== 0
+      || next?.title !== CUSTOM_DICTIONARY_TITLE
+      || next?.enabled !== true
+      || !sameJsonValue(customPackageEngineState(current), customPackageEngineState(next))) {
+    throw new Error("the managed custom dictionary must stay enabled and first");
+  }
+}
+
+function assertCustomDictionaryCommit(dictionaries) {
+  const customIndexes = dictionaries.flatMap((dictionary, index) =>
+    dictionary?.id === CUSTOM_DICTIONARY_ID ? [index] : []);
+  if (customIndexes.length > 1) {
+    throw new Error("the custom dictionary state contains duplicate managed packages");
+  }
+  if (customIndexes.length === 0) return;
+  const custom = dictionaries[customIndexes[0]];
+  if (customIndexes[0] !== 0
+      || custom?.title !== CUSTOM_DICTIONARY_TITLE
+      || custom?.enabled !== true) {
+    throw new Error("the managed custom dictionary must stay enabled and first");
+  }
+  if (dictionaries.some((dictionary, index) =>
+    index !== customIndexes[0] && dictionary?.title === CUSTOM_DICTIONARY_TITLE)) {
+    throw new Error(`a dictionary named ${CUSTOM_DICTIONARY_TITLE} is already installed`);
+  }
+}
+
+function dictionaryCommit(current, currentOptions, dictionaries, groups) {
+  const currentRevision = current?.revision ?? 0;
+  const state = {
+    schemaVersion: DICTIONARY_STATE_SCHEMA_VERSION,
+    revision: currentRevision + 1,
+    dictionaries,
+    groups: pruneGroupMemberships(groups ?? current?.groups, dictionaries),
+  };
+  const values = { [DICTIONARY_STATE_KEY]: state };
+  if (currentOptions !== undefined) {
+    const nextOptions = normaliseDictionarySelections(currentOptions, state.dictionaries);
+    if (!sameJsonValue(nextOptions, currentOptions)) {
+      values[OPTIONS_KEY] = nextOptions;
+    }
+  }
+  return { state, values };
+}
+
+async function removeLegacyDictionaryRows(current, legacyDictionaries) {
+  if (current !== null || legacyDictionaries === null) return;
+  try {
+    await chrome.storage.local.remove(LEGACY_DICTIONARIES_KEY);
+  } catch (error) {
+    console.warn("hoshidicts: could not remove legacy dictionary rows:", describe(error));
+  }
+}
+
 // The engine or settings page reads state, changes it, and sends it back a
 // message round trip later. A caller includes the revision it read so a stale
 // write cannot discard a change made by another extension context.
@@ -235,9 +347,7 @@ const WORKER_HANDLERS = {
     }
 
     const { state: current, legacyDictionaries, options: currentOptions } = await readDictionaryStorage();
-    if (current !== null && current?.schemaVersion !== DICTIONARY_STATE_SCHEMA_VERSION) {
-      throw new Error(`unsupported dictionary state schema ${String(current?.schemaVersion)}`);
-    }
+    assertDictionaryState(current);
     const currentRevision = current?.revision ?? 0;
     if (message.baseRevision !== currentRevision) {
       return {
@@ -248,28 +358,132 @@ const WORKER_HANDLERS = {
       };
     }
 
-    const state = {
-      schemaVersion: DICTIONARY_STATE_SCHEMA_VERSION,
-      revision: currentRevision + 1,
-      dictionaries: message.dictionaries,
-      groups: pruneGroupMemberships(message.groups ?? current?.groups, message.dictionaries),
-    };
-    const values = { [DICTIONARY_STATE_KEY]: state };
-    if (currentOptions !== undefined) {
-      const nextOptions = normaliseDictionarySelections(currentOptions, state.dictionaries);
-      if (JSON.stringify(nextOptions) !== JSON.stringify(currentOptions)) {
-        values[OPTIONS_KEY] = nextOptions;
-      }
+    try {
+      assertOrdinaryCustomTransition(current?.dictionaries ?? [], message.dictionaries);
+    } catch (error) {
+      return {
+        ok: false,
+        protected: true,
+        error: describe(error),
+        state: current,
+      };
     }
+    const { state, values } = dictionaryCommit(
+      current,
+      currentOptions,
+      message.dictionaries,
+      message.groups,
+    );
     await chrome.storage.local.set(values);
-    if (current === null && legacyDictionaries !== null) {
-      try {
-        await chrome.storage.local.remove(LEGACY_DICTIONARIES_KEY);
-      } catch (error) {
-        console.warn("hoshidicts: could not remove legacy dictionary rows:", describe(error));
+    await removeLegacyDictionaryRows(current, legacyDictionaries);
+    return { state };
+  },
+
+  async hd_custom_read() {
+    const { state, customDocument } = await readDictionaryStorage();
+    assertDictionaryState(state);
+    return {
+      document: normaliseCustomDictionaryDocument(customDocument),
+      state,
+    };
+  },
+
+  async hd_custom_cas(message) {
+    if (!Number.isInteger(message?.baseDocumentRevision)
+        || message.baseDocumentRevision < 0) {
+      throw new Error("the custom dictionary write carried no valid document revision");
+    }
+    if (!Number.isInteger(message?.baseRevision) || message.baseRevision < 0) {
+      throw new Error("the custom dictionary write carried no valid dictionary revision");
+    }
+    if (typeof message?.text !== "string"
+        || typeof message?.semanticRevision !== "string") {
+      throw new TypeError("the custom dictionary write carried no source document");
+    }
+    const changesDictionaryState = message.dictionaries !== undefined;
+    if (changesDictionaryState && !Array.isArray(message.dictionaries)) {
+      throw new TypeError("the custom dictionary write carried an invalid dictionary list");
+    }
+    if (message.groups !== undefined && !Array.isArray(message.groups)) {
+      throw new TypeError("the custom dictionary write carried invalid groups");
+    }
+
+    const {
+      state: current,
+      legacyDictionaries,
+      options: currentOptions,
+      customDocument: storedDocument,
+    } = await readDictionaryStorage();
+    assertDictionaryState(current);
+    const document = normaliseCustomDictionaryDocument(storedDocument);
+    if (message.baseDocumentRevision !== document.revision) {
+      return {
+        ok: false,
+        stale: true,
+        error: "the custom dictionary source changed while it was being saved",
+        document,
+        state: current,
+      };
+    }
+    const currentRevision = current?.revision ?? 0;
+    if (message.baseRevision !== currentRevision) {
+      return {
+        ok: false,
+        conflict: true,
+        error: "the dictionary state changed while the custom dictionary was being saved",
+        document,
+        state: current,
+      };
+    }
+    const calculatedRevision = await customDictionarySemanticRevision(
+      parseCustomDictionary(message.text).entries,
+    );
+    if (calculatedRevision !== message.semanticRevision) {
+      throw new Error("the custom dictionary semantic revision does not match its source");
+    }
+
+    const documentChanged = document.text !== message.text
+      || document.semanticRevision !== message.semanticRevision;
+    const nextDocument = documentChanged
+      ? {
+          schemaVersion: CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION,
+          revision: document.revision + 1,
+          semanticRevision: message.semanticRevision,
+          text: message.text,
+        }
+      : document;
+    let state = current;
+    const values = {};
+    if (documentChanged) {
+      values[CUSTOM_DICTIONARY_SOURCE_KEY] = nextDocument;
+    }
+    if (changesDictionaryState) {
+      assertCustomDictionaryCommit(message.dictionaries);
+      const nextGroups = pruneGroupMemberships(
+        message.groups ?? current?.groups,
+        message.dictionaries,
+      );
+      const dictionaryChanged = current === null
+        || !sameJsonValue(current.dictionaries, message.dictionaries)
+        || !sameJsonValue(current.groups, nextGroups);
+      if (dictionaryChanged) {
+        const commit = dictionaryCommit(
+          current,
+          currentOptions,
+          message.dictionaries,
+          nextGroups,
+        );
+        state = commit.state;
+        Object.assign(values, commit.values);
       }
     }
-    return { state };
+    if (Object.keys(values).length > 0) {
+      await chrome.storage.local.set(values);
+      if (state !== current) {
+        await removeLegacyDictionaryRows(current, legacyDictionaries);
+      }
+    }
+    return { document: nextDocument, state };
   },
 
   async hd_options_write(message) {
@@ -277,9 +491,7 @@ const WORKER_HANDLERS = {
       throw new Error("the options write request carried no object");
     }
     const { state, options: currentOptions } = await readDictionaryStorage();
-    if (state !== null && state?.schemaVersion !== DICTIONARY_STATE_SCHEMA_VERSION) {
-      throw new Error(`unsupported dictionary state schema ${String(state?.schemaVersion)}`);
-    }
+    assertDictionaryState(state);
     const options = state === null
       ? message.options
       : normaliseDictionarySelections(message.options, state.dictionaries);
