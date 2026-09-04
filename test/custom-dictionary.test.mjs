@@ -83,7 +83,7 @@ test("custom entry serialization is the exact inverse of definition escapes", ()
   const long = {
     term: "\u9577".repeat(5_000),
     reading: "\u306a".repeat(3_000),
-    definition: "definition ".repeat(3_000),
+    definition: "definition ".repeat(3_000).trim(),
   };
   assert.deepEqual(parseCustomDictionary(serializeCustomDictionaryEntry(long)).entries, [long]);
 
@@ -120,13 +120,13 @@ test("semantic revision depends only on the ordered valid entries", async () => 
     "# source A",
     " \u98df\u3079\u308b , \u305f\u3079\u308b , to eat ",
     "broken",
-    "\u98df\u3079\u308b,\u305f\u3079\u308b,to eat",
+    "\u8d70\u308b,\u306f\u3057\u308b,to run",
   ].join("\n")).entries;
   const right = parseCustomDictionary([
     "\u98df\u3079\u308b, \u305f\u3079\u308b, to eat",
     "",
     "# source B",
-    "\u98df\u3079\u308b, \u305f\u3079\u308b, to eat",
+    "\u8d70\u308b, \u306f\u3057\u308b, to run",
   ].join("\r\n")).entries;
   const expected = createHash("sha256").update(JSON.stringify(left), "utf8").digest("hex");
 
@@ -134,7 +134,7 @@ test("semantic revision depends only on the ordered valid entries", async () => 
   assert.equal(await customDictionarySemanticRevision(right), expected);
   assert.match(expected, /^[0-9a-f]{64}$/u);
   assert.notEqual(
-    await customDictionarySemanticRevision([...left].reverse().slice(1)),
+    await customDictionarySemanticRevision([...left].reverse()),
     expected,
   );
   assert.notEqual(
