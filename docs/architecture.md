@@ -48,7 +48,7 @@ The fallback is intentionally explicit: `hd_status` reports `threaded: false` an
 
 Each dictionary import follows one logical transaction:
 
-1. `settings.html` takes the next ZIP from its real file input and sends `hd_import`.
+1. `settings.html` takes the next local ZIP, or downloads the next missing entry from the built-in recommendation catalogue, and sends `hd_import`.
 2. The service worker transfers the archive to the offscreen document.
 3. The engine worker imports Yomitan banks through the Hoshidicts C++ importer into a fresh `/dicts/.hdw-generation-<UUID>/<title>` root. A committed root is never overwritten in place.
 4. The generated files are flushed to the storage backend before metadata can reference them.
@@ -60,6 +60,11 @@ Each dictionary import follows one logical transaction:
 Multiple selected archives remain separate transactions. The settings page runs
 them sequentially, keeps an outcome for each file, continues after a failed
 archive, and refreshes dictionary state and engine status once after the batch.
+Recommended downloads use that same sequence. Settings passes only the frozen
+catalogue ID and the response's final URL; before committing the candidate, the
+engine resolves the ID itself and validates the final URL, title, update index,
+revision, and defining capability. Only then does the package gain its optional
+`sourceId` and catalogue-owned update URLs.
 
 If a compare-and-set result is unknown because both the commit reply and its readback fail, both the previous and candidate roots are retained. Revisioned manifest paths are authoritative on restart: the engine strict-loads those paths and removes unreferenced generations rather than adopting them from disk. The IDBFS startup path also resolves imports left by the older `.hdw-import` protocol. The archive input itself is not retained.
 
@@ -88,7 +93,7 @@ pruning are one compare-and-set transaction rather than two coordinated writes.
 
 | Message | Purpose |
 | --- | --- |
-| `hd_import` | Import one Yomitan ZIP and return an exact report |
+| `hd_import` | Import one Yomitan ZIP and return an exact report; optionally validate a built-in catalogue source in the same transaction |
 | `hd_apply_state` | Load an engine-affecting package change, then compare-and-set it atomically |
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
 | `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, and threading mode |

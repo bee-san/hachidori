@@ -8,6 +8,7 @@ import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
 } from "./dictionary-groups.js";
+import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
@@ -111,6 +112,7 @@ function normaliseDictionary(row) {
   if (title === "") {
     return null;
   }
+  const sourceId = nonemptyString(row?.sourceId);
   return {
     id: stringValue(row?.id),
     title,
@@ -130,6 +132,7 @@ function normaliseDictionary(row) {
     mediaCount: nonnegativeCount(row?.mediaCount),
     installedAt: stringValue(row?.installedAt),
     lastUpdateCheck: row?.lastUpdateCheck ?? null,
+    ...(sourceId === null ? {} : { sourceId }),
   };
 }
 
@@ -311,9 +314,40 @@ function appendImportResult(fileName, message, tone) {
   detail.hidden = false;
 }
 
+function renderRecommendedCatalogue() {
+  const list = element("recommended-dictionary-list");
+  for (const entry of RECOMMENDED_DICTIONARIES) {
+    const item = document.createElement("li");
+    const link = document.createElement("a");
+    link.className = "recommended-dictionary-link";
+    link.href = entry.publisherUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = entry.name;
+    const description = document.createElement("span");
+    description.textContent = entry.description;
+    item.append(link, description);
+    list.appendChild(item);
+  }
+}
+
+function missingRecommendedDictionaries() {
+  return RECOMMENDED_DICTIONARIES.filter((entry) => !dictionaries.some((dictionary) =>
+    dictionary.sourceId === entry.sourceId || dictionary.indexUrl === entry.indexUrl));
+}
+
+function renderRecommendedActions() {
+  const missing = missingRecommendedDictionaries();
+  element("recommended-starter").hidden = dictionaries.length > 0;
+  element("recommended-retry").hidden =
+    missing.length === 0 || missing.length === RECOMMENDED_DICTIONARIES.length;
+}
+
 function setControlsDisabled(disabled) {
   const blocked = disabled || removing;
   element("import-file").disabled = blocked || committing;
+  element("install-recommended").disabled = blocked || committing;
+  element("retry-recommended").disabled = blocked || committing;
   for (const control of document.querySelectorAll(".dict-row select, .dict-row input, .dict-row button")) {
     control.disabled = blocked || control.dataset.pinnedDisabled === "true";
   }
@@ -918,6 +952,7 @@ function renderDictionaryState() {
   dictionaryRenderDeferred = false;
   renderDictionaries();
   dictionaryGroupController.render();
+  renderRecommendedActions();
   setControlsDisabled(importing);
   normaliseDictionarySelections();
   renderOptions();
@@ -1076,12 +1111,11 @@ function summariseReport(report) {
   return counts.length === 0 ? "no entries" : counts.join(", ");
 }
 
-async function importFile(file, index, total) {
+async function importFile(file, index, total, request = {}, label = file.name, started = Date.now()) {
   const blobUrl = URL.createObjectURL(file);
-  const started = Date.now();
   const tick = () => {
     setImportState(
-      `Importing ${file.name} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsedSince(started)} elapsed`,
+      `Importing ${label} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsedSince(started)} elapsed`,
       "busy",
     );
   };
@@ -1089,16 +1123,16 @@ async function importFile(file, index, total) {
   const ticker = setInterval(tick, 1000);
 
   try {
-    const reply = await send("hd_import", { blobUrl, fileName: file.name });
+    const reply = await send("hd_import", { blobUrl, fileName: file.name, ...request });
     const report = reply.report ?? {};
     if (reply.ok && report.success) {
-      appendImportResult(file.name, `Imported ${report.title}: ${summariseReport(report)}.`, "ready");
+      appendImportResult(label, `Imported ${report.title}: ${summariseReport(report)}.`, "ready");
       return true;
     }
     const reason = reply.error ?? report.error ?? "The engine gave no reason.";
-    appendImportResult(file.name, `Could not be imported: ${reason}`, "error");
+    appendImportResult(label, `Could not be imported: ${reason}`, "error");
   } catch (error) {
-    appendImportResult(file.name, `Could not be imported: ${describe(error)}`, "error");
+    appendImportResult(label, `Could not be imported: ${describe(error)}`, "error");
   } finally {
     clearInterval(ticker);
     // The offscreen document has read the bytes by now; holding the URL any
@@ -1108,7 +1142,40 @@ async function importFile(file, index, total) {
   return false;
 }
 
-async function runImports(files) {
+async function importRecommendedDictionary(entry, index, total) {
+  const started = Date.now();
+  const tick = () => {
+    setImportState(
+      `Downloading ${entry.name} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsedSince(started)} elapsed`,
+      "busy",
+    );
+  };
+  tick();
+  const ticker = setInterval(tick, 1000);
+  try {
+    const response = await fetch(entry.downloadUrl, { credentials: "omit" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const file = new File([await response.blob()], entry.archiveName, { type: "application/zip" });
+    clearInterval(ticker);
+    return await importFile(
+      file,
+      index,
+      total,
+      { sourceId: entry.sourceId, finalUrl: response.url },
+      entry.name,
+      started,
+    );
+  } catch (error) {
+    appendImportResult(entry.name, `Could not be downloaded: ${describe(error)}`, "error");
+    return false;
+  } finally {
+    clearInterval(ticker);
+  }
+}
+
+async function runImportBatch(items, importOne, singular, plural) {
   if (importing) {
     return;
   }
@@ -1118,15 +1185,15 @@ async function runImports(files) {
 
   let imported = 0;
   try {
-    for (const [index, file] of files.entries()) {
-      if (await importFile(file, index, files.length)) {
+    for (const [index, item] of items.entries()) {
+      if (await importOne(item, index, items.length)) {
         imported += 1;
       }
     }
-    const failed = files.length - imported;
-    const archiveLabel = files.length === 1 ? "archive" : "archives";
+    const failed = items.length - imported;
+    const itemLabel = items.length === 1 ? singular : plural;
     setImportState(
-      `Finished ${files.length} of ${files.length} ${archiveLabel} — ${imported} imported, ${failed} failed.`,
+      `Finished ${items.length} of ${items.length} ${itemLabel} — ${imported} imported, ${failed} failed.`,
       failed === 0 ? "ready" : "error",
     );
     await reloadDictionaries();
@@ -1134,6 +1201,22 @@ async function runImports(files) {
   } finally {
     importing = false;
     setControlsDisabled(false);
+  }
+}
+
+function runImports(files) {
+  return runImportBatch(files, importFile, "archive", "archives");
+}
+
+function installMissingRecommendedDictionaries() {
+  const missing = missingRecommendedDictionaries();
+  if (missing.length > 0) {
+    void runImportBatch(
+      missing,
+      importRecommendedDictionary,
+      "recommended dictionary",
+      "recommended dictionaries",
+    );
   }
 }
 
@@ -1192,6 +1275,9 @@ function attachHandlers() {
   };
   window.addEventListener("pointerup", finishManagementPointer, true);
   window.addEventListener("pointercancel", finishManagementPointer, true);
+
+  element("install-recommended").addEventListener("click", installMissingRecommendedDictionaries);
+  element("retry-recommended").addEventListener("click", installMissingRecommendedDictionaries);
 
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
@@ -1302,6 +1388,7 @@ async function writeOptions() {
 }
 
 async function start() {
+  renderRecommendedCatalogue();
   const stored = await chrome.storage.local.get("options");
   options = normaliseOptions(stored.options);
   attachHandlers();

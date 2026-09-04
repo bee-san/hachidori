@@ -226,6 +226,11 @@ code {
   gap: 12px;
 }
 
+.recommendations[hidden],
+.recommended-retry[hidden] {
+  display: none;
+}
+
 .recommendations-head {
   display: flex;
   flex-direction: column;
@@ -236,6 +241,39 @@ code {
   margin: 0;
   font-size: 14px;
   font-weight: 620;
+}
+
+.primary-button {
+  width: fit-content;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font: inherit;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.primary-button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.primary-button:disabled {
+  background: var(--border-strong);
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.recommended-retry {
+  margin: 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  color: var(--text-dim);
 }
 
 .recommended-dictionary-list {

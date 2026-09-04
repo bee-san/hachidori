@@ -56,6 +56,9 @@ entries). It also writes malformed, missing-index, non-ZIP, and parent-title
 archives for the error and path-safety checks. The ZIP container is written by
 hand with `node:zlib` — the engine's reader only needs local file headers, a
 central directory and raw deflate streams, and that is about 80 lines.
+The exported `buildRecommendedZip()` helper builds the small in-memory archives
+used when tests intercept the four recommendation URLs; it does not contact the
+publishers.
 
 The `.zip` is checked against `third_party/hoshidicts/src/json/yomitan_parser.cpp`
 and `src/importer.cpp`, not guessed. `python3 -m zipfile` and the native CLI both
@@ -246,7 +249,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 118 checks, all of
+full request→reply round trip per contract-C message type. 130 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -258,7 +261,7 @@ The fakes cover only the Chrome surface the extension actually touches:
 | message bus | models the two rules `background.js` depends on — `sendMessage` never delivers to the sender, and an extension context never reaches a content script. That is what makes the `relayed: true` guard testable. |
 | `chrome.storage.local` | in-memory, with `onChanged`, so revision conflicts, legacy migration, and the service worker's ownership of `dictionaryState` are real. Given to the worker and the settings page only: an offscreen document has no storage. |
 | `indexedDB` | one object store keyed by path plus a `timestamp` index, which is all Emscripten's IDBFS uses. Enough to prove `FS.syncfs(false)` actually wrote something. |
-| `fetch` | serves `blob:` URLs out of a map (the import path) and `chrome-extension://` URLs off disk (`render/reader.css`) |
+| `fetch` | serves `blob:` URLs out of a map (the import path), `chrome-extension://` URLs off disk (`render/reader.css`), and deterministic responses for Settings catalogue downloads |
 
 Each script gets its own `chrome` object. `background.js` and the render modules
 have no `import` statements, so they run in a `node:vm` context; `offscreen.js` is
@@ -295,7 +298,10 @@ What it proves, in order:
    without stopping the last one.
    The batch assertion pins sequential requests, completed/total progress, one
    retained outcome and revoked object URL per file, a cleared picker, and one
-   final dictionary-state/status refresh.
+   final dictionary-state/status refresh. The recommendation stage separately
+   pins the four catalogue entries and publisher links, download/import phases,
+   atomic source validation, immediate starter-card hiding, failure continuation,
+   and a retry containing only missing entries.
 3. **Every read path** with the logical fixture package expanded to all four native kinds:
    `hd_lookup` and selected-dictionary `hd_lookup_dictionary` (payload keys,
    deinflection trace, glossary still a raw string,
@@ -394,12 +400,15 @@ above installs Chrome for Testing in the default cache; the harness also checks
 `HACHIDORI_PUPPETEER`, and `HACHIDORI_PROFILE`; the run aborts with a message
 naming the variable if either is missing.
 
-It launches Chrome with `--load-extension`, then uses the real `#import-file` on
-`settings.html` for a valid archive and a three-file batch containing a term-only
-kanji dictionary, a malformed ZIP, and a same-title reimport. It verifies the
-ordered per-file outcomes and failure continuation, exercises filtered bulk
-management, a real pointer drag, keyboard position movement, capability-aware
-chooser migration, and clicked-kanji navigation, and hovers real
+It launches Chrome with `--load-extension`, intercepts the four production
+recommendation URLs with deterministic ZIP fixtures, proves failure continuation,
+trusted source metadata, reload/restart hiding, and missing-only retry, then clears those
+fixtures. It next uses the real `#import-file` on `settings.html` for a valid
+archive and a three-file batch containing a term-only kanji dictionary, a
+malformed ZIP, and a same-title reimport. It verifies the ordered per-file
+outcomes and failure continuation, exercises filtered bulk management, a real
+pointer drag, keyboard position movement, capability-aware chooser migration,
+and clicked-kanji navigation, and hovers real
 text with a real mouse on a page served over `http://127.0.0.1` (content scripts do not run on
 `chrome-extension://`, `about:blank`, or `file://` without a per-extension
 opt-in), then relaunches against the same profile and hovers again with no
@@ -425,7 +434,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 58 assertions, and the summary line
+`PLANNED` at the top of the file names all 67 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

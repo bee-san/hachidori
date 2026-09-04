@@ -1,3 +1,5 @@
+import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
+
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
  *
@@ -16,6 +18,9 @@ const GENERATION_PREFIX = ".hdw-generation-";
 const GENERATION_NAME = /^\.hdw-generation-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const IMPORT_ZIP = "/.hdw-archive.zip";
 const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
+const RECOMMENDED_BY_ID = new Map(
+  RECOMMENDED_DICTIONARIES.map((entry) => [entry.sourceId, entry]),
+);
 
 // Index into this array is the `kind` argument of hdw_add_dict.
 const KINDS = ["term", "freq", "pitch", "kanji"];
@@ -370,6 +375,92 @@ function optionalText(value) {
   return typeof value === "string" && value !== "" ? value : null;
 }
 
+function recommendedSourceForImport(message) {
+  const sourceId = optionalText(message?.sourceId);
+  const finalUrl = optionalText(message?.finalUrl);
+  if (sourceId === null && finalUrl === null) {
+    return null;
+  }
+  const source = RECOMMENDED_BY_ID.get(sourceId);
+  if (!source) {
+    throw new Error("the recommended import names an unknown catalogue source");
+  }
+  if (finalUrl === null || !recommendedFinalUrlMatches(source, finalUrl)) {
+    throw new Error(`${source.name} downloaded from an unexpected final URL`);
+  }
+  return source;
+}
+
+function recommendedFinalUrlMatches(source, value) {
+  let finalUrl;
+  try {
+    finalUrl = new URL(value);
+  } catch {
+    return false;
+  }
+  if (finalUrl.protocol !== "https:" || finalUrl.username !== "" || finalUrl.password !== "") {
+    return false;
+  }
+  if (finalUrl.href === new URL(source.downloadUrl).href) {
+    return true;
+  }
+  if (source.githubRepository === null) {
+    return false;
+  }
+  if (finalUrl.hostname === "github.com") {
+    const prefix = `/${source.githubRepository}/releases/download/`;
+    const rest = finalUrl.pathname.startsWith(prefix) ? finalUrl.pathname.slice(prefix.length) : "";
+    return rest.includes("/") && decodeURIComponent(rest.slice(rest.lastIndexOf("/") + 1)) === source.archiveName;
+  }
+  if (finalUrl.hostname !== "release-assets.githubusercontent.com") {
+    return false;
+  }
+  const assetPrefix = `/github-production-release-asset/${source.githubRepositoryId}/`;
+  if (!finalUrl.pathname.startsWith(assetPrefix)) {
+    return false;
+  }
+  const disposition = finalUrl.searchParams.get("response-content-disposition")
+    ?? finalUrl.searchParams.get("rscd")
+    ?? "";
+  const match = /(?:^|;)\s*filename="?([^";]+)"?/iu.exec(disposition);
+  return match?.[1] === source.archiveName;
+}
+
+function capabilities(value) {
+  return [
+    ["term", value.termCount],
+    ["freq", value.frequencyCount],
+    ["pitch", value.pitchCount],
+    ["kanji", value.kanjiCount],
+    ["media", value.mediaCount],
+  ].filter(([, count]) => Number(count) > 0).map(([kind]) => kind);
+}
+
+function withRecommendedSource(dictionary, source) {
+  return {
+    ...dictionary,
+    sourceId: source.sourceId,
+    isUpdatable: true,
+    indexUrl: source.indexUrl,
+    downloadUrl: source.downloadUrl,
+  };
+}
+
+function validateRecommendedImport(source, report, generated) {
+  if (!new RegExp(source.titlePattern, "u").test(report.title)) {
+    throw new Error(`${source.name} archive did not match its expected title`);
+  }
+  if (generated.indexUrl !== source.indexUrl) {
+    throw new Error(`${source.name} archive did not match its expected update source`);
+  }
+  if (generated.revision === "") {
+    throw new Error(`${source.name} archive did not declare a revision`);
+  }
+  if (!capabilities(report).includes(source.requiredCapability)) {
+    throw new Error(`${source.name} archive did not contain its expected capability`);
+  }
+}
+
 function installedAt(importDate, path) {
   if (typeof importDate === "number" && Number.isFinite(importDate)) {
     return new Date(importDate).toISOString();
@@ -573,8 +664,10 @@ async function commitDictionaryCandidate(buildCandidate) {
 }
 
 function withStoredPresentation(generated, stored) {
+  const sourceId = optionalText(stored?.sourceId);
   return {
     ...generated,
+    id: optionalText(stored?.id) ?? generated.id,
     displayName: typeof stored?.displayName === "string" ? stored.displayName : null,
     enabled: stored?.enabled !== false,
     favorite: stored?.favorite === true,
@@ -582,6 +675,7 @@ function withStoredPresentation(generated, stored) {
     indexUrl: stored?.indexUrl ?? generated.indexUrl,
     downloadUrl: stored?.downloadUrl ?? generated.downloadUrl,
     lastUpdateCheck: stored?.lastUpdateCheck ?? null,
+    ...(sourceId === null ? {} : { sourceId }),
   };
 }
 
@@ -841,14 +935,26 @@ function normaliseReport(raw) {
   return report;
 }
 
-function withImport(stored, generated) {
-  const existingIndex = stored.findIndex((dictionary) =>
-    dictionary?.id === generated.id || text(dictionary?.title) === generated.title);
+function withImport(stored, generated, recommendedSource) {
+  let existingIndex = recommendedSource === null ? -1 : stored.findIndex((dictionary) =>
+    optionalText(dictionary?.sourceId) === recommendedSource.sourceId);
+  if (existingIndex < 0 && generated.indexUrl !== null) {
+    existingIndex = stored.findIndex((dictionary) => dictionary?.indexUrl === generated.indexUrl);
+  }
   if (existingIndex < 0) {
-    return [...stored, generated];
+    existingIndex = stored.findIndex((dictionary) =>
+      dictionary?.id === generated.id || text(dictionary?.title) === generated.title);
+  }
+  if (existingIndex < 0) {
+    return [...stored, recommendedSource === null
+      ? generated
+      : withRecommendedSource(generated, recommendedSource)];
   }
   const next = [...stored];
-  next[existingIndex] = withStoredPresentation(generated, stored[existingIndex]);
+  const replacement = withStoredPresentation(generated, stored[existingIndex]);
+  next[existingIndex] = recommendedSource === null
+    ? replacement
+    : withRecommendedSource(replacement, recommendedSource);
   return next;
 }
 
@@ -866,13 +972,16 @@ async function cleanupCommittedDictionaries(committed) {
   }
 }
 
-async function commitImportedGeneration(generationRoot, report) {
+async function commitImportedGeneration(generationRoot, report, recommendedSource) {
   const generated = await packageFromIndex(`${generationRoot}/${report.title}`);
   if (generated.title !== report.title) {
     throw new Error("the imported dictionary title changed while it was being committed");
   }
+  if (recommendedSource !== null) {
+    validateRecommendedImport(recommendedSource, report, generated);
+  }
   const committed = await commitDictionaryCandidate((snapshot) =>
-    withImport(snapshot.state?.dictionaries ?? [], generated));
+    withImport(snapshot.state?.dictionaries ?? [], generated, recommendedSource));
   publishLoadedDictionaries(committed.loadedCount);
   reloadError = null;
   await cleanupCommittedDictionaries(committed.state);
@@ -1088,6 +1197,7 @@ const HANDLERS = {
     if (blobUrl === "") {
       throw new Error("the import request carried no archive URL");
     }
+    const recommendedSource = recommendedSourceForImport(message);
 
     const response = await fetch(blobUrl);
     if (!response.ok) {
@@ -1120,7 +1230,7 @@ const HANDLERS = {
       }
       if (report.success) {
         await persistFilesystem();
-        await commitImportedGeneration(generationRoot, report);
+        await commitImportedGeneration(generationRoot, report, recommendedSource);
       } else {
         const failure = new Error(report.error || `${fileName} could not be imported`);
         rollbackAttempted = true;

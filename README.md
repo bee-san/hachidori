@@ -34,7 +34,7 @@ git clone https://github.com/bee-san/hachidori.git
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked** and select the cloned `hachidori/extension` directory.
-4. Open Hachidori's **Options**, import a Yomitan `.zip`, then hover Japanese text on any page.
+4. Open Hachidori's **Options**, install the four recommended dictionaries or import your own Yomitan `.zip`, then hover Japanese text on any page.
 
 Hachidori requires Chrome 118 or newer. The WebAssembly bundle is committed, so using the extension needs no build step and no submodules.
 
@@ -55,8 +55,13 @@ Hachidori scans forward from the character under your pointer, deinflects forms 
 
 ## Use it
 
+<p align="center">
+  <img src="docs/assets/recommended-installer.png" alt="Hachidori Options showing local ZIP import and the one-click recommended dictionary installer" width="760">
+</p>
+
 Open Hachidori's options page to:
 
+- install Jitendex, JMnedict for Yomitan, Bee's Ultimate Kanji Dictionary, and Jiten Frequency Dictionary in one click;
 - import one or more Yomitan dictionaries;
 - choose whether each dictionary supplies terms, frequencies, pitch accents, or kanji;
 - search titles and aliases, select visible matches, and bulk enable, disable, favourite, or unfavourite them;
@@ -64,7 +69,7 @@ Open Hachidori's options page to:
 - create ordered dictionary groups and arrange each group's dictionaries;
 - configure the hover key, delay, scan length, result limit, frequency ranking, and the dictionary opened when you click a kanji.
 
-Selected dictionaries import one at a time, with an outcome retained for every archive; a failure does not stop the rest. Large dictionaries can take several minutes, so keep the page open until the batch finishes.
+Selected dictionaries import one at a time, with an outcome retained for every archive; a failure does not stop the rest. The starter installer behaves the same way and retries only recommendations that are still missing. Large dictionaries can take several minutes, so keep the page open until the batch finishes.
 
 The kanji dictionary chooser accepts both traditional Yomitan kanji dictionaries and term dictionaries with single-kanji entries.
 
@@ -99,7 +104,9 @@ Choose Hachidori when you want the shortest path from a Yomitan dictionary to a 
 
 ## Privacy by default
 
-Hachidori makes no network calls. Dictionary archives are imported locally, persisted in Chrome's IndexedDB-backed extension storage, and queried by the bundled WebAssembly engine.
+Lookups make no network calls. Your dictionaries and lookup text stay in Chrome, and the bundled WebAssembly engine queries them locally.
+
+The optional starter action downloads its four named archives directly from the publishers linked on the Options page. Importing your own ZIP and every lookup remain local. Imported dictionaries are persisted in Chrome's extension storage.
 
 Only import dictionaries you trust. Hachidori validates the archive title before the engine creates its on-disk directory, but dictionary-supplied content and CSS still come from the archive you choose.
 

@@ -21,7 +21,12 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 
-import { GENERIC_KANJI_GLOSSARY, GENERIC_KANJI_TITLE } from "./make-fixture.mjs";
+import {
+  GENERIC_KANJI_GLOSSARY,
+  GENERIC_KANJI_TITLE,
+  buildRecommendedZip,
+} from "./make-fixture.mjs";
+import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -121,12 +126,29 @@ const PROFILE = process.env.HACHIDORI_PROFILE || `/tmp/hachidori-e2e-profile-${p
 const HIGHLIGHT_NAME = (readFileSync(resolve(EXTENSION, "content.js"), "utf8")
   .match(/HIGHLIGHT_NAME\s*=\s*"([^"]+)"/) || [])[1];
 
-const RECOMMENDED_DICTIONARIES = [
-  ["Jitendex", "https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip"],
-  ["JMdict (English)", "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_english.zip"],
-  ["Bee's Ultimate Kanji Dictionary", "https://github.com/bee-san/bees-ultimate-kanji-dictionary/releases/latest/download/bees-ultimate-kanji-dictionary.zip"],
-  ["Jiten Frequency", "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan"],
-];
+const RECOMMENDED_FIXTURE_METADATA = {
+  jitendex: {
+    title: "Jitendex.org [2026-08-11]",
+    revision: "2026.08.11.0",
+    capabilities: ["term", "media"],
+  },
+  jmnedict: {
+    title: "JMnedict [2026-09-04]",
+    revision: "JMnedict.2026-09-04",
+    capabilities: ["term"],
+  },
+  "bees-ultimate-kanji-dictionary": {
+    title: "Bee's Ultimate Kanji Dictionary",
+    revision: "2026.09.02",
+    capabilities: ["term", "freq", "media"],
+  },
+  jiten: { title: "Jiten", revision: "Jiten 26-09-02", capabilities: ["freq"] },
+};
+const RECOMMENDED_DICTIONARIES = RECOMMENDED_CATALOGUE.map((entry) => ({
+  ...entry,
+  ...RECOMMENDED_FIXTURE_METADATA[entry.sourceId],
+}));
+const RECOMMENDED_LINKS = RECOMMENDED_DICTIONARIES.map(({ name, publisherUrl }) => [name, publisherUrl]);
 
 // Every assertion this run makes, named up front. The denominator is this list,
 // not the number of checks that happened to execute: a suite that skips an
@@ -140,6 +162,10 @@ const PLANNED = [
   "settings page renders exactly four safe recommended dictionary links",
   "recommended dictionaries form two columns on desktop",
   "recommended dictionaries stack without overflow on narrow screens",
+  "a clean profile shows one recommended install action beside local import",
+  "the recommended installer continues after a mocked download failure",
+  "the starter card stays hidden after a settings reload",
+  "recommended retry downloads only the missing trusted dictionary",
   "settings page exposes a .zip file input",
   "the .zip file input accepts multiple .zip files",
   "importing a Yomitan .zip from the settings page succeeds",
@@ -190,6 +216,7 @@ const PLANNED = [
   "hovering non-Japanese text shows no popup",
   "the same hover shows a popup again after the non-Japanese one",
   "the settings page lists the dictionary again after a restart",
+  "the starter card stays hidden after a browser restart",
   "the dictionary survives a browser restart via OPFS",
   "lookups work after a restart with no re-import",
   "removing the dictionary clears its settings rows",
@@ -615,8 +642,12 @@ async function main() {
     JSON.stringify(branding),
   );
 
+  await page.waitForFunction(() =>
+    document.querySelectorAll("#recommended-dictionary-list > li").length === 4
+      && document.getElementById("recommended-starter")?.hidden === false,
+  { timeout: 90_000, polling: 100 }).catch(() => {});
   await page.setViewport({ width: 960, height: 900 });
-  const desktopRecommendations = await page.evaluate(expected => {
+  const desktopRecommendations = await page.evaluate(() => {
     const list = document.querySelector(".recommended-dictionary-list");
     const items = list ? [...list.children] : [];
     return {
@@ -631,13 +662,12 @@ async function main() {
         const rect = item.getBoundingClientRect();
         return { bottom: rect.bottom, left: rect.left, right: rect.right, top: rect.top };
       }),
-      expected,
     };
-  }, RECOMMENDED_DICTIONARIES);
+  });
   const desktopLinks = desktopRecommendations.links.map(([name, url]) => [name, url]);
   check(
     "settings page renders exactly four safe recommended dictionary links",
-    JSON.stringify(desktopLinks) === JSON.stringify(RECOMMENDED_DICTIONARIES)
+    JSON.stringify(desktopLinks) === JSON.stringify(RECOMMENDED_LINKS)
       && desktopRecommendations.links.every(([, , target, rel]) =>
         target === "_blank" && rel.split(/\s+/u).includes("noopener") && rel.split(/\s+/u).includes("noreferrer")),
     JSON.stringify(desktopRecommendations.links),
@@ -646,7 +676,7 @@ async function main() {
   check(
     "recommended dictionaries form two columns on desktop",
     desktopRecommendations.columns === 2
-      && desktopRects.length === RECOMMENDED_DICTIONARIES.length
+      && desktopRects.length === RECOMMENDED_LINKS.length
       && Math.abs(desktopRects[0].top - desktopRects[1].top) <= 1
       && Math.abs(desktopRects[2].top - desktopRects[3].top) <= 1
       && desktopRects[0].left < desktopRects[1].left
@@ -673,7 +703,7 @@ async function main() {
   check(
     "recommended dictionaries stack without overflow on narrow screens",
     narrowRecommendations.columns === 1
-      && narrowRecommendations.rects.length === RECOMMENDED_DICTIONARIES.length
+      && narrowRecommendations.rects.length === RECOMMENDED_LINKS.length
       && narrowRecommendations.scrollWidth <= narrowRecommendations.documentWidth
       && narrowRecommendations.rects.every((rect, index, rects) =>
         rect.left >= narrowRecommendations.list.left - 1
@@ -716,6 +746,177 @@ async function main() {
     server.close();
     return report();
   }
+
+  const cleanInstaller = await page.evaluate(() => ({
+    starterHidden: document.getElementById("recommended-starter")?.hidden,
+    installText: document.getElementById("install-recommended")?.textContent?.trim() ?? "",
+    retryHidden: document.getElementById("recommended-retry")?.hidden,
+    localInputVisible: document.getElementById("import-file")?.closest(".file-button")?.hidden !== true,
+    dictionaryManagementVisible: document.getElementById("dict-list")?.closest(".card")?.hidden !== true,
+  }));
+  check(
+    "a clean profile shows one recommended install action beside local import",
+    cleanInstaller.starterHidden === false
+      && cleanInstaller.installText === "Install all recommended dictionaries"
+      && cleanInstaller.retryHidden === true
+      && cleanInstaller.localInputVisible === true
+      && cleanInstaller.dictionaryManagementVisible === true,
+    JSON.stringify(cleanInstaller),
+  );
+  if (process.env.HACHIDORI_SETTINGS_SCREENSHOT) {
+    const importCard = await page.$('section[aria-labelledby="import-heading"]');
+    await importCard.screenshot({ path: process.env.HACHIDORI_SETTINGS_SCREENSHOT });
+  }
+
+  const recommendedFixtures = new Map(RECOMMENDED_DICTIONARIES.map((entry) => [
+    entry.downloadUrl,
+    buildRecommendedZip(entry),
+  ]));
+  const recommendedRequests = [];
+  const recommendedAttempts = new Map();
+  const interceptRecommendedDownload = async (request) => {
+    const archive = recommendedFixtures.get(request.url());
+    if (!archive) {
+      await request.continue();
+      return;
+    }
+    const entry = RECOMMENDED_DICTIONARIES.find((candidate) => candidate.downloadUrl === request.url());
+    const attempt = (recommendedAttempts.get(entry.sourceId) ?? 0) + 1;
+    recommendedAttempts.set(entry.sourceId, attempt);
+    recommendedRequests.push(entry.sourceId);
+    const headers = {
+      "access-control-allow-origin": "*",
+      "content-type": "application/zip",
+      "cross-origin-resource-policy": "cross-origin",
+    };
+    if (entry.sourceId === "jmnedict" && attempt === 1) {
+      await request.respond({ status: 503, headers, body: "mocked publisher failure" });
+      return;
+    }
+    await request.respond({ status: 200, headers, body: archive });
+  };
+  await page.setRequestInterception(true);
+  const recommendedRequestHandler = (request) => {
+    void interceptRecommendedDownload(request).catch(async (error) => {
+      diagnostics.push(`[recommendation mock] ${error?.stack ?? error}`);
+      await request.abort().catch(() => {});
+    });
+  };
+  page.on("request", recommendedRequestHandler);
+
+  await page.click("#install-recommended");
+  const recommendedFirstState = await page.waitForFunction(() => {
+    const text = document.getElementById("import-state")?.textContent?.trim() ?? "";
+    return text.startsWith("Finished 4 of 4 recommended dictionaries") ? text : false;
+  }, { timeout: 120_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => "(never settled)");
+  const recommendedFirst = await page.evaluate(() => ({
+    state: document.getElementById("import-state")?.textContent?.trim() ?? "",
+    progressHidden: document.getElementById("import-progress")?.hidden,
+    starterHidden: document.getElementById("recommended-starter")?.hidden,
+    retryHidden: document.getElementById("recommended-retry")?.hidden,
+    localInputVisible: document.getElementById("import-file")?.closest(".file-button")?.hidden !== true,
+    outcomes: [...document.querySelectorAll("#import-detail .import-result")].map((item) => ({
+      text: item.textContent.trim(),
+      error: item.classList.contains("is-error"),
+    })),
+  }));
+  const recommendedFirstStorage = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
+  const firstRecommendedPackages = recommendedFirstStorage.dictionaryState?.dictionaries ?? [];
+  check(
+    "the recommended installer continues after a mocked download failure",
+    recommendedFirstState === "Finished 4 of 4 recommended dictionaries — 3 imported, 1 failed."
+      && JSON.stringify(recommendedRequests) === JSON.stringify(
+        RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId),
+      )
+      && recommendedFirst.progressHidden === true
+      && recommendedFirst.starterHidden === true
+      && recommendedFirst.retryHidden === false
+      && recommendedFirst.localInputVisible === true
+      && recommendedFirst.outcomes.length === 4
+      && JSON.stringify(recommendedFirst.outcomes.map(({ error }) => error))
+        === JSON.stringify([false, true, false, false])
+      && firstRecommendedPackages.length === 3
+      && firstRecommendedPackages.every((dictionary) => {
+        const entry = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === dictionary.sourceId);
+        return entry
+          && dictionary.title === entry.title
+          && dictionary.revision === entry.revision
+          && dictionary.isUpdatable === true
+          && dictionary.indexUrl === entry.indexUrl
+          && dictionary.downloadUrl === entry.downloadUrl;
+      }),
+    `${recommendedFirstState}; UI: ${JSON.stringify(recommendedFirst)}; requests: ${JSON.stringify(recommendedRequests)};`
+      + ` state: ${JSON.stringify(recommendedFirstStorage.dictionaryState)}`,
+  );
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const reloadedRecommended = await page.waitForFunction(() => {
+    const rows = document.querySelectorAll("#dict-list .dict-row").length;
+    return rows === 3 ? {
+      rows,
+      starterHidden: document.getElementById("recommended-starter")?.hidden,
+      retryHidden: document.getElementById("recommended-retry")?.hidden,
+      localInputVisible: document.getElementById("import-file")?.closest(".file-button")?.hidden !== true,
+    } : false;
+  }, { timeout: 90_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
+  check(
+    "the starter card stays hidden after a settings reload",
+    reloadedRecommended?.rows === 3
+      && reloadedRecommended.starterHidden === true
+      && reloadedRecommended.retryHidden === false
+      && reloadedRecommended.localInputVisible === true,
+    JSON.stringify(reloadedRecommended),
+  );
+
+  const requestsBeforeRetry = recommendedRequests.length;
+  await page.click("#retry-recommended");
+  const recommendedRetryState = await page.waitForFunction(() => {
+    const text = document.getElementById("import-state")?.textContent?.trim() ?? "";
+    return text.startsWith("Finished 1 of 1 recommended dictionary") ? text : false;
+  }, { timeout: 120_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => "(never settled)");
+  const recommendedRetry = await page.evaluate(() => ({
+    outcomes: [...document.querySelectorAll("#import-detail .import-result")].map((item) => item.textContent.trim()),
+    retryHidden: document.getElementById("recommended-retry")?.hidden,
+    state: document.getElementById("import-state")?.textContent?.trim() ?? "",
+  }));
+  const recommendedRetryStorage = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
+  const allRecommendedPackages = recommendedRetryStorage.dictionaryState?.dictionaries ?? [];
+  check(
+    "recommended retry downloads only the missing trusted dictionary",
+    recommendedRetryState === "Finished 1 of 1 recommended dictionary — 1 imported, 0 failed."
+      && JSON.stringify(recommendedRequests.slice(requestsBeforeRetry)) === JSON.stringify(["jmnedict"])
+      && recommendedRetry.outcomes.length === 1
+      && recommendedRetry.outcomes[0].includes("JMnedict for Yomitan")
+      && recommendedRetry.retryHidden === true
+      && allRecommendedPackages.length === RECOMMENDED_DICTIONARIES.length
+      && RECOMMENDED_DICTIONARIES.every((entry) => allRecommendedPackages.some((dictionary) =>
+        dictionary.sourceId === entry.sourceId
+          && dictionary.title === entry.title
+          && dictionary.revision === entry.revision
+          && dictionary.indexUrl === entry.indexUrl
+          && dictionary.downloadUrl === entry.downloadUrl)),
+    `${recommendedRetryState}; UI: ${JSON.stringify(recommendedRetry)}; requests: ${JSON.stringify(recommendedRequests)};`
+      + ` state: ${JSON.stringify(recommendedRetryStorage.dictionaryState)}`,
+  );
+
+  for (const { title } of RECOMMENDED_DICTIONARIES) {
+    const removed = await page.evaluate((dictionaryTitle) => chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen",
+      type: "hd_remove",
+      requestId: `e2e-remove-recommended-${dictionaryTitle}`,
+      title: dictionaryTitle,
+    }), title);
+    if (removed?.ok !== true) {
+      throw new Error(`could not clear mocked recommended dictionary ${title}: ${JSON.stringify(removed)}`);
+    }
+  }
+  await page.waitForFunction(async () => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    return dictionaryState?.dictionaries?.length === 0
+      && document.getElementById("recommended-starter")?.hidden === false;
+  }, { timeout: 90_000, polling: 100 });
+  page.off("request", recommendedRequestHandler);
+  await page.setRequestInterception(false);
 
   // ------------------------------------------------------------------ import
   const input = await page.$("#import-file");
@@ -1745,6 +1946,15 @@ async function main() {
     persistedPackage?.path === replacedPackage.path
       && ownedGenerationRoot(persistedPackage.path, "hachidori-fixture") === replacedFixtureGeneration,
     `expected path: ${JSON.stringify(replacedPackage.path)}; persisted package: ${JSON.stringify(persistedPackage)}`);
+  const restartedSettingsUi = await page.evaluate(() => ({
+    localInputVisible: document.getElementById("import-file")?.closest(".file-button")?.hidden !== true,
+    starterHidden: document.getElementById("recommended-starter")?.hidden,
+  }));
+  check(
+    "the starter card stays hidden after a browser restart",
+    restartedSettingsUi.starterHidden === true && restartedSettingsUi.localInputVisible === true,
+    JSON.stringify(restartedSettingsUi),
+  );
 
   // #dict-list above reflects worker-owned chrome.storage.local state, which
   // persists regardless of OPFS; only a dictionaryCount from the fresh engine

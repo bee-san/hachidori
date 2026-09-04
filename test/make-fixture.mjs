@@ -507,6 +507,51 @@ export function buildTitledZip(title, { banks = true } = {}) {
   return buildZip(entries);
 }
 
+// Small deterministic stand-ins for the recommended downloads. The browser
+// suite serves these bytes for the production catalogue URLs, so CI exercises
+// the complete download/import path without depending on live publishers.
+export function buildRecommendedZip({
+  title,
+  revision,
+  indexUrl,
+  downloadUrl,
+  capabilities,
+}) {
+  const supported = new Set(capabilities);
+  const entries = [zipEntry('index.json', JSON.stringify({
+    ...index,
+    title,
+    revision,
+    isUpdatable: true,
+    indexUrl,
+    downloadUrl,
+  }))];
+  if (supported.has('term')) {
+    entries.push(zipEntry('term_bank_1.json', JSON.stringify([
+      ['辞書', 'じしょ', 'n', '', 1, [`${title} term fixture`], 1, ''],
+    ])));
+  }
+  if (supported.has('freq')) {
+    entries.push(zipEntry('term_meta_bank_1.json', JSON.stringify([
+      ['辞書', 'freq', { value: 1, displayValue: '1' }],
+    ])));
+  }
+  if (supported.has('pitch')) {
+    entries.push(zipEntry('term_meta_bank_2.json', JSON.stringify([
+      ['辞書', 'pitch', { reading: 'じしょ', pitches: [{ position: 1 }] }],
+    ])));
+  }
+  if (supported.has('kanji')) {
+    entries.push(zipEntry('kanji_bank_1.json', JSON.stringify([
+      ['辞', 'ジ', 'や.める', '', ['word'], { strokes: '13' }],
+    ])));
+  }
+  if (supported.has('media')) {
+    entries.push(zipEntry('media/recommended.png', makePng(4), STORE));
+  }
+  return buildZip(entries);
+}
+
 // A structurally valid archive with no index.json. dictionary_importer::import
 // must report "could not find index.json" rather than throwing past the ABI.
 export function buildNoIndexZip() {
