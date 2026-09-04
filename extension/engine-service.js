@@ -1,4 +1,11 @@
-import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
+import {
+  httpsUrl,
+  MANAGED_DICTIONARY_CHANGED,
+  managedDictionaryFingerprint,
+  managedDictionaryMatches,
+  recommendedDictionarySource,
+  recommendedDownloadUrlMatches,
+} from "./managed-dictionary-source.js";
 
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
@@ -18,9 +25,6 @@ const GENERATION_PREFIX = ".hdw-generation-";
 const GENERATION_NAME = /^\.hdw-generation-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const IMPORT_ZIP = "/.hdw-archive.zip";
 const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
-const RECOMMENDED_BY_ID = new Map(
-  RECOMMENDED_DICTIONARIES.map((entry) => [entry.sourceId, entry]),
-);
 
 // Index into this array is the `kind` argument of hdw_add_dict.
 const KINDS = ["term", "freq", "pitch", "kanji"];
@@ -375,66 +379,20 @@ function optionalText(value) {
   return typeof value === "string" && value !== "" ? value : null;
 }
 
-function httpsUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && url.username === "" && url.password === ""
-      ? url.href
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 function recommendedSourceForImport(message) {
   const sourceId = optionalText(message?.sourceId);
   const finalUrl = optionalText(message?.finalUrl);
   if (sourceId === null && finalUrl === null) {
     return null;
   }
-  const source = RECOMMENDED_BY_ID.get(sourceId);
+  const source = recommendedDictionarySource(sourceId);
   if (!source) {
     throw new Error("the recommended import names an unknown catalogue source");
   }
-  if (finalUrl !== null && !recommendedFinalUrlMatches(source, finalUrl)) {
+  if (finalUrl !== null && !recommendedDownloadUrlMatches(source, finalUrl)) {
     throw new Error(`${source.name} downloaded from an unexpected final URL`);
   }
   return source;
-}
-
-function recommendedFinalUrlMatches(source, value) {
-  let finalUrl;
-  try {
-    finalUrl = new URL(value);
-  } catch {
-    return false;
-  }
-  if (finalUrl.protocol !== "https:" || finalUrl.username !== "" || finalUrl.password !== "") {
-    return false;
-  }
-  if (finalUrl.href === new URL(source.downloadUrl).href) {
-    return true;
-  }
-  if (source.githubRepository === null) {
-    return false;
-  }
-  if (finalUrl.hostname === "github.com") {
-    const prefix = `/${source.githubRepository}/releases/download/`;
-    const rest = finalUrl.pathname.startsWith(prefix) ? finalUrl.pathname.slice(prefix.length) : "";
-    return rest.includes("/") && decodeURIComponent(rest.slice(rest.lastIndexOf("/") + 1)) === source.archiveName;
-  }
-  if (finalUrl.hostname !== "release-assets.githubusercontent.com") {
-    return false;
-  }
-  const assetPrefix = `/github-production-release-asset/${source.githubRepositoryId}/`;
-  if (!finalUrl.pathname.startsWith(assetPrefix)) {
-    return false;
-  }
-  const disposition = finalUrl.searchParams.get("response-content-disposition")
-    ?? finalUrl.searchParams.get("rscd")
-    ?? "";
-  const match = /(?:^|;)\s*filename="?([^";]+)"?/iu.exec(disposition);
-  return match?.[1] === source.archiveName;
 }
 
 function capabilities(value) {
@@ -938,15 +896,17 @@ function normaliseReport(raw) {
 
 function withImport(stored, generated, recommendedSource, managedSource) {
   let existingIndex = managedSource === null ? -1 : stored.findIndex((dictionary) =>
-    dictionary?.id === managedSource.id);
+    dictionary?.id === managedSource.fingerprint.id);
   if (managedSource !== null) {
     const existing = stored[existingIndex];
-    if (existingIndex < 0
-        || existing?.isUpdatable !== true
-        || httpsUrl(existing?.indexUrl) !== managedSource.indexUrl
-        || httpsUrl(existing?.downloadUrl) !== managedSource.downloadUrl
-        || (recommendedSource !== null && existing?.sourceId !== recommendedSource.sourceId)) {
-      throw new Error("the managed dictionary changed while its update was being prepared");
+    if (existingIndex < 0 || !managedDictionaryMatches(existing, managedSource.fingerprint)) {
+      throw new Error(MANAGED_DICTIONARY_CHANGED);
+    }
+    const collision = stored.some((dictionary, index) =>
+      index !== existingIndex
+        && (dictionary?.id === generated.id || text(dictionary?.title) === generated.title));
+    if (collision) {
+      throw new Error(`a dictionary named ${generated.title} is already installed`);
     }
   }
   if (existingIndex < 0 && recommendedSource !== null) {
@@ -966,7 +926,21 @@ function withImport(stored, generated, recommendedSource, managedSource) {
       : withRecommendedSource(generated, recommendedSource)];
   }
   const next = [...stored];
-  const replacement = withStoredPresentation(generated, stored[existingIndex]);
+  let replacement = withStoredPresentation(generated, stored[existingIndex]);
+  if (managedSource !== null) {
+    replacement = {
+      ...replacement,
+      isUpdatable: true,
+      indexUrl: managedSource.fingerprint.source.indexUrl,
+      downloadUrl: managedSource.fingerprint.source.downloadUrl,
+      lastUpdateCheck: {
+        checkedAt: managedSource.checkedAt,
+        status: "up-to-date",
+        remoteRevision: generated.revision,
+        error: null,
+      },
+    };
+  }
   next[existingIndex] = recommendedSource === null
     ? replacement
     : withRecommendedSource(replacement, recommendedSource);
@@ -1001,7 +975,8 @@ async function commitImportedGeneration(
   if (expectedRevision !== null && generated.revision !== expectedRevision) {
     throw new Error("the downloaded dictionary revision did not match its update index");
   }
-  if (managedSource !== null && httpsUrl(generated.indexUrl) !== managedSource.indexUrl) {
+  if (managedSource !== null
+      && httpsUrl(generated.indexUrl) !== managedSource.fingerprint.source.indexUrl) {
     throw new Error("the downloaded dictionary did not match its update source");
   }
   if (recommendedSource !== null) {
@@ -1111,23 +1086,35 @@ async function importDictionaryArchive(response, archivePath, generationRoot, im
 }
 
 async function managedSourceForImport(message, recommendedSource) {
-  const id = optionalText(message?.managedId);
-  if (id === null) {
+  const requested = message?.managedFingerprint;
+  if (requested === null || requested === undefined) {
     return null;
   }
-  const dictionary = (await readStoredDictionaries()).find((entry) => entry?.id === id);
-  const indexUrl = httpsUrl(dictionary?.indexUrl);
-  const downloadUrl = httpsUrl(dictionary?.downloadUrl);
-  if (dictionary?.isUpdatable !== true || indexUrl === null || downloadUrl === null) {
-    throw new Error("the managed dictionary no longer has an update source");
+  const dictionary = (await readStoredDictionaries()).find((entry) => entry?.id === requested?.id);
+  if (!managedDictionaryMatches(dictionary, requested)) {
+    throw new Error(MANAGED_DICTIONARY_CHANGED);
   }
-  if (recommendedSource !== null && dictionary?.sourceId !== recommendedSource.sourceId) {
-    throw new Error("the managed dictionary no longer matches its catalogue source");
+  const fingerprint = managedDictionaryFingerprint(dictionary);
+  const isRecommended = fingerprint.source.kind === "recommended";
+  if ((isRecommended && recommendedSource?.sourceId !== fingerprint.source.sourceId)
+      || (!isRecommended && recommendedSource !== null)) {
+    throw new Error(MANAGED_DICTIONARY_CHANGED);
+  }
+  const archiveUrl = httpsUrl(message?.archiveUrl);
+  if (archiveUrl === null
+      || (isRecommended && archiveUrl !== fingerprint.source.downloadUrl)) {
+    throw new Error("the managed dictionary update carried an invalid archive URL");
+  }
+  const checkedAt = typeof message?.checkedAt === "string" && message.checkedAt !== ""
+    ? message.checkedAt
+    : null;
+  if (checkedAt === null) {
+    throw new Error("the managed dictionary update carried no check time");
   }
   return {
-    id,
-    indexUrl: recommendedSource?.indexUrl ?? indexUrl,
-    downloadUrl: recommendedSource?.downloadUrl ?? downloadUrl,
+    fingerprint,
+    archiveUrl,
+    checkedAt,
   };
 }
 
@@ -1249,7 +1236,7 @@ const HANDLERS = {
     const recommendedSource = recommendedSourceForImport(message);
     const managedSource = await managedSourceForImport(message, recommendedSource);
     if (blobUrl !== "" && recommendedSource !== null
-        && !recommendedFinalUrlMatches(recommendedSource, optionalText(message.finalUrl))) {
+        && !recommendedDownloadUrlMatches(recommendedSource, optionalText(message.finalUrl))) {
       throw new Error(`${recommendedSource.name} downloaded from an unexpected final URL`);
     }
     if (blobUrl === "" && managedSource === null) {
@@ -1262,7 +1249,7 @@ const HANDLERS = {
     const fileName = text(message.fileName)
       || recommendedSource?.archiveName
       || "the archive";
-    const response = await fetch(blobUrl || managedSource.downloadUrl, { credentials: "omit" });
+    const response = await fetch(blobUrl || managedSource.archiveUrl, { credentials: "omit" });
     if (!response.ok) {
       throw new Error(`could not read ${fileName}: HTTP ${response.status}`);
     }
@@ -1270,7 +1257,7 @@ const HANDLERS = {
       const finalUrl = optionalText(response.url);
       const trusted = recommendedSource === null
         ? httpsUrl(finalUrl) !== null
-        : recommendedFinalUrlMatches(recommendedSource, finalUrl);
+        : recommendedDownloadUrlMatches(recommendedSource, finalUrl);
       if (!trusted) {
         throw new Error(`${fileName} downloaded from an unexpected final URL`);
       }

@@ -1,4 +1,9 @@
-import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
+import {
+  httpsUrl,
+  MANAGED_DICTIONARY_CHANGED,
+  managedDictionaryFingerprint,
+  managedDictionaryMatches,
+} from "./managed-dictionary-source.js";
 
 /*
  * Service worker for Hachidori.
@@ -40,9 +45,6 @@ const UPDATE_SCHEDULE_MINUTES = Object.freeze({
   weekly: 7 * 24 * 60,
   monthly: 30 * 24 * 60,
 });
-const RECOMMENDED_BY_ID = new Map(
-  RECOMMENDED_DICTIONARIES.map((entry) => [entry.sourceId, entry]),
-);
 
 // A relayed request can arrive in the window between createDocument() resolving
 // and offscreen.js running its module body, where nothing is listening yet.
@@ -145,17 +147,6 @@ async function readDictionaryStorage() {
   };
 }
 
-function httpsUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && url.username === "" && url.password === ""
-      ? url.href
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 function normaliseUpdateSettings(value) {
   const schedule = value?.schedule === "off"
     || Object.prototype.hasOwnProperty.call(UPDATE_SCHEDULE_MINUTES, value?.schedule)
@@ -170,22 +161,6 @@ function normaliseUpdateSettings(value) {
 async function readUpdateSettings() {
   const stored = await chrome.storage.local.get(UPDATE_SETTINGS_KEY);
   return normaliseUpdateSettings(stored?.[UPDATE_SETTINGS_KEY]);
-}
-
-function updateSource(dictionary) {
-  const recommended = RECOMMENDED_BY_ID.get(dictionary?.sourceId) ?? null;
-  if (recommended !== null) {
-    return {
-      sourceId: recommended.sourceId,
-      indexUrl: recommended.indexUrl,
-      downloadUrl: recommended.downloadUrl,
-    };
-  }
-  const indexUrl = httpsUrl(dictionary?.indexUrl);
-  const downloadUrl = httpsUrl(dictionary?.downloadUrl);
-  return dictionary?.isUpdatable === true && indexUrl !== null && downloadUrl !== null
-    ? { sourceId: null, indexUrl, downloadUrl }
-    : null;
 }
 
 function hasCapability(dictionary, kind) {
@@ -343,11 +318,13 @@ async function writeUpdateSettings(update) {
   });
 }
 
-async function updateDictionaryCheck(id, lastUpdateCheck) {
+async function updateDictionaryCheck(fingerprint, lastUpdateCheck) {
   return serialiseStorage(async () => {
     const { state } = await readDictionaryStorage();
-    const index = state?.dictionaries?.findIndex((dictionary) => dictionary?.id === id) ?? -1;
-    if (index < 0) {
+    const index = state?.dictionaries?.findIndex(
+      (dictionary) => dictionary?.id === fingerprint.id,
+    ) ?? -1;
+    if (index < 0 || !managedDictionaryMatches(state.dictionaries[index], fingerprint)) {
       return null;
     }
     const dictionaries = [...state.dictionaries];
@@ -359,7 +336,7 @@ async function updateDictionaryCheck(id, lastUpdateCheck) {
     if (reply.ok === false) {
       throw new Error(reply.error || "the dictionary update state could not be saved");
     }
-    return reply.state.dictionaries.find((dictionary) => dictionary?.id === id) ?? null;
+    return reply.state.dictionaries.find((dictionary) => dictionary?.id === fingerprint.id) ?? null;
   });
 }
 
@@ -370,39 +347,54 @@ async function managedCandidates(dictionaryIds) {
     if (selected !== null && !selected.has(dictionary?.id)) {
       return [];
     }
-    const source = updateSource(dictionary);
-    return source === null ? [] : [{
+    const fingerprint = managedDictionaryFingerprint(dictionary);
+    return fingerprint === null ? [] : [{
       id: dictionary.id,
       title: dictionary.displayName || dictionary.title,
-      revision: dictionary.revision,
-      ...source,
+      fingerprint,
     }];
   });
 }
 
-async function remoteRevision(candidate) {
-  const response = await fetch(candidate.indexUrl, { credentials: "omit" });
+async function remoteUpdate(candidate) {
+  const { source } = candidate.fingerprint;
+  const response = await fetch(source.indexUrl, { credentials: "omit" });
   if (!response.ok) {
     throw new Error(`update index request failed with HTTP ${response.status}`);
+  }
+  if (httpsUrl(response.url) === null) {
+    throw new Error("update index redirected to a non-HTTPS URL");
   }
   const index = await response.json();
   if (typeof index?.revision !== "string" || index.revision === "") {
     throw new Error("update index did not declare a revision");
   }
-  return index.revision;
+  let archiveUrl = source.downloadUrl;
+  if (source.kind === "generic"
+      && typeof index.downloadUrl === "string"
+      && index.downloadUrl !== "") {
+    archiveUrl = httpsUrl(index.downloadUrl);
+    if (archiveUrl === null) {
+      throw new Error("update index returned a non-HTTPS download URL");
+    }
+  }
+  return { revision: index.revision, archiveUrl };
 }
 
 let updateRequestCounter = 0;
 
-async function installManagedCandidate(candidate, revision) {
+async function installManagedCandidate(candidate, update, checkedAt) {
   updateRequestCounter += 1;
+  const { fingerprint } = candidate;
   const reply = await relay({
     target: TARGET,
     type: "hd_import",
     requestId: `managed-update-${updateRequestCounter}`,
-    managedId: candidate.id,
-    sourceId: candidate.sourceId,
-    expectedRevision: revision,
+    managedFingerprint: fingerprint,
+    sourceId: fingerprint.source.kind === "recommended" ? fingerprint.source.sourceId : null,
+    archiveUrl: update.archiveUrl,
+    expectedRevision: update.revision,
+    checkedAt,
     fileName: candidate.title,
   });
   if (!reply?.ok || !reply.report?.success) {
@@ -416,57 +408,66 @@ async function runManagedUpdateCycle({ dictionaryIds = null, install = false } =
   const outcomes = [];
 
   for (const candidate of candidates) {
-    let revision;
+    let update;
     try {
-      revision = await remoteRevision(candidate);
+      update = await remoteUpdate(candidate);
     } catch (error) {
-      const message = describe(error);
-      await updateDictionaryCheck(candidate.id, {
+      let message = describe(error);
+      const recorded = await updateDictionaryCheck(candidate.fingerprint, {
         checkedAt,
         status: "check-failed",
         remoteRevision: null,
         error: message,
       });
+      if (recorded === null) message = MANAGED_DICTIONARY_CHANGED;
       outcomes.push({ id: candidate.id, status: "check-failed", error: message });
       continue;
     }
 
-    if (revision === candidate.revision) {
-      await updateDictionaryCheck(candidate.id, {
+    if (update.revision === candidate.fingerprint.revision) {
+      const recorded = await updateDictionaryCheck(candidate.fingerprint, {
         checkedAt,
         status: "up-to-date",
-        remoteRevision: revision,
+        remoteRevision: update.revision,
         error: null,
       });
-      outcomes.push({ id: candidate.id, status: "up-to-date" });
+      outcomes.push(recorded === null
+        ? { id: candidate.id, status: "check-failed", error: MANAGED_DICTIONARY_CHANGED }
+        : { id: candidate.id, status: "up-to-date" });
       continue;
     }
 
     const available = {
       checkedAt,
       status: "update-available",
-      remoteRevision: revision,
+      remoteRevision: update.revision,
       error: null,
     };
-    await updateDictionaryCheck(candidate.id, available);
+    const recorded = await updateDictionaryCheck(candidate.fingerprint, available);
+    if (recorded === null) {
+      outcomes.push({ id: candidate.id, status: "check-failed", error: MANAGED_DICTIONARY_CHANGED });
+      continue;
+    }
     if (!install) {
       outcomes.push({ id: candidate.id, status: "update-available" });
       continue;
     }
 
     try {
-      await installManagedCandidate(candidate, revision);
-      await updateDictionaryCheck(candidate.id, {
-        checkedAt,
-        status: "up-to-date",
-        remoteRevision: revision,
-        error: null,
-      });
+      await installManagedCandidate(candidate, update, checkedAt);
       outcomes.push({ id: candidate.id, status: "updated" });
     } catch (error) {
-      const message = describe(error);
-      await updateDictionaryCheck(candidate.id, { ...available, error: message });
-      outcomes.push({ id: candidate.id, status: "update-available", error: message });
+      let message = describe(error);
+      const failed = await updateDictionaryCheck(
+        candidate.fingerprint,
+        { ...available, error: message },
+      );
+      if (failed === null) message = MANAGED_DICTIONARY_CHANGED;
+      outcomes.push({
+        id: candidate.id,
+        status: failed === null ? "check-failed" : "update-available",
+        error: message,
+      });
     }
   }
 

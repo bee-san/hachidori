@@ -676,12 +676,15 @@ function loadClassicScript(file, sandbox) {
 
 function loadBackgroundScript(sandbox) {
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
-  const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+  const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
+  const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "");
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
-    `${recommended.replace(/^export\s+/gmu, "")}\n${background}`,
+    `${recommended.replace(/^export\s+/gmu, "")}\n`
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
   );
@@ -1785,7 +1788,8 @@ async function main() {
       && stalePathUpdate.outcomes?.[0]?.error?.includes("changed while")
       && stalePathCommunity?.revision === "community-2"
       && stalePathCommunity?.path !== beforePathRace.path
-      && stalePathCommunity?.lastUpdateCheck === null
+      && JSON.stringify(stalePathCommunity?.lastUpdateCheck)
+        === JSON.stringify(beforePathRace.lastUpdateCheck)
       && pathRaceArchiveRequests.count === 0,
     JSON.stringify({
       collisionFixtureRestored,
