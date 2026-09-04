@@ -6442,18 +6442,21 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
   });
   popup.querySelector('[role="tab"][data-dictionary="Dictionary B"]')?.click();
   const termNoteButton = popup.querySelector(".gsm-hoshidicts-note-button");
-  const bottomNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
+  const termFormWasLazy = popup.querySelector(".gsm-hoshidicts-note-form") === null
+    && view.closeNoteForm() === false;
   const resultToolbar = popup.querySelector(".gsm-hoshidicts-result-chrome");
   Object.defineProperty(popup, "scrollHeight", { configurable: true, value: 480 });
   view.setToolbarPosition("bottom");
-  const bottomChildren = [...popup.children];
   popup.scrollTop = 0;
   termNoteButton?.click();
+  const bottomNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
+  const bottomChildren = [...popup.children];
   const openedAtBottom = popup.scrollTop;
   view.setToolbarPosition("top");
   check(
     "the bottom Note form stays beside its toolbar and opens at the active edge",
-    bottomChildren.at(-2) === bottomNoteForm
+    termFormWasLazy
+      && bottomChildren.at(-2) === bottomNoteForm
       && bottomChildren.at(-1) === resultToolbar
       && openedAtBottom === popup.scrollHeight
       && popup.children[0] === resultToolbar
@@ -6601,11 +6604,13 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
     JSON.stringify(popup.textContent.slice(0, 200)),
   );
   const kanjiNoteButton = popup.querySelector(".gsm-hoshidicts-note-button");
+  const kanjiFormWasLazy = popup.querySelector(".gsm-hoshidicts-note-form") === null;
   kanjiNoteButton?.click();
   const kanjiNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
   check(
     "the kanji view uses the same Note form with a glyph-only prefill",
-    kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-term")?.value === kanji.character
+    kanjiFormWasLazy
+      && kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-term")?.value === kanji.character
       && kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-reading")?.value === ""
       && kanjiNoteForm?.querySelector(".gsm-hoshidicts-note-definition")?.value === "",
     JSON.stringify({
