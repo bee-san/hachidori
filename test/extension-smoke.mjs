@@ -2362,6 +2362,26 @@ async function main() {
       && recommendedSettings.legacyIndexOnlySkipped === true,
     JSON.stringify(recommendedSettings),
   );
+  const managedUpdateSettings = await settingsManagedUpdatesStage();
+  check(
+    "settings expose one global schedule and per-package managed update actions",
+    managedUpdateSettings?.initial.schedule === "weekly"
+      && managedUpdateSettings.initial.lastChecked.includes("9/4/2026")
+      && managedUpdateSettings.initial.managedStatus.includes("Update available")
+      && managedUpdateSettings.initial.managedUpdateHidden === false
+      && managedUpdateSettings.initial.localStatus === "Not update-checkable"
+      && managedUpdateSettings.initial.localUpdateHidden === true
+      && managedUpdateSettings.checkRequest?.type === "hd_updates_check"
+      && managedUpdateSettings.checkedState.includes("1 update available")
+      && managedUpdateSettings.oneRequest?.type === "hd_updates_install"
+      && managedUpdateSettings.oneRequest.dictionaryIds?.join(",") === "managed-id"
+      && managedUpdateSettings.afterOneStatus.startsWith("Up to date")
+      && managedUpdateSettings.allRequest?.type === "hd_updates_install"
+      && managedUpdateSettings.allRequest.dictionaryIds?.join(",") === "managed-id"
+      && managedUpdateSettings.scheduleRequest?.type === "hd_updates_schedule"
+      && managedUpdateSettings.scheduleRequest.schedule === "daily",
+    JSON.stringify(managedUpdateSettings),
+  );
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -2958,6 +2978,211 @@ async function settingsRecommendedImportStage() {
   result.legacyIndexOnlySkipped =
     window.document.getElementById("recommended-retry")?.hidden === true
     && fetches.length === fetchCountBeforeLegacyRetry;
+  dom.window.close();
+  return result;
+}
+
+async function settingsManagedUpdatesStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) {
+    return null;
+  }
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+    url: `${EXTENSION_ORIGIN}/settings.html`,
+  });
+  const { window } = dom;
+  let state = {
+    schemaVersion: 1,
+    revision: 4,
+    dictionaries: [
+      genericPackage({
+        id: "managed-id",
+        title: "Managed terms",
+        enabled: false,
+        isUpdatable: true,
+        indexUrl: "https://example.test/managed/index.json",
+        downloadUrl: "https://example.test/managed/archive.zip",
+        lastUpdateCheck: {
+          checkedAt: "2026-09-04T10:00:00.000Z",
+          status: "update-available",
+          remoteRevision: "test-2",
+          error: null,
+        },
+      }),
+      genericPackage({ id: "local-id", title: "Local terms" }),
+    ],
+    groups: [],
+  };
+  let updateSettings = { schedule: "weekly", lastCheckedAt: "2026-09-04T10:00:00.000Z" };
+  let storageListener = null;
+  const updateRequests = [];
+
+  const publishState = (dictionary) => {
+    state = {
+      ...state,
+      revision: state.revision + 1,
+      dictionaries: state.dictionaries.map((entry) => entry.id === dictionary.id ? dictionary : entry),
+    };
+    storageListener?.({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+  };
+  window.chrome = {
+    runtime: {
+      id: "hachidoriupdatessettingssmoke",
+      async sendMessage(message) {
+        if (message.type === "hd_state_read") {
+          return { ok: true, state: structuredClone(state) };
+        }
+        if (message.type === "hd_status") {
+          return { ok: true, ready: true, loading: false, dictionaryCount: 1 };
+        }
+        if (message.type === "hd_options_write") {
+          return { ok: true, options: structuredClone(message.options) };
+        }
+        if (message.type === "hd_updates_schedule") {
+          updateRequests.push(structuredClone(message));
+          updateSettings = { ...updateSettings, schedule: message.schedule };
+          storageListener?.({
+            dictionaryUpdates: { newValue: structuredClone(updateSettings) },
+          }, "local");
+          return { ok: true, settings: structuredClone(updateSettings) };
+        }
+        if (message.type === "hd_updates_check") {
+          updateRequests.push(structuredClone(message));
+          await new Promise((done) => window.setTimeout(done, 0));
+          const managed = state.dictionaries.find((entry) => entry.id === "managed-id");
+          publishState({
+            ...managed,
+            lastUpdateCheck: {
+              checkedAt: "2026-09-04T11:00:00.000Z",
+              status: "update-available",
+              remoteRevision: "test-2",
+              error: null,
+            },
+          });
+          updateSettings = { ...updateSettings, lastCheckedAt: "2026-09-04T11:00:00.000Z" };
+          storageListener?.({
+            dictionaryUpdates: { newValue: structuredClone(updateSettings) },
+          }, "local");
+          return {
+            ok: true,
+            settings: structuredClone(updateSettings),
+            outcomes: [{ id: "managed-id", status: "update-available" }],
+          };
+        }
+        if (message.type === "hd_updates_install") {
+          updateRequests.push(structuredClone(message));
+          await new Promise((done) => window.setTimeout(done, 0));
+          const managed = state.dictionaries.find((entry) => entry.id === "managed-id");
+          publishState({
+            ...managed,
+            revision: "test-2",
+            lastUpdateCheck: {
+              checkedAt: "2026-09-04T11:05:00.000Z",
+              status: "up-to-date",
+              remoteRevision: "test-2",
+              error: null,
+            },
+          });
+          return {
+            ok: true,
+            settings: structuredClone(updateSettings),
+            outcomes: [{ id: "managed-id", status: "updated" }],
+          };
+        }
+        throw new Error(`unexpected managed-update settings request ${message.type}`);
+      },
+    },
+    storage: {
+      local: {
+        async get() {
+          return {
+            options: { kanjiClickDictionary: "" },
+            dictionaryUpdates: structuredClone(updateSettings),
+          };
+        },
+      },
+      onChanged: {
+        addListener(listener) {
+          storageListener = listener;
+        },
+      },
+    },
+  };
+  loadSettingsScript(window);
+
+  const deadline = Date.now() + 2000;
+  while (!window.document.getElementById("engine-status")?.textContent?.startsWith("Ready")
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  const managedRow = () => window.document.querySelector('[data-dictionary-id="managed-id"]');
+  const localRow = () => window.document.querySelector('[data-dictionary-id="local-id"]');
+  const result = {
+    initial: {
+      schedule: window.document.getElementById("update-schedule")?.value,
+      lastChecked: window.document.getElementById("update-last-checked")?.textContent ?? "",
+      managedStatus: managedRow()?.querySelector(".dict-update-status")?.textContent ?? "",
+      managedUpdateHidden: managedRow()?.querySelector(".dict-update")?.hidden,
+      localStatus: localRow()?.querySelector(".dict-update-status")?.textContent ?? "",
+      localUpdateHidden: localRow()?.querySelector(".dict-update")?.hidden,
+    },
+  };
+
+  window.document.getElementById("update-check-now")?.click();
+  while (!updateRequests.some((request) => request.type === "hd_updates_check")
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  while (window.document.getElementById("update-check-now")?.disabled && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  result.checkRequest = updateRequests.find((request) => request.type === "hd_updates_check");
+  result.checkedState = window.document.getElementById("update-state")?.textContent ?? "";
+
+  managedRow()?.querySelector(".dict-update")?.click();
+  while (updateRequests.filter((request) => request.type === "hd_updates_install").length < 1
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  while (managedRow()?.querySelector(".dict-update-status")?.textContent?.includes("Update available")
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  result.oneRequest = updateRequests.find((request) => request.type === "hd_updates_install");
+  result.afterOneStatus = managedRow()?.querySelector(".dict-update-status")?.textContent ?? "";
+
+  const managed = state.dictionaries.find((entry) => entry.id === "managed-id");
+  publishState({
+    ...managed,
+    revision: "test-1",
+    lastUpdateCheck: {
+      checkedAt: "2026-09-04T12:00:00.000Z",
+      status: "update-available",
+      remoteRevision: "test-2",
+      error: null,
+    },
+  });
+  await new Promise((done) => window.setTimeout(done, 0));
+  window.document.getElementById("update-all")?.click();
+  while (updateRequests.filter((request) => request.type === "hd_updates_install").length < 2
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  result.allRequest = updateRequests.filter((request) => request.type === "hd_updates_install")[1];
+
+  const schedule = window.document.getElementById("update-schedule");
+  if (schedule) {
+    schedule.value = "daily";
+    schedule.dispatchEvent(new window.Event("change", { bubbles: true }));
+  }
+  while (!updateRequests.some((request) => request.type === "hd_updates_schedule")
+      && Date.now() < deadline) {
+    await new Promise((done) => window.setTimeout(done, 5));
+  }
+  result.scheduleRequest = updateRequests.find((request) => request.type === "hd_updates_schedule");
   dom.window.close();
   return result;
 }
