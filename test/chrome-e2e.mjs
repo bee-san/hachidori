@@ -53,9 +53,9 @@ const MANAGED_DOWNLOAD_URL = "https://example.test/hachidori-fixture.zip";
 const GENERIC_MANAGED_INDEX_URL = "https://example.test/generic-kanji-index.json";
 const GENERIC_MANAGED_DOWNLOAD_URL = "https://example.test/generic-kanji.zip";
 const MANAGED_UPDATE_ALARM = "hachidori-managed-dictionary-updates";
-const CUSTOM_SETTINGS_SOURCE = "# Real Chrome custom source\n\u81ea\u4f5c\u8a9e, \u3058\u3055\u304f\u3054, Settings real-WASM definition\n";
-const CUSTOM_TERM_NOTE_DEFINITION = "Chrome term Note definition";
-const CUSTOM_KANJI_NOTE_DEFINITION = "Chrome kanji Note definition";
+const CUSTOM_SETTINGS_SOURCE = "# Personal Japanese notes\n\u6c17\u306b\u306a\u308b, \u304d\u306b\u306a\u308b, to catch one's attention\n";
+const CUSTOM_TERM_NOTE_DEFINITION = "to eat — personal usage note";
+const CUSTOM_KANJI_NOTE_DEFINITION = "food; eating — kanji note";
 const LAST_UPDATE_CHECK = Object.freeze({
   checkedAt: "2026-09-04T09:30:00.000Z",
   status: "update-available",
@@ -1842,12 +1842,12 @@ async function main() {
       type: "hd_lookup_dictionary",
       requestId: "e2e-custom-settings-lookup",
       dictionary: dictionaryTitle,
-      text: "\u81ea\u4f5c\u8a9e",
+      text: "\u6c17\u306b\u306a\u308b",
     });
     if (
       lookup?.ok !== true
-      || lookup.results?.[0]?.term?.expression !== "\u81ea\u4f5c\u8a9e"
-      || !JSON.stringify(lookup).includes("Settings real-WASM definition")
+      || lookup.results?.[0]?.term?.expression !== "\u6c17\u306b\u306a\u308b"
+      || !JSON.stringify(lookup).includes("to catch one's attention")
     ) {
       return false;
     }

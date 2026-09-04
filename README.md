@@ -68,6 +68,7 @@ Open Hachidori's options page to:
 - reorder dictionaries by dragging, with the arrow buttons, or by entering a position;
 - create ordered dictionary groups and arrange each group's dictionaries;
 - check managed dictionaries for updates or install them on one global schedule;
+- maintain a small personal dictionary from editable source, and add entries from term or kanji popups;
 - configure the hover key, delay, scan length, result limit, frequency ranking, and the dictionary opened when you click a kanji.
 
 Selected dictionaries import one at a time, with an outcome retained for every archive; a failure does not stop the rest. The starter installer behaves the same way and retries only recommendations that are still missing. Large dictionaries can take several minutes, so keep the page open until the batch finishes.
@@ -86,6 +87,26 @@ hourly, daily, weekly, or monthly schedule; scheduled checks install available
 updates automatically. Local archives without an update source remain
 local-only. Replacements keep the package's identity, position, alias,
 enabled/favourite state, and group memberships.
+
+### Custom dictionary and Note
+
+<p align="center">
+  <img src="docs/assets/custom-dictionary.png" alt="Hachidori Options showing the editable source for a managed custom dictionary" width="760">
+</p>
+
+Open **Custom dictionary** in Options to keep personal entries as readable text.
+Each entry is `term, reading, definition`; only the first two commas are
+separators, so a definition may contain commas. Blank lines and lines beginning
+with `#` are ignored. Use `\n` for a newline in a definition, `\\` for a literal
+backslash, and `\\n` for a literal backslash followed by `n`. Saving reports
+every malformed line and compiles all valid lines in their original order,
+including duplicates. Saving no valid entries removes the compiled custom
+dictionary while retaining the source.
+
+The compiled package is always enabled and first, while its alias and favourite
+state remain editable. The **Note** action in both term and kanji views prefills
+from the result currently shown; saving appends the entry and refreshes that
+exact popup view.
 
 ## Benchmarks
 
@@ -127,6 +148,9 @@ downloads its HTTPS archive. A generic index may select a new HTTPS archive URL,
 while recommended sources remain pinned to their built-in catalogue entries.
 Importing a local ZIP and every lookup remain local. Imported dictionaries are
 persisted in Chrome's extension storage.
+
+Custom-dictionary source and its generated indexes also stay in Chrome. Saving
+or appending a Note compiles them locally and makes no network request.
 
 Only import dictionaries you trust. Hachidori validates the archive title before the engine creates its on-disk directory, but dictionary-supplied content and CSS still come from the archive you choose.
 
