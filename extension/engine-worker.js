@@ -43,7 +43,10 @@ configureEngineService(requestHost, {
 });
 startEngine();
 
-globalThis.onmessage = (event) => {
+// A dedicated worker receives only from its creator over its implicit
+// MessagePort. MessageEvent.origin is always empty, so there is no origin value
+// to validate; the channel check below validates the expected protocol.
+globalThis.onmessage = (event) => { // NOSONAR
   const data = event.data;
   if (data?.channel === "host-response") {
     const pending = pendingHostRequests.get(data.id);

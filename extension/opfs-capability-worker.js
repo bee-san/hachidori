@@ -9,10 +9,13 @@ function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);
 }
 
-globalThis.onmessage = async (event) => {
+// A dedicated worker receives only from its creator over its implicit
+// MessagePort. MessageEvent.origin is always empty, so there is no origin value
+// to validate; the channel check below validates the expected protocol.
+globalThis.onmessage = async (event) => { // NOSONAR
   if (event.data?.channel !== "opfs-capability-probe") return;
 
-  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const suffix = `${Date.now()}-${globalThis.crypto.randomUUID()}`;
   const first = `.hdw-opfs-probe-${suffix}`;
   const second = `${first}-moved`;
   let root = null;

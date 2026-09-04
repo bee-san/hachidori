@@ -11,7 +11,7 @@
 
 const WORKER_TARGET = "hoshidicts-worker";
 const DICT_ROOT = "/dicts";
-const IMPORT_ZIP = "/tmp/import.zip";
+const IMPORT_ZIP = "/.hdw-archive.zip";
 const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
 
 // Index into this array is the `kind` argument of hdw_add_dict.
