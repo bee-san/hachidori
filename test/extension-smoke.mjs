@@ -587,11 +587,12 @@ function loadClassicScript(file, sandbox) {
 }
 
 function loadSettingsScript(window) {
+  const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
   const groups = readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "");
-  window.eval(`${groups}\n${settings}`);
+  window.eval(`${recommended}\n${groups}\n${settings}`);
 }
 
 // content.js cannot be driven here (it needs a page), so the one thing worth
@@ -1098,7 +1099,8 @@ async function main() {
   const recommended = RECOMMENDED_DICTIONARIES[0];
   const recommendedFields = {
     sourceId: recommended.sourceId,
-    finalUrl: recommended.downloadUrl,
+    finalUrl: "https://release-assets.githubusercontent.com/github-production-release-asset/123/asset"
+      + "?response-content-disposition=attachment%3B%20filename%3Djitendex-yomitan.zip",
   };
   const recommendedArchive = (overrides = {}) => createObjectURL(buildRecommendedZip({
     title: recommended.title,
@@ -1953,8 +1955,9 @@ async function main() {
         === JSON.stringify(["jitendex", "jiten"])
       && JSON.stringify(recommendedSettings.retrySourceIds)
         === JSON.stringify(["jmnedict", "bees-ultimate-kanji-dictionary"])
-      && JSON.stringify(recommendedSettings.completeSourceIds)
-        === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
+      && recommendedSettings.completeSourceIds.length === RECOMMENDED_DICTIONARIES.length
+      && RECOMMENDED_DICTIONARIES.every(({ sourceId }) =>
+        recommendedSettings.completeSourceIds.includes(sourceId))
       && recommendedSettings.retryHiddenWhenComplete === true,
     JSON.stringify(recommendedSettings),
   );
@@ -2480,8 +2483,7 @@ async function settingsRecommendedImportStage() {
       },
     },
   };
-  window.eval(readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8"));
-  window.eval(readFileSync(resolve(EXTENSION, "settings.js"), "utf8"));
+  loadSettingsScript(window);
 
   const deadline = Date.now() + 2000;
   while (!window.document.getElementById("engine-status")?.textContent?.startsWith("Ready")

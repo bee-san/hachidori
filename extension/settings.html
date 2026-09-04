@@ -35,30 +35,18 @@
         </div>
         <div class="track" id="import-progress" hidden><div class="track-fill"></div></div>
         <ol class="import-detail" id="import-detail" aria-label="Import results" hidden></ol>
-        <div class="recommendations" aria-labelledby="recommended-dictionaries-heading">
+        <div class="recommendations" id="recommended-starter" aria-labelledby="recommended-dictionaries-heading" hidden>
           <div class="recommendations-head">
             <h3 id="recommended-dictionaries-heading">Recommended dictionaries</h3>
-            <p class="hint">Download a Yomitan ZIP, then import it above.</p>
+            <p class="hint">Start with four trusted Yomitan dictionaries from their original publishers.</p>
           </div>
-          <ul class="recommended-dictionary-list">
-            <li>
-              <a class="recommended-dictionary-link" href="https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip" target="_blank" rel="noopener noreferrer">Jitendex</a>
-              <span>Japanese&ndash;English terms</span>
-            </li>
-            <li>
-              <a class="recommended-dictionary-link" href="https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_english.zip" target="_blank" rel="noopener noreferrer">JMdict (English)</a>
-              <span>Yomitan&rsquo;s daily JMdict build</span>
-            </li>
-            <li>
-              <a class="recommended-dictionary-link" href="https://github.com/bee-san/bees-ultimate-kanji-dictionary/releases/latest/download/bees-ultimate-kanji-dictionary.zip" target="_blank" rel="noopener noreferrer">Bee's Ultimate Kanji Dictionary</a>
-              <span>Rich single-kanji definitions</span>
-            </li>
-            <li>
-              <a class="recommended-dictionary-link" href="https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan" target="_blank" rel="noopener noreferrer">Jiten Frequency</a>
-              <span>Global word frequency ranks</span>
-            </li>
-          </ul>
+          <button class="primary-button" id="install-recommended" type="button">Install all recommended dictionaries</button>
+          <ul class="recommended-dictionary-list" id="recommended-dictionary-list"></ul>
         </div>
+        <p class="recommended-retry" id="recommended-retry" hidden>
+          <span>Some recommended dictionaries are still missing.</span>
+          <button class="ghost" id="retry-recommended" type="button">Retry missing recommended dictionaries</button>
+        </p>
       </section>
 
       <section class="card" aria-labelledby="dictionaries-heading">
@@ -256,6 +244,7 @@
       </li>
     </template>
 
+    <script src="recommended-dictionaries.js"></script>
     <script type="module" src="settings.js"></script>
   </body>
 </html>
