@@ -628,7 +628,7 @@ async function rollbackRemoval(snapshot, title, readCurrentState) {
 // error is kept for hd_status to report and for the next request to retry.
 async function reloadFromStorage() {
   try {
-    publishLoadedDictionaries(loadDictionaries(await reconcile()));
+    publishLoadedDictionaries(loadDictionaries(await reconcile(), { strict: true }));
     reloadError = null;
   } catch (error) {
     reloadError = asError(error);

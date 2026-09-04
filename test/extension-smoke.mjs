@@ -1228,6 +1228,26 @@ async function main() {
     JSON.stringify(removalRootImport),
   );
 
+  const invalidLoadPath = "/dicts/invalid-native-load";
+  observedEngine.FS.mkdir(invalidLoadPath);
+  observedEngine.FS.writeFile(`${invalidLoadPath}/.hoshidicts_3`, new Uint8Array());
+  observedEngine.FS.writeFile(`${invalidLoadPath}/index.json`, JSON.stringify({
+    title: "invalid-native-load",
+    revision: "test-1",
+    counts: { terms: { total: 1 } },
+  }));
+  const invalidReload = await request("hd_reload");
+  check(
+    "reload rejects an enabled package that the native engine cannot load",
+    invalidReload.ok === false && invalidReload.error?.includes("could not load"),
+    JSON.stringify(invalidReload),
+  );
+  observedEngine.FS.unlink(`${invalidLoadPath}/index.json`);
+  observedEngine.FS.unlink(`${invalidLoadPath}/.hoshidicts_3`);
+  observedEngine.FS.rmdir(invalidLoadPath);
+  const repairedReload = await request("hd_reload");
+  check("reload recovers after the invalid package is removed", repairedReload.ok === true, JSON.stringify(repairedReload));
+
   section("lookup, kanji, styles, media");
   const lookup = await request("hd_lookup", {
     text: "食べたかった",
