@@ -1195,6 +1195,28 @@ async function main() {
     scratchTitleRemoval.ok === true,
     JSON.stringify(scratchTitleRemoval),
   );
+
+  const canonicallyEquivalentTitles = ["Caf\u00e9", "Cafe\u0301"];
+  for (const title of canonicallyEquivalentTitles) {
+    const result = await request("hd_import", {
+      blobUrl: createObjectURL(buildTitledZip(title)),
+      fileName: `${title}.zip`,
+    });
+    check(`the ${JSON.stringify(title)} dictionary imports`, result.ok === true, JSON.stringify(result));
+  }
+  const canonicallyEquivalentPackages = (await storedDictionaryState()).dictionaries.filter(
+    (dictionary) => canonicallyEquivalentTitles.includes(dictionary.title),
+  );
+  check(
+    "distinct on-disk titles have distinct stable package IDs",
+    canonicallyEquivalentPackages.length === 2
+      && new Set(canonicallyEquivalentPackages.map((dictionary) => dictionary.id)).size === 2,
+    JSON.stringify(canonicallyEquivalentPackages),
+  );
+  for (const title of canonicallyEquivalentTitles) {
+    await request("hd_remove", { title });
+  }
+
   const removalRootImport = await request("hd_import", {
     blobUrl: createObjectURL(buildTitledZip(".hdw-remove")),
     fileName: "reserved-removal-root.zip",

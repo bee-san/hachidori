@@ -275,7 +275,7 @@ function installedAt(importDate, path) {
 }
 
 async function stableDictionaryId(title) {
-  const bytes = new TextEncoder().encode(title.normalize("NFC"));
+  const bytes = new TextEncoder().encode(title);
   const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes));
   return Array.from(digest.subarray(0, 16), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
