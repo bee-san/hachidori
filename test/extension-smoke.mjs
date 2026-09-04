@@ -1102,6 +1102,7 @@ async function customEngineStage() {
   );
 
   const beforeFailedSave = await sendWorker("hd_custom_read");
+  const statusBeforeFailedSave = await request("hd_status");
   const rootsBeforeFailedSave = generationRoots();
   storage.failNextSet("injected custom storage failure");
   const failedSave = await request("hd_custom_save", {
@@ -1112,18 +1113,23 @@ async function customEngineStage() {
   check(
     "a failed custom commit restores the working generation without debris",
     failedSave.ok === false
+      && failedSave.generation === statusBeforeFailedSave.generation
       && JSON.stringify(afterFailedSave) === JSON.stringify(beforeFailedSave)
       && JSON.stringify(generationRoots()) === JSON.stringify(rootsBeforeFailedSave),
     JSON.stringify({ failedSave, beforeFailedSave, afterFailedSave, roots: generationRoots() }),
   );
 
+  const invariantPeer = await request("hd_import", {
+    blobUrl: createObjectURL(buildTitledZip("Custom invariant peer")),
+    fileName: "custom-invariant-peer.zip",
+  });
+  const stateWithInvariantPeer = await sendWorker("hd_custom_read");
   const brokenState = {
-    ...afterFailedSave.state,
-    revision: afterFailedSave.state.revision + 1,
-    dictionaries: afterFailedSave.state.dictionaries.map((dictionary) => ({
-      ...dictionary,
-      enabled: false,
-    })),
+    ...stateWithInvariantPeer.state,
+    revision: stateWithInvariantPeer.state.revision + 1,
+    dictionaries: stateWithInvariantPeer.state.dictionaries.map((dictionary, index) => index === 0
+      ? { ...dictionary, installedAt: "2000-01-01T00:00:00.000Z", language: "en" }
+      : { ...dictionary, id: CUSTOM_DICTIONARY_ID }),
   };
   await storage.api().local.set({ dictionaryState: brokenState });
   const repaired = await request("hd_custom_save", {
@@ -1132,11 +1138,14 @@ async function customEngineStage() {
   });
   check(
     "a semantic no-op rebuilds a committed package that violates fixed invariants",
-    repaired.ok === true
+    invariantPeer.ok === true
+      && repaired.ok === true
       && repaired.rebuilt === true
       && repaired.document?.revision === afterFailedSave.document.revision
       && repaired.state?.revision === brokenState.revision + 1
+      && repaired.state?.dictionaries?.length === 1
       && repaired.state?.dictionaries?.[0]?.enabled === true
+      && repaired.state?.dictionaries?.[0]?.language === "ja"
       && repaired.state?.dictionaries?.[0]?.path
         !== afterFailedSave.state?.dictionaries?.[0]?.path
       && generationRoots().length === 1,
@@ -3361,6 +3370,8 @@ async function main() {
       && settingsCustom.startup.formHidden === true
       && settingsCustom.startup.sourceFetchedDirectly === false
       && settingsCustom.startup.sourceHasMaximumLength === false
+      && settingsCustom.startup.sourceDescribedBy
+        === "custom-dictionary-status custom-dictionary-errors"
       && settingsCustom.eventBeforeReadReply?.value === "newer event, にゅー, wins\n"
       && settingsCustom.eventBeforeReadReply.expanded === "true"
       && settingsCustom.eventBeforeReadReply.readCount === 1
@@ -3403,6 +3414,11 @@ async function main() {
       && settingsCustom.fixedControls.aliasDisabled === false
       && settingsCustom.fixedControls.ordinaryUpDisabled === true
       && settingsCustom.fixedControls.ordinaryPositionMin === "2"
+      && settingsCustom.fixedControls.metadata?.startsWith("Managed · always enabled and first · ")
+      && settingsCustom.fixedControls.enabledLabel
+        === `Enabled for ${CUSTOM_DICTIONARY_TITLE} (managed; always enabled)`
+      && settingsCustom.fixedControls.upLabel
+        === `Move ${CUSTOM_DICTIONARY_TITLE} up (managed; fixed first)`
       && JSON.stringify(settingsCustom.bulkState) === JSON.stringify([
         { id: CUSTOM_DICTIONARY_ID, enabled: true },
         { id: "ordinary-id", enabled: false },
@@ -3695,8 +3711,13 @@ async function main() {
       && noteContent.guards.firstEscapeClears === 0
       && noteContent.guards.secondEscapeHidden === true
       && noteContent.guards.secondEscapeClears === 1
-      && noteContent.guards.closeCalls === 2,
-    JSON.stringify(noteContent?.guards),
+      && noteContent.guards.closeCalls === 2
+      && noteContent.deferredInvalidation?.visibleWhileEditing === true
+      && noteContent.deferredInvalidation.hiddenAfterClose === true,
+    JSON.stringify({
+      deferredInvalidation: noteContent?.deferredInvalidation,
+      guards: noteContent?.guards,
+    }),
   );
 
   section("hd_remove");
@@ -4633,6 +4654,7 @@ async function settingsCustomDictionaryStage() {
       sourceFetchedDirectly: storageGetKeys.some((keys) =>
         Array.isArray(keys) && keys.includes("customDictionarySource")),
       sourceHasMaximumLength: source.hasAttribute("maxlength"),
+      sourceDescribedBy: source.getAttribute("aria-describedby"),
     },
   };
 
@@ -4672,6 +4694,9 @@ async function settingsCustomDictionaryStage() {
     aliasDisabled: fixed?.querySelector(".dict-display-name")?.disabled,
     ordinaryUpDisabled: ordinary?.querySelector(".dict-up")?.disabled,
     ordinaryPositionMin: ordinary?.querySelector(".dict-position-input")?.min,
+    metadata: fixed?.querySelector(".dict-metadata")?.textContent,
+    enabledLabel: fixed?.querySelector(".dict-enabled")?.getAttribute("aria-label"),
+    upLabel: fixed?.querySelector(".dict-up")?.getAttribute("aria-label"),
   };
   window.document.getElementById("dict-select-visible")?.click();
   window.document.getElementById("dict-bulk-disable")?.click();
@@ -6090,8 +6115,22 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function deferredInvalidationCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    harness.edit(true);
+    harness.emitState(harness.state(2, "external-change"));
+    const visibleWhileEditing = harness.driver.snapshot().popupHidden === false;
+    harness.edit(false);
+    const hiddenAfterClose = harness.driver.snapshot().popupHidden === true;
+    const result = { hiddenAfterClose, visibleWhileEditing };
+    harness.close();
+    return result;
+  }
+
   return {
     callbacksWired,
+    deferredInvalidation: await deferredInvalidationCase(),
     detached: await detachedCase(),
     eventFirst: await eventFirstCase(),
     guards: await guardCase(),
@@ -6294,6 +6333,8 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
       && selectedTabs[0] === null
       && selectedTabs[1]?.dictionary === "Dictionary B"
       && termNoteButton?.getAttribute("aria-expanded") === "true"
+      && termNoteButton?.getAttribute("aria-controls") === termNoteForm?.id
+      && termNoteForm?.id === "hoshidicts-note-form"
       && termInput?.value === "Projected primary"
       && readingInput?.value === "ぷろじぇくてっど"
       && definitionInput?.value === ""
@@ -6319,8 +6360,17 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
     definition: definitionInput?.value,
     error: termNoteForm?.querySelector(".gsm-hoshidicts-note-error")?.textContent,
   };
-  addNoteEntry = async () => {};
+  let resolveNoteEntry;
+  addNoteEntry = () => new Promise((resolveNote) => {
+    resolveNoteEntry = resolveNote;
+  });
   termNoteForm?.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await new Promise((done) => window.setTimeout(done, 0));
+  const pendingNote = {
+    formBusy: termNoteForm?.getAttribute("aria-busy"),
+    saveText: termNoteForm?.querySelector(".gsm-hoshidicts-note-save")?.textContent,
+  };
+  resolveNoteEntry?.();
   await new Promise((done) => window.setTimeout(done, 0));
   check(
     "a rejected Note append retains its draft and a successful retry closes it",
@@ -6333,9 +6383,19 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
         reading: "ぷろじぇくてっど",
         definition: "A retained draft",
       }))
+      && pendingNote.formBusy === "true"
+      && pendingNote.saveText === "Saving…"
       && termNoteForm?.hidden === true
+      && shadow.activeElement === termNoteButton
       && noteEditingStates.join(",") === "true,false",
-    JSON.stringify({ rejectedDraft, noteEntries, noteEditingStates, hidden: termNoteForm?.hidden }),
+    JSON.stringify({
+      activeClass: shadow.activeElement?.className,
+      hidden: termNoteForm?.hidden,
+      noteEditingStates,
+      noteEntries,
+      pendingNote,
+      rejectedDraft,
+    }),
   );
   termNoteButton?.click();
   const firstEscapeClosed = typeof view.closeNoteForm === "function" && view.closeNoteForm();
