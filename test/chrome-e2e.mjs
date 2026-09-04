@@ -155,6 +155,7 @@ const PLANNED = [
   "drag and keyboard position controls share the persisted lookup order",
   "named groups normalize unique names and keep stable dictionary memberships",
   "group and member order controls persist their shared state order",
+  "a real blur-then-click queues both group edits and retains focus",
   "the kanji dictionary chooser lists imported term and kanji dictionaries",
   "a combined archive exposes separate term and native kanji choices",
   "stale title-only kanji selections are pruned",
@@ -1195,6 +1196,7 @@ async function main() {
       .find((dictionary) => dictionary.id === fixtureId)?.displayName === fixtureAlias);
 
     return {
+      studyGroupId,
       normalisedName,
       duplicateError,
       reservedError,
@@ -1232,6 +1234,39 @@ async function main() {
       && JSON.stringify(groupManagement.membershipBeforeMove) === JSON.stringify([FIXTURE_ID, GENERIC_KANJI_ID])
       && JSON.stringify(groupManagement.membershipAfterMove) === JSON.stringify([GENERIC_KANJI_ID, FIXTURE_ID]),
     JSON.stringify(groupManagement),
+  );
+
+  const editedGroupSelector = `[data-group-id="${groupManagement.studyGroupId}"]`;
+  const beforeBlurAction = await page.evaluate(async () =>
+    (await chrome.storage.local.get("dictionaryState")).dictionaryState.revision);
+  await page.click(`${editedGroupSelector} .dict-group-name`);
+  await page.keyboard.down("Control");
+  await page.keyboard.press("A");
+  await page.keyboard.up("Control");
+  await page.keyboard.type("Focused reading");
+  await page.click(`${editedGroupSelector} .dict-group-up`);
+  const blurAction = await page.evaluate(async ({ beforeRevision, groupId }) => {
+    const deadline = Date.now() + 3000;
+    let current;
+    do {
+      current = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+      if (current.revision >= beforeRevision + 2) break;
+      await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+    } while (Date.now() < deadline);
+    return {
+      revision: current.revision,
+      name: current.groups.find((group) => group.id === groupId)?.name,
+      firstGroupId: current.groups[0]?.id,
+      focusedGroupId: document.activeElement?.closest(".dict-group")?.dataset.groupId,
+    };
+  }, { beforeRevision: beforeBlurAction, groupId: groupManagement.studyGroupId });
+  check(
+    "a real blur-then-click queues both group edits and retains focus",
+    blurAction.revision >= beforeBlurAction + 2
+      && blurAction.name === "Focused reading"
+      && blurAction.firstGroupId === groupManagement.studyGroupId
+      && blurAction.focusedGroupId === groupManagement.studyGroupId,
+    JSON.stringify({ beforeBlurAction, blurAction }),
   );
 
   const kanjiChooser = await page.evaluate(() => {
