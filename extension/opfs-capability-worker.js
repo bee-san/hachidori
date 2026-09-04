@@ -9,8 +9,9 @@ function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);
 }
 
-// A dedicated worker has exactly one creator and MessageEvent.origin is empty;
-// the private probe channel below is the meaningful admission check.
+// A dedicated worker receives only from its creator over its implicit
+// MessagePort. MessageEvent.origin is always empty, so there is no origin value
+// to validate; the channel check below validates the expected protocol.
 globalThis.onmessage = async (event) => { // NOSONAR
   if (event.data?.channel !== "opfs-capability-probe") return;
 
