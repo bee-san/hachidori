@@ -8,12 +8,14 @@ Hachidori is a Manifest V3 Chrome extension with a native C++ dictionary engine 
 web page
   └─ content.js
        ├─ scans Japanese text near the pointer
-       └─ renders popup.html in an isolated iframe
+       ├─ renders popup.html in an isolated iframe
+       └─ appends popup Note entries to the managed custom source
 
 settings.html / content.js
   └─ chrome.runtime.sendMessage
        └─ background.js (MV3 service worker)
             ├─ owns chrome.storage.local dictionary metadata
+            ├─ atomically owns the revisioned custom source document
             ├─ checks managed update indexes and owns one periodic alarm
             ├─ creates or reconnects to offscreen.html
             └─ relays requests without holding engine state
@@ -38,7 +40,8 @@ On supported Chrome builds, `offscreen.js` starts a dedicated module worker afte
 `engine-worker.js` loads the pthread WebAssembly build. WasmFS mounts direct OPFS at `/dicts`, so the C++ engine reads its generated indexes without copying them through IndexedDB or the JavaScript heap. The extension manifest supplies the cross-origin isolation policy required by shared Wasm memory and exposes the generated pthread worker asset.
 
 The worker serializes engine mutations and bounds pending requests. Imports,
-reimports, managed replacements, removals, and reloads cannot race each other.
+reimports, managed replacements, custom saves and Note appends, removals, and
+reloads cannot race each other.
 The offscreen bridge also bounds its queue and preserves a last-known status
 response while a mutation occupies the engine worker.
 
@@ -109,12 +112,48 @@ after publication. A title collision, changed fingerprint, wrong archive
 revision, or failed import leaves the working generation loaded and reports the
 failure without publishing the candidate.
 
+## Managed custom dictionary
+
+`custom-dictionary.js` is a context-independent ES module shared by Settings,
+the service worker, and both engine runtimes. It parses the first two commas of
+each nonblank, non-comment line, preserves ordered duplicates, reports every
+malformed line, and implements the inverse escaping rules for definition
+newlines and literal backslashes. It also builds a deterministic Yomitan
+format-3 ZIP with UTF-8 entries, classic ZIP CRC/offset metadata, and 1,000-row
+term-bank chunks. The normal Hoshidicts importer consumes that production ZIP;
+there is no separate test-only or in-memory dictionary backend.
+
+The source document is stored separately with a monotonic document revision and
+an ordered-entry semantic hash. Settings loads it only when the editor opens. A
+stale editor save is refused, while a popup Note append enters the engine
+mutation queue before reading the latest source. A semantic no-op skips
+compilation only when the committed fixed-ID package and generation still match
+every invariant; otherwise the same source repairs the package. No valid rows
+atomically saves the source and removes the generated package.
+
+Compilation stages and strict-loads a fresh generation, then the service worker
+compare-and-sets the exact source document and dictionary state in one storage
+write. The commit binds the source hash and valid-row count to the fixed package,
+which is protected by a non-title-derived ID, canonical title, enabled state,
+and first position. Presentation-only conflicts are retried against current
+state without merging a stale source revision. A lost reply is accepted only
+after an exact source/state-pair readback.
+
+The term and kanji popup views share one fixed Note form. Its prefill comes from
+the currently projected primary result, and a successful append refreshes only
+the exact still-current request descriptor and page anchor. Dictionary storage
+events adopt only newer revisions; editing defers popup invalidation until close
+or until that exact refresh consumes it. Saving is the transactional boundary,
+so a later best-effort lookup failure cannot make the already-appended row
+retryable.
+
 ## Storage ownership
 
 | Data | Owner | Storage |
 | --- | --- | --- |
 | Generated dictionary indexes | engine worker or fallback engine | direct OPFS or IDBFS under `/dicts` |
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
+| Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
 | Scan length, result limit, modifier, delay, frequency ordering, and dictionary selectors | service worker writes; extension pages read | `chrome.storage.local` key `options` |
 
@@ -138,6 +177,10 @@ pruning are one compare-and-set transaction rather than two coordinated writes.
 | `hd_state_read` | Read revisioned dictionary state through the service worker |
 | `hd_state_cas` | Compare-and-set revisioned dictionary state through the service worker |
 | `hd_options_write` | Save options through the worker and prune invalid dictionary selectors |
+| `hd_custom_read` | Read the revisioned custom source and matching dictionary state |
+| `hd_custom_cas` | Atomically compare-and-set the source document and bound package state |
+| `hd_custom_save` | Parse and save Settings source, compiling or repairing its fixed package when needed |
+| `hd_custom_append` | Append one validated popup Note entry to the latest queued source and compile it |
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
 | `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |
@@ -153,6 +196,12 @@ pruning are one compare-and-set transaction rather than two coordinated writes.
 
 ## Test boundaries
 
-The zero-dependency Node suite checks imports, deinflection, normalized kana lookup, media extraction, malformed input, fallback persistence, thread-bridge transfer behavior, extension packaging, and generated runtime assets. Chrome E2E tests exercise both the threaded direct-OPFS path and the forced compatibility path, including restart durability, service-worker idling, bounded concurrency, and transactional replacement recovery.
+The zero-dependency Node suite checks imports, custom parsing and deterministic
+ZIP compilation, deinflection, normalized kana lookup, media extraction,
+malformed input, fallback persistence, thread-bridge transfer behavior,
+extension packaging, and generated runtime assets. Chrome E2E tests exercise
+both the threaded direct-OPFS path and the forced compatibility path, including
+custom source compilation and restart durability, service-worker idling,
+bounded concurrency, and transactional replacement recovery.
 
 The browser benchmark records import-to-first-valid-lookup, steady lookup, full-process restoration, process-tree resources, exact storage manifests, and input/runtime hashes. The cross-engine benchmark adds production-path adapters for Yomitan and JL under one rotating schedule; see [Benchmarks](../benchmark/README.md).

@@ -26,6 +26,11 @@ import {
   GENERIC_KANJI_TITLE,
   buildRecommendedZip,
 } from "./make-fixture.mjs";
+import {
+  CUSTOM_DICTIONARY_ID,
+  CUSTOM_DICTIONARY_SOURCE_KEY,
+  CUSTOM_DICTIONARY_TITLE,
+} from "../extension/custom-dictionary.js";
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -48,6 +53,9 @@ const MANAGED_DOWNLOAD_URL = "https://example.test/hachidori-fixture.zip";
 const GENERIC_MANAGED_INDEX_URL = "https://example.test/generic-kanji-index.json";
 const GENERIC_MANAGED_DOWNLOAD_URL = "https://example.test/generic-kanji.zip";
 const MANAGED_UPDATE_ALARM = "hachidori-managed-dictionary-updates";
+const CUSTOM_SETTINGS_SOURCE = "# Personal Japanese notes\n\u6c17\u306b\u306a\u308b, \u304d\u306b\u306a\u308b, to catch one's attention\n";
+const CUSTOM_TERM_NOTE_DEFINITION = "to eat — personal usage note";
+const CUSTOM_KANJI_NOTE_DEFINITION = "food; eating — kanji note";
 const LAST_UPDATE_CHECK = Object.freeze({
   checkedAt: "2026-09-04T09:30:00.000Z",
   status: "update-available",
@@ -217,6 +225,7 @@ const PLANNED = [
   "stale title-only kanji selections are pruned",
   "a legacy title-only kanji selection migrates to and persists its native capability",
   "the selected kanji dictionary is saved",
+  "custom Settings lazily saves a source through the real WASM importer",
   "hovering an inflected verb shows a popup",
   "the content script attached its closed-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
@@ -243,6 +252,8 @@ const PLANNED = [
   "the popup is showing immediately before the non-Japanese hover",
   "hovering non-Japanese text shows no popup",
   "the same hover shows a popup again after the non-Japanese one",
+  "an open Note draft survives hover and consumes Escape before popup dismissal",
+  "term and kanji Note forms append and refresh the managed custom dictionary",
   "the settings page lists the dictionary again after a restart",
   "the starter card stays hidden after a browser restart",
   "the dictionary survives a browser restart via OPFS",
@@ -417,8 +428,8 @@ async function popupReader(page) {
   await cdp.send("DOM.enable");
   await cdp.send("Runtime.enable");
 
-  async function state() {
-    // nodeIds live only until the next getDocument, so each read re-walks.
+  async function resolvePopupObject() {
+    // nodeIds live only until the next getDocument, so each operation re-walks.
     const { root } = await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
     let nodeId = null;
     const walk = node => {
@@ -434,6 +445,12 @@ async function popupReader(page) {
     walk(root);
     if (nodeId === null) return null;
     const { object } = await cdp.send("DOM.resolveNode", { nodeId });
+    return object;
+  }
+
+  async function state() {
+    const object = await resolvePopupObject();
+    if (object === null) return null;
     const { result } = await cdp.send("Runtime.callFunctionOn", {
       objectId: object.objectId,
       returnByValue: true,
@@ -451,6 +468,7 @@ async function popupReader(page) {
         for (const rt of stripped.querySelectorAll("rt, rp")) rt.remove();
         const flat = node => (node.textContent || "").replace(/\\s+/g, " ").trim();
         const view = this.ownerDocument.defaultView;
+        const noteForm = this.querySelector(".gsm-hoshidicts-note-form");
         return {
           hidden: this.hasAttribute("hidden"),
           height: this.getBoundingClientRect().height,
@@ -471,6 +489,11 @@ async function popupReader(page) {
           focusedClass: this.getRootNode().activeElement?.className || "",
           focusedKanjiIndex: Array.from(this.querySelectorAll(".gsm-hoshidicts-kanji-link"))
             .indexOf(this.getRootNode().activeElement),
+          noteOpen: noteForm !== null && !noteForm.hidden,
+          noteTerm: noteForm?.querySelector('[name="term"]')?.value ?? null,
+          noteReading: noteForm?.querySelector('[name="reading"]')?.value ?? null,
+          noteDefinition: noteForm?.querySelector('[name="definition"]')?.value ?? null,
+          noteError: noteForm?.querySelector(".gsm-hoshidicts-note-error")?.textContent ?? "",
         };
       }`,
     });
@@ -503,21 +526,8 @@ async function popupReader(page) {
   }
 
   async function click(selector) {
-    const { root } = await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
-    let nodeId = null;
-    const walk = node => {
-      const attributes = node.attributes || [];
-      for (let i = 0; i < attributes.length; i += 2) {
-        if (attributes[i] === "class" && String(attributes[i + 1]).includes("gsm-hoshidicts-popup")) {
-          nodeId = node.nodeId;
-        }
-      }
-      for (const shadow of node.shadowRoots || []) walk(shadow);
-      for (const child of node.children || []) walk(child);
-    };
-    walk(root);
-    if (nodeId === null) return false;
-    const { object } = await cdp.send("DOM.resolveNode", { nodeId });
+    const object = await resolvePopupObject();
+    if (object === null) return false;
     const { result } = await cdp.send("Runtime.callFunctionOn", {
       objectId: object.objectId,
       returnByValue: true,
@@ -532,7 +542,33 @@ async function popupReader(page) {
     return result.value === true;
   }
 
-  return { click, state, visible, waitForVisible, waitForHidden };
+  async function writeNote(values, submit = false) {
+    const object = await resolvePopupObject();
+    if (object === null) return null;
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId,
+      returnByValue: true,
+      arguments: [{ value: values }, { value: submit }],
+      functionDeclaration: `function (next, shouldSubmit) {
+        const form = this.querySelector(".gsm-hoshidicts-note-form");
+        if (!form || form.hidden) return null;
+        for (const [name, value] of Object.entries(next)) {
+          const control = form.elements.namedItem(name);
+          if (!(control instanceof HTMLElement) || !("value" in control)) return null;
+          control.value = String(value);
+          control.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        if (shouldSubmit) form.requestSubmit();
+        return Object.fromEntries(["term", "reading", "definition"].map(name => [
+          name,
+          form.elements.namedItem(name)?.value ?? null,
+        ]));
+      }`,
+    });
+    return result.value ?? null;
+  }
+
+  return { click, state, visible, waitForVisible, waitForHidden, writeNote };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -1754,6 +1790,98 @@ async function main() {
     });
   });
 
+  // ------------------------------------------------------- custom dictionary
+  // The editor must not read the potentially large source until the reader asks
+  // for it. Saving here also puts the production ZIP compiler through the real
+  // offscreen WASM importer before either popup Note path builds on that source.
+  const customEditorBeforeOpen = await page.evaluate(() => ({
+    expanded: document.getElementById("custom-dictionary-open")?.getAttribute("aria-expanded"),
+    formHidden: document.getElementById("custom-dictionary-form")?.hidden,
+    source: document.getElementById("custom-dictionary-source")?.value ?? null,
+    sourceHasMaximumLength: document.getElementById("custom-dictionary-source")?.hasAttribute("maxlength"),
+  }));
+  await page.click("#custom-dictionary-open");
+  const customEditorLoaded = await page.waitForFunction(() => {
+    const form = document.getElementById("custom-dictionary-form");
+    const status = document.getElementById("custom-dictionary-status")?.textContent ?? "";
+    return form?.hidden === false && status === "Loaded source revision 0.";
+  }, { timeout: 30_000, polling: 100 }).then(() => true).catch(() => false);
+  await page.$eval("#custom-dictionary-source", (textarea, source) => {
+    textarea.value = source;
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  }, CUSTOM_SETTINGS_SOURCE);
+  await page.click("#custom-dictionary-save");
+  const customSettingsResult = await page.waitForFunction(async ({ dictionaryId, dictionaryTitle, sourceKey, sourceText }) => {
+    const stored = await chrome.storage.local.get([sourceKey, "dictionaryState"]);
+    const source = stored[sourceKey];
+    const dictionaries = stored.dictionaryState?.dictionaries ?? [];
+    const dictionary = dictionaries.find((entry) => entry.id === dictionaryId);
+    const row = document.querySelector(`[data-dictionary-id="${dictionaryId}"]`);
+    const status = document.getElementById("custom-dictionary-status")?.textContent ?? "";
+    if (
+      source?.revision !== 1
+      || source.text !== sourceText
+      || dictionaries[0]?.id !== dictionaryId
+      || dictionary?.title !== dictionaryTitle
+      || dictionary.enabled !== true
+      || dictionary.termCount !== 1
+      || typeof dictionary.path !== "string"
+      || !row
+      || row.previousElementSibling !== null
+      || !row.querySelector(".dict-enabled")?.checked
+      || row.querySelector(".dict-enabled")?.disabled !== true
+      || row.querySelector(".dict-drag")?.draggable !== false
+      || row.querySelector(".dict-remove")?.hidden !== true
+      || row.querySelector(".dict-remove")?.disabled !== true
+      || !status.includes("rebuilt the custom dictionary")
+    ) {
+      return false;
+    }
+    const lookup = await chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen",
+      type: "hd_lookup_dictionary",
+      requestId: "e2e-custom-settings-lookup",
+      dictionary: dictionaryTitle,
+      text: "\u6c17\u306b\u306a\u308b",
+    });
+    if (
+      lookup?.ok !== true
+      || lookup.results?.[0]?.term?.expression !== "\u6c17\u306b\u306a\u308b"
+      || !JSON.stringify(lookup).includes("to catch one's attention")
+    ) {
+      return false;
+    }
+    return { dictionary, lookup, source, status };
+  }, { timeout: 90_000, polling: 250 }, {
+    dictionaryId: CUSTOM_DICTIONARY_ID,
+    dictionaryTitle: CUSTOM_DICTIONARY_TITLE,
+    sourceKey: CUSTOM_DICTIONARY_SOURCE_KEY,
+    sourceText: CUSTOM_SETTINGS_SOURCE,
+  }).then((handle) => handle.jsonValue()).catch(() => null);
+  const customSettingsGeneration = ownedGenerationRoot(
+    customSettingsResult?.dictionary?.path,
+    CUSTOM_DICTIONARY_TITLE,
+  );
+  const customSettingsPaths = await listOpfsPaths(page);
+  check(
+    "custom Settings lazily saves a source through the real WASM importer",
+    customEditorBeforeOpen.expanded === "false"
+      && customEditorBeforeOpen.formHidden === true
+      && customEditorBeforeOpen.source === ""
+      && customEditorBeforeOpen.sourceHasMaximumLength === false
+      && customEditorLoaded
+      && customSettingsResult !== null
+      && customSettingsGeneration !== ""
+      && generationExists(customSettingsPaths, customSettingsResult.dictionary.path),
+    JSON.stringify({
+      beforeOpen: customEditorBeforeOpen,
+      editorLoaded: customEditorLoaded,
+      result: customSettingsResult,
+      generation: customSettingsGeneration,
+      paths: customSettingsPaths,
+    }),
+  );
+
   // ------------------------------------------------------------------- hover
   const tab = await browser.newPage();
   tab.on("console", m => diagnostics.push(`[page] ${m.type()}: ${m.text()}`));
@@ -2036,6 +2164,276 @@ async function main() {
   check("the same hover shows a popup again after the non-Japanese one",
     control !== null && control.plain.includes("食べる"),
     `popup text: ${control ? control.plain.slice(0, 200) : "(no popup)"}`);
+
+  // Opening the form deliberately suspends the hover-hide path. Escape belongs
+  // to the form on its first press and to the popup on its second, even though
+  // both live inside a closed shadow root.
+  const draftNoteOpened = await popup.click(".gsm-hoshidicts-note-button");
+  const draftPrefill = await popup.state();
+  const draftValues = await popup.writeNote({ definition: "unsaved hover draft" });
+  await tab.mouse.move(2, 2);
+  await new Promise(resolvePromise => setTimeout(resolvePromise, 400));
+  const preservedDraft = await popup.state();
+  await tab.keyboard.press("Escape");
+  let afterFirstNoteEscape = null;
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    afterFirstNoteEscape = await popup.state();
+    if (popup.visible(afterFirstNoteEscape) && afterFirstNoteEscape?.noteOpen === false) break;
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 50));
+  }
+  await tab.keyboard.press("Escape");
+  const noteSecondEscapeHid = await popup.waitForHidden();
+  check(
+    "an open Note draft survives hover and consumes Escape before popup dismissal",
+    draftNoteOpened
+      && draftPrefill?.noteOpen === true
+      && draftPrefill.noteTerm === "食べる"
+      && draftPrefill.noteReading === "たべる"
+      && draftPrefill.noteDefinition === ""
+      && draftValues?.definition === "unsaved hover draft"
+      && popup.visible(preservedDraft)
+      && preservedDraft.noteOpen === true
+      && preservedDraft.noteDefinition === "unsaved hover draft"
+      && popup.visible(afterFirstNoteEscape)
+      && afterFirstNoteEscape.noteOpen === false
+      && noteSecondEscapeHid,
+    JSON.stringify({
+      opened: draftNoteOpened,
+      prefill: draftPrefill,
+      draftValues,
+      preservedDraft,
+      afterFirstEscape: afterFirstNoteEscape,
+      secondEscapeHid: noteSecondEscapeHid,
+    }),
+  );
+
+  const termNoteHover = await hover("#verb");
+  const termNoteOpened = await popup.click(".gsm-hoshidicts-note-button");
+  const termNotePrefill = await popup.state();
+  const termNoteSubmitted = await popup.writeNote(
+    { definition: CUSTOM_TERM_NOTE_DEFINITION },
+    true,
+  );
+  const savedTermNote = await page.waitForFunction(async ({ dictionaryId, sourceKey, sourcePrefix, definition }) => {
+    const stored = await chrome.storage.local.get([sourceKey, "dictionaryState"]);
+    const source = stored[sourceKey];
+    const dictionary = stored.dictionaryState?.dictionaries?.find((entry) => entry.id === dictionaryId);
+    return source?.revision === 2
+      && source.text === `${sourcePrefix}食べる, たべる, ${definition}\n`
+      && stored.dictionaryState?.dictionaries?.[0]?.id === dictionaryId
+      && dictionary?.enabled === true
+      && dictionary.termCount === 2
+      && typeof dictionary.path === "string"
+      ? { dictionary, source }
+      : false;
+  }, { timeout: 90_000, polling: 250 }, {
+    dictionaryId: CUSTOM_DICTIONARY_ID,
+    sourceKey: CUSTOM_DICTIONARY_SOURCE_KEY,
+    sourcePrefix: CUSTOM_SETTINGS_SOURCE,
+    definition: CUSTOM_TERM_NOTE_DEFINITION,
+  }).then((handle) => handle.jsonValue()).catch(() => null);
+  const customGlobalTermLookup = await page.evaluate(() => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen",
+    type: "hd_lookup",
+    requestId: "e2e-custom-global-term-lookup",
+    text: "食べたかった",
+    maxResults: 1,
+    scanLength: 16,
+    options: {
+      frequencyDictionary: "",
+      frequencyOrder: "auto",
+      primaryReading: "",
+    },
+  }));
+  let refreshedTermNote = null;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const state = await popup.state();
+    if (popup.visible(state)
+        && state?.noteOpen === false
+        && state.text.includes(CUSTOM_TERM_NOTE_DEFINITION)) {
+      refreshedTermNote = state;
+      break;
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+
+  const clickedCustomKanji = await popup.click(".gsm-hoshidicts-kanji-link");
+  let customKanjiView = null;
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const state = await popup.state();
+    if (state?.hasBack === true && state.text.includes("food")) {
+      customKanjiView = state;
+      break;
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+  const kanjiNoteOpened = await popup.click(".gsm-hoshidicts-note-button");
+  const kanjiNotePrefill = await popup.state();
+  const kanjiNoteSubmitted = await popup.writeNote({
+    reading: "しょく",
+    definition: CUSTOM_KANJI_NOTE_DEFINITION,
+  }, true);
+  const savedKanjiNote = await page.waitForFunction(async ({ dictionaryId, sourceKey, termDefinition, kanjiDefinition }) => {
+    const stored = await chrome.storage.local.get([sourceKey, "dictionaryState"]);
+    const source = stored[sourceKey];
+    const dictionary = stored.dictionaryState?.dictionaries?.find((entry) => entry.id === dictionaryId);
+    return source?.revision === 3
+      && source.text.includes(`食べる, たべる, ${termDefinition}\n`)
+      && source.text.endsWith(`食, しょく, ${kanjiDefinition}\n`)
+      && stored.dictionaryState?.dictionaries?.[0]?.id === dictionaryId
+      && dictionary?.enabled === true
+      && dictionary.termCount === 3
+      && typeof dictionary.path === "string"
+      ? { dictionary, source }
+      : false;
+  }, { timeout: 90_000, polling: 250 }, {
+    dictionaryId: CUSTOM_DICTIONARY_ID,
+    sourceKey: CUSTOM_DICTIONARY_SOURCE_KEY,
+    termDefinition: CUSTOM_TERM_NOTE_DEFINITION,
+    kanjiDefinition: CUSTOM_KANJI_NOTE_DEFINITION,
+  }).then((handle) => handle.jsonValue()).catch(() => null);
+  let refreshedKanjiNote = null;
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const state = await popup.state();
+    if (popup.visible(state)
+        && state?.noteOpen === false
+        && state.hasBack === true
+        && state.text.includes("food")) {
+      refreshedKanjiNote = state;
+      break;
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+  const customKanjiBack = await popup.click(".gsm-hoshidicts-kanji-back");
+  let restoredCustomTerm = null;
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const state = await popup.state();
+    if (state?.hasBack === false && state.text.includes(CUSTOM_TERM_NOTE_DEFINITION)) {
+      restoredCustomTerm = state;
+      break;
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+  const termNoteGeneration = ownedGenerationRoot(
+    savedTermNote?.dictionary?.path,
+    CUSTOM_DICTIONARY_TITLE,
+  );
+  const kanjiNoteGeneration = ownedGenerationRoot(
+    savedKanjiNote?.dictionary?.path,
+    CUSTOM_DICTIONARY_TITLE,
+  );
+  const customNotePaths = await listOpfsPaths(page);
+  check(
+    "term and kanji Note forms append and refresh the managed custom dictionary",
+    termNoteHover !== null
+      && termNoteOpened
+      && termNotePrefill?.noteOpen === true
+      && termNotePrefill.noteTerm === "食べる"
+      && termNotePrefill.noteReading === "たべる"
+      && termNotePrefill.noteDefinition === ""
+      && termNoteSubmitted?.definition === CUSTOM_TERM_NOTE_DEFINITION
+      && savedTermNote !== null
+      && savedTermNote.dictionary.path !== customSettingsResult?.dictionary?.path
+      && customGlobalTermLookup?.results?.[0]?.term?.glossaries?.[0]?.dictionary
+        === CUSTOM_DICTIONARY_TITLE
+      && JSON.stringify(customGlobalTermLookup).includes(CUSTOM_TERM_NOTE_DEFINITION)
+      && refreshedTermNote !== null
+      && clickedCustomKanji
+      && customKanjiView !== null
+      && kanjiNoteOpened
+      && kanjiNotePrefill?.noteOpen === true
+      && kanjiNotePrefill.noteTerm === "食"
+      && kanjiNotePrefill.noteReading === ""
+      && kanjiNotePrefill.noteDefinition === ""
+      && kanjiNoteSubmitted?.reading === "しょく"
+      && kanjiNoteSubmitted.definition === CUSTOM_KANJI_NOTE_DEFINITION
+      && savedKanjiNote !== null
+      && savedKanjiNote.dictionary.path !== savedTermNote?.dictionary?.path
+      && refreshedKanjiNote !== null
+      && customKanjiBack
+      && restoredCustomTerm !== null
+      && termNoteGeneration !== ""
+      && kanjiNoteGeneration !== ""
+      && generationIsAbsent(customNotePaths, customSettingsGeneration)
+      && generationIsAbsent(customNotePaths, termNoteGeneration)
+      && generationExists(customNotePaths, savedKanjiNote.dictionary.path),
+    JSON.stringify({
+      termNoteHover,
+      termNoteOpened,
+      termNotePrefill,
+      termNoteSubmitted,
+      savedTermNote,
+      customGlobalTermLookup,
+      refreshedTermNote,
+      clickedCustomKanji,
+      customKanjiView,
+      kanjiNoteOpened,
+      kanjiNotePrefill,
+      kanjiNoteSubmitted,
+      savedKanjiNote,
+      refreshedKanjiNote,
+      customKanjiBack,
+      restoredCustomTerm,
+      paths: customNotePaths,
+    }),
+  );
+
+  const editorAdoptedNotes = await page.waitForFunction(({ termDefinition, kanjiDefinition }) => {
+    const value = document.getElementById("custom-dictionary-source")?.value ?? "";
+    return value.includes(termDefinition) && value.includes(kanjiDefinition);
+  }, { timeout: 30_000, polling: 100 }, {
+    termDefinition: CUSTOM_TERM_NOTE_DEFINITION,
+    kanjiDefinition: CUSTOM_KANJI_NOTE_DEFINITION,
+  }).then(() => true).catch(() => false);
+  if (!editorAdoptedNotes) {
+    throw new Error("Settings did not adopt the Note-appended custom source");
+  }
+  await page.bringToFront();
+  if (process.env.HACHIDORI_CUSTOM_SCREENSHOT) {
+    await page.setViewport({ width: 960, height: 900 });
+    const customCard = await page.$('section[aria-labelledby="custom-dictionary-heading"]');
+    await customCard.screenshot({ path: process.env.HACHIDORI_CUSTOM_SCREENSHOT });
+  }
+
+  // Later managed-update assertions intentionally begin with the same two
+  // packages and native dictionary count they had before D8. Saving zero valid
+  // rows performs the product cleanup path and must remove its final generation.
+  await page.$eval("#custom-dictionary-source", (textarea) => {
+    textarea.value = "";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.click("#custom-dictionary-save");
+  const customRemoved = await page.waitForFunction(async ({ dictionaryId, sourceKey }) => {
+    const stored = await chrome.storage.local.get([sourceKey, "dictionaryState"]);
+    const status = document.getElementById("custom-dictionary-status")?.textContent ?? "";
+    if (
+      stored[sourceKey]?.revision !== 4
+      || stored[sourceKey]?.text !== ""
+      || stored.dictionaryState?.dictionaries?.some((entry) => entry.id === dictionaryId)
+      || !status.includes("removed the custom dictionary")
+    ) {
+      return false;
+    }
+    const engineStatus = await chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen",
+      type: "hd_status",
+      requestId: "e2e-custom-cleanup-status",
+    });
+    return engineStatus?.ok === true && engineStatus.dictionaryCount === 4;
+  }, { timeout: 90_000, polling: 250 }, {
+    dictionaryId: CUSTOM_DICTIONARY_ID,
+    sourceKey: CUSTOM_DICTIONARY_SOURCE_KEY,
+  }).then(() => true).catch(() => false);
+  const customGenerationRemoved = kanjiNoteGeneration !== ""
+    && await waitForGenerationAbsent(page, kanjiNoteGeneration);
+  if (!customRemoved || !customGenerationRemoved) {
+    throw new Error(`custom cleanup failed: ${JSON.stringify({
+      customRemoved,
+      customGenerationRemoved,
+      paths: await listOpfsPaths(page),
+    })}`);
+  }
+  await tab.bringToFront();
 
   // ---------------------------------------------------------- managed updates
   // The generic-kanji package is already disabled at this point. Giving it a

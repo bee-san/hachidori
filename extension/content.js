@@ -131,6 +131,10 @@
   let activeSignature = null;
   let activeHighlightText = "";
   let activeTermRender = null;
+  let currentViewRequest = null;
+  let noteEditing = false;
+  let pendingCustomAppends = 0;
+  let deferredDictionaryInvalidationRevision = -1;
   let lookupToken = 0;
   let optionsStorageRevision = 0;
   let dictionaryStateRevision = -1;
@@ -720,6 +724,8 @@
     highlighter = null;
     activeCandidate = null;
     activeTermRender = null;
+    currentViewRequest = null;
+    noteEditing = false;
     if (reason) {
       console.debug(`hachidori: content script stopped (${reason})`);
     }
@@ -742,6 +748,8 @@
     activeCandidate = null;
     activeSignature = null;
     activeTermRender = null;
+    currentViewRequest = null;
+    noteEditing = false;
   }
 
   function noteGeneration(generation) {
@@ -911,6 +919,15 @@
       candidate.scanEntries[0].node.isConnected;
   }
 
+  function requestCanRender(token, candidate) {
+    if (disposed || token !== lookupToken || !popup) return false;
+    if (!anchorConnected(candidate)) {
+      hide();
+      return false;
+    }
+    return true;
+  }
+
   function positionPopup() {
     if (!popup || popup.hidden || !activeCandidate) {
       return;
@@ -999,7 +1016,9 @@
       getPopupColumns: () => 1,
       highlightName: HIGHLIGHT_NAME,
       idPrefix: "hoshidicts",
+      onAddCustomEntry: appendCustomEntry,
       onKanjiClick: showKanji,
+      onNoteEditingChange,
       parseTagList: window.HDGlossary.parseTagList,
       popup,
       positionPopup,
@@ -1055,6 +1074,9 @@
     activeSignature = null;
     activeHighlightText = "";
     activeTermRender = null;
+    currentViewRequest = null;
+    noteEditing = false;
+    deferredDictionaryInvalidationRevision = -1;
     lookupToken += 1;
     if (!popup) {
       return;
@@ -1072,14 +1094,14 @@
   }
 
   function scheduleHide() {
-    if (!popup || popup.hidden || hideTimer !== null) {
+    if (noteEditing || !popup || popup.hidden || hideTimer !== null) {
       return;
     }
     // The gap between the word and the popup is dead space; give the pointer
     // time to cross it so the popup stays reachable and selectable.
     hideTimer = window.setTimeout(() => {
       hideTimer = null;
-      if (!pointerInPopup) {
+      if (!noteEditing && !pointerInPopup) {
         hide();
       }
     }, HIDE_DELAY_MS);
@@ -1155,16 +1177,50 @@
       previous.candidate,
       previous.matchedText,
       previous.renderOptions,
+      previous.request,
     );
     focusKanjiLink(focusTarget);
   }
 
-  function renderTerms(results, candidate, matchedText, renderOptions = {}) {
-    activeTermRender = { candidate, matchedText, renderOptions, results };
+  function normalizedDictionaryTab(value) {
+    if (typeof value?.dictionary === "string") {
+      return { dictionary: value.dictionary };
+    }
+    if (typeof value?.groupId === "string") {
+      return { groupId: value.groupId };
+    }
+    return null;
+  }
+
+  function backRenderOptions(request) {
+    return request?.previous
+      ? { onBack: () => restoreTermRender(request.previous, request.returnFocus) }
+      : {};
+  }
+
+  function renderTerms(
+    results,
+    candidate,
+    matchedText,
+    renderOptions = {},
+    request = currentViewRequest,
+  ) {
+    currentViewRequest = request ?? null;
+    activeTermRender = {
+      candidate,
+      matchedText,
+      renderOptions,
+      request: currentViewRequest,
+      results,
+    };
     try {
       view.renderResults(results, candidate, {
         ...renderContextFor(),
         ...renderOptions,
+        selectedDictionaryTab: currentViewRequest?.selectedDictionaryTab ?? null,
+        onDictionaryTabSelected(selection) {
+          if (request) request.selectedDictionaryTab = normalizedDictionaryTab(selection);
+        },
       });
     } catch (error) {
       // A malformed result must cost one hover, not the whole content script.
@@ -1186,27 +1242,15 @@
     }
   }
 
-  async function runLookup(candidate, overrides = {}) {
+  async function executeTermRequest(request) {
     const token = (lookupToken += 1);
-    const text = typeof overrides.text === "string" ? overrides.text : candidate.query;
     let reply;
     try {
       // The first hover pays for the popup host and the stylesheet fetch; run
       // them alongside the lookup instead of ahead of it.
       [, reply] = await Promise.all([
         ensureUi(),
-        sendRequest("hd_lookup", {
-          maxResults: options.maxResults,
-          options: {
-            frequencyDictionary: options.frequencyDictionary,
-            frequencyOrder: options.frequencyOrder,
-            primaryReading: typeof overrides.primaryReading === "string"
-              ? overrides.primaryReading
-              : "",
-          },
-          scanLength: options.scanLength,
-          text,
-        }),
+        sendRequest("hd_lookup", request.payload),
       ]);
     } catch (error) {
       if (!disposed && token === lookupToken) {
@@ -1216,35 +1260,64 @@
     }
     // Hover fires far faster than lookups return; anything but the newest reply
     // would repaint a word the pointer already left.
-    if (disposed || token !== lookupToken || !popup) {
+    if (!requestCanRender(token, request.candidate)) {
       return;
     }
     const results = (Array.isArray(reply.results) ? reply.results : [])
       .filter((result) => result && result.term);
     if (results.length === 0) {
       if (reply.dictionaryCount === 0) {
-        show(candidate);
+        show(request.candidate);
         activeHighlightText = "";
         activeTermRender = null;
+        currentViewRequest = null;
         view.renderNotice(
           "No dictionaries loaded. Import a Yomitan .zip from the Hachidori options page.",
-          candidate
+          request.candidate
         );
         positionPopup();
-        return;
+        return false;
       }
       hide();
-      return;
+      return false;
     }
-    show(candidate);
+    show(request.candidate);
     const matched = results[0].matched || results[0].term.expression;
+    if (request.highlightText === undefined) {
+      request.highlightText = rawMatchedText(request.candidate, matched);
+    }
     renderTerms(
       results,
-      candidate,
-      overrides.keepHighlight === true
-        ? activeHighlightText
-        : rawMatchedText(candidate, matched)
+      request.candidate,
+      request.highlightText,
+      backRenderOptions(request),
+      request,
     );
+    return true;
+  }
+
+  function runLookup(candidate, overrides = {}) {
+    const text = typeof overrides.text === "string" ? overrides.text : candidate.query;
+    return executeTermRequest({
+      candidate,
+      highlightText: overrides.keepHighlight === true ? activeHighlightText : undefined,
+      kind: "term",
+      payload: {
+        maxResults: options.maxResults,
+        options: {
+          frequencyDictionary: options.frequencyDictionary,
+          frequencyOrder: options.frequencyOrder,
+          primaryReading: typeof overrides.primaryReading === "string"
+            ? overrides.primaryReading
+            : "",
+        },
+        scanLength: options.scanLength,
+        text,
+      },
+      previous: overrides.previous ?? null,
+      returnFocus: overrides.returnFocus ?? null,
+      selectedDictionaryTab: null,
+    });
   }
 
   function onInternalLink({ primaryReading, query }) {
@@ -1253,28 +1326,106 @@
     }
     // The link's query is not page text, so the source highlight stays where
     // the reader's pointer put it.
-    runLookup(activeCandidate, {
+    const navigation = currentViewRequest?.previous
+      ? {
+          previous: currentViewRequest.previous,
+          returnFocus: currentViewRequest.returnFocus,
+        }
+      : {};
+    return runLookup(activeCandidate, {
       keepHighlight: true,
+      ...navigation,
       primaryReading: typeof primaryReading === "string" ? primaryReading : "",
       text: query,
     });
   }
 
-  async function showKanji(character, _result, _candidate, sourceLink) {
-    if (!activeCandidate || typeof character !== "string" || !character) {
-      return;
-    }
-    const candidate = activeCandidate;
-    const previous = activeTermRender;
-    const highlightText = activeHighlightText;
-    const returnFocus = kanjiLinkFocusTarget(sourceLink, character);
-    const capability = selectedKanjiDictionaryCapability();
+  async function executeKanjiRequest(request) {
+    const { candidate, capability, character } = request;
     const useTermDictionary = capability?.kind === "term";
     const token = (lookupToken += 1);
     let reply;
     try {
       reply = useTermDictionary
-        ? await sendRequest("hd_lookup_dictionary", {
+        ? await sendRequest("hd_lookup_dictionary", request.termPayload)
+        : await sendRequest("hd_kanji", request.kanjiPayload);
+    } catch (error) {
+      console.debug("hachidori: kanji lookup failed", error);
+      return false;
+    }
+    if (!requestCanRender(token, candidate) || popup.hidden) {
+      return false;
+    }
+    if (useTermDictionary) {
+      const results = projectResultsToDictionary(
+        Array.isArray(reply.results) ? reply.results : [],
+        capability.title
+      );
+      if (results.length > 0) {
+        renderTerms(
+          results,
+          candidate,
+          request.highlightText,
+          backRenderOptions(request),
+          request,
+        );
+        return true;
+      }
+      try {
+        reply = await sendRequest("hd_kanji", request.kanjiPayload);
+      } catch (error) {
+        console.debug("hachidori: fallback kanji lookup failed", error);
+        return false;
+      }
+      if (!requestCanRender(token, candidate) || popup.hidden) {
+        return false;
+      }
+    }
+    const kanji = reply.kanji;
+    if (!kanji || !Array.isArray(kanji.entries) || kanji.entries.length === 0) {
+      return false;
+    }
+    const entries = capability?.kind === "kanji"
+      ? kanji.entries.filter((entry) => entry.dictionary === capability.title)
+      : kanji.entries;
+    if (entries.length === 0) {
+      return false;
+    }
+    currentViewRequest = request;
+    try {
+      view.renderKanji({ ...kanji, entries }, candidate, {
+        dictionaryPresentation: dictionaryPresentation(),
+        highlightText: request.highlightText,
+        ...backRenderOptions(request),
+      });
+    } catch (error) {
+      console.warn("hachidori: could not render kanji", error);
+      hide();
+      return false;
+    }
+    ensureDictionaryStyles(currentGeneration);
+    positionPopup();
+    focusPopupControl(".gsm-hoshidicts-kanji-back");
+    return true;
+  }
+
+  function showKanji(character, _result, _candidate, sourceLink) {
+    if (!activeCandidate || typeof character !== "string" || !character) {
+      return;
+    }
+    const capability = selectedKanjiDictionaryCapability();
+    return executeKanjiRequest({
+      candidate: activeCandidate,
+      capability,
+      character,
+      highlightText: activeHighlightText || character,
+      kanjiPayload: { character },
+      kind: "kanji",
+      previous: activeTermRender,
+      returnFocus: kanjiLinkFocusTarget(sourceLink, character),
+      selectedDictionaryTab: null,
+      termPayload: capability?.kind === "term"
+        ? {
             dictionary: capability.title,
             maxResults: options.maxResults,
             options: {
@@ -1284,64 +1435,49 @@
             },
             scanLength: 1,
             text: character,
-          })
-        : await sendRequest("hd_kanji", { character });
-    } catch (error) {
-      console.debug("hachidori: kanji lookup failed", error);
-      return;
-    }
-    if (disposed || token !== lookupToken || !popup || popup.hidden) {
-      return;
-    }
-    if (useTermDictionary) {
-      const results = projectResultsToDictionary(
-        Array.isArray(reply.results) ? reply.results : [],
-        capability.title
-      );
-      if (results.length > 0) {
-        renderTerms(results, candidate, highlightText || character, {
-          onBack: previous
-            ? () => restoreTermRender(previous, returnFocus)
-            : undefined,
-        });
-        return;
-      }
-      try {
-        reply = await sendRequest("hd_kanji", { character });
-      } catch (error) {
-        console.debug("hachidori: fallback kanji lookup failed", error);
-        return;
-      }
-      if (disposed || token !== lookupToken || !popup || popup.hidden) {
-        return;
-      }
-    }
-    const kanji = reply.kanji;
-    if (!kanji || !Array.isArray(kanji.entries) || kanji.entries.length === 0) {
-      return;
-    }
-    const entries = capability?.kind === "kanji"
-      ? kanji.entries.filter((entry) => entry.dictionary === capability.title)
-      : kanji.entries;
-    if (entries.length === 0) {
-      return;
-    }
+          }
+        : null,
+    });
+  }
+
+  function executeViewRequest(request) {
+    return request.kind === "kanji"
+      ? executeKanjiRequest(request)
+      : executeTermRequest(request);
+  }
+
+  async function appendCustomEntry(entry) {
+    const expectedView = currentViewRequest;
+    pendingCustomAppends += 1;
     try {
-      view.renderKanji({ ...kanji, entries }, candidate, {
-        dictionaryPresentation: dictionaryPresentation(),
-        highlightText: highlightText || character,
-        onBack: previous
-          ? () => restoreTermRender(previous, returnFocus)
-          : undefined,
-      });
-    } catch (error) {
-      console.warn("hachidori: could not render kanji", error);
-      hide();
-      return;
+      const reply = await sendRequest("hd_custom_append", { entry });
+      const adoption = adoptDictionaryState(reply.state);
+      if (adoption.dictionaryChanged) invalidateStoredState(true);
+      if (
+        expectedView !== null
+        && currentViewRequest === expectedView
+        && popup && !popup.hidden
+        && anchorConnected(expectedView.candidate)
+      ) {
+        // The exact replay reads the engine's latest committed state, so it also
+        // consumes any dictionary invalidation deferred to protect this draft.
+        deferredDictionaryInvalidationRevision = -1;
+        // Saving the row is the transactional boundary. Refresh is deliberately
+        // detached: a lookup error after the commit must not leave a retryable
+        // form that can append the same row twice.
+        void executeViewRequest(expectedView).catch((error) => {
+          console.debug("hachidori: Note saved but the lookup could not refresh", error);
+        });
+      }
+      return reply;
+    } finally {
+      pendingCustomAppends -= 1;
+      if (pendingCustomAppends === 0
+          && !noteEditing
+          && deferredDictionaryInvalidationRevision >= 0) {
+        hide();
+      }
     }
-    ensureDictionaryStyles(currentGeneration);
-    positionPopup();
-    focusPopupControl(".gsm-hoshidicts-kanji-back");
   }
 
   function modifierHeld(event) {
@@ -1361,6 +1497,10 @@
   function scanPointer(pointer) {
     if (disposed || !extensionAlive()) {
       teardown("context-invalidated");
+      return;
+    }
+    if (noteEditing) {
+      clearHideTimer();
       return;
     }
     pointerInPopup = isOurNode(pointer.target) ||
@@ -1436,6 +1576,11 @@
     }
     if (event.key === "Escape") {
       if (popup && !popup.hidden) {
+        if (view?.closeNoteForm?.() === true) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         event.stopPropagation();
         hide();
       }
@@ -1486,10 +1631,38 @@
 
   function invalidateStoredState(dictionaryChanged) {
     if (dictionaryChanged && popup && !popup.hidden) {
-      hide();
-    } else {
-      lookupToken += 1;
+      if (noteEditing || pendingCustomAppends > 0) {
+        deferredDictionaryInvalidationRevision = Math.max(
+          deferredDictionaryInvalidationRevision,
+          dictionaryStateRevision,
+        );
+        lookupToken += 1;
+      } else {
+        hide();
+      }
+      return;
     }
+    lookupToken += 1;
+  }
+
+  function onNoteEditingChange(editing) {
+    noteEditing = editing === true;
+    if (noteEditing) {
+      clearHideTimer();
+    } else if (pendingCustomAppends === 0 && deferredDictionaryInvalidationRevision >= 0) {
+      hide();
+    }
+  }
+
+  function adoptDictionaryState(stored) {
+    const next = normalizeDictionaryState(stored);
+    if (next.revision <= dictionaryStateRevision) {
+      return { adopted: false, dictionaryChanged: false };
+    }
+    const dictionaryChanged = !sameDictionaries(next.dictionaries, dictionaries);
+    dictionaryStateRevision = next.revision;
+    dictionaries = next.dictionaries;
+    return { adopted: true, dictionaryChanged };
   }
 
   function onStorageChanged(changes, area) {
@@ -1505,13 +1678,9 @@
       options = next;
     }
     if (changes.dictionaryState) {
-      const next = normalizeDictionaryState(changes.dictionaryState.newValue);
-      if (next.revision > dictionaryStateRevision) {
-        dictionaryStateRevision = next.revision;
-        dictionaryChanged = !sameDictionaries(next.dictionaries, dictionaries);
-        changed ||= dictionaryChanged;
-        dictionaries = next.dictionaries;
-      }
+      const adoption = adoptDictionaryState(changes.dictionaryState.newValue);
+      dictionaryChanged = adoption.dictionaryChanged;
+      changed ||= dictionaryChanged;
     }
     if (changed) {
       invalidateStoredState(dictionaryChanged);
@@ -1522,7 +1691,6 @@
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);
       const requestedOptionsRevision = optionsStorageRevision;
-      const requestedDictionaryStateRevision = dictionaryStateRevision;
       chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS }, (stored) => {
         if (disposed || chrome.runtime.lastError) {
           return;
@@ -1534,13 +1702,9 @@
           changed ||= JSON.stringify(next) !== JSON.stringify(options);
           options = next;
         }
-        if (dictionaryStateRevision === requestedDictionaryStateRevision) {
-          const next = normalizeDictionaryState(stored && stored.dictionaryState);
-          dictionaryStateRevision = next.revision;
-          dictionaryChanged = !sameDictionaries(next.dictionaries, dictionaries);
-          changed ||= dictionaryChanged;
-          dictionaries = next.dictionaries;
-        }
+        const adoption = adoptDictionaryState(stored && stored.dictionaryState);
+        dictionaryChanged = adoption.dictionaryChanged;
+        changed ||= dictionaryChanged;
         if (changed) {
           invalidateStoredState(dictionaryChanged);
         }

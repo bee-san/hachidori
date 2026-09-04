@@ -6,6 +6,16 @@ import {
   recommendedDictionarySource,
   recommendedDownloadUrlMatches,
 } from "./managed-dictionary-source.js";
+import {
+  CUSTOM_DICTIONARY_ID,
+  CUSTOM_DICTIONARY_TITLE,
+  appendCustomDictionaryEntry,
+  buildCustomDictionaryZip,
+  customDictionarySemanticRevision,
+  normaliseCustomDictionaryDocument,
+  parseCustomDictionary,
+} from "./custom-dictionary.js";
+import { sameJsonValue } from "./json-value.js";
 
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
@@ -103,9 +113,9 @@ function asError(error) {
 }
 
 class UnknownDictionaryStateCommitError extends Error {
-  constructor(commitError, readError) {
+  constructor(commitError, readError, subject = "dictionary state") {
     super(
-      `dictionary state commit outcome is unknown: ${describe(commitError)}; `
+      `${subject} commit outcome is unknown: ${describe(commitError)}; `
       + `readback failed: ${describe(readError)}`,
     );
     this.name = "UnknownDictionaryStateCommitError";
@@ -543,29 +553,116 @@ async function readStoredDictionaries() {
   return state?.dictionaries ?? [];
 }
 
-function sameJsonValue(left, right) {
-  if (left === right) {
-    return true;
+async function readCustomStorage() {
+  const reply = await ask("hd_custom_read");
+  if (reply.ok !== true) {
+    throw new Error(reply.error || "the service worker could not read the custom dictionary");
   }
-  if (left === null || right === null
-      || typeof left !== "object" || typeof right !== "object") {
-    return false;
+  if (reply.state !== null && (
+    reply.state?.schemaVersion !== 1
+    || !Number.isInteger(reply.state?.revision)
+    || reply.state.revision < 0
+    || !Array.isArray(reply.state?.dictionaries)
+    || !Array.isArray(reply.state?.groups)
+  )) {
+    throw new Error("the service worker returned invalid custom dictionary state");
   }
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left)
-      && Array.isArray(right)
-      && left.length === right.length
-      && left.every((value, index) => sameJsonValue(value, right[index]));
-  }
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  return leftKeys.length === rightKeys.length
-    && leftKeys.every((key) =>
-      Object.hasOwn(right, key) && sameJsonValue(left[key], right[key]));
+  return {
+    document: normaliseCustomDictionaryDocument(reply.document),
+    state: reply.state,
+  };
 }
 
 function sameDictionaries(left, right) {
   return sameJsonValue(left, right);
+}
+
+function groupsForDictionaries(groups, dictionaries) {
+  const installed = new Set(dictionaries.map((dictionary) => dictionary?.id));
+  return (groups ?? []).map((group) => ({
+    ...group,
+    dictionaryIds: (group?.dictionaryIds ?? []).filter((id, index, values) =>
+      installed.has(id) && values.indexOf(id) === index),
+  }));
+}
+
+function expectedCustomDocument(document, source, semanticRevision) {
+  if (document.text === source && document.semanticRevision === semanticRevision) {
+    return document;
+  }
+  return {
+    schemaVersion: 1,
+    revision: document.revision + 1,
+    semanticRevision,
+    text: source,
+  };
+}
+
+async function commitCustomStorage(snapshot, source, semanticRevision, dictionaries) {
+  if (snapshot.state === null) {
+    throw new Error("the dictionary state is unavailable");
+  }
+  const document = expectedCustomDocument(snapshot.document, source, semanticRevision);
+  const groups = dictionaries === undefined
+    ? snapshot.state.groups
+    : groupsForDictionaries(snapshot.state.groups, dictionaries);
+  const changesState = dictionaries !== undefined
+    && (!sameDictionaries(snapshot.state.dictionaries, dictionaries)
+      || !sameJsonValue(snapshot.state.groups, groups));
+  const state = changesState
+    ? {
+        schemaVersion: 1,
+        revision: snapshot.state.revision + 1,
+        dictionaries,
+        groups,
+      }
+    : snapshot.state;
+  const fields = {
+    baseDocumentRevision: snapshot.document.revision,
+    baseRevision: snapshot.state.revision,
+    text: source,
+    semanticRevision,
+    ...(changesState ? { dictionaries, groups } : {}),
+  };
+  try {
+    const reply = await ask("hd_custom_cas", fields);
+    // The host reply's envelope belongs to this internal CAS request. Let
+    // handleEngineMessage apply the public save/append envelope instead of
+    // allowing these fields to overwrite its type and request ID.
+    const result = { ...reply };
+    delete result.type;
+    delete result.requestId;
+    delete result.generation;
+    return result;
+  } catch (commitError) {
+    let current;
+    try {
+      current = await readCustomStorage();
+    } catch (readError) {
+      throw new UnknownDictionaryStateCommitError(
+        commitError,
+        readError,
+        "custom dictionary",
+      );
+    }
+    if (sameJsonValue(current.document, document) && sameJsonValue(current.state, state)) {
+      return { ok: true, document, state };
+    }
+    if (sameJsonValue(current.document, document)) {
+      throw new UnknownDictionaryStateCommitError(
+        commitError,
+        new Error("readback did not match the exact source and dictionary-state pair"),
+        "custom dictionary",
+      );
+    }
+    return {
+      ok: false,
+      stale: current.document.revision !== snapshot.document.revision,
+      conflict: current.state?.revision !== snapshot.state.revision,
+      error: describe(commitError),
+      ...current,
+    };
+  }
 }
 
 // A service worker can commit the CAS and disappear before its reply reaches
@@ -915,7 +1012,65 @@ function normaliseReport(raw) {
   return report;
 }
 
-function withImport(stored, generated, recommendedSource, managedSource) {
+function withCustomDictionary(stored, generated) {
+  const current = stored.find((dictionary) => dictionary?.id === CUSTOM_DICTIONARY_ID);
+  if (stored.some((dictionary) =>
+    dictionary?.id !== CUSTOM_DICTIONARY_ID
+      && text(dictionary?.title) === CUSTOM_DICTIONARY_TITLE)) {
+    throw new Error(`a dictionary named ${CUSTOM_DICTIONARY_TITLE} is already installed`);
+  }
+  const custom = {
+    ...generated,
+    id: CUSTOM_DICTIONARY_ID,
+    title: CUSTOM_DICTIONARY_TITLE,
+    displayName: typeof current?.displayName === "string" ? current.displayName : null,
+    enabled: true,
+    favorite: current?.favorite === true,
+    isUpdatable: false,
+    indexUrl: null,
+    downloadUrl: null,
+    lastUpdateCheck: null,
+  };
+  return [custom, ...stored.filter((dictionary) => dictionary?.id !== CUSTOM_DICTIONARY_ID)];
+}
+
+async function customPackageSatisfies(state, semanticRevision, entryCount) {
+  const custom = state?.dictionaries?.[0];
+  if (custom?.id !== CUSTOM_DICTIONARY_ID
+      || custom?.title !== CUSTOM_DICTIONARY_TITLE
+      || custom?.enabled !== true
+      || custom?.revision !== semanticRevision
+      || custom?.termCount !== entryCount
+      || !isGenerationRoot(dictionaryRoot(custom) ?? "")) {
+    return false;
+  }
+  try {
+    const generated = await packageFromIndex(custom.path);
+    if (generated.title !== CUSTOM_DICTIONARY_TITLE
+        || generated.revision !== semanticRevision
+        || generated.termCount !== entryCount
+        || generated.frequencyCount !== 0
+        || generated.pitchCount !== 0
+        || generated.kanjiCount !== 0
+        || generated.mediaCount !== 0
+        || generated.isUpdatable !== false
+        || generated.indexUrl !== null
+        || generated.downloadUrl !== null
+        || generated.language !== "ja"
+        || !sameDictionaries(
+          state.dictionaries,
+          withCustomDictionary(state.dictionaries, generated),
+        )) {
+      return false;
+    }
+    loadDictionaries(state.dictionaries, { strict: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function importReplacementIndex(stored, generated, recommendedSource, managedSource) {
   let existingIndex = managedSource === null ? -1 : stored.findIndex((dictionary) =>
     dictionary?.id === managedSource.fingerprint.id);
   if (managedSource !== null) {
@@ -935,6 +1090,19 @@ function withImport(stored, generated, recommendedSource, managedSource) {
     existingIndex = stored.findIndex((dictionary) =>
       dictionary?.id === generated.id || text(dictionary?.title) === generated.title);
   }
+  return existingIndex;
+}
+
+function withImport(stored, generated, recommendedSource, managedSource) {
+  if (generated.title === CUSTOM_DICTIONARY_TITLE) {
+    throw new Error(`${CUSTOM_DICTIONARY_TITLE} is reserved for the managed custom dictionary`);
+  }
+  const existingIndex = importReplacementIndex(
+    stored,
+    generated,
+    recommendedSource,
+    managedSource,
+  );
   if (existingIndex < 0) {
     return [...stored, recommendedSource === null
       ? generated
@@ -1200,6 +1368,274 @@ async function fetchImportArchive(request) {
   return response;
 }
 
+async function runImportTransaction(response, fileName, importLowRam, commit) {
+  const generationRoot = createGenerationRoot();
+  // Unload before importing: the loaded dictionaries are mapped into the same
+  // 32-bit address space the importer needs. Public count/generation state is
+  // not changed until either the candidate or the committed state is loaded.
+  engine.ccall("hdw_reset", null, [], []);
+
+  const archivePath = storageBackend === "opfs" ? OPFS_IMPORT_ZIP : IMPORT_ZIP;
+  let report;
+  let rollbackAttempted = false;
+  try {
+    report = await importDictionaryArchive(
+      response,
+      archivePath,
+      generationRoot,
+      importLowRam,
+      fileName,
+    );
+    if (report.success && report.title === "") {
+      // hdw_import refuses a title it cannot use as a folder name, so this is
+      // unreachable; without a title there is nothing to register, and a row
+      // with an empty title would poison reconcile().
+      report.success = false;
+      report.error = `${fileName} declares no dictionary title`;
+    }
+    if (report.success) {
+      await persistFilesystem();
+      await commit(generationRoot, report);
+    } else {
+      const failure = new Error(report.error || `${fileName} could not be imported`);
+      rollbackAttempted = true;
+      await rollbackImportedGeneration(generationRoot, failure);
+    }
+  } catch (error) {
+    if (error instanceof UnknownDictionaryStateCommitError) {
+      // Storage may already reference the new path. Neither generation is safe
+      // to delete until an authoritative read succeeds.
+      reloadError = error;
+      throw error;
+    }
+    if (!rollbackAttempted) {
+      await rollbackImportedGeneration(generationRoot, error);
+    }
+    throw error;
+  }
+  return report;
+}
+
+class CustomCommitRejectedError extends Error {
+  constructor(reply) {
+    super(reply?.error || "the custom dictionary could not be saved");
+    this.name = "CustomCommitRejectedError";
+    this.reply = reply;
+  }
+}
+
+function customStaleReply(snapshot) {
+  return {
+    ok: false,
+    stale: true,
+    error: "the custom dictionary source changed while it was being saved",
+    ...snapshot,
+  };
+}
+
+function customSnapshotFromReply(reply) {
+  return {
+    document: normaliseCustomDictionaryDocument(reply.document),
+    state: reply.state,
+  };
+}
+
+async function commitCustomSourceOnly(initial, source, semanticRevision) {
+  let snapshot = initial;
+  for (let attempt = 0; attempt < STORAGE_ATTEMPTS; attempt += 1) {
+    if (snapshot.document.revision !== initial.document.revision) {
+      return customStaleReply(snapshot);
+    }
+    const reply = await commitCustomStorage(snapshot, source, semanticRevision);
+    if (reply.ok === true || reply.stale === true) return reply;
+    if (reply.conflict !== true || reply.document === undefined || reply.state === null) {
+      return reply;
+    }
+    snapshot = customSnapshotFromReply(reply);
+  }
+  return {
+    ok: false,
+    conflict: true,
+    error: "the dictionary state kept changing while the custom source was being saved",
+    ...snapshot,
+  };
+}
+
+async function completeCustomRemoval(reply, removesPackage, loadedCount) {
+  if (removesPackage) {
+    publishLoadedDictionaries(loadedCount);
+    reloadError = null;
+    await cleanupCommittedDictionaries();
+  }
+  return { ...reply, rebuilt: false, removed: removesPackage };
+}
+
+async function rethrowCustomRemovalFailure(error, removesPackage) {
+  if (error instanceof UnknownDictionaryStateCommitError) {
+    reloadError = error;
+    throw error;
+  }
+  if (removesPackage) {
+    try {
+      await restoreCommittedDictionaries();
+    } catch (restoreError) {
+      reloadError = asError(restoreError);
+      throw new Error(`${describe(error)}; custom dictionary rollback failed: ${describe(restoreError)}`);
+    }
+  }
+  throw error;
+}
+
+function customRemovalLoadedCount(dictionaries, removesPackage) {
+  if (!removesPackage) return dictionaryCount;
+  return loadDictionaries(dictionaries, { strict: true });
+}
+
+async function commitCustomRemoval(initial, source, semanticRevision) {
+  let snapshot = initial;
+  for (let attempt = 0; attempt < STORAGE_ATTEMPTS; attempt += 1) {
+    if (snapshot.document.revision !== initial.document.revision) {
+      return customStaleReply(snapshot);
+    }
+    const dictionaries = snapshot.state.dictionaries.filter(
+      (dictionary) => dictionary?.id !== CUSTOM_DICTIONARY_ID,
+    );
+    const removesPackage = dictionaries.length !== snapshot.state.dictionaries.length;
+    try {
+      const loadedCount = customRemovalLoadedCount(dictionaries, removesPackage);
+      const reply = await commitCustomStorage(
+        snapshot,
+        source,
+        semanticRevision,
+        removesPackage ? dictionaries : undefined,
+      );
+      if (reply.ok === true) {
+        const completed = await completeCustomRemoval(reply, removesPackage, loadedCount);
+        return completed;
+      }
+      if (reply.conflict === true
+          && reply.stale !== true
+          && reply.document !== undefined
+          && reply.state !== null
+          && attempt + 1 < STORAGE_ATTEMPTS) {
+        snapshot = customSnapshotFromReply(reply);
+        continue;
+      }
+      if (removesPackage) await restoreCommittedDictionaries(reply.state ?? snapshot.state);
+      return reply;
+    } catch (error) {
+      await rethrowCustomRemovalFailure(error, removesPackage);
+    }
+  }
+  throw new Error("the dictionary state kept changing while the custom dictionary was removed");
+}
+
+async function commitCustomGeneration(
+  initial,
+  source,
+  semanticRevision,
+  generationRoot,
+  report,
+) {
+  const generated = await packageFromIndex(`${generationRoot}/${report.title}`);
+  if (report.title !== CUSTOM_DICTIONARY_TITLE
+      || generated.title !== CUSTOM_DICTIONARY_TITLE) {
+    throw new Error("the compiled custom archive has the wrong dictionary title");
+  }
+  if (generated.revision !== semanticRevision) {
+    throw new Error("the compiled custom archive has the wrong semantic revision");
+  }
+
+  let snapshot = initial;
+  for (let attempt = 0; attempt < STORAGE_ATTEMPTS; attempt += 1) {
+    if (snapshot.document.revision !== initial.document.revision) {
+      throw new CustomCommitRejectedError(customStaleReply(snapshot));
+    }
+    const dictionaries = withCustomDictionary(snapshot.state.dictionaries, generated);
+    const loadedCount = loadDictionaries(dictionaries, { strict: true });
+    const reply = await commitCustomStorage(snapshot, source, semanticRevision, dictionaries);
+    if (reply.ok === true) {
+      publishLoadedDictionaries(loadedCount);
+      reloadError = null;
+      await cleanupCommittedDictionaries();
+      return reply;
+    }
+    if (reply.conflict === true
+        && reply.stale !== true
+        && reply.document !== undefined
+        && reply.state !== null
+        && attempt + 1 < STORAGE_ATTEMPTS) {
+      snapshot = customSnapshotFromReply(reply);
+      continue;
+    }
+    throw new CustomCommitRejectedError(reply);
+  }
+  throw new Error("the dictionary state kept changing while the custom dictionary was saved");
+}
+
+async function saveCustomDictionary(snapshot, source) {
+  const parsed = parseCustomDictionary(source);
+  const semanticRevision = await customDictionarySemanticRevision(parsed.entries);
+  if (parsed.entries.length === 0) {
+    const removed = await commitCustomRemoval(snapshot, source, semanticRevision);
+    return { ...removed, errors: parsed.errors };
+  }
+  if (snapshot.state.dictionaries.some((dictionary) =>
+    dictionary?.id !== CUSTOM_DICTIONARY_ID
+      && dictionary?.title === CUSTOM_DICTIONARY_TITLE)) {
+    throw new Error(`a dictionary named ${CUSTOM_DICTIONARY_TITLE} is already installed`);
+  }
+  if (semanticRevision === snapshot.document.semanticRevision
+      && await customPackageSatisfies(snapshot.state, semanticRevision, parsed.entries.length)) {
+    const saved = await commitCustomSourceOnly(snapshot, source, semanticRevision);
+    return { ...saved, errors: parsed.errors, rebuilt: false, removed: false };
+  }
+
+  const archive = buildCustomDictionaryZip(parsed.entries, semanticRevision);
+  let committed = null;
+  try {
+    const report = await runImportTransaction(
+      new Response(archive),
+      "the custom dictionary archive",
+      lowRam,
+      async (generationRoot, importedReport) => {
+        committed = await commitCustomGeneration(
+          snapshot,
+          source,
+          semanticRevision,
+          generationRoot,
+          importedReport,
+        );
+      },
+    );
+    return {
+      ...committed,
+      errors: parsed.errors,
+      rebuilt: true,
+      removed: false,
+      report,
+    };
+  } catch (error) {
+    if (error instanceof CustomCommitRejectedError) {
+      return { ...error.reply, errors: parsed.errors };
+    }
+    throw error;
+  }
+}
+
+function removalTarget(dictionaries, id, title) {
+  const target = dictionaries.find((dictionary) =>
+    id === null ? text(dictionary?.title) === title : dictionary?.id === id);
+  if (target === undefined) return null;
+  if (text(target.title) !== title) {
+    throw new Error("the remove request dictionary ID and title do not match");
+  }
+  if (target.id === CUSTOM_DICTIONARY_ID) {
+    throw new Error("the managed custom dictionary can only be removed by saving an empty source");
+  }
+  return target;
+}
+
 const HANDLERS = {
   async hd_lookup(message) {
     await ensureLoaded();
@@ -1311,6 +1747,32 @@ const HANDLERS = {
     return { dataUrl: `data:${mediaType(path)};base64,${toBase64(bytes)}` };
   },
 
+  async hd_custom_save(message) {
+    requireEngine();
+    if (!Number.isInteger(message?.baseDocumentRevision)
+        || message.baseDocumentRevision < 0) {
+      throw new Error("the custom dictionary save carried no valid document revision");
+    }
+    if (typeof message?.text !== "string") {
+      throw new TypeError("the custom dictionary save carried no source text");
+    }
+    const snapshot = await readCustomStorage();
+    if (message.baseDocumentRevision !== snapshot.document.revision) {
+      return customStaleReply(snapshot);
+    }
+    return saveCustomDictionary(snapshot, message.text);
+  },
+
+  async hd_custom_append(message) {
+    requireEngine();
+    // This read deliberately happens inside the engine mutation queue. A Note
+    // submitted behind a Settings save must append to that newly committed
+    // source rather than the document that existed when the click was sent.
+    const snapshot = await readCustomStorage();
+    const source = appendCustomDictionaryEntry(snapshot.document.text, message?.entry);
+    return saveCustomDictionary(snapshot, source);
+  },
+
   async hd_import(message) {
     requireEngine();
     const request = await prepareImportRequest(message);
@@ -1322,57 +1784,19 @@ const HANDLERS = {
       managedSource,
       recommendedSource,
     } = request;
-    const generationRoot = createGenerationRoot();
-    // Unload before importing: the loaded dictionaries are mapped into the same
-    // 32-bit address space the importer needs. Public count/generation state is
-    // not changed until either the candidate or the committed state is loaded.
-    engine.ccall("hdw_reset", null, [], []);
-
-    const archivePath = storageBackend === "opfs" ? OPFS_IMPORT_ZIP : IMPORT_ZIP;
-    let report;
-    let rollbackAttempted = false;
-    try {
-      report = await importDictionaryArchive(
-        response,
-        archivePath,
-        generationRoot,
-        importLowRam,
-        fileName,
-      );
-
-      if (report.success && report.title === "") {
-        // hdw_import refuses a title it cannot use as a folder name, so this is
-        // unreachable; without a title there is nothing to register, and a row
-        // with an empty title would poison reconcile().
-        report.success = false;
-        report.error = `${fileName} declares no dictionary title`;
-      }
-      if (report.success) {
-        await persistFilesystem();
-        await commitImportedGeneration(
+    const report = await runImportTransaction(
+      response,
+      fileName,
+      importLowRam,
+      (generationRoot, importedReport) =>
+        commitImportedGeneration(
           generationRoot,
-          report,
+          importedReport,
           recommendedSource,
           managedSource,
           expectedRevision,
-        );
-      } else {
-        const failure = new Error(report.error || `${fileName} could not be imported`);
-        rollbackAttempted = true;
-        await rollbackImportedGeneration(generationRoot, failure);
-      }
-    } catch (error) {
-      if (error instanceof UnknownDictionaryStateCommitError) {
-        // Storage may already reference the new path. Neither generation is safe
-        // to delete until an authoritative read succeeds.
-        reloadError = error;
-        throw error;
-      }
-      if (!rollbackAttempted) {
-        await rollbackImportedGeneration(generationRoot, error);
-      }
-      throw error;
-    }
+        ),
+    );
 
     if (!report.success) {
       return { ok: false, error: report.error || `${fileName} could not be imported`, report };
@@ -1433,6 +1857,7 @@ const HANDLERS = {
   async hd_remove(message) {
     requireEngine();
     const title = text(message.title);
+    const id = optionalText(message.id);
     const legacyRemovalRoot = title === ".hdw-remove" && hasDictionaryMarker(REMOVAL_ROOT);
     if (!usableDictionaryTitle(title) && !legacyRemovalRoot) {
       throw new Error("the remove request carried an unusable dictionary title");
@@ -1443,14 +1868,15 @@ const HANDLERS = {
     }
     await recoverPendingRemovals(snapshot);
 
-    const remaining = snapshot.state.dictionaries.filter(
-      (dictionary) => text(dictionary?.title) !== title,
-    );
-    if (remaining.length === snapshot.state.dictionaries.length) {
+    const target = removalTarget(snapshot.state.dictionaries, id, title);
+    if (target === null) {
       // Nothing to do, and reloading for nothing would invalidate the renderer's
       // media cache.
       return {};
     }
+    const remaining = snapshot.state.dictionaries.filter(
+      (dictionary) => dictionary?.id !== target.id,
+    );
 
     let loadedCount;
     let reply;

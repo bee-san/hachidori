@@ -314,6 +314,70 @@ code {
   font-size: 12.5px;
 }
 
+.custom-dictionary-open {
+  width: fit-content;
+}
+
+.custom-dictionary-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.custom-dictionary-form[hidden] {
+  display: none;
+}
+
+.custom-dictionary-source-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.custom-dictionary-source-field textarea {
+  width: 100%;
+  min-height: 190px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  resize: vertical;
+  background: var(--surface-sunken);
+  color: var(--text);
+  font: 13px/1.5 ui-monospace, monospace;
+  tab-size: 2;
+}
+
+.custom-dictionary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.custom-dictionary-status {
+  min-height: 1.5em;
+  color: var(--text-dim);
+}
+
+.custom-dictionary-status.is-ready {
+  color: var(--ok);
+}
+
+.custom-dictionary-status.is-error {
+  color: var(--error);
+}
+
+.custom-dictionary-errors {
+  margin: 0;
+  padding: 12px 14px 12px 36px;
+  border-radius: 8px;
+  background: var(--surface-sunken);
+  color: var(--error);
+}
+
+.custom-dictionary-errors li + li {
+  margin-top: 4px;
+}
+
 .update-controls {
   display: flex;
   flex-wrap: wrap;
@@ -838,6 +902,7 @@ select {
 
 select:focus-visible,
 input:focus-visible,
+textarea:focus-visible,
 button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;

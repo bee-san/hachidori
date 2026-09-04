@@ -2,7 +2,7 @@
 
 # Hachidori test harness
 
-Eleven pieces, run in this order. The JavaScript checks use Node built-ins except
+Twelve pieces, run in this order. The JavaScript checks use Node built-ins except
 `extension-smoke.mjs`, which needs jsdom. The browser checks need Chrome and
 `puppeteer-core`; those dependencies stay outside the repository.
 
@@ -11,18 +11,19 @@ cd /path/to/hachidori
 
 node test/submodule-identity.mjs # 1. submodule/runtime identity is internally consistent
 ./wasm/build.sh                  # 2. produces threaded OPFS and fallback IDBFS bundles
-node test/make-fixture.mjs       # 3. writes test/fixtures/
-node test/node-smoke.mjs         # 4. threaded C ABI contract test
-HACHIDORI_WASM_VARIANT=fallback node test/node-smoke.mjs # 5. fallback C ABI contract test
-node test/threaded-bridge-smoke.mjs # 6. threaded bridge admission/control test
-node test/extension-smoke.mjs    # 7. the extension's own JS against that wasm
-node --test benchmark/*.test.mjs # 8. fail-closed benchmark framework tests
-node test/chrome-e2e.mjs         # 9. pthread/OPFS path in a real Chrome
-node test/chrome-fallback.mjs    # 10. capability fallback through IDBFS in real Chrome
-./test/baseline.sh               # 11. optional native cross-check
+node --test test/custom-dictionary.test.mjs # 3. custom source and ZIP contract
+node test/make-fixture.mjs       # 4. writes test/fixtures/
+node test/node-smoke.mjs         # 5. threaded C ABI contract test
+HACHIDORI_WASM_VARIANT=fallback node test/node-smoke.mjs # 6. fallback C ABI contract test
+node test/threaded-bridge-smoke.mjs # 7. threaded bridge admission/control test
+node test/extension-smoke.mjs    # 8. the extension's own JS against that wasm
+node --test benchmark/*.test.mjs # 9. fail-closed benchmark framework tests
+node test/chrome-e2e.mjs         # 10. pthread/OPFS path in a real Chrome
+node test/chrome-fallback.mjs    # 11. capability fallback through IDBFS in real Chrome
+./test/baseline.sh               # 12. optional native cross-check
 ```
 
-Step 3 is optional on its own: `node-smoke.mjs` imports the generator and builds
+Step 4 is optional on its own: `node-smoke.mjs` imports the generator and builds
 the fixture bytes in memory, and also writes them to `test/fixtures/` as a side
 effect so `baseline.sh` has files to work with. Run it alone when you want to
 inspect the zip or hand it to another tool.
@@ -150,11 +151,24 @@ report and the expected counts on every run.
 
 ---
 
+## `custom-dictionary.test.mjs`
+
+Five focused checks pin the context-independent custom source and archive
+contract. They cover first-two-comma parsing, comments and blank lines, ordered
+duplicates, every malformed-line report, CRLF-preserving append, and exact
+round trips for escaped newlines, literal backslashes, and literal
+backslash-plus-`n`. The production ZIP builder must be byte-deterministic, use
+UTF-8 classic ZIP metadata, and split more than 1,000 entries into successive
+term banks. The resulting multibank archive is then imported and queried through
+the real WebAssembly engine by `extension-smoke.mjs`.
+
+---
+
 ## `node-smoke.mjs`
 
 The real test. Loads the threaded bundle by default or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-99 checks, ordered by dependency. Exits 0 on success,
+106 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -249,7 +263,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 152 checks, all of
+full request→reply round trip per contract-C message type. 185 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -264,7 +278,8 @@ The fakes cover only the Chrome surface the extension actually touches:
 | `fetch` | serves `blob:` URLs out of a map (the import path), `chrome-extension://` URLs off disk (`render/reader.css`), and deterministic catalogue and managed-update responses |
 
 Each script gets its own `chrome` object. The harness concatenates the shared
-managed-source module into `background.js`, strips those ES-module boundaries,
+custom-dictionary, JSON-value, and managed-source modules into `background.js`,
+strips those ES-module boundaries,
 and runs the worker and render code in `node:vm`; `offscreen.js` is a real ES
 module and reads the shared global, which is the one wired to the bus as
 `"offscreen"`.
@@ -277,11 +292,22 @@ What it proves, in order:
    options page accepted and stored. `content.js` needs a page and is not loaded
    here, so this one check is static: it greps the four literals and fails if they
    disagree.
-1. **Boot and relay.** `hd_status` has exactly the ten documented envelope
+1. **Managed custom dictionary.** The source document and package state commit
+   as one revision-checked write, ordinary state reads leave the potentially
+   large source off their hot path, stale Settings saves fail without merging,
+   queued Note appends read the latest source, and lost replies need an exact
+   pair readback. Real-WASM compilation covers multibyte text, escapes,
+   duplicates, multiple 1,000-row banks, semantic no-op repair, zero-row
+   removal, presentation-conflict retry, fixed-ID/title protection, and cleanup.
+   Settings and popup harnesses cover lazy newest-only source adoption,
+   malformed-line reporting, pinned controls, shared term/kanji Note behavior,
+   exact-view refresh and Back context, Escape/hover guards, and successful
+   append followed by failed refresh.
+2. **Boot and relay.** `hd_status` has exactly the ten documented envelope
    keys, echoes its `requestId`, and reaches `ready`. `createDocument` runs once
    and never concurrently. `background.js` stamps `relayed` on its forwarded copy
    and senders never do.
-2. **Storage ownership and import.** The offscreen document's fake `chrome` has
+3. **Storage ownership and import.** The offscreen document's fake `chrome` has
    `runtime` only, as a real one does, so a storage call from `offscreen.js` fails
    here the way it fails in Chrome; a static check backs that up for the paths
    this file does not exercise, and `hd_state_read` is answered by the worker
@@ -303,7 +329,7 @@ What it proves, in order:
    pins the four catalogue entries and publisher links, download/import phases,
    atomic source validation, immediate starter-card hiding, failure continuation,
    and a retry containing only missing entries.
-3. **Managed dictionary updates.** Manual checks cover every managed package,
+4. **Managed dictionary updates.** Manual checks cover every managed package,
    including disabled packages, without downloading an archive; per-package and
    global results persist. Manual installs and the one global alarm both recheck
    before replacing a generation, preserve presentation and groups, commit
@@ -312,25 +338,25 @@ What it proves, in order:
    catalogue-pinned source rules, final URLs, rotating HTTPS archives, stale
    fingerprints, title collisions, lost replies, concurrent group-only state,
    injected blob archives, cleanup, and alarm recreation are all exercised.
-4. **Every read path** with the logical fixture package expanded to all four native kinds:
+5. **Every read path** with the logical fixture package expanded to all four native kinds:
    `hd_lookup` and selected-dictionary `hd_lookup_dictionary` (payload keys,
    deinflection trace, glossary still a raw string,
    frequencies, pitches), `hd_kanji` (including the string `onyomi`/`kunyomi`/
    `tags` of contract B and the `null` for a miss), `hd_styles`, `hd_media` (a
    `data:` URL matching the pattern `glossary.js` accepts, and `null` for an
    absent path).
-5. **A no-match lookup still reports the real `dictionaryCount`.** `content.js`
+6. **A no-match lookup still reports the real `dictionaryCount`.** `content.js`
    renders "no dictionaries imported" on 0, and 0 is also what the engine's error
    fallback returns, so `offscreen.js` reads `hdw_last_error` after every
    string-returning call and fails the request rather than forwarding an
    ambiguous empty.
-6. **Error paths.** An unknown type is answered as `<type>_result` with
+7. **Error paths.** An unknown type is answered as `<type>_result` with
    `ok: false` rather than dropped; a non-zip import fails with a report attached
    and leaves the previously loaded set intact; an import with no blob URL is
    rejected rather than thrown. A valid import with a declared length above the
    former byte cap succeeds, and a counting filesystem sink receives an actual
    streamed body one byte beyond that boundary.
-7. **The renderer against the engine's own bytes.** This is the check that a
+8. **The renderer against the engine's own bytes.** This is the check that a
    hand-written payload cannot make: the actual `hd_lookup` / `hd_kanji` /
    `hd_styles` / `hd_media` replies go into the real `createPopupView`, and the
    headword, the parsed structured content, the `data-hoshidicts-dictionary`
@@ -340,13 +366,13 @@ What it proves, in order:
    of one term-bank row, so each of its elements must land in its own
    `li.gloss-item` — appending them into one parent runs two senses together with
    no separator, which is asserted against the fixture's own two-sense entry.
-8. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
+9. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
    and removing an unknown title does not bump `generation`. Removal strict-loads
    the remaining manifest and commits it before deleting the old root. The
    failure case injects a `chrome.storage.local.set` rejection: the original
    generation and live engine must remain intact. Startup recovery also preserves
    a legitimate legacy dictionary whose title is `.hdw-remove`.
-9. **A trained (`.hoshidicts_4`) dictionary through the extension layer.**
+10. **A trained (`.hoshidicts_4`) dictionary through the extension layer.**
    Everything above imports the 6-row fixture, which is under the zstd training
    floor, so nothing outside `node-smoke.mjs` had ever seen the layout the current
    engine writes for a real dictionary. `buildTrainedZip()` goes through
@@ -425,6 +451,13 @@ opt-in), then relaunches against the same profile and hovers again with no
 re-import — which is the only test that proves direct OPFS persistence through a
 full Chrome restart.
 
+The same run lazily opens the custom source editor, saves through the production
+ZIP compiler and real pthread WASM importer, and checks the fixed package's
+state and generation. It then drives the closed-shadow Note form through term
+and kanji views, including projected prefill, hover/Escape draft protection,
+exact-view refresh, Back restoration, source adoption in the already-open
+Settings page, and retirement of each superseded OPFS generation.
+
 Managed-update indexes are intercepted on the service-worker CDP target and
 archives on the offscreen-document target, which also covers its engine worker;
 the harness deliberately does not intercept the dedicated worker directly. The
@@ -452,7 +485,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 75 assertions, and the summary line
+`PLANNED` at the top of the file names all 78 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -529,6 +562,11 @@ and wait for both package state and the global completed-check timestamp; the
   runs must replace the intended disabled package while preserving its stable
   identity and presentation. A revision mismatch must leave the exact OPFS path
   set unchanged and the engine ready before the service worker is restarted.
+- The custom block checks that source is not read before its editor opens, has
+  no arbitrary text-length cap, compiles through real WASM, and remains fixed
+  first and enabled. Term and kanji Note appends must each publish a new
+  generation, refresh the exact view, preserve Back context, and leave only the
+  final committed generation before the custom package is removed.
 
 Two things about reading the popup:
 
@@ -550,10 +588,12 @@ prints after a failure.
 ## `chrome-fallback.mjs`
 
 This loads a temporary extension manifest without cross-origin isolation, making
-pthreads unavailable. It imports through the single-thread IDBFS bundle, closes
-Chrome, and launches the same fallback build against the retained profile. Both
-launches must report `storageBackend: "idbfs"` and `threaded: false`, return the
-expected term, frequency, pitch and kanji data, and leave OPFS empty.
+pthreads unavailable. It imports a Yomitan archive, saves custom source through
+the production compiler and single-thread IDBFS bundle, closes Chrome, and
+launches the same fallback build against the retained profile. Both launches
+must report `storageBackend: "idbfs"` and `threaded: false`, return the expected
+fixture and custom-dictionary lookups, restore the revisioned source and fixed
+package, and leave OPFS empty.
 
 ---
 

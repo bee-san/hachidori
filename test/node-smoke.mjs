@@ -44,6 +44,12 @@ import {
   termKey,
   writeFixtures,
 } from './make-fixture.mjs';
+import {
+  CUSTOM_DICTIONARY_TITLE,
+  buildCustomDictionaryZip,
+  customDictionarySemanticRevision,
+  parseCustomDictionary,
+} from '../extension/custom-dictionary.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const VARIANT = process.env.HACHIDORI_WASM_VARIANT === 'fallback' ? 'hoshidicts' : 'hoshidicts-threaded';
@@ -52,6 +58,7 @@ const WASM_PATH = join(HERE, '..', 'extension', 'vendor', `${VARIANT}.wasm`);
 const DICT_DIR = `/dicts/${TITLE}`;
 const TRAINED_DIR = `/dicts/${TRAINED_TITLE}`;
 const MANY_BANK_DIR = `/dicts/${MANY_BANK_TITLE}`;
+const CUSTOM_DICTIONARY_DIR = `/dicts/${CUSTOM_DICTIONARY_TITLE}`;
 
 // Every marker query.cpp still recognises, newest first. The importer writes
 // .hoshidicts_4 when it trained a zstd dictionary for the term banks and
@@ -1135,6 +1142,79 @@ check('a dictionary-scoped lookup returns only the requested term dictionary', (
     selectedLookup.results[0].term.glossaries.every(({ dictionary }) => dictionary === SELECTED_TITLE),
     JSON.stringify(selectedLookup.results[0].term.glossaries),
   );
+});
+
+G('production custom dictionary ZIP');
+
+const customSourceRows = [
+  'newline, \u304b\u3044\u304e\u3087\u3046, line one\\nline two',
+  'literal, \u308a\u3066\u3089\u308b, line one\\\\nline two',
+  'duplicate, \u3061\u3087\u3046\u3075\u304f, first',
+  'duplicate, \u3061\u3087\u3046\u3075\u304f, second',
+  ...Array.from(
+    { length: 996 },
+    (_, index) => `custom-${index + 4}, \u304b\u3059\u305f\u3080-${index + 4}, definition ${index + 4}`,
+  ),
+  'custom-bank-two-terminal, \u3057\u3085\u3046\u305f\u3093, bank two definition',
+];
+const customParsed = parseCustomDictionary(customSourceRows.join('\r\n'));
+const customSemanticRevision = await customDictionarySemanticRevision(customParsed.entries);
+const customZip = buildCustomDictionaryZip(customParsed.entries, customSemanticRevision);
+M.FS.writeFile('/work/custom-dictionary.zip', customZip);
+const customReport = hdwImport('/work/custom-dictionary.zip', '/dicts');
+
+check('production parser retains all 1001 valid rows', () => {
+  eq(customParsed.errors.length, 0, 'malformed custom row count');
+  eq(customParsed.entries.length, 1_001, 'valid custom row count');
+});
+check('production ZIP imports through the real WASM importer', () => {
+  conforms(customReport, IMPORT_REPORT, 'custom ImportReport');
+  eq(customReport.success, true, `custom import failed: ${customReport.error}`);
+  eq(customReport.title, CUSTOM_DICTIONARY_TITLE, 'custom dictionary title');
+  eq(customReport.termCount, 1_001, 'custom term count');
+  for (const key of ['metaCount', 'frequencyCount', 'pitchCount', 'kanjiCount', 'mediaCount']) {
+    eq(customReport[key], 0, `custom ${key}`);
+  }
+});
+check('imported custom metadata retains the semantic revision', () => {
+  const index = JSON.parse(new TextDecoder().decode(
+    M.FS.readFile(`${CUSTOM_DICTIONARY_DIR}/index.json`),
+  ));
+  eq(index.revision, customSemanticRevision, 'custom semantic revision');
+});
+check('the real importer writes a complete custom dictionary generation', () => {
+  const entries = entriesOf(CUSTOM_DICTIONARY_DIR);
+  ok(markerOf(entries) !== undefined, `custom marker missing: ${JSON.stringify(entries.sort())}`);
+  for (const required of REQUIRED_FILES) {
+    ok(entries.includes(required), `${CUSTOM_DICTIONARY_DIR}/${required} missing`);
+  }
+});
+
+reset();
+eq(addDict(CUSTOM_DICTIONARY_DIR, 0), 1, `add custom dictionary: ${lastError()}`);
+check('a term in the second 1000-row bank is searchable', () => {
+  const result = lookupDictionary(
+    'custom-bank-two-terminal',
+    CUSTOM_DICTIONARY_DIR,
+    32,
+    64,
+  ).results[0];
+  eq(result?.term?.expression, 'custom-bank-two-terminal', 'second-bank expression');
+  same(result?.term?.glossaries.map(({ glossary }) => glossary),
+    [JSON.stringify(['bank two definition'])], 'second-bank glossary');
+});
+check('definition newline and literal backslash-n remain distinct', () => {
+  const newline = lookupDictionary('newline', CUSTOM_DICTIONARY_DIR).results[0];
+  const literal = lookupDictionary('literal', CUSTOM_DICTIONARY_DIR).results[0];
+  same(newline.term.glossaries.map(({ glossary }) => glossary),
+    [JSON.stringify(['line one\nline two'])], 'decoded newline glossary');
+  same(literal.term.glossaries.map(({ glossary }) => glossary),
+    [JSON.stringify(['line one\\nline two'])], 'literal backslash-n glossary');
+});
+check('ordered duplicate custom rows retain both definitions', () => {
+  const result = lookupDictionary('duplicate', CUSTOM_DICTIONARY_DIR).results[0];
+  same(result.term.glossaries.map(({ glossary }) => glossary),
+    [JSON.stringify(['first']), JSON.stringify(['second'])], 'duplicate glossaries');
 });
 
 // ---------------------------------------------------------------------------
