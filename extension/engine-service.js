@@ -1140,6 +1140,66 @@ async function managedSourceForImport(message, recommendedSource) {
   };
 }
 
+function validateLocalImportRequest(message, managedSource, recommendedSource) {
+  if (managedSource !== null) {
+    throw new Error("the managed import request carried a blob URL");
+  }
+  if (recommendedSource !== null
+      && !recommendedDownloadUrlMatches(recommendedSource, optionalText(message.finalUrl))) {
+    throw new Error(`${recommendedSource.name} downloaded from an unexpected final URL`);
+  }
+}
+
+function validateManagedImportRequest(managedSource, expectedRevision) {
+  if (managedSource === null) {
+    throw new Error("the import request carried no archive URL");
+  }
+  if (expectedRevision === null) {
+    throw new Error("the managed import request carried no expected revision");
+  }
+}
+
+async function prepareImportRequest(message) {
+  const blobUrl = text(message.blobUrl);
+  const importLowRam = typeof message.lowRam === "boolean" ? message.lowRam : lowRam;
+  const recommendedSource = recommendedSourceForImport(message);
+  const managedSource = await managedSourceForImport(message, recommendedSource);
+  const expectedRevision = optionalText(message.expectedRevision);
+  const remote = blobUrl === "";
+  if (remote) {
+    validateManagedImportRequest(managedSource, expectedRevision);
+  } else {
+    validateLocalImportRequest(message, managedSource, recommendedSource);
+  }
+  return {
+    archiveUrl: remote ? managedSource.archiveUrl : blobUrl,
+    expectedRevision,
+    fileName: text(message.fileName) || recommendedSource?.archiveName || "the archive",
+    importLowRam,
+    managedSource,
+    recommendedSource,
+    remote,
+  };
+}
+
+function remoteArchiveFinalUrlMatches(request, finalUrl) {
+  return request.recommendedSource === null
+    ? httpsUrl(finalUrl) !== null
+    : recommendedDownloadUrlMatches(request.recommendedSource, finalUrl);
+}
+
+async function fetchImportArchive(request) {
+  const response = await fetch(request.archiveUrl, { credentials: "omit" });
+  if (!response.ok) {
+    throw new Error(`could not read ${request.fileName}: HTTP ${response.status}`);
+  }
+  if (request.remote
+      && !remoteArchiveFinalUrlMatches(request, optionalText(response.url))) {
+    throw new Error(`${request.fileName} downloaded from an unexpected final URL`);
+  }
+  return response;
+}
+
 const HANDLERS = {
   async hd_lookup(message) {
     await ensureLoaded();
@@ -1253,40 +1313,15 @@ const HANDLERS = {
 
   async hd_import(message) {
     requireEngine();
-    const blobUrl = text(message.blobUrl);
-    const importLowRam = typeof message.lowRam === "boolean" ? message.lowRam : lowRam;
-    const recommendedSource = recommendedSourceForImport(message);
-    const managedSource = await managedSourceForImport(message, recommendedSource);
-    if (managedSource !== null && blobUrl !== "") {
-      throw new Error("the managed import request carried a blob URL");
-    }
-    if (blobUrl !== "" && recommendedSource !== null
-        && !recommendedDownloadUrlMatches(recommendedSource, optionalText(message.finalUrl))) {
-      throw new Error(`${recommendedSource.name} downloaded from an unexpected final URL`);
-    }
-    if (blobUrl === "" && managedSource === null) {
-      throw new Error("the import request carried no archive URL");
-    }
-    const expectedRevision = optionalText(message.expectedRevision);
-    if (blobUrl === "" && expectedRevision === null) {
-      throw new Error("the managed import request carried no expected revision");
-    }
-    const fileName = text(message.fileName)
-      || recommendedSource?.archiveName
-      || "the archive";
-    const response = await fetch(blobUrl || managedSource.archiveUrl, { credentials: "omit" });
-    if (!response.ok) {
-      throw new Error(`could not read ${fileName}: HTTP ${response.status}`);
-    }
-    if (blobUrl === "") {
-      const finalUrl = optionalText(response.url);
-      const trusted = recommendedSource === null
-        ? httpsUrl(finalUrl) !== null
-        : recommendedDownloadUrlMatches(recommendedSource, finalUrl);
-      if (!trusted) {
-        throw new Error(`${fileName} downloaded from an unexpected final URL`);
-      }
-    }
+    const request = await prepareImportRequest(message);
+    const response = await fetchImportArchive(request);
+    const {
+      expectedRevision,
+      fileName,
+      importLowRam,
+      managedSource,
+      recommendedSource,
+    } = request;
     const generationRoot = createGenerationRoot();
     // Unload before importing: the loaded dictionaries are mapped into the same
     // 32-bit address space the importer needs. Public count/generation state is

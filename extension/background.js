@@ -394,73 +394,105 @@ async function installManagedCandidate(candidate, update, checkedAt) {
   }
 }
 
+function changedManagedOutcome(candidate) {
+  return {
+    id: candidate.id,
+    status: "check-failed",
+    error: MANAGED_DICTIONARY_CHANGED,
+  };
+}
+
+async function recordManagedOutcome(candidate, lastUpdateCheck, outcome) {
+  const recorded = await updateDictionaryCheck(candidate.fingerprint, lastUpdateCheck);
+  return recorded === null ? changedManagedOutcome(candidate) : outcome;
+}
+
+async function checkManagedCandidate(candidate, checkedAt) {
+  let update;
+  try {
+    update = await remoteUpdate(candidate);
+  } catch (error) {
+    const message = describe(error);
+    return {
+      update: null,
+      available: null,
+      outcome: await recordManagedOutcome(
+        candidate,
+        {
+          checkedAt,
+          status: "check-failed",
+          remoteRevision: null,
+          error: message,
+        },
+        { id: candidate.id, status: "check-failed", error: message },
+      ),
+    };
+  }
+
+  if (update.revision === candidate.fingerprint.revision) {
+    const outcome = await recordManagedOutcome(
+      candidate,
+      {
+        checkedAt,
+        status: "up-to-date",
+        remoteRevision: update.revision,
+        error: null,
+      },
+      { id: candidate.id, status: "up-to-date" },
+    );
+    return { update: null, available: null, outcome };
+  }
+
+  const available = {
+    checkedAt,
+    status: "update-available",
+    remoteRevision: update.revision,
+    error: null,
+  };
+  const outcome = await recordManagedOutcome(
+    candidate,
+    available,
+    { id: candidate.id, status: "update-available" },
+  );
+  return {
+    update: outcome.status === "update-available" ? update : null,
+    available,
+    outcome,
+  };
+}
+
+async function installCheckedCandidate(candidate, checked, checkedAt) {
+  if (checked.update === null) {
+    return checked.outcome;
+  }
+  try {
+    await installManagedCandidate(candidate, checked.update, checkedAt);
+    return { id: candidate.id, status: "updated" };
+  } catch (error) {
+    let message = describe(error);
+    const failed = await updateDictionaryCheck(
+      candidate.fingerprint,
+      { ...checked.available, error: message },
+    );
+    if (failed === null) message = MANAGED_DICTIONARY_CHANGED;
+    return {
+      id: candidate.id,
+      status: failed === null ? "check-failed" : "update-available",
+      error: message,
+    };
+  }
+}
+
 async function runManagedUpdateCycle({ dictionaryIds = null, install = false } = {}) {
   const candidates = await managedCandidates(dictionaryIds);
   const checkedAt = new Date().toISOString();
   const outcomes = [];
 
   for (const candidate of candidates) {
-    let update;
-    try {
-      update = await remoteUpdate(candidate);
-    } catch (error) {
-      let message = describe(error);
-      const recorded = await updateDictionaryCheck(candidate.fingerprint, {
-        checkedAt,
-        status: "check-failed",
-        remoteRevision: null,
-        error: message,
-      });
-      if (recorded === null) message = MANAGED_DICTIONARY_CHANGED;
-      outcomes.push({ id: candidate.id, status: "check-failed", error: message });
-      continue;
-    }
-
-    if (update.revision === candidate.fingerprint.revision) {
-      const recorded = await updateDictionaryCheck(candidate.fingerprint, {
-        checkedAt,
-        status: "up-to-date",
-        remoteRevision: update.revision,
-        error: null,
-      });
-      outcomes.push(recorded === null
-        ? { id: candidate.id, status: "check-failed", error: MANAGED_DICTIONARY_CHANGED }
-        : { id: candidate.id, status: "up-to-date" });
-      continue;
-    }
-
-    const available = {
-      checkedAt,
-      status: "update-available",
-      remoteRevision: update.revision,
-      error: null,
-    };
-    const recorded = await updateDictionaryCheck(candidate.fingerprint, available);
-    if (recorded === null) {
-      outcomes.push({ id: candidate.id, status: "check-failed", error: MANAGED_DICTIONARY_CHANGED });
-      continue;
-    }
-    if (!install) {
-      outcomes.push({ id: candidate.id, status: "update-available" });
-      continue;
-    }
-
-    try {
-      await installManagedCandidate(candidate, update, checkedAt);
-      outcomes.push({ id: candidate.id, status: "updated" });
-    } catch (error) {
-      let message = describe(error);
-      const failed = await updateDictionaryCheck(
-        candidate.fingerprint,
-        { ...available, error: message },
-      );
-      if (failed === null) message = MANAGED_DICTIONARY_CHANGED;
-      outcomes.push({
-        id: candidate.id,
-        status: failed === null ? "check-failed" : "update-available",
-        error: message,
-      });
-    }
+    const checked = await checkManagedCandidate(candidate, checkedAt);
+    outcomes.push(install
+      ? await installCheckedCandidate(candidate, checked, checkedAt)
+      : checked.outcome);
   }
 
   const settings = await writeUpdateSettings((current) => ({
@@ -525,7 +557,7 @@ const UPDATE_HANDLERS = {
 
   async hd_updates_install(message) {
     if (!Array.isArray(message?.dictionaryIds)) {
-      throw new Error("the dictionary update request carried no dictionary IDs");
+      throw new TypeError("the dictionary update request carried no dictionary IDs");
     }
     return queueManagedUpdate({ dictionaryIds: message.dictionaryIds, install: true });
   },
@@ -578,11 +610,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // storage handlers above while committing. Keep this listener outside
 // serialiseStorage() so the engine can complete that callback.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || message.target !== UPDATE_TARGET) {
+  if (message?.target !== UPDATE_TARGET) {
     return false;
   }
   const type = typeof message.type === "string" ? message.type : "";
-  if (!Object.prototype.hasOwnProperty.call(UPDATE_HANDLERS, type)) {
+  if (!Object.hasOwn(UPDATE_HANDLERS, type)) {
     sendResponse(failureReply(message, new Error(`unknown update request type ${JSON.stringify(type)}`)));
     return false;
   }
@@ -628,6 +660,12 @@ chrome.runtime.onStartup.addListener(warmUp);
 // Alarms may be cleared across browser restarts. Module evaluation is the one
 // startup path every MV3 worker takes, including starts not caused by either
 // lifecycle event above.
-reconcileUpdateAlarm().catch((error) => {
-  console.error("hoshidicts: could not reconcile the dictionary update alarm:", describe(error));
-});
+async function initialiseUpdateAlarm() {
+  try {
+    await reconcileUpdateAlarm();
+  } catch (error) {
+    console.error("hoshidicts: could not reconcile the dictionary update alarm:", describe(error));
+  }
+}
+
+void initialiseUpdateAlarm();
