@@ -919,6 +919,15 @@
       candidate.scanEntries[0].node.isConnected;
   }
 
+  function requestCanRender(token, candidate) {
+    if (disposed || token !== lookupToken || !popup) return false;
+    if (!anchorConnected(candidate)) {
+      hide();
+      return false;
+    }
+    return true;
+  }
+
   function positionPopup() {
     if (!popup || popup.hidden || !activeCandidate) {
       return;
@@ -1251,7 +1260,7 @@
     }
     // Hover fires far faster than lookups return; anything but the newest reply
     // would repaint a word the pointer already left.
-    if (disposed || token !== lookupToken || !popup) {
+    if (!requestCanRender(token, request.candidate)) {
       return;
     }
     const results = (Array.isArray(reply.results) ? reply.results : [])
@@ -1344,7 +1353,7 @@
       console.debug("hachidori: kanji lookup failed", error);
       return false;
     }
-    if (disposed || token !== lookupToken || !popup || popup.hidden) {
+    if (!requestCanRender(token, candidate) || popup.hidden) {
       return false;
     }
     if (useTermDictionary) {
@@ -1368,7 +1377,7 @@
         console.debug("hachidori: fallback kanji lookup failed", error);
         return false;
       }
-      if (disposed || token !== lookupToken || !popup || popup.hidden) {
+      if (!requestCanRender(token, candidate) || popup.hidden) {
         return false;
       }
     }

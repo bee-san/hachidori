@@ -131,14 +131,15 @@ export function parseCustomDictionary(value) {
     const term = line.slice(0, firstComma).trim();
     const reading = line.slice(firstComma + 1, secondComma).trim();
     const encodedDefinition = line.slice(secondComma + 1).trim();
+    const definition = decodeDefinition(encodedDefinition);
     if (term === "") {
       errors.push({ lineNumber: index + 1, reason: "term is empty" });
     } else if (reading === "") {
       errors.push({ lineNumber: index + 1, reason: "reading is empty" });
-    } else if (encodedDefinition === "") {
+    } else if (definition.trim() === "") {
       errors.push({ lineNumber: index + 1, reason: "definition is empty" });
     } else {
-      entries.push({ term, reading, definition: decodeDefinition(encodedDefinition) });
+      entries.push({ term, reading, definition });
     }
   }
   return { entries, errors };
