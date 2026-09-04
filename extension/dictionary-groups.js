@@ -64,15 +64,27 @@ export function createDictionaryGroupController({
   updateItemById,
   renderDeferredAfterBlur,
 }) {
-  function nameError(name, excludedId = null) {
+  function nameError(groups, name, excludedId = null) {
     if (name === "") return "Enter a group name.";
     const key = groupNameKey(name);
     if (key === ALL_GROUP_NAME_KEY) return "All is reserved and cannot be used as a group name.";
-    if (readState().groups.some((group) =>
+    if (groups.some((group) =>
       group.id !== excludedId && groupNameKey(group.name) === key)) {
       return "A group with this name already exists.";
     }
     return "";
+  }
+
+  function changeNamedGroup(name, excludedId, update) {
+    void commitGroups((current) => {
+      const error = nameError(current, name, excludedId);
+      if (error) {
+        setError(error);
+        return null;
+      }
+      setError("");
+      return update(current);
+    });
   }
 
   function changeGroup(id, update) {
@@ -129,15 +141,15 @@ export function createDictionaryGroupController({
     input.setAttribute("aria-label", `Name for ${group.name}`);
     input.addEventListener("change", () => {
       const name = normaliseGroupName(input.value);
-      const error = nameError(name, group.id);
+      const error = nameError(readState().groups, name, group.id);
       if (error) {
         input.value = group.name;
         setError(error);
         return;
       }
       setError("");
-      changeGroup(group.id, (current) =>
-        current.name === name ? current : { ...current, name });
+      changeNamedGroup(name, group.id, (current) => updateItemById(current, group.id, (entry) =>
+        entry.name === name ? entry : { ...entry, name }));
     });
     renderDeferredAfterBlur(input);
   }
@@ -211,14 +223,14 @@ export function createDictionaryGroupController({
   function create() {
     const input = element("dict-group-name-new");
     const name = normaliseGroupName(input.value);
-    const error = nameError(name);
+    const error = nameError(readState().groups, name);
     if (error) {
       setError(error);
       return;
     }
     input.value = "";
     setError("");
-    void commitGroups((current) => [
+    changeNamedGroup(name, null, (current) => [
       ...current,
       { id: crypto.randomUUID(), name, dictionaryIds: [] },
     ]);
