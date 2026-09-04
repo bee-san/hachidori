@@ -37,6 +37,13 @@ import {
 } from "./make-fixture.mjs";
 import { recommendedIndexUrlMatches } from "../extension/managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
+import {
+  CUSTOM_DICTIONARY_ID,
+  CUSTOM_DICTIONARY_TITLE,
+  buildCustomDictionaryZip,
+  customDictionarySemanticRevision,
+  parseCustomDictionary,
+} from "../extension/custom-dictionary.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -335,6 +342,7 @@ function makeBus() {
 function makeStorage() {
   const local = new Map();
   const changeListeners = [];
+  const sets = [];
   let pendingSetFailure = null;
   let sortDictionaryKeysOnRead = false;
 
@@ -397,6 +405,7 @@ function makeStorage() {
             return Promise.reject(failure);
           }
           const changes = {};
+          sets.push(Object.keys(items).sort());
           for (const [key, value] of Object.entries(items)) {
             changes[key] = { newValue: structuredClone(value), oldValue: local.get(key) };
             local.set(key, structuredClone(value));
@@ -447,6 +456,7 @@ function makeStorage() {
   return {
     api,
     raw: local,
+    sets,
     failNextSet(message) {
       pendingSetFailure = new Error(message);
     },
@@ -698,19 +708,121 @@ function loadClassicScript(file, sandbox) {
 
 function loadBackgroundScript(sandbox) {
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
+  const customDictionary = readFileSync(resolve(EXTENSION, "custom-dictionary.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
+  sandbox.TextEncoder ??= TextEncoder;
+  sandbox.Uint8Array ??= Uint8Array;
+  sandbox.Uint32Array ??= Uint32Array;
+  sandbox.DataView ??= DataView;
+  sandbox.crypto ??= globalThis.crypto;
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
     `${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${background}`,
+      + `${customDictionary}\n${managedSource.replace(/^export\s+/gmu, "")}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
   );
   return context;
+}
+
+async function customBackgroundStage() {
+  const bus = makeBus();
+  const storage = makeStorage();
+  const alarms = makeAlarms();
+  const swChrome = makeChrome("custom-background-sw", bus, storage, alarms);
+  loadBackgroundScript({
+    chrome: swChrome,
+    console,
+    fetch: globalThis.fetch,
+    setTimeout,
+    clearTimeout,
+    Promise,
+    Error,
+    TypeError,
+    JSON,
+    String,
+    Number,
+    Boolean,
+    Object,
+    Array,
+    RegExp,
+    Math,
+    Date,
+    URL,
+  });
+  const pageChrome = makeChrome("custom-background-page", bus, storage, alarms);
+  const send = (type, fields = {}) => pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type,
+    requestId: `custom-background-${type}`,
+    ...fields,
+  });
+
+  const initialState = await send("hd_state_cas", { baseRevision: 0, dictionaries: [] });
+  const empty = await send("hd_custom_read");
+  const source = "\u98df\u3079\u308b, \u305f\u3079\u308b, to eat\r\n";
+  const semanticRevision = await customDictionarySemanticRevision(
+    parseCustomDictionary(source).entries,
+  );
+  const customPackage = genericPackage({
+    id: CUSTOM_DICTIONARY_ID,
+    title: CUSTOM_DICTIONARY_TITLE,
+    path: `/dicts/.hdw-generation-00000000-0000-4000-8000-000000000001/${CUSTOM_DICTIONARY_TITLE}`,
+    revision: semanticRevision,
+  });
+  const committed = await send("hd_custom_cas", {
+    baseDocumentRevision: 0,
+    baseRevision: initialState.state?.revision,
+    text: source,
+    semanticRevision,
+    dictionaries: [customPackage],
+  });
+  const atomicKeys = storage.sets.at(-1);
+  const removeThroughOrdinaryCas = await send("hd_state_cas", {
+    baseRevision: committed.state?.revision,
+    dictionaries: [],
+  });
+  const disableThroughOrdinaryCas = await send("hd_state_cas", {
+    baseRevision: committed.state?.revision,
+    dictionaries: [{ ...customPackage, enabled: false }],
+  });
+  const stale = await send("hd_custom_cas", {
+    baseDocumentRevision: 0,
+    baseRevision: committed.state?.revision,
+    text: "stale, \u3059\u3066\u30fc\u308b, stale",
+    semanticRevision: await customDictionarySemanticRevision([
+      { term: "stale", reading: "\u3059\u3066\u30fc\u308b", definition: "stale" },
+    ]),
+    dictionaries: [customPackage],
+  });
+  const emptySource = "# cleared\nmalformed";
+  const emptySemanticRevision = await customDictionarySemanticRevision([]);
+  const removed = await send("hd_custom_cas", {
+    baseDocumentRevision: committed.document?.revision,
+    baseRevision: committed.state?.revision,
+    text: emptySource,
+    semanticRevision: emptySemanticRevision,
+    dictionaries: [],
+  });
+  const stored = await storage.api().local.get(["customDictionarySource", "dictionaryState"]);
+
+  return {
+    atomicKeys,
+    committed,
+    disableThroughOrdinaryCas,
+    empty,
+    initialState,
+    removeThroughOrdinaryCas,
+    removed,
+    stale,
+    stored,
+  };
 }
 
 function loadSettingsScript(window) {
@@ -897,6 +1009,65 @@ async function main() {
 
   section("option ranges");
   checkOptionRanges();
+
+  section("custom dictionary storage ownership");
+  const customBackground = await customBackgroundStage();
+  const emptySemanticRevision = await customDictionarySemanticRevision([]);
+  equal("an absent custom source reads as revision zero", customBackground.empty, {
+    type: "hd_custom_read_result",
+    requestId: "custom-background-hd_custom_read",
+    ok: true,
+    error: null,
+    document: {
+      schemaVersion: 1,
+      revision: 0,
+      semanticRevision: emptySemanticRevision,
+      text: "",
+    },
+    state: customBackground.initialState.state,
+  });
+  check(
+    "custom source and dictionary state commit in one storage write",
+    customBackground.committed.ok === true
+      && customBackground.committed.document?.revision === 1
+      && customBackground.committed.state?.revision === 2
+      && customBackground.committed.state?.dictionaries?.[0]?.id === CUSTOM_DICTIONARY_ID
+      && customBackground.committed.state?.dictionaries?.[0]?.title === CUSTOM_DICTIONARY_TITLE
+      && customBackground.committed.state?.dictionaries?.[0]?.enabled === true
+      && JSON.stringify(customBackground.atomicKeys)
+        === JSON.stringify(["customDictionarySource", "dictionaryState"]),
+    JSON.stringify(customBackground),
+  );
+  check(
+    "ordinary state CAS cannot remove or disable the fixed custom package",
+    customBackground.removeThroughOrdinaryCas.ok === false
+      && customBackground.disableThroughOrdinaryCas.ok === false
+      && customBackground.removeThroughOrdinaryCas.state?.revision === 2
+      && customBackground.disableThroughOrdinaryCas.state?.revision === 2,
+    JSON.stringify(customBackground),
+  );
+  check(
+    "a stale custom document write is refused without merging",
+    customBackground.stale.ok === false
+      && customBackground.stale.stale === true
+      && customBackground.stale.document?.revision === 1
+      && customBackground.stale.state?.revision === 2,
+    JSON.stringify(customBackground.stale),
+  );
+  check(
+    "the dedicated custom CAS can atomically save a zero-row source and remove its package",
+    customBackground.removed.ok === true
+      && customBackground.removed.document?.revision === 2
+      && customBackground.removed.document?.text === "# cleared\nmalformed"
+      && customBackground.removed.document?.semanticRevision === emptySemanticRevision
+      && customBackground.removed.state?.revision === 3
+      && customBackground.removed.state?.dictionaries?.length === 0
+      && JSON.stringify(customBackground.stored.customDictionarySource)
+        === JSON.stringify(customBackground.removed.document)
+      && JSON.stringify(customBackground.stored.dictionaryState)
+        === JSON.stringify(customBackground.removed.state),
+    JSON.stringify(customBackground),
+  );
 
   section("recommended dictionaries");
   checkRecommendedDictionaries();
