@@ -166,7 +166,8 @@ try {
   const input = await page.$("#import-file");
   await input.uploadFile(FIXTURE);
   await page.waitForFunction(
-    () => /^Imported /.test((document.querySelector("#import-state")?.textContent || "").trim()),
+    () => (document.querySelector("#import-state")?.textContent || "").trim()
+      === "Finished 1 of 1 archive — 1 imported, 0 failed.",
     { timeout: 120_000 },
   );
   await page.waitForFunction(
