@@ -17,6 +17,21 @@ function groupNameKey(value) {
 
 const ALL_GROUP_NAME_KEY = groupNameKey("All");
 
+function element(id) {
+  return document.getElementById(id);
+}
+
+function bindMoveButtons(row, prefix, index, length, label, move) {
+  const up = row.querySelector(`.${prefix}-up`);
+  const down = row.querySelector(`.${prefix}-down`);
+  up.dataset.pinnedDisabled = String(index === 0);
+  down.dataset.pinnedDisabled = String(index === length - 1);
+  up.setAttribute("aria-label", `Move ${label} up`);
+  down.setAttribute("aria-label", `Move ${label} down`);
+  up.addEventListener("click", () => move(-1));
+  down.addEventListener("click", () => move(1));
+}
+
 export function normaliseDictionaryGroups(value, installedDictionaries) {
   if (!Array.isArray(value)) return [];
   const installedIds = new Set(installedDictionaries.map((dictionary) => dictionary.id));
@@ -45,10 +60,6 @@ export function createDictionaryGroupController({
   updateItemById,
   renderDeferredAfterBlur,
 }) {
-  function element(id) {
-    return document.getElementById(id);
-  }
-
   function setError(message) {
     element("dict-group-error").textContent = message;
   }
@@ -81,17 +92,6 @@ export function createDictionaryGroupController({
       const dictionaryIds = moveListItem(group.dictionaryIds, index, index + step);
       return dictionaryIds === null ? group : { ...group, dictionaryIds };
     });
-  }
-
-  function bindMoveButtons(row, prefix, index, length, label, move) {
-    const up = row.querySelector(`.${prefix}-up`);
-    const down = row.querySelector(`.${prefix}-down`);
-    up.dataset.pinnedDisabled = String(index === 0);
-    down.dataset.pinnedDisabled = String(index === length - 1);
-    up.setAttribute("aria-label", `Move ${label} up`);
-    down.setAttribute("aria-label", `Move ${label} down`);
-    up.addEventListener("click", () => move(-1));
-    down.addEventListener("click", () => move(1));
   }
 
   function renderMember(group, dictionary, index) {
