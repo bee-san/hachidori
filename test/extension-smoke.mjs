@@ -7049,6 +7049,38 @@ async function contentNoteStage() {
     };
   }
 
+  async function focusedEditingCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const input = window.document.createElement("input");
+    window.document.body.append(input);
+    harness.driver.setScanCandidate(harness.candidate);
+    harness.emitOptions({ lookupMode: "activation", activationKey: "K", hoverDelayMs: 0 });
+    const pointer = { target: harness.anchor, clientX: 200, clientY: 200 };
+    harness.driver.onMouseMove(pointer);
+    input.focus();
+    input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "k", code: "KeyK", bubbles: true }));
+    harness.driver.onMouseMove(pointer);
+    await harness.settle();
+    const whileEditing = harness.take("hd_lookup");
+    if (whileEditing) harness.reply(whileEditing, {}, false);
+    await harness.settle();
+    input.blur();
+    harness.emitOptions({ onlyScanJapaneseText: false });
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "hello" });
+    harness.driver.scanPointer(pointer);
+    const beforeGate = harness.take("hd_lookup");
+    harness.emitOptions({ onlyScanJapaneseText: true });
+    if (beforeGate) harness.reply(beforeGate, { dictionaryCount: 1, results: [harness.term("hello")] });
+    await harness.settle();
+    const obsoleteRejected = harness.driver.snapshot().popupHidden;
+    harness.close();
+    return {
+      "focused editing suppresses stationary activation and Japanese gating cancels prior pending scans":
+        whileEditing === null && beforeGate !== null && obsoleteRejected,
+    };
+  }
+
   async function pendingScanCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
@@ -7680,7 +7712,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
-    scanning: { ...await pendingScanCase(), ...await scanExtractionCase() },
+    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
