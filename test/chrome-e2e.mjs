@@ -32,6 +32,7 @@ import {
   imagePreviewFixture,
   imageSizingFixture,
   makePng,
+  nestedLinksFixture,
 } from "./make-fixture.mjs";
 import {
   CUSTOM_DICTIONARY_ID,
@@ -251,6 +252,7 @@ const PLANNED = [
   "the content script attached its closed-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
+  "internal links open a positioned popup chain with level-local Note and Back and live depth limits",
   "external dictionary Enter activation creates one safe browser tab through the extension",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
@@ -458,7 +460,7 @@ const PAGE_HTML = `<!doctype html>
 // root attached with mode "closed". CDP's DOM domain can -- DOM.getDocument with
 // pierce:true reports the closed root and its subtree -- so every read of the
 // popup goes through a session instead of a selector.
-async function popupReader(page) {
+async function popupReader(page, depth = 0) {
   const cdp = await page.createCDPSession();
   await cdp.send("DOM.enable");
   await cdp.send("Runtime.enable");
@@ -470,7 +472,8 @@ async function popupReader(page) {
     const walk = node => {
       const attributes = node.attributes || [];
       for (let i = 0; i < attributes.length; i += 2) {
-        if (attributes[i] === "class" && String(attributes[i + 1]).includes("gsm-hoshidicts-popup")) {
+        if (attributes[i] === "class" && String(attributes[i + 1]).includes("gsm-hoshidicts-popup")
+            && attributes[attributes.indexOf("data-hoshidicts-depth") + 1] === String(depth)) {
           nodeId = node.nodeId;
         }
       }
@@ -756,7 +759,37 @@ async function popupReader(page) {
     return result.value ?? null;
   }
 
-  return { click, deinflection, externalLink, imagePreview, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+  async function nested(action = "read") {
+    const object = await resolvePopupObject();
+    if (!object) return null;
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true,
+      arguments: [{ value: action }],
+      functionDeclaration: `function (action) {
+        const root = this.getRootNode();
+        const link = this.querySelector("a[data-hoshidicts-query]");
+        if (action === "focus-link") link.focus();
+        if (action === "remember") { root.__nestedParent = this; root.__nestedAnchor = link; }
+        if (action === "blur") root.activeElement?.blur();
+        const rect = this.getBoundingClientRect();
+        return {
+          depth: Number(this.dataset.hoshidictsDepth), rect: rect.toJSON(),
+          linkRect: link?.getBoundingClientRect().toJSON(),
+          query: link?.dataset.hoshidictsQuery, reading: link?.dataset.hoshidictsReading,
+          linkFocused: root.activeElement === link,
+          sameParent: root.querySelector('[data-hoshidicts-depth="0"]') === root.__nestedParent,
+          sameAnchor: root.__nestedAnchor?.isConnected === true,
+          depths: [...root.querySelectorAll(".gsm-hoshidicts-popup")].filter(popup => !popup.hidden)
+            .map(popup => Number(popup.dataset.hoshidictsDepth)),
+          imagesReady: [...this.querySelectorAll("img")].every(image => image.complete && image.naturalWidth === 16),
+          viewport: { width: innerWidth, height: innerHeight },
+        };
+      }`,
+    });
+    return result.value;
+  }
+
+  return { click, deinflection, externalLink, imagePreview, nested, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -961,6 +994,123 @@ async function installMediaArchive(page, archive) {
   }, archive.toString("base64"));
 }
 
+async function checkNestedLinks(settings, tab, popup) {
+  async function waitForPopupState(reader, predicate) {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const state = await reader.state();
+      if (reader.visible(state) && predicate(state)) return state;
+      if (Date.now() >= deadline) return null;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+  const fixture = nestedLinksFixture();
+  const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
+  const originalOptions = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options);
+  const originalViewport = tab.viewport();
+  const child = await popupReader(tab, 1);
+  const grandchild = await popupReader(tab, 2);
+  const setDepth = (value) => settings.evaluate(async (popupNestingMaxDepth) => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: { popupNestingMaxDepth } });
+    if (!reply.ok) throw new Error(reply.error);
+  }, value);
+  const bounded = (value) => value && value.rect.width > 0 && value.rect.height > 0
+    && value.rect.left >= 5 && value.rect.top >= 5
+    && value.rect.right <= value.viewport.width - 5 && value.rect.bottom <= value.viewport.height - 5;
+  let evidence;
+  await installMediaArchive(settings, fixture.archive);
+  try {
+    await setDepth(2);
+    await tab.setViewport({ width: 1880, height: 960 });
+    await tab.$eval("#verb", (element, query) => { element.textContent = query; }, fixture.query);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await hoverForPopup(tab, popup, "#verb");
+    await popup.nested("remember");
+    const source = await popup.nested("focus-link");
+    await tab.mouse.click(source.linkRect.x + source.linkRect.width / 2, source.linkRect.y + source.linkRect.height / 2);
+    const mouseChild = await child.waitForVisible();
+    const mousePosition = await child.nested();
+    if (mousePosition) {
+      await tab.mouse.move(mousePosition.rect.right - 8, mousePosition.rect.bottom - 8);
+      await tab.mouse.move(source.rect.left + 8, source.rect.top + 8);
+    }
+    const pointerReturn = await child.waitForHidden();
+    await popup.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    const first = await waitForPopupState(child, state => state.plain.includes(fixture.child)
+      && state.imageStates.length === 1 && state.imageStates[0].width === 16);
+    const chain = await child.nested();
+    await child.click(".gsm-hoshidicts-note-button");
+    const draft = await child.writeNote({ definition: "child draft survives parent Note" });
+    await popup.click(".gsm-hoshidicts-note-button");
+    await popup.writeNote({ definition: "independent parent draft" });
+    const parentDraft = await popup.state();
+    const childDraft = await child.state();
+    await tab.keyboard.press("Escape");
+    const parentClosed = await popup.state();
+    const childStillEditing = await child.state();
+    await tab.keyboard.press("Escape");
+    await child.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    const second = await waitForPopupState(grandchild, state => state.plain.includes(fixture.grandchild)
+      && state.imageStates.length === 1 && state.imageStates[0].width === 16);
+    const fullChain = await grandchild.nested();
+    await grandchild.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    const limited = await grandchild.nested();
+    if (process.env.HACHIDORI_NESTED_SCREENSHOT) {
+      await tab.screenshot({ path: process.env.HACHIDORI_NESTED_SCREENSHOT });
+    }
+    await tab.setViewport({ width: 520, height: 740 });
+    await tab.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const narrow = await grandchild.nested();
+    await tab.setViewport({ width: 1880, height: 960 });
+    await setDepth(1);
+    const lowered = await grandchild.waitForHidden();
+    await child.click(".gsm-hoshidicts-kanji-link");
+    const kanji = await waitForPopupState(child, state => state.hasBack && !state.plain.includes("The referenced entry."));
+    await child.click(".gsm-hoshidicts-kanji-back");
+    const back = await waitForPopupState(child, state => state.plain.includes("The referenced entry."));
+    await child.click(".gsm-hoshidicts-kanji-back");
+    const returned = await child.waitForHidden();
+    const retained = await popup.nested();
+    await setDepth(0);
+    await popup.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    const disabled = await popup.nested();
+    evidence = { source, mouseChild, pointerReturn, first, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
+      second, fullChain, limited, narrow, lowered, kanji, back, returned, retained, disabled };
+  } finally {
+    await setDepth(originalOptions.popupNestingMaxDepth ?? 10);
+    const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen", type: "hd_remove", title,
+    }), fixture.title);
+    if (!removed.ok) throw new Error(removed.error);
+    await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+    await tab.setViewport(originalViewport);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+  }
+  check("internal links open a positioned popup chain with level-local Note and Back and live depth limits",
+    evidence.source.query === fixture.child && evidence.source.reading === fixture.reading
+      && evidence.mouseChild !== null && evidence.pointerReturn
+      && evidence.first?.plain.includes(fixture.child) && bounded(evidence.chain)
+      && evidence.chain.sameParent && evidence.chain.sameAnchor && evidence.chain.imagesReady
+      && evidence.draft?.term === fixture.child && evidence.draft.reading === fixture.reading
+      && evidence.parentDraft.noteDefinition === "independent parent draft"
+      && evidence.childDraft.noteDefinition === "child draft survives parent Note"
+      && !evidence.parentClosed.noteOpen && evidence.childStillEditing.noteOpen
+      && evidence.second?.plain.includes(fixture.grandchild) && bounded(evidence.fullChain)
+      && JSON.stringify(evidence.limited.depths) === "[0,1,2]"
+      && bounded(evidence.narrow)
+      && evidence.lowered && evidence.kanji && evidence.back && evidence.returned
+      && evidence.retained.sameParent && evidence.retained.sameAnchor && evidence.retained.imagesReady
+      && JSON.stringify(evidence.disabled.depths) === "[0]", JSON.stringify(evidence));
+}
+
 async function installMediaReplyProbe(browser) {
   const workerTarget = await browser.waitForTarget((target) => target.type() === "service_worker"
     && target.url().startsWith("chrome-extension://"));
@@ -976,7 +1126,7 @@ async function installMediaReplyProbe(browser) {
     chrome.runtime.sendMessage = function (message, ...args) {
       const response = original.call(this, message, ...args);
       if (message.relayed && message.type === "hd_lookup") probe.lookups.push(message);
-      if (message.relayed && message.type === "hd_lookup" && probe.holdNextLookup) {
+      if (message.relayed && ["hd_lookup", "hd_lookup_dictionary"].includes(message.type) && probe.holdNextLookup) {
         probe.holdNextLookup = false;
         return response.then(reply => new Promise(resolveReply => {
           probe.heldLookups.push(() => resolveReply(reply));
@@ -1236,7 +1386,9 @@ async function imagePreviewChrome({ browser, page, tab, popup }) {
     const hoverScrollClosed = await waitForPreview(state => state?.preview === null);
     await popup.imagePreview(2, "focus");
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNextLookup = true; });
-    const navigationClicked = await popup.click(".gsm-hoshidicts-structured-link");
+    // A linked child retains this parent's render/media owner. Use same-level
+    // kanji navigation to exercise invalidation while its replacement is held.
+    const navigationClicked = await popup.click(".gsm-hoshidicts-kanji-link");
     if (!navigationClicked) throw new Error(`Navigation link disappeared while focusing images: ${JSON.stringify({
       scrolledFocus, hoverScrollClosed, current: await popup.state(),
     })}`);
@@ -3442,6 +3594,7 @@ async function main() {
 
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
+  await checkNestedLinks(page, tab, popup);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
   await checkFrequencyDirection(browser, page, tab, popup);

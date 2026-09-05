@@ -7328,7 +7328,105 @@ async function contentNoteStage() {
       }
       harness.close();
     }
+    const concurrent = await createHarness();
+    await concurrent.initialLookup();
+    const rootRequest = concurrent.driver.viewRequest();
+    const linked = concurrent.internalLink({ query: "child", primaryReading: "reading" });
+    concurrent.reply(concurrent.take("hd_lookup"), { dictionaryCount: 1, results: [concurrent.term("child")] });
+    await linked;
+    const childRequest = concurrent.driver.viewRequest(1);
+    concurrent.edit(true);
+    concurrent.edit(true, 1);
+    const parentAppend = concurrent.callbacks().onAddCustomEntry({ term: "parent", reading: "", definition: "first" });
+    const parentMutation = concurrent.take("hd_custom_append");
+    const childAppend = concurrent.callbacks(1).onAddCustomEntry({ term: "child", reading: "reading", definition: "second" });
+    const childMutation = concurrent.take("hd_custom_append");
+    concurrent.emitState(concurrent.state(3, "newest"));
+    concurrent.reply(childMutation, { state: concurrent.state(3, "newest") });
+    await childAppend;
+    const childRefresh = concurrent.take("hd_lookup");
+    concurrent.reply(parentMutation, { state: concurrent.state(2, "older reply") });
+    await parentAppend;
+    concurrent.emitState(concurrent.state(2, "older event"));
+    const retainedWhileHeld = concurrent.driver.snapshot().dictionaryStateRevision === 3
+      && concurrent.driver.snapshot().dictionaries[0].displayName === "newest"
+      && concurrent.driver.viewRequest() === rootRequest && concurrent.driver.viewRequest(1) === childRequest
+      && childRequest.candidate.anchor.isConnected && concurrent.take("hd_lookup") === null;
+    concurrent.setStylesGeneration(3);
+    if (childRefresh) concurrent.reply(childRefresh, { generation: 3, dictionaryCount: 1, results: [concurrent.term("child")] });
+    await concurrent.settle();
+    const parentRefresh = concurrent.take("hd_lookup");
+    if (parentRefresh) concurrent.reply(parentRefresh, { generation: 3, dictionaryCount: 1, results: [concurrent.term("parent")] });
+    await concurrent.settle();
+    outcomes.push(retainedWhileHeld && childRefresh?.request.text === "child"
+      && childRefresh.request.options.primaryReading === "reading" && parentRefresh?.request.text === rootRequest.payload.text
+      && concurrent.driver.viewRequest() === rootRequest && !concurrent.driver.popupAt(1)
+      && concurrent.sent.filter(request => request.type === "hd_custom_append").length === 2
+      && concurrent.take("hd_lookup") === null);
+    concurrent.close();
+
+    const retired = await createHarness();
+    await retired.initialLookup();
+    const first = retired.internalLink({ query: "old child" });
+    retired.reply(retired.take("hd_lookup"), { dictionaryCount: 1, results: [retired.term("old child")] });
+    await first;
+    retired.edit(true, 1);
+    const saving = retired.callbacks(1).onAddCustomEntry({ term: "old child", reading: "", definition: "saved after pruning" });
+    const mutation = retired.take("hd_custom_append");
+    retired.callbacks().onBeforeResultsRendered();
+    const replacement = retired.internalLink({ query: "new child" });
+    retired.reply(retired.take("hd_lookup"), { dictionaryCount: 1, results: [retired.term("new child")] });
+    await replacement;
+    const replacementRequest = retired.driver.viewRequest(1);
+    retired.edit(true, 1);
+    retired.reply(mutation, { state: retired.state(2, "committed retired append") });
+    await saving;
+    outcomes.push(retired.driver.snapshot().dictionaryStateRevision === 2
+      && retired.driver.viewRequest(1) === replacementRequest && retired.driver.snapshot(1).noteEditing
+      && retired.take("hd_lookup") === null);
+    retired.close();
     return { "parent Note replay waits for a child draft and accepted explicit navigation consumes obsolete deferred state": outcomes.every(Boolean) };
+  }
+
+  async function nestedReplyRaceCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    const first = harness.internalLink({ query: "old child" });
+    const oldRequest = harness.take("hd_lookup");
+    harness.callbacks().onBeforeResultsRendered();
+    const next = harness.internalLink({ query: "new child" });
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("new child")] });
+    await next;
+    const current = harness.driver.viewRequest(1);
+    const currentPopup = harness.driver.popupAt(1);
+    const before = harness.sent.length;
+    harness.reply(oldRequest, { generation: 99, dictionaryCount: 1, results: [harness.term("old child")] });
+    await first;
+    const retiredIgnored = harness.driver.viewRequest(1) === current && harness.driver.popupAt(1) === currentPopup
+      && harness.driver.snapshot().currentGeneration === 2 && harness.sent.length === before;
+    harness.close();
+    const generations = [];
+    for (const generation of [3, 1]) {
+      const race = await createHarness();
+      await race.initialLookup();
+      const parent = race.driver.viewRequest();
+      const child = race.internalLink({ query: "new generation" });
+      const childRequest = race.take("hd_lookup");
+      const kanji = race.callbacks().onKanjiClick("食");
+      const parentRequest = race.take("hd_lookup_dictionary");
+      race.setStylesGeneration(generation);
+      race.reply(childRequest, { generation, dictionaryCount: 1, results: [race.term("new generation")] });
+      await child;
+      race.reply(parentRequest, { generation: 2, dictionaryCount: 1, results: [race.term("obsolete parent")] });
+      await kanji;
+      await race.settle();
+      generations.push(race.driver.snapshot().currentGeneration === generation
+        && race.driver.viewRequest() === parent && race.driver.viewRequest(1)?.payload.text === "new generation"
+        && race.render(1).context.isCurrentRequest() && race.driver.snapshot().styleGeneration === generation);
+      race.close();
+    }
+    return { "retired child replies and older parent replies cannot replace a new level or roll back engine generation":
+      retiredIgnored && generations.every(Boolean) };
   }
 
   async function replyFirstCase() {
@@ -8845,7 +8943,8 @@ async function contentNoteStage() {
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
-    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(), ...await nestedLevelsCase(), ...await nestedNotesCase(), ...await nestedPointerCase() },
+    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
+      ...await nestedLevelsCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
     deferredInvalidation: await deferredInvalidationCase(),
@@ -9252,19 +9351,19 @@ function internalLinksRenderStage({ HDGlossary, document, window }) {
     { tag: "a", href: "?query=outer", content: { tag: "a", href: "?query=inner", content: "inner term" } },
   ] }]), { isCurrent: () => current, onInternalLink(value) { calls.push(value); } });
   const first = parent.querySelector("a");
-  const activate = anchor => {
-    const event = new window.MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 });
+  const activate = (anchor, detail = 0) => {
+    const event = new window.MouseEvent("click", { bubbles: true, cancelable: true, detail });
     anchor.dispatchEvent(event);
     return event.defaultPrevented;
   };
   try {
     const active = activate(first) && calls.length === 1 && calls[0].anchor === first
-      && calls[0].query === "食" && calls[0].primaryReading === "しょく";
+      && calls[0].query === "食" && calls[0].primaryReading === "しょく" && calls[0].focusChild === true;
     current = false;
     const stale = activate(first) && calls.length === 1;
     current = true;
-    const nested = activate(parent.querySelector('[data-hoshidicts-query="inner"]'))
-      && calls.length === 2 && calls[1].query === "inner";
+    const nested = activate(parent.querySelector('[data-hoshidicts-query="inner"]'), 1)
+      && calls.length === 2 && calls[1].query === "inner" && calls[1].focusChild === false;
     first.remove();
     const detached = activate(first) && calls.length === 2;
     check("internal links retain exact query and reading while rejecting stale, detached and enclosing actions",

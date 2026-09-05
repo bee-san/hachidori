@@ -525,6 +525,27 @@ export function externalLinksFixture(destinationUrl) {
   return { title, query, archive };
 }
 
+export function nestedLinksFixture() {
+  const title = 'nested-links-fixture';
+  const query = '連鎖語';
+  const child = '食用語';
+  const reading = 'しょくようご';
+  const grandchild = '終点';
+  const link = (query, primaryReading, label) => ({ tag: 'a',
+    href: `?query=${encodeURIComponent(query)}&primary_reading=${encodeURIComponent(primaryReading)}`,
+    content: label,
+  });
+  const glossary = (text, next) => [{ type: 'structured-content', content: { tag: 'div', content: [
+    text, ' ', next, { tag: 'img', path: 'media/kanji.png', width: 16, height: 16 },
+  ] } }];
+  const archive = buildTitledZip(title, { mediaEntries: [['media/kanji.png', makePng()]], terms: [
+    [query, 'れんさご', '', '', 0, glossary('A linked definition.', link(child, reading, 'Open the referenced entry')), 1, ''],
+    [child, reading, '', '', 0, glossary('The referenced entry.', link(grandchild, 'しゅうてん', 'Continue to the final entry')), 2, ''],
+    [grandchild, 'しゅうてん', '', '', 0, glossary('The final entry.', link(query, 'れんさご', 'Return to the first entry')), 3, ''],
+  ] });
+  return { title, query, child, reading, grandchild, archive };
+}
+
 export function frequencyRankingFixture() {
   const query = '頻度語';
   const readings = ['あ', 'い', 'う'];
