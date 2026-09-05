@@ -429,30 +429,28 @@
               </label>
 
               <label class="field">
-                <span class="field-label">Frequency order</span>
-                <select id="opt-frequency-order">
-                  <option value="auto">Automatic</option>
-                  <option value="ascending">
-                    Ascending &mdash; most common first
-                  </option>
-                  <option value="descending">
-                    Descending &mdash; rarest first
-                  </option>
-                  <option value="disabled">Disabled</option>
-                </select>
-                <span class="field-hint"
-                  >How frequency data reorders results.</span
-                >
-              </label>
-
-              <label class="field">
                 <span class="field-label">Frequency dictionary</span>
                 <select id="opt-frequency-dictionary"></select>
                 <span class="field-hint">
-                  Used when the order above is ascending or descending;
-                  automatic considers them all.
+                  Choosing a dictionary sets its direction from rank or occurrence
+                  metadata. You can change that direction manually.
                 </span>
               </label>
+
+              <div class="field">
+                <label class="field-label" for="opt-frequency-order">Frequency order</label>
+                <div class="frequency-order-controls">
+                  <select id="opt-frequency-order" aria-describedby="frequency-order-hint">
+                    <option value="auto">Automatic &mdash; all dictionaries</option>
+                    <option value="ascending">Ascending &mdash; lowest number first</option>
+                    <option value="descending">Descending &mdash; highest number first</option>
+                    <option value="disabled">Disabled</option>
+                  </select>
+                  <button id="opt-frequency-auto" type="button" class="ghost"
+                    aria-label="Set frequency direction from the selected dictionary mode">Auto direction</button>
+                </div>
+                <span class="field-hint" id="frequency-order-hint"></span>
+              </div>
             </div>
           </fieldset>
           <output id="options-status" class="custom-dictionary-status" aria-live="polite"></output>

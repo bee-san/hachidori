@@ -259,15 +259,17 @@ function selectionFromValue(value) {
   return normaliseKanjiSelection(value);
 }
 
+function isAvailableFrequencyDictionary(dictionary) {
+  return dictionary.enabled !== false && hasCapability(dictionary, "freq");
+}
+
+function selectedFrequencyDictionary() {
+  return dictionaries.find((dictionary) => dictionary.title === options.frequencyDictionary
+    && isAvailableFrequencyDictionary(dictionary));
+}
+
 function normaliseDictionarySelections() {
   let changed = false;
-  if (options.frequencyDictionary) {
-    const selected = dictionaries.find((entry) => entry.title === options.frequencyDictionary);
-    if (!selected || selected.enabled === false || !hasCapability(selected, "freq")) {
-      options.frequencyDictionary = "";
-      changed = true;
-    }
-  }
   const kanjiSelection = selectionParts(options.kanjiClickDictionary);
   if (kanjiSelection) {
     const selected = dictionaries.find((entry) => entry.title === kanjiSelection.title);
@@ -684,17 +686,18 @@ async function refreshStatus() {
 
 function renderFrequencyChoices() {
   const select = element("opt-frequency-dictionary");
+  if (select === document.activeElement) return;
   const previous = options.frequencyDictionary;
   select.textContent = "";
 
   const automatic = document.createElement("option");
   automatic.value = "";
-  automatic.textContent = "Any — use every frequency dictionary";
+  automatic.textContent = "Any — automatic across all dictionaries";
   select.appendChild(automatic);
 
-  const enabled = dictionaries.filter((entry) => entry.enabled !== false);
+  const enabled = dictionaries.filter(isAvailableFrequencyDictionary);
   const withFrequencies = new Set(
-    enabled.filter((entry) => hasCapability(entry, "freq")).map((entry) => entry.title),
+    enabled.map((entry) => entry.title),
   );
   const groups = [{ label: "Frequency dictionaries", titles: [...withFrequencies] }];
   for (const group of groups) {
@@ -714,13 +717,39 @@ function renderFrequencyChoices() {
   }
 
   // Keep a removed selection visible rather than silently rewriting the option.
-  if (previous !== "" && !enabled.some((entry) => entry.title === previous)) {
+  if (previous !== "" && !withFrequencies.has(previous)) {
     const stale = document.createElement("option");
     stale.value = previous;
-    stale.textContent = `${previous} (not imported)`;
+    stale.textContent = `${previous} (unavailable)`;
+    stale.disabled = true;
     select.appendChild(stale);
   }
   select.value = previous;
+}
+
+function renderFrequencyOrder() {
+  const order = element("opt-frequency-order");
+  if (order !== document.activeElement) order.value = options.frequencyOrder;
+  const selected = selectedFrequencyDictionary();
+  for (const choice of order.options) {
+    choice.disabled = !selected && (choice.value === "ascending" || choice.value === "descending");
+  }
+  element("opt-frequency-auto").disabled = !selected;
+  let hint;
+  if (options.frequencyOrder === "auto") hint = "Automatic compares all enabled frequency dictionaries in their listed order.";
+  else if (options.frequencyOrder === "disabled") hint = "Frequency sorting is off. Your dictionary choice is remembered.";
+  else if (!selected) hint = "Choose an available frequency dictionary to use this direction.";
+  else if (selected.frequencyMode === "rank-based") hint = "Rank-based: Auto puts the lowest numbers first.";
+  else if (selected.frequencyMode === "occurrence-based") hint = "Occurrence-based: Auto puts the highest numbers first.";
+  else hint = "No mode declared: Auto uses highest numbers first.";
+  element("frequency-order-hint").textContent = hint;
+}
+
+function applyFrequencyDirection() {
+  const direction = selectedFrequencyDictionary()?.frequencyMode === "rank-based" ? "ascending" : "descending";
+  options.frequencyOrder = options.frequencyDictionary === "" ? "auto" : direction;
+  renderFrequencyOrder();
+  writeOptions();
 }
 
 function appendKanjiGroup(select, enabled, group, availableValues) {
@@ -817,10 +846,7 @@ function renderOptions() {
   }
   if (activation !== document.activeElement) activation.value = options.activationKey;
   activation.disabled = options.lookupMode !== "activation";
-  const order = element("opt-frequency-order");
-  if (order !== document.activeElement) {
-    order.value = options.frequencyOrder;
-  }
+  renderFrequencyOrder();
   renderKanjiChoices();
   renderFrequencyChoices();
 }
@@ -1761,13 +1787,15 @@ function attachHandlers() {
 
   element("opt-frequency-order").addEventListener("change", (event) => {
     options.frequencyOrder = FREQUENCY_ORDERS.includes(event.target.value) ? event.target.value : "auto";
+    renderFrequencyOrder();
     writeOptions();
   });
 
   element("opt-frequency-dictionary").addEventListener("change", (event) => {
     options.frequencyDictionary = event.target.value;
-    writeOptions();
+    applyFrequencyDirection();
   });
+  element("opt-frequency-auto").addEventListener("click", applyFrequencyDirection);
 
   element("opt-kanji-dictionary").addEventListener("change", (event) => {
     options.kanjiClickDictionary = selectionFromValue(event.target.value);
@@ -1781,6 +1809,7 @@ function attachHandlers() {
   });
   element("lookup").addEventListener("focusout", (event) => {
     optionsEditRevision = null;
+    if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
     const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
     if (field) event.target.value = String(options[field.key]);
   });
