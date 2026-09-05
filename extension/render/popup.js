@@ -1375,10 +1375,10 @@
           editing = true;
           onNoteEditingChange(true);
         }
-        term.focus();
-        term.select();
         positionPopup();
         popup.scrollTop = toolbarPosition === "bottom" ? popup.scrollHeight : 0;
+        term.focus();
+        term.select();
       }
 
       cancel.addEventListener("click", () => close());

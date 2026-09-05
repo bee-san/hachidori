@@ -1528,7 +1528,8 @@ html[data-hoshidicts-theme="miku"] .gsm-hoshidicts-popup {
   overflow-wrap: anywhere;
 }
 
-.gsm-hoshidicts-entry-header:has(.gsm-hoshidicts-deinflection) {
+.gsm-hoshidicts-entry-header:has(.gsm-hoshidicts-deinflection),
+.gsm-hoshidicts-kanji-navigation:has(.gsm-hoshidicts-deinflection) {
   align-items: flex-start;
 }
 
