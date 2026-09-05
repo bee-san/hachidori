@@ -1332,7 +1332,10 @@
   }
 
   function hasProtectedNote(fromDepth = 0) {
-    return levels.slice(fromDepth).some((level) => level.noteEditing || level.pendingCustomAppends > 0);
+    for (let index = fromDepth; index < levels.length; index += 1) {
+      if (levels[index].noteEditing || levels[index].pendingCustomAppends > 0) return true;
+    }
+    return false;
   }
 
   function onPopupFocusOut(event) {
@@ -1517,7 +1520,8 @@
     }
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
-    if (typeof renderOptions.onBack === "function") {
+    if (typeof renderOptions.onBack === "function"
+        && (level === rootLevel || request?.previous || level.focusLinkedBack)) {
       focusPopupControl(".gsm-hoshidicts-kanji-back", level);
     }
   }
@@ -1608,7 +1612,7 @@
     }, level);
   }
 
-  function onInternalLink({ anchor, primaryReading = "", query }, level = rootLevel) {
+  function onInternalLink({ anchor, focusChild = false, primaryReading = "", query }, level = rootLevel) {
     if (level.retired || !level.activeCandidate || !anchor?.isConnected
         || !level.popup.contains(anchor) || !query || level.depth >= options.popupNestingMaxDepth
         || window.innerWidth <= POPUP_PADDING_PX * 2 || window.innerHeight <= POPUP_PADDING_PX * 2) {
@@ -1618,12 +1622,19 @@
     if (existing?.activeCandidate?.anchor === anchor && existing.activeCandidate.query === query
         && existing.primaryReading === primaryReading
         && (existing.pendingLink || (existing.currentViewRequest?.kind === "term"
-          && existing.activeTermRender?.token === existing.lookupToken))) return existing.pendingLink;
+          && existing.activeTermRender?.token === existing.lookupToken))) {
+      if (focusChild) {
+        existing.focusLinkedBack = true;
+        if (!existing.popup.hidden) focusPopupControl(".gsm-hoshidicts-kanji-back", existing);
+      }
+      return existing.pendingLink;
+    }
     pruneLevels(level.depth + 1, false);
     const child = createLevelState(level.depth + 1);
     levels.push(child);
     buildLevelUi(child);
     child.primaryReading = primaryReading;
+    child.focusLinkedBack = focusChild;
     // Link text is an anchor/highlight, never the query's page-scan offsets.
     child.activeCandidate = {
       anchor, linkAnchor: true, query, matchOffset: 0,

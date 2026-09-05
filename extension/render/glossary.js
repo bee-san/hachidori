@@ -996,6 +996,7 @@
           if (ownsStructuredLink(element, state) && typeof state.onInternalLink === "function") {
             state.onInternalLink({
               anchor: element,
+              focusChild: event.detail === 0,
               primaryReading: link.primaryReading,
               query: link.query,
             });
