@@ -42,8 +42,20 @@ On supported Chrome builds, `offscreen.js` starts a dedicated module worker afte
 The worker serializes engine mutations and bounds pending requests. Imports,
 reimports, managed replacements, custom saves and Note appends, removals, and
 reloads cannot race each other.
-The offscreen bridge also bounds its queue and preserves a last-known status
-response while a mutation occupies the engine worker.
+The offscreen bridge reserves one of its existing 128 pending-request slots
+before awaiting capability selection or fallback module loading. The same
+admission and mutation lock cover both backends: while a mutation is pending,
+other non-status requests fail busy. A saturated or mutating bridge answers
+status from its last-known snapshot; before backend selection this snapshot
+reports loading without claiming a storage backend. Normal status requests
+still reach the engine, including its reload recovery path.
+
+Replies, local handler failures, and thrown worker dispatches release their slot
+and mutation lock through one settlement path. Engine startup or worker failure
+settles every admitted request once; a late worker reply cannot settle it again.
+There is no mutation deadline: a slow custom append must not appear failed while
+it can still commit. This admission limit is a transport bound, not a dictionary,
+archive, source-document, or background-storage-queue limit.
 
 ## Compatibility path
 

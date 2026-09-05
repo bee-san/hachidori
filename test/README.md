@@ -15,7 +15,7 @@ node --test test/custom-dictionary.test.mjs # 3. custom source and ZIP contract
 node test/make-fixture.mjs       # 4. writes test/fixtures/
 node test/node-smoke.mjs         # 5. threaded C ABI contract test
 HACHIDORI_WASM_VARIANT=fallback node test/node-smoke.mjs # 6. fallback C ABI contract test
-node test/threaded-bridge-smoke.mjs # 7. threaded bridge admission/control test
+node test/threaded-bridge-smoke.mjs # 7. both-backend bridge admission/control test
 node test/extension-smoke.mjs    # 8. the extension's own JS against that wasm
 node --test benchmark/*.test.mjs # 9. fail-closed benchmark framework tests
 node test/chrome-e2e.mjs         # 10. pthread/OPFS path in a real Chrome
@@ -272,6 +272,21 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
   zero length as a successful miss.
 
 ---
+
+## `threaded-bridge-smoke.mjs`
+
+Imports the real offscreen bridge with controlled worker and fallback-service
+endpoints. It verifies the existing 128-request admission bound during capability
+selection, fallback module loading, and active dispatch; responsive status;
+mutation exclusion; slot reuse; and exactly-once replies after dispatch, local
+handler, engine selection, and worker failures. Lookup/media failure framing
+still includes oversized correlation IDs.
+
+The fallback endpoint uses Node's built-in
+[`module.registerHooks`](https://nodejs.org/download/release/v22.22.3/docs/api/module.html#moduleregisterhooksoptions)
+loader seam, requiring Node 22.15 or newer. It does not boot a fake native engine
+or alter the production bridge source. Actual WASM/IDBFS behavior remains covered
+by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 ## `extension-smoke.mjs`
 
