@@ -1048,7 +1048,7 @@
   }
 
   function positionPopup(fromLevel = rootLevel) {
-    if (!rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
+    if (fromLevel.retired || !rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
       return;
     }
     if (!anchorConnected(rootLevel.activeCandidate)) {
@@ -1074,6 +1074,10 @@
       rootLevel.popup.style.height = `${position.height}px`;
     }
     if (levels.length === 1) return;
+    if (window.innerWidth <= POPUP_PADDING_PX * 2 || window.innerHeight <= POPUP_PADDING_PX * 2) {
+      pruneLevels(1);
+      return;
+    }
     const startDepth = Math.max(1, fromLevel.depth);
     let parentRect = levels[startDepth - 1].popup.getBoundingClientRect();
     for (const level of levels.slice(startDepth)) {
