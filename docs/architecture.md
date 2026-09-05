@@ -198,7 +198,10 @@ glossary inside our closed shadow root preserves the current view. Pending
 selection replies share pointer cancellation and are rejected after dismissal
 or relevant storage invalidation; that invalidation also releases completed hits
 and misses for a fresh attempt with the new dictionaries or result options.
-Note refresh and kanji Back replay the stored exact descriptor,
+Initial selection replies also revalidate the selected text, so an in-flight
+page edit cannot display an obsolete result. Escape dismisses retained misses
+even when it is also the activation key. Note refresh and kanji Back replay the
+stored exact descriptor even if editing has collapsed the page selection,
 while an internal link uses its own query, reading and prefix-matching mode.
 Visibility checks distinguish hidden subtrees (`display:none`) from inherited
 `visibility:hidden`, whose children can restore visible text or editing surfaces.

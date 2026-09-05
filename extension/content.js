@@ -1014,7 +1014,10 @@
 
   function requestCanRender(token, candidate) {
     if (disposed || token !== lookupToken || !popup) return false;
-    if (!anchorConnected(candidate)) {
+    // Initial selections still own the live page selection; Note/Back replays
+    // intentionally use their stored descriptor even after focus collapses it.
+    if (!anchorConnected(candidate) || (pendingCandidateLookup?.token === token
+        && candidate.exactSelection === true && !selectionIsUnchanged(candidate))) {
       hide();
       return false;
     }
@@ -1865,9 +1868,9 @@
         hide();
         return;
       }
-      const wasPending = pendingCandidateLookup !== null;
+      const dismissedCandidate = pendingCandidateLookup !== null || activeSelectionCandidate !== null;
       hide();
-      if (wasPending || options.activationKey !== "Escape") return;
+      if (dismissedCandidate || options.activationKey !== "Escape") return;
     }
     if (!options.hoverEnabled || pageEditorFocused()) return;
     // Pressing the gate key while the pointer is stationary should reveal the

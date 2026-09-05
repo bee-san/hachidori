@@ -7128,6 +7128,7 @@ async function contentNoteStage() {
     const original = harness.driver.viewRequest();
     async function noteRefresh(revision, generation, results, eventFirst) {
       harness.edit(true);
+      window.getSelection().removeAllRanges();
       const append = harness.callbacks().onAddCustomEntry({ term: "食べる", reading: "たべる", definition: "eat" });
       const mutation = harness.take("hd_custom_append");
       const state = harness.state(revision, "Saved Note");
@@ -7138,6 +7139,7 @@ async function contentNoteStage() {
       if (refresh) harness.reply(refresh, { generation, dictionaryCount: 2, results });
       await append;
       await harness.settle();
+      window.getSelection().selectAllChildren(harness.anchor);
       return refresh;
     }
     const selectedRefresh = await noteRefresh(2, 2, exactResults, true);
@@ -7148,10 +7150,12 @@ async function contentNoteStage() {
     const kanji = harness.take("hd_lookup_dictionary");
     if (kanji) harness.reply(kanji, { generation: 3, results: [harness.term("食")] });
     await clicked;
+    window.getSelection().removeAllRanges();
     const back = harness.render()?.context.onBack?.();
     const backRequest = harness.take("hd_lookup");
     if (backRequest) harness.reply(backRequest, { generation: 3, dictionaryCount: 2, results: exactResults });
     await back;
+    window.getSelection().selectAllChildren(harness.anchor);
     const backKept = backRequest?.request.text === query && backRequest.request.scanLength === 3
       && harness.driver.viewRequest() === original && harness.render()?.results.length === 1;
     const link = harness.driver.onInternalLink({ query: "別の語", primaryReading: "べつ" });
@@ -7258,7 +7262,7 @@ async function contentNoteStage() {
 
   async function selectionCancellationCase() {
     const outcomes = [];
-    for (const reason of ["Escape", "scroll", "window-exit", "collapse", "disable", "replace"]) {
+    for (const reason of ["Escape", "scroll", "window-exit", "collapse", "disable", "replace", "mutate"]) {
       const harness = await createHarness();
       const window = harness.popup.ownerDocument.defaultView;
       const selection = window.getSelection();
@@ -7271,6 +7275,7 @@ async function contentNoteStage() {
       else if (reason === "scroll") harness.driver.onScroll();
       else if (reason === "window-exit") harness.driver.onMouseOut({ relatedTarget: null });
       else if (reason === "disable") harness.emitOptions({ hoverEnabled: false });
+      else if (reason === "mutate") harness.anchor.firstChild.replaceData(1, 1, "ん");
       else if (reason === "collapse") {
         selection.removeAllRanges();
         changed();
@@ -7283,11 +7288,16 @@ async function contentNoteStage() {
       await harness.settle();
       outcomes.push(first !== null && harness.driver.snapshot().popupHidden
         && harness.renders.length === 0 && (reason !== "replace" || replacement !== null));
+      if (reason === "mutate") {
+        changed();
+        replacement = harness.take("hd_lookup");
+        outcomes.push(replacement?.request.text === "食んた");
+      }
       if (replacement) harness.reply(replacement, { dictionaryCount: 1, results: [] });
       await harness.settle();
       harness.close();
     }
-    return { "pending selections cannot reopen after Escape, scroll, departure, collapse, disable or replacement":
+    return { "pending selections cannot reopen after dismissal, replacement or selected-text mutation":
       outcomes.every(Boolean) || outcomes };
   }
 
@@ -7630,9 +7640,24 @@ async function contentNoteStage() {
     const noteRepeatRetained = !harness.driver.snapshot().popupHidden && !harness.driver.snapshot().noteEditing;
     key("keyup", "Escape", "Escape");
     key("keydown", "Escape", "Escape");
-    result["Escape activation and Note dismissal require fresh presses rather than auto-repeat"] =
-      escaped !== null && escapeRepeatRetained && noteRepeatRetained && harness.driver.snapshot().popupHidden;
+    const escapeDismissed = harness.driver.snapshot().popupHidden;
     key("keyup", "Escape", "Escape");
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const selectedMiss = harness.take("hd_lookup");
+    if (selectedMiss) harness.reply(selectedMiss, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    key("keydown", "Escape", "Escape");
+    const missTimer = fire(75);
+    const unexpectedRetry = harness.take("hd_lookup");
+    if (unexpectedRetry) harness.reply(unexpectedRetry, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    result["Escape activation respects Note dismissal, retained selection misses and auto-repeat"] =
+      escaped !== null && escapeRepeatRetained && noteRepeatRetained && escapeDismissed
+      && selectedMiss !== null && !missTimer && unexpectedRetry === null;
+    key("keyup", "Escape", "Escape");
+    window.getSelection().removeAllRanges();
+    window.document.dispatchEvent(new window.Event("selectionchange"));
 
     const departures = [];
     for (const reason of ["no-candidate", "window-exit", "blur", "Escape", "click", "scroll"]) {
