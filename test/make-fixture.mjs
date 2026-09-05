@@ -499,10 +499,13 @@ export function buildFixtureZip() {
 // stripped so the import fails *after* the importer has read the title and
 // derived a directory from it. That is the only moment a title can do damage,
 // which is what the path-traversal and failed-re-import tests need.
-export function buildTitledZip(title, { banks = true } = {}) {
+export function buildTitledZip(title, { banks = true, terms = TERMS, termMeta = [] } = {}) {
   const entries = [zipEntry('index.json', JSON.stringify({ ...index, title }))];
   if (banks) {
-    entries.push(zipEntry('term_bank_1.json', JSON.stringify(TERMS)));
+    entries.push(zipEntry('term_bank_1.json', JSON.stringify(terms)));
+  }
+  if (termMeta.length > 0) {
+    entries.push(zipEntry('term_meta_bank_1.json', JSON.stringify(termMeta)));
   }
   return buildZip(entries);
 }
