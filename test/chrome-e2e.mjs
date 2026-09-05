@@ -278,6 +278,9 @@ const PLANNED = [
   "failed media exposes its failure state and text while a later hover retries",
   "media cache deduplicates and bounds a real browser image burst",
   "obsolete queued images never dispatch while started images stay reusable",
+  "dictionary AVIF and SVG decode through real WASM without extra preview fetches",
+  "image hover and keyboard previews stay larger, viewport-clamped and motion-aware",
+  "image previews close on leave, blur, scrolling and pending navigation",
 ];
 
 const results = [];
