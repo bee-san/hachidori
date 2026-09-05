@@ -49,6 +49,11 @@ const MARKER_FILES = [".hoshidicts_4", ".hoshidicts_3", ".hoshidicts_2", ".hoshi
 const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
 const DEFAULT_MAX_RESULTS = 32;
 const DEFAULT_SCAN_LENGTH = 16;
+const MAX_LOOKUP_TEXT_BYTES = 4 * 1024;
+const MAX_LOOKUP_RESPONSE_BYTES = 32 * 1024 * 1024;
+const LOOKUP_RESPONSE_ERROR = "lookup response exceeds the 32 MiB serialized limit";
+const LOOKUP_REQUESTS = new Set(["hd_lookup", "hd_lookup_dictionary", "hd_kanji"]);
+const UTF8 = new TextEncoder();
 
 const BASE64_CHUNK = 0x8000;
 const MEDIA_TYPES = {
@@ -154,6 +159,50 @@ function parseJson(json, source) {
   } catch (error) {
     throw new Error(`${source} returned malformed JSON: ${describe(error)}`);
   }
+}
+
+function lookupText(value, label, cString = true) {
+  const result = text(value);
+  if (cString && result.includes("\0")) throw new Error(`${label} contains NUL`);
+  // Three UTF-8 bytes per UTF-16 code unit is a conservative upper bound.
+  if (result.length * 3 > MAX_LOOKUP_TEXT_BYTES
+      && UTF8.encode(result).byteLength > MAX_LOOKUP_TEXT_BYTES) {
+    throw new Error(`${label} exceeds the 4096-byte lookup limit`);
+  }
+  return result;
+}
+
+function lookupArguments(message) {
+  return [
+    lookupText(message.text, "lookup text"),
+    clampInt(message.maxResults, 1, 256, DEFAULT_MAX_RESULTS),
+    clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH),
+    JSON.stringify({
+      frequencyDictionary: lookupText(message.options?.frequencyDictionary, "frequency dictionary", false),
+      frequencyOrder: FREQUENCY_ORDERS.includes(message.options?.frequencyOrder)
+        ? message.options.frequencyOrder : "auto",
+      primaryReading: lookupText(message.options?.primaryReading, "primary reading", false),
+    }),
+  ];
+}
+
+function termLookupReply(json, source) {
+  const parsed = parseJson(json, source);
+  if (!Array.isArray(parsed?.results) || !Number.isSafeInteger(parsed?.dictionaryCount)
+      || parsed.dictionaryCount < 0) {
+    throw new Error(`${source} returned a malformed lookup response`);
+  }
+  return { results: parsed.results, dictionaryCount: parsed.dictionaryCount, nativeJsonLength: json.length };
+}
+
+function lookupReplyFits(reply, nativeJsonLength = 0) {
+  const envelope = nativeJsonLength === 0 ? reply : { ...reply, ...failurePayload(reply.type.replace(/_result$/u, "")) };
+  const envelopeJson = JSON.stringify(envelope);
+  // JSON escaping needs at most six bytes per UTF-16 code unit, including
+  // lone surrogates. Ordinary native replies need no second full traversal.
+  if ((nativeJsonLength + envelopeJson.length) * 6 <= MAX_LOOKUP_RESPONSE_BYTES) return true;
+  const json = nativeJsonLength === 0 ? envelopeJson : JSON.stringify(reply);
+  return UTF8.encode(json).byteLength <= MAX_LOOKUP_RESPONSE_BYTES;
 }
 
 let tail = Promise.resolve();
@@ -1639,35 +1688,19 @@ function removalTarget(dictionaries, id, title) {
 const HANDLERS = {
   async hd_lookup(message) {
     await ensureLoaded();
-    const options = {
-      frequencyDictionary: text(message.options?.frequencyDictionary),
-      frequencyOrder: FREQUENCY_ORDERS.includes(message.options?.frequencyOrder)
-        ? message.options.frequencyOrder
-        : "auto",
-      primaryReading: text(message.options?.primaryReading),
-    };
     const json = engine.ccall(
       "hdw_lookup",
       "string",
       ["string", "number", "number", "string"],
-      [
-        text(message.text),
-        clampInt(message.maxResults, 1, 256, DEFAULT_MAX_RESULTS),
-        clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH),
-        JSON.stringify(options),
-      ],
+      lookupArguments(message),
     );
     throwIfEngineFailed("hdw_lookup");
-    const parsed = parseJson(json, "hdw_lookup");
-    const count = Number(parsed?.dictionaryCount);
-    return {
-      results: Array.isArray(parsed?.results) ? parsed.results : [],
-      dictionaryCount: Number.isFinite(count) ? count : dictionaryCount,
-    };
+    return termLookupReply(json, "hdw_lookup");
   },
 
   async hd_lookup_dictionary(message) {
     await ensureLoaded();
+    const args = lookupArguments(message);
     const title = text(message.dictionary);
     const entry = (await readStoredDictionaries()).find((candidate) =>
       candidate?.enabled !== false
@@ -1676,44 +1709,29 @@ const HANDLERS = {
     if (!entry) {
       return { results: [], dictionaryCount };
     }
-    const options = {
-      frequencyDictionary: text(message.options?.frequencyDictionary),
-      frequencyOrder: FREQUENCY_ORDERS.includes(message.options?.frequencyOrder)
-        ? message.options.frequencyOrder
-        : "auto",
-      primaryReading: text(message.options?.primaryReading),
-    };
     const json = engine.ccall(
       "hdw_lookup_dictionary",
       "string",
       ["string", "string", "number", "number", "string"],
-      [
-        text(message.text),
-        text(entry.path),
-        clampInt(message.maxResults, 1, 256, DEFAULT_MAX_RESULTS),
-        clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH),
-        JSON.stringify(options),
-      ],
+      [args[0], text(entry.path), ...args.slice(1)],
     );
     throwIfEngineFailed("hdw_lookup_dictionary");
-    const parsed = parseJson(json, "hdw_lookup_dictionary");
-    const count = Number(parsed?.dictionaryCount);
-    return {
-      results: Array.isArray(parsed?.results) ? parsed.results : [],
-      dictionaryCount: Number.isFinite(count) ? count : dictionaryCount,
-    };
+    return termLookupReply(json, "hdw_lookup_dictionary");
   },
 
   async hd_kanji(message) {
     await ensureLoaded();
-    const character = text(message.character);
+    const character = lookupText(message.character, "kanji text");
     if (character === "") {
       return { kanji: null };
     }
     const json = engine.ccall("hdw_kanji", "string", ["string"], [character]);
     throwIfEngineFailed("hdw_kanji");
     const kanji = parseJson(json, "hdw_kanji");
-    return { kanji: text(kanji?.character) === "" ? null : kanji };
+    if (typeof kanji?.character !== "string" || !Array.isArray(kanji.entries)) {
+      throw new Error("hdw_kanji returned a malformed lookup response");
+    }
+    return { kanji: kanji.character === "" ? null : kanji, nativeJsonLength: json.length };
   },
 
   async hd_styles() {
@@ -1979,7 +1997,7 @@ function failurePayload(type) {
 
 export async function handleEngineMessage(message) {
   const type = text(message.type);
-  const requestId = message.requestId ?? null;
+  let requestId = message.requestId ?? null;
   if (!Object.prototype.hasOwnProperty.call(HANDLERS, type)) {
     return {
       type: `${type || "hd_unknown"}_result`,
@@ -1990,16 +2008,30 @@ export async function handleEngineMessage(message) {
     };
   }
 
-  const handler = HANDLERS[type];
-  const run = UNQUEUED.has(type)
-    ? Promise.resolve().then(() => handler(message))
-    : serialise(() => handler(message));
+  const lookup = LOOKUP_REQUESTS.has(type);
   try {
+    if (lookup) {
+      if (requestId !== null && typeof requestId !== "string" && !Number.isFinite(requestId)) {
+        requestId = null;
+        throw new Error("lookup request ID must be a string, finite number, or null");
+      }
+      if (!lookupReplyFits({ type: `${type}_result`, requestId, ok: false,
+        error: LOOKUP_RESPONSE_ERROR, generation, ...failurePayload(type) })) {
+        requestId = null;
+        throw new Error(LOOKUP_RESPONSE_ERROR);
+      }
+    }
+    const handler = HANDLERS[type];
+    const run = UNQUEUED.has(type)
+      ? Promise.resolve().then(() => handler(message))
+      : serialise(() => handler(message));
     const result = await run;
-    const { ok = true, error = null, ...payload } = result ?? {};
-    return { type: `${type}_result`, requestId, ok, error, generation, ...payload };
+    const { ok = true, error = null, nativeJsonLength = 0, ...payload } = result ?? {};
+    const reply = { type: `${type}_result`, requestId, ok, error, generation, ...payload };
+    if (lookup && !lookupReplyFits(reply, nativeJsonLength)) throw new Error(LOOKUP_RESPONSE_ERROR);
+    return reply;
   } catch (error) {
-    return {
+    const reply = {
       type: `${type}_result`,
       requestId,
       ok: false,
@@ -2007,6 +2039,11 @@ export async function handleEngineMessage(message) {
       generation,
       ...failurePayload(type),
     };
+    if (lookup && !lookupReplyFits(reply)) {
+      reply.requestId = null;
+      reply.error = LOOKUP_RESPONSE_ERROR;
+    }
+    return reply;
   }
 }
 
