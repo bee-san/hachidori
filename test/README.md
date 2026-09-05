@@ -277,7 +277,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 220 checks, all of
+full request→reply round trip per contract-C message type. 226 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -402,6 +402,13 @@ What it proves, in order:
    while hidden, and alias/favourite edits. Connected but obsolete image
    fulfillment, rejection and load/error callbacks cannot mutate or reposition
    an old panel; current failure keeps accessible alt text and a readable label.
+   Scheduler checks pin four dispatched jobs, 128 total admitted jobs (including
+   active jobs), dedupe at capacity, FIFO progress, and dispatch-only deadlines.
+   Controlled timeout/late-reply cases protect retry and active-count accounting;
+   new views can claim matching queued jobs without obsolete work blocking
+   admission. Invalidation and teardown settle every job before more dispatch.
+   LRU checks accept 64 entries and exactly 16 MiB of decoded media, promote hits,
+   evict on one extra entry/byte, and reset byte accounting on invalidation.
 9. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
    and removing an unknown title does not bump `generation`. Removal strict-loads
    the remaining manifest and commits it before deleting the old root. The
@@ -532,7 +539,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 90 assertions, and the summary line
+`PLANNED` at the top of the file names all 92 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -588,6 +595,11 @@ readable alt/error label intact; another hover performs a fresh successful
 fetch. `HACHIDORI_MEDIA_FAILURE_SCREENSHOT` captures that failure state, including
 the 16-pixel image case that previously clipped its error text. These controlled
 reply faults are correctness diagnostics, not image-latency measurements.
+Another browser fixture renders two copies of twelve distinct images. Holding
+completed native replies proves only four distinct requests dispatch at once;
+hiding before release prevents the other eight obsolete jobs from dispatching.
+A new hover reuses the four completed resources and loads the remaining eight,
+with exact PNG URLs and decoded dimensions checked for all 24 image elements.
 
 - The popup's **structure**, not just its flattened text. `popupReader()` reports
   `tags`, `lists`, `tables` and `bold` (with the computed `font-weight`, since the
