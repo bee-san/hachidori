@@ -188,6 +188,7 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
+  "Settings puts the library first and supports keyboard navigation at 320px",
   "settings page renders exactly four safe recommended dictionary links",
   "recommended dictionaries form two columns on desktop",
   "recommended dictionaries stack without overflow on narrow screens",
@@ -793,6 +794,7 @@ async function main() {
     const manifest = chrome.runtime.getManifest();
     return {
       heading: document.querySelector(".masthead h1")?.textContent?.trim() ?? "",
+      brand: document.querySelector(".brand")?.textContent?.trim() ?? "",
       icons: manifest.icons ?? {},
       name: manifest.name,
       shortName: manifest.short_name,
@@ -804,7 +806,8 @@ async function main() {
     branding.name === "Hachidori"
       && branding.shortName === "Hachidori"
       && branding.title === "Hachidori settings"
-      && branding.heading === "Hachidori"
+      && branding.heading === "Settings"
+      && branding.brand === "Hachidori"
       && ["16", "32", "48", "128"].every(
         size => branding.icons[size] === `icons/hachidori-${size}.png`,
       ),
@@ -1295,6 +1298,46 @@ async function main() {
       && renderedDictionary.metadata.includes("Update source available"),
     `#dict-list: ${JSON.stringify(renderedDictionary)}`);
 
+  await page.setViewport({ width: 1280, height: 900 });
+  const libraryFirst = await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    const row = document.querySelector("#dict-list .dict-row");
+    const links = [...document.querySelectorAll(".settings-nav a")];
+    return document.querySelector("main > section")?.id === "dictionaries"
+      && row.getBoundingClientRect().bottom < window.innerHeight
+      && links.length === 6
+      && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION");
+  });
+  await page.setViewport({ width: 320, height: 900 });
+  await page.focus('.settings-nav a[href="#lookup"]');
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => location.hash === "#lookup");
+  const narrowThemes = [];
+  for (const theme of ["light", "dark"]) {
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
+    narrowThemes.push(await page.evaluate(() => {
+      const width = document.documentElement.clientWidth;
+      const inputs = [...document.querySelectorAll("#lookup input, #lookup select")];
+      return {
+        noOverflow: document.documentElement.scrollWidth <= width,
+        fieldsFit: inputs.every((input) => {
+          const rect = input.getBoundingClientRect();
+          return rect.width > 0 && rect.left >= 0 && rect.right <= width;
+        }),
+        disabledRowReadable: getComputedStyle(document.querySelector(".dict-row.is-off")).opacity === "1",
+      };
+    }));
+  }
+  await page.focus(".skip-link");
+  await page.keyboard.press("Enter");
+  const skipFocusedMain = await page.evaluate(() => document.activeElement.id === "settings-content");
+  check(
+    "Settings puts the library first and supports keyboard navigation at 320px",
+    libraryFirst && skipFocusedMain
+      && narrowThemes.every((theme) => theme.noOverflow && theme.fieldsFit && theme.disabledRowReadable),
+    JSON.stringify({ libraryFirst, skipFocusedMain, narrowThemes }),
+  );
+  await page.emulateMediaFeatures([]);
   await page.setViewport({ width: 480, height: 900 });
   const narrowPosition = await page.evaluate(() => {
     const row = document.querySelector("#dict-list .dict-row");

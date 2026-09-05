@@ -1,285 +1,528 @@
-<!DOCTYPE html>
+<!doctype html>
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Hachidori settings</title>
     <link rel="stylesheet" href="settings.css" />
   </head>
   <body>
-    <main class="page">
-      <header class="masthead">
+    <a class="skip-link" href="#settings-content">Skip to settings</a>
+    <div class="settings-shell">
+      <aside class="settings-sidebar">
         <div class="brand">
-          <img src="icons/hachidori-48.png" width="48" height="48" alt="" />
-          <h1>Hachidori</h1>
+          <img src="icons/hachidori-48.png" width="32" height="32" alt="" />
+          <span>Hachidori</span>
         </div>
-        <p class="lede">Hover Japanese text on any page to look it up in your own dictionaries.</p>
-        <p class="engine-status" id="engine-status" role="status" aria-live="polite">Contacting the engine&hellip;</p>
-      </header>
-
-      <section class="card" aria-labelledby="import-heading">
-        <div class="card-head">
-          <h2 id="import-heading">Import</h2>
-          <p class="hint">
-            Choose one or more Yomitan <code>.zip</code> dictionaries. They import one at a time, and
-            a large dictionary can take several minutes. Keep this page open until the batch finishes
-            &mdash; closing it cancels the current transfer.
-          </p>
-        </div>
-        <div class="import-row">
-          <label class="file-button">
-            <span>Choose .zip files</span>
-            <input id="import-file" type="file" accept=".zip,application/zip" multiple />
-          </label>
-          <p class="import-state" id="import-state" role="status" aria-live="polite"></p>
-        </div>
-        <div class="track" id="import-progress" hidden><div class="track-fill"></div></div>
-        <ol class="import-detail" id="import-detail" aria-label="Import results" hidden></ol>
-        <div class="recommendations" id="recommended-starter" aria-labelledby="recommended-dictionaries-heading" hidden>
-          <div class="recommendations-head">
-            <h3 id="recommended-dictionaries-heading">Recommended dictionaries</h3>
-            <p class="hint">Start with four trusted Yomitan dictionaries from their original publishers.</p>
-          </div>
-          <button class="primary-button" id="install-recommended" type="button">Install all recommended dictionaries</button>
-          <ul class="recommended-dictionary-list" id="recommended-dictionary-list"></ul>
-        </div>
-        <p class="recommended-retry" id="recommended-retry" hidden>
-          <span>Some recommended dictionaries are still missing.</span>
-          <button class="ghost" id="retry-recommended" type="button">Retry missing recommended dictionaries</button>
-        </p>
-      </section>
-
-      <section class="card" aria-labelledby="custom-dictionary-heading">
-        <div class="card-head">
-          <h2 id="custom-dictionary-heading">Custom dictionary</h2>
-          <p class="hint">
-            Keep personal entries as <code>term, reading, definition</code>, one per line. The first two
-            commas divide the fields, blank and <code>#</code> comment lines are ignored, and
-            <code>\n</code> adds a newline inside a definition. Malformed lines are reported and skipped
-            while valid entries are saved.
-          </p>
-        </div>
-        <button
-          type="button"
-          class="ghost custom-dictionary-open"
-          id="custom-dictionary-open"
-          aria-controls="custom-dictionary-form"
-          aria-expanded="false"
-        >Open source editor</button>
-        <form class="custom-dictionary-form" id="custom-dictionary-form" hidden>
-          <label class="custom-dictionary-source-field">
-            <span class="field-label">Source</span>
-            <textarea
-              id="custom-dictionary-source"
-              rows="12"
-              spellcheck="false"
-              aria-describedby="custom-dictionary-status custom-dictionary-errors"
-            ></textarea>
-          </label>
-          <div class="custom-dictionary-actions">
-            <button type="submit" class="primary-button" id="custom-dictionary-save">Save dictionary</button>
-            <button type="button" class="ghost" id="custom-dictionary-reload">Reload saved source</button>
-          </div>
-        </form>
-        <output
-          class="custom-dictionary-status"
-          id="custom-dictionary-status"
+        <nav class="settings-nav" aria-label="Settings sections">
+          <a href="#dictionaries">Dictionaries</a>
+          <a href="#add-dictionaries">Add dictionaries</a>
+          <a href="#updates">Updates</a>
+          <a href="#dictionary-groups">Groups</a>
+          <a href="#custom-dictionary">Custom dictionary</a>
+          <a href="#lookup">Lookup</a>
+        </nav>
+        <p
+          class="engine-status"
+          id="engine-status"
+          role="status"
           aria-live="polite"
-        ></output>
-        <ol
-          class="custom-dictionary-errors"
-          id="custom-dictionary-errors"
-          aria-label="Malformed custom dictionary lines"
-          hidden
-        ></ol>
-      </section>
+        >
+          Contacting the engine&hellip;
+        </p>
+      </aside>
+      <main class="page" id="settings-content" tabindex="-1">
+        <header class="masthead">
+          <h1>Settings</h1>
+          <p class="lede">Your dictionaries. Your way of reading.</p>
+        </header>
 
-      <section class="card" aria-labelledby="updates-heading">
-        <div class="card-head">
-          <h2 id="updates-heading">Dictionary updates</h2>
-          <p class="hint">
-            Check every managed source now, or let Hachidori check and install updates on one global schedule.
-            Dictionaries imported without an update source stay local-only.
-          </p>
-        </div>
-        <div class="update-controls">
-          <label class="field update-schedule-field">
-            <span class="field-label">Automatic updates</span>
-            <select id="update-schedule">
-              <option value="off">Off</option>
-              <option value="hourly">Every hour</option>
-              <option value="daily">Every day</option>
-              <option value="weekly">Every week</option>
-              <option value="monthly">Every month</option>
-            </select>
-          </label>
-          <div class="update-actions">
-            <button type="button" class="ghost" id="update-check-now">Check now</button>
-            <button type="button" class="primary-button" id="update-all" disabled>Update all available</button>
+        <section
+          class="card library"
+          id="dictionaries"
+          aria-labelledby="dictionaries-heading"
+        >
+          <div class="section-heading">
+            <div class="card-head">
+              <h2 id="dictionaries-heading">Dictionaries</h2>
+              <p class="hint">
+                Results follow this order. Put your most useful dictionaries
+                first.
+              </p>
+            </div>
+            <a class="section-action" href="#add-dictionaries"
+              >Add dictionaries <span aria-hidden="true">&darr;</span></a
+            >
           </div>
-        </div>
-        <p class="update-last-checked" id="update-last-checked">Never checked.</p>
-        <output class="update-state" id="update-state" aria-live="polite"></output>
-      </section>
-
-      <section class="card" aria-labelledby="dictionaries-heading">
-        <div class="card-head">
-          <h2 id="dictionaries-heading">Dictionaries</h2>
-          <p class="hint">
-            This list is the load order, and load order decides ranking: results from the dictionary
-            at the top are offered first. Reorder by dragging, with the arrows, or by position.
-          </p>
-        </div>
-        <div class="dict-controls" id="dict-controls" hidden>
-          <label class="dict-search">
-            <span class="field-label">Search</span>
-            <input id="dict-search" type="search" autocomplete="off" placeholder="Title or alias" />
-            <output class="dict-match-count" id="dict-match-count"></output>
-          </label>
-          <div class="dict-selection-controls">
-            <label class="dict-select-all">
-              <input id="dict-select-visible" type="checkbox" />
-              <span>Select all visible</span>
+          <div class="dict-controls" id="dict-controls" hidden>
+            <label class="dict-search">
+              <span class="field-label">Find a dictionary</span>
+              <input
+                id="dict-search"
+                type="search"
+                autocomplete="off"
+                placeholder="Search by title or display name"
+              />
+              <output class="dict-match-count" id="dict-match-count"></output>
             </label>
-            <span class="dict-selection-count" id="dict-selection-count" aria-live="polite">0 selected</span>
+            <div class="dict-selection-controls">
+              <label class="dict-select-all">
+                <input id="dict-select-visible" type="checkbox" />
+                <span>Select all visible</span>
+              </label>
+              <span
+                class="dict-selection-count"
+                id="dict-selection-count"
+                aria-live="polite"
+                >0 selected</span
+              >
+            </div>
+            <div class="dict-bulk-actions" aria-label="Bulk actions">
+              <button type="button" class="ghost" id="dict-bulk-enable">
+                Enable
+              </button>
+              <button type="button" class="ghost" id="dict-bulk-disable">
+                Disable
+              </button>
+              <button type="button" class="ghost" id="dict-bulk-favorite">
+                Favourite
+              </button>
+              <button type="button" class="ghost" id="dict-bulk-unfavorite">
+                Unfavourite
+              </button>
+            </div>
           </div>
-          <div class="dict-bulk-actions" aria-label="Bulk actions">
-            <button type="button" class="ghost" id="dict-bulk-enable">Enable</button>
-            <button type="button" class="ghost" id="dict-bulk-disable">Disable</button>
-            <button type="button" class="ghost" id="dict-bulk-favorite">Favourite</button>
-            <button type="button" class="ghost" id="dict-bulk-unfavorite">Unfavourite</button>
-          </div>
-        </div>
-        <ol class="dict-list" id="dict-list"></ol>
-        <p class="empty-state" id="dict-empty">Nothing imported yet.</p>
-      </section>
-
-      <section class="card" aria-labelledby="dictionary-groups-heading">
-        <div class="card-head">
-          <h2 id="dictionary-groups-heading">Dictionary groups</h2>
-          <p class="hint">
-            Build reusable ordered sets from your installed dictionaries. Groups are shared across
-            every page.
+          <ol class="dict-list" id="dict-list"></ol>
+          <p class="empty-state" id="dict-empty">Nothing imported yet.</p>
+          <p class="section-note">
+            Drag the handle, use the arrows, or enter a position to change the
+            order.
           </p>
-        </div>
-        <form class="dict-group-create" id="dict-group-create-form">
-          <label>
-            <span class="field-label">New group</span>
-            <input id="dict-group-name-new" type="text" autocomplete="off" />
-          </label>
-          <button type="submit" class="ghost" id="dict-group-create">Create group</button>
-          <output class="dict-group-error" id="dict-group-error" aria-live="polite"></output>
-        </form>
-        <ol class="dict-group-list" id="dict-group-list"></ol>
-        <p class="empty-state compact" id="dict-group-empty">No groups yet.</p>
-      </section>
+        </section>
 
-      <section class="card" aria-labelledby="lookup-heading">
-        <div class="card-head">
-          <h2 id="lookup-heading">Lookup</h2>
-          <p class="hint">Applies to every page as soon as it is changed.</p>
-        </div>
-        <div class="fields">
-          <label class="field">
-            <span class="field-label">Hover modifier</span>
-            <select id="opt-modifier">
-              <option value="none">None &mdash; plain hover</option>
-              <option value="shift">Shift</option>
-              <option value="ctrl">Ctrl</option>
-              <option value="alt">Alt</option>
-            </select>
-            <span class="field-hint">Hold this key for a lookup to fire.</span>
-          </label>
+        <section
+          class="card"
+          id="add-dictionaries"
+          aria-labelledby="import-heading"
+        >
+          <div class="card-head">
+            <h2 id="import-heading">Add dictionaries</h2>
+            <p class="hint">
+              Import Yomitan ZIP files from your computer. Your dictionaries
+              stay on this device.
+            </p>
+          </div>
+          <div class="import-row">
+            <label class="file-button">
+              <span>Choose ZIP files</span>
+              <input
+                id="import-file"
+                type="file"
+                accept=".zip,application/zip"
+                multiple
+              />
+            </label>
+            <p
+              class="import-state"
+              id="import-state"
+              role="status"
+              aria-live="polite"
+            ></p>
+          </div>
+          <div class="track" id="import-progress" hidden>
+            <div class="track-fill"></div>
+          </div>
+          <ol
+            class="import-detail"
+            id="import-detail"
+            aria-label="Import results"
+            hidden
+          ></ol>
+          <p class="section-note">
+            Files import one at a time. Large dictionaries can take a few
+            minutes. Keep this page open until the import finishes.
+          </p>
+          <div
+            class="recommendations"
+            id="recommended-starter"
+            aria-labelledby="recommended-dictionaries-heading"
+            hidden
+          >
+            <div class="recommendations-head">
+              <h3 id="recommended-dictionaries-heading">
+                Recommended dictionaries
+              </h3>
+              <p class="hint">
+                Start with four trusted Yomitan dictionaries from their original
+                publishers.
+              </p>
+            </div>
+            <button
+              class="primary-button"
+              id="install-recommended"
+              type="button"
+            >
+              Install all recommended dictionaries
+            </button>
+            <ul
+              class="recommended-dictionary-list"
+              id="recommended-dictionary-list"
+            ></ul>
+          </div>
+          <p class="recommended-retry" id="recommended-retry" hidden>
+            <span>Some recommended dictionaries are still missing.</span>
+            <button class="ghost" id="retry-recommended" type="button">
+              Retry missing recommended dictionaries
+            </button>
+          </p>
+        </section>
 
-          <label class="field">
-            <span class="field-label">Hover delay</span>
-            <span class="input-suffix">
-              <input id="opt-hover-delay" type="number" min="0" max="2000" step="10" />
-              <span class="suffix">ms</span>
-            </span>
-            <span class="field-hint">Pause before the popup appears.</span>
-          </label>
+        <section class="card" id="updates" aria-labelledby="updates-heading">
+          <div class="card-head">
+            <h2 id="updates-heading">Dictionary updates</h2>
+            <p class="hint">
+              Keep dictionaries with an update source current, including
+              disabled dictionaries. Other imports are local-only.
+            </p>
+          </div>
+          <div class="update-controls">
+            <label class="field update-schedule-field">
+              <span class="field-label">Check and install automatically</span>
+              <select id="update-schedule">
+                <option value="off">Off</option>
+                <option value="hourly">Every hour</option>
+                <option value="daily">Every day</option>
+                <option value="weekly">Every week</option>
+                <option value="monthly">Every month</option>
+              </select>
+            </label>
+            <div class="update-actions">
+              <button type="button" class="ghost" id="update-check-now">
+                Check now
+              </button>
+              <button
+                type="button"
+                class="primary-button"
+                id="update-all"
+                disabled
+              >
+                Update all available
+              </button>
+            </div>
+          </div>
+          <p class="section-note">
+            Check now only finds available updates. Automatic updates check and
+            install on your chosen schedule.
+          </p>
+          <p class="update-last-checked" id="update-last-checked">
+            Never checked.
+          </p>
+          <output
+            class="update-state"
+            id="update-state"
+            aria-live="polite"
+          ></output>
+        </section>
 
-          <label class="field">
-            <span class="field-label">Scan length</span>
-            <input id="opt-scan-length" type="number" min="1" max="64" step="1" />
-            <span class="field-hint">Characters read forward from the cursor.</span>
-          </label>
+        <section
+          class="card"
+          id="dictionary-groups"
+          aria-labelledby="dictionary-groups-heading"
+        >
+          <div class="card-head">
+            <h2 id="dictionary-groups-heading">Dictionary groups</h2>
+            <p class="hint">
+              Keep ordered sets for different kinds of reading. Your groups are
+              available on every page.
+            </p>
+          </div>
+          <form class="dict-group-create" id="dict-group-create-form">
+            <label>
+              <span class="field-label">New group</span>
+              <input id="dict-group-name-new" type="text" autocomplete="off" />
+            </label>
+            <button type="submit" class="ghost" id="dict-group-create">
+              Create group
+            </button>
+            <output
+              class="dict-group-error"
+              id="dict-group-error"
+              aria-live="polite"
+            ></output>
+          </form>
+          <ol class="dict-group-list" id="dict-group-list"></ol>
+          <p class="empty-state compact" id="dict-group-empty">
+            No groups yet.
+          </p>
+        </section>
 
-          <label class="field">
-            <span class="field-label">Maximum results</span>
-            <input id="opt-max-results" type="number" min="1" max="256" step="1" />
-            <span class="field-hint">Entries kept per lookup, after ranking.</span>
-          </label>
+        <section
+          class="card"
+          id="custom-dictionary"
+          aria-labelledby="custom-dictionary-heading"
+        >
+          <div class="card-head">
+            <h2 id="custom-dictionary-heading">Custom dictionary</h2>
+            <p class="hint">
+              Your own definitions and notes. Always enabled and first in the
+              lookup order.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="ghost custom-dictionary-open"
+            id="custom-dictionary-open"
+            aria-controls="custom-dictionary-form"
+            aria-expanded="false"
+          >
+            Open source editor
+          </button>
+          <form
+            class="custom-dictionary-form"
+            id="custom-dictionary-form"
+            hidden
+          >
+            <p class="editor-help">
+              Write <code>term, reading, definition</code>, one entry per line.
+              The first two commas divide the fields. Blank and
+              <code>#</code> comment lines are ignored; <code>\n</code> adds a
+              newline inside a definition. Invalid lines are listed below and
+              skipped; all valid entries are saved.
+            </p>
+            <label class="custom-dictionary-source-field">
+              <span class="field-label">Source</span>
+              <textarea
+                id="custom-dictionary-source"
+                rows="12"
+                spellcheck="false"
+                aria-describedby="custom-dictionary-status custom-dictionary-errors"
+              ></textarea>
+            </label>
+            <div class="custom-dictionary-actions">
+              <button
+                type="submit"
+                class="primary-button"
+                id="custom-dictionary-save"
+              >
+                Save dictionary
+              </button>
+              <button type="button" class="ghost" id="custom-dictionary-reload">
+                Reload saved source
+              </button>
+            </div>
+          </form>
+          <output
+            class="custom-dictionary-status"
+            id="custom-dictionary-status"
+            aria-live="polite"
+          ></output>
+          <ol
+            class="custom-dictionary-errors"
+            id="custom-dictionary-errors"
+            aria-label="Malformed custom dictionary lines"
+            hidden
+          ></ol>
+        </section>
 
-          <label class="field">
-            <span class="field-label">Kanji dictionary</span>
-            <select id="opt-kanji-dictionary"></select>
-            <span class="field-hint">
-              Used when a kanji is clicked. Term dictionaries work when they contain a single-kanji entry.
-            </span>
-          </label>
+        <section class="card" id="lookup" aria-labelledby="lookup-heading">
+          <div class="card-head">
+            <h2 id="lookup-heading">Lookup</h2>
+            <p class="hint">
+              Choose when to look up words and how to sort the results. Changes
+              apply immediately.
+            </p>
+          </div>
+          <fieldset class="lookup-group">
+            <legend>Hover and scanning</legend>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">Hover modifier</span>
+                <select id="opt-modifier">
+                  <option value="none">None &mdash; plain hover</option>
+                  <option value="shift">Shift</option>
+                  <option value="ctrl">Ctrl</option>
+                  <option value="alt">Alt</option>
+                </select>
+                <span class="field-hint"
+                  >Hold this key for a lookup to fire.</span
+                >
+              </label>
 
-          <label class="field">
-            <span class="field-label">Frequency order</span>
-            <select id="opt-frequency-order">
-              <option value="auto">Automatic</option>
-              <option value="ascending">Ascending &mdash; most common first</option>
-              <option value="descending">Descending &mdash; rarest first</option>
-              <option value="disabled">Disabled</option>
-            </select>
-            <span class="field-hint">How frequency data reorders results.</span>
-          </label>
+              <label class="field">
+                <span class="field-label">Hover delay</span>
+                <span class="input-suffix">
+                  <input
+                    id="opt-hover-delay"
+                    type="number"
+                    min="0"
+                    max="2000"
+                    step="10"
+                  />
+                  <span class="suffix">ms</span>
+                </span>
+                <span class="field-hint">Pause before the popup appears.</span>
+              </label>
 
-          <label class="field">
-            <span class="field-label">Frequency dictionary</span>
-            <select id="opt-frequency-dictionary"></select>
-            <span class="field-hint">
-              Used when the order above is ascending or descending; automatic considers them all.
-            </span>
-          </label>
-        </div>
-      </section>
-    </main>
+              <label class="field">
+                <span class="field-label">Scan length</span>
+                <input
+                  id="opt-scan-length"
+                  type="number"
+                  min="1"
+                  max="64"
+                  step="1"
+                />
+                <span class="field-hint"
+                  >Characters read forward from the cursor.</span
+                >
+              </label>
+            </div>
+          </fieldset>
+          <fieldset class="lookup-group">
+            <legend>Results and dictionaries</legend>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">Maximum results</span>
+                <input
+                  id="opt-max-results"
+                  type="number"
+                  min="1"
+                  max="256"
+                  step="1"
+                />
+                <span class="field-hint"
+                  >Entries kept per lookup, after ranking.</span
+                >
+              </label>
+
+              <label class="field">
+                <span class="field-label">Kanji dictionary</span>
+                <select id="opt-kanji-dictionary"></select>
+                <span class="field-hint">
+                  Used when a kanji is clicked. Term dictionaries work when they
+                  contain a single-kanji entry.
+                </span>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Frequency order</span>
+                <select id="opt-frequency-order">
+                  <option value="auto">Automatic</option>
+                  <option value="ascending">
+                    Ascending &mdash; most common first
+                  </option>
+                  <option value="descending">
+                    Descending &mdash; rarest first
+                  </option>
+                  <option value="disabled">Disabled</option>
+                </select>
+                <span class="field-hint"
+                  >How frequency data reorders results.</span
+                >
+              </label>
+
+              <label class="field">
+                <span class="field-label">Frequency dictionary</span>
+                <select id="opt-frequency-dictionary"></select>
+                <span class="field-hint">
+                  Used when the order above is ascending or descending;
+                  automatic considers them all.
+                </span>
+              </label>
+            </div>
+          </fieldset>
+        </section>
+      </main>
+    </div>
 
     <template id="dict-row-template">
       <li class="dict-row">
         <label class="dict-row-select">
-          <input type="checkbox" class="dict-selected" aria-label="Select dictionary" />
+          <input
+            type="checkbox"
+            class="dict-selected"
+            aria-label="Select dictionary"
+          />
         </label>
         <span class="dict-order">
-          <span class="dict-drag" draggable="true" aria-hidden="true">&#10247;</span>
+          <span class="dict-drag" draggable="true" aria-hidden="true"
+            >&#10247;</span
+          >
           <span class="dict-rank" aria-hidden="true"></span>
         </span>
         <div class="dict-main">
           <div class="dict-heading">
             <span class="dict-title"></span>
-            <span class="dict-favorite" title="Favourite" aria-label="Favourite">&#9733;</span>
+            <span class="dict-favorite" title="Favourite" aria-label="Favourite"
+              >&#9733;</span
+            >
           </div>
           <span class="dict-canonical"></span>
           <div class="dict-badges" aria-label="Dictionary entry counts"></div>
           <span class="dict-metadata"></span>
           <span class="dict-update-status"></span>
-          <label class="dict-alias">
-            <span class="cell-label">Display name</span>
-            <input class="dict-display-name" type="text" autocomplete="off" aria-label="Display name" title="Display name" />
-          </label>
         </div>
         <label class="cell toggle">
-          <input type="checkbox" class="dict-enabled" aria-label="Enabled" title="Enabled" />
+          <input
+            type="checkbox"
+            class="dict-enabled"
+            aria-label="Enabled"
+            title="Enabled"
+          />
           <span class="cell-label">Enabled</span>
         </label>
-        <span class="dict-actions">
-          <button type="button" class="ghost dict-up" aria-label="Move up" title="Move up">&#8593;</button>
-          <button type="button" class="ghost dict-down" aria-label="Move down" title="Move down">&#8595;</button>
-          <label class="dict-position">
-            <span class="cell-label">Position</span>
-            <input class="dict-position-input" type="number" min="1" step="1" />
+        <div class="dict-footer">
+          <label class="dict-alias">
+            <span class="cell-label">Display name</span>
+            <input
+              class="dict-display-name"
+              type="text"
+              autocomplete="off"
+              aria-label="Display name"
+              title="Display name"
+            />
           </label>
-          <button type="button" class="ghost dict-move">Move</button>
-          <button type="button" class="ghost dict-update" hidden>Update</button>
-          <button type="button" class="ghost danger dict-remove" aria-label="Remove" title="Remove">Remove</button>
-        </span>
+          <span class="dict-actions">
+            <button
+              type="button"
+              class="ghost dict-up"
+              aria-label="Move up"
+              title="Move up"
+            >
+              &#8593;
+            </button>
+            <button
+              type="button"
+              class="ghost dict-down"
+              aria-label="Move down"
+              title="Move down"
+            >
+              &#8595;
+            </button>
+            <label class="dict-position">
+              <span class="cell-label">Position</span>
+              <input
+                class="dict-position-input"
+                type="number"
+                min="1"
+                step="1"
+              />
+            </label>
+            <button type="button" class="ghost dict-move">Move</button>
+            <button type="button" class="ghost dict-update" hidden>
+              Update
+            </button>
+            <button
+              type="button"
+              class="ghost danger dict-remove"
+              aria-label="Remove"
+              title="Remove"
+            >
+              Remove
+            </button>
+          </span>
+        </div>
       </li>
     </template>
 
@@ -291,14 +534,35 @@
             <input class="dict-group-name" type="text" autocomplete="off" />
           </label>
           <span class="dict-group-actions">
-            <button type="button" class="ghost dict-group-up" aria-label="Move group up" title="Move group up">&#8593;</button>
-            <button type="button" class="ghost dict-group-down" aria-label="Move group down" title="Move group down">&#8595;</button>
-            <button type="button" class="ghost danger dict-group-delete">Delete</button>
+            <button
+              type="button"
+              class="ghost dict-group-up"
+              aria-label="Move group up"
+              title="Move group up"
+            >
+              &#8593;
+            </button>
+            <button
+              type="button"
+              class="ghost dict-group-down"
+              aria-label="Move group down"
+              title="Move group down"
+            >
+              &#8595;
+            </button>
+            <button type="button" class="ghost danger dict-group-delete">
+              Delete
+            </button>
           </span>
         </div>
         <div class="dict-group-add-row">
-          <select class="dict-group-add-select" aria-label="Dictionary to add"></select>
-          <button type="button" class="ghost dict-group-add">Add dictionary</button>
+          <select
+            class="dict-group-add-select"
+            aria-label="Dictionary to add"
+          ></select>
+          <button type="button" class="ghost dict-group-add">
+            Add dictionary
+          </button>
         </div>
         <ol class="dict-group-members"></ol>
         <p class="dict-group-members-empty">No dictionaries in this group.</p>
@@ -312,9 +576,25 @@
           <span class="dict-group-member-canonical"></span>
         </span>
         <span class="dict-group-member-actions">
-          <button type="button" class="ghost dict-group-member-up" aria-label="Move dictionary up" title="Move dictionary up">&#8593;</button>
-          <button type="button" class="ghost dict-group-member-down" aria-label="Move dictionary down" title="Move dictionary down">&#8595;</button>
-          <button type="button" class="ghost dict-group-member-remove">Remove</button>
+          <button
+            type="button"
+            class="ghost dict-group-member-up"
+            aria-label="Move dictionary up"
+            title="Move dictionary up"
+          >
+            &#8593;
+          </button>
+          <button
+            type="button"
+            class="ghost dict-group-member-down"
+            aria-label="Move dictionary down"
+            title="Move dictionary down"
+          >
+            &#8595;
+          </button>
+          <button type="button" class="ghost dict-group-member-remove">
+            Remove
+          </button>
         </span>
       </li>
     </template>
