@@ -1949,21 +1949,24 @@ async function flushOptions() {
     // A newer external event may already have arrived; keep that state, while
     // binding queued edits to the reply we actually committed, not that event.
     pendingOptionsRevision = Math.max(pendingOptionsRevision, reply.options.revision);
-    setOptionsStatus("Saved.");
+    if (optionsEditRevision !== null) {
+      optionsEditRevision = Math.max(optionsEditRevision, reply.options.revision);
+    }
+    setOptionsStatus(Object.keys(pendingOptions).length > 0 ? "Unsaved changes…" : "Saved.");
   } catch (error) {
     pendingOptions = { ...sent.patch, ...pendingOptions };
     optionsSaveFailed = true;
-    setOptionsStatus(`Could not save settings: ${describe(error)}`);
     // A reply can be lost after storage commits. Read the current revision for
     // explicit retry; do not silently overwrite it or drop the retained draft.
     try {
       const stored = await chrome.storage.local.get("options");
       adoptOptions(stored.options);
     } catch { /* The draft stays available even while storage is unreachable. */ }
+    setOptionsStatus(`Could not save settings: ${describe(error)}`);
   } finally {
     savingOptions = null;
     renderCurrentOptions();
-    if (!optionsSaveFailed && Object.keys(pendingOptions).length > 0) {
+    if (!optionsSaveFailed && optionsTimer === null && Object.keys(pendingOptions).length > 0) {
       void flushOptions();
     }
   }
