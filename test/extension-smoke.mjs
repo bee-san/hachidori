@@ -7056,14 +7056,22 @@ async function contentNoteStage() {
     focused.driver.scheduleHide();
     const stayedUnscheduled = !focused.driver.hideTimerPending();
     link.blur();
+    await focused.settle();
     const leavingRearmed = focused.driver.hideTimerPending();
     await new Promise(done => setTimeout(done, 180));
     const hiddenAfterBlur = focused.driver.snapshot().popupHidden;
+    await focused.initialLookup();
+    link.focus();
+    link.blur();
+    focused.popup.replaceChildren();
+    await focused.settle();
+    const replacementDidNotScheduleHide = !focused.driver.hideTimerPending();
     focused.close();
     return {
       "new term or kanji requests and settings invalidation dismiss previews before their replies": cases.every(Boolean),
       "popup keyboard focus cancels hover dismissal and leaving focus rearms it": pendingBeforeFocus
         && focusCancelledHide && stayedUnscheduled && leavingRearmed && hiddenAfterBlur,
+      "replacing focused popup content does not schedule dismissal of its refreshed view": replacementDidNotScheduleHide,
     };
   }
 
