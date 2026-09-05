@@ -493,19 +493,17 @@
           if (node.nodeType === Node.TEXT_NODE) {
             return NodeFilter.FILTER_ACCEPT;
           }
-          // Controls are boundaries, not skipped subtrees: surrounding prose
-          // must not be concatenated into a word across an editing surface.
-          if (isEditingElement(node)) return NodeFilter.FILTER_ACCEPT;
+          const editing = isEditingElement(node);
           if (
-            OPAQUE_TAGS.has(node.localName) ||
+            (!editing && OPAQUE_TAGS.has(node.localName)) ||
             isOurNode(node) ||
             isHiddenElement(node, styleCache)
           ) {
             return NodeFilter.FILTER_REJECT;
           }
-          // Accepted elements are boundaries the loop below stops on; inline
-          // ones are skipped so their text keeps flowing into the scan.
-          return node.localName === "br" || isBlockDisplay(node, styleCache)
+          // Visible controls and block elements are boundaries; ordinary inline
+          // elements are skipped so their text keeps flowing into the scan.
+          return editing || node.localName === "br" || isBlockDisplay(node, styleCache)
             ? NodeFilter.FILTER_ACCEPT
             : NodeFilter.FILTER_SKIP;
         },
@@ -606,9 +604,7 @@
   }
 
   function hasVisibleContent(element, styleCache) {
-    for (let current = element; current; current = current.parentElement) {
-      if (isHiddenElement(current, styleCache)) return false;
-    }
+    if (isHiddenElement(element, styleCache)) return false;
     if (element.getClientRects().length > 0) return true;
     // A display:contents editor has no box, but its editable text still does.
     const contents = document.createRange();
