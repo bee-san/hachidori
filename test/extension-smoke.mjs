@@ -6471,6 +6471,7 @@ async function contentNoteStage() {
         currentGeneration,
         styleGeneration,
         dictionaryStateRevision,
+        noteEditing,
         dictionaries: dictionaries.map((dictionary) => ({ ...dictionary })),
         popupHidden: popup?.hidden === true,
       };
@@ -7067,12 +7068,29 @@ async function contentNoteStage() {
     const draftProtected = !harness.driver.hideTimerPending() && !harness.driver.snapshot().popupHidden;
     harness.edit(false);
     harness.emitOptions({ ...settings, lookupMode: "hover", popupHideDelayMs: 0 });
+    const retainedViewCurrent = harness.render().context.isCurrentRequest();
     move();
     fire(75);
     fire(0);
     result["configured transfer delays preserve popup entry and Note editing and allow immediate hide"] =
-      transferDelay && transferred && draftProtected && harness.driver.snapshot().popupHidden
-        || { transferDelay, transferred, draftProtected, hidden: harness.driver.snapshot().popupHidden };
+      transferDelay && transferred && draftProtected && retainedViewCurrent && harness.driver.snapshot().popupHidden
+        || { transferDelay, transferred, draftProtected, retainedViewCurrent, hidden: harness.driver.snapshot().popupHidden };
+
+    harness.emitOptions({ ...settings, lookupMode: "hover" });
+    await harness.initialLookup();
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
+    move();
+    fire(75);
+    const supersededPointer = harness.take("hd_lookup");
+    const rendersBeforeNote = harness.renders.length;
+    move(harness.popup.getRootNode().host);
+    harness.edit(true);
+    if (supersededPointer) harness.reply(supersededPointer, { dictionaryCount: 1, results: [harness.term("late pointer")] });
+    await harness.settle();
+    result["popup entry and Note ownership cancel an unfinished pointer lookup before its late reply"] =
+      supersededPointer !== null && harness.renders.length === rendersBeforeNote
+        && harness.driver.snapshot().noteEditing && !harness.driver.snapshot().popupHidden;
+    harness.edit(false);
 
     harness.driver.setScanCandidate(harness.candidate);
     move();
