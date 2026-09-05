@@ -270,7 +270,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 199 checks, all of
+full request→reply round trip per contract-C message type. 200 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -361,7 +361,8 @@ What it proves, in order:
    Focused boundary checks reject C-string NUL and oversized UTF-8 inputs,
    malformed native envelopes, and complete replies above 32 MiB. They retain
    exact-boundary replies and correlated bounded errors, including multibyte
-   request IDs. The next healthy lookup keeps the same engine generation.
+   request IDs and early service-worker relay failures. The next healthy lookup
+   keeps the same engine generation.
 7. **Error paths.** An unknown type is answered as `<type>_result` with
    `ok: false` rather than dropped; a non-zip import fails with a report attached
    and leaves the previously loaded set intact; an import with no blob URL is

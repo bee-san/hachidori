@@ -16,6 +16,13 @@ import {
   parseCustomDictionary,
 } from "./custom-dictionary.js";
 import { sameJsonValue } from "./json-value.js";
+import {
+  LOOKUP_RESPONSE_ERROR,
+  boundLookupFailure,
+  isLookupRequest,
+  lookupReplyFits,
+  validLookupRequestId,
+} from "./lookup-response.js";
 
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
@@ -50,9 +57,6 @@ const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
 const DEFAULT_MAX_RESULTS = 32;
 const DEFAULT_SCAN_LENGTH = 16;
 const MAX_LOOKUP_TEXT_BYTES = 4 * 1024;
-const MAX_LOOKUP_RESPONSE_BYTES = 32 * 1024 * 1024;
-const LOOKUP_RESPONSE_ERROR = "lookup response exceeds the 32 MiB serialized limit";
-const LOOKUP_REQUESTS = new Set(["hd_lookup", "hd_lookup_dictionary", "hd_kanji"]);
 const UTF8 = new TextEncoder();
 
 const BASE64_CHUNK = 0x8000;
@@ -193,16 +197,6 @@ function termLookupReply(json, source) {
     throw new Error(`${source} returned a malformed lookup response`);
   }
   return { results: parsed.results, dictionaryCount: parsed.dictionaryCount, nativeJsonLength: json.length };
-}
-
-function lookupReplyFits(reply, nativeJsonLength = 0) {
-  const envelope = nativeJsonLength === 0 ? reply : { ...reply, ...failurePayload(reply.type.replace(/_result$/u, "")) };
-  const envelopeJson = JSON.stringify(envelope);
-  // JSON escaping needs at most six bytes per UTF-16 code unit, including
-  // lone surrogates. Ordinary native replies need no second full traversal.
-  if ((nativeJsonLength + envelopeJson.length) * 6 <= MAX_LOOKUP_RESPONSE_BYTES) return true;
-  const json = nativeJsonLength === 0 ? envelopeJson : JSON.stringify(reply);
-  return UTF8.encode(json).byteLength <= MAX_LOOKUP_RESPONSE_BYTES;
 }
 
 let tail = Promise.resolve();
@@ -1729,7 +1723,7 @@ const HANDLERS = {
     throwIfEngineFailed("hdw_kanji");
     const kanji = parseJson(json, "hdw_kanji");
     if (typeof kanji?.character !== "string" || !Array.isArray(kanji.entries)) {
-      throw new Error("hdw_kanji returned a malformed lookup response");
+      throw new TypeError("hdw_kanji returned a malformed lookup response");
     }
     return { kanji: kanji.character === "" ? null : kanji, nativeJsonLength: json.length };
   },
@@ -1995,6 +1989,13 @@ function failurePayload(type) {
   }
 }
 
+function engineFailureReply(type, requestId, error) {
+  return boundLookupFailure({
+    type: `${type}_result`, requestId, ok: false, error: describe(error),
+    generation, ...failurePayload(type),
+  });
+}
+
 export async function handleEngineMessage(message) {
   const type = text(message.type);
   let requestId = message.requestId ?? null;
@@ -2008,10 +2009,10 @@ export async function handleEngineMessage(message) {
     };
   }
 
-  const lookup = LOOKUP_REQUESTS.has(type);
+  const lookup = isLookupRequest(type);
   try {
     if (lookup) {
-      if (requestId !== null && typeof requestId !== "string" && !Number.isFinite(requestId)) {
+      if (!validLookupRequestId(requestId)) {
         requestId = null;
         throw new Error("lookup request ID must be a string, finite number, or null");
       }
@@ -2031,19 +2032,7 @@ export async function handleEngineMessage(message) {
     if (lookup && !lookupReplyFits(reply, nativeJsonLength)) throw new Error(LOOKUP_RESPONSE_ERROR);
     return reply;
   } catch (error) {
-    const reply = {
-      type: `${type}_result`,
-      requestId,
-      ok: false,
-      error: describe(error),
-      generation,
-      ...failurePayload(type),
-    };
-    if (lookup && !lookupReplyFits(reply)) {
-      reply.error = LOOKUP_RESPONSE_ERROR;
-      if (!lookupReplyFits(reply)) reply.requestId = null;
-    }
-    return reply;
+    return engineFailureReply(type, requestId, error);
   }
 }
 

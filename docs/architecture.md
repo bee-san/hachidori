@@ -117,8 +117,10 @@ failure without publishing the candidate.
 The native bridge rejects lookup text, primary reading, and frequency-dictionary
 options above 4 KiB of UTF-8; term traces above 32 steps; a raw glossary above
 8 MiB; and aggregate copied lookup strings above 32 MiB. It claims each string's
-bytes before allocating its wire copy. JSON serialization escapes every control
-byte, including NUL, and independently rejects native responses above 32 MiB.
+bytes before allocating its wire copy. The same copy pass detects control bytes;
+only replies that need full control escaping use the serializer's larger
+worst-case allocation. JSON serialization preserves every control byte, including
+NUL, and independently rejects native responses above 32 MiB.
 
 The engine service also checks the complete serialized public reply, including
 its type, correlation ID, generation, and payload, against 32 MiB. A conservative
@@ -126,7 +128,9 @@ length bound avoids serializing ordinary native results twice; near the boundary
 it measures the actual UTF-8 JSON without truncating fields. Invalid native
 response envelopes fail instead of masquerading as successful misses. Correlation
 IDs remain intact whenever the bounded error can fit; an ID that cannot fit even
-that error is refused before lookup and receives a null ID.
+that error is refused before lookup and receives a null ID. Shared error framing
+also covers service-worker relay, offscreen busy/queue, and worker failures that
+occur before the engine handler, without remeasuring successful relayed results.
 
 An oversized or failed lookup leaves the loaded generation usable. The content
 script clears the failed request's popup, but an older failed request cannot

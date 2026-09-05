@@ -716,12 +716,15 @@ function loadBackgroundScript(sandbox) {
     .replace(/^export\s+/gmu, "");
   const jsonValue = readFileSync(resolve(EXTENSION, "json-value.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const lookupResponse = readFileSync(resolve(EXTENSION, "lookup-response.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/lookup-response\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.Uint8Array ??= Uint8Array;
   sandbox.Uint32Array ??= Uint32Array;
@@ -731,7 +734,7 @@ function loadBackgroundScript(sandbox) {
   context.globalThis = context;
   runInContext(
     `${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n`
+      + `${customDictionary}\n${jsonValue}\n${lookupResponse}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1854,6 +1857,30 @@ async function main() {
       bus.log.every((row) => row.from !== "page" || !row.relayed),
     JSON.stringify(bus.log.slice(0, 6)),
   );
+  const originalWorkerSend = swChrome.runtime.sendMessage;
+  swChrome.runtime.sendMessage = (message) => message.relayed && message.type === "hd_lookup"
+    ? Promise.reject(new Error("long relay failure ".repeat(20))) : originalWorkerSend(message);
+  try {
+    const responseLimit = 32 * 1024 * 1024;
+    const sendFailedLookup = (requestId) => pageChrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen", type: "hd_lookup", text: "食", requestId,
+    });
+    const oversized = await sendFailedLookup("x".repeat(responseLimit));
+    const invalid = await sendFailedLookup({});
+    const compact = { ...oversized, requestId: "" };
+    const exactId = "x".repeat(responseLimit - Buffer.byteLength(JSON.stringify(compact)));
+    const correlated = await sendFailedLookup(exactId);
+    check(
+      "service-worker relay failures use the shared bounded lookup correlation rule",
+      oversized.ok === false && oversized.requestId === null && invalid.requestId === null
+        && correlated.ok === false && correlated.requestId === exactId
+        && correlated.error === compact.error
+        && Buffer.byteLength(JSON.stringify(correlated)) === responseLimit,
+      JSON.stringify({ oversizedOk: oversized.ok, correlated: correlated.requestId === exactId }),
+    );
+  } finally {
+    swChrome.runtime.sendMessage = originalWorkerSend;
+  }
 
   section("storage ownership and hd_import");
   // The engine's view of this key goes offscreen -> worker -> chrome.storage,

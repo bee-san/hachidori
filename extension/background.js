@@ -18,6 +18,7 @@ import {
   parseCustomDictionary,
 } from "./custom-dictionary.js";
 import { sameJsonValue } from "./json-value.js";
+import { boundLookupFailure } from "./lookup-response.js";
 
 /*
  * Service worker for Hachidori.
@@ -814,13 +815,13 @@ const UPDATE_HANDLERS = {
 };
 
 function failureReply(message, error) {
-  return {
+  return boundLookupFailure({
     type: `${message?.type ?? "hd_unknown"}_result`,
     requestId: message?.requestId ?? null,
     ok: false,
     error: describe(error),
     generation: 0,
-  };
+  });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
