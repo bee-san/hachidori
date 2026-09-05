@@ -263,7 +263,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 192 checks, all of
+full request→reply round trip per contract-C message type. 191 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -359,10 +359,10 @@ What it proves, in order:
    streamed body one byte beyond that boundary.
 8. **The renderer against the engine's own bytes.** This is the check that a
    hand-written payload cannot make: the actual `hd_lookup` / `hd_kanji` /
-   `hd_styles` / `hd_media` replies go into the real `createPopupView`, and the
+   `hd_media` replies go into the real `createPopupView`, and the
    headword, the parsed structured content, the `data-hoshidicts-dictionary`
    attribute `@scope` keys off, the frequency tags, the `<img>` resolved through
-   `resolveMedia`, `applyDictionaryStyles` into a shadow root, and `renderKanji`
+   `resolveMedia`, and `renderKanji`
    are all asserted on the resulting DOM. `glossary` is the whole glossary *array*
    of one term-bank row, so each of its elements must land in its own
    `li.gloss-item` — appending them into one parent runs two senses together with
@@ -497,7 +497,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 81 assertions, and the summary line
+`PLANNED` at the top of the file names all 84 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -528,6 +528,18 @@ and wait for both package state and the global completed-check timestamp; the
 `<img>` poll likewise stops at the first read that contains the media response.
 
 ### what the assertions are pinned to
+
+Dictionary stylesheet installation moved from jsdom to three real-Chrome checks:
+jsdom cannot exercise constructed stylesheets, CSS nesting, or `@scope`. The
+production `applyDictionaryStyles` runs inside a shadow root with the production
+reader stylesheet. Tests verify escaped canonical titles, malformed-brace
+containment, nested formatting, duplicate suppression, and generation replacement.
+Resource probes intercept and abort a reserved `.invalid` origin; direct and
+escaped URLs, image-set strings, custom/inherited variables, a poisoned palette,
+and page-defined font selection must neither apply a resource nor request it.
+The existing glossary card must contain fixed-position descendants and oversized
+shadows without intercepting the reader control above it. The engine's exact
+`hd_styles` response remains independently covered by the extension smoke suite.
 
 - The popup's **structure**, not just its flattened text. `popupReader()` reports
   `tags`, `lists`, `tables` and `bold` (with the computed `font-weight`, since the

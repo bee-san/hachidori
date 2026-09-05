@@ -112,6 +112,27 @@ after publication. A title collision, changed fingerprint, wrong archive
 revision, or failed import leaves the working generation loaded and reports the
 failure without publishing the candidate.
 
+## Dictionary presentation boundary
+
+Imported styles are parsed in a detached browser stylesheet, filtered, and only
+then serialized inside a canonical-title `@scope` for that dictionary's glossary
+content. Raw archive CSS is never concatenated around a scope boundary. Normal
+style rules, CSS nesting, and media/supports/container groups are retained;
+global definitions such as imports, fonts, properties, and keyframes are removed.
+
+A rule containing resource functions, custom functions/properties, untrusted
+variable references, residual CSS escapes, or non-generic font selection is
+omitted. The whole declaration block is checked because variable-containing
+shorthands expose empty CSSOM longhands before substitution. Comment-like text
+inside strings is not stripped. Five color/size compatibility variables support
+Jitendex formatting through locally typed reader aliases. Dictionary media still
+uses the generation-owned `hd_media` path, not stylesheet URLs.
+
+The trusted glossary card sits outside the dictionary scope and establishes
+paint containment, so fixed descendants and oversized shadows cannot cover
+reader controls. Style installation replaces the previous generation's elements
+and remains deferred once per engine generation, not repeated on each lookup.
+
 ## Settings interface
 
 Settings is one document with native section links: the installed library comes

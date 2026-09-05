@@ -688,12 +688,18 @@ async function checkDictionaryStyles(page) {
     evidence = await page.evaluate(async () => {
       const host = document.createElement("div");
       host.style.setProperty("--external", 'url("https://dictionary-style.invalid/inherited.png")');
+      for (const suffix of [" evil", ")evil", ",evil"]) {
+        host.style.setProperty(`--fg${suffix}`, 'url("https://dictionary-style.invalid/escaped-var.png")');
+      }
       host.style.setProperty("--hoshidicts-palette-base-content", 'url("https://dictionary-style.invalid/palette.png")', "important");
       document.body.appendChild(host);
       const shadow = host.attachShadow({ mode: "open" });
       const readerStyles = new CSSStyleSheet();
       readerStyles.replaceSync(await (await fetch(chrome.runtime.getURL("render/reader.css"))).text());
       shadow.adoptedStyleSheets = [readerStyles];
+      const pageFont = document.createElement("style");
+      pageFont.textContent = '@font-face { font-family:page-resource-test; src:url("https://dictionary-style.invalid/page-font.woff2"); } @function --external-image() { result:url("https://dictionary-style.invalid/function.png"); }';
+      document.head.appendChild(pageFont);
       const popup = document.createElement("div");
       popup.className = "gsm-hoshidicts-popup";
       popup.style.cssText = "left:20px;top:20px;width:400px;height:300px";
@@ -738,6 +744,15 @@ async function checkDictionaryStyles(page) {
         'background-image:var(--external)',
         'background-image:var(--text-color)',
         'background-image:var(--fg, var(--external))',
+        'font-family:page-resource-test',
+        'font:16px page-resource-test',
+        'background:var(--external)',
+        'background-image:var(--fg\\ evil)',
+        'background-image:var(--fg\\)evil)',
+        'background-image:var(--fg\\,evil)',
+        'background-image:v\\61\r\nr(--external)',
+        'background-image:--external-image()',
+        'background-image:\\2d\\2d external-image()',
       ];
       network.innerHTML = resourceCases.map((_, index) => `<div class="resource-${index}">Resource test</div>`).join("");
       apply(2, [{ dictionary: "network-test", styles: [
@@ -745,8 +760,11 @@ async function checkDictionaryStyles(page) {
         '@font-face { font-family:remote-test; src:url("https://dictionary-style.invalid/font.woff2"); }',
         ...resourceCases.map((value, index) => `.resource-${index} { ${value}; color:rgb(7, 8, 9); }`),
         '.resource-0 { font-family:remote-test; }',
+        '.resource-0::before { content:"/*" url("https://dictionary-style.invalid/comment-mask.png") "*/"; }',
       ].join("\n") }]);
       const resources = [...network.children].map((element) => getComputedStyle(element).backgroundImage);
+      const fonts = [...network.children].map((element) => getComputedStyle(element).fontFamily);
+      const pseudoContent = getComputedStyle(network.firstElementChild, "::before").content;
       const replacement = shadow.querySelectorAll("style[data-hoshidicts-dictionary-style]").length === 1
         && shadow.querySelector("style[data-hoshidicts-dictionary-style]").dataset.hoshidictsGeneration === "2"
         && getComputedStyle(inside.querySelector(".nested")).fontWeight !== "900";
@@ -771,7 +789,8 @@ async function checkDictionaryStyles(page) {
         farPoint: shadow.elementFromPoint(700, 500)?.className ?? "",
       };
       host.remove();
-      return { scope, resources, replacement, globalRules, containment };
+      pageFont.remove();
+      return { scope, resources, fonts, pseudoContent, replacement, globalRules, containment };
     });
   } finally {
     await page.setRequestInterception(false);
@@ -784,6 +803,8 @@ async function checkDictionaryStyles(page) {
       && evidence.replacement, JSON.stringify(evidence));
   check("dictionary CSS cannot load remote resources or inherit resource-valued variables",
     requests.length === 0 && evidence.resources.every((value) => value === "none")
+      && evidence.fonts.every((value) => !value.includes("page-resource-test"))
+      && evidence.pseudoContent === "none"
       && evidence.globalRules.every((name) => name === "CSSScopeRule"), JSON.stringify({ evidence, requests }));
   check("dictionary CSS cannot paint or intercept input outside its glossary card",
     evidence.containment.paint === "paint" && evidence.containment.withinCard
