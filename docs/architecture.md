@@ -168,6 +168,35 @@ These are fetch and message limits, not archive admission rules. Larger media
 still imports and strict-loads; only its fetch fails, leaving other media and
 lookups usable. A well-formed missing file remains a successful null result.
 
+`hd_media` requires the generation of its owning lookup. The serialized engine
+handler checks it after loading and before native extraction, so queued media
+cannot accidentally read a replacement dictionary. Only an accepted current
+lookup/kanji response adopts the reader's generation; late media or styles
+cannot roll it backward. A restarted engine may legitimately report a lower
+generation number.
+
+The reader separates reusable image resources from DOM ownership. Pending
+fetches dedupe by generation, canonical title and normalized path; successful
+data URLs stay reusable across hovers, including a fetch completing while the
+popup is hidden. Missing or failed fetches are not cached. Package-content
+changes and teardown drop cached resources and pending ownership; alias and
+favourite edits preserve them. Promise identity prevents an old completion from
+removing or populating a newer same-key job. Styles similarly own their exact
+request, even when a restart reuses the numeric generation.
+
+Image fulfillment, failure and load/error callbacks require a connected image
+in the current request and result panel before changing DOM or repositioning.
+Failures expose the image's alt text and a readable message outside the image's
+possibly tiny dimensions; a later hover retries. Back reuses its saved result
+snapshot unless the generation or dictionary contents changed, in which case
+it replays the exact saved request before restoring focus. Presentation-only
+edits do not force a native Back lookup.
+
+![Readable dictionary image failure with the surrounding definition intact](assets/media-failure.png)
+
+Media cache size, active/pending limits and larger hover/focus previews remain
+separate E6/E9 work.
+
 ## Dictionary presentation boundary
 
 Imported styles are parsed in a detached browser stylesheet, filtered, and only

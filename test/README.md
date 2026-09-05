@@ -277,7 +277,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 209 checks, all of
+full request→reply round trip per contract-C message type. 220 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -395,6 +395,13 @@ What it proves, in order:
    Media tests also pin exact UTF-8 reference and 6 MiB complete-reply boundaries,
    embedded-NUL prefix rejection, bounded correlation on early relay failures,
    and actual oversized native errors without capping archive imports.
+   Queued media checks its required generation before native extraction.
+   Controlled content replies cover old/new and repeated numeric generations,
+   pending dedupe, missing/failure retries, Back snapshot refresh, and style
+   request identity. Successful resources survive repeat hovers, completion
+   while hidden, and alias/favourite edits. Connected but obsolete image
+   fulfillment, rejection and load/error callbacks cannot mutate or reposition
+   an old panel; current failure keeps accessible alt text and a readable label.
 9. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
    and removing an unknown title does not bump `generation`. Removal strict-loads
    the remaining manifest and commits it before deleting the old root. The
@@ -525,7 +532,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 88 assertions, and the summary line
+`PLANNED` at the top of the file names all 90 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -572,6 +579,15 @@ shadows without intercepting the reader control above it. The engine's exact
 `hd_styles` response remains independently covered by the extension smoke suite.
 Set `HACHIDORI_POPUP_SCREENSHOT` to an output PNG path to capture the ordinary
 structured-content popup after its media reply, using the same complete run.
+
+Media ownership checks delay a completed real offscreen/WASM media reply at
+the service-worker relay while reimporting its package and loading the new
+image. Releasing the old reply cannot replace or evict the current image.
+A separately injected transient reply failure leaves the definition and a
+readable alt/error label intact; another hover performs a fresh successful
+fetch. `HACHIDORI_MEDIA_FAILURE_SCREENSHOT` captures that failure state, including
+the 16-pixel image case that previously clipped its error text. These controlled
+reply faults are correctness diagnostics, not image-latency measurements.
 
 - The popup's **structure**, not just its flattened text. `popupReader()` reports
   `tags`, `lists`, `tables` and `bold` (with the computed `font-weight`, since the
