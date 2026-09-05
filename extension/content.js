@@ -81,6 +81,7 @@
     "video",
   ]);
   const EDITING_TAGS = new Set(["button", "input", "select", "textarea"]);
+  const EDITING_SELECTOR = [...EDITING_TAGS, "[contenteditable]"].join(",");
   // `display` values that keep text flowing inline, so the scan may cross them.
   const INLINE_DISPLAY_PATTERN = /^(?:inline|ruby|contents)/u;
   const PRESERVED_WHITESPACE = new Set([
@@ -604,8 +605,7 @@
     return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
   }
 
-  function resolveSelectedLookupCandidate() {
-    const selection = window.getSelection();
+  function resolveSelectedLookupCandidate(selection = window.getSelection()) {
     if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return null;
     const range = selection.getRangeAt(0);
     const styleCache = new Map();
@@ -617,6 +617,10 @@
       ? resolveScanContainer(range.startContainer, styleCache) : null;
     const anchor = scanContainer?.contains(range.endContainer)
       ? scanContainer : selectionBoundaryElement(range.commonAncestorContainer);
+    for (const control of anchor.querySelectorAll(EDITING_SELECTOR)) {
+      if (isEditingElement(control) && range.intersectsNode(control)
+          && control.getClientRects().length > 0 && !isHiddenElement(control, styleCache)) return null;
+    }
     return {
       anchor,
       anchorRange: range.cloneRange(),
@@ -1663,9 +1667,14 @@
       clearHideTimer();
       return;
     }
-    const selected = resolveSelectedLookupCandidate();
-    if (selected) {
-      startSelectionLookup(selected);
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) {
+      const selected = resolveSelectedLookupCandidate(selection);
+      if (selected) startSelectionLookup(selected);
+      else {
+        cancelCandidateScan();
+        scheduleHide();
+      }
       return;
     }
     if (!activationAllowed()) {
