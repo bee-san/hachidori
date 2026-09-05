@@ -6458,6 +6458,7 @@ async function contentNoteStage() {
       return popup;
     },
     hideTimerPending() { return hideTimer !== null; },
+    resolveCandidate,
     setScanCandidate(candidate) { resolveCandidate = () => candidate; },
     onMouseMove,
     onMouseDown,
@@ -6999,6 +7000,53 @@ async function contentNoteStage() {
     };
     harness.close();
     return result;
+  }
+
+  async function scanExtractionCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const document = window.document;
+    const block = document.createElement("p");
+    block.style.display = "block";
+    document.body.append(block);
+    const scan = (node, offset = 0) => {
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.collapse(true);
+      document.caretRangeFromPoint = () => range;
+      return harness.driver.resolveCandidate(0, 0);
+    };
+    block.innerHTML = '<b style="display:inline">食</b><i style="display:inline">べたかった</i>。';
+    const inline = scan(block.firstChild.firstChild);
+    const crossedInline = inline?.query === "食べたかった。"
+      && inline.sourceElements.map((element) => element.textContent).join("") === inline.sentence;
+    block.textContent = "hello world";
+    const japaneseOnly = scan(block.firstChild) === null;
+    harness.emitOptions({ onlyScanJapaneseText: false });
+    const unrestricted = scan(block.firstChild)?.query === "hello world";
+    harness.emitOptions({ onlyScanJapaneseText: true });
+    const gatedAgain = scan(block.firstChild) === null;
+    const controls = [];
+    for (const tag of ["button", "select", "textarea", "input", "span"]) {
+      block.innerHTML = '<b style="display:inline">食</b>';
+      const control = document.createElement(tag);
+      control.style.display = "inline";
+      control.textContent = "べたかった";
+      if (tag === "span") {
+        control.setAttribute("contenteditable", "true");
+        // jsdom lacks this browser property; Chrome exercises actual inheritance.
+        Object.defineProperty(control, "isContentEditable", { value: true });
+      }
+      block.append(control, document.createTextNode("語"));
+      controls.push(scan(control.firstChild) === null && scan(block.firstChild.firstChild)?.query === "食");
+    }
+    harness.close();
+    return {
+      "pointer scans cross ordinary inline text and apply the live Japanese-only preference":
+        crossedInline && japaneseOnly && unrestricted && gatedAgain,
+      "editing controls and contenteditable text stop both direct and forward pointer scanning":
+        controls.every(Boolean) || controls,
+    };
   }
 
   async function pendingScanCase() {
@@ -7632,7 +7680,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
-    scanning: await pendingScanCase(),
+    scanning: { ...await pendingScanCase(), ...await scanExtractionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
