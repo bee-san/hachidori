@@ -714,6 +714,7 @@ function loadClassicScript(file, sandbox) {
 }
 
 function loadBackgroundScript(sandbox) {
+  const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
   const customDictionary = readFileSync(resolve(EXTENSION, "custom-dictionary.js"), "utf8")
     .replace(/^export\s+/gmu, "");
@@ -724,6 +725,7 @@ function loadBackgroundScript(sandbox) {
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+    .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
@@ -738,7 +740,7 @@ function loadBackgroundScript(sandbox) {
   runInContext(
     `${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${background}`,
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${readerOptions}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
   );
@@ -1283,6 +1285,7 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
   const customDictionary = readFileSync(resolve(EXTENSION, "custom-dictionary.js"), "utf8")
     .replace(/^export\s+/gmu, "");
@@ -1292,13 +1295,14 @@ function loadSettingsScript(window) {
   const groups = readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groups}\n${settings}`,
+    `${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groups}\n${readerOptions}\n${settings}`,
   );
 }
 
@@ -1423,16 +1427,14 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
   }
 }
 
-// content.js cannot be driven here (it needs a page), so the one thing worth
-// checking statically is that the layers clamping an option agree on its range.
-// They are four separate literals, and a narrower one in the content script
-// silently shrinks the result set the options page accepted and stored.
+// The shared reader range must agree with the HTML inputs and the independent
+// engine request boundary, so persisted settings cannot request fewer results
+// in one runtime context than another.
 const OPTION_RANGES = [
   [
     "maxResults",
     [
-      ["content.js", /maxResults:\s*clampInteger\(\s*source\.maxResults,\s*(\d+),\s*(\d+)/u],
-      ["settings.js", /key:\s*"maxResults",[^}]*?min:\s*(\d+),\s*max:\s*(\d+)/u],
+      ["reader-options.js", /maxResults:\s*\[(\d+),\s*(\d+)\]/u],
       ["settings.html", /id="opt-max-results"[^>]*?min="(\d+)"[^>]*?max="(\d+)"/u],
       ["engine-service.js", /clampInt\(\s*message\.maxResults,\s*(\d+),\s*(\d+)/u],
     ],
@@ -1440,8 +1442,7 @@ const OPTION_RANGES = [
   [
     "scanLength",
     [
-      ["content.js", /scanLength:\s*clampInteger\(\s*source\.scanLength,\s*(\d+),\s*(\d+)/u],
-      ["settings.js", /key:\s*"scanLength",[^}]*?min:\s*(\d+),\s*max:\s*(\d+)/u],
+      ["reader-options.js", /scanLength:\s*\[(\d+),\s*(\d+)\]/u],
       ["settings.html", /id="opt-scan-length"[^>]*?min="(\d+)"[^>]*?max="(\d+)"/u],
       ["engine-service.js", /clampInt\(\s*message\.scanLength,\s*(\d+),\s*(\d+)/u],
     ],
@@ -6185,6 +6186,7 @@ async function staleKanjiResponseStage(invalidation) {
   if (instrumented === source) {
     return ["content.js instrumentation marker was not found"];
   }
+  window.eval(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"));
   window.eval(instrumented);
   const anchor = window.document.getElementById("anchor");
   const popup = window.document.createElement("div");
@@ -6425,6 +6427,7 @@ async function contentNoteStage() {
       dom.window.close();
       throw new Error("content.js Note instrumentation marker was not found");
     }
+    window.eval(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"));
     window.eval(instrumented);
     const driver = window.__hachidoriContentNoteSmoke;
     const popup = driver.install();
