@@ -20,11 +20,16 @@ These instructions apply to the entire repository.
 - Do not add broad or extensive test coverage by default. Add a focused regression test when behavior changes or a bug needs to stay fixed; do not duplicate coverage already provided by a suitable suite.
 - Avoid adding test-only dependencies or expanding fixtures unless the changed behavior genuinely needs them.
 
+## Issue #9 scope and phases
+
+- D1-D9 are the dictionary-only feature group. That phase is complete. The user's subsequent request, "now do everything else" from issue #9, authorizes E1-E28 as the current phase, delivered in focused pull requests that preserve the completed dictionary behavior.
+- The dictionary-only contract below limits dictionary-only tasks; it does not prohibit separately authorized E-series work. Later L1-L6 remain excluded from both current feature groups: no profiles, backup/restore, per-dictionary schedules, statistics, definition blur, or configurable popup actions.
+
 ## Dictionary-only issue #9 contract
 
 When implementing the dictionary-only scope from issue #9:
 
-- D1-D9 are the complete scope. Do not pull in E-series or Later features, profiles, backup/restore, per-dictionary schedules, statistics, definition blur, or configurable popup actions.
+- For a dictionary-only task, D1-D9 are the complete scope. Do not pull E-series or Later features into that task; E-series work requires its own explicit authorization as recorded above.
 - The issue owner's later comment overrides the original D6 prose: a scheduled update run checks and automatically installs available updates. Manual Check now still records availability without installing.
 - Keep one global update schedule: Off, hourly, daily, weekly, or monthly. Do not add per-dictionary policy, hidden profiles, alternate backends, or due-time machinery.
 - Preserve stable package IDs, canonical-title engine keys, order, alias, enabled/favourite state, groups, and trusted source metadata across reimports and updates. A package with several bank kinds remains one package.
