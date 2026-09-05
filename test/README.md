@@ -277,7 +277,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 226 checks, all of
+full request→reply round trip per contract-C message type. 235 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -409,6 +409,15 @@ What it proves, in order:
    admission. Invalidation and teardown settle every job before more dispatch.
    LRU checks accept 64 entries and exactly 16 MiB of decoded media, promote hits,
    evict on one extra entry/byte, and reset byte accounting on invalidation.
+   Preview checks cover lazy closed-shadow ownership, exact source reuse without
+   another media request, viewport corners, unchanged inline dimensions,
+   hover/focus and failure cleanup, tab/clear/destroy, and dismissal before new
+   term/kanji replies or settings invalidation. Late loads cannot steal newer
+   preview intent or revive a dismissed preview. Keyboard scroll retains its
+   focused owner; keyboard focus cancels hover dismissal, while ordinary blur
+   rearms it and content replacement does not hide a refreshed Note result.
+   An ad-hoc format-3 fixture imports genuine AVIF and SVG through the real WASM
+   engine and checks their complete returned data URLs, not merely file headers.
 9. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
    and removing an unknown title does not bump `generation`. Removal strict-loads
    the remaining manifest and commits it before deleting the old root. The
@@ -539,7 +548,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 92 assertions, and the summary line
+`PLANNED` at the top of the file names all 95 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -600,6 +609,20 @@ completed native replies proves only four distinct requests dispatch at once;
 hiding before release prevents the other eight obsolete jobs from dispatching.
 A new hover reuses the four completed resources and loads the remaining eight,
 with exact PNG URLs and decoded dimensions checked for all 24 image elements.
+
+The image-preview fixture adds two genuine AVIF/SVG resources, with a second
+use of the SVG below a long glossary to exercise keyboard-induced scrolling.
+Chrome verifies exact sources and decoded dimensions, two native media requests
+for all three inline images, larger preview bounds outside the card's paint
+containment, viewport clamping, original-link keyboard focus, and reduced motion.
+The focused preview survives Chrome scrolling its owner into view; hover scroll,
+leave and blur close it. Holding a completed real navigation lookup verifies
+dismissal before the reply and refuses reopening from the still-connected old
+image. `HACHIDORI_IMAGE_PREVIEW_SCREENSHOT` captures the enlarged SVG in the
+closed shadow root. `imagePreviewFixture()` keeps these resources separate from
+the standard fixtures and their documented counts; its tiny AVIF was encoded
+once with FFmpeg/libaom and carries its command/hash in the builder, so tests
+need no encoder dependency.
 
 - The popup's **structure**, not just its flattened text. `popupReader()` reports
   `tags`, `lists`, `tables` and `bold` (with the computed `font-weight`, since the
