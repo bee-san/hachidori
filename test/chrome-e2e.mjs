@@ -3340,6 +3340,65 @@ async function main() {
       && Array.isArray(removedLookup?.results) && removedLookup.results.length === 0,
     `lookup reply: ${JSON.stringify(removedLookup)}`);
 
+  const boundedTitle = "bounded-response-fixture";
+  const boundedArchive = buildTitledZip(boundedTitle, { terms: [
+    ["限界", "げんかい", "", "", 0, ["x".repeat(8 * 1024 * 1024 - 3)], 1, ""],
+    ["速度", "そくど", "", "", 0, ["healthy bounded lookup"], 2, ""],
+  ] });
+  await page.evaluate((base64) => {
+    const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], "bounded-response.zip", { type: "application/zip" }));
+    const input = document.getElementById("import-file");
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, boundedArchive.toString("base64"));
+  await page.waitForFunction(async (title) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    return dictionaryState?.dictionaries?.some((entry) => entry.title === title);
+  }, { timeout: 90_000, polling: 100 }, boundedTitle);
+  const boundedReplies = await page.evaluate(async (dictionary) => {
+    const request = (type, fields) => chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen", type, requestId: `bounded-${type}`, ...fields,
+    });
+    const before = await request("hd_status", {});
+    const global = await request("hd_lookup", { text: "限界" });
+    const selected = await request("hd_lookup_dictionary", { dictionary, text: "限界" });
+    const nul = await request("hd_kanji", { character: "食\0" });
+    const healthy = await request("hd_lookup", { text: "速度" });
+    const after = await request("hd_status", {});
+    return { before, global, selected, nul, healthy, after };
+  }, boundedTitle);
+  check(
+    "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
+    [boundedReplies.global, boundedReplies.selected].every((reply) => reply.ok === false
+      && reply.results?.length === 0 && /glossary/u.test(reply.error))
+      && boundedReplies.nul.ok === false && /NUL/u.test(boundedReplies.nul.error)
+      && boundedReplies.healthy.ok === true
+      && boundedReplies.healthy.results[0]?.term.expression === "速度"
+      && boundedReplies.before.generation === boundedReplies.after.generation
+      && boundedReplies.after.ready === true && boundedReplies.after.storageBackend === "opfs",
+    JSON.stringify(boundedReplies),
+  );
+  await tab2.evaluate(() => {
+    document.getElementById("verb").textContent = "速度";
+    document.getElementById("kanjiword").textContent = "限界";
+  });
+  const boundedPopupBefore = await hoverForPopup(tab2, popup2, "#verb");
+  await tab2.mouse.move(2, 2);
+  const oversizedWord = await tab2.$("#kanjiword");
+  const oversizedBox = await oversizedWord.boundingBox();
+  await tab2.mouse.move(oversizedBox.x + 5, oversizedBox.y + oversizedBox.height / 2);
+  const boundedPopupHidden = await popup2.waitForHidden();
+  const boundedPopupAfter = await hoverForPopup(tab2, popup2, "#verb");
+  check(
+    "an oversized hover clears the previous popup and the next healthy hover recovers",
+    boundedPopupBefore?.plain?.includes("healthy bounded lookup")
+      && boundedPopupHidden
+      && boundedPopupAfter?.plain?.includes("healthy bounded lookup"),
+    JSON.stringify({ before: boundedPopupBefore?.plain, hidden: boundedPopupHidden, after: boundedPopupAfter?.plain }),
+  );
+
   await browser.close();
   server.close();
   return report();
