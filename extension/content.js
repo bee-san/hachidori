@@ -1230,9 +1230,9 @@
     for (const level of removed.reverse()) {
       level.retired = true;
       level.lookupToken += 1;
+      level.popup.hidden = true;
       level.view?.clear();
       level.view?.destroy();
-      level.highlighter?.clear();
       level.popup?.remove();
     }
     if (restoreFocus && focused && source?.isConnected) source.focus({ preventScroll: true });
@@ -1441,6 +1441,8 @@
     level = rootLevel,
   ) {
     request ??= level.currentViewRequest;
+    level.deferredRefresh = null;
+    level.deferredDictionaryInvalidationRevision = -1;
     pruneLevels(level.depth + 1);
     const token = level.lookupToken;
     level.currentViewRequest = request ?? null;
@@ -1452,6 +1454,7 @@
       renderOptions,
       request: level.currentViewRequest,
       results,
+      token,
     };
     try {
       level.view.renderResults(results, candidate, {
@@ -1577,7 +1580,9 @@
     }
     const existing = levels[level.depth + 1];
     if (existing?.activeCandidate?.anchor === anchor && existing.activeCandidate.query === query
-        && existing.primaryReading === primaryReading) return existing.pendingLink;
+        && existing.primaryReading === primaryReading
+        && (existing.pendingLink || (existing.currentViewRequest?.kind === "term"
+          && existing.activeTermRender?.token === existing.lookupToken))) return existing.pendingLink;
     pruneLevels(level.depth + 1, false);
     const child = createLevelState(level.depth + 1);
     levels.push(child);
@@ -1591,6 +1596,7 @@
     };
     clearHideTimer();
     child.pendingLink = runLookup(child.activeCandidate, { primaryReading }, child);
+    void child.pendingLink.finally(() => { child.pendingLink = null; });
     return child.pendingLink;
   }
 
@@ -1648,6 +1654,8 @@
       return false;
     }
     level.currentViewRequest = request;
+    level.deferredRefresh = null;
+    level.deferredDictionaryInvalidationRevision = -1;
     pruneLevels(level.depth + 1);
     try {
       level.view.renderKanji({ ...kanji, entries }, candidate, {
