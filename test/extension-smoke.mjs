@@ -3949,6 +3949,8 @@ async function main() {
       && settingsCustom.eventBeforeReadReply.expanded === "true"
       && settingsCustom.eventBeforeReadReply.readCount === 1
       && settingsCustom.eventBeforeReadReply.saveDisabled === true
+      && settingsCustom.eventBeforeReadReply.unseenCompletion === true
+      && settingsCustom.eventBeforeReadReply.completionClearedAfterVisit === true
       && settingsCustom.eventFirstSave?.baseRevision === 7
       && settingsCustom.eventFirstSave.submittedUsesCrlf === true
       && settingsCustom.eventFirstSave.saveDisabled === true
@@ -5712,6 +5714,7 @@ async function settingsCustomDictionaryStage() {
 
   open.click();
   await waitFor(() => pendingRead !== null);
+  await navigateSettingsSection(window, "dictionaries");
   customDocument = {
     ...customDocument,
     revision: 6,
@@ -5726,7 +5729,13 @@ async function settingsCustomDictionaryStage() {
     expanded: open.getAttribute("aria-expanded"),
     readCount: customReadRequests.length,
     saveDisabled: save.disabled,
+    unseenCompletion: window.document.getElementById("nav-status-custom-dictionary").textContent
+      === "Personal dictionary: Loaded source revision 6.",
   };
+  await navigateSettingsSection(window, "custom-dictionary");
+  await navigateSettingsSection(window, "dictionaries");
+  result.eventBeforeReadReply.completionClearedAfterVisit =
+    window.document.getElementById("nav-status-custom-dictionary").textContent === "";
 
   const customRow = () => window.document.querySelector(`[data-dictionary-id="${CUSTOM_DICTIONARY_ID}"]`);
   const ordinaryRow = () => window.document.querySelector('[data-dictionary-id="ordinary-id"]');
