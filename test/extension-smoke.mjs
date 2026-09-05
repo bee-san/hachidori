@@ -8561,6 +8561,21 @@ async function contentNoteStage() {
         && await reattached === url && await fresh === url && !startedCache.fetched;
     superseded.close();
 
+    const shared = await createHarness();
+    await shared.initialLookup();
+    const occupied = Array.from({ length: 4 }, (_, index) => load(shared, `occupied-${index}.png`));
+    const parent = load(shared, "shared.png");
+    let childCurrent = true;
+    const child = shared.render().context.resolveMedia({
+      dictionary: "Generic", generation: 2, path: "shared.png", isCurrent: () => childCurrent,
+    }).catch(() => null);
+    childCurrent = false;
+    await drain(shared);
+    await Promise.all(occupied);
+    result["a retired child cannot cancel queued media still owned by its parent"] =
+      await parent === url && await child === url && count(shared) === 5;
+    shared.close();
+
     const invalidations = [];
     for (const kind of ["dictionary", "teardown"]) {
       const harness = await createHarness();
