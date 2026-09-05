@@ -849,24 +849,21 @@
 
   function appendStructuredValue(documentRef, parent, value, state, depth) {
     if (state.nodes >= MAX_STRUCTURED_NODES || depth > MAX_STRUCTURED_DEPTH) {
-      return;
+      throw new RangeError("Structured content exceeds its node or depth limit");
     }
+    // Bound traversal work, including containers and values that render no DOM.
+    state.nodes += 1;
     if (typeof value === "string") {
-      state.nodes += 1;
       parent.appendChild(documentRef.createTextNode(value));
       return;
     }
     if (typeof value === "number" || typeof value === "boolean") {
-      state.nodes += 1;
       parent.appendChild(documentRef.createTextNode(String(value)));
       return;
     }
     if (Array.isArray(value)) {
       for (const child of value) {
         appendStructuredValue(documentRef, parent, child, state, depth + 1);
-        if (state.nodes >= MAX_STRUCTURED_NODES) {
-          break;
-        }
       }
       return;
     }
@@ -904,14 +901,12 @@
     }
 
     if (tag === "img") {
-      state.nodes += 1;
       appendStructuredImage(documentRef, parent, value, state);
       return;
     }
 
     const element = documentRef.createElement(tag);
     element.classList.add(`gloss-sc-${tag}`);
-    state.nodes += 1;
     applyStructuredStyle(element, value.style);
     applyStructuredData(element, value.data);
     if (
@@ -1043,9 +1038,6 @@
       listItem.className = "gloss-item";
       appendStructuredValue(documentRef, listItem, item, state, 0);
       list.appendChild(listItem);
-      if (state.nodes >= MAX_STRUCTURED_NODES) {
-        break;
-      }
     }
     parent.appendChild(list);
   }

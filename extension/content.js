@@ -1213,6 +1213,7 @@
     renderOptions = {},
     request = currentViewRequest,
   ) {
+    const token = lookupToken;
     currentViewRequest = request ?? null;
     activeTermRender = {
       candidate,
@@ -1225,6 +1226,8 @@
       view.renderResults(results, candidate, {
         ...renderContextFor(),
         ...renderOptions,
+        isCurrentRequest: () => !disposed && token === lookupToken,
+        onRenderError(error) { handleLookupFailure(token, error); },
         selectedDictionaryTab: currentViewRequest?.selectedDictionaryTab ?? null,
         onDictionaryTabSelected(selection) {
           if (request) request.selectedDictionaryTab = normalizedDictionaryTab(selection);

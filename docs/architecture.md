@@ -137,6 +137,18 @@ script clears the failed request's popup, but an older failed request cannot
 hide a newer result. These are lookup transport bounds, not archive-size,
 dictionary-entry, source-document, or media-count product limits.
 
+Structured glossary traversal rejects values beyond depth 24 or 1,048,576
+visited values per glossary, rather than silently truncating content. Containers,
+wrappers, and ignored values consume the same traversal budget as rendered text
+and elements; ordinary unknown-wrapper child text and literal glossary fallback
+remain supported. Rendering still uses one traversal after JSON parsing.
+
+Deferred glossary fills and their layout callbacks belong to both the current
+lookup request and the current result panel. A newer pending request, a tab
+projection, clear, or destroy invalidates obsolete work before it can render or
+request media. Initial synchronous render errors reach the content-script catch;
+later tab, expansion, and deferred errors clear only their owning current view.
+
 ## Dictionary presentation boundary
 
 Imported styles are parsed in a detached browser stylesheet, filtered, and only

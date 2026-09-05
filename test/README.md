@@ -270,7 +270,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 200 checks, all of
+full request→reply round trip per contract-C message type. 205 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -379,6 +379,12 @@ What it proves, in order:
    of one term-bank row, so each of its elements must land in its own
    `li.gloss-item` — appending them into one parent runs two senses together with
    no separator, which is asserted against the fixture's own two-sense entry.
+   Focused boundary checks accept depth 24 and reject 25; seed the exported
+   traversal's node counter to test exact capacity without a million-node DOM;
+   and include containers, wrappers, nulls, and ignored tags in that budget.
+   Deferred, tab, and Show more failures reach the current view owner. Replaced,
+   cleared, destroyed, or request-superseded fills do no rendering, media, or
+   layout work, and the actual content callbacks cannot clear a newer request.
 9. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
    and removing an unknown title does not bump `generation`. Removal strict-loads
    the remaining manifest and commits it before deleting the old root. The
@@ -509,7 +515,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 86 assertions, and the summary line
+`PLANNED` at the top of the file names all 87 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
