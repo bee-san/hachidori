@@ -233,9 +233,11 @@ FakeWorker.creationError = null;
 // real IDBFS/WASM behavior is covered by extension-smoke and chrome-fallback.
 const serviceLoad = Promise.withResolvers();
 const serviceLoading = Promise.withResolvers();
+const serviceStarted = Promise.withResolvers();
 const localRequests = [];
 let configured = false;
 let started = false;
+let statusError = null;
 globalThis.bridgeFallbackFixture = {
   loading: serviceLoading.resolve,
   loaded: serviceLoad.promise,
@@ -246,11 +248,15 @@ globalThis.bridgeFallbackFixture = {
     assert.equal(options.lowRam, true);
     configured = true;
   },
-  startEngine() { started = true; },
+  startEngine() {
+    started = true;
+    serviceStarted.resolve();
+  },
   handleEngineMessage(message) {
     if (message.type === "hd_status") {
       return Promise.resolve({
-        type: "hd_status_result", requestId: message.requestId, ok: true,
+        type: "hd_status_result", requestId: message.requestId,
+        ok: statusError === null, error: statusError,
         ready: true, loading: false, dictionaryCount: 3, generation: 7,
         threaded: false, storageBackend: "idbfs",
       });
@@ -288,6 +294,7 @@ try {
   assert.equal(loadingStatus.storageBackend, "idbfs");
   assert.equal(loadingStatus.threaded, false);
   serviceLoad.resolve();
+  await serviceStarted.promise;
   await tick();
   assert.equal(configured, true);
   assert.equal(started, true);
@@ -306,10 +313,14 @@ try {
   assert.equal(realStatus.generation, 7);
 
   for (const fails of [false, true]) {
+    statusError = fails ? "test reload failure" : null;
+    assert.equal((await send("hd_status", "local-status-before-mutation")).error, statusError);
     const mutation = request("hd_custom_append", `local-mutation-${fails}`);
     await tick();
     assert.equal(localRequests.length, 1);
     const status = await send("hd_status", "local-busy-status");
+    assert.equal(status.ok, !fails, "cached status must preserve a known engine failure");
+    assert.equal(status.error, statusError);
     assert.equal(status.loading, true);
     assert.equal(status.threaded, false);
     assert.equal(status.storageBackend, "idbfs");
@@ -323,6 +334,10 @@ try {
     assert.equal((await mutation.promise).ok, !fails);
     assert.equal(mutation.responses.length, 1);
   }
+  statusError = null;
+  const restoredStatus = await send("hd_status", "local-restored-status");
+  assert.equal(restoredStatus.ok, true);
+  assert.equal(restoredStatus.error, null, "normal status still reaches engine recovery");
   const healthy = request("hd_lookup", "local-healthy");
   await tick();
   assert.equal(localRequests.length, 1, "local failure releases its admission and lock");
