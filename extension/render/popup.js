@@ -1895,6 +1895,7 @@
                 dictionary,
                 generation: renderContext.generation,
                 isCurrent,
+                onExternalLink: renderContext.onExternalLink,
                 onInternalLink: renderContext.onInternalLink,
                 onLayoutChange: positionIfCurrent,
                 requestImagePreview,

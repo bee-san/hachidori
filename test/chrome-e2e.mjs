@@ -1287,6 +1287,7 @@ async function setDictionaryAliasInSettings(page, title, alias) {
 }
 
 async function checkDictionaryStyles(page) {
+  await page.addScriptTag({ url: new URL("external-links.js", page.url()).href });
   await page.addScriptTag({ url: new URL("render/glossary.js", page.url()).href });
   const requests = [];
   const intercept = (request) => {
