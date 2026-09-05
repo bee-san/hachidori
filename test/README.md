@@ -411,9 +411,9 @@ What it proves, in order:
    evict on one extra entry/byte, and reset byte accounting on invalidation.
    Preview checks cover lazy closed-shadow ownership, exact source reuse without
    another media request, viewport corners, unchanged inline dimensions,
-   hover/focus and failure cleanup, tab/clear/destroy, and dismissal before new
-   term/kanji replies or settings invalidation. Late loads cannot steal newer
-   preview intent or revive a dismissed preview. Keyboard scroll retains its
+   combined hover/focus retention and failure cleanup, tab/clear/destroy, and
+   dismissal before new term/kanji replies or settings invalidation. Late loads
+   cannot steal newer preview intent or revive a dismissed preview. Keyboard scroll retains its
    focused owner; keyboard focus cancels hover dismissal, while ordinary blur
    rearms it and content replacement does not hide a refreshed Note result.
    An ad-hoc format-3 fixture imports genuine AVIF and SVG through the real WASM

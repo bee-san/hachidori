@@ -7629,6 +7629,14 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
         && links[0].querySelector(".gloss-image-container").style.width === "16px",
       JSON.stringify({ lazy, stable, requests, beforeRequests, source: firstSource?.src }));
 
+    event(links[0], "mouseleave");
+    const focusSurvivedLeave = preview() === first;
+    event(links[0], "mouseenter");
+    links[0].blur();
+    const hoverSurvivedBlur = preview() === first;
+    event(links[0], "mouseleave");
+    const bothLeftClosed = !preview();
+    links[0].focus();
     links[1].focus();
     const second = preview();
     event(links[0], "mouseleave");
@@ -7662,8 +7670,10 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
     event(links[0].querySelector("img"), "error");
     const failed = !preview();
     check("image previews clamp both viewport corners and close only their current hover or focus owner",
-      firstFits && secondFits && fractionalCornersFit && focusedScrollKept && staleLeaveIgnored && blurred && left && resized && scrolled && failed,
-      JSON.stringify({ firstFits, secondFits, fractionalCornersFit, focusedScrollKept, staleLeaveIgnored, blurred, left, resized, scrolled, failed }));
+      firstFits && secondFits && fractionalCornersFit && focusSurvivedLeave && hoverSurvivedBlur && bothLeftClosed
+        && focusedScrollKept && staleLeaveIgnored && blurred && left && resized && scrolled && failed,
+      JSON.stringify({ firstFits, secondFits, fractionalCornersFit, focusSurvivedLeave, hoverSurvivedBlur, bothLeftClosed,
+        focusedScrollKept, staleLeaveIgnored, blurred, left, resized, scrolled, failed }));
 
     links = await render();
     event(links[0], "mouseenter");

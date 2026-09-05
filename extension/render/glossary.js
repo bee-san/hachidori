@@ -731,6 +731,8 @@
       : () => {};
     const ownsView = typeof state.isCurrent === "function" ? state.isCurrent : () => true;
     const isCurrent = () => image.isConnected && ownsView();
+    let previewHovered = false;
+    let previewFocused = false;
     const showPreview = () => {
       if (!isCurrent()) return;
       state.requestImagePreview?.(link, image);
@@ -738,10 +740,25 @@
     const hidePreview = () => {
       state.hideImagePreview?.(link);
     };
-    link.addEventListener("mouseenter", showPreview);
-    link.addEventListener("mouseleave", hidePreview);
-    link.addEventListener("focus", showPreview);
-    link.addEventListener("blur", hidePreview);
+    const hideUnownedPreview = () => {
+      if (!previewHovered && !previewFocused) hidePreview();
+    };
+    link.addEventListener("mouseenter", () => {
+      previewHovered = true;
+      showPreview();
+    });
+    link.addEventListener("mouseleave", () => {
+      previewHovered = false;
+      hideUnownedPreview();
+    });
+    link.addEventListener("focus", () => {
+      previewFocused = true;
+      showPreview();
+    });
+    link.addEventListener("blur", () => {
+      previewFocused = false;
+      hideUnownedPreview();
+    });
     const failImage = () => {
       if (!isCurrent()) return;
       hidePreview();

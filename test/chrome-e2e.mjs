@@ -912,6 +912,15 @@ async function imagePreviewChrome({ browser, page, tab, popup }) {
     await popup.imagePreview(0, "focus");
     await tab.keyboard.press("Tab");
     const focused = await waitForPreview(state => state?.focusedImage === 1 && state.preview?.width === fixture.images[1].width, 1);
+    const focusRect = focused.sourceRect;
+    await tab.mouse.move(focusRect.left + focusRect.width / 2, focusRect.top + focusRect.height / 2);
+    await tab.mouse.move(1, 1);
+    const focusSurvivedLeave = (await popup.imagePreview(1))?.preview?.source === focused.preview.source;
+    await tab.mouse.move(focusRect.left + focusRect.width / 2, focusRect.top + focusRect.height / 2);
+    const hoverSurvivedBlur = (await popup.imagePreview(1, "blur"))?.preview?.source === focused.preview.source;
+    await tab.mouse.move(1, 1);
+    const bothLeftClosed = (await popup.imagePreview(1))?.preview === null;
+    await popup.imagePreview(1, "focus");
     const viewport = tab.viewport();
     const fits = ({ rect }) => rect.left >= 8 && rect.top >= 8
       && rect.right <= viewport.width - 8 && rect.bottom <= viewport.height - 8;
@@ -930,9 +939,11 @@ async function imagePreviewChrome({ browser, page, tab, popup }) {
       hovered.preview.rect.width > inline.width && hovered.preview.rect.height > inline.height
         && fits(hovered.preview) && fits(focused.preview) && focused.preview.sibling
         && focused.preview.hiddenFromAccessibility === "true" && focused.preview.pointerEvents === "none"
+        && focusSurvivedLeave && hoverSurvivedBlur && bothLeftClosed
         && focused.preview.animation === "gsm-hoshidicts-image-emerge" && reduced.preview.animation === "none"
         && focused.preview.background !== "rgba(0, 0, 0, 0)" && left.preview === null,
-      JSON.stringify({ hoverRect: hovered.preview.rect, focusRect: focused.preview.rect, animation: focused.preview.animation }));
+      JSON.stringify({ hoverRect: hovered.preview.rect, focusRect: focused.preview.rect, animation: focused.preview.animation,
+        focusSurvivedLeave, hoverSurvivedBlur, bothLeftClosed }));
 
     await popup.imagePreview(1, "blur");
     const blurred = await waitForPreview(state => state?.preview === null);

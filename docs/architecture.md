@@ -231,10 +231,12 @@ monochrome presentation are retained, and reduced motion disables the animation.
 
 One popup-owned requested image, including a still-loading image, controls the
 preview. A load may resume only that current intent: it cannot replace a newer
-focus/hover preview or revive one dismissed during loading. Leave, blur, image
-failure, tab/view replacement, pending navigation, settings invalidation and
-teardown dismiss the appropriate owner. Hover scrolling closes the preview;
-keyboard-induced popup scrolling repositions a still-visible focused owner.
+focus/hover preview or revive one dismissed during loading. Leave or blur
+dismisses the appropriate owner only when neither hover nor focus remains.
+Image failure, tab/view replacement, pending navigation, settings invalidation
+and teardown dismiss it regardless of those interaction states. Hover scrolling
+closes the preview; keyboard-induced popup scrolling repositions a still-visible
+focused owner.
 There is no document-wide observer, polling or per-image observer.
 
 Keyboard focus inside the popup cancels hover dismissal, while genuine focus
