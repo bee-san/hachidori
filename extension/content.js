@@ -351,7 +351,7 @@
   }
 
   function isEditingElement(element) {
-    return element.isContentEditable === true || EDITING_TAGS.has(element.localName);
+    return element?.isContentEditable === true || EDITING_TAGS.has(element?.localName);
   }
 
   function isScannableTextNode(node, styleCache) {
@@ -1582,7 +1582,7 @@
       return;
     }
     if (!options.hoverEnabled) return;
-    if (noteEditing || popupHasFocus()) {
+    if (noteEditing || popupHasFocus() || isEditingElement(document.activeElement)) {
       cancelPointerScan();
       clearHideTimer();
       return;
@@ -1653,7 +1653,7 @@
       return;
     }
     pointerInPopup = false;
-    if (noteEditing || popupHasFocus()) {
+    if (noteEditing || popupHasFocus() || isEditingElement(document.activeElement)) {
       cancelPointerScan();
       return;
     }
@@ -1706,7 +1706,7 @@
       cancelPointerScan();
       if (options.activationKey !== "Escape") return;
     }
-    if (!options.hoverEnabled) return;
+    if (!options.hoverEnabled || isEditingElement(document.activeElement)) return;
     // Pressing the gate key while the pointer is stationary should reveal the
     // word under it without asking the reader to jiggle the mouse.
     const wasPressed = activationPressed;
@@ -1844,7 +1844,8 @@
       || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
       || JSON.stringify(next.kanjiClickDictionary) !== JSON.stringify(options.kanjiClickDictionary);
     const activationChanged = next.lookupMode !== options.lookupMode || next.activationKey !== options.activationKey;
-    const interactionChanged = activationChanged || next.hoverEnabled !== options.hoverEnabled;
+    const interactionChanged = activationChanged || next.hoverEnabled !== options.hoverEnabled
+      || next.onlyScanJapaneseText !== options.onlyScanJapaneseText;
     const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
     if (activationChanged) {
