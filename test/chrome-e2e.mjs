@@ -191,6 +191,9 @@ const PLANNED = [
   "Settings puts the library first and supports keyboard navigation at 320px",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   "reader settings and their revision survive a full browser restart",
+  "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
+  "dictionary CSS cannot load remote resources or inherit resource-valued variables",
+  "dictionary CSS cannot paint or intercept input outside its glossary card",
   "settings page renders exactly four safe recommended dictionary links",
   "recommended dictionaries form two columns on desktop",
   "recommended dictionaries stack without overflow on narrow screens",
@@ -667,6 +670,127 @@ async function setDictionaryAliasInSettings(page, title, alias) {
   return { ...started, settled };
 }
 
+async function checkDictionaryStyles(page) {
+  await page.addScriptTag({ url: new URL("render/glossary.js", page.url()).href });
+  const requests = [];
+  const intercept = (request) => {
+    if (request.url().startsWith("https://dictionary-style.invalid/")) {
+      requests.push(request.url());
+      void request.abort();
+    } else {
+      void request.continue();
+    }
+  };
+  await page.setRequestInterception(true);
+  page.on("request", intercept);
+  let evidence;
+  try {
+    evidence = await page.evaluate(async () => {
+      const host = document.createElement("div");
+      host.style.setProperty("--external", 'url("https://dictionary-style.invalid/inherited.png")');
+      host.style.setProperty("--hoshidicts-palette-base-content", 'url("https://dictionary-style.invalid/palette.png")', "important");
+      document.body.appendChild(host);
+      const shadow = host.attachShadow({ mode: "open" });
+      const readerStyles = new CSSStyleSheet();
+      readerStyles.replaceSync(await (await fetch(chrome.runtime.getURL("render/reader.css"))).text());
+      shadow.adoptedStyleSheets = [readerStyles];
+      const popup = document.createElement("div");
+      popup.className = "gsm-hoshidicts-popup";
+      popup.style.cssText = "left:20px;top:20px;width:400px;height:300px";
+      popup.innerHTML = '<button class="outside" style="color:rgb(9, 9, 9)">Reader control</button>';
+      shadow.appendChild(popup);
+      const addGlossary = (dictionary) => {
+        const card = document.createElement("div");
+        card.className = "gsm-hoshidicts-glossary-card";
+        card.style.cssText = "width:200px;height:100px;box-sizing:border-box";
+        const glossary = document.createElement("div");
+        glossary.className = "gsm-hoshidicts-glossary-content";
+        glossary.dataset.hoshidictsDictionary = dictionary;
+        card.appendChild(glossary);
+        popup.appendChild(card);
+        return glossary;
+      };
+      const escapedTitle = '辞書 "\\\n] title';
+      const inside = addGlossary("scope-test");
+      inside.innerHTML = '<span class="inside">Definition <b class="nested">nested</b></span>';
+      const escaped = addGlossary(escapedTitle);
+      escaped.textContent = "Escaped title";
+      const apply = (generation, entries) => HDGlossary.applyDictionaryStyles(document, shadow, generation, entries);
+      const styles = apply(1, [
+        { dictionary: "scope-test", styles: '.inside { color:rgb(1, 2, 3); & .nested { font-weight:900; } } } .outside { color:rgb(200, 0, 0) !important; } :host { --escaped:yes; } @scope (.unused) {' },
+        { dictionary: escapedTitle, styles: ':scope { color:rgb(4, 5, 6); }' },
+        { dictionary: "scope-test", styles: '.inside { color:red; }' },
+      ]);
+      const scope = {
+        count: styles.length,
+        inside: getComputedStyle(inside.querySelector(".inside")).color,
+        nested: getComputedStyle(inside.querySelector(".nested")).fontWeight,
+        escapedTitle: getComputedStyle(escaped).color,
+        outside: getComputedStyle(popup.querySelector(".outside")).color,
+        escapedHost: getComputedStyle(host).getPropertyValue("--escaped"),
+      };
+      const network = addGlossary("network-test");
+      const resourceCases = [
+        'background-image:url("https://dictionary-style.invalid/direct.png")',
+        'background-image:u\\72l("https://dictionary-style.invalid/escaped.png")',
+        'background-image:image-set("https://dictionary-style.invalid/set.png" 1x)',
+        '--image:u\\72l("https://dictionary-style.invalid/custom.png");background-image:var(--image)',
+        'background-image:var(--external)',
+        'background-image:var(--text-color)',
+        'background-image:var(--fg, var(--external))',
+      ];
+      network.innerHTML = resourceCases.map((_, index) => `<div class="resource-${index}">Resource test</div>`).join("");
+      apply(2, [{ dictionary: "network-test", styles: [
+        '@import url("https://dictionary-style.invalid/import.css");',
+        '@font-face { font-family:remote-test; src:url("https://dictionary-style.invalid/font.woff2"); }',
+        ...resourceCases.map((value, index) => `.resource-${index} { ${value}; color:rgb(7, 8, 9); }`),
+        '.resource-0 { font-family:remote-test; }',
+      ].join("\n") }]);
+      const resources = [...network.children].map((element) => getComputedStyle(element).backgroundImage);
+      const replacement = shadow.querySelectorAll("style[data-hoshidicts-dictionary-style]").length === 1
+        && shadow.querySelector("style[data-hoshidicts-dictionary-style]").dataset.hoshidictsGeneration === "2"
+        && getComputedStyle(inside.querySelector(".nested")).fontWeight !== "900";
+      const globalRules = [...shadow.querySelector("style[data-hoshidicts-dictionary-style]").sheet.cssRules]
+        .map((rule) => rule.constructor.name);
+      // Flush style-driven requests before removing the test DOM/interceptor.
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      network.remove();
+      escaped.remove();
+      inside.innerHTML = '<div class="overlay">Dictionary overlay</div>';
+      apply(3, [{ dictionary: "scope-test", styles: '.overlay { position:fixed; inset:0; z-index:2147483647; background:red; box-shadow:0 0 0 10000px red; }' }]);
+      const overlay = inside.querySelector(".overlay");
+      const card = inside.parentElement;
+      const overlayRect = overlay.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      const controlRect = popup.querySelector(".outside").getBoundingClientRect();
+      const containment = {
+        paint: getComputedStyle(card).contain,
+        withinCard: overlayRect.left >= cardRect.left && overlayRect.top >= cardRect.top
+          && overlayRect.right <= cardRect.right && overlayRect.bottom <= cardRect.bottom,
+        control: shadow.elementFromPoint(controlRect.left + 2, controlRect.top + 2)?.className,
+        farPoint: shadow.elementFromPoint(700, 500)?.className ?? "",
+      };
+      host.remove();
+      return { scope, resources, replacement, globalRules, containment };
+    });
+  } finally {
+    await page.setRequestInterception(false);
+    page.off("request", intercept);
+  }
+  check("dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
+    evidence.scope.count === 2 && evidence.scope.inside === "rgb(1, 2, 3)"
+      && evidence.scope.nested === "900" && evidence.scope.escapedTitle === "rgb(4, 5, 6)"
+      && evidence.scope.outside === "rgb(9, 9, 9)" && evidence.scope.escapedHost === ""
+      && evidence.replacement, JSON.stringify(evidence));
+  check("dictionary CSS cannot load remote resources or inherit resource-valued variables",
+    requests.length === 0 && evidence.resources.every((value) => value === "none")
+      && evidence.globalRules.every((name) => name === "CSSScopeRule"), JSON.stringify({ evidence, requests }));
+  check("dictionary CSS cannot paint or intercept input outside its glossary card",
+    evidence.containment.paint === "paint" && evidence.containment.withinCard
+      && evidence.containment.control === "outside" && evidence.containment.farPoint !== "overlay",
+    JSON.stringify(evidence.containment));
+}
+
 async function checkSettingsAutosave(page, browser, settingsUrl) {
   const mirror = await browser.newPage();
   const edit = (target, changes) => target.evaluate((values) => {
@@ -898,6 +1022,7 @@ async function main() {
     JSON.stringify(branding),
   );
   await checkSettingsAutosave(page, browser, settingsUrl);
+  await checkDictionaryStyles(page);
 
   await page.waitForFunction(() =>
     document.querySelectorAll("#recommended-dictionary-list > li").length === 4
