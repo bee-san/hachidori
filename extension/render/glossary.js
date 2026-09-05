@@ -653,9 +653,17 @@
       : null;
     const aspectWidth = preferredWidth || width;
     const aspectHeight = preferredHeight || height;
-    const usedWidth = preferredWidth || (
+    let usedWidth = preferredWidth || (
       preferredHeight ? preferredHeight * width / height : width
     );
+    if (preferredWidth === null && preferredHeight !== null && (!Number.isFinite(usedWidth) || usedWidth === 0)) {
+      // The product can overflow/underflow even when the final width fits.
+      // Keep valid original results; try the other groupings only on failure.
+      usedWidth = preferredHeight * (width / height);
+      if (!Number.isFinite(usedWidth) || usedWidth === 0) {
+        usedWidth = (preferredHeight / height) * width;
+      }
+    }
     const units = value.sizeUnits === "em" ? "em" : "px";
     const maximumSize = units === "em" ? 64 : MAX_MEDIA_DISPLAY_SIZE;
     const displayWidth = Math.max(0.1, Math.min(maximumSize, usedWidth));
@@ -690,7 +698,6 @@
     const container = documentRef.createElement("span");
     container.className = "gloss-image-container";
     container.style.width = `${displayWidth}${units}`;
-    container.style.aspectRatio = `${aspectWidth} / ${aspectHeight}`;
     if (typeof value.title === "string" && value.title.length <= 4096) {
       container.title = value.title;
     }
@@ -704,6 +711,7 @@
 
     const sizer = documentRef.createElement("span");
     sizer.className = "gloss-image-sizer";
+    // One sizing rule owns the ratio; raw CSS aspect-ratio bypasses this cap.
     sizer.style.paddingTop = `${Math.min(10_000, aspectHeight / aspectWidth * 100)}%`;
     const background = documentRef.createElement("span");
     background.className = "gloss-image-background";

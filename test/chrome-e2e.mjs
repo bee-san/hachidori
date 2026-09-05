@@ -1014,8 +1014,10 @@ async function imageSizingChrome({ page, tab, popup }) {
       const maximumWidth = expected.width * (units === "em" ? display.fontSize : 1);
       return image.source === expectedSource && image.width === 16 && image.height === 16
         && display.inlineWidth.endsWith(units)
-        && Math.abs(Number.parseFloat(display.inlineWidth) - expected.width) < 1e-12
+        // CSSOM rounds the recovered fractional width to 0.202402px.
+        && Math.abs(Number.parseFloat(display.inlineWidth) - expected.width) < 1e-6
         && display.width <= maximumWidth + 1 / 64
+        && (index >= 7 || Math.abs(display.width - maximumWidth) <= 1 / 64)
         && Math.abs(display.height - display.width * expected.padding / 100) <= 1 / 32;
     }), JSON.stringify(state?.images.map(({ display }) => display)));
 }
