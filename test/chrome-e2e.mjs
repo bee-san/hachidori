@@ -1450,7 +1450,7 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
     await observe(rank, "ascending", "い");
     await editSettingsControls(settings, { "opt-frequency-order": "descending" });
     const manual = await observe(rank, "descending", "う");
-    await setDictionaryAliasInSettings(settings, rank, "Rank alias");
+    const alias = await setDictionaryAliasInSettings(settings, rank, "Rank alias");
     await settings.waitForFunction(() => document.getElementById("opt-frequency-order").value === "descending");
     manualSurvived = (await observe(rank, "descending", "う")).revision === manual.revision;
     await settings.bringToFront();
@@ -1460,8 +1460,9 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
     await editSettingsControls(settings, { "opt-frequency-dictionary": occurrence });
     await observe(occurrence, "descending", "う");
     const state = await settings.evaluate(async () => (await chrome.storage.local.get("dictionaryState")).dictionaryState);
-    metadata = fixture.dictionaries.every(({ title, frequencyMode }) =>
-      state.dictionaries.find((dictionary) => dictionary.title === title)?.frequencyMode === frequencyMode);
+    metadata = !!alias.settled && state.dictionaries.find((dictionary) => dictionary.title === rank)?.displayName === "Rank alias"
+      && fixture.dictionaries.every(({ title, frequencyMode }) =>
+        state.dictionaries.find((dictionary) => dictionary.title === title)?.frequencyMode === frequencyMode);
     evidence.push((await status()).generation === generation);
     if (process.env.HACHIDORI_FREQUENCY_SCREENSHOT) {
       await editSettingsControls(settings, { "opt-max-results": original["opt-max-results"] });

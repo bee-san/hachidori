@@ -4668,7 +4668,7 @@ async function settingsFrequencyStage() {
     const auto = field("auto");
     if (!auto) return { explicit: false, availability: false, draft: false, error: "Auto direction is missing" };
     const passive = storedOptions.frequencyOrder === "disabled" && field("order").value === "disabled"
-      && auto.disabled && writes.length === 0;
+      && auto.disabled && writes.length === 0 && auto.getAttribute("aria-label")?.includes(auto.textContent.trim());
     const rank = await edit("dictionary", "Rank");
     await edit("order", "descending");
     const beforeMetadata = writes.length;
