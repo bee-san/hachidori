@@ -6788,7 +6788,7 @@ async function contentNoteStage() {
         callbacks.onNoteEditingChange(false);
       }
       function recordRender(render) {
-        stopEditing();
+        if (render.context?.preserveViewControls !== true) stopEditing();
         record.renders.push(render);
         renders.push(render);
       }
@@ -7496,9 +7496,131 @@ async function contentNoteStage() {
     harness.callbacks().onBeforeResultsRendered();
     const currentTabLocal = harness.take("hd_lookup") === null;
     harness.close();
+
+    async function retainedReplay(kind = "term") {
+      const owner = await createHarness();
+      await owner.initialLookup();
+      if (kind === "clicked-term") {
+        const clicked = owner.callbacks().onKanjiClick("食");
+        owner.reply(owner.take("hd_lookup_dictionary"), { dictionaryCount: 1, results: [owner.term("食")] });
+        await clicked;
+      }
+      const request = owner.driver.viewRequest();
+      const context = owner.render().context;
+      const linked = owner.internalLink({ query: "generation child", primaryReading: "reading" });
+      owner.setStylesGeneration(3);
+      owner.reply(owner.take("hd_lookup"), { generation: 3, dictionaryCount: 1, results: [owner.term("generation child")] });
+      await linked;
+      return { owner, request, context, type: kind === "clicked-term" ? "hd_lookup_dictionary" : "hd_lookup" };
+    }
+
+    const protectedReplays = [];
+    for (const [kind, noteTiming, outcome] of [
+      ["term", "before", "hit"],
+      ["term", "during", "failure"],
+      ["term", "during", "miss"],
+      ["term", "during", "empty-library"],
+      ["clicked-term", "during", "hit"],
+    ]) {
+      const { owner, request, context, type } = await retainedReplay(kind);
+      try {
+        if (noteTiming === "before") owner.edit(true);
+        context.onDictionaryTabSelected({ dictionary: "Generic" });
+        owner.callbacks().onBeforeResultsRendered();
+        const held = owner.take(type);
+        if (!held) { protectedReplays.push(false); continue; }
+        if (noteTiming === "during") owner.edit(true);
+        const visible = owner.render();
+        const before = owner.sent.filter(message => message.type === type).length;
+        // Repeated input shares the held exact descriptor, but keeps the latest
+        // projection/expansion intent for the eventual current response.
+        context.onDictionaryTabSelected(null);
+        owner.callbacks().onBeforeResultsRendered({ expandAll: true });
+        context.onDictionaryTabSelected({ dictionary: "Generic" });
+        owner.callbacks().onBeforeResultsRendered();
+        const expandAll = kind === "clicked-term";
+        if (expandAll) owner.callbacks().onBeforeResultsRendered({ expandAll: true });
+        const shared = owner.sent.filter(message => message.type === type).length === before;
+        owner.reply(held, outcome === "failure" ? { error: "held replay failure" } : {
+          generation: 3, dictionaryCount: outcome === "empty-library" ? 0 : 1,
+          results: outcome === "hit" ? [owner.term("fresh projection")] : [],
+        }, outcome !== "failure");
+        await owner.settle();
+        const rendered = owner.render();
+        const protectedNote = owner.driver.snapshot().noteEditing && !owner.driver.snapshot().popupHidden
+          && owner.driver.viewRequest() === request;
+        const refreshed = outcome === "hit"
+          ? rendered !== visible && rendered.context.preserveViewControls === true
+            && rendered.context.expandAll === expandAll
+            && rendered.context.selectedDictionaryTab?.dictionary === "Generic"
+          : rendered === visible && context.isCurrentView() && !context.isCurrentRequest();
+        let normalBack = true;
+        if (kind === "clicked-term") {
+          const back = rendered.context.onBack();
+          const restoring = owner.take("hd_lookup");
+          if (restoring) owner.reply(restoring, { generation: 3, dictionaryCount: 1, results: [owner.term(owner.candidate.query)] });
+          await back;
+          normalBack = Boolean(restoring) && owner.render().context.preserveViewControls !== true
+            && owner.render().context.expandAll !== true && !owner.driver.snapshot().noteEditing;
+        }
+        protectedReplays.push(shared && protectedNote && refreshed && normalBack);
+      } finally { owner.close(); }
+    }
+
+    // A live internal anchor is insufficient when its page-root ancestor was
+    // detached during a protected failed replay.
+    const detached = await createHarness();
+    let detachedProtectedReply;
+    try {
+      await detached.initialLookup();
+      const child = detached.internalLink({ query: "retained child" });
+      detached.reply(detached.take("hd_lookup"), { dictionaryCount: 1, results: [detached.term("retained child")] });
+      await child;
+      const grandchild = detached.internalLink({ query: "new generation" }, 1);
+      detached.setStylesGeneration(3);
+      detached.reply(detached.take("hd_lookup"), { generation: 3, dictionaryCount: 1, results: [detached.term("new generation")] });
+      await grandchild;
+      detached.edit(true, 1);
+      detached.callbacks(1).onBeforeResultsRendered();
+      const failed = detached.take("hd_lookup");
+      const source = detached.driver.viewRequest(1).candidate.anchor;
+      detached.anchor.remove();
+      const ownAnchorStillConnected = source.isConnected;
+      if (failed) detached.reply(failed, { error: "detached ancestor" }, false);
+      await detached.settle();
+      detachedProtectedReply = Boolean(failed) && ownAnchorStillConnected
+        && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1);
+    } finally { detached.close(); }
+
+    // Sharing expires with its token: a child accepting another generation
+    // cannot make the next displayed action join the obsolete held replay.
+    const changed = await retainedReplay();
+    let generationEndsSharing;
+    try {
+      changed.owner.callbacks().onBeforeResultsRendered();
+      const oldReplay = changed.owner.take("hd_lookup");
+      const newerChild = changed.owner.internalLink({ query: "next generation" });
+      const childRequest = changed.owner.take("hd_lookup");
+      changed.owner.setStylesGeneration(4);
+      if (childRequest) changed.owner.reply(childRequest, { generation: 4, dictionaryCount: 1, results: [changed.owner.term("next generation")] });
+      await newerChild;
+      changed.context.onDictionaryTabSelected({ dictionary: "Generic" });
+      changed.owner.callbacks().onBeforeResultsRendered({ expandAll: true });
+      const newReplay = changed.owner.take("hd_lookup");
+      if (newReplay) changed.owner.reply(newReplay, { generation: 4, dictionaryCount: 1, results: [changed.owner.term("latest parent")] });
+      await changed.owner.settle();
+      const latest = changed.owner.render();
+      if (oldReplay) changed.owner.reply(oldReplay, { generation: 3, dictionaryCount: 1, results: [changed.owner.term("obsolete parent")] });
+      await changed.owner.settle();
+      generationEndsSharing = Boolean(oldReplay && childRequest && newReplay)
+        && changed.owner.render() === latest && latest.results[0].term.expression === "latest parent"
+        && latest.context.expandAll === true && changed.owner.driver.snapshot().currentGeneration === 4;
+    } finally { changed.owner.close(); }
+
     return { "retained parent navigation stays usable while stale tabs replay current dictionaries without reviving old resources":
       retained && linked?.request.text === "another child" && linked.request.options.primaryReading === "another reading"
-      && delegated && replay?.request.text === parentRequest.payload.text && fresh && currentTabLocal };
+      && delegated && replay?.request.text === parentRequest.payload.text && fresh && currentTabLocal
+      && protectedReplays.every(Boolean) && detachedProtectedReply && generationEndsSharing };
   }
 
   async function replyFirstCase() {
@@ -9518,6 +9640,19 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
       preserved.push(document.activeElement === outside);
       outside.remove();
     }
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const kanjiForm = popup.querySelector("form");
+    kanjiForm.elements.definition.value = "draft during generic fallback";
+    kanjiForm.elements.definition.focus();
+    view.renderKanji({ character: "食", entries: [{ dictionary: "Kanji", tags: "", onyomi: "ショク",
+      kunyomi: "", definitions: ["eat"], stats: [] }] }, candidate, { preserveViewControls: true, onBack() {} });
+    preserved.push(popup.querySelector("form") === kanjiForm && !kanjiForm.hidden
+      && document.activeElement === kanjiForm.elements.definition && kanjiForm.elements.definition.value === "draft during generic fallback");
+    view.closeNoteForm();
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    preserved.push(kanjiForm.elements.term.value === "食" && kanjiForm.elements.reading.value === "");
+    view.renderResults(results, candidate, context);
+    preserved.push(!kanjiForm.isConnected && !popup.querySelector("form"));
     check("same-view refresh preserves mounted Note drafts, pending saves and response-time focus",
       preserved.every(Boolean), JSON.stringify(preserved));
 

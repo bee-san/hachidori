@@ -116,6 +116,7 @@
       pendingCustomAppends: 0, deferredDictionaryInvalidationRevision: -1,
       deferredRefresh: null, lookupToken: 0, pendingLink: null,
       retainedView: false,
+      pendingViewReplay: null,
     };
   }
 
@@ -1063,6 +1064,16 @@
     return false;
   }
 
+  function retainProtectedReplay(request, token, level, replayOptions) {
+    if (!replayOptions?.preserveViewControls || disposed || level.retired
+        || token !== level.lookupToken || level.currentViewRequest !== request
+        || level.popup.hidden
+        || (!level.noteEditing && level.pendingCustomAppends === 0)) return false;
+    if (!requestCanRender(token, request.candidate, level)) return false;
+    level.retainedView = true;
+    return true;
+  }
+
   function positionPopup(fromLevel = rootLevel) {
     if (fromLevel.retired || !rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
       return;
@@ -1204,10 +1215,10 @@
       onAddCustomEntry: (entry) => appendCustomEntry(entry, level),
       onKanjiClick: (character, result, candidate, link) => showKanji(character, result, candidate, link, level),
       onNoteEditingChange: (editing) => onNoteEditingChange(editing, level),
-      onBeforeResultsRendered: () => {
+      onBeforeResultsRendered: (intent) => {
         pruneLevels(level.depth + 1);
         if (level.retainedView) {
-          void executeViewRequest(level.currentViewRequest, level);
+          replayVisibleView(level, intent);
           return false;
         }
       },
@@ -1509,6 +1520,7 @@
     renderOptions = {},
     request,
     level = rootLevel,
+    replayOptions = null,
   ) {
     request ??= level.currentViewRequest;
     level.deferredRefresh = null;
@@ -1531,6 +1543,7 @@
       level.view.renderResults(results, candidate, {
         ...renderContextFor(level),
         ...renderOptions,
+        ...replayOptions,
         isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken,
         isCurrentView: () => !disposed && !level.retired && level.currentViewRequest === request
           && (token === level.lookupToken || level.retainedView),
@@ -1555,15 +1568,15 @@
     }
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
-    if (typeof renderOptions.onBack === "function"
+    if (!replayOptions?.preserveViewControls && typeof renderOptions.onBack === "function"
         && (level === rootLevel || request?.previous || level.focusLinkedBack)) {
       focusPopupControl(".gsm-hoshidicts-kanji-back", level);
     }
   }
 
-  async function executeTermRequest(request, level = rootLevel) {
+  async function executeTermRequest(request, level = rootLevel, replayOptions = null) {
     const token = (level.lookupToken += 1);
-    level.retainedView = false;
+    level.retainedView = replayOptions?.preserveViewControls === true;
     level.view?.hideImagePreview();
     let reply;
     try {
@@ -1574,6 +1587,7 @@
         sendRequest("hd_lookup", request.payload),
       ]);
     } catch (error) {
+      if (retainProtectedReplay(request, token, level, replayOptions)) return false;
       return handleLookupFailure(token, error, level);
     }
     // Hover fires far faster than lookups return; anything but the newest reply
@@ -1586,6 +1600,7 @@
       .filter((result) => result && result.term
         && (!request.exactSelection || result.matched === request.payload.text));
     if (results.length === 0) {
+      if (retainProtectedReplay(request, token, level, replayOptions)) return false;
       if (reply.dictionaryCount === 0) {
         show(request.candidate, level);
         level.activeHighlightText = "";
@@ -1606,7 +1621,7 @@
       }
       return false;
     }
-    show(request.candidate, level);
+    if (!replayOptions?.preserveViewControls) show(request.candidate, level);
     const matched = results[0].matched || results[0].term.expression;
     if (request.highlightText === undefined) {
       request.highlightText = rawMatchedText(request.candidate, matched);
@@ -1618,6 +1633,7 @@
       backRenderOptions(request, level),
       request,
       level,
+      replayOptions,
     );
     return true;
   }
@@ -1685,11 +1701,11 @@
     return child.pendingLink;
   }
 
-  async function executeKanjiRequest(request, level = rootLevel) {
+  async function executeKanjiRequest(request, level = rootLevel, replayOptions = null) {
     const { candidate, capability, character } = request;
     const useTermDictionary = capability?.kind === "term";
     const token = (level.lookupToken += 1);
-    level.retainedView = false;
+    level.retainedView = replayOptions?.preserveViewControls === true;
     level.view?.hideImagePreview();
     let reply;
     try {
@@ -1697,6 +1713,7 @@
         ? await sendRequest("hd_lookup_dictionary", request.termPayload)
         : await sendRequest("hd_kanji", request.kanjiPayload);
     } catch (error) {
+      if (retainProtectedReplay(request, token, level, replayOptions)) return false;
       return handleLookupFailure(token, error, level);
     }
     if (!requestCanRender(token, candidate, level) || level.popup.hidden) {
@@ -1716,12 +1733,14 @@
           backRenderOptions(request, level),
           request,
           level,
+          replayOptions,
         );
         return true;
       }
       try {
         reply = await sendRequest("hd_kanji", request.kanjiPayload);
       } catch (error) {
+        if (retainProtectedReplay(request, token, level, replayOptions)) return false;
         return handleLookupFailure(token, error, level);
       }
       if (!requestCanRender(token, candidate, level) || level.popup.hidden) {
@@ -1731,12 +1750,14 @@
     }
     const kanji = reply.kanji;
     if (!kanji || !Array.isArray(kanji.entries) || kanji.entries.length === 0) {
+      retainProtectedReplay(request, token, level, replayOptions);
       return false;
     }
     const entries = capability?.kind === "kanji"
       ? kanji.entries.filter((entry) => entry.dictionary === capability.title)
       : kanji.entries;
     if (entries.length === 0) {
+      retainProtectedReplay(request, token, level, replayOptions);
       return false;
     }
     level.currentViewRequest = request;
@@ -1749,6 +1770,7 @@
         dictionaryPresentation: dictionaryPresentation(),
         highlightText: request.highlightText,
         ...backRenderOptions(request, level),
+        ...replayOptions,
       });
     } catch (error) {
       console.warn("hachidori: could not render kanji", error);
@@ -1757,7 +1779,7 @@
     }
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
-    focusPopupControl(".gsm-hoshidicts-kanji-back", level);
+    if (!replayOptions?.preserveViewControls) focusPopupControl(".gsm-hoshidicts-kanji-back", level);
     return true;
   }
 
@@ -1792,10 +1814,26 @@
     }, level);
   }
 
-  function executeViewRequest(request, level = rootLevel) {
+  function executeViewRequest(request, level = rootLevel, replayOptions = null) {
     return request.kind === "kanji"
-      ? executeKanjiRequest(request, level)
-      : executeTermRequest(request, level);
+      ? executeKanjiRequest(request, level, replayOptions)
+      : executeTermRequest(request, level, replayOptions);
+  }
+
+  function replayVisibleView(level, intent) {
+    const request = level.currentViewRequest;
+    const pending = level.pendingViewReplay;
+    if (pending?.request === request && pending.token === level.lookupToken) {
+      pending.options.expandAll = intent?.expandAll === true;
+      return;
+    }
+    const replayOptions = { preserveViewControls: true, expandAll: intent?.expandAll === true };
+    const operation = executeViewRequest(request, level, replayOptions);
+    const replay = { request, token: level.lookupToken, options: replayOptions };
+    level.pendingViewReplay = replay;
+    void operation.finally(() => {
+      if (level.pendingViewReplay === replay) level.pendingViewReplay = null;
+    });
   }
 
   async function appendCustomEntry(entry, level = rootLevel) {

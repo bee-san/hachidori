@@ -789,7 +789,49 @@ async function popupReader(page, depth = 0) {
     return result.value;
   }
 
-  return { click, deinflection, externalLink, imagePreview, nested, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+  async function retainedControls(action = "read") {
+    const object = await resolvePopupObject();
+    if (!object) return null;
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true, arguments: [{ value: action }],
+      functionDeclaration: `function (action) {
+        const root = this.getRootNode();
+        if (action === "focus-tab") this.querySelector('[role="tab"][aria-selected="true"]').focus();
+        if (action === "remember") {
+          root.__retainedControls?.observer.disconnect();
+          const form = this.querySelector("form");
+          const input = form.elements.definition;
+          input.focus();
+          input.setSelectionRange(2, 7);
+          const saved = { form, input, detached: false, panel: this.querySelector('.gsm-hoshidicts-tab-panel') };
+          const observer = new MutationObserver(records => {
+            saved.detached ||= records.some(record => [...record.removedNodes].includes(form));
+          });
+          observer.observe(this, { childList: true });
+          saved.observer = observer;
+          root.__retainedControls = saved;
+        }
+        if (action === "remember-panel") root.__retainedControls.panel = this.querySelector('.gsm-hoshidicts-tab-panel');
+        const saved = root.__retainedControls;
+        const input = saved?.input;
+        const rect = input?.getBoundingClientRect();
+        return {
+          toolbar: this.dataset.toolbarPosition,
+          sameForm: this.querySelector('form') === saved?.form,
+          mounted: saved?.form.isConnected && !saved.form.hidden && !saved.detached
+            && !saved.observer.takeRecords().some(record => [...record.removedNodes].includes(saved.form)),
+          draft: input?.value, selection: [input?.selectionStart, input?.selectionEnd],
+          inputFocused: root.activeElement === input,
+          inputReachable: rect && root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === input,
+          tabFocused: root.activeElement === this.querySelector('[role="tab"][aria-selected="true"]'),
+          replaced: this.querySelector('.gsm-hoshidicts-tab-panel') !== saved?.panel,
+        };
+      }`,
+    });
+    return result.value;
+  }
+
+  return { click, deinflection, externalLink, imagePreview, nested, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -994,7 +1036,7 @@ async function installMediaArchive(page, archive) {
   }, archive.toString("base64"));
 }
 
-async function checkNestedLinks(settings, tab, popup) {
+async function checkNestedLinks(settings, tab, popup, browser) {
   async function waitForPopupState(reader, predicate) {
     const deadline = Date.now() + 10_000;
     for (;;) {
@@ -1006,6 +1048,7 @@ async function checkNestedLinks(settings, tab, popup) {
   }
   const fixture = nestedLinksFixture();
   const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
+  const originalStyle = await tab.$eval("#verb", element => element.getAttribute("style"));
   const originalOptions = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options);
   const originalViewport = tab.viewport();
   const child = await popupReader(tab, 1);
@@ -1086,8 +1129,9 @@ async function checkNestedLinks(settings, tab, popup) {
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
     const disabled = await popup.nested();
+    const refreshedControls = await checkRetainedLinkControls(browser, settings, tab, popup, child, fixture, setDepth);
     evidence = { source, mouseChild, corridorRetained, pointerReturn, first, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
-      second, fullChain, limited, narrow, lowered, kanji, back, returned, retained, disabled };
+      second, fullChain, limited, narrow, lowered, kanji, back, returned, retained, disabled, refreshedControls };
   } finally {
     await setDepth(originalOptions.popupNestingMaxDepth ?? 10);
     const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
@@ -1095,6 +1139,9 @@ async function checkNestedLinks(settings, tab, popup) {
     }), fixture.title);
     if (!removed.ok) throw new Error(removed.error);
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+    await tab.$eval("#verb", (element, style) => {
+      if (style === null) element.removeAttribute("style"); else element.setAttribute("style", style);
+    }, originalStyle);
     await tab.setViewport(originalViewport);
     await tab.bringToFront();
     await tab.keyboard.press("Escape");
@@ -1113,7 +1160,91 @@ async function checkNestedLinks(settings, tab, popup) {
       && bounded(evidence.narrow)
       && evidence.lowered && evidence.kanji && evidence.back && evidence.returned
       && evidence.retained.sameParent && evidence.retained.sameAnchor && evidence.retained.imagesReady
-      && JSON.stringify(evidence.disabled.depths) === "[0]", JSON.stringify(evidence));
+      && JSON.stringify(evidence.disabled.depths) === "[0]"
+      && evidence.refreshedControls.every(Boolean), JSON.stringify(evidence));
+}
+
+async function checkRetainedLinkControls(browser, settings, tab, popup, child, fixture, setDepth) {
+  const favorite = await settings.evaluate(async (title) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    return chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_apply_state",
+      baseRevision: dictionaryState.revision,
+      dictionaries: dictionaryState.dictionaries.map(dictionary => dictionary.title === title
+        ? { ...dictionary, favorite: true } : dictionary) });
+  }, fixture.title);
+  if (!favorite.ok) throw new Error(favorite.error);
+  const worker = await installMediaReplyProbe(browser);
+  const evidence = [];
+  const hold = () => worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNextLookup = true; });
+  const waitHeld = () => worker.evaluate(async () => {
+    const deadline = Date.now() + 10_000;
+    while (!globalThis.__ownedMediaProbe.heldLookups.length) {
+      if (Date.now() >= deadline) throw new Error("retained view replay never reached its held reply");
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+  });
+  const release = () => worker.evaluate(() => {
+    for (const resume of globalThis.__ownedMediaProbe.heldLookups.splice(0)) resume();
+  });
+  async function refreshed() {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const value = await popup.retainedControls();
+      if (value?.replaced || Date.now() >= deadline) return value;
+      await new Promise(resolve => setTimeout(resolve, 30));
+    }
+  }
+  try {
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
+    await setDepth(1);
+    for (const position of ["top", "bottom"]) {
+      await tab.keyboard.press("Escape");
+      await tab.setViewport({ width: 900, height: 420 });
+      await tab.$eval("#verb", (element, position) => {
+        element.style.cssText = 'position:fixed;left:20px;' + (position === 'top' ? 'top:10px' : 'bottom:10px');
+      }, position);
+      await tab.bringToFront();
+      await hoverForPopup(tab, popup, "#verb");
+      if (position === "top") {
+        await popup.click(".gsm-hoshidicts-note-button");
+        await popup.writeNote({ definition: "retained draft before replay" });
+      } else {
+        await popup.nested("focus-link");
+        await tab.keyboard.press("Enter");
+        await child.waitForVisible();
+        await child.click(".gsm-hoshidicts-note-button");
+      }
+      await installMediaArchive(settings, fixture.archive);
+      await hold();
+      await popup.retainedControls("focus-tab");
+      await tab.keyboard.press("ArrowRight");
+      await waitHeld();
+      if (position === "bottom") {
+        await popup.click(".gsm-hoshidicts-note-button");
+        await popup.writeNote({ definition: "retained draft during replay" });
+      }
+      const before = await popup.retainedControls("remember");
+      await release();
+      const after = await refreshed();
+      evidence.push(after?.toolbar === position && after.sameForm && after.mounted
+        && after.inputFocused && after.inputReachable && after.draft === before.draft
+        && JSON.stringify(after.selection) === "[2,7]");
+      await installMediaArchive(settings, fixture.archive);
+      await hold();
+      await popup.retainedControls("remember-panel");
+      await popup.retainedControls("focus-tab");
+      await tab.keyboard.press("ArrowLeft");
+      await waitHeld();
+      await release();
+      const keyboard = await refreshed();
+      evidence.push(keyboard?.sameForm && keyboard.mounted && keyboard.tabFocused && keyboard.draft === before.draft);
+      await tab.keyboard.press("Escape");
+      await tab.keyboard.press("Escape");
+    }
+    return evidence;
+  } finally {
+    await restoreMediaReplyProbe(worker);
+  }
 }
 
 async function installMediaReplyProbe(browser) {
@@ -3599,7 +3730,7 @@ async function main() {
 
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
-  await checkNestedLinks(page, tab, popup);
+  await checkNestedLinks(page, tab, popup, browser);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
   await checkFrequencyDirection(browser, page, tab, popup);
