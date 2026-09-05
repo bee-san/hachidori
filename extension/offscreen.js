@@ -7,6 +7,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { boundLookupFailure } from "./lookup-response.js";
+
 const TARGET = "hoshidicts-offscreen";
 const MAX_PENDING_REQUESTS = 128;
 const PROBE_TIMEOUT_MS = 10_000;
@@ -66,12 +68,12 @@ function describe(error) {
 }
 
 function failedResponse(message, error) {
-  return {
+  return boundLookupFailure({
     type: `${message?.type || "hd_unknown"}_result`,
     requestId: message?.requestId ?? null,
     ok: false,
     error,
-  };
+  });
 }
 
 function failWorker(error) {

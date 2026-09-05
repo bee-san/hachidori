@@ -928,6 +928,14 @@
     return true;
   }
 
+  function handleLookupFailure(token, error) {
+    if (!disposed && token === lookupToken) {
+      console.debug("hachidori: lookup failed", error);
+      hide();
+    }
+    return false;
+  }
+
   function positionPopup() {
     if (!popup || popup.hidden || !activeCandidate) {
       return;
@@ -1253,10 +1261,7 @@
         sendRequest("hd_lookup", request.payload),
       ]);
     } catch (error) {
-      if (!disposed && token === lookupToken) {
-        console.debug("hachidori: lookup failed", error);
-      }
-      return;
+      return handleLookupFailure(token, error);
     }
     // Hover fires far faster than lookups return; anything but the newest reply
     // would repaint a word the pointer already left.
@@ -1350,8 +1355,7 @@
         ? await sendRequest("hd_lookup_dictionary", request.termPayload)
         : await sendRequest("hd_kanji", request.kanjiPayload);
     } catch (error) {
-      console.debug("hachidori: kanji lookup failed", error);
-      return false;
+      return handleLookupFailure(token, error);
     }
     if (!requestCanRender(token, candidate) || popup.hidden) {
       return false;
@@ -1374,8 +1378,7 @@
       try {
         reply = await sendRequest("hd_kanji", request.kanjiPayload);
       } catch (error) {
-        console.debug("hachidori: fallback kanji lookup failed", error);
-        return false;
+        return handleLookupFailure(token, error);
       }
       if (!requestCanRender(token, candidate) || popup.hidden) {
         return false;

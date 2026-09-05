@@ -1217,6 +1217,128 @@ check('ordered duplicate custom rows retain both definitions', () => {
     [JSON.stringify(['first']), JSON.stringify(['second'])], 'duplicate glossaries');
 });
 
+G('bounded lookup responses');
+
+const GLOSSARY_LIMIT = 8 * 1024 * 1024;
+const RESPONSE_LIMIT = 32 * 1024 * 1024;
+const BOUNDED_TITLE = 'bounded-lookup-fixture';
+const BOUNDED_DIR = `/dicts/${BOUNDED_TITLE}`;
+const definitionAtLimit = 'x'.repeat(GLOSSARY_LIMIT - 4);
+const multibyteAtLimit = 'あ'.repeat(Math.floor((GLOSSARY_LIMIT - 4) / 3))
+  + 'x'.repeat((GLOSSARY_LIMIT - 4) % 3);
+const escapeExpansion = '\\'.repeat(3 * 1024 * 1024 - 2);
+const boundedTerm = (expression, definition) => [expression, '', '', '', 1, [definition], 1, ''];
+const controlMetadata = Array.from({ length: 32 }, (_, byte) => ({
+  expression: `control-byte-${byte}`,
+  // Exercise controls in full eight-byte words and in the scalar tail,
+  // surrounded by both ASCII and high UTF-8 bytes.
+  displayValue: 'x'.repeat(byte % 17) + String.fromCharCode(byte) + 'あいう尾',
+}));
+const boundedTerms = [
+  boundedTerm('ascii-limit', definitionAtLimit),
+  boundedTerm('multibyte-limit', multibyteAtLimit),
+  boundedTerm('glossary-over', multibyteAtLimit + 'x'),
+  ...Array.from({ length: 4 }, () => boundedTerm('aggregate-over', definitionAtLimit)),
+  ...Array.from({ length: 3 }, () => boundedTerm('serialized-over', escapeExpansion)),
+  boundedTerm('control', 'control bytes in frequency metadata'),
+  ...controlMetadata.map(({ expression }) => boundedTerm(expression, 'individual control byte')),
+  boundedTerm('healthy', 'still loaded after a refused reply'),
+];
+const controlDisplayValue = 'control-\u0000-\u0001-\u001f';
+M.FS.writeFile('/work/bounded-lookup.zip', buildTitledZip(BOUNDED_TITLE, {
+  terms: boundedTerms,
+  termMeta: [
+    ['control', 'freq', { value: 1, displayValue: controlDisplayValue }],
+    ...controlMetadata.map(({ expression, displayValue }) => [expression, 'freq', { value: 1, displayValue }]),
+  ],
+}));
+const boundedReport = hdwImport('/work/bounded-lookup.zip', '/dicts');
+check('lookup response limits do not reject the imported archive', () => {
+  eq(boundedReport.success, true, `bounded fixture import: ${boundedReport.error}`);
+  eq(boundedReport.termCount, boundedTerms.length, 'all imported rows');
+});
+reset();
+eq(addDict(BOUNDED_DIR, 0), 1, `load bounded fixture: ${lastError()}`);
+eq(addDict(BOUNDED_DIR, 1), 1, `load bounded frequency fixture: ${lastError()}`);
+const boundedLookups = [
+  (query, options = '') => lookup(query, 32, 64, options),
+  (query, options = '') => lookupDictionary(query, BOUNDED_DIR, 32, 64, options),
+];
+
+check('both lookup endpoints retain exact 8 MiB ASCII and multibyte glossaries', () => {
+  for (const query of ['ascii-limit', 'multibyte-limit']) {
+    for (const run of boundedLookups) {
+      const result = run(query);
+      eq(lastError(), '', `${query} error`);
+      const glossary = result.results[0]?.term?.glossaries[0]?.glossary;
+      ok(typeof glossary === 'string', `${query} has no glossary`);
+      eq(Buffer.byteLength(glossary), GLOSSARY_LIMIT, `${query} raw UTF-8 bytes`);
+      ok(Buffer.byteLength(JSON.stringify(result)) < RESPONSE_LIMIT, `${query} response exceeds 32 MiB`);
+    }
+  }
+});
+check('both lookup endpoints refuse a glossary one UTF-8 byte over 8 MiB', () => {
+  for (const run of boundedLookups) {
+    const result = run('glossary-over');
+    ok(lastError().includes('glossary'), 'oversized glossary did not report its error');
+    eq(result.results.length, 0, 'oversized result was not discarded');
+  }
+});
+check('both lookup endpoints refuse the aggregate native copy budget', () => {
+  for (const run of boundedLookups) {
+    const result = run('aggregate-over');
+    ok(lastError().includes('aggregate'), 'aggregate copies did not report their error');
+    eq(result.results.length, 0, 'aggregate response was not discarded');
+  }
+});
+check('both lookup endpoints independently bound JSON escape expansion', () => {
+  for (const run of boundedLookups) {
+    const result = run('serialized-over');
+    ok(lastError().includes('serialized'), 'escape expansion did not report its error');
+    eq(result.results.length, 0, 'expanded response was not discarded');
+  }
+});
+check('lookup text and option strings use a 4 KiB UTF-8 boundary', () => {
+  const boundary = 'あ'.repeat(1365) + 'x';
+  eq(Buffer.byteLength(boundary), 4096, 'text boundary fixture');
+  for (const run of boundedLookups) {
+    run(boundary);
+    eq(lastError(), '', 'exact-boundary query');
+    run(boundary + 'x');
+    ok(lastError().includes('lookup text'), 'oversized query did not report its error');
+    for (const field of ['frequencyDictionary', 'primaryReading']) {
+      run('healthy', JSON.stringify({ [field]: boundary }));
+      eq(lastError(), '', `exact-boundary ${field}`);
+      run('healthy', JSON.stringify({ [field]: boundary + 'x' }));
+      ok(lastError().includes(field), `oversized ${field} did not report its error`);
+    }
+  }
+  kanji(boundary);
+  eq(lastError(), '', 'exact-boundary kanji query');
+  kanji(boundary + 'x');
+  ok(lastError().includes('kanji text'), 'oversized kanji query did not report its error');
+});
+check('native lookup JSON escapes control bytes without truncating the C string', () => {
+  const result = lookup('control', 32, 64);
+  eq(lastError(), '', 'control-byte lookup');
+  eq(result.results[0]?.term?.frequencies[0]?.frequencies[0]?.displayValue,
+    controlDisplayValue, 'frequency display controls');
+  for (const { expression, displayValue } of controlMetadata) {
+    const individual = lookup(expression, 1, 64);
+    eq(lastError(), '', `control-byte lookup ${expression}`);
+    eq(individual.results[0]?.term?.frequencies[0]?.frequencies[0]?.displayValue,
+      displayValue, `unaltered ${expression}`);
+  }
+});
+check('refused lookup responses leave the loaded dictionary usable', () => {
+  for (const run of boundedLookups) {
+    const result = run('healthy');
+    eq(lastError(), '', 'healthy follow-up error');
+    eq(result.dictionaryCount, 2, 'loaded dictionary count');
+    eq(result.results[0]?.term?.expression, 'healthy', 'healthy follow-up result');
+  }
+});
+
 // ---------------------------------------------------------------------------
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
