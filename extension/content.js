@@ -19,18 +19,18 @@
   const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
 
-  const { DEFAULT_OPTIONS, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
+  const { DEFAULT_OPTIONS, normaliseActivationKey, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
   const MODIFIER_PROPERTIES = new Map([
-    ["shift", "shiftKey"],
-    ["ctrl", "ctrlKey"],
-    ["alt", "altKey"],
+    ["Shift", "shiftKey"],
+    ["Control", "ctrlKey"],
+    ["Alt", "altKey"],
+    ["Meta", "metaKey"],
   ]);
 
   const POPUP_WIDTH_PX = 560;
   const POPUP_HEIGHT_PX = 420;
   const POPUP_GAP_PX = 4;
   const POPUP_PADDING_PX = 6;
-  const HIDE_DELAY_MS = 160;
   const MAX_MEDIA_CACHE_BYTES = 16 * 1024 * 1024;
   const MAX_MEDIA_CACHE_ENTRIES = 64;
   const MAX_MEDIA_CONCURRENT_REQUESTS = 4;
@@ -121,6 +121,9 @@
   let scanTimer = null;
   let hideTimer = null;
   let pointerInPopup = false;
+  let activationPressed = false;
+  let activationCode = null;
+  let pendingPointerLookupToken = null;
 
   let activeCandidate = null;
   let activeSignature = null;
@@ -657,6 +660,7 @@
     document.removeEventListener("mousemove", onMouseMove, true);
     document.removeEventListener("mousedown", onMouseDown, true);
     document.removeEventListener("keydown", onKeyDown, true);
+    document.removeEventListener("keyup", onKeyUp, true);
     document.removeEventListener("mouseout", onMouseOut, true);
     window.removeEventListener("scroll", onScroll, true);
     window.removeEventListener("blur", onWindowBlur);
@@ -1017,7 +1021,10 @@
     popup.className = "gsm-hoshidicts-popup";
     popup.dataset.hoshidictsDepth = "0";
     popup.hidden = true;
-    popup.addEventListener("focusin", clearHideTimer);
+    popup.addEventListener("focusin", () => {
+      cancelPointerScan();
+      clearHideTimer();
+    });
     popup.addEventListener("focusout", onPopupFocusOut);
     shadow.appendChild(popup);
     document.body.appendChild(host);
@@ -1087,6 +1094,8 @@
   }
 
   function hide() {
+    clearScanTimer();
+    pendingPointerLookupToken = null;
     clearHideTimer();
     activeCandidate = null;
     activeSignature = null;
@@ -1130,12 +1139,14 @@
     }
     // The gap between the word and the popup is dead space; give the pointer
     // time to cross it so the popup stays reachable and selectable.
-    hideTimer = window.setTimeout(() => {
+    const dismiss = () => {
       hideTimer = null;
       if (!noteEditing && !pointerInPopup && !popupHasFocus()) {
         hide();
       }
-    }, HIDE_DELAY_MS);
+    };
+    if (options.popupHideDelayMs === 0) dismiss();
+    else hideTimer = window.setTimeout(dismiss, options.popupHideDelayMs);
   }
 
   function renderContextFor() {
@@ -1524,9 +1535,28 @@
     }
   }
 
-  function modifierHeld(event) {
-    const property = MODIFIER_PROPERTIES.get(options.modifier);
-    return !property || event[property] === true;
+  function clearScanTimer() {
+    if (scanTimer !== null) {
+      window.clearTimeout(scanTimer);
+      scanTimer = null;
+    }
+  }
+
+  function cancelPointerScan() {
+    clearScanTimer();
+    // Retaining a rendered popup during transfer must not invalidate its media
+    // or deferred glossary. Only an unfinished pointer lookup loses ownership.
+    if (pendingPointerLookupToken === lookupToken) lookupToken += 1;
+    pendingPointerLookupToken = null;
+  }
+
+  function activationAllowed() {
+    return options.lookupMode === "hover" || activationPressed;
+  }
+
+  function updateModifierState(event) {
+    const property = MODIFIER_PROPERTIES.get(options.activationKey);
+    if (property) activationPressed = event[property] === true;
   }
 
   function pointInsidePopup(clientX, clientY) {
@@ -1543,22 +1573,27 @@
       teardown("context-invalidated");
       return;
     }
-    if (noteEditing) {
+    if (!options.hoverEnabled) return;
+    if (noteEditing || popupHasFocus()) {
+      cancelPointerScan();
       clearHideTimer();
       return;
     }
     pointerInPopup = isOurNode(pointer.target) ||
       pointInsidePopup(pointer.clientX, pointer.clientY);
     if (pointerInPopup) {
+      cancelPointerScan();
       clearHideTimer();
       return;
     }
-    if (!pointer.modifierHeld) {
+    if (!activationAllowed()) {
+      cancelPointerScan();
       scheduleHide();
       return;
     }
     const candidate = resolveCandidate(pointer.clientX, pointer.clientY);
     if (!candidate) {
+      cancelPointerScan();
       scheduleHide();
       return;
     }
@@ -1571,27 +1606,51 @@
       return;
     }
     clearHideTimer();
-    runLookup(candidate);
+    // A new valid pointer lookup owns this popup. Retire the previous view
+    // rather than leave its expired glossary/media and Note controls usable.
+    if (popup && !popup.hidden) hide();
+    const lookup = runLookup(candidate);
+    const token = lookupToken;
+    pendingPointerLookupToken = token;
+    void lookup.finally(() => {
+      if (pendingPointerLookupToken === token) pendingPointerLookupToken = null;
+    });
   }
 
   function onMouseMove(event) {
-    if (disposed) {
+    if (disposed || !options.hoverEnabled) {
       return;
     }
     lastPointer = {
       clientX: event.clientX,
       clientY: event.clientY,
-      modifierHeld: modifierHeld(event),
       target: event.target,
     };
+    updateModifierState(event);
     // Cancel a pending dismissal here rather than waiting for the throttled
     // scan, so the popup stays reachable even with hoverDelayMs turned up. The
     // retargeted event target is enough; the rect test costs a layout and can
     // wait for the scan.
     if (isOurNode(event.target)) {
       pointerInPopup = true;
+      cancelPointerScan();
       clearHideTimer();
+      return;
     }
+    pointerInPopup = false;
+    if (noteEditing || popupHasFocus()) {
+      cancelPointerScan();
+      return;
+    }
+    if (!activationAllowed()) {
+      cancelPointerScan();
+      scheduleHide();
+      return;
+    }
+    scheduleScan();
+  }
+
+  function scheduleScan() {
     if (scanTimer !== null) {
       return;
     }
@@ -1606,7 +1665,7 @@
   }
 
   function onMouseDown(event) {
-    if (disposed || popup === null || popup.hidden) {
+    if (disposed) {
       return;
     }
     if (!isOurNode(event.target) && !pointInsidePopup(event.clientX, event.clientY)) {
@@ -1615,7 +1674,7 @@
   }
 
   function onKeyDown(event) {
-    if (disposed) {
+    if (disposed || event.repeat) {
       return;
     }
     if (event.key === "Escape") {
@@ -1627,15 +1686,37 @@
         }
         event.stopPropagation();
         hide();
+        return;
       }
-      return;
+      cancelPointerScan();
+      if (options.activationKey !== "Escape") return;
     }
+    if (!options.hoverEnabled) return;
     // Pressing the gate key while the pointer is stationary should reveal the
     // word under it without asking the reader to jiggle the mouse.
-    const property = MODIFIER_PROPERTIES.get(options.modifier);
-    if (property && event[property] === true && lastPointer && !lastPointer.modifierHeld) {
-      lastPointer = { ...lastPointer, modifierHeld: true };
-      scanPointer(lastPointer);
+    const wasPressed = activationPressed;
+    updateModifierState(event);
+    if (normaliseActivationKey(event.key, null) === options.activationKey) {
+      activationPressed = true;
+      activationCode = event.code;
+    }
+    if (!wasPressed && activationPressed && options.lookupMode === "activation"
+        && lastPointer && !noteEditing && !popupHasFocus() && !pointerInPopup) {
+      scheduleScan();
+    }
+  }
+
+  function onKeyUp(event) {
+    if (disposed) return;
+    updateModifierState(event);
+    if (!MODIFIER_PROPERTIES.has(options.activationKey)
+        && (event.code === activationCode || normaliseActivationKey(event.key, null) === options.activationKey)) {
+      activationPressed = false;
+    }
+    if (!activationPressed) activationCode = null;
+    if (options.lookupMode === "activation" && !activationPressed) {
+      cancelPointerScan();
+      scheduleHide();
     }
   }
 
@@ -1644,17 +1725,25 @@
     // the window entirely, which mouseleave cannot report from here: it does not
     // bubble, and a capture listener would fire for every element left.
     if (!disposed && event.relatedTarget === null) {
+      lastPointer = null;
+      pointerInPopup = false;
+      cancelPointerScan();
       scheduleHide();
     }
   }
 
   function onWindowBlur() {
     if (!disposed) {
+      lastPointer = null;
+      activationPressed = false;
+      activationCode = null;
+      pointerInPopup = false;
       hide();
     }
   }
 
   function onScroll() {
+    cancelPointerScan();
     view?.hideImagePreview();
     if (disposed || !popup || popup.hidden || !activeCandidate) {
       return;
@@ -1694,6 +1783,7 @@
   function onNoteEditingChange(editing) {
     noteEditing = editing === true;
     if (noteEditing) {
+      cancelPointerScan();
       clearHideTimer();
     } else if (pendingCustomAppends === 0 && deferredDictionaryInvalidationRevision >= 0) {
       hide();
@@ -1735,10 +1825,37 @@
     const revision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
     if (revision <= optionsStorageRevision) return false;
     const next = normalizeOptions(stored);
-    const changed = JSON.stringify(next) !== JSON.stringify(options);
+    const lookupChanged = next.scanLength !== options.scanLength || next.maxResults !== options.maxResults
+      || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
+      || JSON.stringify(next.kanjiClickDictionary) !== JSON.stringify(options.kanjiClickDictionary);
+    const activationChanged = next.lookupMode !== options.lookupMode || next.activationKey !== options.activationKey;
+    const interactionChanged = activationChanged || next.hoverEnabled !== options.hoverEnabled;
+    const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
+    const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
+    if (activationChanged) {
+      activationPressed = false;
+      activationCode = null;
+    }
     optionsStorageRevision = revision;
     options = next;
-    return changed;
+    if (!options.hoverEnabled) {
+      lastPointer = null;
+      activationPressed = false;
+      activationCode = null;
+      hide();
+    }
+    else if (interactionChanged || scanDelayChanged) {
+      cancelPointerScan();
+      clearHideTimer();
+      if (!noteEditing && !popupHasFocus() && !pointerInPopup) {
+        if (!activationAllowed()) scheduleHide();
+        else if (lastPointer) scheduleScan();
+      }
+    } else if (hideDelayChanged) {
+      clearHideTimer();
+      scheduleHide();
+    }
+    return lookupChanged;
   }
 
   function start() {
@@ -1768,6 +1885,7 @@
     document.addEventListener("mousedown", onMouseDown, observe);
     document.addEventListener("mouseout", onMouseOut, observe);
     document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("keyup", onKeyUp, true);
     window.addEventListener("scroll", onScroll, observe);
     window.addEventListener("blur", onWindowBlur);
   }

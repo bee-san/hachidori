@@ -1319,6 +1319,26 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
   const unchanged = async (before) => JSON.stringify(await local.get(["options", "dictionaryState"]))
     === JSON.stringify(before);
   try {
+    const readerContext = createContext({});
+    runInContext(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"), readerContext);
+    const reader = readerContext.HDReaderOptions;
+    const plain = reader.normaliseOptions({ modifier: "none" });
+    const held = reader.normaliseOptions({ modifier: "ctrl" });
+    const explicit = reader.projectStoredOptions({ modifier: "alt", lookupMode: "hover", activationKey: "K" });
+    const legacyPatch = reader.validateOptionsPatch({ modifier: "shift" });
+    const invalidActivation = [
+      { hoverEnabled: 1 }, { lookupMode: "always" }, { activationKey: "not a key" },
+      { popupHideDelayMs: -1 }, { popupHideDelayMs: 5001 },
+    ].every((patch) => {
+      try { reader.validateOptionsPatch(patch); return false; } catch { return true; }
+    });
+    check("reader activation options migrate legacy modes without competing policies and validate new fields",
+      plain.hoverEnabled === true && plain.lookupMode === "hover" && plain.activationKey === "Shift"
+        && plain.popupHideDelayMs === 160 && held.lookupMode === "activation" && held.activationKey === "Control"
+        && explicit.lookupMode === "hover" && explicit.activationKey === "K" && explicit.modifier === undefined
+        && legacyPatch.lookupMode === "activation" && legacyPatch.activationKey === "Shift"
+        && legacyPatch.modifier === undefined && invalidActivation,
+      JSON.stringify({ plain, held, explicit, legacyPatch, invalidActivation }));
     const invalid = [
       { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
       { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { modifier: "meta" },
@@ -1337,7 +1357,8 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     check("reader options reject malformed known fields without committing and accept a healthy follow-up",
       rejected.every(Boolean) && healthy.ok === true && healthy.options?.revision === 3
         && healthy.options?.scanLength === 64 && healthy.options?.maxResults === 256
-        && healthy.options?.hoverDelayMs === 2000 && healthy.options?.modifier === "alt",
+        && healthy.options?.hoverDelayMs === 2000 && healthy.options?.lookupMode === "activation"
+        && healthy.options?.activationKey === "Alt" && healthy.options?.modifier === undefined,
       JSON.stringify({ rejected, healthy }));
 
     await local.set({ options: saved.options });
@@ -1358,7 +1379,8 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       ignored.ok === true && ignored.options?.revision === 2 && ignored.options?.unknown === undefined
         && ignoredUnchanged && conflict.ok === false && conflict.conflict === true && conflictUnchanged
         && conflict.options?.unknown === undefined && conflict.options?.scanLength === 20
-        && conflict.options?.maxResults === 256 && conflict.options?.modifier === "none"
+        && conflict.options?.maxResults === 256 && conflict.options?.lookupMode === "hover"
+        && conflict.options?.modifier === undefined
         && conflict.options?.kanjiClickDictionary?.ignored === undefined
         && conflict.options?.hoverDelayMs === 50 && conflict.options?.frequencyOrder === undefined
         && repaired.ok === true
@@ -4183,6 +4205,9 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  for (const [name, passed] of Object.entries(noteContent?.activation ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   for (const [name, passed] of Object.entries(noteContent?.mediaOwnership ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -6430,6 +6455,12 @@ async function contentNoteStage() {
       return popup;
     },
     hideTimerPending() { return hideTimer !== null; },
+    setScanCandidate(candidate) { resolveCandidate = () => candidate; },
+    onMouseMove,
+    onMouseDown,
+    onMouseOut,
+    onWindowBlur,
+    onScroll,
     onInternalLink,
     onKeyDown,
     runLookup,
@@ -6442,6 +6473,7 @@ async function contentNoteStage() {
         currentGeneration,
         styleGeneration,
         dictionaryStateRevision,
+        noteEditing,
         dictionaries: dictionaries.map((dictionary) => ({ ...dictionary })),
         popupHidden: popup?.hidden === true,
       };
@@ -6966,6 +6998,202 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function activationCase() {
+    const result = {};
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const timers = new Map();
+    let nextTimer = 0;
+    window.setTimeout = (callback, delay) => {
+      const id = ++nextTimer;
+      timers.set(id, { callback, delay });
+      return id;
+    };
+    window.clearTimeout = (id) => timers.delete(id);
+    const fire = (delay) => {
+      const entry = [...timers].find(([, timer]) => timer.delay === delay);
+      if (!entry) return false;
+      timers.delete(entry[0]);
+      entry[1].callback();
+      return true;
+    };
+    const key = (type, value, code, extra = {}) => window.document.dispatchEvent(
+      new window.KeyboardEvent(type, { key: value, code, bubbles: true, ...extra }),
+    );
+    const move = (target = window.document.body, extra = {}) => harness.driver.onMouseMove({
+      clientX: 200, clientY: 200, target, ...extra,
+    });
+    const settings = { lookupMode: "activation", activationKey: "Shift", hoverDelayMs: 75, popupHideDelayMs: 250 };
+    harness.emitOptions(settings);
+    harness.driver.setScanCandidate(harness.candidate);
+    move();
+    fire(75);
+    const gated = harness.take("hd_lookup") === null;
+    key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
+    const delayed = harness.take("hd_lookup") === null && [...timers.values()].some((timer) => timer.delay === 75);
+    key("keyup", "Shift", "ShiftLeft");
+    const cancelledTimer = !fire(75);
+    key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
+    fire(75);
+    const pending = harness.take("hd_lookup");
+    key("keyup", "Shift", "ShiftLeft");
+    if (pending) harness.reply(pending, { dictionaryCount: 1, results: [harness.term("released")] });
+    await harness.settle();
+    result["activation release cancels delayed scans and a first pending reply without pointer motion"] =
+      gated && delayed && cancelledTimer && pending !== null && harness.driver.snapshot().popupHidden;
+
+    harness.emitOptions({ ...settings, activationKey: "/" });
+    key("keydown", "/", "Slash");
+    key("keydown", "/", "Slash", { repeat: true });
+    const oneTimer = [...timers.values()].filter((timer) => timer.delay === 75).length === 1;
+    fire(75);
+    const printable = harness.take("hd_lookup");
+    key("keyup", "?", "Slash", { shiftKey: true });
+    if (printable) harness.reply(printable, { dictionaryCount: 1, results: [harness.term("released punctuation")] });
+    await harness.settle();
+    result["configured printable activation keys release by physical code and ignore repeats"] =
+      oneTimer && printable !== null && harness.driver.snapshot().popupHidden;
+
+    harness.emitOptions({ ...settings, activationKey: "Escape" });
+    key("keydown", "Escape", "Escape");
+    key("keydown", "Escape", "Escape", { repeat: true });
+    fire(75);
+    const escaped = harness.take("hd_lookup");
+    if (escaped) harness.reply(escaped, { dictionaryCount: 1, results: [harness.term("Escape key")] });
+    await harness.settle();
+    key("keydown", "Escape", "Escape", { repeat: true });
+    const escapeRepeatRetained = !harness.driver.snapshot().popupHidden;
+    harness.edit(true);
+    harness.setCloseNext(true);
+    key("keydown", "Escape", "Escape");
+    key("keydown", "Escape", "Escape", { repeat: true });
+    const noteRepeatRetained = !harness.driver.snapshot().popupHidden && !harness.driver.snapshot().noteEditing;
+    key("keyup", "Escape", "Escape");
+    key("keydown", "Escape", "Escape");
+    result["Escape activation and Note dismissal require fresh presses rather than auto-repeat"] =
+      escaped !== null && escapeRepeatRetained && noteRepeatRetained && harness.driver.snapshot().popupHidden;
+    key("keyup", "Escape", "Escape");
+
+    const departures = [];
+    for (const reason of ["no-candidate", "window-exit", "blur", "Escape", "click", "scroll"]) {
+      harness.emitOptions({ ...settings, lookupMode: "hover" });
+      harness.driver.setScanCandidate(harness.candidate);
+      move();
+      fire(75);
+      const departed = harness.take("hd_lookup");
+      if (reason === "no-candidate") {
+        harness.driver.setScanCandidate(null);
+        move();
+        fire(75);
+      } else if (reason === "window-exit") harness.driver.onMouseOut({ relatedTarget: null });
+      else if (reason === "blur") harness.driver.onWindowBlur();
+      else if (reason === "Escape") key("keydown", "Escape", "Escape");
+      else if (reason === "scroll") harness.driver.onScroll();
+      else harness.driver.onMouseDown({ target: window.document.body, clientX: 200, clientY: 200 });
+      if (departed) harness.reply(departed, { dictionaryCount: 1, results: [harness.term(reason)] });
+      await harness.settle();
+      departures.push(departed !== null && harness.driver.snapshot().popupHidden);
+      harness.driver.onWindowBlur();
+    }
+    result["pointer departure, click, Escape, blur and scroll cancel the first pending popup"] =
+      departures.every(Boolean) || departures;
+
+    harness.emitOptions({ ...settings, lookupMode: "hover" });
+    await harness.initialLookup();
+    harness.driver.setScanCandidate(null);
+    move();
+    fire(75);
+    const transferDelay = harness.driver.hideTimerPending() && !harness.driver.snapshot().popupHidden
+      && [...timers.values()].some((timer) => timer.delay === 250);
+    move(harness.popup.getRootNode().host);
+    const transferred = !harness.driver.hideTimerPending();
+    fire(75);
+    harness.edit(true);
+    move();
+    fire(75);
+    const draftProtected = !harness.driver.hideTimerPending() && !harness.driver.snapshot().popupHidden;
+    harness.edit(false);
+    harness.emitOptions({ ...settings, lookupMode: "hover", popupHideDelayMs: 0 });
+    const retainedViewCurrent = harness.render().context.isCurrentRequest();
+    move();
+    fire(75);
+    fire(0);
+    result["configured transfer delays preserve popup entry and Note editing and allow immediate hide"] =
+      transferDelay && transferred && draftProtected && retainedViewCurrent && harness.driver.snapshot().popupHidden
+        || { transferDelay, transferred, draftProtected, retainedViewCurrent, hidden: harness.driver.snapshot().popupHidden };
+
+    harness.emitOptions({ ...settings, lookupMode: "hover" });
+    await harness.initialLookup();
+    const oldViewContext = harness.render().context;
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
+    move();
+    fire(75);
+    const supersededPointer = harness.take("hd_lookup");
+    const oldViewRetired = harness.driver.snapshot().popupHidden && !oldViewContext.isCurrentRequest();
+    const rendersBeforeNote = harness.renders.length;
+    harness.driver.setScanCandidate(null);
+    move();
+    fire(75);
+    if (supersededPointer) harness.reply(supersededPointer, { dictionaryCount: 1, results: [harness.term("late pointer")] });
+    await harness.settle();
+    const cancelledReplacement = harness.driver.snapshot().popupHidden && harness.renders.length === rendersBeforeNote;
+    await harness.initialLookup();
+    harness.edit(true);
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
+    move();
+    fire(75);
+    result["a new pointer candidate retires the old view while an open Note prevents replacement"] =
+      supersededPointer !== null && oldViewRetired && cancelledReplacement
+        && harness.driver.snapshot().noteEditing && harness.render().context.isCurrentRequest()
+        && harness.take("hd_lookup") === null && !harness.driver.snapshot().popupHidden;
+    harness.edit(false);
+
+    const focusedControl = window.document.createElement("button");
+    focusedControl.textContent = "Back";
+    harness.popup.append(focusedControl);
+    focusedControl.focus();
+    move();
+    fire(75);
+    const focusedRequest = harness.take("hd_lookup");
+    const focusKept = harness.popup.getRootNode().activeElement === focusedControl;
+    const focusedVisible = !harness.driver.snapshot().popupHidden;
+    if (focusedRequest) harness.reply(focusedRequest, { dictionaryCount: 1, results: [harness.term("incidental pointer")] });
+    await harness.settle();
+    result["keyboard-focused popup controls suppress incidental pointer replacements"] =
+      focusedRequest === null && focusKept && focusedVisible && harness.render().context.isCurrentRequest();
+    focusedControl.blur();
+
+    harness.driver.setScanCandidate(harness.candidate);
+    move();
+    harness.emitOptions({ ...settings, hoverEnabled: false });
+    const disabledTimer = !fire(75);
+    move();
+    fire(75);
+    const disabledScan = harness.take("hd_lookup") === null;
+    harness.emitOptions({ ...settings, lookupMode: "hover" });
+    const disabledPending = harness.driver.runLookup(harness.candidate);
+    const disabledRequest = harness.take("hd_lookup");
+    harness.emitOptions({ ...settings, hoverEnabled: false });
+    harness.reply(disabledRequest, { dictionaryCount: 1, results: [harness.term("disabled while pending")] });
+    await disabledPending;
+    const disabledReply = harness.driver.snapshot().popupHidden;
+    harness.emitOptions({ ...settings, lookupMode: "hover" });
+    await harness.initialLookup();
+    harness.edit(true);
+    const append = harness.callbacks().onAddCustomEntry({ term: "食べた", reading: "たべた", definition: "ate" });
+    const appendRequest = harness.take("hd_custom_append");
+    harness.emitOptions({ ...settings, hoverEnabled: false });
+    const closedDraft = harness.driver.snapshot().popupHidden;
+    harness.reply(appendRequest, { document: { revision: 2 }, state: harness.state(2, "saved while disabled") });
+    await append;
+    await harness.settle();
+    result["master disable stops scans and closes drafts without cancelling or refreshing a committed Note"] =
+      disabledTimer && disabledScan && disabledReply && closedDraft && harness.driver.snapshot().popupHidden
+        && harness.take("hd_lookup") === null;
+    harness.close();
+    return result;
+  }
+
   async function deferredInvalidationCase() {
     const harness = await createHarness();
     await harness.initialLookup();
@@ -7358,6 +7586,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
+    activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
@@ -7705,8 +7934,31 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
 
   view.renderNotice("nothing found", candidate);
   check("renderNotice replaces the view", popup.textContent.includes("nothing found"), JSON.stringify(popup.textContent));
+  const scrollProperty = Object.getOwnPropertyDescriptor(window.Element.prototype, "scrollTop");
+  let scrollWrites = 0;
+  Object.defineProperty(popup, "scrollTop", {
+    configurable: true,
+    get() { return scrollProperty.get.call(this); },
+    set(value) { scrollWrites += 1; scrollProperty.set.call(this, value); },
+  });
+  popup.hidden = true;
   view.clear();
-  equal("clear empties the popup", popup.childElementCount, 0);
+  const hiddenCleared = popup.childElementCount === 0 && scrollWrites === 0;
+  popup.hidden = false;
+  const visibleResets = [
+    () => view.renderNotice("nothing found", candidate),
+    () => view.renderKanji(kanji, candidate),
+    () => view.renderResults(lookup.results, candidate),
+  ].map((render) => {
+    popup.scrollTop = 120;
+    scrollWrites = 0;
+    render();
+    return scrollWrites > 0 && popup.scrollTop === 0;
+  });
+  check("clear empties hidden popups without scrolling and every visible view resets scroll",
+    hiddenCleared && visibleResets.every(Boolean), JSON.stringify({ hiddenCleared, visibleResets }));
+  delete popup.scrollTop;
+  view.clear();
   await imagePreviewStage({ view, popup, shadow, document, window, candidate,
     calculatePopupPosition: HDPopup.calculatePopupPosition,
     result: imageLookup.results[0], mediaUrl: media.dataUrl });

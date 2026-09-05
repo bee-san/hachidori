@@ -25,7 +25,7 @@ const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
 const UPDATE_TARGET = "hachidori-updates";
 const {
-  DEFAULT_OPTIONS, MODIFIERS, FREQUENCY_ORDERS,
+  DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   clampOption, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
@@ -37,6 +37,7 @@ const NUMBER_FIELDS = [
   { key: "scanLength", id: "opt-scan-length" },
   { key: "maxResults", id: "opt-max-results" },
   { key: "hoverDelayMs", id: "opt-hover-delay" },
+  { key: "popupHideDelayMs", id: "opt-hide-delay" },
 ];
 
 const numberFormat = new Intl.NumberFormat();
@@ -805,10 +806,15 @@ function renderOptions() {
       input.value = String(options[field.key]);
     }
   }
-  const modifier = element("opt-modifier");
-  if (modifier !== document.activeElement) {
-    modifier.value = options.modifier;
+  element("opt-hover-enabled").checked = options.hoverEnabled;
+  const mode = element("opt-lookup-mode");
+  if (mode !== document.activeElement) mode.value = options.lookupMode;
+  const activation = element("opt-activation-key");
+  if (activation.options.length === 0) {
+    for (const key of ACTIVATION_KEYS) activation.add(new Option(key, key));
   }
+  if (activation !== document.activeElement) activation.value = options.activationKey;
+  activation.disabled = options.lookupMode !== "activation";
   const order = element("opt-frequency-order");
   if (order !== document.activeElement) {
     order.value = options.frequencyOrder;
@@ -1733,8 +1739,17 @@ function attachHandlers() {
     });
   }
 
-  element("opt-modifier").addEventListener("change", (event) => {
-    options.modifier = MODIFIERS.includes(event.target.value) ? event.target.value : "none";
+  element("opt-hover-enabled").addEventListener("change", (event) => {
+    options.hoverEnabled = event.target.checked;
+    writeOptions();
+  });
+  element("opt-lookup-mode").addEventListener("change", (event) => {
+    options.lookupMode = LOOKUP_MODES.includes(event.target.value) ? event.target.value : "hover";
+    element("opt-activation-key").disabled = options.lookupMode !== "activation";
+    writeOptions();
+  });
+  element("opt-activation-key").addEventListener("change", (event) => {
+    options.activationKey = event.target.value;
     writeOptions();
   });
 

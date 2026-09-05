@@ -1161,7 +1161,8 @@
       currentToolbar = null;
       masonryObserver?.disconnect();
       popup.replaceChildren();
-      popup.scrollTop = 0;
+      // A hidden retirement needs no layout; the next visible render resets it.
+      if (!popup.hidden) popup.scrollTop = 0;
       setDefinitionBlurState("revealed");
     }
 

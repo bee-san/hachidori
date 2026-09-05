@@ -292,7 +292,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 242 checks, all of
+full request→reply round trip per contract-C message type. 251 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -323,6 +323,13 @@ What it proves, in order:
    include multibyte/escaped text, invalid/oversized correlation IDs, and a
    9→10 revision change; an oversized prospective success must fail before
    storage changes. Settings and content harnesses load the same shared script.
+   Activation cases cover legacy mode/key migration, strict new fields, delayed
+   stationary keydown, physical-code release and repeats, transfer/Note ownership,
+   interaction-only resource retention, focused-control pointer protection, and
+   cancellation of the first pending popup on departure/click/Escape/blur/scroll.
+   Hidden cleanup skips scroll writes; visible term, kanji and notice renders
+   reset scrolling. Master disable cancels scans and
+   stale replies without rolling back or refreshing a successful Note append.
 1. **Managed custom dictionary.** The source document and package state commit
    as one revision-checked write, ordinary state reads leave the potentially
    large source off their hot path, stale Settings saves fail without merging,
@@ -541,6 +548,13 @@ browser restart. The extension harness covers no-op revisions, atomic selector
 pruning, failed-save retry, first-input draft ownership, and old/repeated content
 storage events. `HACHIDORI_OPTIONS_SCREENSHOT` captures the saved Lookup section.
 
+The real browser also changes hover enablement and activation controls from
+Settings while the reading tab remains open. It proves close/re-enable without
+engine reload, stationary printable-key activation with open delay, delayed hide
+on release, and cancellation of a quick press/release. A non-default key is kept
+when switching back to Hover and checked with mode, enablement and hide delay
+after the full browser restart.
+
 Managed-update indexes are intercepted on the service-worker CDP target and
 archives on the offscreen-document target, which also covers its engine worker;
 the harness deliberately does not intercept the dedicated worker directly. The
@@ -568,7 +582,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 97 assertions, and the summary line
+`PLANNED` at the top of the file names all 99 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

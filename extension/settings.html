@@ -337,23 +337,32 @@
             </p>
           </div>
           <fieldset class="lookup-group">
-            <legend>Hover and scanning</legend>
+            <legend>When to look up</legend>
+            <label class="lookup-enable">
+              <input type="checkbox" id="opt-hover-enabled" />
+              <span>Enable hover lookups</span>
+            </label>
             <div class="fields">
               <label class="field">
-                <span class="field-label">Hover modifier</span>
-                <select id="opt-modifier">
-                  <option value="none">None &mdash; plain hover</option>
-                  <option value="shift">Shift</option>
-                  <option value="ctrl">Ctrl</option>
-                  <option value="alt">Alt</option>
+                <span class="field-label">Lookup mode</span>
+                <select id="opt-lookup-mode">
+                  <option value="hover">Hover</option>
+                  <option value="activation">Activation key + hover</option>
                 </select>
-                <span class="field-hint"
-                  >Hold this key for a lookup to fire.</span
-                >
+                <span class="field-hint">Look up automatically or only while holding a key.</span>
               </label>
-
               <label class="field">
-                <span class="field-label">Hover delay</span>
+                <span class="field-label">Activation key</span>
+                <select id="opt-activation-key"></select>
+                <span class="field-hint">Some keys are reserved by your browser or operating system.</span>
+              </label>
+            </div>
+          </fieldset>
+          <fieldset class="lookup-group">
+            <legend>Timing and scanning</legend>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">Open delay</span>
                 <span class="input-suffix">
                   <input
                     id="opt-hover-delay"
@@ -366,7 +375,14 @@
                 </span>
                 <span class="field-hint">Pause before the popup appears.</span>
               </label>
-
+              <label class="field">
+                <span class="field-label">Hide delay</span>
+                <span class="input-suffix">
+                  <input id="opt-hide-delay" type="number" min="0" max="5000" step="10" />
+                  <span class="suffix">ms</span>
+                </span>
+                <span class="field-hint">Time to move from a word into its popup.</span>
+              </label>
               <label class="field">
                 <span class="field-label">Scan length</span>
                 <input
