@@ -123,7 +123,7 @@
   let pointerInPopup = false;
   let activationPressed = false;
   let activationCode = null;
-  let pendingPointerLookupToken = null;
+  let pendingPointerLookup = null;
 
   let activeCandidate = null;
   let activeSignature = null;
@@ -1095,7 +1095,7 @@
 
   function hide() {
     clearScanTimer();
-    pendingPointerLookupToken = null;
+    pendingPointerLookup = null;
     clearHideTimer();
     activeCandidate = null;
     activeSignature = null;
@@ -1546,8 +1546,8 @@
     clearScanTimer();
     // Retaining a rendered popup during transfer must not invalidate its media
     // or deferred glossary. Only an unfinished pointer lookup loses ownership.
-    if (pendingPointerLookupToken === lookupToken) lookupToken += 1;
-    pendingPointerLookupToken = null;
+    if (pendingPointerLookup?.token === lookupToken) lookupToken += 1;
+    pendingPointerLookup = null;
   }
 
   function activationAllowed() {
@@ -1597,9 +1597,16 @@
       scheduleHide();
       return;
     }
+    const signature = candidateSignature(candidate);
+    if (pendingPointerLookup?.token === lookupToken
+        && pendingPointerLookup.signature === signature
+        && sameAnchorNode(candidate, pendingPointerLookup.candidate)) {
+      clearHideTimer();
+      return;
+    }
     if (
       popup && !popup.hidden &&
-      activeSignature === candidateSignature(candidate) &&
+      activeSignature === signature &&
       sameAnchorNode(candidate, activeCandidate)
     ) {
       clearHideTimer();
@@ -1610,10 +1617,10 @@
     // rather than leave its expired glossary/media and Note controls usable.
     if (popup && !popup.hidden) hide();
     const lookup = runLookup(candidate);
-    const token = lookupToken;
-    pendingPointerLookupToken = token;
+    const pending = { token: lookupToken, candidate, signature };
+    pendingPointerLookup = pending;
     void lookup.finally(() => {
-      if (pendingPointerLookupToken === token) pendingPointerLookupToken = null;
+      if (pendingPointerLookup === pending) pendingPointerLookup = null;
     });
   }
 
