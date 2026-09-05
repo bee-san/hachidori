@@ -141,6 +141,7 @@ function normaliseDictionary(row) {
     indexUrl: nonemptyString(row?.indexUrl),
     downloadUrl: nonemptyString(row?.downloadUrl),
     language: nonemptyString(row?.language),
+    frequencyMode: nonemptyString(row?.frequencyMode),
     termCount: nonnegativeCount(row?.termCount),
     frequencyCount: nonnegativeCount(row?.frequencyCount),
     pitchCount: nonnegativeCount(row?.pitchCount),

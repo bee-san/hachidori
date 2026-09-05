@@ -64,6 +64,7 @@ const DICTIONARY_PACKAGE_KEYS = [
   "enabled",
   "favorite",
   "frequencyCount",
+  "frequencyMode",
   "id",
   "indexUrl",
   "installedAt",
@@ -102,6 +103,7 @@ function genericPackage(overrides = {}) {
     language: "ja",
     termCount: 1,
     frequencyCount: 0,
+    frequencyMode: null,
     pitchCount: 0,
     kanjiCount: 0,
     mediaCount: 0,
@@ -4010,6 +4012,7 @@ async function main() {
       && settingsConflict.casRequests[0].baseRevision === 8
       && settingsConflict.casRequests[0].dictionaries[0].displayName === "My draft"
       && settingsConflict.casRequests[0].dictionaries[0].favorite === true
+      && settingsConflict.casRequests[0].dictionaries[0].frequencyMode === "rank-based"
       && settingsConflict.casRequests[1].type === "hd_apply_state"
       && settingsConflict.casRequests[1].baseRevision === 9
       && settingsConflict.casRequests[1].dictionaries[0].displayName === "My draft"
@@ -5672,7 +5675,7 @@ async function settingsConflictStage() {
   let state = {
     schemaVersion: 1,
     revision: 7,
-    dictionaries: [genericPackage()],
+    dictionaries: [genericPackage({ frequencyMode: "rank-based" })],
     groups: [],
   };
   let storageListener = null;
