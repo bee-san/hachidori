@@ -263,8 +263,8 @@ function isAvailableFrequencyDictionary(dictionary) {
   return dictionary.enabled !== false && hasCapability(dictionary, "freq");
 }
 
-function selectedFrequencyDictionary() {
-  return dictionaries.find((dictionary) => dictionary.title === options.frequencyDictionary
+function selectedFrequencyDictionary(title = options.frequencyDictionary) {
+  return dictionaries.find((dictionary) => dictionary.title === title
     && isAvailableFrequencyDictionary(dictionary));
 }
 
@@ -1792,6 +1792,12 @@ function attachHandlers() {
   });
 
   element("opt-frequency-dictionary").addEventListener("change", (event) => {
+    // A focused native chooser can outlive a dictionary capability change.
+    if (event.target.value && !selectedFrequencyDictionary(event.target.value)) {
+      event.target.value = options.frequencyDictionary;
+      setOptionsStatus("That frequency dictionary is no longer available.");
+      return;
+    }
     options.frequencyDictionary = event.target.value;
     applyFrequencyDirection();
   });

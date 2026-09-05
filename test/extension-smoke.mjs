@@ -4686,11 +4686,23 @@ async function settingsFrequencyStage() {
       && occurrence.frequencyDictionary === "Occurrence" && occurrence.frequencyOrder === "descending"
       && unknown === "descending" && any.frequencyDictionary === "" && any.frequencyOrder === "auto";
 
+    const chooser = field("dictionary");
+    chooser.focus();
+    chooser.value = "Rank";
+    chooser.dispatchEvent(new window.Event("input", { bubbles: true }));
+    const beforeUnavailableChoice = writes.length;
+    emitDictionaries({ frequencyCount: 0 });
+    chooser.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await new Promise((done) => setTimeout(done, 180));
+    const unavailableChoiceRefused = writes.length === beforeUnavailableChoice
+      && chooser.value === "" && storedOptions.frequencyDictionary === "";
+    chooser.blur();
     emitOptions({ frequencyDictionary: "Rank", frequencyOrder: "descending" });
     emitDictionaries({ frequencyCount: 0 });
     const manual = [...field("order").options].filter(({ value }) => ["ascending", "descending"].includes(value));
     const global = [...field("order").options].filter(({ value }) => ["auto", "disabled"].includes(value));
-    const availability = auto.disabled && manual.every(({ disabled }) => disabled) && global.every(({ disabled }) => !disabled)
+    const availability = unavailableChoiceRefused && auto.disabled
+      && manual.every(({ disabled }) => disabled) && global.every(({ disabled }) => !disabled)
       && field("dictionary").value === "Rank" && field("order").value === "descending";
     emitDictionaries({ frequencyCount: 3 });
     const baseRevision = storedOptions.revision;
