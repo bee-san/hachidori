@@ -276,6 +276,8 @@ const PLANNED = [
   "large media imports through OPFS while oversized and malformed fetches fail without poisoning the engine",
   "a late real media reply cannot replace a current generation image",
   "failed media exposes its failure state and text while a later hover retries",
+  "media cache deduplicates and bounds a real browser image burst",
+  "obsolete queued images never dispatch while started images stay reusable",
 ];
 
 const results = [];

@@ -6263,6 +6263,7 @@ async function contentNoteStage() {
     scanPointer,
     scheduleHide,
     showKanji,
+    teardown,
     snapshot() {
       return {
         currentGeneration,
@@ -6398,6 +6399,31 @@ async function contentNoteStage() {
       setCloseNext(value) { closeNext = value === true; },
       setStylesGeneration(value) { stylesGeneration = value; },
       setHoldStyles() { holdStyles = true; },
+      installMediaClock() {
+        const timers = new Map();
+        const originalSetTimeout = window.setTimeout.bind(window);
+        const originalClearTimeout = window.clearTimeout.bind(window);
+        let nextTimerId = -1;
+        window.setTimeout = (callback, delay, ...args) => {
+          if (delay !== 4000) return originalSetTimeout(callback, delay, ...args);
+          const id = nextTimerId--;
+          timers.set(id, callback);
+          return id;
+        };
+        window.clearTimeout = (id) => {
+          if (!timers.delete(id)) originalClearTimeout(id);
+        };
+        return {
+          size: () => timers.size,
+          expireFirst() {
+            const first = timers.entries().next().value;
+            if (!first) return false;
+            timers.delete(first[0]);
+            first[1]();
+            return true;
+          },
+        };
+      },
     };
   }
 
@@ -6970,9 +6996,138 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function boundedMediaCase() {
+    const result = {};
+    const url = "data:image/png;base64,YQ==";
+    const load = (harness, path) => {
+      const context = harness.render().context;
+      return context.resolveMedia({
+        dictionary: "Generic", generation: context.generation, path,
+        isCurrent: context.isCurrentRequest,
+      }).catch(() => null);
+    };
+    const count = (harness) => harness.sent.filter(({ type }) => type === "hd_media").length;
+    const reply = (harness, request, dataUrl = url) => harness.reply(request, { dataUrl });
+    async function drain(harness) {
+      for (;;) {
+        const request = harness.take("hd_media");
+        if (!request) return;
+        reply(harness, request);
+        await harness.settle();
+      }
+    }
+    async function fetch(harness, path, dataUrl = url) {
+      const operation = load(harness, path);
+      const request = harness.take("hd_media");
+      if (request) reply(harness, request, dataUrl);
+      return { value: await operation, fetched: request !== null };
+    }
+
+    const capacity = await createHarness();
+    await capacity.initialLookup();
+    const jobs = Array.from({ length: 132 }, (_, index) => load(capacity, `capacity-${index}.png`));
+    const deduped = load(capacity, "capacity-0.png");
+    const firstDispatch = count(capacity);
+    reply(capacity, capacity.take("hd_media"));
+    await capacity.settle();
+    const nextDispatch = count(capacity);
+    await drain(capacity);
+    const values = await Promise.all(jobs);
+    result["media admits 128 total jobs, dispatches four, and deduplicates even at capacity"] =
+      firstDispatch === 4 && nextDispatch === 5 && count(capacity) === 128
+        && values.slice(0, 128).every((value) => value === url)
+        && values.slice(128).every((value) => value === null) && await deduped === url;
+    capacity.close();
+
+    const timeout = await createHarness();
+    await timeout.initialLookup();
+    const clock = timeout.installMediaClock();
+    const timedJobs = Array.from({ length: 6 }, (_, index) => load(timeout, `timeout-${index}.png`));
+    const firstTimers = clock.size();
+    const expiredRequest = timeout.take("hd_media");
+    const expired = clock.expireFirst();
+    await timeout.settle();
+    const dispatchedAfterTimeout = count(timeout);
+    const timersAfterTimeout = clock.size();
+    reply(timeout, expiredRequest);
+    await timeout.settle();
+    const dispatchedAfterLateReply = count(timeout);
+    const retry = load(timeout, "timeout-0.png");
+    await drain(timeout);
+    const timedValues = await Promise.all(timedJobs);
+    result["media timeout starts at dispatch and a late reply cannot free capacity twice or poison retry"] =
+      firstTimers === 4 && expired && dispatchedAfterTimeout === 5 && timersAfterTimeout === 4
+        && dispatchedAfterLateReply === 5 && timedValues[0] === null
+        && await retry === url && count(timeout) === 7 && clock.size() === 0;
+    timeout.close();
+
+    const superseded = await createHarness();
+    await superseded.initialLookup();
+    const obsolete = Array.from({ length: 128 }, (_, index) => load(superseded, `old-${index}.png`));
+    await superseded.initialLookup();
+    const reattached = load(superseded, "old-4.png");
+    const fresh = load(superseded, "fresh.png");
+    await drain(superseded);
+    const oldValues = await Promise.all(obsolete);
+    const startedCache = await fetch(superseded, "old-0.png");
+    result["new views reattach matching queued media and prune obsolete work before capacity rejection"] =
+      count(superseded) === 6 && oldValues.slice(0, 5).every((value) => value === url)
+        && oldValues.slice(5).every((value) => value === null)
+        && await reattached === url && await fresh === url && !startedCache.fetched;
+    superseded.close();
+
+    const invalidations = [];
+    for (const kind of ["dictionary", "teardown"]) {
+      const harness = await createHarness();
+      await harness.initialLookup();
+      const timers = harness.installMediaClock();
+      let settled = 0;
+      const pending = Array.from({ length: 8 }, (_, index) => load(harness, `invalidated-${index}.png`)
+        .then((value) => { settled += 1; return value; }));
+      if (kind === "teardown") harness.driver.teardown();
+      else harness.emitState(harness.state(2, "new generation"));
+      await harness.settle();
+      const settledImmediately = settled === 8 && timers.size() === 0;
+      await drain(harness);
+      const rejected = (await Promise.all(pending)).every((value) => value === null);
+      invalidations.push(settledImmediately && rejected && count(harness) === 4);
+      harness.close();
+    }
+    result["resource invalidation and teardown settle all media without dispatching obsolete queued work"] =
+      invalidations.every(Boolean);
+
+    const entries = await createHarness();
+    await entries.initialLookup();
+    for (let index = 0; index < 64; index += 1) await fetch(entries, `entry-${index}.png`);
+    const exactEntries = await fetch(entries, "entry-0.png");
+    await fetch(entries, "entry-64.png");
+    const promoted = await fetch(entries, "entry-0.png");
+    const evicted = await fetch(entries, "entry-1.png");
+    result["media LRU accepts exactly 64 entries and promotes hits before evicting the oldest"] =
+      !exactEntries.fetched && !promoted.fetched && evicted.fetched && count(entries) === 66;
+    entries.close();
+
+    const bytes = await createHarness();
+    await bytes.initialLookup();
+    const largeUrl = `data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString("base64")}`;
+    for (let index = 0; index < 4; index += 1) await fetch(bytes, `bytes-${index}.png`, largeUrl);
+    const exactBytes = await fetch(bytes, "bytes-0.png", largeUrl);
+    await fetch(bytes, "one-byte.png");
+    const promotedBytes = await fetch(bytes, "bytes-0.png", largeUrl);
+    const evictedBytes = await fetch(bytes, "bytes-1.png", largeUrl);
+    bytes.emitState(bytes.state(2, "new generation"));
+    await bytes.initialLookup();
+    for (let index = 0; index < 4; index += 1) await fetch(bytes, `reset-${index}.png`, largeUrl);
+    const afterClear = await fetch(bytes, "reset-0.png", largeUrl);
+    result["media LRU measures decoded bytes, accepts exactly 16 MiB, and resets accounting on invalidation"] =
+      !exactBytes.fetched && !promotedBytes.fetched && evictedBytes.fetched && !afterClear.fetched;
+    bytes.close();
+    return result;
+  }
+
   return {
     callbacksWired,
-    mediaOwnership: await mediaOwnershipCase(),
+    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
     deferredInvalidation: await deferredInvalidationCase(),
