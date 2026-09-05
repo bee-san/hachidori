@@ -195,6 +195,7 @@ const PLANNED = [
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
   "Settings puts the library first and supports keyboard navigation at 320px",
+  "Settings light and dark themes keep every task view readable without horizontal overflow",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   "Settings rejects malformed and oversized option frames before commit and still autosaves without reload",
   "reader settings and their revision survive a full browser restart",
@@ -208,7 +209,7 @@ const PLANNED = [
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
   "dictionary CSS cannot paint or intercept input outside its glossary card",
   "settings page renders exactly four safe recommended dictionary links",
-  "recommended dictionaries form two columns on desktop",
+  "recommended dictionaries form a readable list on desktop",
   "recommended dictionaries stack without overflow on narrow screens",
   "a clean profile shows one recommended install action beside local import",
   "the recommended installer continues after a mocked download failure",
@@ -1048,7 +1049,29 @@ async function imageSizingChrome({ page, tab, popup }) {
     }), JSON.stringify(state?.images.map(({ display }) => display)));
 }
 
+async function showSettingsSection(page, id) {
+  // Do not foreground the tab here: reader activation tests deliberately keep
+  // their popup focused while changing a visible Settings view in another tab.
+  await page.$eval(`.settings-nav a[href="#${id}"]`, (link) => link.click());
+  await page.waitForFunction((sectionId) => {
+    const visible = [...document.querySelectorAll("main > section")].filter((section) => !section.hidden);
+    return visible.length === 1 && visible[0].id === sectionId
+      && document.querySelector('.settings-nav [aria-current="page"]')?.hash === `#${sectionId}`;
+  }, {}, id);
+}
+
+async function openDictionaryDetails(page, id) {
+  await showSettingsSection(page, "dictionaries");
+  const selector = `.dict-row[data-dictionary-id="${id}"] .dict-details`;
+  if (!await page.$eval(selector, (details) => details.open)) {
+    await page.bringToFront();
+    await page.click(`${selector} > summary`);
+  }
+  await page.waitForFunction((detailsSelector) => document.querySelector(detailsSelector)?.open, {}, selector);
+}
+
 async function setDictionaryEnabledInSettings(page, title, enabled) {
+  await showSettingsSection(page, "dictionaries");
   const started = await page.evaluate(async ({ dictionaryTitle, nextEnabled }) => {
     const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
     const row = [...document.querySelectorAll("#dict-list .dict-row")].find((candidate) =>
@@ -1089,6 +1112,11 @@ async function setDictionaryEnabledInSettings(page, title, enabled) {
 }
 
 async function setDictionaryAliasInSettings(page, title, alias) {
+  const id = await page.evaluate(async (dictionaryTitle) =>
+    (await chrome.storage.local.get("dictionaryState")).dictionaryState.dictionaries
+      .find((entry) => entry.title === dictionaryTitle)?.id, title);
+  if (!id) return { error: "dictionary state was missing" };
+  await openDictionaryDetails(page, id);
   const started = await page.evaluate(async ({ dictionaryTitle, nextAlias }) => {
     const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
     const row = [...document.querySelectorAll("#dict-list .dict-row")].find((candidate) =>
@@ -1108,7 +1136,11 @@ async function setDictionaryAliasInSettings(page, title, alias) {
   const settled = await page.waitForFunction(async ({ baseRevision, dictionaryTitle, nextAlias }) => {
     const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
     const dictionary = dictionaryState?.dictionaries?.find((entry) => entry.title === dictionaryTitle);
+    const row = [...document.querySelectorAll(".dict-row")].find((entry) => entry.dataset.dictionaryId === dictionary?.id);
     return dictionaryState?.revision > baseRevision && dictionary?.displayName === nextAlias
+      && row?.querySelector(".dict-details").open
+      && row.querySelector(".dict-display-name").checkVisibility()
+      && row.querySelector(".dict-display-name").value === nextAlias
       ? { id: dictionary.id, revision: dictionaryState.revision }
       : false;
   }, { timeout: 15_000, polling: 100 }, {
@@ -1282,6 +1314,7 @@ async function checkSettingsAutosave(page, browser, settingsUrl) {
     for (const target of [page, mirror]) {
       await target.waitForFunction(() => document.getElementById("engine-status").textContent.startsWith("Ready"),
         { timeout: 90_000, polling: 100 });
+      await showSettingsSection(target, "lookup");
     }
     await page.evaluate(() => {
       const original = chrome.runtime.sendMessage.bind(chrome.runtime);
@@ -1348,6 +1381,7 @@ async function checkSettingsAutosave(page, browser, settingsUrl) {
 }
 
 async function checkSettingsTransport(page) {
+  await showSettingsSection(page, "lookup");
   const evidence = await page.evaluate(async () => {
     const read = () => chrome.storage.local.get(["options", "dictionaryState"]);
     const status = () => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
@@ -1393,6 +1427,7 @@ async function readSettingsControls(settings, ids) {
 }
 
 async function editSettingsControls(settings, values) {
+  await showSettingsSection(settings, "lookup");
   await settings.evaluate((changes) => {
     for (const [id, value] of Object.entries(changes)) {
       const input = document.getElementById(id);
@@ -1451,6 +1486,7 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
     await editSettingsControls(settings, { "opt-frequency-order": "descending" });
     const manual = await observe(rank, "descending", "う");
     const alias = await setDictionaryAliasInSettings(settings, rank, "Rank alias");
+    await showSettingsSection(settings, "lookup");
     await settings.waitForFunction(() => document.getElementById("opt-frequency-order").value === "descending");
     manualSurvived = (await observe(rank, "descending", "う")).revision === manual.revision;
     await settings.bringToFront();
@@ -1867,8 +1903,8 @@ async function main() {
   const branding = await page.evaluate(() => {
     const manifest = chrome.runtime.getManifest();
     return {
-      heading: document.querySelector(".masthead h1")?.textContent?.trim() ?? "",
-      brand: document.querySelector(".brand")?.textContent?.trim() ?? "",
+      heading: document.querySelector(".brand-context")?.textContent?.trim() ?? "",
+      brand: document.querySelector(".brand span")?.textContent?.trim() ?? "",
       icons: manifest.icons ?? {},
       name: manifest.name,
       shortName: manifest.short_name,
@@ -1890,6 +1926,7 @@ async function main() {
   await checkSettingsAutosave(page, browser, settingsUrl);
   await checkSettingsTransport(page);
   await checkDictionaryStyles(page);
+  await showSettingsSection(page, "add-dictionaries");
 
   await page.waitForFunction(() =>
     document.querySelectorAll("#recommended-dictionary-list > li").length === 4
@@ -1923,13 +1960,11 @@ async function main() {
   );
   const desktopRects = desktopRecommendations.rects;
   check(
-    "recommended dictionaries form two columns on desktop",
-    desktopRecommendations.columns === 2
+    "recommended dictionaries form a readable list on desktop",
+    desktopRecommendations.columns === 1
       && desktopRects.length === RECOMMENDED_LINKS.length
-      && Math.abs(desktopRects[0].top - desktopRects[1].top) <= 1
-      && Math.abs(desktopRects[2].top - desktopRects[3].top) <= 1
-      && desktopRects[0].left < desktopRects[1].left
-      && desktopRects[2].top >= Math.max(desktopRects[0].bottom, desktopRects[1].bottom),
+      && desktopRects.every((rect, index) => rect.right > rect.left
+        && (index === 0 || rect.top >= desktopRects[index - 1].bottom)),
     JSON.stringify(desktopRecommendations),
   );
 
@@ -2000,16 +2035,16 @@ async function main() {
     starterHidden: document.getElementById("recommended-starter")?.hidden,
     installText: document.getElementById("install-recommended")?.textContent?.trim() ?? "",
     retryHidden: document.getElementById("recommended-retry")?.hidden,
-    localInputVisible: document.getElementById("import-file")?.closest(".file-button")?.hidden !== true,
+    localInputVisible: document.getElementById("import-file")?.checkVisibility() === true,
     dictionaryManagementVisible: document.getElementById("dict-list")?.closest(".card")?.hidden !== true,
   }));
   check(
     "a clean profile shows one recommended install action beside local import",
     cleanInstaller.starterHidden === false
-      && cleanInstaller.installText === "Install all recommended dictionaries"
+      && cleanInstaller.installText === "Install recommended"
       && cleanInstaller.retryHidden === true
       && cleanInstaller.localInputVisible === true
-      && cleanInstaller.dictionaryManagementVisible === true,
+      && cleanInstaller.dictionaryManagementVisible === false,
     JSON.stringify(cleanInstaller),
   );
   if (process.env.HACHIDORI_SETTINGS_SCREENSHOT) {
@@ -2149,6 +2184,7 @@ async function main() {
   );
 
   if (process.env.HACHIDORI_LIBRARY_SCREENSHOT) {
+    await showSettingsSection(page, "dictionaries");
     await page.setViewport({ width: 1280, height: 1100 });
     await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -2181,6 +2217,7 @@ async function main() {
   await page.setRequestInterception(false);
 
   // ------------------------------------------------------------------ import
+  await showSettingsSection(page, "add-dictionaries");
   const input = await page.$("#import-file");
   check("settings page exposes a .zip file input", !!input);
   if (!input) {
@@ -2279,6 +2316,7 @@ async function main() {
     lastUpdateCheck: LAST_UPDATE_CHECK,
   });
 
+  await showSettingsSection(page, "add-dictionaries");
   const batchInput = await page.$("#import-file");
   await batchInput.uploadFile(GENERIC_KANJI_FIXTURE, INVALID_FIXTURE, FIXTURE);
   const batchState = await page.waitForFunction(() => {
@@ -2351,6 +2389,7 @@ async function main() {
     return row?.querySelector(".dict-title")?.textContent === alias
       && row.querySelectorAll(".dict-badge").length === 5;
   }, { timeout: 10_000, polling: 100 }, FIXTURE_ALIAS).catch(() => {});
+  await openDictionaryDetails(page, FIXTURE_ID);
   const renderedDictionary = await page.evaluate(() => {
     const rows = [...document.querySelectorAll("#dict-list .dict-row")];
     const row = rows[0];
@@ -2388,6 +2427,7 @@ async function main() {
       && renderedDictionary.metadata.includes("Update source available"),
     `#dict-list: ${JSON.stringify(renderedDictionary)}`);
 
+  await showSettingsSection(page, "dictionaries");
   await page.setViewport({ width: 1280, height: 900 });
   const libraryFirst = await page.evaluate(() => {
     window.scrollTo(0, 0);
@@ -2416,7 +2456,8 @@ async function main() {
   await page.setViewport({ width: 320, height: 900 });
   await page.focus('.settings-nav a[href="#lookup"]');
   await page.keyboard.press("Enter");
-  await page.waitForFunction(() => location.hash === "#lookup");
+  await page.waitForFunction(() => location.hash === "#lookup" && !document.getElementById("lookup").hidden
+    && document.querySelector('.settings-nav [aria-current="page"]')?.hash === "#lookup");
   const narrowThemes = [];
   for (const theme of ["light", "dark"]) {
     await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
@@ -2429,23 +2470,85 @@ async function main() {
           const rect = input.getBoundingClientRect();
           return rect.width > 0 && rect.left >= 0 && rect.right <= width;
         }),
-        disabledRowReadable: getComputedStyle(document.querySelector(".dict-row.is-off")).opacity === "1",
-        emptyStatusExposed: getComputedStyle(document.getElementById("custom-dictionary-status")).display !== "none",
+        statusExposed: !document.getElementById("options-status").closest("[hidden]")
+          && document.getElementById("nav-status-lookup").textContent === "",
       };
     }));
   }
   await page.focus(".skip-link");
   await page.keyboard.press("Enter");
-  const skipFocusedMain = await page.evaluate(() => document.activeElement.id === "settings-content");
+  const skipFocusedMain = await page.evaluate(() => document.activeElement.id === "settings-content"
+    && !document.getElementById("lookup").hidden);
+  const readingNode = await page.$("#lookup");
+  await showSettingsSection(page, "updates");
+  await page.goBack();
+  await page.waitForFunction(() => !document.getElementById("lookup").hidden);
+  const historyRetainedView = await page.evaluate((node) => node === document.getElementById("lookup"), readingNode);
+  await readingNode.dispose();
+  await page.goForward();
+  await page.waitForFunction(() => !document.getElementById("updates").hidden);
+  await page.focus('.settings-nav a[href="#updates"]');
+  await page.keyboard.press("Enter");
+  const sameHashFocus = await page.evaluate(() => document.activeElement.id === "updates-heading");
   check(
     "Settings puts the library first and supports keyboard navigation at 320px",
-    libraryFirst && selectionActions && skipFocusedMain && shortWindowNavigation
-      && narrowThemes.every((theme) => theme.noOverflow && theme.fieldsFit
-        && theme.disabledRowReadable && theme.emptyStatusExposed),
-    JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, shortWindowNavigation, narrowThemes }),
+    libraryFirst && selectionActions && skipFocusedMain && shortWindowNavigation && historyRetainedView && sameHashFocus
+      && narrowThemes.every((theme) => theme.noOverflow && theme.fieldsFit && theme.statusExposed),
+    JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, shortWindowNavigation, historyRetainedView, sameHashFocus, narrowThemes }),
   );
+  const themeLayouts = [];
+  for (const width of [320, 1280]) {
+    await page.setViewport({ width, height: 900 });
+    for (const theme of ["light", "dark"]) {
+      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
+      for (const section of ["dictionaries", "lookup", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups"]) {
+        await showSettingsSection(page, section);
+        themeLayouts.push(await page.evaluate(({ theme, section }) => {
+          const root = getComputedStyle(document.documentElement);
+          const token = (name) => root.getPropertyValue(name).trim();
+          const luminance = (hex) => {
+            const rgb = hex.slice(1).match(/../gu).map((part) => Number.parseInt(part, 16) / 255)
+              .map((part) => part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4);
+            return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+          };
+          const contrast = (first, second) => {
+            const a = luminance(token(first));
+            const b = luminance(token(second));
+            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+          };
+          const panel = document.getElementById(section);
+          const primary = {
+            dictionaries: "dict-search", lookup: "opt-hover-enabled", "custom-dictionary": "custom-dictionary-open",
+            "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new",
+          };
+          const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
+            .filter((control) => control.checkVisibility());
+          const textPairs = [
+            ["--text", "--surface"], ["--text-dim", "--surface"], ["--text-dim", "--bg"],
+            ["--text-dim", "--surface-sunken"], ["--accent", "--accent-soft"],
+            ["--accent", "--surface"], ["--accent-contrast", "--accent"],
+            ["--error", "--surface"], ["--ok", "--bg"],
+          ];
+          return { theme, section, width: innerWidth,
+            taskVisible: panel.querySelector("h1").checkVisibility() && document.getElementById(primary[section]).checkVisibility(),
+            noOverflow: document.documentElement.scrollWidth <= innerWidth,
+            controlsFit: controls.every((control) => {
+              const rect = control.getBoundingClientRect();
+              return rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth + 1;
+            }),
+            textContrast: Math.min(...textPairs.map(([first, second]) => contrast(first, second))),
+            controlContrast: Math.min(contrast("--border-strong", "--surface"), contrast("--border-strong", "--surface-sunken")),
+          };
+        }, { theme, section }));
+      }
+    }
+  }
+  check("Settings light and dark themes keep every task view readable without horizontal overflow",
+    themeLayouts.every((layout) => layout.taskVisible && layout.noOverflow && layout.controlsFit
+      && layout.textContrast >= 4.5 && layout.controlContrast >= 3), JSON.stringify(themeLayouts));
   await page.emulateMediaFeatures([]);
   await page.setViewport({ width: 480, height: 900 });
+  await openDictionaryDetails(page, FIXTURE_ID);
   const narrowPosition = await page.evaluate(() => {
     const row = document.querySelector("#dict-list .dict-row");
     const actions = row?.querySelector(".dict-actions");
@@ -2579,6 +2682,7 @@ async function main() {
     genericId: GENERIC_KANJI_ID,
     revision: orderBeforeDrag.revision,
   }).then((handle) => handle.jsonValue());
+  await openDictionaryDetails(page, FIXTURE_ID);
   await page.evaluate((fixtureId) => {
     const row = [...document.querySelectorAll("#dict-list .dict-row")]
       .find((candidate) => candidate.dataset.dictionaryId === fixtureId);
@@ -2627,6 +2731,8 @@ async function main() {
       alias: current.dictionaries.find((dictionary) => dictionary.id === dictionaryId)?.displayName,
       lastDictionaryId: current.dictionaries.at(-1)?.id,
       focusedDictionaryId: document.activeElement?.closest(".dict-row")?.dataset.dictionaryId,
+      detailsOpen: document.querySelector(`[data-dictionary-id="${dictionaryId}"] .dict-details`)?.open,
+      aliasVisible: document.querySelector(`[data-dictionary-id="${dictionaryId}"] .dict-display-name`)?.checkVisibility(),
     };
   }, { beforeRevision: beforeAliasBlurAction, dictionaryId: FIXTURE_ID });
   check(
@@ -2634,7 +2740,8 @@ async function main() {
     aliasBlurAction.revision >= beforeAliasBlurAction + 2
       && aliasBlurAction.alias === "Blurred alias"
       && aliasBlurAction.lastDictionaryId === FIXTURE_ID
-      && aliasBlurAction.focusedDictionaryId === FIXTURE_ID,
+      && aliasBlurAction.focusedDictionaryId === FIXTURE_ID
+      && aliasBlurAction.detailsOpen && aliasBlurAction.aliasVisible,
     JSON.stringify({ beforeAliasBlurAction, aliasBlurAction }),
   );
   await page.click(`${aliasRowSelector} .dict-up`);
@@ -2646,7 +2753,8 @@ async function main() {
     revision: aliasBlurAction.revision,
   });
 
-  const groupManagement = await page.evaluate(async ({ fixtureId, genericId, fixtureAlias }) => {
+  await showSettingsSection(page, "dictionary-groups");
+  const groupManagement = await page.evaluate(async ({ fixtureId, genericId }) => {
     const nameInput = document.getElementById("dict-group-name-new");
     const createButton = document.getElementById("dict-group-create");
     const error = document.getElementById("dict-group-error");
@@ -2733,27 +2841,6 @@ async function main() {
     const memberMoveFocusRetained = document.activeElement?.classList.contains("dict-group-member-down") === true
       && document.activeElement.closest(".dict-group-member")?.dataset.dictionaryId === genericId;
 
-    const aliasInput = [...document.querySelectorAll("#dict-list .dict-row")]
-      .find((row) => row.dataset.dictionaryId === fixtureId)
-      ?.querySelector(".dict-display-name");
-    const beforeAlias = current.revision;
-    aliasInput.value = "Grouped alias";
-    aliasInput.dispatchEvent(new Event("change", { bubbles: true }));
-    current = await waitFor(beforeAlias, (candidate) => candidate.dictionaries
-      .find((dictionary) => dictionary.id === fixtureId)?.displayName === "Grouped alias");
-    const membershipAfterAlias = current.groups
-      .find((group) => group.id === studyGroupId).dictionaryIds;
-    const groupedAliasLabel = memberRow(studyGroupId, fixtureId)
-      ?.querySelector(".dict-group-member-name")?.textContent;
-
-    const restoredAliasInput = [...document.querySelectorAll("#dict-list .dict-row")]
-      .find((row) => row.dataset.dictionaryId === fixtureId)
-      ?.querySelector(".dict-display-name");
-    restoredAliasInput.value = fixtureAlias;
-    restoredAliasInput.dispatchEvent(new Event("change", { bubbles: true }));
-    current = await waitFor(current.revision, (candidate) => candidate.dictionaries
-      .find((dictionary) => dictionary.id === fixtureId)?.displayName === fixtureAlias);
-
     return {
       studyGroupId,
       normalisedName,
@@ -2768,10 +2855,19 @@ async function main() {
       membershipBeforeMove,
       membershipAfterMove,
       memberMoveFocusRetained,
-      membershipAfterAlias,
-      groupedAliasLabel,
     };
-  }, { fixtureId: FIXTURE_ID, genericId: GENERIC_KANJI_ID, fixtureAlias: FIXTURE_ALIAS });
+  }, { fixtureId: FIXTURE_ID, genericId: GENERIC_KANJI_ID });
+  const groupedAlias = await setDictionaryAliasInSettings(page, "hachidori-fixture", "Grouped alias");
+  if (!groupedAlias.settled) throw new Error(`Group alias did not settle: ${JSON.stringify(groupedAlias)}`);
+  await showSettingsSection(page, "dictionary-groups");
+  Object.assign(groupManagement, await page.evaluate(async ({ groupId, fixtureId }) => ({
+    membershipAfterAlias: (await chrome.storage.local.get("dictionaryState")).dictionaryState.groups
+      .find((group) => group.id === groupId).dictionaryIds,
+    groupedAliasLabel: document.querySelector(`[data-group-id="${groupId}"] [data-dictionary-id="${fixtureId}"] .dict-group-member-name`)?.textContent,
+  }), { groupId: groupManagement.studyGroupId, fixtureId: FIXTURE_ID }));
+  const restoredAlias = await setDictionaryAliasInSettings(page, "hachidori-fixture", FIXTURE_ALIAS);
+  if (!restoredAlias.settled) throw new Error(`Restored alias did not settle: ${JSON.stringify(restoredAlias)}`);
+  await showSettingsSection(page, "dictionary-groups");
   check(
     "named groups normalize unique names and keep stable dictionary memberships",
     groupManagement.normalisedName === "Study Deck"
@@ -2827,11 +2923,11 @@ async function main() {
   const externalFocus = await page.evaluate(async (groupId) => {
     const before = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
     const input = document.querySelector(`[data-group-id="${groupId}"] .dict-group-name`);
-    const search = document.getElementById("dict-search");
+    const outsideControl = document.querySelector('.settings-nav a[href="#lookup"]');
     input.focus();
     input.value = "Externally focused reading";
     input.dispatchEvent(new Event("change", { bubbles: true }));
-    search.focus();
+    outsideControl.focus();
 
     const deadline = Date.now() + 3000;
     let current;
@@ -2842,17 +2938,18 @@ async function main() {
     } while (Date.now() < deadline);
     await new Promise((resolveWait) => setTimeout(resolveWait, 50));
     return {
-      focusedId: document.activeElement?.id,
+      focusedHref: document.activeElement?.getAttribute("href"),
       name: current.groups.find((group) => group.id === groupId)?.name,
     };
   }, groupManagement.studyGroupId);
   check(
     "a newer external focus survives a group rerender",
-    externalFocus.focusedId === "dict-search"
+    externalFocus.focusedHref === "#lookup"
       && externalFocus.name === "Externally focused reading",
     JSON.stringify(externalFocus),
   );
 
+  await showSettingsSection(page, "lookup");
   const kanjiChooser = await page.evaluate(() => {
     const select = document.getElementById("opt-kanji-dictionary");
     return {
@@ -2950,6 +3047,7 @@ async function main() {
   // The editor must not read the potentially large source until the reader asks
   // for it. Saving here also puts the production ZIP compiler through the real
   // offscreen WASM importer before either popup Note path builds on that source.
+  await showSettingsSection(page, "custom-dictionary");
   const customEditorBeforeOpen = await page.evaluate(() => ({
     expanded: document.getElementById("custom-dictionary-open")?.getAttribute("aria-expanded"),
     formHidden: document.getElementById("custom-dictionary-form")?.hidden,
@@ -2966,6 +3064,13 @@ async function main() {
     textarea.value = source;
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
   }, CUSTOM_SETTINGS_SOURCE);
+  const sourceNode = await page.$("#custom-dictionary-source");
+  await showSettingsSection(page, "lookup");
+  await showSettingsSection(page, "custom-dictionary");
+  const sourceDraftRetained = await page.evaluate((node, source) =>
+    node === document.getElementById("custom-dictionary-source") && node.value === source, sourceNode, CUSTOM_SETTINGS_SOURCE);
+  await sourceNode.dispose();
+  if (!sourceDraftRetained) throw new Error("Navigating Settings replaced the unsaved source draft");
   await page.click("#custom-dictionary-save");
   const customSettingsResult = await page.waitForFunction(async ({ dictionaryId, dictionaryTitle, sourceKey, sourceText }) => {
     const stored = await chrome.storage.local.get([sourceKey, "dictionaryState"]);
@@ -3199,6 +3304,7 @@ async function main() {
   );
   await popup.click(".gsm-hoshidicts-kanji-back");
 
+  await showSettingsSection(page, "lookup");
   await page.select("#opt-kanji-dictionary", FIXTURE_TERM_SELECTION_VALUE);
   await page.waitForFunction(async (selection) => {
     const saved = (await chrome.storage.local.get("options")).options?.kanjiClickDictionary;
@@ -3560,6 +3666,7 @@ async function main() {
     throw new Error("Settings did not adopt the Note-appended custom source");
   }
   await page.bringToFront();
+  await showSettingsSection(page, "custom-dictionary");
   if (process.env.HACHIDORI_CUSTOM_SCREENSHOT) {
     await page.setViewport({ width: 960, height: 900 });
     const customCard = await page.$('section[aria-labelledby="custom-dictionary-heading"]');
@@ -3689,7 +3796,9 @@ async function main() {
     "managed archive",
   );
 
-  await page.evaluate(() => document.getElementById("update-check-now").click());
+  await showSettingsSection(page, "updates");
+  await page.bringToFront();
+  await page.click("#update-check-now");
   const checkSummary = await page.waitForFunction(() => {
     const text = document.getElementById("update-state")?.textContent?.trim() ?? "";
     return text.startsWith("Checked 2 managed dictionaries") ? text : false;
@@ -3763,12 +3872,16 @@ async function main() {
     fixtureId: FIXTURE_ID,
     genericId: GENERIC_KANJI_ID,
   }).then((handle) => handle.jsonValue()).catch(() => null);
+  await openDictionaryDetails(page, GENERIC_KANJI_ID);
+  const persistedRowVisible = await page.$eval(
+    `.dict-row[data-dictionary-id="${GENERIC_KANJI_ID}"] .dict-update`, (button) => button.checkVisibility());
+  await showSettingsSection(page, "updates");
   check(
     "managed update controls render persisted availability and last-checked state",
     persistedUpdateUi?.expectedLastChecked.startsWith("Last checked ") === true
       && persistedUpdateUi.fixtureUpdateHidden === true
       && persistedUpdateUi.genericUpdateHidden === false
-      && persistedUpdateUi.updateAllDisabled === false,
+      && persistedUpdateUi.updateAllDisabled === false && persistedRowVisible,
     JSON.stringify(persistedUpdateUi),
   );
 
@@ -3785,7 +3898,8 @@ async function main() {
     beforeUpdatePackage?.path,
     GENERIC_KANJI_TITLE,
   );
-  await page.evaluate(() => document.getElementById("update-all").click());
+  await showSettingsSection(page, "updates");
+  await page.click("#update-all");
   const manualUpdateSummary = await page.waitForFunction((dictionaryId) => {
     const text = document.getElementById("update-state")?.textContent?.trim() ?? "";
     return chrome.storage.local.get("dictionaryState").then(({ dictionaryState }) => {
@@ -4080,6 +4194,7 @@ async function main() {
   page = await browser.newPage();
   page.on("console", m => diagnostics.push(`[settings2] ${m.type()}: ${m.text()}`));
   await page.goto(settingsUrl, { waitUntil: "domcontentloaded" });
+  await showSettingsSection(page, "lookup");
 
   const restoredOptions = await page.waitForFunction(async (expected) => {
     const { options } = await chrome.storage.local.get("options");
@@ -4097,6 +4212,7 @@ async function main() {
     restoredOptions?.revision === optionsBeforeRestart.revision && restoredOptions !== null,
     JSON.stringify({ optionsBeforeRestart, restoredOptions }));
 
+  await showSettingsSection(page, "dictionaries");
   const persistedPackage = await page.waitForFunction(async (id, expectedPath) => {
     const t = (document.getElementById("dict-list")?.textContent || "");
     const { dictionaryState: state } = await chrome.storage.local.get("dictionaryState");
@@ -4112,8 +4228,9 @@ async function main() {
     persistedPackage?.path === replacedPackage.path
       && ownedGenerationRoot(persistedPackage.path, "hachidori-fixture") === replacedFixtureGeneration,
     `expected path: ${JSON.stringify(replacedPackage.path)}; persisted package: ${JSON.stringify(persistedPackage)}`);
+  await showSettingsSection(page, "add-dictionaries");
   const restartedSettingsUi = await page.evaluate(() => ({
-    localInputVisible: document.getElementById("import-file")?.closest(".file-button")?.hidden !== true,
+    localInputVisible: document.getElementById("import-file")?.checkVisibility() === true,
     starterHidden: document.getElementById("recommended-starter")?.hidden,
   }));
   check(
@@ -4210,6 +4327,7 @@ async function main() {
     ["media/exact.png", exactMediaBytes],
     ["media/over.png", Buffer.concat([exactMediaBytes, Buffer.from([0])])],
   ] });
+  await showSettingsSection(page, "add-dictionaries");
   await page.evaluate((base64) => {
     const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
     const transfer = new DataTransfer();

@@ -292,7 +292,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 271 checks, all of
+full request→reply round trip per contract-C message type. 273 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -516,7 +516,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 103 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 104 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -546,9 +546,13 @@ exact-view refresh, Back restoration, source adoption in the already-open
 Settings page, and retirement of each superseded OPFS generation.
 
 Settings layout checks cover library-first task order, selection-aware bulk
-actions, native keyboard section and skip links, short-window sidebar scrolling,
-and 320px layouts in light and dark mode. Disabled rows keep full text opacity,
-and empty status regions stay exposed instead of being removed from display.
+actions, native keyboard section and skip links, Back/Forward, same-hash focus,
+short-window sidebar scrolling, and mounted source drafts. All six views are
+checked at 320px and desktop widths in light and dark mode, including palette
+text/control contrast and visible-control overflow. Empty live regions stay
+available for their first announcement. The extension harness pins hidden-view
+save failures, unseen completions, draft retention without extra requests, and
+stable-ID Details expansion/focus across rerenders and filtering.
 Two real Settings pages exercise debounced option patches with one held reply:
 a newer external commit cannot be rolled back, and a stale queued draft surfaces
 a conflict with explicit discard. Revisioned options also survive the full
@@ -612,7 +616,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 103 assertions, and the summary line
+`PLANNED` at the top of the file names all 104 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

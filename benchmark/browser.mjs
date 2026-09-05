@@ -262,6 +262,12 @@ async function installImportProbe(page) {
 }
 
 async function importThroughSettings(page, archive, timeoutMs, beforeUpload) {
+  await page.bringToFront();
+  await page.click('.settings-nav a[href="#add-dictionaries"]');
+  await page.waitForFunction(() => {
+    const input = document.getElementById("import-file");
+    return input && !input.disabled && !input.closest("[hidden]") && input.getBoundingClientRect().width > 0;
+  }, { timeout: timeoutMs });
   await installImportProbe(page);
   const input = await page.$("#import-file");
   if (!input) throw new Error("settings.html has no #import-file");

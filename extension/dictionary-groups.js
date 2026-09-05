@@ -21,10 +21,6 @@ function element(id) {
   return document.getElementById(id);
 }
 
-function setError(message) {
-  element("dict-group-error").textContent = message;
-}
-
 function groupNameError(groups, name, excludedId = null) {
   if (name === "") return "Enter a group name.";
   const key = groupNameKey(name);
@@ -67,6 +63,7 @@ export function normaliseDictionaryGroups(value, installedDictionaries) {
 }
 
 export function createDictionaryGroupController({
+  setError,
   readState,
   readDictionaries,
   commitGroups,

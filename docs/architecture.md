@@ -415,13 +415,21 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 
 ## Settings interface
 
-Settings is one document with native section links: the installed library comes
-first, followed by import, updates, groups, custom source, and lookup preferences.
-The navigation becomes a wrapping link list in narrow windows; it does not need
-a router or duplicate views. Dictionary rows keep their stable controls across
-the existing focus-aware rerenders. Bulk actions appear when a selection exists,
-including selections outside the current search. Source editing remains lazy,
-and lookup preferences apply immediately; custom source still requires Save.
+Settings is one document with native hash links and one visible task section.
+All sections stay mounted, so navigation and browser history preserve reader
+drafts and the lazy custom editor without storage writes or engine requests.
+The rail becomes wrapping navigation in narrow windows; light and dark palettes
+follow the system preference. Inactive sections mirror pending work, errors, and
+unseen operation completions next to their links. Visiting a section clears its
+completion notice, not its source output or draft. Status setters own these
+notices; there are no observers or additional polling loops.
+
+Dictionary Details expansion is kept by stable package ID across focus-aware
+rerenders and search filtering. Direct enabled/order controls remain visible;
+alias, full metadata, exact position, and removal are inside the disclosure.
+Bulk actions appear when a selection exists, including selections outside the
+current search. Source editing remains lazy, and lookup preferences apply
+immediately; custom source still requires Save.
 
 Reader options carry a worker-owned monotonic `revision` in the existing
 `options` storage value. Legacy values start at revision zero. Settings coalesces

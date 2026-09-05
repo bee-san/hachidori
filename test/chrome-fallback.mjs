@@ -180,6 +180,8 @@ async function inspect(page) {
 }
 
 async function saveCustomDictionary(page) {
+  await page.click('.settings-nav a[href="#custom-dictionary"]');
+  await page.waitForSelector("#custom-dictionary-open", { visible: true });
   await page.click("#custom-dictionary-open");
   await page.waitForFunction(() => {
     const form = document.getElementById("custom-dictionary-form");
@@ -216,6 +218,8 @@ try {
   browser = await launch();
   const id = await extensionId(browser);
   let page = await openSettings(browser, id);
+  await page.click('.settings-nav a[href="#add-dictionaries"]');
+  await page.waitForSelector("#import-file", { visible: true });
   const input = await page.$("#import-file");
   await input.uploadFile(FIXTURE);
   await page.waitForFunction(

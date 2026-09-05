@@ -1606,7 +1606,7 @@ function checkRecommendedDictionaries() {
   check(
     "settings has one clean-install action and a distinct partial retry action",
     (html.match(/id="install-recommended"/gu) ?? []).length === 1
-      && (html.match(/Install all recommended dictionaries/gu) ?? []).length === 1
+      && (html.match(/Install recommended/gu) ?? []).length === 1
       && (html.match(/id="retry-recommended"/gu) ?? []).length === 1,
     "the starter/retry controls were missing or duplicated",
   );
@@ -3949,6 +3949,8 @@ async function main() {
       && settingsCustom.eventBeforeReadReply.expanded === "true"
       && settingsCustom.eventBeforeReadReply.readCount === 1
       && settingsCustom.eventBeforeReadReply.saveDisabled === true
+      && settingsCustom.eventBeforeReadReply.unseenCompletion === true
+      && settingsCustom.eventBeforeReadReply.completionClearedAfterVisit === true
       && settingsCustom.eventFirstSave?.baseRevision === 7
       && settingsCustom.eventFirstSave.submittedUsesCrlf === true
       && settingsCustom.eventFirstSave.saveDisabled === true
@@ -4084,6 +4086,12 @@ async function main() {
       && settingsBatch.statusReads === 1,
     JSON.stringify(settingsBatch),
   );
+  const navigationSettings = await settingsNavigationStage();
+  check("Settings navigation preserves mounted views and pending reader drafts without extra requests",
+    navigationSettings?.navigation === true && navigationSettings.draft === true,
+    JSON.stringify(navigationSettings));
+  check("dictionary details retain their stable identity and focus across rerenders and filtering",
+    navigationSettings?.details === true, JSON.stringify(navigationSettings));
   const frequencySettings = await settingsFrequencyStage();
   check("Settings derives frequency direction only on dictionary selection or explicit Auto",
     frequencySettings?.explicit === true, JSON.stringify(frequencySettings));
@@ -4607,11 +4615,155 @@ async function loadJsdom() {
   }
 }
 
+async function navigateSettingsSection(window, id) {
+  window.location.hash = id;
+  await new Promise((done) => window.setTimeout(done, 10));
+}
+
+async function settingsNavigationStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/settings.html#lookup`,
+  });
+  const { window } = dom;
+  const document = window.document;
+  let listener;
+  let pendingSave;
+  const requests = [];
+  const storedOptions = { revision: 1, maxResults: 32 };
+  let state = { schemaVersion: 1, revision: 1, groups: [], dictionaries: [
+    genericPackage({ id: "first", title: "First" }),
+    genericPackage({ id: "second", title: "Second" }),
+  ] };
+  window.chrome = {
+    runtime: { async sendMessage(message) {
+      requests.push(structuredClone(message));
+      if (message.type === "hd_state_read") return { ok: true, state: structuredClone(state) };
+      if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 2 };
+      if (message.type === "hd_options_write") return new Promise((resolveReply) => { pendingSave = resolveReply; });
+      throw new Error(`Unexpected navigation request ${message.type}`);
+    } },
+    storage: {
+      local: { async get() { return { options: structuredClone(storedOptions) }; } },
+      onChanged: { addListener(value) { listener = value; } },
+    },
+  };
+  const pause = () => new Promise((done) => setTimeout(done, 10));
+  async function until(predicate) {
+    const deadline = Date.now() + 2000;
+    while (!predicate() && Date.now() < deadline) await pause();
+    if (!predicate()) throw new Error("Settings navigation did not reach its expected state");
+  }
+  const active = () => [...document.querySelectorAll("main > section")].filter((section) => !section.hidden);
+  async function navigate(id) {
+    await navigateSettingsSection(window, id);
+  }
+  const row = () => document.querySelector('.dict-row[data-dictionary-id="first"]');
+  try {
+    loadSettingsScript(window);
+    await until(() => document.getElementById("engine-status").textContent.startsWith("Ready"));
+    if (active().length !== 1 || !document.querySelector('.settings-nav [aria-current="page"]')) {
+      return { navigation: false, draft: false, details: false };
+    }
+    const initial = active()[0].id === "lookup";
+    const reading = document.getElementById("lookup");
+    const source = document.getElementById("custom-dictionary-source");
+    const beforeNavigation = requests.length;
+    await navigate("custom-dictionary");
+    await navigate("lookup");
+    const navigation = initial && active().length === 1 && active()[0] === reading
+      && source === document.getElementById("custom-dictionary-source")
+      && document.querySelector('.settings-nav [aria-current="page"]').hash === "#lookup"
+      && requests.length === beforeNavigation;
+
+    const input = document.getElementById("opt-max-results");
+    input.value = "64";
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => pendingSave !== undefined);
+    const beforeLeaving = requests.length;
+    await navigate("dictionaries");
+    pendingSave({ ok: false, conflict: true, error: "Settings changed in another page.", options: storedOptions });
+    await until(() => document.getElementById("options-status").textContent.includes("Could not save"));
+    const mirror = document.getElementById("nav-status-lookup");
+    const failureVisible = mirror.textContent.startsWith("Reading: Could not save")
+      && mirror.classList.contains("is-error") && !mirror.closest("[hidden]");
+    await navigate("lookup");
+    const draft = input === document.getElementById("opt-max-results") && input.value === "64"
+      && !document.getElementById("options-conflict-actions").hidden && requests.length === beforeLeaving
+      && failureVisible && mirror.textContent === "";
+
+    await navigate("dictionaries");
+    const disclosure = row().querySelector(".dict-details");
+    if (!disclosure) return { navigation, draft, details: false };
+    disclosure.open = true;
+    row().querySelector(".dict-details-toggle").focus();
+    state = { ...state, revision: 2, dictionaries: state.dictionaries.map((entry) => ({ ...entry, favorite: true })) };
+    listener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+    const focusKept = row().querySelector(".dict-details").open
+      && document.activeElement === row().querySelector(".dict-details-toggle");
+    const firstRow = row();
+    const secondRow = document.querySelector('.dict-row[data-dictionary-id="second"]');
+    const selectVisible = document.getElementById("dict-select-visible");
+    const beforeFiltering = requests.length;
+    selectVisible.click();
+    const selectionKeptRows = row() === firstRow
+      && document.querySelector('.dict-row[data-dictionary-id="second"]') === secondRow
+      && firstRow.querySelector(".dict-selected").checked
+      && secondRow.querySelector(".dict-selected").checked;
+    selectVisible.click();
+    const deselectionKeptRows = row() === firstRow
+      && !firstRow.querySelector(".dict-selected").checked
+      && !secondRow.querySelector(".dict-selected").checked;
+    const search = document.getElementById("dict-search");
+    search.focus();
+    secondRow.classList.add("is-drop-target");
+    let filteringKeptRows = true;
+    for (const value of ["Second", ""]) {
+      search.value = value;
+      search.dispatchEvent(new window.Event("input", { bubbles: true }));
+      filteringKeptRows &&= document.querySelector('.dict-row[data-dictionary-id="second"]') === secondRow;
+    }
+    let details = focusKept && row().querySelector(".dict-details").open
+      && !document.querySelector('.dict-row[data-dictionary-id="second"] .dict-details').open
+      && document.activeElement === search && selectionKeptRows && deselectionKeptRows
+      && filteringKeptRows && !secondRow.classList.contains("is-drop-target")
+      && requests.length === beforeFiltering;
+    for (const action of ["search", "select-visible"]) {
+      row().querySelector(".dict-display-name").focus();
+      const oldRow = row();
+      const label = `New name before ${action}`;
+      state = { ...state, revision: state.revision + 1,
+        dictionaries: state.dictionaries.map((entry) => entry.id === "first" ? { ...entry, displayName: label } : entry) };
+      listener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+      const deferred = row() === oldRow && row().querySelector(".dict-title").textContent !== label;
+      if (action === "search") search.dispatchEvent(new window.Event("input", { bubbles: true }));
+      else selectVisible.click();
+      details &&= deferred && row() !== oldRow && row().querySelector(".dict-title").textContent === label;
+    }
+    await navigate("lookup");
+    document.getElementById("options-use-saved").click();
+    input.value = "96";
+    const beforeSave = requests.length;
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => requests.length > beforeSave);
+    await navigate("dictionaries");
+    pendingSave({ ok: true, options: { ...storedOptions, revision: 2, maxResults: 96 } });
+    await until(() => document.getElementById("options-status").textContent === "Saved.");
+    const unseenCompletion = mirror.textContent === "Reading: Saved.";
+    await navigate("lookup");
+    await navigate("dictionaries");
+    return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details };
+  } finally {
+    window.close();
+  }
+}
+
 async function settingsFrequencyStage() {
   const jsdom = await loadJsdom();
   if (jsdom === null) return null;
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
-    pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/settings.html`,
+    pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/settings.html#lookup`,
   });
   const { window } = dom;
   let listener;
@@ -4736,7 +4888,7 @@ async function settingsAutosaveStage() {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
     pretendToBeVisual: true,
     runScripts: "outside-only",
-    url: `${EXTENSION_ORIGIN}/settings.html`,
+    url: `${EXTENSION_ORIGIN}/settings.html#lookup`,
   });
   const { window } = dom;
   let listener;
@@ -4876,7 +5028,7 @@ async function settingsBatchImportStage() {
   const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
     pretendToBeVisual: true,
     runScripts: "outside-only",
-    url: `${EXTENSION_ORIGIN}/settings.html`,
+    url: `${EXTENSION_ORIGIN}/settings.html#add-dictionaries`,
   });
   const { window } = dom;
   const state = { schemaVersion: 1, revision: 0, dictionaries: [] };
@@ -4992,7 +5144,7 @@ async function settingsRecommendedImportStage() {
   const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
     pretendToBeVisual: true,
     runScripts: "outside-only",
-    url: `${EXTENSION_ORIGIN}/settings.html`,
+    url: `${EXTENSION_ORIGIN}/settings.html#add-dictionaries`,
   });
   const { window } = dom;
   let state = { schemaVersion: 1, revision: 0, dictionaries: [] };
@@ -5428,7 +5580,7 @@ async function settingsCustomDictionaryStage() {
   const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
     pretendToBeVisual: true,
     runScripts: "outside-only",
-    url: `${EXTENSION_ORIGIN}/settings.html`,
+    url: `${EXTENSION_ORIGIN}/settings.html#custom-dictionary`,
   });
   const { window } = dom;
   const customPackage = genericPackage({
@@ -5562,6 +5714,7 @@ async function settingsCustomDictionaryStage() {
 
   open.click();
   await waitFor(() => pendingRead !== null);
+  await navigateSettingsSection(window, "dictionaries");
   customDocument = {
     ...customDocument,
     revision: 6,
@@ -5576,7 +5729,13 @@ async function settingsCustomDictionaryStage() {
     expanded: open.getAttribute("aria-expanded"),
     readCount: customReadRequests.length,
     saveDisabled: save.disabled,
+    unseenCompletion: window.document.getElementById("nav-status-custom-dictionary").textContent
+      === "Personal dictionary: Loaded source revision 6.",
   };
+  await navigateSettingsSection(window, "custom-dictionary");
+  await navigateSettingsSection(window, "dictionaries");
+  result.eventBeforeReadReply.completionClearedAfterVisit =
+    window.document.getElementById("nav-status-custom-dictionary").textContent === "";
 
   const customRow = () => window.document.querySelector(`[data-dictionary-id="${CUSTOM_DICTIONARY_ID}"]`);
   const ordinaryRow = () => window.document.querySelector('[data-dictionary-id="ordinary-id"]');
@@ -5600,6 +5759,7 @@ async function settingsCustomDictionaryStage() {
     enabledLabel: fixed?.querySelector(".dict-enabled")?.getAttribute("aria-label"),
     upLabel: fixed?.querySelector(".dict-up")?.getAttribute("aria-label"),
   };
+  await navigateSettingsSection(window, "dictionaries");
   window.document.getElementById("dict-select-visible")?.click();
   window.document.getElementById("dict-bulk-disable")?.click();
   await waitFor(() => stateRequests.length === 1
@@ -5609,9 +5769,19 @@ async function settingsCustomDictionaryStage() {
   await waitFor(() => stateRequests.length === 2);
   result.favoriteState = stateRequests[1]?.dictionaries?.map(({ id, favorite }) => ({ id, favorite }));
 
+  await navigateSettingsSection(window, "custom-dictionary");
   source.focus();
   source.value = "draft, どらふと, keep me\n";
   source.dispatchEvent(new window.Event("input", { bubbles: true }));
+  const readsBeforeNavigation = customReadRequests.length;
+  await navigateSettingsSection(window, "lookup");
+  await navigateSettingsSection(window, "custom-dictionary");
+  if (source !== window.document.getElementById("custom-dictionary-source")
+      || source.value !== "draft, どらふと, keep me\n"
+      || customReadRequests.length !== readsBeforeNavigation) {
+    throw new Error("Settings navigation replaced or reloaded the source draft");
+  }
+  source.focus();
   customDocument = {
     ...customDocument,
     revision: 7,
@@ -5927,6 +6097,7 @@ async function settingsConflictStage() {
     return { error: "the settings dictionary row did not render" };
   }
 
+  displayName.closest("details").querySelector("summary").click();
   displayName.focus();
   displayName.value = "My draft";
   state = {
@@ -6108,6 +6279,7 @@ async function settingsConflictStage() {
   rowFor(ids.beta).querySelector(".dict-up").click();
   await waitForRequestCount(5);
 
+  rowFor(ids.gamma).querySelector(".dict-details-toggle").click();
   const position = rowFor(ids.gamma).querySelector(".dict-position-input");
   position.value = "1";
   position.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
@@ -6166,6 +6338,7 @@ async function settingsConflictStage() {
   };
 
   casRequests.length = 0;
+  await navigateSettingsSection(window, "dictionary-groups");
   const newGroupName = window.document.getElementById("dict-group-name-new");
   const createGroup = window.document.getElementById("dict-group-create");
   const groupError = window.document.getElementById("dict-group-error");
@@ -6229,9 +6402,10 @@ async function settingsConflictStage() {
   studyName.focus();
   studyName.value = "Reading";
   studyName.dispatchEvent(new window.Event("change", { bubbles: true }));
-  search.focus();
+  const outsideGroupControl = window.document.querySelector('.settings-nav a[href="#lookup"]');
+  outsideGroupControl.focus();
   await waitForRequestCount(4);
-  const externalFocusPreserved = window.document.activeElement === search;
+  const externalFocusPreserved = window.document.activeElement === outsideGroupControl;
 
   const studyAdd = groupRow(studyGroupId).querySelector(".dict-group-add");
   studyAdd.focus();
