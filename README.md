@@ -111,6 +111,14 @@ Selected dictionaries import one at a time, with an outcome retained for every a
 
 The kanji dictionary chooser accepts both traditional Yomitan kanji dictionaries and term dictionaries with single-kanji entries.
 
+Dictionary cross-reference links open beside their parent definition. Follow a
+chain without losing earlier entries; **Back** returns from kanji within the
+same pane, then closes that child. Each pane keeps its own Note draft. In
+**Reading**, **Maximum child popups** defaults to 10; set it to 0 to disable
+linked children. Ordinary glossary text is not scanned for nested lookups.
+
+![A chain of linked dictionary definitions](docs/assets/nested-definition-links.png)
+
 <p align="center">
   <img src="docs/assets/managed-dictionary-updates.png" alt="Hachidori Settings showing the automatic update schedule and manual check and install controls" width="760">
 </p>

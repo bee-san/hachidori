@@ -294,6 +294,72 @@ Safe hrefs and `noopener noreferrer` remain for Copy link and native browser
 context-menu commands; those browser-owned commands do not emit routed clicks.
 No dictionary frame, fetch, new permission or configurable action is introduced.
 
+### Linked definition popup chains
+
+Activating a structured internal link opens a child beside its parent, using the
+link's exact query and primary reading, not its displayed label or page-scan
+offsets. This is linked-query navigation, not automatic scanning of glossary
+text. The revisioned `popupNestingMaxDepth` option defaults to 10 children; zero
+disables child navigation, and a nonnegative safe integer is accepted without a
+second product cap. At the configured depth or without drawable viewport space,
+activation retains the existing chain without allocating a pane or sending a
+lookup. Lowering the depth prunes existing excess descendants immediately.
+
+One closed shadow host and stylesheet serve the chain. Each lazily constructed
+level has a stable object identity, renderer, scoped source highlight, request
+token, exact current request, kanji Back snapshot, and Note state. Pruned objects
+are retired before clearing their hidden DOM or destroying renderer callbacks;
+a late reply cannot acquire a replacement object at the same numeric depth.
+The same pending/current linked query reuses its child. Another link or a parent
+tab redraw prunes only that parent's descendants. A child miss or failure does
+not dismiss its ancestors. Kanji Back first restores that child's term request;
+its next Back closes the child and returns focus to its connected source link.
+
+Keyboard link activation focuses the child's Back control; mouse activation
+does not invent keyboard focus that would block pointer-return pruning. Returning
+to an ancestor prunes descendants after the normal hide delay, unless a draft,
+pending Note append, or deliberate keyboard focus still protects them. Pointer
+transfer uses actual pane rectangles and narrow connecting gaps, with 80 ms grace
+before resuming the current page scan. No layout is read in raw mousemove before
+the existing throttle. Children prefer available space beside their parent and
+clamp to the viewport; narrow screens may overlap panes. Layout callbacks start
+at their owning level and reposition descendants without redoing ancestor layout.
+
+Dictionary revisions, generation, media and style transport remain shared. A
+changed accepted engine generation invalidates other level tokens, including
+when a restarted engine reports a lower number. A same-generation child leaves
+ancestor deferred rendering and resources current. Deduplicated queued media
+retains every consumer predicate, so pruning one child cannot cancel a resource
+still owned by its parent.
+
+Note drafts stay in each existing renderer, not in a second draft model. Append
+success adopts only newer global committed state and queues only the originating
+level's exact replay. A parent replay waits while a descendant draft/append needs
+its source DOM. Ancestors retained solely to anchor a refreshed child are not
+automatically hidden when that child's Note closes; their obsolete asynchronous
+callbacks remain invalid. Explicit accepted navigation consumes that level's
+old deferred replay. Displayed-view ownership separately permits new linked
+navigation from retained parents. A stale parent's tab action replays its exact
+request with the selected tab before rendering current dictionary data. Stale
+Show more uses the same replay with an expansion intent; repeated actions share
+the pending exact request and token, retaining the latest tab/expansion intent.
+Current-generation tab changes and expansion remain lookup-free. Neither action
+reenables old deferred glossary or media work.
+
+Only this same-view replay preserves live Note controls. It keeps the form
+mounted, including a draft opened while the reply was pending, and replaces the
+prefill reader for the next open without copying or resetting current values,
+pending-save state or selection. Focus follows the response-time owner: a still
+focused tab maps to its replacement, while a Note input or focus moved elsewhere
+is not stolen. A protected failed or empty replay leaves the draft and retained
+navigation usable. These transient replay options are never stored in kanji
+Back snapshots. An append from a retired level still succeeds and adopts new
+committed state, but never refreshes a new level at the same depth.
+
+![Linked definition chain](assets/nested-definition-links.png)
+
+![Reading controls including maximum child popup depth](assets/nested-lookup-settings.png)
+
 ### Deinflection explanation
 
 Each eligible term header has a native, initially closed `details` disclosure.
@@ -408,11 +474,11 @@ does not resolve media again or change inline dimensions. The shared positioning
 function clamps it to the viewport with an 8-pixel margin. Pixelated and
 monochrome presentation are retained, and reduced motion disables the animation.
 
-One popup-owned requested image, including a still-loading image, controls the
-preview. A load may resume only that current intent: it cannot replace a newer
+Each popup owns one requested preview image, including a still-loading image.
+A load may resume only that current intent: it cannot replace a newer
 focus/hover preview or revive one dismissed during loading. Leave or blur
 dismisses the appropriate owner only when neither hover nor focus remains.
-Image failure, tab/view replacement, pending navigation, settings invalidation
+Image failure, tab/view replacement, same-level pending navigation, settings invalidation
 and teardown dismiss it regardless of those interaction states. Hover scrolling
 closes the preview; keyboard-induced popup scrolling repositions a still-visible
 focused owner.
@@ -535,7 +601,7 @@ retryable.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
-| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, scan/result limits, frequency ordering, and dictionary selectors | service worker writes; extension pages read | `chrome.storage.local` key `options` |
+| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, and dictionary selectors | service worker writes; extension pages read | `chrome.storage.local` key `options` |
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 
