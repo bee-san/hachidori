@@ -1029,6 +1029,7 @@
 
   function requestCanRender(token, candidate, level = rootLevel) {
     if (disposed || level.retired || token !== level.lookupToken || !level.popup) return false;
+    if (retireDetachedAncestor(level)) return false;
     // Initial selections still own the live page selection; Note/Back replays
     // intentionally use their stored descriptor even after focus collapses it.
     if (!anchorConnected(candidate) || (level === rootLevel && pendingCandidateLookup?.token === token
@@ -1037,6 +1038,17 @@
       return false;
     }
     return true;
+  }
+
+  function retireDetachedAncestor(level) {
+    for (let depth = 0; depth < level.depth; depth += 1) {
+      const ancestor = levels[depth];
+      if (!anchorConnected(ancestor.activeCandidate)) {
+        hide(ancestor);
+        return true;
+      }
+    }
+    return false;
   }
 
   function handleLookupFailure(token, error, level = rootLevel) {
@@ -1051,6 +1063,7 @@
     if (fromLevel.retired || !rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
       return;
     }
+    if (retireDetachedAncestor(fromLevel)) return;
     if (!anchorConnected(rootLevel.activeCandidate)) {
       hide();
       return;
@@ -1311,6 +1324,7 @@
   }
 
   function onPopupEnter(level) {
+    if (level.retired) return;
     pointerLevel = level;
     pointerInPopup = true;
     clearTransferTimer();
@@ -1618,6 +1632,9 @@
         || window.innerWidth <= POPUP_PADDING_PX * 2 || window.innerHeight <= POPUP_PADDING_PX * 2) {
       return;
     }
+    clearHideTimer();
+    clearTransferTimer();
+    clearDescendantTimer();
     const existing = levels[level.depth + 1];
     if (existing?.activeCandidate?.anchor === anchor && existing.activeCandidate.query === query
         && existing.primaryReading === primaryReading
@@ -1641,8 +1658,6 @@
       sentence: anchor.textContent || "", sourceElements: [anchor], sourceDepth: level.depth,
       vertical: false,
     };
-    clearHideTimer();
-    clearDescendantTimer();
     child.pendingLink = runLookup(child.activeCandidate, { primaryReading }, child);
     void child.pendingLink.finally(() => { child.pendingLink = null; });
     return child.pendingLink;
