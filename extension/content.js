@@ -611,7 +611,7 @@
     const styleCache = new Map();
     if (!isScannableElement(selectionBoundaryElement(range.startContainer), styleCache)
         || !isScannableElement(selectionBoundaryElement(range.endContainer), styleCache)) return null;
-    const query = range.toString();
+    const query = selection.toString();
     if (!query.trim()) return null;
     const scanContainer = range.startContainer.nodeType === Node.TEXT_NODE
       ? resolveScanContainer(range.startContainer, styleCache) : null;
@@ -623,6 +623,7 @@
       exactSelection: true,
       matchOffset: rangeOffsetWithin(anchor, range.startContainer, range.startOffset),
       query,
+      rawSelectionText: range.toString(),
       sentence: anchor.textContent || "",
       sourceDepth: -1,
       sourceElements: [anchor],
@@ -656,7 +657,7 @@
    * wrong length whenever the word crosses ruby or a line wrap.
    */
   function rawMatchedText(candidate, matched) {
-    if (candidate.exactSelection === true) return candidate.query;
+    if (candidate.exactSelection === true) return candidate.rawSelectionText;
     const wanted = typeof matched === "string" ? matched.length : 0;
     if (wanted <= 0) {
       return "";
@@ -1146,6 +1147,8 @@
 
   function hide() {
     clearScanTimer();
+    selectionDragActive = false;
+    activeSelectionCandidate = null;
     pendingCandidateLookup = null;
     clearHideTimer();
     activeCandidate = null;
@@ -1385,6 +1388,11 @@
         return false;
       }
       hide();
+      // Retain an exact miss so subsequent pointer motion cannot turn it into
+      // a prefix lookup. Explicit dismissal or another selection resets it.
+      if (request.exactSelection && selectionIsUnchanged(request.candidate)) {
+        activeSelectionCandidate = request.candidate;
+      }
       return false;
     }
     show(request.candidate);
@@ -1601,12 +1609,13 @@
     // Retaining a rendered popup during transfer must not invalidate its media
     // or deferred glossary. Only an unfinished candidate loses ownership.
     if (pendingCandidateLookup?.token === lookupToken) lookupToken += 1;
+    if (pendingCandidateLookup?.candidate === activeSelectionCandidate) activeSelectionCandidate = null;
     pendingCandidateLookup = null;
   }
 
-  function lookupCandidate(candidate) {
+  function lookupCandidate(candidate, signature = candidateSignature(candidate)) {
     const lookup = runLookup(candidate);
-    const pending = { token: lookupToken, candidate, signature: candidateSignature(candidate) };
+    const pending = { token: lookupToken, candidate, signature };
     pendingCandidateLookup = pending;
     void lookup.finally(() => {
       if (pendingCandidateLookup === pending) pendingCandidateLookup = null;
@@ -1650,6 +1659,11 @@
       clearHideTimer();
       return;
     }
+    const selected = resolveSelectedLookupCandidate();
+    if (selected) {
+      startSelectionLookup(selected);
+      return;
+    }
     if (!activationAllowed()) {
       cancelCandidateScan();
       scheduleHide();
@@ -1680,7 +1694,7 @@
     // A new valid pointer lookup owns this popup. Retire the previous view
     // rather than leave its expired glossary/media and Note controls usable.
     if (popup && !popup.hidden) hide();
-    lookupCandidate(candidate);
+    lookupCandidate(candidate, signature);
   }
 
   function onMouseMove(event) {
@@ -1709,7 +1723,7 @@
       return;
     }
     if (selectionDragActive || retainSelectedLookup()) return;
-    if (!activationAllowed()) {
+    if (!activationAllowed() && window.getSelection()?.isCollapsed !== false) {
       cancelCandidateScan();
       scheduleHide();
       return;
@@ -1736,26 +1750,32 @@
       return;
     }
     if (!isOurNode(event.target) && !pointInsidePopup(event.clientX, event.clientY)) {
-      activeSelectionCandidate = null;
       hide();
       selectionDragActive = event.button === 0 && options.hoverEnabled
         && isScannableElement(selectionBoundaryElement(event.target), new Map());
     }
   }
 
-  function activeSelectionIsUnchanged() {
-    if (!activeSelectionCandidate) return false;
+  function selectionIsUnchanged(candidate = activeSelectionCandidate) {
+    if (!candidate) return false;
     const selection = window.getSelection();
     if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return false;
     const range = selection.getRangeAt(0);
-    const previous = activeSelectionCandidate.anchorRange;
+    const previous = candidate.anchorRange;
     return range.startContainer === previous.startContainer && range.startOffset === previous.startOffset
-      && range.endContainer === previous.endContainer && range.endOffset === previous.endOffset;
+      && range.endContainer === previous.endContainer && range.endOffset === previous.endOffset
+      && selection.toString() === candidate.query;
+  }
+
+  function startSelectionLookup(candidate) {
+    hide();
+    activeSelectionCandidate = candidate;
+    lookupCandidate(candidate);
   }
 
   function retainSelectedLookup() {
     if (!activeSelectionCandidate) return false;
-    if (!activeSelectionIsUnchanged()) onSelectionChange();
+    if (!selectionIsUnchanged()) onSelectionChange();
     if (!activeSelectionCandidate) return false;
     clearHideTimer();
     return true;
@@ -1763,12 +1783,11 @@
 
   function onSelectionChange() {
     if (disposed || !options.hoverEnabled || selectionDragActive || noteEditing
-        || popupHasFocus() || isEditingElement(document.activeElement) || activeSelectionIsUnchanged()) return;
+        || popupHasFocus() || isEditingElement(document.activeElement) || selectionIsUnchanged()) return;
     const candidate = resolveSelectedLookupCandidate();
     if (!candidate && !activeSelectionCandidate) return;
-    hide();
-    activeSelectionCandidate = candidate;
-    if (candidate) lookupCandidate(candidate);
+    if (candidate) startSelectionLookup(candidate);
+    else hide();
   }
 
   function onMouseUp(event) {
@@ -1792,8 +1811,9 @@
         hide();
         return;
       }
-      cancelCandidateScan();
-      if (options.activationKey !== "Escape") return;
+      const wasPending = pendingCandidateLookup !== null;
+      hide();
+      if (wasPending || options.activationKey !== "Escape") return;
     }
     if (!options.hoverEnabled || isEditingElement(document.activeElement)) return;
     // Pressing the gate key while the pointer is stationary should reveal the
@@ -1805,7 +1825,8 @@
       activationCode = event.code;
     }
     if (!wasPressed && activationPressed && options.lookupMode === "activation"
-        && lastPointer && !noteEditing && !popupHasFocus() && !pointerInPopup) {
+        && lastPointer && !noteEditing && !popupHasFocus() && !pointerInPopup
+        && !selectionDragActive && !retainSelectedLookup()) {
       scheduleScan();
     }
   }
@@ -1819,7 +1840,7 @@
     }
     if (!activationPressed) activationCode = null;
     if (options.lookupMode === "activation" && !activationPressed) {
-      if (activeSelectionIsUnchanged()) return;
+      if (selectionIsUnchanged()) return;
       cancelCandidateScan();
       scheduleHide();
     }
@@ -1953,6 +1974,11 @@
       hide();
     }
     else if (interactionChanged || scanDelayChanged) {
+      if (selectionIsUnchanged()) {
+        clearScanTimer();
+        clearHideTimer();
+        return lookupChanged;
+      }
       cancelCandidateScan();
       clearHideTimer();
       if (!noteEditing && !popupHasFocus() && !pointerInPopup) {
