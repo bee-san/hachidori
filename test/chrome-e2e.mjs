@@ -2675,6 +2675,7 @@ async function main() {
   );
 
   if (process.env.HACHIDORI_UPDATE_SCREENSHOT) {
+    await page.bringToFront();
     await page.setViewport({ width: 960, height: 900 });
     const updateCard = await page.$('section[aria-labelledby="updates-heading"]');
     await updateCard.screenshot({ path: process.env.HACHIDORI_UPDATE_SCREENSHOT });
