@@ -1604,13 +1604,17 @@
     }
   }
 
+  function discardPendingCandidate() {
+    if (pendingCandidateLookup?.candidate === activeSelectionCandidate) activeSelectionCandidate = null;
+    pendingCandidateLookup = null;
+  }
+
   function cancelCandidateScan() {
     clearScanTimer();
     // Retaining a rendered popup during transfer must not invalidate its media
     // or deferred glossary. Only an unfinished candidate loses ownership.
     if (pendingCandidateLookup?.token === lookupToken) lookupToken += 1;
-    if (pendingCandidateLookup?.candidate === activeSelectionCandidate) activeSelectionCandidate = null;
-    pendingCandidateLookup = null;
+    discardPendingCandidate();
   }
 
   function lookupCandidate(candidate, signature = candidateSignature(candidate)) {
@@ -1891,6 +1895,7 @@
   }
 
   function invalidateStoredState(dictionaryChanged) {
+    discardPendingCandidate();
     view?.hideImagePreview();
     if (dictionaryChanged && popup && !popup.hidden) {
       if (noteEditing || pendingCustomAppends > 0) {
