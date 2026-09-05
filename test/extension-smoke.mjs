@@ -7164,6 +7164,64 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function nestedLevelsCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    const parent = harness.driver.viewRequest();
+    const parentContext = harness.render().context;
+    const open = async (query, depth = 0) => {
+      const operation = harness.internalLink({ query, primaryReading: "reading" }, depth);
+      const request = harness.take("hd_lookup");
+      if (request) harness.reply(request, { dictionaryCount: 1, results: [harness.term(query)] });
+      await operation;
+      return request;
+    };
+    await open("child");
+    const child = harness.driver.viewRequest(1);
+    const childAnchor = child.candidate.anchor;
+    const childPopup = harness.driver.popupAt(1);
+    const childRect = { left: Number.parseFloat(childPopup.style.left), top: Number.parseFloat(childPopup.style.top),
+      width: Number.parseFloat(childPopup.style.width), height: Number.parseFloat(childPopup.style.height) };
+    const positioned = Object.values(childRect).every(Number.isFinite)
+      && childRect.left >= 6 && childRect.top >= 6
+      && childRect.left + childRect.width <= harness.anchor.ownerDocument.defaultView.innerWidth - 6
+      && childRect.top + childRect.height <= harness.anchor.ownerDocument.defaultView.innerHeight - 6;
+    const childContext = harness.render(1).context;
+    const count = harness.sent.length;
+    await parentContext.onInternalLink({ query: "child", primaryReading: "reading", anchor: childAnchor });
+    const deduped = harness.sent.length === count && harness.driver.viewRequest(1) === child;
+    await open("grandchild", 1);
+    const grandchildContext = harness.render(2).context;
+    harness.callbacks(1).onBeforeResultsRendered();
+    const prunedOnlyBelow = !harness.driver.popupAt(2) && harness.driver.viewRequest(1) === child
+      && parentContext.isCurrentRequest() && childContext.isCurrentRequest() && !grandchildContext.isCurrentRequest();
+    const clicked = harness.callbacks(1).onKanjiClick("食");
+    const kanjiRequest = harness.take("hd_lookup_dictionary");
+    harness.reply(kanjiRequest, { dictionaryCount: 1, results: [harness.term("食")] });
+    await clicked;
+    await harness.render(1).context.onBack();
+    const childBack = harness.driver.viewRequest(1) === child && harness.driver.viewRequest() === parent;
+    childPopup.tabIndex = -1;
+    childPopup.focus();
+    await harness.render(1).context.onBack();
+    const returned = !harness.driver.popupAt(1) && harness.driver.viewRequest() === parent
+      && childAnchor.getRootNode().activeElement === childAnchor;
+    harness.emitOptions({ popupNestingMaxDepth: 0 });
+    const disabled = await open("disabled") === null && !harness.driver.popupAt(1);
+    harness.emitOptions({ popupNestingMaxDepth: 2 });
+    await open("one");
+    await open("two", 1);
+    const limited = await open("three", 2) === null && !harness.driver.popupAt(3);
+    harness.emitOptions({ popupNestingMaxDepth: 1 });
+    const lowered = !harness.driver.popupAt(2) && !harness.driver.snapshot(1).popupHidden
+      && harness.driver.viewRequest() === parent;
+    harness.close();
+    return {
+      "linked levels preserve independent Back and render owners, deduplicate, and prune only descendants": deduped && prunedOnlyBelow && childBack && returned,
+      "child popup depth is live and child geometry is clamped to the viewport": positioned && disabled && limited && lowered,
+    };
+  }
+
   async function replyFirstCase() {
     const harness = await createHarness();
     await harness.initialLookup();
@@ -8678,7 +8736,7 @@ async function contentNoteStage() {
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
-    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
+    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(), ...await nestedLevelsCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
     deferredInvalidation: await deferredInvalidationCase(),
