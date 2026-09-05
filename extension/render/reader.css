@@ -2119,10 +2119,8 @@ html[data-hoshidicts-theme="high-contrast"] .gsm-hoshidicts-audio-menu {
 
 .gsm-hoshidicts-glossary-card {
   /* Outside the dictionary's scope: fixed descendants and paint cannot cover
-   * popup controls. Typed aliases cannot turn inherited page tokens into URLs. */
+   * popup controls. The stylesheet filter types compatibility vars at use. */
   contain: paint;
-  --text-color: color-mix(in srgb, var(--hoshidicts-text) 100%, transparent);
-  --background-color: color-mix(in srgb, var(--hoshidicts-popup-background) 100%, transparent);
   --fg: var(--text-color);
   --canvas: var(--background-color);
   --font-size-no-units: 14;

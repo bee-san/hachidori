@@ -691,15 +691,13 @@ async function checkDictionaryStyles(page) {
       for (const suffix of [" evil", ")evil", ",evil"]) {
         host.style.setProperty(`--fg${suffix}`, 'url("https://dictionary-style.invalid/escaped-var.png")');
       }
-      host.style.setProperty("--hoshidicts-palette-base-content", 'url("https://dictionary-style.invalid/palette.png")', "important");
       document.body.appendChild(host);
       const shadow = host.attachShadow({ mode: "open" });
       const readerStyles = new CSSStyleSheet();
       readerStyles.replaceSync(await (await fetch(chrome.runtime.getURL("render/reader.css"))).text());
       shadow.adoptedStyleSheets = [readerStyles];
       const pageFont = document.createElement("style");
-      pageFont.textContent = '@font-face { font-family:page-resource-test; src:url("https://dictionary-style.invalid/page-font.woff2"); } @function --external-image() { result:url("https://dictionary-style.invalid/function.png"); }';
-      document.head.appendChild(pageFont);
+      pageFont.textContent = '@font-face { font-family:page-resource-test; src:url("https://dictionary-style.invalid/page-font.woff2"); } @function --external-image() { result:url("https://dictionary-style.invalid/function.png"); } @property --text-color { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/registered.png"); } @property --font-size-no-units { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/registered-number.png"); }';
       const popup = document.createElement("div");
       popup.className = "gsm-hoshidicts-popup";
       popup.style.cssText = "left:20px;top:20px;width:400px;height:300px";
@@ -723,7 +721,7 @@ async function checkDictionaryStyles(page) {
       escaped.textContent = "Escaped title";
       const apply = (generation, entries) => HDGlossary.applyDictionaryStyles(document, shadow, generation, entries);
       const styles = apply(1, [
-        { dictionary: "scope-test", styles: '.inside { color:rgb(1, 2, 3); & .nested { font-weight:900; } } } .outside { color:rgb(200, 0, 0) !important; } :host { --escaped:yes; } @scope (.unused) {' },
+        { dictionary: "scope-test", styles: '.inside { color:rgb(1, 2, 3); background:radial-gradient(var(--text-color, var(--fg, #333)), transparent); font-size:calc(var(--font-size-no-units) * 1px); & .nested { font-weight:900; } } } .outside { color:rgb(200, 0, 0) !important; } :host { --escaped:yes; } @scope (.unused) {' },
         { dictionary: escapedTitle, styles: ':scope { color:rgb(4, 5, 6); }' },
         { dictionary: "scope-test", styles: '.inside { color:red; }' },
       ]);
@@ -731,10 +729,14 @@ async function checkDictionaryStyles(page) {
         count: styles.length,
         inside: getComputedStyle(inside.querySelector(".inside")).color,
         nested: getComputedStyle(inside.querySelector(".nested")).fontWeight,
+        gradient: getComputedStyle(inside.querySelector(".inside")).backgroundImage,
+        fontSize: getComputedStyle(inside.querySelector(".inside")).fontSize,
         escapedTitle: getComputedStyle(escaped).color,
         outside: getComputedStyle(popup.querySelector(".outside")).color,
         escapedHost: getComputedStyle(host).getPropertyValue("--escaped"),
       };
+      document.head.appendChild(pageFont);
+      host.style.setProperty("--hoshidicts-palette-base-content", 'url("https://dictionary-style.invalid/palette.png")', "important");
       const network = addGlossary("network-test");
       const resourceCases = [
         'background-image:url("https://dictionary-style.invalid/direct.png")',
@@ -743,6 +745,7 @@ async function checkDictionaryStyles(page) {
         '--image:u\\72l("https://dictionary-style.invalid/custom.png");background-image:var(--image)',
         'background-image:var(--external)',
         'background-image:var(--text-color)',
+        'background-image:var(--font-size-no-units)',
         'background-image:var(--fg, var(--external))',
         'font-family:page-resource-test',
         'font:16px page-resource-test',
@@ -799,6 +802,7 @@ async function checkDictionaryStyles(page) {
   check("dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
     evidence.scope.count === 2 && evidence.scope.inside === "rgb(1, 2, 3)"
       && evidence.scope.nested === "900" && evidence.scope.escapedTitle === "rgb(4, 5, 6)"
+      && evidence.scope.gradient.startsWith("radial-gradient(") && evidence.scope.fontSize === "14px"
       && evidence.scope.outside === "rgb(9, 9, 9)" && evidence.scope.escapedHost === ""
       && evidence.replacement, JSON.stringify(evidence));
   check("dictionary CSS cannot load remote resources or inherit resource-valued variables",

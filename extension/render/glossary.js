@@ -35,8 +35,8 @@
   const MAX_STRUCTURED_DATA_VALUE_LENGTH = 4096;
   const MAX_DICTIONARY_STYLE_BYTES = 256 * 1024;
   const MAX_DICTIONARY_STYLES_BYTES = 2 * 1024 * 1024;
-  // These aliases are locally typed as colors/numbers by the trusted card CSS.
-  // Arbitrary inherited custom properties can contain network resource URLs.
+  // These compatibility aliases are typed at each use site. Even a page's
+  // @property registration must not turn their values into resource URLs.
   const DICTIONARY_STYLE_VARIABLES = new Set([
     "--text-color", "--background-color", "--fg", "--canvas", "--font-size-no-units",
   ]);
@@ -1078,6 +1078,24 @@
     return true;
   }
 
+  function typeDictionaryStyleVariables(style) {
+    const suffixes = [];
+    // CSSOM has already balanced the declaration block, and residual escapes
+    // were rejected. Keep strings/comments opaque while pairing parentheses.
+    style.cssText = style.cssText.replace(
+      /"[^"]*"|'[^']*'|\/\*[\s\S]*?\*\/|\bvar\(\s*(--[\w-]+)|[()]/giu,
+      (token, variable) => {
+        if (variable) {
+          const numeric = variable === "--font-size-no-units";
+          suffixes.push(numeric ? " * 1)" : " 100%, transparent)");
+          return (numeric ? "calc(" : "color-mix(in srgb, ") + token;
+        }
+        if (token === "(") suffixes.push("");
+        return token === ")" ? token + suffixes.pop() : token;
+      },
+    );
+  }
+
   function filterDictionaryStyleRules(parent) {
     for (let index = parent.cssRules.length - 1; index >= 0; index -= 1) {
       const rule = parent.cssRules[index];
@@ -1087,6 +1105,7 @@
           parent.deleteRule(index);
           continue;
         }
+        typeDictionaryStyleVariables(rule.style);
       } else if (!DICTIONARY_STYLE_GROUPS.has(kind)) {
         // Global definitions (@font-face, @property, keyframes, imports, etc.)
         // are not glossary-local even when written inside an @scope block.

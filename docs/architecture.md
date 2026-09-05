@@ -125,8 +125,11 @@ variable references, residual CSS escapes, or non-generic font selection is
 omitted. The whole declaration block is checked because variable-containing
 shorthands expose empty CSSOM longhands before substitution. Comment-like text
 inside strings is not stripped. Five color/size compatibility variables support
-Jitendex formatting through locally typed reader aliases. Dictionary media still
-uses the generation-owned `hd_media` path, not stylesheet URLs.
+Jitendex formatting through color/math wrappers at each variable use. Typing only
+the alias declaration is insufficient: a page's registered `@property` can
+replace an invalid value with a URL-valued initial value. Use-site wrappers also
+retain live theme changes without re-fetching dictionary styles. Dictionary
+media still uses the generation-owned `hd_media` path, not stylesheet URLs.
 
 The trusted glossary card sits outside the dictionary scope and establishes
 paint containment, so fixed descendants and oversized shadows cannot cover

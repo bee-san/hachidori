@@ -535,8 +535,10 @@ production `applyDictionaryStyles` runs inside a shadow root with the production
 reader stylesheet. Tests verify escaped canonical titles, malformed-brace
 containment, nested formatting, duplicate suppression, and generation replacement.
 Resource probes intercept and abort a reserved `.invalid` origin; direct and
-escaped URLs, image-set strings, custom/inherited variables, a poisoned palette,
-and page-defined font selection must neither apply a resource nor request it.
+escaped URLs, image-set strings, shorthand and escaped variables, comment-like
+strings, and page-defined fonts/functions/registered properties must neither
+apply a resource nor request it. Benign nested gradients and numeric variables
+still render through the typed wrappers.
 The existing glossary card must contain fixed-position descendants and oversized
 shadows without intercepting the reader control above it. The engine's exact
 `hd_styles` response remains independently covered by the extension smoke suite.
