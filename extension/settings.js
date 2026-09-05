@@ -1301,12 +1301,16 @@ function renderDictionaryRow(template, entry, index) {
   return row;
 }
 
-function renderDictionaries() {
+function renderDictionaries(reuseRows = false) {
   const list = element("dict-list");
+  const reusableRows = new Map();
   // Retain disclosure state by package identity, including temporarily filtered rows.
   for (const row of list.children) {
     if (row.querySelector(".dict-details").open) expandedDictionaryIds.add(row.dataset.dictionaryId);
     else expandedDictionaryIds.delete(row.dataset.dictionaryId);
+    // Filtering can retain unchanged controls, but an adopted state awaiting
+    // blur has newer metadata and listener inputs than the displayed rows.
+    if (reuseRows && !dictionaryRenderDeferred) reusableRows.set(row.dataset.dictionaryId, row);
   }
   const installedIds = new Set(dictionaries.map((entry) => entry.id));
   for (const id of expandedDictionaryIds) {
@@ -1316,13 +1320,14 @@ function renderDictionaries() {
   const visible = visibleDictionaries();
   const visibleIds = new Set(visible.map((dictionary) => dictionary.id));
   draggedDictionaryId = null;
+  if (reusableRows.size > 0) clearDictionaryDropTargets();
   list.textContent = "";
 
   dictionaries.forEach((entry, index) => {
     if (!visibleIds.has(entry.id)) {
       return;
     }
-    list.appendChild(renderDictionaryRow(template, entry, index));
+    list.appendChild(reusableRows.get(entry.id) ?? renderDictionaryRow(template, entry, index));
   });
 
   element("dict-controls").hidden = dictionaries.length === 0;
@@ -1796,18 +1801,27 @@ function attachHandlers() {
 
   element("dict-search").addEventListener("input", (event) => {
     dictionarySearch = event.target.value;
-    renderDictionaries();
+    renderDictionaries(true);
   });
 
   element("dict-select-visible").addEventListener("change", (event) => {
-    for (const dictionary of visibleDictionaries()) {
+    const visible = visibleDictionaries();
+    for (const dictionary of visible) {
       if (event.target.checked) {
         selectedDictionaryIds.add(dictionary.id);
       } else {
         selectedDictionaryIds.delete(dictionary.id);
       }
     }
-    renderDictionaries();
+    if (dictionaryRenderDeferred) {
+      renderDictionaries();
+    } else {
+      for (const row of element("dict-list").children) {
+        row.querySelector(".dict-selected").checked = selectedDictionaryIds.has(row.dataset.dictionaryId);
+      }
+      renderDictionarySelection(visible);
+      setControlsDisabled(importing);
+    }
   });
 
   element("dict-bulk-enable").addEventListener("click", () => {
