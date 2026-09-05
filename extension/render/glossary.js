@@ -731,14 +731,11 @@
       : () => {};
     const ownsView = typeof state.isCurrent === "function" ? state.isCurrent : () => true;
     const isCurrent = () => image.isConnected && ownsView();
-    let previewRequested = false;
     const showPreview = () => {
       if (!isCurrent()) return;
-      previewRequested = true;
-      state.showImagePreview?.(link, image);
+      state.requestImagePreview?.(link, image);
     };
     const hidePreview = () => {
-      previewRequested = false;
       state.hideImagePreview?.(link);
     };
     link.addEventListener("mouseenter", showPreview);
@@ -761,7 +758,7 @@
       if (!isCurrent()) return;
       link.dataset.imageLoadState = "loaded";
       onLayoutChange();
-      if (previewRequested) showPreview();
+      state.refreshImagePreview?.(link, image);
     });
     image.addEventListener("error", failImage);
     parent.appendChild(link);
@@ -1039,7 +1036,8 @@
       isCurrent: options.isCurrent,
       onInternalLink: options.onInternalLink,
       onLayoutChange: options.onLayoutChange,
-      showImagePreview: options.showImagePreview,
+      requestImagePreview: options.requestImagePreview,
+      refreshImagePreview: options.refreshImagePreview,
       hideImagePreview: options.hideImagePreview,
       resolveMedia: typeof options.resolveMedia === "function"
         ? ({ path, width, height, isCurrent }) => options.resolveMedia({

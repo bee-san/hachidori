@@ -971,15 +971,27 @@
 
     function hideImagePreview(owner = null) {
       if (!imagePreview || (owner && imagePreview.owner !== owner)) return;
-      imagePreview.element.remove();
+      imagePreview.element?.remove();
       imagePreview = null;
     }
 
-    function showImagePreview(link, image) {
+    function positionImagePreview(anchorRect = imagePreview.image.getBoundingClientRect()) {
+      const preview = imagePreview.element;
+      const position = calculatePopupPosition(anchorRect, preview.getBoundingClientRect(), {
+        width: windowRef.innerWidth, height: windowRef.innerHeight,
+      }, { gap: 8, padding: 8, vertical: true });
+      preview.style.left = `${position.left}px`;
+      preview.style.top = `${position.top}px`;
+    }
+
+    function refreshImagePreview(link, image) {
+      // Image completion resumes only the most recent interaction. It must
+      // not steal another image's focus or revive a dismissed pending preview.
+      if (imagePreview?.owner !== link) return;
       const source = image.currentSrc || image.src;
       if (image.hidden || !source) return;
-      if (imagePreview?.owner === link && imagePreview.source === source) return;
-      hideImagePreview();
+      if (imagePreview.source === source) return;
+      imagePreview.element?.remove();
       const preview = documentRef.createElement("div");
       preview.className = "gsm-hoshidicts-image-hover-preview";
       preview.setAttribute("aria-hidden", "true");
@@ -994,15 +1006,37 @@
       // A sibling in the same shadow root retains the palette while escaping
       // the glossary card's paint containment and the popup's scroll clipping.
       popup.parentNode.appendChild(preview);
-      imagePreview = { owner: link, source, element: preview };
-      const position = calculatePopupPosition(image.getBoundingClientRect(), preview.getBoundingClientRect(), {
-        width: windowRef.innerWidth, height: windowRef.innerHeight,
-      }, { gap: 8, padding: 8, vertical: true });
-      preview.style.left = `${position.left}px`;
-      preview.style.top = `${position.top}px`;
+      imagePreview.source = source;
+      imagePreview.element = preview;
+      positionImagePreview();
     }
 
-    const onPopupScroll = () => hideImagePreview();
+    function requestImagePreview(link, image) {
+      if (imagePreview?.owner !== link) {
+        hideImagePreview();
+        imagePreview = { owner: link, image, source: null, element: null };
+      }
+      refreshImagePreview(link, image);
+    }
+
+    const onPopupScroll = () => {
+      if (!imagePreview) return;
+      const { owner, image, element } = imagePreview;
+      if (owner.getRootNode().activeElement !== owner || !element) {
+        hideImagePreview();
+        return;
+      }
+      const anchorRect = image.getBoundingClientRect();
+      const bounds = popup.getBoundingClientRect();
+      if (anchorRect.bottom <= bounds.top || anchorRect.top >= bounds.bottom
+          || anchorRect.right <= bounds.left || anchorRect.left >= bounds.right) {
+        hideImagePreview();
+        return;
+      }
+      // Native keyboard focus may scroll its image into view after focus.
+      // Retain that focused preview while closing ordinary hover previews.
+      positionImagePreview(anchorRect);
+    };
     popup.addEventListener("scroll", onPopupScroll, true);
 
     function resetMasonry(grid) {
@@ -1785,7 +1819,8 @@
                 isCurrent,
                 onInternalLink: renderContext.onInternalLink,
                 onLayoutChange: positionIfCurrent,
-                showImagePreview,
+                requestImagePreview,
+                refreshImagePreview,
                 hideImagePreview,
                 resolveMedia: renderContext.resolveMedia,
               }
