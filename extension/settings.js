@@ -1800,6 +1800,14 @@ function attachHandlers() {
   element("lookup").addEventListener("input", () => {
     optionsEditRevision ??= Math.max(0, optionsRevision);
   });
+  element("lookup").addEventListener("change", () => {
+    optionsEditRevision = null;
+  });
+  element("lookup").addEventListener("focusout", (event) => {
+    optionsEditRevision = null;
+    const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
+    if (field) event.target.value = String(options[field.key]);
+  });
   element("options-retry").addEventListener("click", () => {
     optionsSaveFailed = false;
     pendingOptionsRevision = optionsRevision;
@@ -1916,7 +1924,6 @@ function writeOptions() {
   if (Object.keys(pendingOptions).length === 0) {
     pendingOptionsRevision = optionsEditRevision ?? Math.max(0, optionsRevision);
   }
-  optionsEditRevision = null;
   pendingOptions = changes;
   window.clearTimeout(optionsTimer);
   optionsTimer = null;

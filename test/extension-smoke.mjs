@@ -3644,7 +3644,8 @@ async function main() {
       && autosave.retryRequest?.baseRevision === 7
       && autosave.retryRequest?.options?.maxResults === 90
       && autosave.finalValue === "90" && autosave.finalStatus === "Saved."
-      && autosave.typedBeforeExternalRequest?.baseRevision === 8,
+      && autosave.typedBeforeExternalRequest?.baseRevision === 8
+      && autosave.startupRequest?.baseRevision === 2 && autosave.undoCanLeave === true,
     JSON.stringify(autosave),
   );
   check(
@@ -4129,13 +4130,15 @@ async function settingsAutosaveStage() {
   });
   const { window } = dom;
   let listener;
-  let storedOptions = { revision: 4, scanLength: 16, maxResults: 32, frequencyOrder: "auto" };
+  let storedOptions = { revision: 2, scanLength: 16, maxResults: 32, frequencyOrder: "auto" };
+  let releaseInitialState;
   const writes = [];
   const pending = [];
   window.chrome = {
     runtime: {
       async sendMessage(message) {
         if (message.type === "hd_state_read") {
+          await new Promise((release) => { releaseInitialState = release; });
           return { ok: true, state: { schemaVersion: 1, revision: 0, dictionaries: [], groups: [] } };
         }
         if (message.type === "hd_status") {
@@ -4170,10 +4173,34 @@ async function settingsAutosaveStage() {
   const status = () => window.document.getElementById("options-status").textContent;
   try {
     loadSettingsScript(window);
+    await until(() => typeof releaseInitialState === "function");
+    field("max-results").focus();
+    field("max-results").value = "64";
+    field("max-results").dispatchEvent(new window.Event("input", { bubbles: true }));
+    releaseInitialState();
     await until(() => window.document.getElementById("engine-status").textContent.startsWith("Ready"));
+    commit({ ...storedOptions, revision: 3, maxResults: 16 });
+    field("max-results").dispatchEvent(new window.Event("change", { bubbles: true }));
+    field("max-results").blur();
+    await until(() => writes.length === 1);
+    const startupRequest = writes[0];
+    pending.shift().resolve({ ok: false, conflict: true, error: "Settings changed in another page.", options: storedOptions });
+    await until(() => status().includes("Could not save"));
+    window.document.getElementById("options-use-saved").click();
+    field("max-results").focus();
+    for (const value of ["64", "16"]) {
+      field("max-results").value = value;
+      field("max-results").dispatchEvent(new window.Event("input", { bubbles: true }));
+    }
+    field("max-results").blur();
+    const leave = new window.Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leave);
+    const undoCanLeave = !leave.defaultPrevented;
+    commit({ ...storedOptions, revision: 4, maxResults: 32 });
+    writes.length = 0;
     edit("scan-length", "25");
     edit("max-results", "64");
-    const result = { writesBeforeDelay: writes.length };
+    const result = { writesBeforeDelay: writes.length, startupRequest, undoCanLeave };
     await until(() => writes.length === 1);
     result.firstRequest = writes[0];
     edit("max-results", "96");
