@@ -1302,6 +1302,125 @@ function loadSettingsScript(window) {
   );
 }
 
+async function checkReaderOptionsTransport(pageChrome, storage) {
+  const local = storage.api().local;
+  const saved = await local.get(["options", "dictionaryState"]);
+  const frameLimit = 1024 * 1024;
+  const bytes = (value) => Buffer.byteLength(JSON.stringify(value));
+  const message = (options = {}, extra = {}) => ({
+    target: "hoshidicts-worker", type: "hd_options_write", requestId: "options-contract",
+    baseRevision: 2, options, ...extra,
+  });
+  const send = (value) => pageChrome.runtime.sendMessage(value);
+  const unchanged = async (before) => JSON.stringify(await local.get(["options", "dictionaryState"]))
+    === JSON.stringify(before);
+  try {
+    const invalid = [
+      { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
+      { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { modifier: "meta" },
+      { frequencyOrder: "sideways" }, { frequencyDictionary: {} },
+      { kanjiClickDictionary: { title: "字", kind: "other" } },
+      { kanjiClickDictionary: { title: "", kind: "kanji" } },
+    ];
+    const rejected = [];
+    for (const patch of invalid) {
+      await local.set({ options: saved.options });
+      const reply = await send(message(patch));
+      rejected.push(reply.ok === false && reply.requestId === "options-contract" && await unchanged(saved));
+    }
+    await local.set({ options: saved.options });
+    const healthy = await send(message({ scanLength: 64, maxResults: 256, hoverDelayMs: 2000, modifier: "alt" }));
+    check("reader options reject malformed known fields without committing and accept a healthy follow-up",
+      rejected.every(Boolean) && healthy.ok === true && healthy.options?.revision === 3
+        && healthy.options?.scanLength === 64 && healthy.options?.maxResults === 256
+        && healthy.options?.hoverDelayMs === 2000 && healthy.options?.modifier === "alt",
+      JSON.stringify({ rejected, healthy }));
+
+    await local.set({ options: saved.options });
+    const ignored = await send(message({ unknown: "ignored", revision: 999 }));
+    const ignoredUnchanged = await unchanged(saved);
+    const legacy = {
+      revision: 2, scanLength: "20.9", maxResults: 900, modifier: "bad",
+      kanjiClickDictionary: { title: "旧名", kind: "kanji", ignored: true },
+      unknown: "stored junk",
+    };
+    await local.set({ options: legacy });
+    const conflict = await send(message({}, { baseRevision: 1 }));
+    const conflictUnchanged = JSON.stringify((await local.get("options")).options) === JSON.stringify(legacy);
+    const repaired = await send(message());
+    const noOp = await send(message({}, { baseRevision: 3 }));
+    check("reader options project unknown fields and repair legacy values at one newer revision",
+      ignored.ok === true && ignored.options?.revision === 2 && ignored.options?.unknown === undefined
+        && ignoredUnchanged && conflict.ok === false && conflict.conflict === true && conflictUnchanged
+        && conflict.options?.unknown === undefined && conflict.options?.scanLength === 20
+        && conflict.options?.maxResults === 256 && conflict.options?.modifier === "none"
+        && conflict.options?.kanjiClickDictionary?.ignored === undefined
+        && conflict.options?.hoverDelayMs === undefined && repaired.ok === true
+        && repaired.options?.revision === 3 && noOp.options?.revision === 3
+        && JSON.stringify((await local.get("options")).options) === JSON.stringify(repaired.options),
+      JSON.stringify({ ignored, ignoredUnchanged, conflict, conflictUnchanged, repaired, noOp }));
+
+    await local.set({ options: { scanLength: 16 } });
+    const missingRevision = await send(message({ scanLength: 16 }, { baseRevision: 0 }));
+    const sparseUnchanged = JSON.stringify((await local.get("options")).options) === '{"scanLength":16}';
+    await local.remove("options");
+    const empty = await send(message({ unknown: true }, { baseRevision: 0 }));
+    const absentUnchanged = (await local.get("options")).options === undefined;
+    await local.set({ options: { revision: 3, scanLength: 16, unknown: "prune me" } });
+    const stateCommit = await send({ target: "hoshidicts-worker", type: "hd_state_cas", baseRevision: 0, dictionaries: [] });
+    const pruned = (await local.get("options")).options;
+    check("reader option projection preserves sparse no-ops and repairs options inside dictionary CAS",
+      missingRevision.ok === true && missingRevision.options?.revision === 0 && sparseUnchanged
+        && empty.ok === true && empty.options?.revision === 0 && absentUnchanged
+        && stateCommit.ok === true && pruned.revision === 4 && pruned.scanLength === 16
+        && Object.keys(pruned).length === 2,
+      JSON.stringify({ missingRevision, sparseUnchanged, empty, absentUnchanged, stateCommit, pruned }));
+    await local.remove("dictionaryState");
+    await local.set({ options: saved.options });
+
+    const exact = message({}, { padding: "猫\\\"" });
+    exact.padding += "x".repeat(frameLimit - bytes(exact));
+    const atLimit = await send(exact);
+    const beyond = await send({ ...exact, padding: `${exact.padding}x` });
+    const objectId = await send(message({ scanLength: 19 }, { requestId: {} }));
+    const largeId = await send(message({ scanLength: 19 }, { requestId: "猫".repeat(frameLimit) }));
+    check("reader option request framing counts the complete UTF-8 envelope and bounds failure correlation",
+      bytes(exact) === frameLimit && atLimit.ok === true && beyond.ok === false
+        && bytes(beyond) <= frameLimit && beyond.requestId === "options-contract"
+        && objectId.ok === false && objectId.requestId === null
+        && largeId.ok === false && largeId.requestId === null && bytes(largeId) <= frameLimit
+        && await unchanged(saved),
+      JSON.stringify({ exactBytes: bytes(exact), atLimit: atLimit.ok, beyond: beyond.ok,
+        objectId: objectId.ok, largeId: largeId.ok, largeReplyBytes: bytes(largeId) }));
+
+    const next = { revision: 10, scanLength: 17, frequencyDictionary: "猫\\\"" };
+    const expectedReply = { type: "hd_options_write_result", requestId: "options-contract", ok: true, error: null, options: next };
+    next.frequencyDictionary += "x".repeat(frameLimit - bytes(expectedReply));
+    const oversizedStored = { ...next, revision: 9, scanLength: 16, frequencyDictionary: `${next.frequencyDictionary}x` };
+    await local.set({ options: oversizedStored });
+    const overflowReply = await send(message({ scanLength: 17 }, { baseRevision: 9 }));
+    const rejectedBeforeCommit = JSON.stringify((await local.get("options")).options) === JSON.stringify(oversizedStored);
+    await local.set({ options: { ...next, revision: 9, scanLength: 16 } });
+    const conflictBefore = await local.get("options");
+    const conflictOverflow = await send(message({}, { baseRevision: 8 }));
+    const conflictDidNotWrite = JSON.stringify(await local.get("options")) === JSON.stringify(conflictBefore);
+    const fittingReply = await send(message({ scanLength: 17 }, { baseRevision: 9 }));
+    check("reader options preflight exact success and conflict frames before any storage commit",
+      bytes(expectedReply) === frameLimit && overflowReply.ok === false && rejectedBeforeCommit
+        && overflowReply.options === undefined && bytes(overflowReply) <= frameLimit
+        && conflictOverflow.ok === false && conflictOverflow.options === undefined && conflictDidNotWrite
+        && bytes(conflictOverflow) <= frameLimit && fittingReply.ok === true
+        && fittingReply.options?.revision === 10 && bytes(fittingReply) === frameLimit,
+      JSON.stringify({ expectedBytes: bytes(expectedReply), overflow: overflowReply.ok, rejectedBeforeCommit,
+        conflictReplyBytes: bytes(conflictOverflow), conflictDidNotWrite,
+        fitting: fittingReply.ok, fittingBytes: bytes(fittingReply) }));
+  } finally {
+    await local.set({ options: saved.options });
+    if (saved.dictionaryState === undefined) await local.remove("dictionaryState");
+    else await local.set({ dictionaryState: saved.dictionaryState });
+  }
+}
+
 // content.js cannot be driven here (it needs a page), so the one thing worth
 // checking statically is that the layers clamping an option agree on its range.
 // They are four separate literals, and a narrower one in the content script
@@ -1683,6 +1802,7 @@ async function main() {
       && unversionedOptions.ok === false,
     JSON.stringify({ firstOptions, nextOptions, conflictingOptions, unchangedOptions, unversionedOptions }),
   );
+  await checkReaderOptionsTransport(pageChrome, storage);
   let counter = 0;
   async function request(type, fields = {}) {
     counter += 1;
