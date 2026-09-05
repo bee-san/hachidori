@@ -1078,6 +1078,8 @@
     popup.className = "gsm-hoshidicts-popup";
     popup.dataset.hoshidictsDepth = "0";
     popup.hidden = true;
+    popup.addEventListener("focusin", clearHideTimer);
+    popup.addEventListener("focusout", onPopupFocusOut);
     shadow.appendChild(popup);
     document.body.appendChild(host);
 
@@ -1170,15 +1172,28 @@
     }
   }
 
+  function popupHasFocus() {
+    return popup?.contains(shadow?.activeElement) === true;
+  }
+
+  function onPopupFocusOut(event) {
+    const target = event.target;
+    window.queueMicrotask(() => {
+      // A redraw can remove the focused Note form. That is not departure
+      // from the refreshed popup; wait until removal/focus transfer settles.
+      if (target.isConnected && popup?.contains(target)) scheduleHide();
+    });
+  }
+
   function scheduleHide() {
-    if (noteEditing || !popup || popup.hidden || hideTimer !== null) {
+    if (disposed || noteEditing || !popup || popup.hidden || popupHasFocus() || hideTimer !== null) {
       return;
     }
     // The gap between the word and the popup is dead space; give the pointer
     // time to cross it so the popup stays reachable and selectable.
     hideTimer = window.setTimeout(() => {
       hideTimer = null;
-      if (!noteEditing && !pointerInPopup) {
+      if (!noteEditing && !pointerInPopup && !popupHasFocus()) {
         hide();
       }
     }, HIDE_DELAY_MS);
