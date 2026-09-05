@@ -2808,6 +2808,10 @@ async function main() {
       && !genericKanjiState.text.includes("food"),
     `popup state: ${JSON.stringify(await popup.state())}`,
   );
+  const incidentalWord = await (await tab.$("#duplicate")).boundingBox();
+  await tab.mouse.move(incidentalWord.x + incidentalWord.width * 0.15, incidentalWord.y + incidentalWord.height / 2);
+  await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+  const focusedPointerState = await popup.state();
   const clickedNestedKanji = await popup.click(".gsm-hoshidicts-kanji-link");
   await new Promise(resolvePromise => setTimeout(resolvePromise, 500));
   const clickedNestedBack = await popup.click(".gsm-hoshidicts-kanji-back");
@@ -2833,8 +2837,10 @@ async function main() {
   check(
     "clicked-kanji navigation moves and restores keyboard focus",
     genericKanjiState?.focusedClass.includes("gsm-hoshidicts-kanji-back")
+      && focusedPointerState?.focusedClass.includes("gsm-hoshidicts-kanji-back")
+      && focusedPointerState?.text === genericKanjiState?.text
       && restoredTermState?.focusedClass.includes("gsm-hoshidicts-kanji-link"),
-    JSON.stringify({ genericKanjiState, restoredTermState }),
+    JSON.stringify({ genericKanjiState, focusedPointerState, restoredTermState }),
   );
 
   await tab.keyboard.press("Escape");

@@ -7148,6 +7148,21 @@ async function contentNoteStage() {
         && harness.take("hd_lookup") === null && !harness.driver.snapshot().popupHidden;
     harness.edit(false);
 
+    const focusedControl = window.document.createElement("button");
+    focusedControl.textContent = "Back";
+    harness.popup.append(focusedControl);
+    focusedControl.focus();
+    move();
+    fire(75);
+    const focusedRequest = harness.take("hd_lookup");
+    const focusKept = harness.popup.getRootNode().activeElement === focusedControl;
+    const focusedVisible = !harness.driver.snapshot().popupHidden;
+    if (focusedRequest) harness.reply(focusedRequest, { dictionaryCount: 1, results: [harness.term("incidental pointer")] });
+    await harness.settle();
+    result["keyboard-focused popup controls suppress incidental pointer replacements"] =
+      focusedRequest === null && focusKept && focusedVisible && harness.render().context.isCurrentRequest();
+    focusedControl.blur();
+
     harness.driver.setScanCandidate(harness.candidate);
     move();
     harness.emitOptions({ ...settings, hoverEnabled: false });
