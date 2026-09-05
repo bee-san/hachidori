@@ -104,10 +104,22 @@
   let nextRequestId = 0;
   let currentGeneration = -1;
 
+  const rootLevel = createLevelState(0);
+  const levels = [rootLevel];
+  let nextLevelId = 0;
+
+  function createLevelState(depth) {
+    return {
+      depth, popup: null, view: null, highlighter: null, retired: false,
+      activeCandidate: null, activeSignature: null, activeHighlightText: "",
+      activeTermRender: null, currentViewRequest: null, noteEditing: false,
+      pendingCustomAppends: 0, deferredDictionaryInvalidationRevision: -1,
+      deferredRefresh: null, lookupToken: 0, pendingLink: null,
+    };
+  }
+
   let host = null;
   let shadow = null;
-  let popup = null;
-  let view = null;
   let highlighter = null;
   let uiPromise = null;
 
@@ -129,15 +141,6 @@
   let selectionDragActive = false;
   let activeSelectionCandidate = null;
 
-  let activeCandidate = null;
-  let activeSignature = null;
-  let activeHighlightText = "";
-  let activeTermRender = null;
-  let currentViewRequest = null;
-  let noteEditing = false;
-  let pendingCustomAppends = 0;
-  let deferredDictionaryInvalidationRevision = -1;
-  let lookupToken = 0;
   let optionsStorageRevision = -1;
   let dictionaryStateRevision = -1;
 
@@ -660,6 +663,7 @@
   }
 
   function candidateStart(candidate) {
+    if (candidate.linkAnchor) return { node: candidate.anchor, offset: 0 };
     return candidate.exactSelection === true
       ? { node: candidate.anchorRange.startContainer, offset: candidate.anchorRange.startOffset }
       : candidate.scanEntries[0];
@@ -685,6 +689,7 @@
    * wrong length whenever the word crosses ruby or a line wrap.
    */
   function rawMatchedText(candidate, matched) {
+    if (candidate.linkAnchor) return candidate.sentence;
     if (candidate.exactSelection === true) return candidate.rawSelectionText;
     const wanted = typeof matched === "string" ? matched.length : 0;
     if (wanted <= 0) {
@@ -747,20 +752,20 @@
     }
     try {
       highlighter?.clearAll();
-      view?.destroy();
+      for (const level of levels) level.view?.destroy();
     } catch {
       // Teardown is best effort.
     }
     host?.remove();
     host = null;
     shadow = null;
-    popup = null;
-    view = null;
+    rootLevel.popup = null;
+    rootLevel.view = null;
     highlighter = null;
-    activeCandidate = null;
-    activeTermRender = null;
-    currentViewRequest = null;
-    noteEditing = false;
+    rootLevel.activeCandidate = null;
+    rootLevel.activeTermRender = null;
+    rootLevel.currentViewRequest = null;
+    rootLevel.noteEditing = false;
     if (reason) {
       console.debug(`hachidori: content script stopped (${reason})`);
     }
@@ -770,21 +775,21 @@
     clearDictionaryResources();
     try {
       highlighter?.clearAll();
-      view?.destroy();
+      for (const level of levels) level.view?.destroy();
     } catch {
       // Best effort: the point is only to leave nothing half-built behind.
     }
     host?.remove();
     host = null;
     shadow = null;
-    popup = null;
-    view = null;
+    rootLevel.popup = null;
+    rootLevel.view = null;
     highlighter = null;
-    activeCandidate = null;
-    activeSignature = null;
-    activeTermRender = null;
-    currentViewRequest = null;
-    noteEditing = false;
+    rootLevel.activeCandidate = null;
+    rootLevel.activeSignature = null;
+    rootLevel.activeTermRender = null;
+    rootLevel.currentViewRequest = null;
+    rootLevel.noteEditing = false;
   }
 
   function clearDictionaryResources() {
@@ -798,12 +803,17 @@
     styleRequest = null;
   }
 
-  function noteGeneration(generation) {
+  function noteGeneration(generation, owner = rootLevel) {
     if (!Number.isFinite(generation) || generation === currentGeneration) {
       return;
     }
     currentGeneration = generation;
     clearDictionaryResources();
+    // Generation is an engine incarnation, not a monotonic storage revision.
+    // Invalidate other in-flight owners even when a restarted engine returns 1.
+    for (const level of levels) {
+      if (level !== owner) level.lookupToken += 1;
+    }
   }
 
   function sendRequest(type, payload, target = TARGET) {
@@ -1012,51 +1022,51 @@
       ));
   }
 
-  function requestCanRender(token, candidate) {
-    if (disposed || token !== lookupToken || !popup) return false;
+  function requestCanRender(token, candidate, level = rootLevel) {
+    if (disposed || level.retired || token !== level.lookupToken || !level.popup) return false;
     // Initial selections still own the live page selection; Note/Back replays
     // intentionally use their stored descriptor even after focus collapses it.
-    if (!anchorConnected(candidate) || (pendingCandidateLookup?.token === token
+    if (!anchorConnected(candidate) || (level === rootLevel && pendingCandidateLookup?.token === token
         && candidate.exactSelection === true && !selectionIsUnchanged(candidate))) {
-      hide();
+      hide(level);
       return false;
     }
     return true;
   }
 
-  function handleLookupFailure(token, error) {
-    if (!disposed && token === lookupToken) {
+  function handleLookupFailure(token, error, level = rootLevel) {
+    if (!disposed && !level.retired && token === level.lookupToken) {
       console.debug("hachidori: lookup failed", error);
-      hide();
+      hide(level);
     }
     return false;
   }
 
   function positionPopup() {
-    if (!popup || popup.hidden || !activeCandidate) {
+    if (!rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
       return;
     }
-    if (!anchorConnected(activeCandidate)) {
+    if (!anchorConnected(rootLevel.activeCandidate)) {
       hide();
       return;
     }
     const position = calculatePopupPosition(
-      anchorRectFor(activeCandidate),
+      anchorRectFor(rootLevel.activeCandidate),
       { height: window.innerHeight, width: window.innerWidth },
-      activeCandidate.vertical
+      rootLevel.activeCandidate.vertical
     );
     // bpwhelan asked for this in the PR #549 review: the toolbar sits on the
     // edge nearest the word, so it never covers the text being read.
     if (position.placement !== "beside") {
       const desired = position.placement === "above" ? "bottom" : "top";
-      if (popup.dataset.toolbarPosition !== desired) {
-        view.setToolbarPosition(desired);
+      if (rootLevel.popup.dataset.toolbarPosition !== desired) {
+        rootLevel.view.setToolbarPosition(desired);
       }
     }
-    popup.style.left = `${position.left}px`;
-    popup.style.top = `${position.top}px`;
-    popup.style.width = `${position.width}px`;
-    popup.style.height = `${position.height}px`;
+    rootLevel.popup.style.left = `${position.left}px`;
+    rootLevel.popup.style.top = `${position.top}px`;
+    rootLevel.popup.style.width = `${position.width}px`;
+    rootLevel.popup.style.height = `${position.height}px`;
   }
 
   async function readerStyleSheet() {
@@ -1101,16 +1111,6 @@
       shadow.appendChild(fallback);
     }
 
-    popup = document.createElement("div");
-    popup.className = "gsm-hoshidicts-popup";
-    popup.dataset.hoshidictsDepth = "0";
-    popup.hidden = true;
-    popup.addEventListener("focusin", () => {
-      cancelCandidateScan();
-      clearHideTimer();
-    });
-    popup.addEventListener("focusout", onPopupFocusOut);
-    shadow.appendChild(popup);
     document.body.appendChild(host);
 
     highlighter = window.HDPopup.createSourceHighlighter(
@@ -1118,20 +1118,37 @@
       document,
       HIGHLIGHT_NAME
     );
-    view = window.HDPopup.createPopupView({
+    buildLevelUi(rootLevel);
+  }
+
+  function buildLevelUi(level) {
+    const popup = document.createElement("div");
+    popup.className = "gsm-hoshidicts-popup";
+    popup.dataset.hoshidictsDepth = String(level.depth);
+    popup.hidden = true;
+    popup.addEventListener("focusin", () => {
+      cancelCandidateScan();
+      clearHideTimer();
+    });
+    popup.addEventListener("focusout", onPopupFocusOut);
+    shadow.appendChild(popup);
+    level.popup = popup;
+    level.highlighter = highlighter.scope(level);
+    level.view = window.HDPopup.createPopupView({
       appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
       appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
       document,
       getPopupColumns: () => 1,
       highlightName: HIGHLIGHT_NAME,
-      idPrefix: "hoshidicts",
-      onAddCustomEntry: appendCustomEntry,
-      onKanjiClick: showKanji,
-      onNoteEditingChange,
+      idPrefix: level === rootLevel ? "hoshidicts" : `hoshidicts-${nextLevelId += 1}`,
+      onAddCustomEntry: (entry) => appendCustomEntry(entry, level),
+      onKanjiClick: (character, result, candidate, link) => showKanji(character, result, candidate, link, level),
+      onNoteEditingChange: (editing) => onNoteEditingChange(editing, level),
+      onBeforeResultsRendered: () => pruneLevels(level.depth + 1),
       parseTagList: window.HDGlossary.parseTagList,
       popup,
       positionPopup,
-      sourceHighlighter: highlighter,
+      sourceHighlighter: level.highlighter,
       sourceHighlightEnabled: true,
       toolbarPosition: "top",
       window,
@@ -1166,36 +1183,57 @@
     return uiPromise;
   }
 
-  function show(candidate) {
-    activeCandidate = candidate;
-    activeSignature = candidateSignature(candidate);
+  function show(candidate, level = rootLevel) {
+    level.activeCandidate = candidate;
+    level.activeSignature = candidateSignature(candidate);
     if (!host.isConnected && document.body) {
       // A single-page app that swapped out document.body took the host with it.
       document.body.appendChild(host);
     }
-    popup.hidden = false;
-    popup.scrollTop = 0;
+    level.popup.hidden = false;
+    level.popup.scrollTop = 0;
   }
 
-  function hide() {
+  function pruneLevels(depth, restoreFocus = true) {
+    const source = levels[depth]?.activeCandidate?.anchor;
+    const removed = levels.splice(Math.max(1, depth));
+    const focused = removed.some((level) => level.popup?.contains(shadow?.activeElement));
+    for (const level of removed.reverse()) {
+      level.retired = true;
+      level.lookupToken += 1;
+      level.view?.clear();
+      level.view?.destroy();
+      level.highlighter?.clear();
+      level.popup?.remove();
+    }
+    if (restoreFocus && focused && source?.isConnected) source.focus({ preventScroll: true });
+  }
+
+  function hide(level = rootLevel) {
+    if (level !== rootLevel) {
+      if (!level.retired) pruneLevels(level.depth);
+      return;
+    }
     clearScanTimer();
     selectionDragActive = false;
     activeSelectionCandidate = null;
     pendingCandidateLookup = null;
     clearHideTimer();
-    activeCandidate = null;
-    activeSignature = null;
-    activeHighlightText = "";
-    activeTermRender = null;
-    currentViewRequest = null;
-    noteEditing = false;
-    deferredDictionaryInvalidationRevision = -1;
-    lookupToken += 1;
-    if (!popup) {
+    pruneLevels(1, false);
+    rootLevel.activeCandidate = null;
+    rootLevel.activeSignature = null;
+    rootLevel.activeHighlightText = "";
+    rootLevel.activeTermRender = null;
+    rootLevel.currentViewRequest = null;
+    rootLevel.noteEditing = false;
+    rootLevel.deferredDictionaryInvalidationRevision = -1;
+    rootLevel.deferredRefresh = null;
+    rootLevel.lookupToken += 1;
+    if (!rootLevel.popup) {
       return;
     }
-    popup.hidden = true;
-    view.clear();
+    rootLevel.popup.hidden = true;
+    rootLevel.view.clear();
     highlighter.clearAll();
   }
 
@@ -1207,7 +1245,11 @@
   }
 
   function popupHasFocus() {
-    return popup?.contains(shadow?.activeElement) === true;
+    return levels.some((level) => level.popup?.contains(shadow?.activeElement));
+  }
+
+  function hasProtectedNote(fromDepth = 0) {
+    return levels.slice(fromDepth).some((level) => level.noteEditing || level.pendingCustomAppends > 0);
   }
 
   function onPopupFocusOut(event) {
@@ -1215,19 +1257,19 @@
     window.queueMicrotask(() => {
       // A redraw can remove the focused Note form. That is not departure
       // from the refreshed popup; wait until removal/focus transfer settles.
-      if (target.isConnected && popup?.contains(target)) scheduleHide();
+      if (target.isConnected && levels.some((level) => level.popup?.contains(target))) scheduleHide();
     });
   }
 
   function scheduleHide() {
-    if (disposed || noteEditing || !popup || popup.hidden || popupHasFocus() || hideTimer !== null) {
+    if (disposed || hasProtectedNote() || !rootLevel.popup || rootLevel.popup.hidden || popupHasFocus() || hideTimer !== null) {
       return;
     }
     // The gap between the word and the popup is dead space; give the pointer
     // time to cross it so the popup stays reachable and selectable.
     const dismiss = () => {
       hideTimer = null;
-      if (!noteEditing && !pointerInPopup && !popupHasFocus()) {
+      if (!hasProtectedNote() && !pointerInPopup && !popupHasFocus()) {
         hide();
       }
     };
@@ -1235,7 +1277,7 @@
     else hideTimer = window.setTimeout(dismiss, options.popupHideDelayMs);
   }
 
-  function renderContextFor() {
+  function renderContextFor(level = rootLevel) {
     return {
       averageFrequency: false,
       definitionBlurState: "revealed",
@@ -1249,7 +1291,7 @@
           console.debug("hachidori: external link could not be opened", error);
         });
       },
-      onInternalLink,
+      onInternalLink: (link) => onInternalLink(link, level),
       resolveMedia,
       showCompactDefinitionSummary: false,
       showFrequencyDictionaryNames: true,
@@ -1258,8 +1300,8 @@
     };
   }
 
-  function focusPopupControl(selector) {
-    const control = shadow?.querySelector(selector);
+  function focusPopupControl(selector, level = rootLevel) {
+    const control = level.popup?.querySelector(selector);
     if (typeof control?.focus !== "function") {
       return;
     }
@@ -1270,14 +1312,14 @@
     }
   }
 
-  function kanjiLinkFocusTarget(sourceLink, character) {
-    const links = shadow?.querySelectorAll(".gsm-hoshidicts-kanji-link");
+  function kanjiLinkFocusTarget(sourceLink, character, level = rootLevel) {
+    const links = level.popup?.querySelectorAll(".gsm-hoshidicts-kanji-link");
     const index = links ? Array.prototype.indexOf.call(links, sourceLink) : -1;
     return { character, index };
   }
 
-  function focusKanjiLink(focusTarget) {
-    const links = shadow?.querySelectorAll(".gsm-hoshidicts-kanji-link");
+  function focusKanjiLink(focusTarget, level = rootLevel) {
+    const links = level.popup?.querySelectorAll(".gsm-hoshidicts-kanji-link");
     if (!links || links.length === 0) {
       return;
     }
@@ -1304,24 +1346,25 @@
     }
   }
 
-  async function restoreTermRender(previous, focusTarget) {
+  async function restoreTermRender(previous, focusTarget, level = rootLevel) {
     if (previous.generation !== currentGeneration || !sameDictionaryContents(previous.dictionaries, dictionaries)) {
-      const restoring = executeViewRequest(previous.request);
-      const token = lookupToken;
-      if (await restoring && token === lookupToken && currentViewRequest === previous.request) {
-        focusKanjiLink(focusTarget);
+      const restoring = executeViewRequest(previous.request, level);
+      const token = level.lookupToken;
+      if (await restoring && token === level.lookupToken && level.currentViewRequest === previous.request) {
+        focusKanjiLink(focusTarget, level);
       }
       return;
     }
-    lookupToken += 1;
+    level.lookupToken += 1;
     renderTerms(
       previous.results,
       previous.candidate,
       previous.matchedText,
       previous.renderOptions,
       previous.request,
+      level,
     );
-    focusKanjiLink(focusTarget);
+    focusKanjiLink(focusTarget, level);
   }
 
   function normalizedDictionaryTab(value) {
@@ -1334,10 +1377,10 @@
     return null;
   }
 
-  function backRenderOptions(request) {
+  function backRenderOptions(request, level = rootLevel) {
     return request?.previous
-      ? { onBack: () => restoreTermRender(request.previous, request.returnFocus) }
-      : {};
+      ? { onBack: () => restoreTermRender(request.previous, request.returnFocus, level) }
+      : level === rootLevel ? {} : { onBack: () => hide(level) };
   }
 
   function renderTerms(
@@ -1345,26 +1388,29 @@
     candidate,
     matchedText,
     renderOptions = {},
-    request = currentViewRequest,
+    request,
+    level = rootLevel,
   ) {
-    const token = lookupToken;
-    currentViewRequest = request ?? null;
-    activeTermRender = {
+    request ??= level.currentViewRequest;
+    pruneLevels(level.depth + 1);
+    const token = level.lookupToken;
+    level.currentViewRequest = request ?? null;
+    level.activeTermRender = {
       candidate,
       dictionaries,
       generation: currentGeneration,
       matchedText,
       renderOptions,
-      request: currentViewRequest,
+      request: level.currentViewRequest,
       results,
     };
     try {
-      view.renderResults(results, candidate, {
-        ...renderContextFor(),
+      level.view.renderResults(results, candidate, {
+        ...renderContextFor(level),
         ...renderOptions,
-        isCurrentRequest: () => !disposed && token === lookupToken,
-        onRenderError(error) { handleLookupFailure(token, error); },
-        selectedDictionaryTab: currentViewRequest?.selectedDictionaryTab ?? null,
+        isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken,
+        onRenderError(error) { handleLookupFailure(token, error, level); },
+        selectedDictionaryTab: level.currentViewRequest?.selectedDictionaryTab ?? null,
         onDictionaryTabSelected(selection) {
           if (request) request.selectedDictionaryTab = normalizedDictionaryTab(selection);
         },
@@ -1372,26 +1418,26 @@
     } catch (error) {
       // A malformed result must cost one hover, not the whole content script.
       console.warn("hachidori: could not render results", error);
-      hide();
+      hide(level);
       return;
     }
-    activeHighlightText = matchedText;
+    level.activeHighlightText = matchedText;
     if (matchedText) {
       // renderResults already applied the engine's `matched` string; re-apply
       // with the raw-sentence span so ruby and wrapped lines highlight exactly
       // the characters the reader sees.
-      highlighter.apply(candidate, matchedText);
+      (level.highlighter || highlighter).apply(candidate, matchedText);
     }
     ensureDictionaryStyles(currentGeneration);
     positionPopup();
     if (typeof renderOptions.onBack === "function") {
-      focusPopupControl(".gsm-hoshidicts-kanji-back");
+      focusPopupControl(".gsm-hoshidicts-kanji-back", level);
     }
   }
 
-  async function executeTermRequest(request) {
-    const token = (lookupToken += 1);
-    view?.hideImagePreview();
+  async function executeTermRequest(request, level = rootLevel) {
+    const token = (level.lookupToken += 1);
+    level.view?.hideImagePreview();
     let reply;
     try {
       // The first hover pays for the popup host and the stylesheet fetch; run
@@ -1401,31 +1447,31 @@
         sendRequest("hd_lookup", request.payload),
       ]);
     } catch (error) {
-      return handleLookupFailure(token, error);
+      return handleLookupFailure(token, error, level);
     }
     // Hover fires far faster than lookups return; anything but the newest reply
     // would repaint a word the pointer already left.
-    if (!requestCanRender(token, request.candidate)) {
+    if (!requestCanRender(token, request.candidate, level)) {
       return;
     }
-    noteGeneration(reply.generation);
+    noteGeneration(reply.generation, level);
     const results = (Array.isArray(reply.results) ? reply.results : [])
       .filter((result) => result && result.term
         && (!request.exactSelection || result.matched === request.payload.text));
     if (results.length === 0) {
       if (reply.dictionaryCount === 0) {
-        show(request.candidate);
-        activeHighlightText = "";
-        activeTermRender = null;
-        currentViewRequest = null;
-        view.renderNotice(
+        show(request.candidate, level);
+        level.activeHighlightText = "";
+        level.activeTermRender = null;
+        level.currentViewRequest = null;
+        level.view.renderNotice(
           "No dictionaries loaded. Import a Yomitan .zip from the Hachidori options page.",
           request.candidate
         );
         positionPopup();
         return false;
       }
-      hide();
+      hide(level);
       // Retain an exact miss so subsequent pointer motion cannot turn it into
       // a prefix lookup. Explicit dismissal or another selection resets it.
       if (request.exactSelection && selectionIsUnchanged(request.candidate)) {
@@ -1433,7 +1479,7 @@
       }
       return false;
     }
-    show(request.candidate);
+    show(request.candidate, level);
     const matched = results[0].matched || results[0].term.expression;
     if (request.highlightText === undefined) {
       request.highlightText = rawMatchedText(request.candidate, matched);
@@ -1442,19 +1488,20 @@
       results,
       request.candidate,
       request.highlightText,
-      backRenderOptions(request),
+      backRenderOptions(request, level),
       request,
+      level,
     );
     return true;
   }
 
-  function runLookup(candidate, overrides = {}) {
+  function runLookup(candidate, overrides = {}, level = rootLevel) {
     const text = typeof overrides.text === "string" ? overrides.text : candidate.query;
     const exactSelection = candidate.exactSelection === true && overrides.text === undefined;
     return executeTermRequest({
       candidate,
       exactSelection,
-      highlightText: overrides.keepHighlight === true ? activeHighlightText : undefined,
+      highlightText: overrides.keepHighlight === true ? level.activeHighlightText : undefined,
       kind: "term",
       payload: {
         maxResults: options.maxResults,
@@ -1471,46 +1518,50 @@
       previous: overrides.previous ?? null,
       returnFocus: overrides.returnFocus ?? null,
       selectedDictionaryTab: null,
-    });
+    }, level);
   }
 
-  function onInternalLink({ primaryReading, query }) {
-    if (!activeCandidate || typeof query !== "string" || !query) {
+  function onInternalLink({ anchor, primaryReading = "", query }, level = rootLevel) {
+    if (level.retired || !level.activeCandidate || !anchor?.isConnected
+        || !level.popup.contains(anchor) || !query || level.depth >= options.popupNestingMaxDepth) {
       return;
     }
-    // The link's query is not page text, so the source highlight stays where
-    // the reader's pointer put it.
-    const navigation = currentViewRequest?.previous
-      ? {
-          previous: currentViewRequest.previous,
-          returnFocus: currentViewRequest.returnFocus,
-        }
-      : {};
-    return runLookup(activeCandidate, {
-      keepHighlight: true,
-      ...navigation,
-      primaryReading: typeof primaryReading === "string" ? primaryReading : "",
-      text: query,
-    });
+    const existing = levels[level.depth + 1];
+    if (existing?.activeCandidate?.anchor === anchor && existing.activeCandidate.query === query
+        && existing.primaryReading === primaryReading) return existing.pendingLink;
+    pruneLevels(level.depth + 1, false);
+    const child = createLevelState(level.depth + 1);
+    levels.push(child);
+    buildLevelUi(child);
+    child.primaryReading = primaryReading;
+    // Link text is an anchor/highlight, never the query's page-scan offsets.
+    child.activeCandidate = {
+      anchor, linkAnchor: true, query, matchOffset: 0,
+      sentence: anchor.textContent || "", sourceElements: [anchor], sourceDepth: level.depth,
+      vertical: false,
+    };
+    clearHideTimer();
+    child.pendingLink = runLookup(child.activeCandidate, { primaryReading }, child);
+    return child.pendingLink;
   }
 
-  async function executeKanjiRequest(request) {
+  async function executeKanjiRequest(request, level = rootLevel) {
     const { candidate, capability, character } = request;
     const useTermDictionary = capability?.kind === "term";
-    const token = (lookupToken += 1);
-    view?.hideImagePreview();
+    const token = (level.lookupToken += 1);
+    level.view?.hideImagePreview();
     let reply;
     try {
       reply = useTermDictionary
         ? await sendRequest("hd_lookup_dictionary", request.termPayload)
         : await sendRequest("hd_kanji", request.kanjiPayload);
     } catch (error) {
-      return handleLookupFailure(token, error);
+      return handleLookupFailure(token, error, level);
     }
-    if (!requestCanRender(token, candidate) || popup.hidden) {
+    if (!requestCanRender(token, candidate, level) || level.popup.hidden) {
       return false;
     }
-    noteGeneration(reply.generation);
+    noteGeneration(reply.generation, level);
     if (useTermDictionary) {
       const results = projectResultsToDictionary(
         Array.isArray(reply.results) ? reply.results : [],
@@ -1521,20 +1572,21 @@
           results,
           candidate,
           request.highlightText,
-          backRenderOptions(request),
+          backRenderOptions(request, level),
           request,
+          level,
         );
         return true;
       }
       try {
         reply = await sendRequest("hd_kanji", request.kanjiPayload);
       } catch (error) {
-        return handleLookupFailure(token, error);
+        return handleLookupFailure(token, error, level);
       }
-      if (!requestCanRender(token, candidate) || popup.hidden) {
+      if (!requestCanRender(token, candidate, level) || level.popup.hidden) {
         return false;
       }
-      noteGeneration(reply.generation);
+      noteGeneration(reply.generation, level);
     }
     const kanji = reply.kanji;
     if (!kanji || !Array.isArray(kanji.entries) || kanji.entries.length === 0) {
@@ -1546,38 +1598,39 @@
     if (entries.length === 0) {
       return false;
     }
-    currentViewRequest = request;
+    level.currentViewRequest = request;
+    pruneLevels(level.depth + 1);
     try {
-      view.renderKanji({ ...kanji, entries }, candidate, {
+      level.view.renderKanji({ ...kanji, entries }, candidate, {
         dictionaryPresentation: dictionaryPresentation(),
         highlightText: request.highlightText,
-        ...backRenderOptions(request),
+        ...backRenderOptions(request, level),
       });
     } catch (error) {
       console.warn("hachidori: could not render kanji", error);
-      hide();
+      hide(level);
       return false;
     }
     ensureDictionaryStyles(currentGeneration);
     positionPopup();
-    focusPopupControl(".gsm-hoshidicts-kanji-back");
+    focusPopupControl(".gsm-hoshidicts-kanji-back", level);
     return true;
   }
 
-  function showKanji(character, _result, _candidate, sourceLink) {
-    if (!activeCandidate || typeof character !== "string" || !character) {
+  function showKanji(character, _result, _candidate, sourceLink, level = rootLevel) {
+    if (!level.activeCandidate || typeof character !== "string" || !character) {
       return;
     }
     const capability = selectedKanjiDictionaryCapability();
     return executeKanjiRequest({
-      candidate: activeCandidate,
+      candidate: level.activeCandidate,
       capability,
       character,
-      highlightText: activeHighlightText || character,
+      highlightText: level.activeHighlightText || character,
       kanjiPayload: { character },
       kind: "kanji",
-      previous: activeTermRender,
-      returnFocus: kanjiLinkFocusTarget(sourceLink, character),
+      previous: level.activeTermRender,
+      returnFocus: kanjiLinkFocusTarget(sourceLink, character, level),
       selectedDictionaryTab: null,
       termPayload: capability?.kind === "term"
         ? {
@@ -1592,45 +1645,56 @@
             text: character,
           }
         : null,
-    });
+    }, level);
   }
 
-  function executeViewRequest(request) {
+  function executeViewRequest(request, level = rootLevel) {
     return request.kind === "kanji"
-      ? executeKanjiRequest(request)
-      : executeTermRequest(request);
+      ? executeKanjiRequest(request, level)
+      : executeTermRequest(request, level);
   }
 
-  async function appendCustomEntry(entry) {
-    const expectedView = currentViewRequest;
-    pendingCustomAppends += 1;
+  async function appendCustomEntry(entry, level = rootLevel) {
+    const expectedView = level.currentViewRequest;
+    level.pendingCustomAppends += 1;
     try {
       const reply = await sendRequest("hd_custom_append", { entry });
       const adoption = adoptDictionaryState(reply.state);
       if (adoption.dictionaryChanged) invalidateStoredState(true);
       if (
         expectedView !== null
-        && currentViewRequest === expectedView
-        && popup && !popup.hidden
+        && !level.retired
+        && level.currentViewRequest === expectedView
+        && level.popup && !level.popup.hidden
         && anchorConnected(expectedView.candidate)
       ) {
-        // The exact replay reads the engine's latest committed state, so it also
-        // consumes any dictionary invalidation deferred to protect this draft.
-        deferredDictionaryInvalidationRevision = -1;
-        // Saving the row is the transactional boundary. Refresh is deliberately
-        // detached: a lookup error after the commit must not leave a retryable
-        // form that can append the same row twice.
-        void executeViewRequest(expectedView).catch((error) => {
-          console.debug("hachidori: Note saved but the lookup could not refresh", error);
-        });
+        level.deferredRefresh = expectedView;
       }
       return reply;
     } finally {
-      pendingCustomAppends -= 1;
-      if (pendingCustomAppends === 0
-          && !noteEditing
-          && deferredDictionaryInvalidationRevision >= 0) {
-        hide();
+      level.pendingCustomAppends -= 1;
+      flushDeferredNotes();
+    }
+  }
+
+  function flushDeferredNotes() {
+    for (const level of levels) {
+      if (level.pendingCustomAppends > 0 || hasProtectedNote(level.depth + 1)) continue;
+      const request = level.deferredRefresh;
+      if (request && request === level.currentViewRequest && !level.popup.hidden
+          && anchorConnected(request.candidate)) {
+        level.deferredRefresh = null;
+        level.deferredDictionaryInvalidationRevision = -1;
+        // The append has committed. Replay failures must never invite a second
+        // append, and a protected descendant must keep its source DOM alive.
+        void executeViewRequest(request, level).catch((error) => {
+          console.debug("hachidori: Note saved but the lookup could not refresh", error);
+        });
+        return;
+      }
+      if (!level.noteEditing && level.deferredDictionaryInvalidationRevision >= 0) {
+        hide(level);
+        return;
       }
     }
   }
@@ -1651,13 +1715,13 @@
     clearScanTimer();
     // Retaining a rendered popup during transfer must not invalidate its media
     // or deferred glossary. Only an unfinished candidate loses ownership.
-    if (pendingCandidateLookup?.token === lookupToken) lookupToken += 1;
+    if (pendingCandidateLookup?.token === rootLevel.lookupToken) rootLevel.lookupToken += 1;
     discardPendingCandidate();
   }
 
   function lookupCandidate(candidate, signature = candidateSignature(candidate)) {
     const lookup = runLookup(candidate);
-    const pending = { token: lookupToken, candidate, signature };
+    const pending = { token: rootLevel.lookupToken, candidate, signature };
     pendingCandidateLookup = pending;
     void lookup.finally(() => {
       if (pendingCandidateLookup === pending) pendingCandidateLookup = null;
@@ -1674,10 +1738,10 @@
   }
 
   function pointInsidePopup(clientX, clientY) {
-    if (!popup || popup.hidden) {
+    if (!rootLevel.popup || rootLevel.popup.hidden) {
       return false;
     }
-    const rect = popup.getBoundingClientRect();
+    const rect = rootLevel.popup.getBoundingClientRect();
     return clientX >= rect.left && clientX <= rect.right &&
       clientY >= rect.top && clientY <= rect.bottom;
   }
@@ -1688,7 +1752,7 @@
       return;
     }
     if (!options.hoverEnabled) return;
-    if (noteEditing || popupHasFocus() || pageEditorFocused()) {
+    if (hasProtectedNote() || popupHasFocus() || pageEditorFocused()) {
       cancelCandidateScan();
       clearHideTimer();
       return;
@@ -1723,16 +1787,16 @@
       return;
     }
     const signature = candidateSignature(candidate);
-    if (pendingCandidateLookup?.token === lookupToken
+    if (pendingCandidateLookup?.token === rootLevel.lookupToken
         && pendingCandidateLookup.signature === signature
         && sameAnchorNode(candidate, pendingCandidateLookup.candidate)) {
       clearHideTimer();
       return;
     }
     if (
-      popup && !popup.hidden &&
-      activeSignature === signature &&
-      sameAnchorNode(candidate, activeCandidate)
+      rootLevel.popup && !rootLevel.popup.hidden &&
+      rootLevel.activeSignature === signature &&
+      sameAnchorNode(candidate, rootLevel.activeCandidate)
     ) {
       clearHideTimer();
       return;
@@ -1740,7 +1804,7 @@
     clearHideTimer();
     // A new valid pointer lookup owns this popup. Retire the previous view
     // rather than leave its expired glossary/media and Note controls usable.
-    if (popup && !popup.hidden) hide();
+    if (rootLevel.popup && !rootLevel.popup.hidden) hide();
     lookupCandidate(candidate, signature);
   }
 
@@ -1769,7 +1833,7 @@
       return;
     }
     pointerInPopup = false;
-    if (noteEditing || popupHasFocus() || pageEditorFocused()) {
+    if (hasProtectedNote() || popupHasFocus() || pageEditorFocused()) {
       cancelCandidateScan();
       return;
     }
@@ -1838,7 +1902,7 @@
   }
 
   function onSelectionChange() {
-    if (disposed || !options.hoverEnabled || selectionDragActive || noteEditing
+    if (disposed || !options.hoverEnabled || selectionDragActive || hasProtectedNote()
         || popupHasFocus() || pageEditorFocused() || selectionIsUnchanged()) return;
     const selection = window.getSelection();
     if ([selection?.anchorNode, selection?.focusNode].some((node) =>
@@ -1864,14 +1928,16 @@
       return;
     }
     if (event.key === "Escape") {
-      if (popup && !popup.hidden) {
-        if (view?.closeNoteForm?.() === true) {
+      if (rootLevel.popup && !rootLevel.popup.hidden) {
+        const focused = levels.find((level) => level.popup.contains(shadow.activeElement));
+        const editing = focused?.noteEditing ? focused : levels.findLast((level) => level.noteEditing);
+        if ((editing || focused || levels.at(-1)).view?.closeNoteForm?.() === true) {
           event.preventDefault();
           event.stopPropagation();
           return;
         }
         event.stopPropagation();
-        hide();
+        hide(focused || levels.at(-1));
         return;
       }
       const dismissedCandidate = pendingCandidateLookup !== null || activeSelectionCandidate !== null;
@@ -1888,7 +1954,7 @@
       activationCode = event.code;
     }
     if (!wasPressed && activationPressed && options.lookupMode === "activation"
-        && lastPointer && !noteEditing && !popupHasFocus() && !pointerInPopup
+        && lastPointer && !hasProtectedNote() && !popupHasFocus() && !pointerInPopup
         && !selectionDragActive && !retainSelectedLookup()) {
       scheduleScan();
     }
@@ -1934,15 +2000,15 @@
 
   function onScroll() {
     cancelCandidateScan();
-    view?.hideImagePreview();
-    if (disposed || !popup || popup.hidden || !activeCandidate) {
+    rootLevel.view?.hideImagePreview();
+    if (disposed || !rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
       return;
     }
-    if (!anchorConnected(activeCandidate)) {
+    if (!anchorConnected(rootLevel.activeCandidate)) {
       hide();
       return;
     }
-    const rect = anchorRectFor(activeCandidate);
+    const rect = anchorRectFor(rootLevel.activeCandidate);
     if (
       rect.bottom < 0 || rect.top > window.innerHeight ||
       rect.right < 0 || rect.left > window.innerWidth
@@ -1957,31 +2023,29 @@
     discardPendingCandidate();
     // A completed selection hit or miss also belongs to the old lookup state.
     // Preserve Note's view ownership through its deferred refresh.
-    if (!noteEditing && pendingCustomAppends === 0) activeSelectionCandidate = null;
-    view?.hideImagePreview();
-    if (dictionaryChanged && popup && !popup.hidden) {
-      if (noteEditing || pendingCustomAppends > 0) {
-        deferredDictionaryInvalidationRevision = Math.max(
-          deferredDictionaryInvalidationRevision,
-          dictionaryStateRevision,
-        );
-        lookupToken += 1;
-      } else {
-        hide();
+    if (!hasProtectedNote()) activeSelectionCandidate = null;
+    for (const level of levels) {
+      level.view?.hideImagePreview();
+      level.lookupToken += 1;
+      if (dictionaryChanged && level.popup && !level.popup.hidden) {
+        if (!hasProtectedNote(level.depth)) {
+          hide(level);
+          return;
+        }
+        if (level.noteEditing || level.pendingCustomAppends > 0) {
+          level.deferredDictionaryInvalidationRevision = dictionaryStateRevision;
+        }
       }
-      return;
     }
-    lookupToken += 1;
   }
 
-  function onNoteEditingChange(editing) {
-    noteEditing = editing === true;
-    if (noteEditing) {
+  function onNoteEditingChange(editing, level = rootLevel) {
+    if (level.retired) return;
+    level.noteEditing = editing === true;
+    if (level.noteEditing) {
       cancelCandidateScan();
       clearHideTimer();
-    } else if (pendingCustomAppends === 0 && deferredDictionaryInvalidationRevision >= 0) {
-      hide();
-    }
+    } else flushDeferredNotes();
   }
 
   function adoptDictionaryState(stored) {
@@ -2033,6 +2097,7 @@
     }
     optionsStorageRevision = revision;
     options = next;
+    if (levels.length > options.popupNestingMaxDepth + 1) pruneLevels(options.popupNestingMaxDepth + 1);
     if (!options.hoverEnabled) {
       selectionDragActive = false;
       lastPointer = null;
@@ -2048,7 +2113,7 @@
       }
       cancelCandidateScan();
       clearHideTimer();
-      if (!noteEditing && !popupHasFocus() && !pointerInPopup) {
+      if (!hasProtectedNote() && !popupHasFocus() && !pointerInPopup) {
         if (!activationAllowed()) scheduleHide();
         else if (lastPointer) scheduleScan();
       }

@@ -6662,17 +6662,17 @@ async function staleKanjiResponseStage(invalidation) {
   const instrumented = source.replace(marker, `
   globalThis.__hachidoriContentSmoke = {
     setState(candidate, nextPopup, nextView, nextHighlighter) {
-      activeCandidate = candidate;
-      activeHighlightText = "";
-      activeTermRender = { candidate, dictionaries, generation: 0, matchedText: "食べる", renderOptions: {}, results: [] };
+      rootLevel.activeCandidate = candidate;
+      rootLevel.activeHighlightText = "";
+      rootLevel.activeTermRender = { candidate, dictionaries, generation: 0, matchedText: "食べる", renderOptions: {}, results: [] };
       currentGeneration = 0;
       styleGeneration = 0;
-      popup = nextPopup;
-      view = nextView;
+      rootLevel.popup = nextPopup;
+      rootLevel.view = nextView;
       highlighter = nextHighlighter;
     },
     restore() {
-      restoreTermRender(activeTermRender, { character: "食", index: 0 });
+      return restoreTermRender(rootLevel.activeTermRender, { character: "食", index: 0 }, rootLevel);
     },
     showKanji,
   };
@@ -6703,7 +6703,7 @@ async function staleKanjiResponseStage(invalidation) {
       renderResults(value) { renders.push(value); },
       setToolbarPosition() {},
     },
-    { apply() {}, clearAll() {} },
+    { apply() {}, clear() {}, clearAll() {}, scope() { return { apply() {}, clear() {} }; } },
   );
   const lookup = window.__hachidoriContentSmoke.showKanji("食");
   if (invalidation === "storage-change") {
@@ -6768,12 +6768,7 @@ async function contentNoteStage() {
     );
     const { window } = dom;
     let storageListener = null;
-    let popupCallbacks = null;
-    let editing = false;
-    let closeNext = false;
-    let closeCalls = 0;
-    let clearCount = 0;
-    let previewDismissals = 0;
+    const popupRecords = new Map();
     let stylesGeneration = 2;
     let holdStyles = false;
     const appliedStyles = [];
@@ -6781,40 +6776,49 @@ async function contentNoteStage() {
     const sent = [];
     const renders = [];
 
-    function stopEditing() {
-      if (!editing || typeof popupCallbacks?.onNoteEditingChange !== "function") return;
-      editing = false;
-      popupCallbacks.onNoteEditingChange(false);
+    function createView(callbacks) {
+      const record = {
+        callbacks, editing: false, closeNext: false, closeCalls: 0,
+        clearCount: 0, previewDismissals: 0, renders: [],
+      };
+      function stopEditing() {
+        if (!record.editing) return;
+        record.editing = false;
+        callbacks.onNoteEditingChange(false);
+      }
+      function recordRender(render) {
+        stopEditing();
+        record.renders.push(render);
+        renders.push(render);
+      }
+      const view = {
+        hideImagePreview() { record.previewDismissals += 1; },
+        clear() {
+          record.clearCount += 1;
+          stopEditing();
+        },
+        closeNoteForm() {
+          record.closeCalls += 1;
+          if (!record.closeNext) return false;
+          record.closeNext = false;
+          stopEditing();
+          return true;
+        },
+        destroy() {},
+        renderKanji(value, candidate, context) {
+          recordRender({ kind: "kanji", value, candidate, context });
+        },
+        renderNotice(value, candidate) {
+          recordRender({ kind: "notice", value, candidate, context: {} });
+        },
+        renderResults(results, candidate, context) {
+          recordRender({ kind: "terms", results, candidate, context });
+        },
+        setToolbarPosition() {},
+      };
+      popupRecords.set(callbacks.popup, record);
+      return view;
     }
-
-    const view = {
-      hideImagePreview() { previewDismissals += 1; },
-      clear() {
-        clearCount += 1;
-        stopEditing();
-      },
-      closeNoteForm() {
-        closeCalls += 1;
-        if (!closeNext) return false;
-        closeNext = false;
-        stopEditing();
-        return true;
-      },
-      destroy() {},
-      renderKanji(value, candidate, context) {
-        stopEditing();
-        renders.push({ kind: "kanji", value, candidate, context });
-      },
-      renderNotice(value, candidate) {
-        stopEditing();
-        renders.push({ kind: "notice", value, candidate, context: {} });
-      },
-      renderResults(results, candidate, context) {
-        stopEditing();
-        renders.push({ kind: "terms", results, candidate, context });
-      },
-      setToolbarPosition() {},
-    };
     window.HDGlossary = {
       appendExpressionRuby() {},
       appendTextOnlyGlossary() {},
@@ -6827,12 +6831,9 @@ async function contentNoteStage() {
     window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
     window.HDPopup = {
       ...window.HDPopup,
-      createPopupView(options) {
-        popupCallbacks = options;
-        return view;
-      },
+      createPopupView: createView,
       createSourceHighlighter() {
-        return { apply() {}, clearAll() {} };
+        return { apply() {}, clear() {}, clearAll() {}, scope() { return { apply() {}, clear() {} }; } };
       },
     };
     const initialState = {
@@ -6896,10 +6897,11 @@ async function contentNoteStage() {
       uiPromise = Promise.resolve();
       currentGeneration = 1;
       styleGeneration = 1;
-      return popup;
+      return rootLevel.popup;
     },
+    popupAt(depth = 0) { return levels[depth]?.popup; },
     hideTimerPending() { return hideTimer !== null; },
-    viewRequest() { return currentViewRequest; },
+    viewRequest(depth = 0) { return levels[depth]?.currentViewRequest; },
     resolveCandidate,
     setScanCandidate(candidate) { resolveCandidate = () => candidate; },
     onMouseMove,
@@ -6914,14 +6916,16 @@ async function contentNoteStage() {
     scheduleHide,
     showKanji,
     teardown,
-    snapshot() {
+    snapshot(depth = 0) {
+      const level = levels[depth];
       return {
         currentGeneration,
         styleGeneration,
         dictionaryStateRevision,
-        noteEditing,
+        noteEditing: level?.noteEditing === true,
+        activeHighlightText: level?.activeHighlightText ?? "",
         dictionaries: dictionaries.map((dictionary) => ({ ...dictionary })),
-        popupHidden: popup?.hidden === true,
+        popupHidden: !level?.popup || level.popup.hidden === true,
       };
     },
   };
@@ -6935,6 +6939,7 @@ async function contentNoteStage() {
     window.eval(instrumented);
     const driver = window.__hachidoriContentNoteSmoke;
     const popup = driver.install();
+    const popupRecord = (depth = 0) => popupRecords.get(driver.popupAt(depth));
     const anchor = window.document.getElementById("anchor");
     const candidate = {
       anchor,
@@ -7026,29 +7031,41 @@ async function contentNoteStage() {
       anchor,
       appliedStyles,
       candidate,
-      callbacks: () => popupCallbacks,
+      callbacks: (depth = 0) => popupRecord(depth).callbacks,
       close() { dom.window.close(); },
       driver,
-      edit(value) {
-        editing = value === true;
-        popupCallbacks.onNoteEditingChange(editing);
+      edit(value, depth = 0) {
+        const record = popupRecord(depth);
+        record.editing = value === true;
+        record.callbacks.onNoteEditingChange(record.editing);
       },
       emitOptions,
       emitState,
       initialLookup,
+      internalLink(link, depth = 0) {
+        const record = popupRecord(depth);
+        const anchor = window.document.createElement("a");
+        anchor.href = "#";
+        anchor.textContent = link.query;
+        record.callbacks.popup.appendChild(anchor);
+        return record.renders.at(-1).context.onInternalLink({ ...link, anchor });
+      },
       pending,
       popup,
-      render: () => renders.at(-1),
+      render: (depth = 0) => popupRecord(depth)?.renders.at(-1),
       renders,
       reply,
       requestPayload,
       sent,
       settle,
       state,
-      stats() { return { clearCount, closeCalls, previewDismissals }; },
+      stats(depth = 0) {
+        const { clearCount, closeCalls, previewDismissals } = popupRecord(depth);
+        return { clearCount, closeCalls, previewDismissals };
+      },
       take,
       term,
-      setCloseNext(value) { closeNext = value === true; },
+      setCloseNext(value, depth = 0) { popupRecord(depth).closeNext = value === true; },
       setStylesGeneration(value) { stylesGeneration = value; },
       setHoldStyles() { holdStyles = true; },
       installMediaClock() {
@@ -7092,7 +7109,7 @@ async function contentNoteStage() {
   async function eventFirstCase() {
     const harness = await createHarness();
     await harness.initialLookup();
-    const internal = harness.driver.onInternalLink({
+    const internal = harness.internalLink({
       primaryReading: "\u306a\u3044\u3076\u3054",
       query: "\u5185\u90e8\u8a9e",
     });
@@ -7105,8 +7122,8 @@ async function contentNoteStage() {
       ],
     });
     await (internal || harness.settle());
-    harness.render().context.onDictionaryTabSelected({ dictionary: "Projected" });
-    harness.edit(true);
+    harness.render(1).context.onDictionaryTabSelected({ dictionary: "Projected" });
+    harness.edit(true, 1);
     harness.emitOptions({
       frequencyDictionary: "Different",
       frequencyOrder: "ascending",
@@ -7116,7 +7133,7 @@ async function contentNoteStage() {
       modifier: "none",
       scanLength: 2,
     });
-    const append = harness.callbacks().onAddCustomEntry({
+    const append = harness.callbacks(1).onAddCustomEntry({
       definition: "inside",
       reading: "\u306a\u3044\u3076\u3054",
       term: "\u5185\u90e8\u8a9e",
@@ -7135,12 +7152,12 @@ async function contentNoteStage() {
       results: [harness.term("\u5185\u90e8\u8a9e", "Projected")],
     });
     await append;
-    const snapshot = harness.driver.snapshot();
+    const snapshot = harness.driver.snapshot(1);
     const result = {
       displayName: snapshot.dictionaries[0]?.displayName,
       popupHidden: snapshot.popupHidden,
       request,
-      selectedDictionaryTab: harness.render().context.selectedDictionaryTab,
+      selectedDictionaryTab: harness.render(1).context.selectedDictionaryTab,
       stateRevision: snapshot.dictionaryStateRevision,
     };
     harness.close();
@@ -7567,10 +7584,10 @@ async function contentNoteStage() {
     if (first) harness.reply(first, { dictionaryCount: 1, results: exactResults });
     await harness.settle();
     const original = harness.driver.viewRequest();
-    async function noteRefresh(revision, generation, results, eventFirst) {
-      harness.edit(true);
+    async function noteRefresh(revision, generation, results, eventFirst, depth = 0) {
+      harness.edit(true, depth);
       window.getSelection().removeAllRanges();
-      const append = harness.callbacks().onAddCustomEntry({ term: "食べる", reading: "たべる", definition: "eat" });
+      const append = harness.callbacks(depth).onAddCustomEntry({ term: "食べる", reading: "たべる", definition: "eat" });
       const mutation = harness.take("hd_custom_append");
       const state = harness.state(revision, "Saved Note");
       if (eventFirst) harness.emitState(state);
@@ -7599,19 +7616,21 @@ async function contentNoteStage() {
     window.getSelection().selectAllChildren(harness.anchor);
     const backKept = backRequest?.request.text === query && backRequest.request.scanLength === 3
       && harness.driver.viewRequest() === original && harness.render()?.results.length === 1;
-    const link = harness.driver.onInternalLink({ query: "別の語", primaryReading: "べつ" });
+    const link = harness.internalLink({ query: "別の語", primaryReading: "べつ" });
     const linked = harness.take("hd_lookup");
     if (linked) harness.reply(linked, { generation: 3, dictionaryCount: 2, results: [harness.term("別")] });
     await link;
-    const linkedDescriptor = harness.driver.viewRequest();
+    const linkedDescriptor = harness.driver.viewRequest(1);
     const linkKept = linked?.request.text === "別の語" && linked.request.options.primaryReading === "べつ"
       && linked.request.scanLength === 1 && linkedDescriptor?.exactSelection === false
-      && harness.render()?.results[0].matched === "別" && linkedDescriptor.highlightText === query;
-    const linkedRefresh = await noteRefresh(3, 3, [harness.term("別")], false);
+      && harness.render(1)?.results[0].matched === "別"
+      && harness.driver.viewRequest() === original && harness.driver.snapshot().activeHighlightText === query;
+    const linkedRefresh = await noteRefresh(3, 3, [harness.term("別")], false, 1);
     harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
     const linkedRefreshKept = linkedRefresh?.request.text === "別の語"
       && linkedRefresh.request.options.primaryReading === "べつ"
-      && harness.driver.viewRequest() === linkedDescriptor && harness.render()?.results[0].matched === "別"
+      && harness.driver.viewRequest(1) === linkedDescriptor && harness.render(1)?.results[0].matched === "別"
+      && harness.driver.viewRequest() === original && harness.driver.snapshot().activeHighlightText === query
       && harness.take("hd_lookup") === null;
     harness.close();
     return { "Note and kanji Back preserve exact selection descriptors while linked queries retain their own matching mode":
