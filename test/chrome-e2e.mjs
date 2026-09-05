@@ -1451,7 +1451,6 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
     await editSettingsControls(settings, { "opt-frequency-order": "descending" });
     const manual = await observe(rank, "descending", "う");
     await setDictionaryAliasInSettings(settings, rank, "Rank alias");
-    await settings.reload({ waitUntil: "domcontentloaded" });
     await settings.waitForFunction(() => document.getElementById("opt-frequency-order").value === "descending");
     manualSurvived = (await observe(rank, "descending", "う")).revision === manual.revision;
     await settings.bringToFront();
