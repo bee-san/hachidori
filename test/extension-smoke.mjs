@@ -7054,6 +7054,26 @@ async function contentNoteStage() {
     result["configured printable activation keys release by physical code and ignore repeats"] =
       oneTimer && printable !== null && harness.driver.snapshot().popupHidden;
 
+    harness.emitOptions({ ...settings, activationKey: "Escape" });
+    key("keydown", "Escape", "Escape");
+    key("keydown", "Escape", "Escape", { repeat: true });
+    fire(75);
+    const escaped = harness.take("hd_lookup");
+    if (escaped) harness.reply(escaped, { dictionaryCount: 1, results: [harness.term("Escape key")] });
+    await harness.settle();
+    key("keydown", "Escape", "Escape", { repeat: true });
+    const escapeRepeatRetained = !harness.driver.snapshot().popupHidden;
+    harness.edit(true);
+    harness.setCloseNext(true);
+    key("keydown", "Escape", "Escape");
+    key("keydown", "Escape", "Escape", { repeat: true });
+    const noteRepeatRetained = !harness.driver.snapshot().popupHidden && !harness.driver.snapshot().noteEditing;
+    key("keyup", "Escape", "Escape");
+    key("keydown", "Escape", "Escape");
+    result["Escape activation and Note dismissal require fresh presses rather than auto-repeat"] =
+      escaped !== null && escapeRepeatRetained && noteRepeatRetained && harness.driver.snapshot().popupHidden;
+    key("keyup", "Escape", "Escape");
+
     const departures = [];
     for (const reason of ["no-candidate", "window-exit", "blur", "Escape", "click", "scroll"]) {
       harness.emitOptions({ ...settings, lookupMode: "hover" });
