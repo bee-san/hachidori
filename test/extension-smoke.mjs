@@ -7002,6 +7002,41 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function selectionCancellationCase() {
+    const outcomes = [];
+    for (const reason of ["Escape", "scroll", "window-exit", "collapse", "disable", "replace"]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      const selection = window.getSelection();
+      const changed = () => window.document.dispatchEvent(new window.Event("selectionchange"));
+      selection.selectAllChildren(harness.anchor);
+      changed();
+      const first = harness.take("hd_lookup");
+      let replacement = null;
+      if (reason === "Escape") harness.driver.onKeyDown({ key: "Escape" });
+      else if (reason === "scroll") harness.driver.onScroll();
+      else if (reason === "window-exit") harness.driver.onMouseOut({ relatedTarget: null });
+      else if (reason === "disable") harness.emitOptions({ hoverEnabled: false });
+      else if (reason === "collapse") {
+        selection.removeAllRanges();
+        changed();
+      } else {
+        selection.setBaseAndExtent(harness.anchor.firstChild, 0, harness.anchor.firstChild, 1);
+        changed();
+        replacement = harness.take("hd_lookup");
+      }
+      if (first) harness.reply(first, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+      await harness.settle();
+      outcomes.push(first !== null && harness.driver.snapshot().popupHidden
+        && harness.renders.length === 0 && (reason !== "replace" || replacement !== null));
+      if (replacement) harness.reply(replacement, { dictionaryCount: 1, results: [] });
+      await harness.settle();
+      harness.close();
+    }
+    return { "pending selections cannot reopen after Escape, scroll, departure, collapse, disable or replacement":
+      outcomes.every(Boolean) || outcomes };
+  }
+
   async function exactSelectionCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
@@ -7772,7 +7807,8 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
-    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await exactSelectionCase() },
+    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(),
+      ...await exactSelectionCase(), ...await selectionCancellationCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
