@@ -165,6 +165,47 @@ full browser restart without reloading the engine.
 
 ![Hover controls in Settings](assets/reader-activation-settings.png)
 
+## Page scanning and exact selections
+
+Automatic scanning crosses ordinary inline elements and stops at editing
+controls or contenteditable text. A focused page editor suppresses pointer and
+activation-key lookup without capturing typing. The live `onlyScanJapaneseText`
+option defaults to true; disabling it permits other scripts in automatic scans.
+Repeated pointer events for one pending candidate share its lookup, while a
+changed anchor/query or failed request can start fresh work.
+Retained selections are rechecked through the existing pointer throttle rather
+than rebuilding their visible string on every mousemove; selection-change and
+mouseup lookups still dispatch immediately.
+Focus checks follow nested open page shadow roots, and editor focus cancels both
+delayed and already-dispatched candidate work. Closed page shadow roots expose
+only their host through browser focus/event APIs; their private editors cannot
+be inspected. The reader does not intercept shadow creation or block every
+focused component to guess at those internals.
+
+An explicit page selection takes priority over pointer scanning and bypasses
+the language and activation-key gates, but not reader disablement or editing
+exclusions. Lookup waits until the mouse drag ends. It sends the complete visible
+selected string without trimming or truncation and accepts only results whose
+`matched` text equals that string. Selection length overrides the configured
+scan length within the existing engine scan window; a prefix-only result is not
+an exact match. A miss retains selection ownership until the selection changes
+or is dismissed, so pointer movement cannot silently replace it with a prefix.
+
+The visible query and raw DOM highlight span are stored separately: hidden text
+and block separators can make `Selection.toString()` differ from `Range.toString()`.
+Reverse/cross-inline ranges retain their exact source offsets. Selecting a
+glossary inside our closed shadow root preserves the current view. Pending
+selection replies share pointer cancellation and are rejected after dismissal
+or relevant storage invalidation; that invalidation also releases completed hits
+and misses for a fresh attempt with the new dictionaries or result options.
+Initial selection replies also revalidate the selected text, so an in-flight
+page edit cannot display an obsolete result. Escape dismisses retained misses
+even when it is also the activation key. Note refresh and kanji Back replay the
+stored exact descriptor even if editing has collapsed the page selection,
+while an internal link uses its own query, reading and prefix-matching mode.
+Visibility checks distinguish hidden subtrees (`display:none`) from inherited
+`visibility:hidden`, whose children can restore visible text or editing surfaces.
+
 ## Lookup response boundary
 
 The native bridge rejects lookup text, primary reading, and frequency-dictionary
@@ -414,7 +455,7 @@ retryable.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
-| Hover enablement, activation mode/key, open/hide delays, scan/result limits, frequency ordering, and dictionary selectors | service worker writes; extension pages read | `chrome.storage.local` key `options` |
+| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, scan/result limits, frequency ordering, and dictionary selectors | service worker writes; extension pages read | `chrome.storage.local` key `options` |
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 

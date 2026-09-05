@@ -199,6 +199,9 @@ const PLANNED = [
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
+  "exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
+  "editable controls preserve normal editing and suppress pointer and selection lookups",
+  "Japanese-only preferences change automatic scanning in an already-open tab",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
   "dictionary CSS cannot paint or intercept input outside its glossary card",
@@ -578,6 +581,23 @@ async function popupReader(page) {
     return result.value === true;
   }
 
+  async function selectGlossaryText() {
+    const object = await resolvePopupObject();
+    if (object === null) return "";
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId,
+      returnByValue: true,
+      functionDeclaration: `function () {
+        const glossary = this.querySelector(".gloss-item");
+        if (!glossary) return "";
+        const selection = this.ownerDocument.defaultView.getSelection();
+        selection.selectAllChildren(glossary);
+        return selection.toString();
+      }`,
+    });
+    return result.value;
+  }
+
   async function writeNote(values, submit = false) {
     const object = await resolvePopupObject();
     if (object === null) return null;
@@ -650,7 +670,7 @@ async function popupReader(page) {
     return result.value ?? null;
   }
 
-  return { click, imagePreview, state, visible, waitForVisible, waitForHidden, writeNote };
+  return { click, imagePreview, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -701,12 +721,13 @@ async function installMediaReplyProbe(browser) {
   // its reply. Other messages and the mutation queue remain production paths.
   await worker.evaluate(() => {
     const original = chrome.runtime.sendMessage;
-    const probe = { original, held: [], heldLookups: [], holdNextLookup: false,
+    const probe = { original, held: [], heldLookups: [], lookups: [], holdNextLookup: false,
       holdNext: true, holdAll: false, failNext: false,
       count: 0, active: 0, maxActive: 0 };
     globalThis.__ownedMediaProbe = probe;
     chrome.runtime.sendMessage = function (message, ...args) {
       const response = original.call(this, message, ...args);
+      if (message.relayed && message.type === "hd_lookup") probe.lookups.push(message);
       if (message.relayed && message.type === "hd_lookup" && probe.holdNextLookup) {
         probe.holdNextLookup = false;
         return response.then(reply => new Promise(resolveReply => {
@@ -1362,25 +1383,31 @@ async function checkSettingsTransport(page) {
     JSON.stringify({ evidence, saved }));
 }
 
-async function checkReaderActivation(settings, tab, popup) {
-  const original = await settings.evaluate(() => Object.fromEntries([
-    "opt-hover-enabled", "opt-lookup-mode", "opt-activation-key", "opt-hover-delay", "opt-hide-delay",
-  ].map((id) => {
+async function readSettingsControls(settings, ids) {
+  return settings.evaluate((names) => Object.fromEntries(names.map((id) => {
     const input = document.getElementById(id);
     return [id, input.type === "checkbox" ? input.checked : input.value];
-  })));
-  const edit = async (values) => {
-    await settings.evaluate((changes) => {
-      for (const [id, value] of Object.entries(changes)) {
-        const input = document.getElementById(id);
-        if (input.type === "checkbox") input.checked = value;
-        else input.value = value;
-        input.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    }, values);
-    await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
-      { polling: 100, timeout: 10_000 });
-  };
+  })), ids);
+}
+
+async function editSettingsControls(settings, values) {
+  await settings.evaluate((changes) => {
+    for (const [id, value] of Object.entries(changes)) {
+      const input = document.getElementById(id);
+      if (input.type === "checkbox") input.checked = value;
+      else input.value = value;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }, values);
+  await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
+    { polling: 100, timeout: 10_000 });
+}
+
+async function checkReaderActivation(settings, tab, popup) {
+  const original = await readSettingsControls(settings, [
+    "opt-hover-enabled", "opt-lookup-mode", "opt-activation-key", "opt-hover-delay", "opt-hide-delay",
+  ]);
+  const edit = (values) => editSettingsControls(settings, values);
   const pause = (ms) => tab.evaluate((delay) => new Promise((resolveWait) => setTimeout(resolveWait, delay)), ms);
   const position = await (await tab.$("#verb")).boundingBox();
   const moveToWord = async () => {
@@ -1434,6 +1461,193 @@ async function checkReaderActivation(settings, tab, popup) {
     // it and that the exact setting survives the suite's full browser restart.
     await edit({ ...original, "opt-activation-key": "K" });
     await tab.keyboard.press("Escape");
+  }
+}
+
+async function checkReaderSelection(browser, settings, tab, popup) {
+  const original = await readSettingsControls(settings, [
+    "opt-lookup-mode", "opt-activation-key", "opt-scan-length", "opt-japanese-only", "opt-hover-delay",
+  ]);
+  const originalVerb = await tab.$eval("#verb", (element) => element.innerHTML);
+  const worker = await installMediaReplyProbe(browser);
+  await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
+  const lookups = () => worker.evaluate(() => globalThis.__ownedMediaProbe.lookups);
+  const pause = () => tab.evaluate(() => new Promise((done) => setTimeout(done, 200)));
+  const dismiss = async () => {
+    await tab.keyboard.press("Escape");
+    await tab.evaluate(() => {
+      document.activeElement?.blur();
+      window.getSelection().removeAllRanges();
+    });
+    await tab.mouse.move(2, 2);
+    await pause();
+  };
+  const selectVerb = async (html) => {
+    await dismiss();
+    return tab.$eval("#verb", (element, contents) => {
+      element.innerHTML = contents;
+      const selection = window.getSelection();
+      selection.selectAllChildren(element);
+      return { visible: selection.toString(), raw: selection.getRangeAt(0).toString() };
+    }, html);
+  };
+  const moveTo = async (selector) => {
+    const box = await (await tab.$(selector)).boundingBox();
+    await tab.mouse.move(2, 2);
+    await tab.mouse.move(box.x + 4, box.y + box.height / 2);
+    await pause();
+  };
+  try {
+    await editSettingsControls(settings, {
+      "opt-lookup-mode": "activation", "opt-scan-length": "1", "opt-japanese-only": true,
+      "opt-hover-delay": "0",
+    });
+    await tab.bringToFront();
+    await dismiss();
+    await tab.$eval("#verb", (element) => { element.innerHTML = "<b>食べ</b><i>たかった</i>"; });
+    const box = await (await tab.$("#verb")).boundingBox();
+    const startCount = (await lookups()).length;
+    await tab.mouse.move(box.x + 1, box.y + box.height / 2);
+    await tab.mouse.down();
+    let duringDrag;
+    try {
+      await tab.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 8 });
+      duringDrag = (await lookups()).length === startCount;
+    } finally {
+      await tab.mouse.up();
+    }
+    const selected = await tab.evaluate(() => window.getSelection().toString());
+    const exactPopup = await popup.waitForVisible();
+    const exactRequests = (await lookups()).slice(startCount);
+    const highlighted = await tab.evaluate((name) => Array.from(CSS.highlights.get(name) ?? [], (range) => ({
+      text: range.toString(), startTag: range.startContainer.parentElement.localName,
+      endTag: range.endContainer.parentElement.localName,
+    })), HIGHLIGHT_NAME);
+    const glossarySelection = await popup.selectGlossaryText();
+    await pause();
+    const glossaryRetained = glossarySelection.includes("to eat") && popup.visible(await popup.state())
+      && (await lookups()).length === startCount + 1;
+    const hiddenText = await selectVerb('食べ<span style="display:none">隠し</span>たかった');
+    const hiddenPopup = await popup.waitForVisible();
+    const hiddenHighlight = await tab.evaluate((name) =>
+      Array.from(CSS.highlights.get(name) ?? [], (range) => range.toString()), HIGHLIGHT_NAME);
+    const hiddenQuery = (await lookups()).at(-1)?.text;
+    const blockText = await selectVerb("<div>hello</div><div>world</div>");
+    await pause();
+    const blockQuery = (await lookups()).at(-1)?.text;
+    await selectVerb("食べたかったXYZ");
+    await pause();
+    const prefixRejected = !popup.visible(await popup.state());
+    const prefixQuery = (await lookups()).at(-1)?.text;
+    check("exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
+      duringDrag && selected === "食べたかった" && exactPopup?.plain.includes("食べる")
+        && exactRequests.length === 1 && exactRequests[0].text === selected && exactRequests[0].scanLength === 6
+        && highlighted.some((range) => range.text === selected && range.startTag === "b" && range.endTag === "i")
+        && glossaryRetained && hiddenText.visible === "食べたかった" && hiddenQuery === hiddenText.visible
+        && hiddenPopup?.plain.includes("食べる") && hiddenHighlight.includes(hiddenText.raw)
+        && blockText.visible === "hello\nworld" && blockQuery === blockText.visible
+        && prefixRejected && prefixQuery === "食べたかったXYZ",
+      JSON.stringify({ duringDrag, selected, exactRequests, highlighted, glossaryRetained,
+        hiddenText, hiddenQuery, hiddenHighlight, blockText, blockQuery, prefixRejected, prefixQuery }));
+
+    await dismiss();
+    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16" });
+    await tab.$eval("#verb", (element) => {
+      element.innerHTML = '<input value="食べたかった"><textarea>食べたかった</textarea>'
+        + '<b contenteditable="true"><i>食べたかった</i></b>';
+    });
+    const editingStart = (await lookups()).length;
+    const edits = [];
+    for (const selector of ["#verb input", "#verb textarea", "#verb [contenteditable]"]) {
+      await tab.focus(selector);
+      await moveTo(selector);
+      await tab.keyboard.press("End");
+      await tab.keyboard.type("k");
+      edits.push(await tab.$eval(selector, (element) => (element.value ?? element.textContent).endsWith("k")));
+      await tab.$eval(selector, (element) => {
+        if ("select" in element) element.select();
+        else window.getSelection().selectAllChildren(element);
+      });
+      await pause();
+      await dismiss();
+    }
+    for (const tag of ["input", "div"]) {
+      await editSettingsControls(settings, { "opt-lookup-mode": "activation", "opt-activation-key": "K" });
+      await tab.evaluate((name) => {
+        const host = document.createElement("div");
+        host.id = "shadow-editor";
+        document.body.append(host);
+        const innerHost = document.createElement("div");
+        host.attachShadow({ mode: "open" }).append(innerHost);
+        const editor = document.createElement(name);
+        if (name === "div") editor.contentEditable = "true";
+        innerHost.attachShadow({ mode: "open" }).append(editor);
+        editor.focus();
+      }, tag);
+      await moveTo("#duplicate");
+      await tab.keyboard.down("k");
+      await pause();
+      await tab.keyboard.up("k");
+      await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
+      await moveTo("#duplicate");
+      edits.push(await tab.evaluate(() => {
+        const host = document.getElementById("shadow-editor");
+        const editor = host.shadowRoot.firstChild.shadowRoot.firstChild;
+        const typed = (editor.value ?? editor.textContent) === "k";
+        editor.blur();
+        host.remove();
+        return typed;
+      }));
+      await dismiss();
+    }
+    // Neither range endpoint is editable: the interior control still excludes it.
+    for (const editor of [
+      '<button>べ</button>',
+      '<b contenteditable="true" style="display:contents">べ</b>',
+      '<span style="visibility:hidden"><b contenteditable="true" style="visibility:visible">べ</b></span>',
+      '<b contenteditable="true" style="visibility:hidden">隠し<i style="visibility:visible">べ</i></b>',
+    ]) {
+      await selectVerb(`食${editor}たかった`);
+      await moveTo("#verb");
+    }
+    const editingQuiet = (await lookups()).length === editingStart && !popup.visible(await popup.state());
+    await dismiss();
+    await tab.$eval("#verb", (element) => {
+      element.innerHTML = '<b id="selection-boundary-start">食</b>'
+        + '<div style="visibility:hidden"><b style="visibility:visible">べ</b></div>た';
+    });
+    await moveTo("#selection-boundary-start");
+    const blockBoundary = (await lookups()).at(-1)?.text === "食";
+    await dismiss();
+    await tab.$eval("#verb", (element) => { element.innerHTML = '食<input type="hidden">べたかった'; });
+    const hiddenPointerAccepted = await hoverForPopup(tab, popup, "#verb");
+    await selectVerb('食べ<span style="display:none"><button>隠し</button></span>たかった');
+    const hiddenControlAccepted = await popup.waitForVisible();
+    check("editable controls preserve normal editing and suppress pointer and selection lookups",
+      edits.every(Boolean) && editingQuiet && blockBoundary && hiddenControlAccepted?.plain.includes("食べる")
+        && hiddenPointerAccepted?.plain.includes("食べる"),
+      JSON.stringify({ edits, editingQuiet, blockBoundary, hiddenControlAccepted: hiddenControlAccepted !== null,
+        hiddenPointerAccepted: hiddenPointerAccepted !== null }));
+
+    await dismiss();
+    const latinStart = (await lookups()).length;
+    await moveTo("#latin");
+    const japaneseOnly = (await lookups()).length === latinStart;
+    await editSettingsControls(settings, { "opt-japanese-only": false });
+    await pause();
+    const latinRequests = (await lookups()).slice(latinStart);
+    await editSettingsControls(settings, { "opt-japanese-only": true });
+    const reenabledStart = (await lookups()).length;
+    await moveTo("#latin");
+    const gatedAgain = (await lookups()).length === reenabledStart;
+    check("Japanese-only preferences change automatic scanning in an already-open tab",
+      japaneseOnly && latinRequests.length === 1 && latinRequests[0].text === "hello world" && gatedAgain,
+      JSON.stringify({ japaneseOnly, latinRequests, gatedAgain }));
+  } finally {
+    await dismiss();
+    await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+    await editSettingsControls(settings, original);
+    await restoreMediaReplyProbe(worker);
   }
 }
 
@@ -2788,6 +3002,7 @@ async function main() {
   );
 
   await checkReaderActivation(page, tab, popup);
+  await checkReaderSelection(browser, page, tab, popup);
   await hover("#verb");
 
   const clickedKanji = await popup.click(".gsm-hoshidicts-kanji-link");

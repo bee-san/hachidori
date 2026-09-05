@@ -19,7 +19,7 @@
   const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
 
-  const { DEFAULT_OPTIONS, normaliseActivationKey, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
+  const { DEFAULT_OPTIONS, clampOption, normaliseActivationKey, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
   const MODIFIER_PROPERTIES = new Map([
     ["Shift", "shiftKey"],
     ["Control", "ctrlKey"],
@@ -80,6 +80,8 @@
     "title",
     "video",
   ]);
+  const EDITING_TAGS = new Set(["button", "input", "select", "textarea"]);
+  const EDITING_SELECTOR = [...EDITING_TAGS, "[contenteditable]"].join(",");
   // `display` values that keep text flowing inline, so the scan may cross them.
   const INLINE_DISPLAY_PATTERN = /^(?:inline|ruby|contents)/u;
   const PRESERVED_WHITESPACE = new Set([
@@ -123,7 +125,9 @@
   let pointerInPopup = false;
   let activationPressed = false;
   let activationCode = null;
-  let pendingPointerLookupToken = null;
+  let pendingCandidateLookup = null;
+  let selectionDragActive = false;
+  let activeSelectionCandidate = null;
 
   let activeCandidate = null;
   let activeSignature = null;
@@ -349,23 +353,32 @@
     return null;
   }
 
-  function isScannableTextNode(node, styleCache) {
-    if (!node || node.nodeType !== Node.TEXT_NODE || !node.parentElement) {
+  function isEditingElement(element) {
+    return element?.isContentEditable === true || EDITING_TAGS.has(element?.localName);
+  }
+
+  function pageEditorFocused() {
+    for (let focused = document.activeElement; focused; focused = focused.shadowRoot?.activeElement) {
+      if (isEditingElement(focused)) return true;
+    }
+    return false;
+  }
+
+  function isScannableElement(element, styleCache) {
+    if (!element || element.getRootNode() !== document || isOurNode(element) || isHiddenElement(element, styleCache)) {
       return false;
     }
-    if (node.getRootNode() !== document || isOurNode(node)) {
-      return false;
-    }
-    for (
-      let element = node.parentElement;
-      element;
-      element = element.parentElement
-    ) {
-      if (OPAQUE_TAGS.has(element.localName) || isHiddenElement(element, styleCache)) {
+    for (let current = element; current; current = current.parentElement) {
+      if (isEditingElement(current) || OPAQUE_TAGS.has(current.localName)
+          || computedStyleFor(current, styleCache).display === "none") {
         return false;
       }
     }
     return true;
+  }
+
+  function isScannableTextNode(node, styleCache) {
+    return node?.nodeType === Node.TEXT_NODE && isScannableElement(node.parentElement, styleCache);
   }
 
   /**
@@ -486,17 +499,20 @@
       {
         acceptNode(node) {
           if (node.nodeType === Node.TEXT_NODE) {
-            return NodeFilter.FILTER_ACCEPT;
+            return isHiddenElement(node.parentElement, styleCache) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
           }
+          const editing = isEditingElement(node);
           if (
-            OPAQUE_TAGS.has(node.localName) ||
+            (!editing && OPAQUE_TAGS.has(node.localName)) ||
             isOurNode(node) ||
-            isHiddenElement(node, styleCache)
+            computedStyleFor(node, styleCache).display === "none"
           ) {
             return NodeFilter.FILTER_REJECT;
           }
-          // Accepted elements are boundaries the loop below stops on; inline
-          // ones are skipped so their text keeps flowing into the scan.
+          if (editing) return hasVisibleContent(node, styleCache) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+          // Visible controls and block elements are boundaries; ordinary inline
+          // elements are skipped, including hidden wrappers whose descendants
+          // may restore visibility. Hidden blocks still occupy layout space.
           return node.localName === "br" || isBlockDisplay(node, styleCache)
             ? NodeFilter.FILTER_ACCEPT
             : NodeFilter.FILTER_SKIP;
@@ -558,7 +574,7 @@
       return null;
     }
     const query = entries.map((entry) => entry.text).join("");
-    if (!isJapaneseToken(query)) {
+    if (options.onlyScanJapaneseText && !isJapaneseToken(query)) {
       return null;
     }
 
@@ -593,15 +609,71 @@
     };
   }
 
+  function selectionBoundaryElement(node) {
+    return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  }
+
+  function hasVisibleContent(element, styleCache) {
+    if (computedStyleFor(element, styleCache).display === "none") return false;
+    const visible = !isHiddenElement(element, styleCache);
+    if (visible && element.getClientRects().length > 0) return true;
+    for (const child of element.childNodes) {
+      if (child.nodeType === Node.ELEMENT_NODE && hasVisibleContent(child, styleCache)) return true;
+      if (visible && child.nodeType === Node.TEXT_NODE) {
+        // A display:contents editor has no box, but its editable text still does.
+        const range = document.createRange();
+        range.selectNodeContents(child);
+        if (range.getClientRects().length > 0) return true;
+      }
+    }
+    return false;
+  }
+
+  function resolveSelectedLookupCandidate(selection = window.getSelection()) {
+    if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return null;
+    const range = selection.getRangeAt(0);
+    const styleCache = new Map();
+    if (!isScannableElement(selectionBoundaryElement(range.startContainer), styleCache)
+        || !isScannableElement(selectionBoundaryElement(range.endContainer), styleCache)) return null;
+    const query = selection.toString();
+    if (!query.trim()) return null;
+    const scanContainer = range.startContainer.nodeType === Node.TEXT_NODE
+      ? resolveScanContainer(range.startContainer, styleCache) : null;
+    const anchor = scanContainer?.contains(range.endContainer)
+      ? scanContainer : selectionBoundaryElement(range.commonAncestorContainer);
+    for (const control of anchor.querySelectorAll(EDITING_SELECTOR)) {
+      if (isEditingElement(control) && range.intersectsNode(control)
+          && hasVisibleContent(control, styleCache)) return null;
+    }
+    return {
+      anchor,
+      anchorRange: range.cloneRange(),
+      exactSelection: true,
+      matchOffset: rangeOffsetWithin(anchor, range.startContainer, range.startOffset),
+      query,
+      rawSelectionText: range.toString(),
+      sentence: anchor.textContent || "",
+      sourceDepth: -1,
+      sourceElements: [anchor],
+      vertical: computedStyleFor(anchor, styleCache).writingMode.startsWith("vertical"),
+    };
+  }
+
+  function candidateStart(candidate) {
+    return candidate.exactSelection === true
+      ? { node: candidate.anchorRange.startContainer, offset: candidate.anchorRange.startOffset }
+      : candidate.scanEntries[0];
+  }
+
   function candidateSignature(candidate) {
-    const first = candidate.scanEntries[0];
-    return `${first.offset}\u001f${candidate.matchOffset}\u001f${candidate.query}`;
+    const first = candidateStart(candidate);
+    return `${candidate.exactSelection === true}\u001f${first.offset}\u001f${candidate.matchOffset}\u001f${candidate.query}`;
   }
 
   function sameAnchorNode(candidate, other) {
     return Boolean(other) &&
       other.anchor === candidate.anchor &&
-      other.scanEntries[0].node === candidate.scanEntries[0].node;
+      candidateStart(other).node === candidateStart(candidate).node;
   }
 
   /**
@@ -613,6 +685,7 @@
    * wrong length whenever the word crosses ruby or a line wrap.
    */
   function rawMatchedText(candidate, matched) {
+    if (candidate.exactSelection === true) return candidate.rawSelectionText;
     const wanted = typeof matched === "string" ? matched.length : 0;
     if (wanted <= 0) {
       return "";
@@ -659,6 +732,9 @@
     hideTimer = null;
     document.removeEventListener("mousemove", onMouseMove, true);
     document.removeEventListener("mousedown", onMouseDown, true);
+    document.removeEventListener("mouseup", onMouseUp, true);
+    document.removeEventListener("selectionchange", onSelectionChange);
+    document.removeEventListener("focusin", onPageFocusIn, true);
     document.removeEventListener("keydown", onKeyDown, true);
     document.removeEventListener("keyup", onKeyUp, true);
     document.removeEventListener("mouseout", onMouseOut, true);
@@ -928,12 +1004,20 @@
   function anchorConnected(candidate) {
     return Boolean(candidate) &&
       candidate.anchor.isConnected &&
-      candidate.scanEntries[0].node.isConnected;
+      candidateStart(candidate).node.isConnected &&
+      (candidate.exactSelection !== true || (
+        !candidate.anchorRange.collapsed
+        && candidate.anchor.contains(candidate.anchorRange.startContainer)
+        && candidate.anchor.contains(candidate.anchorRange.endContainer)
+      ));
   }
 
   function requestCanRender(token, candidate) {
     if (disposed || token !== lookupToken || !popup) return false;
-    if (!anchorConnected(candidate)) {
+    // Initial selections still own the live page selection; Note/Back replays
+    // intentionally use their stored descriptor even after focus collapses it.
+    if (!anchorConnected(candidate) || (pendingCandidateLookup?.token === token
+        && candidate.exactSelection === true && !selectionIsUnchanged(candidate))) {
       hide();
       return false;
     }
@@ -1022,7 +1106,7 @@
     popup.dataset.hoshidictsDepth = "0";
     popup.hidden = true;
     popup.addEventListener("focusin", () => {
-      cancelPointerScan();
+      cancelCandidateScan();
       clearHideTimer();
     });
     popup.addEventListener("focusout", onPopupFocusOut);
@@ -1095,7 +1179,9 @@
 
   function hide() {
     clearScanTimer();
-    pendingPointerLookupToken = null;
+    selectionDragActive = false;
+    activeSelectionCandidate = null;
+    pendingCandidateLookup = null;
     clearHideTimer();
     activeCandidate = null;
     activeSignature = null;
@@ -1318,7 +1404,8 @@
     }
     noteGeneration(reply.generation);
     const results = (Array.isArray(reply.results) ? reply.results : [])
-      .filter((result) => result && result.term);
+      .filter((result) => result && result.term
+        && (!request.exactSelection || result.matched === request.payload.text));
     if (results.length === 0) {
       if (reply.dictionaryCount === 0) {
         show(request.candidate);
@@ -1333,6 +1420,11 @@
         return false;
       }
       hide();
+      // Retain an exact miss so subsequent pointer motion cannot turn it into
+      // a prefix lookup. Explicit dismissal or another selection resets it.
+      if (request.exactSelection && selectionIsUnchanged(request.candidate)) {
+        activeSelectionCandidate = request.candidate;
+      }
       return false;
     }
     show(request.candidate);
@@ -1352,8 +1444,10 @@
 
   function runLookup(candidate, overrides = {}) {
     const text = typeof overrides.text === "string" ? overrides.text : candidate.query;
+    const exactSelection = candidate.exactSelection === true && overrides.text === undefined;
     return executeTermRequest({
       candidate,
+      exactSelection,
       highlightText: overrides.keepHighlight === true ? activeHighlightText : undefined,
       kind: "term",
       payload: {
@@ -1365,7 +1459,7 @@
             ? overrides.primaryReading
             : "",
         },
-        scanLength: options.scanLength,
+        scanLength: exactSelection ? clampOption("scanLength", Array.from(text).length) : options.scanLength,
         text,
       },
       previous: overrides.previous ?? null,
@@ -1542,12 +1636,26 @@
     }
   }
 
-  function cancelPointerScan() {
+  function discardPendingCandidate() {
+    if (pendingCandidateLookup?.candidate === activeSelectionCandidate) activeSelectionCandidate = null;
+    pendingCandidateLookup = null;
+  }
+
+  function cancelCandidateScan() {
     clearScanTimer();
     // Retaining a rendered popup during transfer must not invalidate its media
-    // or deferred glossary. Only an unfinished pointer lookup loses ownership.
-    if (pendingPointerLookupToken === lookupToken) lookupToken += 1;
-    pendingPointerLookupToken = null;
+    // or deferred glossary. Only an unfinished candidate loses ownership.
+    if (pendingCandidateLookup?.token === lookupToken) lookupToken += 1;
+    discardPendingCandidate();
+  }
+
+  function lookupCandidate(candidate, signature = candidateSignature(candidate)) {
+    const lookup = runLookup(candidate);
+    const pending = { token: lookupToken, candidate, signature };
+    pendingCandidateLookup = pending;
+    void lookup.finally(() => {
+      if (pendingCandidateLookup === pending) pendingCandidateLookup = null;
+    });
   }
 
   function activationAllowed() {
@@ -1574,32 +1682,50 @@
       return;
     }
     if (!options.hoverEnabled) return;
-    if (noteEditing || popupHasFocus()) {
-      cancelPointerScan();
+    if (noteEditing || popupHasFocus() || pageEditorFocused()) {
+      cancelCandidateScan();
       clearHideTimer();
       return;
     }
+    if (selectionDragActive || retainSelectedLookup()) return;
     pointerInPopup = isOurNode(pointer.target) ||
       pointInsidePopup(pointer.clientX, pointer.clientY);
     if (pointerInPopup) {
-      cancelPointerScan();
+      cancelCandidateScan();
       clearHideTimer();
       return;
     }
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) {
+      const selected = resolveSelectedLookupCandidate(selection);
+      if (selected) startSelectionLookup(selected);
+      else {
+        cancelCandidateScan();
+        scheduleHide();
+      }
+      return;
+    }
     if (!activationAllowed()) {
-      cancelPointerScan();
+      cancelCandidateScan();
       scheduleHide();
       return;
     }
     const candidate = resolveCandidate(pointer.clientX, pointer.clientY);
     if (!candidate) {
-      cancelPointerScan();
+      cancelCandidateScan();
       scheduleHide();
+      return;
+    }
+    const signature = candidateSignature(candidate);
+    if (pendingCandidateLookup?.token === lookupToken
+        && pendingCandidateLookup.signature === signature
+        && sameAnchorNode(candidate, pendingCandidateLookup.candidate)) {
+      clearHideTimer();
       return;
     }
     if (
       popup && !popup.hidden &&
-      activeSignature === candidateSignature(candidate) &&
+      activeSignature === signature &&
       sameAnchorNode(candidate, activeCandidate)
     ) {
       clearHideTimer();
@@ -1609,12 +1735,7 @@
     // A new valid pointer lookup owns this popup. Retire the previous view
     // rather than leave its expired glossary/media and Note controls usable.
     if (popup && !popup.hidden) hide();
-    const lookup = runLookup(candidate);
-    const token = lookupToken;
-    pendingPointerLookupToken = token;
-    void lookup.finally(() => {
-      if (pendingPointerLookupToken === token) pendingPointerLookupToken = null;
-    });
+    lookupCandidate(candidate, signature);
   }
 
   function onMouseMove(event) {
@@ -1627,23 +1748,33 @@
       target: event.target,
     };
     updateModifierState(event);
+    if (selectionDragActive && (event.buttons & 1) === 0) {
+      selectionDragActive = false;
+      onSelectionChange();
+    }
     // Cancel a pending dismissal here rather than waiting for the throttled
     // scan, so the popup stays reachable even with hoverDelayMs turned up. The
     // retargeted event target is enough; the rect test costs a layout and can
     // wait for the scan.
     if (isOurNode(event.target)) {
       pointerInPopup = true;
-      cancelPointerScan();
+      cancelCandidateScan();
       clearHideTimer();
       return;
     }
     pointerInPopup = false;
-    if (noteEditing || popupHasFocus()) {
-      cancelPointerScan();
+    if (noteEditing || popupHasFocus() || pageEditorFocused()) {
+      cancelCandidateScan();
       return;
     }
-    if (!activationAllowed()) {
-      cancelPointerScan();
+    if (selectionDragActive) return;
+    if (activeSelectionCandidate) {
+      clearHideTimer();
+      scheduleScan();
+      return;
+    }
+    if (!activationAllowed() && window.getSelection()?.isCollapsed !== false) {
+      cancelCandidateScan();
       scheduleHide();
       return;
     }
@@ -1670,7 +1801,56 @@
     }
     if (!isOurNode(event.target) && !pointInsidePopup(event.clientX, event.clientY)) {
       hide();
+      selectionDragActive = event.button === 0 && options.hoverEnabled
+        && isScannableElement(selectionBoundaryElement(event.target), new Map());
     }
+  }
+
+  function selectionIsUnchanged(candidate = activeSelectionCandidate) {
+    if (!candidate) return false;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return false;
+    const range = selection.getRangeAt(0);
+    const previous = candidate.anchorRange;
+    return range.startContainer === previous.startContainer && range.startOffset === previous.startOffset
+      && range.endContainer === previous.endContainer && range.endOffset === previous.endOffset
+      && selection.toString() === candidate.query;
+  }
+
+  function startSelectionLookup(candidate) {
+    hide();
+    activeSelectionCandidate = candidate;
+    lookupCandidate(candidate);
+  }
+
+  function retainSelectedLookup() {
+    if (!activeSelectionCandidate) return false;
+    if (!selectionIsUnchanged()) onSelectionChange();
+    if (!activeSelectionCandidate) return false;
+    clearHideTimer();
+    return true;
+  }
+
+  function onSelectionChange() {
+    if (disposed || !options.hoverEnabled || selectionDragActive || noteEditing
+        || popupHasFocus() || pageEditorFocused() || selectionIsUnchanged()) return;
+    const selection = window.getSelection();
+    if ([selection?.anchorNode, selection?.focusNode].some((node) =>
+      node && (node === host || node.getRootNode() === shadow))) return;
+    const candidate = resolveSelectedLookupCandidate(selection);
+    if (!candidate && !activeSelectionCandidate) return;
+    if (candidate) startSelectionLookup(candidate);
+    else hide();
+  }
+
+  function onMouseUp(event) {
+    if (disposed || event.button !== 0 || !selectionDragActive) return;
+    selectionDragActive = false;
+    onSelectionChange();
+  }
+
+  function onPageFocusIn() {
+    if (!disposed && pageEditorFocused()) cancelCandidateScan();
   }
 
   function onKeyDown(event) {
@@ -1688,10 +1868,11 @@
         hide();
         return;
       }
-      cancelPointerScan();
-      if (options.activationKey !== "Escape") return;
+      const dismissedCandidate = pendingCandidateLookup !== null || activeSelectionCandidate !== null;
+      hide();
+      if (dismissedCandidate || options.activationKey !== "Escape") return;
     }
-    if (!options.hoverEnabled) return;
+    if (!options.hoverEnabled || pageEditorFocused()) return;
     // Pressing the gate key while the pointer is stationary should reveal the
     // word under it without asking the reader to jiggle the mouse.
     const wasPressed = activationPressed;
@@ -1701,7 +1882,8 @@
       activationCode = event.code;
     }
     if (!wasPressed && activationPressed && options.lookupMode === "activation"
-        && lastPointer && !noteEditing && !popupHasFocus() && !pointerInPopup) {
+        && lastPointer && !noteEditing && !popupHasFocus() && !pointerInPopup
+        && !selectionDragActive && !retainSelectedLookup()) {
       scheduleScan();
     }
   }
@@ -1715,7 +1897,8 @@
     }
     if (!activationPressed) activationCode = null;
     if (options.lookupMode === "activation" && !activationPressed) {
-      cancelPointerScan();
+      if (selectionIsUnchanged()) return;
+      cancelCandidateScan();
       scheduleHide();
     }
   }
@@ -1727,13 +1910,14 @@
     if (!disposed && event.relatedTarget === null) {
       lastPointer = null;
       pointerInPopup = false;
-      cancelPointerScan();
+      cancelCandidateScan();
       scheduleHide();
     }
   }
 
   function onWindowBlur() {
     if (!disposed) {
+      selectionDragActive = false;
       lastPointer = null;
       activationPressed = false;
       activationCode = null;
@@ -1743,7 +1927,7 @@
   }
 
   function onScroll() {
-    cancelPointerScan();
+    cancelCandidateScan();
     view?.hideImagePreview();
     if (disposed || !popup || popup.hidden || !activeCandidate) {
       return;
@@ -1764,6 +1948,10 @@
   }
 
   function invalidateStoredState(dictionaryChanged) {
+    discardPendingCandidate();
+    // A completed selection hit or miss also belongs to the old lookup state.
+    // Preserve Note's view ownership through its deferred refresh.
+    if (!noteEditing && pendingCustomAppends === 0) activeSelectionCandidate = null;
     view?.hideImagePreview();
     if (dictionaryChanged && popup && !popup.hidden) {
       if (noteEditing || pendingCustomAppends > 0) {
@@ -1783,7 +1971,7 @@
   function onNoteEditingChange(editing) {
     noteEditing = editing === true;
     if (noteEditing) {
-      cancelPointerScan();
+      cancelCandidateScan();
       clearHideTimer();
     } else if (pendingCustomAppends === 0 && deferredDictionaryInvalidationRevision >= 0) {
       hide();
@@ -1829,7 +2017,8 @@
       || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
       || JSON.stringify(next.kanjiClickDictionary) !== JSON.stringify(options.kanjiClickDictionary);
     const activationChanged = next.lookupMode !== options.lookupMode || next.activationKey !== options.activationKey;
-    const interactionChanged = activationChanged || next.hoverEnabled !== options.hoverEnabled;
+    const interactionChanged = activationChanged || next.hoverEnabled !== options.hoverEnabled
+      || next.onlyScanJapaneseText !== options.onlyScanJapaneseText;
     const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
     if (activationChanged) {
@@ -1839,13 +2028,19 @@
     optionsStorageRevision = revision;
     options = next;
     if (!options.hoverEnabled) {
+      selectionDragActive = false;
       lastPointer = null;
       activationPressed = false;
       activationCode = null;
       hide();
     }
     else if (interactionChanged || scanDelayChanged) {
-      cancelPointerScan();
+      if (selectionIsUnchanged()) {
+        clearScanTimer();
+        clearHideTimer();
+        return lookupChanged;
+      }
+      cancelCandidateScan();
       clearHideTimer();
       if (!noteEditing && !popupHasFocus() && !pointerInPopup) {
         if (!activationAllowed()) scheduleHide();
@@ -1883,6 +2078,9 @@
     const observe = { capture: true, passive: true };
     document.addEventListener("mousemove", onMouseMove, observe);
     document.addEventListener("mousedown", onMouseDown, observe);
+    document.addEventListener("mouseup", onMouseUp, observe);
+    document.addEventListener("selectionchange", onSelectionChange);
+    document.addEventListener("focusin", onPageFocusIn, observe);
     document.addEventListener("mouseout", onMouseOut, observe);
     document.addEventListener("keydown", onKeyDown, true);
     document.addEventListener("keyup", onKeyUp, true);

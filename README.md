@@ -46,6 +46,11 @@ Hachidori requires Chrome 118 or newer. The WebAssembly bundle is committed, so 
 
 Hachidori scans forward from the character under your pointer, deinflects forms such as `食べたかった` to `食べる`, ranks matches using your chosen dictionaries, and renders the result beside the text.
 
+Select text to look up that exact selection instead. Selection lookup works
+without holding the hover key and is not restricted to Japanese text. In
+Settings, turn off **Japanese text only** to scan other languages automatically
+too. Page editors are excluded from text scanning.
+
 ## Why Hachidori?
 
 - **Bring your own dictionaries.** Import the same open Yomitan `.zip` ecosystem used by established Japanese-learning tools.

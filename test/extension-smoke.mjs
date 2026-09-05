@@ -4205,6 +4205,9 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  for (const [name, passed] of Object.entries(noteContent?.scanning ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   for (const [name, passed] of Object.entries(noteContent?.activation ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -6455,6 +6458,8 @@ async function contentNoteStage() {
       return popup;
     },
     hideTimerPending() { return hideTimer !== null; },
+    viewRequest() { return currentViewRequest; },
+    resolveCandidate,
     setScanCandidate(candidate) { resolveCandidate = () => candidate; },
     onMouseMove,
     onMouseDown,
@@ -6998,6 +7003,571 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function selectionEditingCase() {
+    const outcomes = [];
+    for (const tag of ["button", "span", "contents", "restored", "restored-child"]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      harness.anchor.textContent = "食";
+      const control = window.document.createElement(tag === "button" ? "button" : "span");
+      control.textContent = "べ";
+      control.style.visibility = "visible";
+      control.getClientRects = () => tag === "contents" ? [] : [{}];
+      window.Range.prototype.getClientRects = () => [{}];
+      if (tag !== "button") {
+        control.setAttribute("contenteditable", "true");
+        Object.defineProperty(control, "isContentEditable", { value: true });
+        if (tag === "contents") control.style.display = "contents";
+      }
+      if (tag === "restored-child") {
+        control.style.visibility = "hidden";
+        const child = window.document.createElement("b");
+        child.style.visibility = "visible";
+        child.textContent = "べ";
+        child.getClientRects = () => [{}];
+        control.append(child);
+      }
+      let editingNode = control;
+      if (tag === "restored") {
+        editingNode = window.document.createElement("span");
+        editingNode.style.visibility = "hidden";
+        editingNode.append(control);
+      }
+      harness.anchor.append(editingNode, window.document.createTextNode("た"));
+      window.getSelection().selectAllChildren(harness.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      const selected = harness.take("hd_lookup");
+      if (selected) harness.reply(selected, { dictionaryCount: 1, results: [] });
+      await harness.settle();
+      harness.driver.setScanCandidate(harness.candidate);
+      harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+      const fallback = harness.take("hd_lookup");
+      outcomes.push(selected === null && fallback === null);
+      if (fallback) harness.reply(fallback, { dictionaryCount: 1, results: [] });
+      await harness.settle();
+      harness.close();
+    }
+    return { "selections spanning editing controls are ignored without falling back to pointer prefixes":
+      outcomes.every(Boolean) || outcomes };
+  }
+
+  async function popupSelectionCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const request = harness.take("hd_lookup");
+    if (request) harness.reply(request, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+    await harness.settle();
+    const current = harness.driver.viewRequest();
+    const text = window.document.createTextNode("Selected glossary text");
+    harness.popup.append(text);
+    const range = window.document.createRange();
+    range.selectNodeContents(text);
+    // jsdom cannot select closed-shadow text. Chrome exposes these real endpoints.
+    const originalSelection = window.getSelection;
+    window.getSelection = () => ({
+      anchorNode: text, focusNode: text, isCollapsed: false, rangeCount: 1,
+      getRangeAt: () => range, toString: () => range.toString(),
+    });
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const retained = current !== null && harness.driver.viewRequest() === current
+      && !harness.driver.snapshot().popupHidden && harness.take("hd_lookup") === null;
+    window.getSelection = originalSelection;
+    harness.close();
+    return { "selecting popup glossary text preserves the current page-selection view": retained };
+  }
+
+  async function selectionInvalidationCase() {
+    const outcomes = [];
+    for (const [reason, phase] of ["dictionary", "options"].flatMap((reason) =>
+      ["pending", "miss", "hit"].map((phase) => [reason, phase]))) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      window.getSelection().selectAllChildren(harness.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      const first = harness.take("hd_lookup");
+      const exactResults = [harness.term(harness.candidate.query)];
+      if (phase !== "pending" && first) {
+        harness.reply(first, { dictionaryCount: 1, results: phase === "hit" ? exactResults : [] });
+        await harness.settle();
+      }
+      harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+      const unchangedRetained = harness.take("hd_lookup") === null;
+      if (reason === "dictionary") harness.emitState(harness.state(2, "New dictionary generation"));
+      else harness.emitOptions({ maxResults: 5 });
+      if (phase === "pending" && first) harness.reply(first, { dictionaryCount: 1, results: exactResults });
+      await harness.settle();
+      const oldRejected = phase !== "pending"
+        || (harness.renders.length === 0 && harness.driver.snapshot().popupHidden);
+      harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+      const retry = harness.take("hd_lookup");
+      if (retry) harness.reply(retry, { dictionaryCount: 1, results: exactResults });
+      await harness.settle();
+      outcomes.push(unchangedRetained && oldRejected && retry?.request.text === harness.candidate.query
+        && (reason !== "options" || retry?.request.maxResults === 5)
+        && harness.render()?.results[0].matched === harness.candidate.query
+        && !harness.driver.snapshot().popupHidden);
+      harness.close();
+    }
+    return { "pending selections and resolved hits or misses retry only after dictionary or result-option invalidation":
+      outcomes.every(Boolean) || outcomes };
+  }
+
+  async function selectionDescriptorCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const query = harness.candidate.query;
+    const exactResults = [harness.term("食"), { ...harness.term("食べる"), matched: query }];
+    harness.emitOptions({ scanLength: 1, kanjiClickDictionary: { title: "Generic", kind: "term" } });
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const first = harness.take("hd_lookup");
+    if (first) harness.reply(first, { dictionaryCount: 1, results: exactResults });
+    await harness.settle();
+    const original = harness.driver.viewRequest();
+    async function noteRefresh(revision, generation, results, eventFirst) {
+      harness.edit(true);
+      window.getSelection().removeAllRanges();
+      const append = harness.callbacks().onAddCustomEntry({ term: "食べる", reading: "たべる", definition: "eat" });
+      const mutation = harness.take("hd_custom_append");
+      const state = harness.state(revision, "Saved Note");
+      if (eventFirst) harness.emitState(state);
+      if (mutation) harness.reply(mutation, { generation, document: { revision }, state });
+      await harness.settle();
+      const refresh = harness.take("hd_lookup");
+      if (refresh) harness.reply(refresh, { generation, dictionaryCount: 2, results });
+      await append;
+      await harness.settle();
+      window.getSelection().selectAllChildren(harness.anchor);
+      return refresh;
+    }
+    const selectedRefresh = await noteRefresh(2, 2, exactResults, true);
+    const selectedKept = selectedRefresh?.request.text === query && selectedRefresh.request.scanLength === 3
+      && harness.driver.viewRequest() === original && original?.exactSelection === true
+      && harness.render()?.results.length === 1;
+    const clicked = harness.driver.showKanji("食");
+    const kanji = harness.take("hd_lookup_dictionary");
+    if (kanji) harness.reply(kanji, { generation: 3, results: [harness.term("食")] });
+    await clicked;
+    window.getSelection().removeAllRanges();
+    const back = harness.render()?.context.onBack?.();
+    const backRequest = harness.take("hd_lookup");
+    if (backRequest) harness.reply(backRequest, { generation: 3, dictionaryCount: 2, results: exactResults });
+    await back;
+    window.getSelection().selectAllChildren(harness.anchor);
+    const backKept = backRequest?.request.text === query && backRequest.request.scanLength === 3
+      && harness.driver.viewRequest() === original && harness.render()?.results.length === 1;
+    const link = harness.driver.onInternalLink({ query: "別の語", primaryReading: "べつ" });
+    const linked = harness.take("hd_lookup");
+    if (linked) harness.reply(linked, { generation: 3, dictionaryCount: 2, results: [harness.term("別")] });
+    await link;
+    const linkedDescriptor = harness.driver.viewRequest();
+    const linkKept = linked?.request.text === "別の語" && linked.request.options.primaryReading === "べつ"
+      && linked.request.scanLength === 1 && linkedDescriptor?.exactSelection === false
+      && harness.render()?.results[0].matched === "別" && linkedDescriptor.highlightText === query;
+    const linkedRefresh = await noteRefresh(3, 3, [harness.term("別")], false);
+    harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+    const linkedRefreshKept = linkedRefresh?.request.text === "別の語"
+      && linkedRefresh.request.options.primaryReading === "べつ"
+      && harness.driver.viewRequest() === linkedDescriptor && harness.render()?.results[0].matched === "別"
+      && harness.take("hd_lookup") === null;
+    harness.close();
+    return { "Note and kanji Back preserve exact selection descriptors while linked queries retain their own matching mode":
+      selectedKept && backKept && linkKept && linkedRefreshKept
+        || { selectedKept, backKept, linkKept, linkedRefreshKept } };
+  }
+
+  async function selectionRecoveryCase() {
+    const recovered = [];
+    for (const reason of ["Escape", "disable", "blur", "dictionary-state"]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      window.getSelection().selectAllChildren(harness.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      const first = harness.take("hd_lookup");
+      if (first) harness.reply(first, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+      await harness.settle();
+      if (reason === "Escape") harness.driver.onKeyDown({ key: "Escape", stopPropagation() {} });
+      else if (reason === "disable") {
+        harness.emitOptions({ hoverEnabled: false });
+        harness.emitOptions({ hoverEnabled: true });
+      } else if (reason === "blur") harness.driver.onWindowBlur();
+      else harness.emitState(harness.state(2, "Changed dictionaries"));
+      harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
+      harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+      const retry = harness.take("hd_lookup");
+      recovered.push(retry?.request.text === harness.candidate.query);
+      if (retry) harness.reply(retry, { dictionaryCount: 1, results: [] });
+      await harness.settle();
+      harness.close();
+    }
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const settings = { lookupMode: "activation", activationKey: "K", scanLength: 1, onlyScanJapaneseText: true };
+    harness.emitOptions(settings);
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const selected = harness.take("hd_lookup");
+    harness.emitOptions({ ...settings, onlyScanJapaneseText: false });
+    window.document.dispatchEvent(new window.KeyboardEvent("keyup", { key: "k", code: "KeyK" }));
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
+    harness.driver.onMouseMove({ target: harness.anchor, clientX: 200, clientY: 200 });
+    if (selected) harness.reply(selected, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+    await harness.settle();
+    const retained = selected !== null && !harness.driver.snapshot().popupHidden && harness.take("hd_lookup") === null;
+    harness.close();
+    return {
+      "dismissed selections can be looked up again after Escape, enablement, blur and dictionary changes":
+        recovered.every(Boolean) || recovered,
+      "an explicit selection survives automatic scanning policy changes, key release and pointer motion": retained,
+    };
+  }
+
+  async function selectedTextCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const selection = window.getSelection();
+    harness.anchor.innerHTML = '食べ<span hidden>隠し</span>た';
+    selection.selectAllChildren(harness.anchor);
+    let visible = "食べた";
+    let materializations = 0;
+    // jsdom uses raw Range text here; the Chrome suite verifies rendered text.
+    Object.defineProperty(selection, "toString", { configurable: true, value: () => {
+      materializations += 1;
+      return visible;
+    } });
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const first = harness.take("hd_lookup");
+    if (first) harness.reply(first, { dictionaryCount: 1, results: [harness.term(visible)] });
+    await harness.settle();
+    const selectedText = first?.request.text === visible
+      && harness.driver.viewRequest()?.highlightText === "食べ隠した";
+    harness.anchor.firstChild.replaceData(1, 1, "ん");
+    visible = "食んた";
+    materializations = 0;
+    for (let index = 0; index < 4; index += 1) {
+      harness.driver.onMouseMove({ target: harness.anchor, clientX: 200 + index, clientY: 200 });
+    }
+    const throttled = materializations === 0;
+    await harness.settle();
+    const changed = harness.take("hd_lookup");
+    const changedText = changed?.request.text === visible;
+    if (changed) harness.reply(changed, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    harness.close();
+    return { "selection lookup uses visible text, raw highlight offsets and text-aware unchanged detection":
+      selectedText && changedText && throttled };
+  }
+
+  async function selectionCancellationCase() {
+    const outcomes = [];
+    for (const reason of ["Escape", "scroll", "window-exit", "collapse", "disable", "replace", "mutate"]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      const selection = window.getSelection();
+      const changed = () => window.document.dispatchEvent(new window.Event("selectionchange"));
+      selection.selectAllChildren(harness.anchor);
+      changed();
+      const first = harness.take("hd_lookup");
+      let replacement = null;
+      if (reason === "Escape") harness.driver.onKeyDown({ key: "Escape" });
+      else if (reason === "scroll") harness.driver.onScroll();
+      else if (reason === "window-exit") harness.driver.onMouseOut({ relatedTarget: null });
+      else if (reason === "disable") harness.emitOptions({ hoverEnabled: false });
+      else if (reason === "mutate") harness.anchor.firstChild.replaceData(1, 1, "ん");
+      else if (reason === "collapse") {
+        selection.removeAllRanges();
+        changed();
+      } else {
+        selection.setBaseAndExtent(harness.anchor.firstChild, 0, harness.anchor.firstChild, 1);
+        changed();
+        replacement = harness.take("hd_lookup");
+      }
+      if (first) harness.reply(first, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+      await harness.settle();
+      outcomes.push(first !== null && harness.driver.snapshot().popupHidden
+        && harness.renders.length === 0 && (reason !== "replace" || replacement !== null));
+      if (reason === "mutate") {
+        changed();
+        replacement = harness.take("hd_lookup");
+        outcomes.push(replacement?.request.text === "食んた");
+      }
+      if (replacement) harness.reply(replacement, { dictionaryCount: 1, results: [] });
+      await harness.settle();
+      harness.close();
+    }
+    return { "pending selections cannot reopen after dismissal, replacement or selected-text mutation":
+      outcomes.every(Boolean) || outcomes };
+  }
+
+  async function exactSelectionCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const document = window.document;
+    const selection = window.getSelection();
+    harness.emitOptions({ lookupMode: "activation", activationKey: "K", scanLength: 1 });
+    const mouse = (type) => harness.anchor.dispatchEvent(new window.MouseEvent(type, {
+      bubbles: true, button: 0, clientX: 200, clientY: 200,
+    }));
+    const changed = () => document.dispatchEvent(new window.Event("selectionchange"));
+    const selectText = (text) => {
+      mouse("mousedown");
+      harness.anchor.textContent = text;
+      selection.selectAllChildren(harness.anchor);
+      changed();
+      mouse("mouseup");
+      changed();
+      return harness.take("hd_lookup");
+    };
+    harness.anchor.innerHTML = '<b style="display:inline"> 食べ</b><i style="display:inline">たかった </i>';
+    mouse("mousedown");
+    selection.setBaseAndExtent(harness.anchor.lastChild.firstChild, 4, harness.anchor.firstChild.firstChild, 1);
+    changed();
+    harness.driver.onMouseMove({ target: harness.anchor, clientX: 200, clientY: 200, buttons: 1 });
+    await harness.settle();
+    const dragQuiet = harness.take("hd_lookup") === null;
+    mouse("mouseup");
+    changed();
+    const exact = harness.take("hd_lookup");
+    const query = "食べたかった";
+    if (exact) harness.reply(exact, { dictionaryCount: 1, results: [
+      harness.term("食べ"), { ...harness.term("食べる"), matched: query },
+    ] });
+    await harness.settle();
+    const rendered = harness.render();
+    const exactResult = dragQuiet && exact?.request.text === query
+      && exact.request.scanLength === Array.from(query).length
+      && harness.take("hd_lookup") === null && rendered?.results.length === 1
+      && rendered.results[0].term.expression === "食べる"
+      && rendered.candidate.query === query
+      && rendered.candidate.sentence === " 食べたかった "
+      && rendered.candidate.matchOffset === 1
+      && rendered.candidate.sourceElements.map((node) => node.textContent).join("") === rendered.candidate.sentence;
+    const raw = " hello\n world ";
+    const rawRequest = selectText(raw);
+    if (rawRequest) harness.reply(rawRequest, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    const long = "あ".repeat(70);
+    const longRequest = selectText(long);
+    if (longRequest) harness.reply(longRequest, { dictionaryCount: 1, results: [harness.term(long.slice(0, 64))] });
+    await harness.settle();
+    const exactBound = rawRequest?.request.text === raw && longRequest?.request.text === long
+      && longRequest.request.scanLength === 64 && harness.driver.snapshot().popupHidden;
+    harness.close();
+    return {
+      "exact reverse inline selections bypass activation and preserve raw context while rejecting prefix results": exactResult,
+      "explicit selections preserve whitespace and full queries beyond the engine scan window": exactBound,
+    };
+  }
+
+  async function releasedSelectionDragCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const pointer = { target: harness.anchor, clientX: 200, clientY: 200, buttons: 1 };
+    harness.driver.onMouseDown({ ...pointer, button: 0 });
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    harness.driver.onMouseOut({ relatedTarget: null });
+    harness.driver.onMouseMove(pointer);
+    await harness.settle();
+    const held = harness.take("hd_lookup") === null;
+    // The primary button was released outside the document: no mouseup arrives.
+    harness.driver.onMouseMove({ ...pointer, buttons: 0 });
+    await harness.settle();
+    const recovered = harness.take("hd_lookup");
+    if (recovered) harness.reply(recovered, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+    await harness.settle();
+    const visible = !harness.driver.snapshot().popupHidden;
+    harness.close();
+    return { "selection drags remain quiet while held and recover on re-entry after an outside release":
+      held && recovered?.request.text === harness.candidate.query && visible };
+  }
+
+  async function scanExtractionCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const document = window.document;
+    const block = document.createElement("p");
+    block.style.display = "block";
+    document.body.append(block);
+    const scan = (node, offset = 0) => {
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.collapse(true);
+      document.caretRangeFromPoint = () => range;
+      return harness.driver.resolveCandidate(0, 0);
+    };
+    block.innerHTML = '<b style="display:inline">食</b><i style="display:inline">べたかった</i>。';
+    const inline = scan(block.firstChild.firstChild);
+    const crossedInline = inline?.query === "食べたかった。"
+      && inline.sourceElements.map((element) => element.textContent).join("") === inline.sentence;
+    block.textContent = "hello world";
+    const japaneseOnly = scan(block.firstChild) === null;
+    harness.emitOptions({ onlyScanJapaneseText: false });
+    const unrestricted = scan(block.firstChild)?.query === "hello world";
+    harness.emitOptions({ onlyScanJapaneseText: true });
+    const gatedAgain = scan(block.firstChild) === null;
+    const controls = [];
+    for (const tag of ["button", "select", "textarea", "input", "span"]) {
+      block.innerHTML = '<b style="display:inline">食</b>';
+      const control = document.createElement(tag);
+      control.style.display = "inline";
+      control.getClientRects = () => [{}];
+      control.textContent = "べたかった";
+      if (tag === "span") {
+        control.setAttribute("contenteditable", "true");
+        // jsdom lacks this browser property; Chrome exercises actual inheritance.
+        Object.defineProperty(control, "isContentEditable", { value: true });
+      }
+      block.append(control, document.createTextNode("語"));
+      controls.push(scan(control.firstChild) === null && scan(block.firstChild.firstChild)?.query === "食");
+      control.style.display = "none";
+      controls.push(scan(block.firstChild.firstChild)?.query === "食語");
+    }
+    block.innerHTML = '食<span style="display:inline;visibility:hidden">隠し<b style="display:inline;visibility:visible">べ</b></span>た';
+    const restored = block.querySelector("b");
+    const restoredProse = scan(block.firstChild)?.query === "食べた" && scan(restored.firstChild)?.query === "べた";
+    block.querySelector("span").style.display = "block";
+    const restoredBlock = scan(block.firstChild)?.query === "食";
+    block.querySelector("span").style.display = "inline";
+    for (const editor of [block.querySelector("span"), restored]) {
+      editor.setAttribute("contenteditable", "true");
+      Object.defineProperty(editor, "isContentEditable", { configurable: true, value: true });
+      restored.getClientRects = () => [{}];
+      controls.push(scan(block.firstChild)?.query === "食");
+      editor.removeAttribute("contenteditable");
+      delete editor.isContentEditable;
+    }
+    harness.close();
+    return {
+      "pointer scans cross ordinary inline text and apply the live Japanese-only preference":
+        crossedInline && japaneseOnly && unrestricted && gatedAgain && restoredProse && restoredBlock,
+      "editing controls and contenteditable text stop both direct and forward pointer scanning":
+        controls.every(Boolean) || controls,
+    };
+  }
+
+  async function focusedEditingCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const input = window.document.createElement("input");
+    window.document.body.append(input);
+    harness.driver.setScanCandidate(harness.candidate);
+    harness.emitOptions({ lookupMode: "activation", activationKey: "K", hoverDelayMs: 0 });
+    const pointer = { target: harness.anchor, clientX: 200, clientY: 200 };
+    harness.driver.onMouseMove(pointer);
+    input.focus();
+    input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "k", code: "KeyK", bubbles: true }));
+    harness.driver.onMouseMove(pointer);
+    await harness.settle();
+    const whileEditing = harness.take("hd_lookup");
+    if (whileEditing) harness.reply(whileEditing, {}, false);
+    await harness.settle();
+    input.blur();
+    harness.emitOptions({ onlyScanJapaneseText: false });
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "hello" });
+    harness.driver.scanPointer(pointer);
+    const beforeGate = harness.take("hd_lookup");
+    harness.emitOptions({ onlyScanJapaneseText: true });
+    if (beforeGate) harness.reply(beforeGate, { dictionaryCount: 1, results: [harness.term("hello")] });
+    await harness.settle();
+    const obsoleteRejected = harness.driver.snapshot().popupHidden;
+    harness.close();
+    return {
+      "focused editing suppresses stationary activation and Japanese gating cancels prior pending scans":
+        whileEditing === null && beforeGate !== null && obsoleteRejected,
+    };
+  }
+
+  async function shadowEditingCase() {
+    const outcomes = [];
+    for (const tag of ["input", "div"]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      const host = window.document.createElement("div");
+      window.document.body.append(host);
+      const innerHost = window.document.createElement("div");
+      host.attachShadow({ mode: "open" }).append(innerHost);
+      const editor = window.document.createElement(tag);
+      editor.tabIndex = 0;
+      if (tag === "div") {
+        editor.setAttribute("contenteditable", "true");
+        Object.defineProperty(editor, "isContentEditable", { value: true });
+      }
+      innerHost.attachShadow({ mode: "open" }).append(editor);
+      harness.driver.setScanCandidate(harness.candidate);
+      const pointer = { target: harness.anchor, clientX: 200, clientY: 200 };
+      harness.emitOptions({ lookupMode: "activation", activationKey: "K", hoverDelayMs: 0 });
+      harness.driver.onMouseMove(pointer);
+      editor.focus();
+      editor.dispatchEvent(new window.KeyboardEvent("keydown", { key: "k", code: "KeyK", bubbles: true, composed: true }));
+      await harness.settle();
+      const typing = harness.take("hd_lookup");
+      if (typing) harness.reply(typing, {}, false);
+      editor.blur();
+      harness.emitOptions({ lookupMode: "hover", hoverDelayMs: 0 });
+      harness.driver.onMouseMove(pointer);
+      editor.focus();
+      await harness.settle();
+      const delayed = harness.take("hd_lookup");
+      if (delayed) harness.reply(delayed, {}, false);
+      editor.blur();
+      harness.driver.scanPointer(pointer);
+      const pending = harness.take("hd_lookup");
+      editor.focus();
+      if (pending) harness.reply(pending, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+      await harness.settle();
+      outcomes.push(typing === null && delayed === null && pending !== null && harness.driver.snapshot().popupHidden);
+      harness.close();
+    }
+    return { "nested open-shadow editors suppress activation and cancel delayed and pending candidate work":
+      outcomes.every(Boolean) || outcomes };
+  }
+
+  async function pendingScanCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const scan = (candidate) => {
+      harness.driver.setScanCandidate(candidate);
+      harness.driver.scanPointer({ target: window.document.body, clientX: 200, clientY: 200 });
+    };
+    scan(harness.candidate);
+    const first = harness.take("hd_lookup");
+    scan(harness.candidate);
+    const duplicate = harness.take("hd_lookup");
+    const otherAnchor = window.document.createElement("span");
+    otherAnchor.textContent = harness.candidate.query;
+    window.document.body.append(otherAnchor);
+    const other = {
+      ...harness.candidate,
+      anchor: otherAnchor,
+      sourceElements: [otherAnchor],
+      scanEntries: [{ ...harness.candidate.scanEntries[0], node: otherAnchor.firstChild }],
+    };
+    scan(other);
+    const newer = harness.take("hd_lookup");
+    for (const request of [first, duplicate].filter(Boolean)) {
+      harness.reply(request, { dictionaryCount: 1, results: [harness.term("old node")] });
+    }
+    await harness.settle();
+    scan(other);
+    const lateDuplicate = harness.take("hd_lookup");
+    for (const request of [newer, lateDuplicate].filter(Boolean)) harness.reply(request, {}, false);
+    await harness.settle();
+    scan(other);
+    const retry = harness.take("hd_lookup");
+    if (retry) harness.reply(retry, { dictionaryCount: 1, results: [harness.term(other.query)] });
+    await harness.settle();
+    scan(other);
+    const renderedDuplicate = harness.take("hd_lookup");
+    const passed = first !== null && newer !== null && retry !== null
+      && duplicate === null && lateDuplicate === null && renderedDuplicate === null
+      && !harness.driver.snapshot().popupHidden;
+    harness.close();
+    return { "pending pointer candidates deduplicate by node and query without losing retries or newer ownership": passed };
+  }
+
   async function activationCase() {
     const result = {};
     const harness = await createHarness();
@@ -7070,9 +7640,24 @@ async function contentNoteStage() {
     const noteRepeatRetained = !harness.driver.snapshot().popupHidden && !harness.driver.snapshot().noteEditing;
     key("keyup", "Escape", "Escape");
     key("keydown", "Escape", "Escape");
-    result["Escape activation and Note dismissal require fresh presses rather than auto-repeat"] =
-      escaped !== null && escapeRepeatRetained && noteRepeatRetained && harness.driver.snapshot().popupHidden;
+    const escapeDismissed = harness.driver.snapshot().popupHidden;
     key("keyup", "Escape", "Escape");
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const selectedMiss = harness.take("hd_lookup");
+    if (selectedMiss) harness.reply(selectedMiss, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    key("keydown", "Escape", "Escape");
+    const missTimer = fire(75);
+    const unexpectedRetry = harness.take("hd_lookup");
+    if (unexpectedRetry) harness.reply(unexpectedRetry, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    result["Escape activation respects Note dismissal, retained selection misses and auto-repeat"] =
+      escaped !== null && escapeRepeatRetained && noteRepeatRetained && escapeDismissed
+      && selectedMiss !== null && !missTimer && unexpectedRetry === null;
+    key("keyup", "Escape", "Escape");
+    window.getSelection().removeAllRanges();
+    window.document.dispatchEvent(new window.Event("selectionchange"));
 
     const departures = [];
     for (const reason of ["no-candidate", "window-exit", "blur", "Escape", "click", "scroll"]) {
@@ -7586,6 +8171,11 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
+    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
+      ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
+      ...await releasedSelectionDragCase(),
+      ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
+      ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
