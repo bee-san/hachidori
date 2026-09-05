@@ -122,6 +122,21 @@ the existing focus-aware rerenders. Bulk actions appear when a selection exists,
 including selections outside the current search. Source editing remains lazy,
 and lookup preferences apply immediately; custom source still requires Save.
 
+Reader options carry a worker-owned monotonic `revision` in the existing
+`options` storage value. Legacy values start at revision zero. Settings coalesces
+control changes for 150 ms and sends only edited fields with their base revision;
+one request is in flight at a time. The background storage queue compare-and-sets
+that patch against current options. No-op patches keep their revision, while
+dictionary-selector pruning increments it in the same dictionary commit.
+
+Settings keeps committed, in-flight, and pending values separate. Storage events
+and replies adopt only higher committed revisions without replacing a draft, and
+numeric editing captures its base before a later blur. Conflicts and failed
+saves retain the draft for explicit retry or discard; a failed reply triggers a
+current-state read before retry is offered. Content scripts use the same
+highest-revision rule, including a delayed initial storage read. Options never
+trigger a native dictionary reload.
+
 ## Managed custom dictionary
 
 `custom-dictionary.js` is a context-independent ES module shared by Settings,
@@ -190,7 +205,7 @@ pruning are one compare-and-set transaction rather than two coordinated writes.
 | `hd_remove` | Stage a package's files, commit its removal, then delete the staged copy |
 | `hd_state_read` | Read revisioned dictionary state through the service worker |
 | `hd_state_cas` | Compare-and-set revisioned dictionary state through the service worker |
-| `hd_options_write` | Save options through the worker and prune invalid dictionary selectors |
+| `hd_options_write` | Compare-and-set an edited-field options patch using `baseRevision`; prune invalid dictionary selectors and return the current revisioned options on success or conflict |
 | `hd_custom_read` | Read the revisioned custom source and matching dictionary state |
 | `hd_custom_cas` | Atomically compare-and-set the source document and bound package state |
 | `hd_custom_save` | Parse and save Settings source, compiling or repairing its fixed package when needed |

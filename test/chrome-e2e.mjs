@@ -189,6 +189,8 @@ const PLANNED = [
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
   "Settings puts the library first and supports keyboard navigation at 320px",
+  "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
+  "reader settings and their revision survive a full browser restart",
   "settings page renders exactly four safe recommended dictionary links",
   "recommended dictionaries form two columns on desktop",
   "recommended dictionaries stack without overflow on narrow screens",
@@ -665,6 +667,88 @@ async function setDictionaryAliasInSettings(page, title, alias) {
   return { ...started, settled };
 }
 
+async function checkSettingsAutosave(page, browser, settingsUrl) {
+  const mirror = await browser.newPage();
+  const edit = (target, changes) => target.evaluate((values) => {
+    for (const [id, value] of Object.entries(values)) {
+      const input = document.getElementById(id);
+      input.value = value;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }, changes);
+  const saved = (target) => target.waitForFunction(() =>
+    document.getElementById("options-status").textContent === "Saved.", { timeout: 10_000, polling: 100 });
+  let evidence;
+  try {
+    await mirror.goto(settingsUrl, { waitUntil: "domcontentloaded" });
+    for (const target of [page, mirror]) {
+      await target.waitForFunction(() => document.getElementById("engine-status").textContent.startsWith("Ready"),
+        { timeout: 90_000, polling: 100 });
+    }
+    await page.evaluate(() => {
+      const original = chrome.runtime.sendMessage.bind(chrome.runtime);
+      const probe = { calls: [], hold: true, release: null, restore: () => { chrome.runtime.sendMessage = original; } };
+      window.__optionsSaveProbe = probe;
+      chrome.runtime.sendMessage = async (message) => {
+        if (message.type !== "hd_options_write") return original(message);
+        probe.calls.push(message);
+        const reply = await original(message);
+        if (probe.hold) {
+          probe.hold = false;
+          await new Promise((resolveReply) => { probe.release = resolveReply; });
+        }
+        return reply;
+      };
+    });
+    await edit(page, { "opt-scan-length": "25", "opt-max-results": "64" });
+    await page.waitForFunction(() => typeof window.__optionsSaveProbe.release === "function", { polling: 100 });
+    await edit(page, { "opt-max-results": "96" });
+    await mirror.waitForFunction(() => document.getElementById("opt-max-results").value === "64", { polling: 100 });
+    await edit(mirror, { "opt-frequency-order": "descending" });
+    await saved(mirror);
+    const writesWhileHeld = await page.evaluate(() => window.__optionsSaveProbe.calls.length);
+    await page.evaluate(() => window.__optionsSaveProbe.release());
+    await page.waitForFunction(() => !document.getElementById("options-conflict-actions").hidden, { polling: 100 });
+    evidence = await page.evaluate(async () => ({
+      calls: window.__optionsSaveProbe.calls,
+      draft: document.getElementById("opt-max-results").value,
+      order: document.getElementById("opt-frequency-order").value,
+      status: document.getElementById("options-status").textContent,
+      stored: (await chrome.storage.local.get("options")).options,
+    }));
+    evidence.writesWhileHeld = writesWhileHeld;
+    await page.bringToFront();
+    await page.click("#options-use-saved");
+    evidence.discardedValue = await page.$eval("#opt-max-results", (input) => input.value);
+    await edit(page, { "opt-scan-length": "16", "opt-max-results": "32", "opt-frequency-order": "auto" });
+    await saved(page);
+    await mirror.waitForFunction(() => document.getElementById("opt-max-results").value === "32", { polling: 100 });
+    check(
+      "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
+      evidence.writesWhileHeld === 1 && evidence.calls.length === 2
+        && evidence.calls[1].baseRevision === evidence.calls[0].baseRevision + 1
+        && evidence.calls[0].options.scanLength === 25 && evidence.calls[0].options.maxResults === 64
+        && evidence.draft === "96" && evidence.order === "descending"
+        && evidence.status.includes("changed in another page")
+        && evidence.stored.maxResults === 64 && evidence.discardedValue === "64",
+      JSON.stringify(evidence),
+    );
+    if (process.env.HACHIDORI_OPTIONS_SCREENSHOT) {
+      await page.bringToFront();
+      await page.setViewport({ width: 1280, height: 1000 });
+      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+      await (await page.$("#lookup")).screenshot({ path: process.env.HACHIDORI_OPTIONS_SCREENSHOT });
+    }
+  } finally {
+    await page.evaluate(() => {
+      window.__optionsSaveProbe?.release?.();
+      window.__optionsSaveProbe?.restore();
+      delete window.__optionsSaveProbe;
+    });
+    await mirror.close();
+  }
+}
+
 async function main() {
   if (!CHROME || !existsSync(CHROME)) {
     fatal("no Chrome found (set HACHIDORI_CHROME or install it as described in test/README.md)");
@@ -813,6 +897,7 @@ async function main() {
       ),
     JSON.stringify(branding),
   );
+  await checkSettingsAutosave(page, browser, settingsUrl);
 
   await page.waitForFunction(() =>
     document.querySelectorAll("#recommended-dictionary-list > li").length === 4
@@ -1803,8 +1888,10 @@ async function main() {
   for (const staleTitle of ["legacy selection {not-json", "123"]) {
     await page.evaluate(async (title) => {
       const storedOptions = (await chrome.storage.local.get("options")).options;
-      await chrome.storage.local.set({
-        options: { ...storedOptions, kanjiClickDictionary: title },
+      await chrome.runtime.sendMessage({
+        target: "hoshidicts-worker", type: "hd_options_write",
+        baseRevision: storedOptions?.revision ?? 0,
+        options: { kanjiClickDictionary: title },
       });
     }, staleTitle);
     const pruned = await page.waitForFunction(async () =>
@@ -1821,8 +1908,10 @@ async function main() {
 
   await page.evaluate(async () => {
     const storedOptions = (await chrome.storage.local.get("options")).options;
-    await chrome.storage.local.set({
-      options: { ...storedOptions, kanjiClickDictionary: "hachidori-fixture" },
+    await chrome.runtime.sendMessage({
+      target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: storedOptions?.revision ?? 0,
+      options: { kanjiClickDictionary: "hachidori-fixture" },
     });
   });
   const migratedLegacySelection = await page.waitForFunction(async (value) => {
@@ -1858,8 +1947,10 @@ async function main() {
   );
   await page.evaluate(async () => {
     const storedOptions = (await chrome.storage.local.get("options")).options;
-    await chrome.storage.local.set({
-      options: { ...storedOptions, maxResults: 1 },
+    await chrome.runtime.sendMessage({
+      target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: storedOptions?.revision ?? 0,
+      options: { maxResults: 1 },
     });
   });
 
@@ -2960,6 +3051,8 @@ async function main() {
     }),
   );
 
+  const optionsBeforeRestart = await page.evaluate(async () =>
+    (await chrome.storage.local.get("options")).options);
   const chromeProcess = browser.process();
   const chromeKilled = new Promise((resolveKilled) => chromeProcess.once("close", resolveKilled));
   chromeProcess.kill("SIGKILL");
@@ -2979,6 +3072,16 @@ async function main() {
   page = await browser.newPage();
   page.on("console", m => diagnostics.push(`[settings2] ${m.type()}: ${m.text()}`));
   await page.goto(settingsUrl, { waitUntil: "domcontentloaded" });
+
+  const restoredOptions = await page.waitForFunction(async (expected) => {
+    const { options } = await chrome.storage.local.get("options");
+    return JSON.stringify(options) === JSON.stringify(expected)
+      && document.getElementById("opt-max-results").value === String(expected.maxResults)
+      ? options : false;
+  }, { timeout: 30_000, polling: 100 }, optionsBeforeRestart).then((handle) => handle.jsonValue()).catch(() => null);
+  check("reader settings and their revision survive a full browser restart",
+    restoredOptions?.revision === optionsBeforeRestart.revision && restoredOptions !== null,
+    JSON.stringify({ optionsBeforeRestart, restoredOptions }));
 
   const persistedPackage = await page.waitForFunction(async (id, expectedPath) => {
     const t = (document.getElementById("dict-list")?.textContent || "");

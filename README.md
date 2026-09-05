@@ -75,6 +75,12 @@ Settings opens with your library in lookup order. Section links take you straigh
 to imports, updates, groups, personal entries, or lookup preferences. Bulk actions
 appear when you select dictionaries; disabled dictionaries stay readable and editable.
 
+Lookup preferences save automatically after a short delay. The save status shows
+when changes are durable. If another Settings page changes them first, your draft
+stays visible: choose **Save my changes** to retry or **Use saved settings** to
+discard it. Already-open readers accept only newer committed settings, without
+reloading dictionaries. [Lookup settings screenshot](docs/assets/lookup-settings.png).
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/settings-dark.png">
