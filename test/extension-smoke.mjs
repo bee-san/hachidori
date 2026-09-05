@@ -9685,9 +9685,14 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
   let replayIntent = null;
   let finishAppend;
   let appends = 0;
+  const linkPredicates = [];
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
-    appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
+    appendTextOnlyGlossary(...args) {
+      fills += 1;
+      linkPredicates.push(args[3].isCurrentLink);
+      return HDGlossary.appendTextOnlyGlossary(...args);
+    },
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
     onBeforeResultsRendered(intent) { if (!current) { replays += 1; replayIntent = intent; return false; } },
     onAddCustomEntry() { appends += 1; return new Promise(resolve => { finishAppend = resolve; }); },
@@ -9702,7 +9707,11 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     dictionaryPresentation: [{ title: "First", favorite: true }, { title: "Second", favorite: true }],
   };
   try {
-    view.renderResults(results, candidate, context);
+    view.renderResults(results, candidate, { ...context, expandAll: true });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const initialPredicates = linkPredicates.slice();
+    const sharedPredicate = initialPredicates.length === 2
+      && initialPredicates[0] === initialPredicates[1];
     const first = popup.querySelector("a[data-hoshidicts-query]");
     const initialFills = fills;
     current = false;
@@ -9710,18 +9719,19 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     popup.querySelector('[role="tab"][data-dictionary="Second"]').click();
     await new Promise(resolve => setTimeout(resolve, 20));
     const retained = links === 1 && replays === 1 && selected?.dictionary === "Second"
-      && first.isConnected && fills === initialFills;
+      && first.isConnected && fills === initialFills && initialPredicates.every(owns => owns());
     displayed = false;
     first.click();
     popup.querySelector('[role="tab"][data-dictionary="First"]').click();
-    const obsoleteIgnored = links === 1 && replays === 1;
+    const obsoleteIgnored = links === 1 && replays === 1 && initialPredicates.every(owns => !owns());
     current = true;
     displayed = true;
     view.renderResults(results, candidate, context);
     popup.querySelector('[role="tab"][data-dictionary="Second"]').click();
     check("retained displayed links and stale-tab handoff never reenable obsolete glossary work",
-      retained && obsoleteIgnored && replays === 1 && fills > initialFills,
-      JSON.stringify({ retained, obsoleteIgnored, links, replays, fills, initialFills }));
+      sharedPredicate && retained && obsoleteIgnored && replays === 1 && fills > initialFills
+        && initialPredicates.every(owns => !owns()),
+      JSON.stringify({ sharedPredicate, retained, obsoleteIgnored, links, replays, fills, initialFills }));
 
     const preserved = [];
     for (const toolbarPosition of ["top", "bottom"]) {
