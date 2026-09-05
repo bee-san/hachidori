@@ -1668,7 +1668,7 @@
   }
 
   function onKeyDown(event) {
-    if (disposed) {
+    if (disposed || event.repeat) {
       return;
     }
     if (event.key === "Escape") {
