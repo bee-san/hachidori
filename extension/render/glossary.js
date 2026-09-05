@@ -888,6 +888,10 @@
     return url ? { href: url, internal: false } : null;
   }
 
+  function ownsStructuredLink(element, state) {
+    return element.isConnected && (typeof state.isCurrent !== "function" || state.isCurrent());
+  }
+
   function appendStructuredValue(documentRef, parent, value, state, depth) {
     if (state.nodes >= MAX_STRUCTURED_NODES || depth > MAX_STRUCTURED_DEPTH) {
       throw new RangeError("Structured content exceeds its node or depth limit");
@@ -986,8 +990,10 @@
           element.dataset.hoshidictsReading = link.primaryReading;
         }
         element.addEventListener("click", (event) => {
+          if (event.defaultPrevented) return;
           event.preventDefault();
-          if (typeof state.onInternalLink === "function") {
+          event.stopPropagation();
+          if (ownsStructuredLink(element, state) && typeof state.onInternalLink === "function") {
             state.onInternalLink({
               anchor: element,
               primaryReading: link.primaryReading,
@@ -1004,7 +1010,7 @@
           if (event.defaultPrevented || event.button !== (event.type === "auxclick" ? 1 : 0)) return;
           event.preventDefault();
           event.stopPropagation();
-          if (!element.isConnected || (typeof state.isCurrent === "function" && !state.isCurrent())) return;
+          if (!ownsStructuredLink(element, state)) return;
           if (typeof state.onExternalLink === "function") {
             state.onExternalLink({
               url: link.href,

@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 282 checks, all of
+full request→reply round trip per contract-C message type. 283 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -436,6 +436,8 @@ What it proves, in order:
    Worker checks reject invalid URLs/senders before tab creation and bypass held
    storage writes without waking the engine. Failed or missing navigation replies
    do not retry, replace the lookup or discard an open Note draft.
+   Internal anchors preserve exact linked query/reading and share connected/current
+   ownership checks; an enclosing structured anchor cannot dispatch a second lookup.
    Media tests also pin exact UTF-8 reference and 6 MiB complete-reply boundaries,
    embedded-NUL prefix rejection, bounded correlation on early relay failures,
    and actual oversized native errors without capping archive imports.
