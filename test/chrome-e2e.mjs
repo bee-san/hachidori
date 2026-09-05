@@ -698,6 +698,7 @@ async function popupReader(page) {
         const root = this.getRootNode();
         const note = this.querySelector(".gsm-hoshidicts-note-button");
         const noteRect = note.getBoundingClientRect();
+        const termInput = this.querySelector(".gsm-hoshidicts-note-term");
         const reachable = element => {
           const rect = element.getBoundingClientRect();
           return element.contains(root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
@@ -727,6 +728,8 @@ async function popupReader(page) {
           scrollTop: this.scrollTop,
           lastStepReachable: reachable(lastStep),
           glossaryReachable: reachable(glossary),
+          noteInputFocused: root.activeElement === termInput,
+          noteInputReachable: termInput !== null && reachable(termInput),
         };
       }`,
     });
@@ -778,12 +781,16 @@ async function checkDeinflectionDisclosure(settings, tab, popup) {
   let collapsed;
   let lastStep;
   let glossary;
+  let note;
   try {
     await tab.bringToFront();
     await tab.setViewport({ width: 360, height: 900 });
     focused = await popup.deinflection("focus");
     await tab.keyboard.press("Enter");
     expanded = await popup.deinflection();
+    await popup.click(".gsm-hoshidicts-note-button");
+    note = await popup.deinflection();
+    await tab.keyboard.press("Escape");
     lastStep = await popup.deinflection("last-step");
     glossary = await popup.deinflection("glossary");
     await popup.deinflection("focus");
@@ -818,11 +825,12 @@ async function checkDeinflectionDisclosure(settings, tab, popup) {
       && fitsWidth(expanded.popupRect, expanded.listRect)
       && fitsWidth(expanded.popupRect, expanded.noteRect)
       && Math.abs(expanded.noteRect.top - focused.noteRect.top) <= 1
+      && note?.open === true && note.noteInputFocused && note.noteInputReachable
       && lastStep?.open === true && lastStep.scrollTop > 0 && lastStep.lastStepReachable
       && lastStep.lastStepRect.top >= lastStep.popupRect.top
       && lastStep.lastStepRect.bottom <= lastStep.popupRect.bottom
       && glossary?.open === true && glossary.glossaryReachable,
-    JSON.stringify({ expected, closed, focused, expanded, collapsed, lastStep, glossary }));
+    JSON.stringify({ expected, closed, focused, expanded, collapsed, lastStep, glossary, note }));
 }
 
 async function installMediaArchive(page, archive) {

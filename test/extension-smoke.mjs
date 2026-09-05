@@ -8718,6 +8718,8 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   Object.defineProperty(popup, "scrollHeight", { configurable: true, value: 480 });
   view.setToolbarPosition("bottom");
   popup.scrollTop = 0;
+  let scrollAtNoteFocus;
+  popup.addEventListener("focus", () => { scrollAtNoteFocus = popup.scrollTop; }, { capture: true, once: true });
   termNoteButton?.click();
   const bottomNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
   const bottomChildren = [...popup.children];
@@ -8729,11 +8731,13 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       && bottomChildren.at(-2) === bottomNoteForm
       && bottomChildren.at(-1) === resultToolbar
       && openedAtBottom === popup.scrollHeight
+      && scrollAtNoteFocus === popup.scrollHeight
       && popup.children[0] === resultToolbar
       && popup.children[1] === bottomNoteForm,
     JSON.stringify({
       bottomOrder: bottomChildren.map(({ className }) => className),
       openedAtBottom,
+      scrollAtNoteFocus,
       scrollHeight: popup.scrollHeight,
       topOrder: [...popup.children].map(({ className }) => className),
     }),
