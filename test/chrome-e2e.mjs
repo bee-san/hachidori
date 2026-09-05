@@ -1330,6 +1330,12 @@ async function main() {
     selected.click();
     return initiallyHidden && visibleWhenSelected && actions.hidden;
   });
+  await page.setViewport({ width: 1280, height: 320 });
+  await page.focus('.settings-nav a[href="#lookup"]');
+  const shortWindowNavigation = await page.evaluate(() => {
+    const rect = document.activeElement.getBoundingClientRect();
+    return rect.top >= 0 && rect.bottom <= window.innerHeight;
+  });
   await page.setViewport({ width: 320, height: 900 });
   await page.focus('.settings-nav a[href="#lookup"]');
   await page.keyboard.press("Enter");
@@ -1356,10 +1362,10 @@ async function main() {
   const skipFocusedMain = await page.evaluate(() => document.activeElement.id === "settings-content");
   check(
     "Settings puts the library first and supports keyboard navigation at 320px",
-    libraryFirst && selectionActions && skipFocusedMain
+    libraryFirst && selectionActions && skipFocusedMain && shortWindowNavigation
       && narrowThemes.every((theme) => theme.noOverflow && theme.fieldsFit
         && theme.disabledRowReadable && theme.emptyStatusExposed),
-    JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, narrowThemes }),
+    JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, shortWindowNavigation, narrowThemes }),
   );
   await page.emulateMediaFeatures([]);
   await page.setViewport({ width: 480, height: 900 });

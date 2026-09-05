@@ -89,6 +89,8 @@ button,
   position: sticky;
   top: 0;
   align-self: start;
+  max-height: 100vh;
+  overflow-y: auto;
   padding: 40px 20px;
 }
 .brand {
@@ -767,6 +769,8 @@ textarea {
   }
   .settings-sidebar {
     position: static;
+    max-height: none;
+    overflow: visible;
     padding: 20px;
   }
   .settings-nav {
