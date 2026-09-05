@@ -1528,6 +1528,15 @@ html[data-hoshidicts-theme="miku"] .gsm-hoshidicts-popup {
   overflow-wrap: anywhere;
 }
 
+.gsm-hoshidicts-entry-header:has(.gsm-hoshidicts-deinflection) {
+  align-items: flex-start;
+}
+
+/* A long explanation must scroll away rather than cover the glossary below. */
+.gsm-hoshidicts-result-chrome:has(.gsm-hoshidicts-deinflection[open]) {
+  position: static;
+}
+
 .gsm-hoshidicts-deinflection > summary {
   padding: 1px 2px;
   border-radius: 4px;

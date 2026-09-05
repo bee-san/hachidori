@@ -691,7 +691,7 @@ async function popupReader(page) {
         const glossary = this.querySelector(".gsm-hoshidicts-glossary-content");
         if (action === "focus") summary.focus();
         else if (action === "blur") summary.blur();
-        else if (action === "last-step") lastStep.scrollIntoView({ block: "center" });
+        else if (action === "last-step") lastStep.scrollIntoView({ block: "end" });
         else if (action === "glossary") glossary.scrollIntoView({ block: "center" });
         const view = this.ownerDocument.defaultView;
         await new Promise(resolve => view.requestAnimationFrame(() => view.requestAnimationFrame(resolve)));
@@ -720,6 +720,7 @@ async function popupReader(page) {
           popupRect: this.getBoundingClientRect().toJSON(),
           detailsRect: details.getBoundingClientRect().toJSON(),
           listRect: list.getBoundingClientRect().toJSON(),
+          lastStepRect: lastStep.getBoundingClientRect().toJSON(),
           noteRect: noteRect.toJSON(),
           noteReachable: !note.disabled && note.contains(root.elementFromPoint(
             noteRect.x + noteRect.width / 2, noteRect.y + noteRect.height / 2)),
@@ -818,6 +819,8 @@ async function checkDeinflectionDisclosure(settings, tab, popup) {
       && fitsWidth(expanded.popupRect, expanded.noteRect)
       && Math.abs(expanded.noteRect.top - focused.noteRect.top) <= 1
       && lastStep?.open === true && lastStep.scrollTop > 0 && lastStep.lastStepReachable
+      && lastStep.lastStepRect.top >= lastStep.popupRect.top
+      && lastStep.lastStepRect.bottom <= lastStep.popupRect.bottom
       && glossary?.open === true && glossary.glossaryReachable,
     JSON.stringify({ expected, closed, focused, expanded, collapsed, lastStep, glossary }));
 }
