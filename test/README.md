@@ -277,7 +277,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 235 checks, all of
+full request→reply round trip per contract-C message type. 237 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -418,6 +418,9 @@ What it proves, in order:
    rearms it and content replacement does not hide a refreshed Note result.
    An ad-hoc format-3 fixture imports genuine AVIF and SVG through the real WASM
    engine and checks their complete returned data URLs, not merely file headers.
+   Image-sizing checks keep the existing bounded sizer authoritative, preserve
+   ordinary/preferred/em dimensions, and recover intermediate width arithmetic
+   overflow/underflow while retaining valid original rounding and display clamps.
 9. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
    and removing an unknown title does not bump `generation`. Removal strict-loads
    the remaining manifest and commits it before deleting the old root. The
@@ -548,7 +551,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 95 assertions, and the summary line
+`PLANNED` at the top of the file names all 96 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -623,6 +626,14 @@ closed shadow root. `imagePreviewFixture()` keeps these resources separate from
 the standard fixtures and their documented counts; its tiny AVIF was encoded
 once with FFmpeg/libaom and carries its command/hash in the builder, so tests
 need no encoder dependency.
+
+The separate `imageSizingFixture()` imports one PNG used by 14 dimension cases.
+Chrome checks exact decoded bytes, unchanged physical geometry for seven
+ordinary/preferred/em cases, and bounded geometry for the tall-aspect and
+floating-point edge cases. The one-pixel-wide tall case previously reached
+roughly 33 million pixels high through raw CSS `aspect-ratio`; it must now use
+the existing 10,000% sizer limit (100 pixels). The standard fixture counts and
+archive admission rules remain unchanged.
 
 - The popup's **structure**, not just its flattened text. `popupReader()` reports
   `tags`, `lists`, `tables` and `bold` (with the computed `font-weight`, since the
