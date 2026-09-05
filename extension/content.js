@@ -605,6 +605,17 @@
     return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
   }
 
+  function hasVisibleContent(element, styleCache) {
+    for (let current = element; current; current = current.parentElement) {
+      if (isHiddenElement(current, styleCache)) return false;
+    }
+    if (element.getClientRects().length > 0) return true;
+    // A display:contents editor has no box, but its editable text still does.
+    const contents = document.createRange();
+    contents.selectNodeContents(element);
+    return contents.getClientRects().length > 0;
+  }
+
   function resolveSelectedLookupCandidate(selection = window.getSelection()) {
     if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return null;
     const range = selection.getRangeAt(0);
@@ -619,7 +630,7 @@
       ? scanContainer : selectionBoundaryElement(range.commonAncestorContainer);
     for (const control of anchor.querySelectorAll(EDITING_SELECTOR)) {
       if (isEditingElement(control) && range.intersectsNode(control)
-          && control.getClientRects().length > 0 && !isHiddenElement(control, styleCache)) return null;
+          && hasVisibleContent(control, styleCache)) return null;
     }
     return {
       anchor,
@@ -1797,7 +1808,10 @@
   function onSelectionChange() {
     if (disposed || !options.hoverEnabled || selectionDragActive || noteEditing
         || popupHasFocus() || isEditingElement(document.activeElement) || selectionIsUnchanged()) return;
-    const candidate = resolveSelectedLookupCandidate();
+    const selection = window.getSelection();
+    if ([selection?.anchorNode, selection?.focusNode].some((node) =>
+      node && (node === host || node.getRootNode() === shadow))) return;
+    const candidate = resolveSelectedLookupCandidate(selection);
     if (!candidate && !activeSelectionCandidate) return;
     if (candidate) startSelectionLookup(candidate);
     else hide();
