@@ -34,6 +34,7 @@ import {
   buildRecommendedZip,
   buildTitledZip,
   buildTrainedZip,
+  frequencyRankingFixture,
   imagePreviewFixture,
   imageSizingFixture,
   makePng,
@@ -3462,6 +3463,51 @@ async function main() {
       && JSON.stringify(stateAfterRepair) === JSON.stringify(repairedStateWrite.state),
     JSON.stringify({ repairedStateWrite, repairedReload, stateAfterRepair }),
   );
+
+  const frequencyFixture = frequencyRankingFixture();
+  const frequencyMetadata = [];
+  for (const dictionary of frequencyFixture.dictionaries) {
+    const imported = await request("hd_import", { blobUrl: createObjectURL(dictionary.archive) });
+    const stored = (await storedDictionaryState()).dictionaries.find(({ title }) => title === dictionary.title);
+    const index = stored && JSON.parse(new TextDecoder().decode(observedEngine.FS.readFile(`${stored.path}/index.json`)));
+    frequencyMetadata.push(imported.ok && index?.frequencyMode === dictionary.frequencyMode
+      && stored?.frequencyMode === dictionary.frequencyMode);
+  }
+  const frequencyOrders = [];
+  const [rankTitle, occurrenceTitle] = frequencyFixture.dictionaries.map(({ title }) => title);
+  for (const [frequencyDictionary, frequencyOrder, readings] of [
+    [rankTitle, "ascending", ["い", "あ", "う"]],
+    [rankTitle, "descending", ["う", "あ", "い"]],
+    [occurrenceTitle, "ascending", ["あ", "い", "う"]],
+    [occurrenceTitle, "descending", ["う", "い", "あ"]],
+    [occurrenceTitle, "disabled", ["あ", "い", "う"]],
+    [occurrenceTitle, "auto", ["い", "あ", "う"]],
+  ]) {
+    for (const maxResults of [1, 3]) {
+      const ranked = await request("hd_lookup", {
+        text: frequencyFixture.query, scanLength: 16, maxResults,
+        options: { frequencyDictionary, frequencyOrder },
+      });
+      frequencyOrders.push(ranked.ok && ranked.results.length === maxResults
+        && ranked.results.every(({ term }, index) => term.reading === readings[index]
+          && term.glossaries.map(({ dictionary }) => dictionary).join("|") === `${rankTitle}|${occurrenceTitle}`));
+    }
+  }
+  check("frequency sorting precedes result limits and preserves manifest-ordered dictionary identity",
+    frequencyOrders.every(Boolean), JSON.stringify(frequencyOrders));
+  const beforeFrequencyReload = await storedDictionaryState();
+  const legacyFrequencyState = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker", type: "hd_state_cas", baseRevision: beforeFrequencyReload.revision,
+    dictionaries: beforeFrequencyReload.dictionaries.map(({ frequencyMode, ...dictionary }) => dictionary),
+  });
+  const frequencyReload = await request("hd_reload");
+  const afterFrequencyReload = await storedDictionaryState();
+  frequencyMetadata.push(legacyFrequencyState.ok && frequencyReload.ok
+    && frequencyFixture.dictionaries.every(({ title, frequencyMode }) =>
+      afterFrequencyReload.dictionaries.find((dictionary) => dictionary.title === title)?.frequencyMode === frequencyMode));
+  check("real WASM frequency modes reach package metadata and recover from old committed generations",
+    frequencyMetadata.every(Boolean), JSON.stringify(frequencyMetadata));
+  for (const { title } of frequencyFixture.dictionaries) await request("hd_remove", { title });
 
   section("lookup, kanji, styles, media");
   const lookup = await request("hd_lookup", {

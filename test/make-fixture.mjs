@@ -499,8 +499,8 @@ export function buildFixtureZip() {
 // stripped so the import fails *after* the importer has read the title and
 // derived a directory from it. That is the only moment a title can do damage,
 // which is what the path-traversal and failed-re-import tests need.
-export function buildTitledZip(title, { banks = true, terms = TERMS, termMeta = [], mediaEntries = [] } = {}) {
-  const entries = [zipEntry('index.json', JSON.stringify({ ...index, title }))];
+export function buildTitledZip(title, { banks = true, terms = TERMS, termMeta = [], mediaEntries = [], frequencyMode } = {}) {
+  const entries = [zipEntry('index.json', JSON.stringify({ ...index, title, frequencyMode }))];
   if (banks) {
     entries.push(zipEntry('term_bank_1.json', JSON.stringify(terms)));
   }
@@ -509,6 +509,26 @@ export function buildTitledZip(title, { banks = true, terms = TERMS, termMeta = 
   }
   for (const [path, bytes] of mediaEntries) entries.push(zipEntry(path, bytes));
   return buildZip(entries);
+}
+
+export function frequencyRankingFixture() {
+  const query = '頻度語';
+  const readings = ['あ', 'い', 'う'];
+  const dictionaries = [
+    ['Frequency rank mode', 'rank-based', [20, 10, 30]],
+    ['Frequency occurrence mode', 'occurrence-based', [1, 2, 9]],
+  ].map(([title, frequencyMode, values]) => ({
+    title,
+    frequencyMode,
+    archive: buildTitledZip(title, {
+      frequencyMode,
+      terms: readings.map((reading, index) =>
+        [query, reading, '', '', 30 - index * 10, [`${title}: ${reading}`], index, '']),
+      termMeta: readings.map((reading, index) =>
+        [query, 'freq', { reading, frequency: { value: values[index] } }]),
+    }),
+  }));
+  return { query, dictionaries };
 }
 
 export function imageSizingFixture() {
