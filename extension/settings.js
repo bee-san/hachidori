@@ -89,27 +89,41 @@ const SECTION_STATUSES = {
   "dict-group-error": { section: "dictionary-groups", label: "Groups" },
 };
 let activeSection = "dictionaries";
+const unseenSectionCompletions = new Set();
 
 function element(id) {
   return document.getElementById(id);
+}
+
+function sectionHasPendingWork(id) {
+  switch (id) {
+    case "import-state": return importing;
+    case "update-state": return updating;
+    case "custom-dictionary-status": return customLoading || customSaving || customDictionaryDirty();
+    case "options-status": return savingOptions !== null || Object.keys(pendingOptions).length > 0;
+    default: return false;
+  }
 }
 
 function syncNavigationStatus(id) {
   const { section, label } = SECTION_STATUSES[id];
   const source = element(id);
   const notice = element(`nav-status-${section}`);
-  const message = section !== activeSection && source.textContent
+  if (section === activeSection) unseenSectionCompletions.delete(id);
+  const attention = source.classList.contains("is-error") || unseenSectionCompletions.has(id) || sectionHasPendingWork(id);
+  const message = section !== activeSection && attention && source.textContent
     ? `${label}: ${source.textContent}` : "";
   if (notice.textContent !== message) notice.textContent = message;
   notice.classList.toggle("is-error", source.classList.contains("is-error"));
   notice.classList.toggle("is-ready", source.classList.contains("is-ready"));
 }
 
-function setSectionStatus(id, message, tone) {
+function setSectionStatus(id, message, tone, completed = false) {
   const output = element(id);
   output.textContent = message;
   output.classList.toggle("is-error", tone === "error");
   output.classList.toggle("is-ready", tone === "ready");
+  if (completed && SECTION_STATUSES[id].section !== activeSection) unseenSectionCompletions.add(id);
   syncNavigationStatus(id);
 }
 
@@ -352,16 +366,16 @@ function setStatus(message, tone) {
 }
 
 function setImportState(message, tone) {
-  setSectionStatus("import-state", message, tone);
+  setSectionStatus("import-state", message, tone, tone === "ready");
   element("import-progress").hidden = tone !== "busy";
 }
 
 function setUpdateState(message, tone = "") {
-  setSectionStatus("update-state", message, tone);
+  setSectionStatus("update-state", message, tone, tone === "ready");
 }
 
-function setCustomDictionaryStatus(message, tone = "") {
-  setSectionStatus("custom-dictionary-status", message, tone);
+function setCustomDictionaryStatus(message, tone = "", completed = false) {
+  setSectionStatus("custom-dictionary-status", message, tone, completed);
 }
 
 function renderCustomDictionaryErrors(errors) {
@@ -497,6 +511,7 @@ async function loadCustomDictionarySource() {
     setCustomDictionaryStatus(`Could not load the custom dictionary source: ${describe(error)}`, "error");
   } finally {
     customLoading = false;
+    syncNavigationStatus("custom-dictionary-status");
     renderCustomDictionaryControls();
   }
 }
@@ -579,12 +594,14 @@ async function saveCustomDictionarySource(event) {
       setCustomDictionaryStatus(
         customDictionarySavedMessage(reply, pending.parsed.entries.length, pending.parsed.errors.length),
         "ready",
+        true,
       );
     }
   } catch (error) {
     setCustomDictionaryStatus(`Could not save the custom dictionary: ${describe(error)}`, "error");
   } finally {
     customSaving = false;
+    syncNavigationStatus("custom-dictionary-status");
     setControlsDisabled(importing);
   }
 }
@@ -952,6 +969,7 @@ function bindDictionaryUpdate(row, entry) {
   const status = dictionaryUpdateStatus(entry);
   const output = row.querySelector(".dict-update-status");
   output.textContent = status.text;
+  output.hidden = !entry.lastUpdateCheck;
   output.classList.toggle("is-ready", status.tone === "ready");
   output.classList.toggle("is-available", status.tone === "available");
   output.classList.toggle("is-error", status.tone === "error");
@@ -1647,6 +1665,7 @@ async function runImportBatch(items, importOne, singular, plural) {
     await refreshStatus();
   } finally {
     importing = false;
+    syncNavigationStatus("import-state");
     setControlsDisabled(false);
   }
 }
@@ -1707,6 +1726,7 @@ async function runManagedUpdate(type, dictionaryIds = null) {
     setUpdateState(`Dictionary updates failed: ${describe(error)}`, "error");
   } finally {
     updating = false;
+    syncNavigationStatus("update-state");
     setControlsDisabled(importing);
   }
 }
@@ -1987,8 +2007,8 @@ function handleStorageChange(changes, area) {
   }
 }
 
-function setOptionsStatus(message) {
-  setSectionStatus("options-status", message, optionsSaveFailed ? "error" : "");
+function setOptionsStatus(message, completed = false) {
+  setSectionStatus("options-status", message, optionsSaveFailed ? "error" : "", completed);
   element("options-conflict-actions").hidden = !optionsSaveFailed;
 }
 
@@ -2036,7 +2056,7 @@ async function flushOptions() {
     if (optionsEditRevision !== null) {
       optionsEditRevision = Math.max(optionsEditRevision, reply.options.revision);
     }
-    setOptionsStatus(Object.keys(pendingOptions).length > 0 ? "Unsaved changes…" : "Saved.");
+    setOptionsStatus(Object.keys(pendingOptions).length > 0 ? "Unsaved changes…" : "Saved.", true);
   } catch (error) {
     pendingOptions = { ...sent.patch, ...pendingOptions };
     optionsSaveFailed = true;
@@ -2049,6 +2069,7 @@ async function flushOptions() {
     setOptionsStatus(`Could not save settings: ${describe(error)}`);
   } finally {
     savingOptions = null;
+    syncNavigationStatus("options-status");
     renderCurrentOptions();
     if (!optionsSaveFailed && optionsTimer === null && Object.keys(pendingOptions).length > 0) {
       void flushOptions();

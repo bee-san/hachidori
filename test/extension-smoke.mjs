@@ -4709,7 +4709,19 @@ async function settingsNavigationStage() {
     const details = focusKept && row().querySelector(".dict-details").open
       && !document.querySelector('.dict-row[data-dictionary-id="second"] .dict-details').open
       && document.activeElement === search;
-    return { navigation, draft, details };
+    await navigate("lookup");
+    document.getElementById("options-use-saved").click();
+    input.value = "96";
+    const beforeSave = requests.length;
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => requests.length > beforeSave);
+    await navigate("dictionaries");
+    pendingSave({ ok: true, options: { ...storedOptions, revision: 2, maxResults: 96 } });
+    await until(() => document.getElementById("options-status").textContent === "Saved.");
+    const unseenCompletion = mirror.textContent === "Reading: Saved.";
+    await navigate("lookup");
+    await navigate("dictionaries");
+    return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details };
   } finally {
     window.close();
   }

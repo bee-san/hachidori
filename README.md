@@ -82,9 +82,13 @@ undeclared mode). You can reverse it manually or use **Auto direction** to
 restore that choice. **Any** uses automatic ranking across all enabled frequency
 dictionaries; **Disabled** turns frequency sorting off.
 
-Settings opens with your library in lookup order. Section links take you straight
-to imports, updates, groups, personal entries, or lookup preferences. Bulk actions
-appear when you select dictionaries; disabled dictionaries stay readable and editable.
+Settings opens with your library in lookup order. The navigation shows one task
+at a time: Library, Reading, Personal dictionary, Import, Updates, or Groups.
+Drafts survive switching sections; pending work, errors, and unseen completion
+messages remain visible in the navigation. Both light and dark themes follow
+your system preference. Open a dictionary's **Details** for its display name,
+import metadata, exact position, or removal. Bulk actions appear when you select
+dictionaries; disabled dictionaries stay readable and editable.
 
 Lookup preferences save automatically after a short delay. The save status shows
 when changes are durable. If another Settings page changes them first, your draft
