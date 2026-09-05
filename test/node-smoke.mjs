@@ -1303,6 +1303,10 @@ check('lookup text and option strings use a 4 KiB UTF-8 boundary', () => {
       ok(lastError().includes(field), `oversized ${field} did not report its error`);
     }
   }
+  kanji(boundary);
+  eq(lastError(), '', 'exact-boundary kanji query');
+  kanji(boundary + 'x');
+  ok(lastError().includes('kanji text'), 'oversized kanji query did not report its error');
 });
 check('native lookup JSON escapes control bytes without truncating the C string', () => {
   const result = lookup('control', 32, 64);

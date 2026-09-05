@@ -25,6 +25,7 @@ import {
   GENERIC_KANJI_GLOSSARY,
   GENERIC_KANJI_TITLE,
   buildRecommendedZip,
+  buildTitledZip,
 } from "./make-fixture.mjs";
 import {
   CUSTOM_DICTIONARY_ID,
@@ -267,6 +268,8 @@ const PLANNED = [
   "removing the dictionary clears its settings rows",
   "removing the dictionary deletes its OPFS directory",
   "lookups miss after the dictionary is removed",
+  "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
+  "an oversized hover clears the previous popup and the next healthy hover recovers",
 ];
 
 const results = [];
