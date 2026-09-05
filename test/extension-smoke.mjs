@@ -6458,6 +6458,7 @@ async function contentNoteStage() {
       return popup;
     },
     hideTimerPending() { return hideTimer !== null; },
+    viewRequest() { return currentViewRequest; },
     resolveCandidate,
     setScanCandidate(candidate) { resolveCandidate = () => candidate; },
     onMouseMove,
@@ -7000,6 +7001,79 @@ async function contentNoteStage() {
     };
     harness.close();
     return result;
+  }
+
+  async function selectionRecoveryCase() {
+    const recovered = [];
+    for (const reason of ["Escape", "disable", "blur", "dictionary-state"]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      window.getSelection().selectAllChildren(harness.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      const first = harness.take("hd_lookup");
+      if (first) harness.reply(first, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+      await harness.settle();
+      if (reason === "Escape") harness.driver.onKeyDown({ key: "Escape", stopPropagation() {} });
+      else if (reason === "disable") {
+        harness.emitOptions({ hoverEnabled: false });
+        harness.emitOptions({ hoverEnabled: true });
+      } else if (reason === "blur") harness.driver.onWindowBlur();
+      else harness.emitState(harness.state(2, "Changed dictionaries"));
+      harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
+      harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+      const retry = harness.take("hd_lookup");
+      recovered.push(retry?.request.text === harness.candidate.query);
+      if (retry) harness.reply(retry, { dictionaryCount: 1, results: [] });
+      await harness.settle();
+      harness.close();
+    }
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const settings = { lookupMode: "activation", activationKey: "K", scanLength: 1, onlyScanJapaneseText: true };
+    harness.emitOptions(settings);
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const selected = harness.take("hd_lookup");
+    harness.emitOptions({ ...settings, onlyScanJapaneseText: false });
+    window.document.dispatchEvent(new window.KeyboardEvent("keyup", { key: "k", code: "KeyK" }));
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
+    harness.driver.onMouseMove({ target: harness.anchor, clientX: 200, clientY: 200 });
+    if (selected) harness.reply(selected, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+    await harness.settle();
+    const retained = selected !== null && !harness.driver.snapshot().popupHidden && harness.take("hd_lookup") === null;
+    harness.close();
+    return {
+      "dismissed selections can be looked up again after Escape, enablement, blur and dictionary changes":
+        recovered.every(Boolean) || recovered,
+      "an explicit selection survives automatic scanning policy changes, key release and pointer motion": retained,
+    };
+  }
+
+  async function selectedTextCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const selection = window.getSelection();
+    harness.anchor.innerHTML = '食べ<span hidden>隠し</span>た';
+    selection.selectAllChildren(harness.anchor);
+    let visible = "食べた";
+    // jsdom uses raw Range text here; the Chrome suite verifies rendered text.
+    Object.defineProperty(selection, "toString", { configurable: true, value: () => visible });
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const first = harness.take("hd_lookup");
+    if (first) harness.reply(first, { dictionaryCount: 1, results: [harness.term(visible)] });
+    await harness.settle();
+    const selectedText = first?.request.text === visible
+      && harness.driver.viewRequest()?.highlightText === "食べ隠した";
+    harness.anchor.firstChild.replaceData(1, 1, "ん");
+    visible = "食んた";
+    harness.driver.onMouseMove({ target: harness.anchor, clientX: 200, clientY: 200 });
+    const changed = harness.take("hd_lookup");
+    const changedText = changed?.request.text === visible;
+    if (changed) harness.reply(changed, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    harness.close();
+    return { "selection lookup uses visible text, raw highlight offsets and text-aware unchanged detection":
+      selectedText && changedText };
   }
 
   async function selectionCancellationCase() {
@@ -7808,7 +7882,8 @@ async function contentNoteStage() {
   return {
     callbacksWired,
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(),
-      ...await exactSelectionCase(), ...await selectionCancellationCase() },
+      ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
+      ...await selectedTextCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
