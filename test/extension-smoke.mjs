@@ -7311,7 +7311,6 @@ async function contentNoteStage() {
       }
       window.dispatchEvent(new window.Event("resize"));
       frame();
-      frame();
       const resize = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0
         && [0, 1, 2, 3].every(depth => {
           const popup = harness.driver.popupAt(depth);
@@ -7322,10 +7321,8 @@ async function contentNoteStage() {
       window.innerWidth = 500;
       window.dispatchEvent(new window.Event("resize"));
       frame();
-      frame();
       layouts = 0; rootReads = 0; popupReads = 0;
       observers.forEach(observer => observer.callback());
-      frame();
       frame();
       const observerFollowup = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0
         && [0, 1, 2, 3].every(depth => {
