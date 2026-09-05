@@ -119,6 +119,7 @@ button,
   color: var(--text);
 }
 .engine-status {
+  display: block;
   margin: 0;
   padding-top: 20px;
   border-top: 1px solid var(--border);
