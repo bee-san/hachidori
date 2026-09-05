@@ -3922,6 +3922,11 @@ async function main() {
 
   const noteContent = await contentNoteStage();
   check(
+    "only the current render failure clears the content popup",
+    noteContent?.renderFailure === true,
+    JSON.stringify(noteContent?.renderFailure),
+  );
+  check(
     "content readers ignore older and repeated option revisions before their next lookup",
     noteContent?.newestOnlyOptions === true,
     JSON.stringify(noteContent?.newestOnlyOptions),
@@ -6661,9 +6666,25 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function renderFailureCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    const previous = harness.render().context.onRenderError;
+    await harness.initialLookup();
+    const current = harness.render().context.onRenderError;
+    previous?.(new Error("superseded render"));
+    const stayedVisible = !harness.driver.snapshot().popupHidden;
+    current?.(new Error("current render"));
+    const result = typeof previous === "function" && typeof current === "function"
+      && stayedVisible && harness.driver.snapshot().popupHidden;
+    harness.close();
+    return result;
+  }
+
   return {
     callbacksWired,
     newestOnlyOptions,
+    renderFailure: await renderFailureCase(),
     deferredInvalidation: await deferredInvalidationCase(),
     detached: await detachedCase(),
     detachedDuringRefresh: await detachedDuringRefreshCase(),
@@ -7011,8 +7032,121 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   view.clear();
   equal("clear empties the popup", popup.childElementCount, 0);
   view.destroy();
+  structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   dom.window.close();
   return true;
+}
+
+function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
+  const rejected = (operation) => {
+    try { operation(); return false; }
+    catch (error) { return /structured.*limit/iu.test(error.message); }
+  };
+  const nested = (depth) => {
+    let value = "leaf";
+    for (let index = 0; index < depth; index += 1) value = { type: "text", text: value };
+    return JSON.stringify([value]);
+  };
+  const parent = document.createElement("div");
+  HDGlossary.appendTextOnlyGlossary(document, parent, nested(24));
+  const exactDepth = parent.textContent === "leaf";
+  parent.replaceChildren();
+  const excessiveDepth = rejected(() => HDGlossary.appendTextOnlyGlossary(document, parent, nested(25)));
+  HDGlossary.appendTextOnlyGlossary(document, parent, '[{"tag":"unknown","content":"kept"}]');
+  HDGlossary.appendTextOnlyGlossary(document, parent, "<literal>");
+  check("structured depth rejects overflow and preserves ordinary fallback text",
+    exactDepth && excessiveDepth && parent.textContent === "kept<literal>", parent.textContent);
+
+  const limit = 1_048_576;
+  const values = [
+    { value: null, count: 1 },
+    { value: "text", count: 1 },
+    { value: { tag: "script", content: "ignored" }, count: 1 },
+    { value: [null], count: 2 },
+    { value: { type: "text", text: "leaf" }, count: 2 },
+    { value: { tag: "unknown", content: null }, count: 2 },
+  ];
+  const nodeCases = values.map(({ value, count }) => {
+    const state = { nodes: limit - count };
+    const accepted = !rejected(() => HDGlossary.appendStructuredValue(document, parent, value, state, 0));
+    return accepted && state.nodes === limit
+      && rejected(() => HDGlossary.appendStructuredValue(document, parent, null, state, 0))
+      && rejected(() => HDGlossary.appendStructuredValue(document, parent, value, { nodes: limit - count + 1 }, 0));
+  });
+  check("structured node accounting includes containers, wrappers and ignored values without truncation",
+    nodeCases.every(Boolean), JSON.stringify(nodeCases));
+
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  const queued = [];
+  const originalSetTimeout = window.setTimeout;
+  window.setTimeout = (callback) => { queued.push(callback); return queued.length; };
+  let fills = 0;
+  let layouts = 0;
+  let media = 0;
+  let errors = 0;
+  const view = HDPopup.createPopupView({
+    document, window, popup, initialResultCount: 2,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    parseTagList: HDGlossary.parseTagList,
+    appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
+    positionPopup() { layouts += 1; },
+  });
+  const entry = (dictionary, glossary) => ({
+    ...result,
+    term: { ...result.term, glossaries: [{ dictionary, glossary }] },
+  });
+  const healthy = entry("Healthy", '["healthy"]');
+  const invalid = entry("Invalid", nested(25));
+  const imageEntry = entry("Image", '[{"type":"image","path":"media/image.png","width":16,"height":16}]');
+  const context = {
+    dictionaryPresentation: [{ title: "Healthy", favorite: true }, { title: "Invalid", favorite: true }],
+    onRenderError() { errors += 1; view.clear(); },
+    resolveMedia() { media += 1; return Promise.resolve(null); },
+  };
+  const drain = () => {
+    let escaped = 0;
+    for (const callback of queued.splice(0)) {
+      try { callback(); } catch { escaped += 1; }
+    }
+    return escaped;
+  };
+  try {
+    view.renderResults([healthy, invalid], candidate, context);
+    const escaped = drain();
+    const deferredHandled = errors === 1 && escaped === 0 && popup.childElementCount === 0;
+    view.renderResults([healthy, invalid], candidate, context);
+    popup.querySelector('[data-dictionary="Invalid"][role="tab"]')?.click();
+    const tabHandled = errors === 2 && popup.childElementCount === 0;
+    drain();
+    view.renderResults([healthy, healthy, invalid], candidate, context);
+    drain();
+    popup.querySelector(".gsm-hoshidicts-show-more")?.click();
+    const moreEscaped = drain();
+    check("deferred, tab and expanded render failures reach their owner without escaping",
+      deferredHandled && tabHandled && errors === 3 && moreEscaped === 0 && popup.childElementCount === 0,
+      JSON.stringify({ deferredHandled, tabHandled, errors, escaped, moreEscaped }));
+
+    const replacements = [
+      () => view.renderResults([healthy], candidate, context),
+      () => popup.querySelector('[data-dictionary="Healthy"][role="tab"]')?.click(),
+      () => view.clear(),
+      () => view.destroy(),
+    ];
+    const staleCases = replacements.map((replace) => {
+      view.renderResults([healthy, imageEntry], candidate, context);
+      replace();
+      const before = { fills, layouts, media, errors };
+      const staleEscaped = drain();
+      return staleEscaped === 0 && JSON.stringify(before) === JSON.stringify({ fills, layouts, media, errors });
+    });
+    check("superseded glossary tasks do no rendering, media or layout work",
+      staleCases.every(Boolean), JSON.stringify(staleCases));
+  } finally {
+    window.setTimeout = originalSetTimeout;
+    view.destroy();
+    popup.remove();
+  }
 }
 
 main().catch((error) => {

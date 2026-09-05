@@ -270,6 +270,7 @@ const PLANNED = [
   "lookups miss after the dictionary is removed",
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
+  "a structured-depth render failure clears its popup and the next healthy hover recovers",
 ];
 
 const results = [];
@@ -3341,9 +3342,12 @@ async function main() {
     `lookup reply: ${JSON.stringify(removedLookup)}`);
 
   const boundedTitle = "bounded-response-fixture";
+  let deepGlossary = "over-depth leaf";
+  for (let depth = 0; depth < 25; depth += 1) deepGlossary = { type: "text", text: deepGlossary };
   const boundedArchive = buildTitledZip(boundedTitle, { terms: [
     ["限界", "げんかい", "", "", 0, ["x".repeat(8 * 1024 * 1024 - 3)], 1, ""],
     ["速度", "そくど", "", "", 0, ["healthy bounded lookup"], 2, ""],
+    ["深度", "しんど", "", "", 0, [deepGlossary], 3, ""],
   ] });
   await page.evaluate((base64) => {
     const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
@@ -3400,6 +3404,24 @@ async function main() {
       && boundedPopupHidden
       && boundedPopupAfter?.plain?.includes("healthy bounded lookup"),
     JSON.stringify({ before: boundedPopupBefore?.plain, hidden: boundedPopupHidden, after: boundedPopupAfter?.plain }),
+  );
+
+  const renderFailures = [];
+  const onRenderConsole = (message) => {
+    if (message.text().includes("could not render results")) renderFailures.push(message.text());
+  };
+  tab2.on("console", onRenderConsole);
+  await tab2.evaluate(() => { document.getElementById("kanjiword").textContent = "深度"; });
+  await tab2.mouse.move(2, 2);
+  await tab2.mouse.move(oversizedBox.x + 5, oversizedBox.y + oversizedBox.height / 2);
+  const deepPopupHidden = await popup2.waitForHidden();
+  const deepPopupAfter = await hoverForPopup(tab2, popup2, "#verb");
+  tab2.off("console", onRenderConsole);
+  check(
+    "a structured-depth render failure clears its popup and the next healthy hover recovers",
+    renderFailures.length === 1 && deepPopupHidden
+      && deepPopupAfter?.plain?.includes("healthy bounded lookup"),
+    JSON.stringify({ renderFailures, hidden: deepPopupHidden, after: deepPopupAfter?.plain }),
   );
 
   await browser.close();
