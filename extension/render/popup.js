@@ -899,9 +899,9 @@
     }
     return {
       height,
-      left: Math.round(clamp(left, padding, viewport.width - width - padding)),
+      left: clamp(Math.round(left), padding, viewport.width - width - padding),
       placement,
-      top: Math.round(clamp(top, padding, viewport.height - height - padding)),
+      top: clamp(Math.round(top), padding, viewport.height - height - padding),
       width,
     };
   }

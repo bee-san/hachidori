@@ -7556,6 +7556,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   view.clear();
   equal("clear empties the popup", popup.childElementCount, 0);
   await imagePreviewStage({ view, popup, shadow, document, window, candidate,
+    calculatePopupPosition: HDPopup.calculatePopupPosition,
     result: imageLookup.results[0], mediaUrl: media.dataUrl });
   structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await mediaRenderStage({ HDGlossary, document, window });
@@ -7563,7 +7564,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   return true;
 }
 
-async function imagePreviewStage({ view, popup, shadow, document, window, candidate, result, mediaUrl }) {
+async function imagePreviewStage({ view, popup, shadow, document, window, candidate, result, mediaUrl, calculatePopupPosition }) {
   let requests = 0;
   let ownsRequest = true;
   let holdFirstMedia = false;
@@ -7635,6 +7636,15 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
     const staleLeaveIgnored = preview() === second;
     const secondFits = second && Number.parseFloat(second.style.left) + 320 <= window.innerWidth - 8
       && Number.parseFloat(second.style.top) + 240 <= window.innerHeight - 8;
+    // 92vw/vh produce fractional CSS pixels in a 320x240 Chrome viewport.
+    // Rounding after clamping would cross the right/bottom padding boundary.
+    const fractionalSize = { width: 294.390625, height: 220.796875 };
+    const fractionalCornersFit = [0, 304].every(left => [0, 224].every(top => {
+      const position = calculatePopupPosition({ left, top, right: left + 16, bottom: top + 16 },
+        fractionalSize, { width: 320, height: 240 }, { gap: 8, padding: 8, vertical: true });
+      return position.left >= 8 && position.top >= 8
+        && position.left + fractionalSize.width <= 312 && position.top + fractionalSize.height <= 232;
+    }));
     event(popup, "scroll");
     const focusedScrollKept = Boolean(second) && preview() === second;
     links[1].blur();
@@ -7652,8 +7662,8 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
     event(links[0].querySelector("img"), "error");
     const failed = !preview();
     check("image previews clamp both viewport corners and close only their current hover or focus owner",
-      firstFits && secondFits && focusedScrollKept && staleLeaveIgnored && blurred && left && resized && scrolled && failed,
-      JSON.stringify({ firstFits, secondFits, focusedScrollKept, staleLeaveIgnored, blurred, left, resized, scrolled, failed }));
+      firstFits && secondFits && fractionalCornersFit && focusedScrollKept && staleLeaveIgnored && blurred && left && resized && scrolled && failed,
+      JSON.stringify({ firstFits, secondFits, fractionalCornersFit, focusedScrollKept, staleLeaveIgnored, blurred, left, resized, scrolled, failed }));
 
     links = await render();
     event(links[0], "mouseenter");
