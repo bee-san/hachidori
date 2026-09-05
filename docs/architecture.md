@@ -324,6 +324,11 @@ before resuming the current page scan. No layout is read in raw mousemove before
 the existing throttle. Children prefer available space beside their parent and
 clamp to the viewport; narrow screens may overlap panes. Layout callbacks start
 at their owning level and reposition descendants without redoing ancestor layout.
+Per-pane masonry remains independent. Its deferred placement requests coalesce
+at the shallowest live owner, so viewport changes and follow-on ResizeObserver
+callbacks use one linear chain pass in the next animation frame. A single pane
+keeps its existing same-frame placement. Direct Note, image and navigation
+positioning remains synchronous; retirement and teardown cancel queued owners.
 
 Dictionary revisions, generation, media and style transport remain shared. A
 changed accepted engine generation invalidates other level tokens, including

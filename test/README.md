@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 294 checks, all of
+full request→reply round trip per contract-C message type. 295 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -448,6 +448,9 @@ What it proves, in order:
    response-time focus; held failures/misses preserve protected drafts. Repeated
    stale tab/Show-more actions share the current replay without reviving old
    resources or leaking transient control preservation into ordinary Back.
+   Four real renderer resize/observer callbacks retain per-pane masonry but
+   position the chain once per deferred pass. Narrow-width recomputation,
+   root-only timing, owner retirement and shared-frame cancellation are pinned.
    Media tests also pin exact UTF-8 reference and 6 MiB complete-reply boundaries,
    embedded-NUL prefix rejection, bounded correlation on early relay failures,
    and actual oversized native errors without capping archive imports.
