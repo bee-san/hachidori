@@ -2457,6 +2457,10 @@ async function main() {
     src.startsWith("data:image/") && withImage.tags.includes("img"),
     `img src: ${src.slice(0, 80) || "(no img element found)"}`
       + `\n       img elements: ${withImage.tags.filter(tag => tag === "img").length}`);
+  if (process.env.HACHIDORI_POPUP_SCREENSHOT) {
+    await tab.bringToFront();
+    await tab.screenshot({ path: process.env.HACHIDORI_POPUP_SCREENSHOT });
+  }
 
   // "no popup for latin text" is worth nothing on its own: it passes against an
   // extension whose hover is completely dead. So it is sandwiched between a

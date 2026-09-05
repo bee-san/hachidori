@@ -136,6 +136,10 @@ paint containment, so fixed descendants and oversized shadows cannot cover
 reader controls. Style installation replaces the previous generation's elements
 and remains deferred once per engine generation, not repeated on each lookup.
 
+The real-Chrome fixture retains its ordinary structured formatting after containment:
+
+![Structured dictionary content in its contained glossary card](assets/dictionary-styles.png)
+
 ## Settings interface
 
 Settings is one document with native section links: the installed library comes

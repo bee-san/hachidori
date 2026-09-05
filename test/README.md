@@ -542,6 +542,8 @@ still render through the typed wrappers.
 The existing glossary card must contain fixed-position descendants and oversized
 shadows without intercepting the reader control above it. The engine's exact
 `hd_styles` response remains independently covered by the extension smoke suite.
+Set `HACHIDORI_POPUP_SCREENSHOT` to an output PNG path to capture the ordinary
+structured-content popup after its media reply, using the same complete run.
 
 - The popup's **structure**, not just its flattened text. `popupReader()` reports
   `tags`, `lists`, `tables` and `bold` (with the computed `font-weight`, since the
