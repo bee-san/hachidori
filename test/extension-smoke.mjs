@@ -4340,6 +4340,8 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  check("content routes external links to the worker without retrying or changing the current Note view",
+    noteContent?.externalLinks === true, JSON.stringify(noteContent?.externalLinks));
   for (const [name, passed] of Object.entries(noteContent?.scanning ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -8593,8 +8595,34 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function externalLinksCase() {
+    const harness = await createHarness();
+    try {
+      await harness.initialLookup();
+      harness.edit(true);
+      const open = harness.render().context.onExternalLink;
+      if (typeof open !== "function") return false;
+      const before = JSON.stringify({ snapshot: harness.driver.snapshot(), stats: harness.stats() });
+      const descriptor = harness.driver.viewRequest();
+      const sentBefore = harness.sent.length;
+      for (const kind of ["success", "failure", "lost-reply"]) {
+        open({ url: "https://example.test/reference", active: false });
+        const item = harness.take("hd_open_external");
+        if (item?.request.target !== "hoshidicts-worker" || item.request.active !== false
+            || item.request.url !== "https://example.test/reference") return false;
+        if (kind === "lost-reply") item.callback(undefined);
+        else harness.reply(item, kind === "success" ? { opened: true } : { error: "tab creation failed" }, kind === "success");
+        await harness.settle();
+      }
+      return harness.sent.length === sentBefore + 3 && harness.pending.length === 0
+        && harness.driver.viewRequest() === descriptor
+        && JSON.stringify({ snapshot: harness.driver.snapshot(), stats: harness.stats() }) === before;
+    } finally { harness.close(); }
+  }
+
   return {
     callbacksWired,
+    externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
@@ -8633,10 +8661,10 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   const { window } = dom;
   const { document } = window;
 
-  const sandbox = createContext({ window, document, console, globalThis: undefined });
+  const sandbox = createContext({ window, document, console, URL: window.URL, globalThis: undefined });
   sandbox.globalThis = sandbox;
   sandbox.window = window;
-  for (const file of ["render/glossary.js", "render/popup.js"]) {
+  for (const file of ["external-links.js", "render/glossary.js", "render/popup.js"]) {
     runInContext(readFileSync(resolve(EXTENSION, file), "utf8"), sandbox, { filename: file });
   }
   const HDGlossary = sandbox.HDGlossary ?? window.HDGlossary;
@@ -8990,10 +9018,99 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     calculatePopupPosition: HDPopup.calculatePopupPosition,
     result: imageLookup.results[0], mediaUrl: media.dataUrl });
   structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+  externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await mediaRenderStage({ HDGlossary, document, window });
   dom.window.close();
   return true;
+}
+
+function externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  const calls = [];
+  let current = true;
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    parseTagList: HDGlossary.parseTagList, positionPopup() {},
+  });
+  const href = "  HTTPS://EXAMPLE.test:443/参照?q=食#meaning  ";
+  const entry = (dictionary, content) => ({ ...result,
+    term: { ...result.term, glossaries: [{ dictionary, glossary: JSON.stringify([
+      { type: "structured-content", content },
+    ]) }] },
+  });
+  const link = (url, content = "reference <literal>") => ({ tag: "a", href: url, content });
+  const first = entry("Links", link(href));
+  const context = {
+    isCurrentRequest: () => current,
+    onExternalLink(value) { calls.push(value); },
+    dictionaryPresentation: [{ title: "Links", favorite: true }, { title: "Other", favorite: true }],
+  };
+  const dispatch = (anchor, type = "click", options = {}) => {
+    const event = new window.MouseEvent(type, { bubbles: true, cancelable: true, ...options });
+    anchor.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  try {
+    const invalid = ["javascript:alert(1)", "file:///tmp/reference", "/relative", "https://[bad/",
+      "https://user:secret@example.test/", "https://example.test/line\nbreak"];
+    view.renderResults([entry("Links", [link(href), link("http://localhost/reference"), ...invalid.map((url) => link(url))])], candidate, context);
+    const anchors = [...popup.querySelectorAll(".gloss-link")];
+    const normalised = new URL(href.trim()).href;
+    const preserved = anchors[0].href === normalised && anchors[0].target === "_blank"
+      && anchors[0].rel === "noopener noreferrer"
+      && anchors[0].querySelector(".gloss-link-text").textContent === "reference <literal>"
+      && anchors[1].href === "http://localhost/reference"
+      && anchors.slice(2).every((anchor) => !anchor.hasAttribute("href"));
+    anchors[0].href = "https://mutated.test/";
+    const events = [
+      ["click", {}, true], ["click", { detail: 0 }, true],
+      ["click", { ctrlKey: true }, false], ["click", { metaKey: true }, false],
+      ["auxclick", { button: 1 }, false], ["auxclick", { button: 1, shiftKey: true }, true],
+    ];
+    const prevented = events.map(([type, options]) => dispatch(anchors[0], type, options));
+    const nativeContext = !dispatch(anchors[0], "auxclick", { button: 2 })
+      && !dispatch(anchors[0], "contextmenu", { button: 2 });
+    check("external anchors keep safe native links and route primary, keyboard and middle activation exactly once",
+      preserved && prevented.every(Boolean) && nativeContext && calls.length === events.length
+        && calls.every((value, index) => value.url === normalised && value.active === events[index][2]),
+      JSON.stringify({ preserved, prevented, nativeContext, calls }));
+
+    const stale = [
+      () => view.renderResults([first], candidate, context),
+      () => popup.querySelector('[data-dictionary="Other"][role="tab"]').click(),
+      () => { current = false; },
+      (anchor) => anchor.remove(),
+      () => view.clear(),
+      () => view.destroy(),
+    ].map((replace) => {
+      current = true;
+      view.renderResults([first, entry("Other", "other")], candidate, context);
+      const anchor = popup.querySelector(".gloss-link");
+      replace(anchor);
+      const count = calls.length;
+      return dispatch(anchor) && dispatch(anchor, "auxclick", { button: 1 }) && calls.length === count;
+    });
+    check("obsolete external anchors cancel native navigation without dispatching a new tab",
+      stale.every(Boolean), JSON.stringify(stale));
+
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    let internal = 0;
+    const before = calls.length;
+    HDGlossary.appendTextOnlyGlossary(document, parent, JSON.stringify([{ type: "structured-content",
+      content: [link("https://outer.test/", link("https://inner.test/")),
+        link("https://outer.test/", link("?query=食&primary_reading=しょく"))],
+    }]), { onExternalLink: context.onExternalLink, onInternalLink() { internal += 1; } });
+    dispatch(parent.querySelector('a[href="https://inner.test/"]'));
+    dispatch(parent.querySelector('[data-hoshidicts-query]'));
+    check("nested structured links dispatch only the handled inner action",
+      calls.length === before + 1 && calls.at(-1)?.url === "https://inner.test/" && internal === 1,
+      JSON.stringify({ calls: calls.slice(before), internal }));
+    parent.remove();
+  } finally { view.destroy(); popup.remove(); }
 }
 
 async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
