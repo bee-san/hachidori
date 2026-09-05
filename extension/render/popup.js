@@ -76,6 +76,76 @@
   const DICTIONARY_LABELED_REVISION_PATTERN =
     /^(?:version|ver(?:sion)?|v|revision|rev|release)\s*[:#.-]?\s*v?\d+(?:\.\d+)*(?:[-+][0-9a-z.-]+)?$/iu;
 
+  const DEINFLECTION_STRINGS = new Map([
+    ["en", {
+      steps: "Deinflection steps",
+      summary: (matched, deinflected) => `Why this matched: ${matched} became ${deinflected}`,
+    }],
+    ["ja", {
+      steps: "活用解除の手順",
+      summary: (matched, deinflected) => `一致した理由: ${matched} から ${deinflected} に戻しました`,
+    }],
+    ["uk", {
+      steps: "Кроки відновлення словникової форми",
+      summary: (matched, deinflected) => `Чому це збіглося: ${matched} перетворено на ${deinflected}`,
+    }],
+  ]);
+
+  function deinflectionSteps(result) {
+    return Array.isArray(result.trace)
+      ? result.trace.filter((step) => typeof step?.name === "string" && step.name.length > 0)
+      : [];
+  }
+
+  function buildDeinflectionDisclosure(documentRef, result, locale) {
+    const { matched, deinflected } = result;
+    if (typeof matched !== "string" || !matched
+        || typeof deinflected !== "string" || !deinflected || matched === deinflected) return null;
+    const steps = deinflectionSteps(result);
+    if (steps.length === 0) return null;
+
+    const strings = DEINFLECTION_STRINGS.get(locale.toLowerCase().split("-")[0])
+      ?? DEINFLECTION_STRINGS.get("en");
+    const details = documentRef.createElement("details");
+    details.className = "gsm-hoshidicts-deinflection";
+    const summary = documentRef.createElement("summary");
+    summary.setAttribute("aria-label", strings.summary(matched, deinflected));
+    const path = documentRef.createElement("span");
+    path.className = "gsm-hoshidicts-deinflection-path";
+    for (const [index, endpoint] of [matched, deinflected].entries()) {
+      if (index > 0) {
+        const arrow = documentRef.createElement("span");
+        arrow.setAttribute("aria-hidden", "true");
+        arrow.textContent = " → ";
+        path.appendChild(arrow);
+      }
+      const value = documentRef.createElement("span");
+      value.className = "gsm-hoshidicts-deinflection-endpoint";
+      value.textContent = endpoint;
+      path.appendChild(value);
+    }
+    summary.appendChild(path);
+    const list = documentRef.createElement("ol");
+    list.className = "gsm-hoshidicts-deinflection-steps";
+    list.setAttribute("aria-label", strings.steps);
+    for (const step of steps) {
+      const item = documentRef.createElement("li");
+      const name = documentRef.createElement("span");
+      name.className = "gsm-hoshidicts-deinflection-step-name";
+      name.textContent = step.name;
+      item.appendChild(name);
+      if (typeof step.description === "string" && step.description) {
+        const description = documentRef.createElement("span");
+        description.className = "gsm-hoshidicts-deinflection-step-description";
+        description.textContent = step.description;
+        item.appendChild(description);
+      }
+      list.appendChild(item);
+    }
+    details.append(summary, list);
+    return details;
+  }
+
   function isDictionaryDecoration(value) {
     const decoration = String(value || "").trim();
     return DICTIONARY_DATE_DECORATION_PATTERN.test(decoration) ||
@@ -1485,7 +1555,7 @@
         seen.add(value);
         metadata.push({ description, kind, text: value });
       };
-      for (const step of result.trace) {
+      for (const step of deinflectionSteps(result)) {
         append(step.name, step.description, "deinflection");
       }
       for (const tag of [
@@ -1562,6 +1632,7 @@
         pitchAccentFuriganaDictionary = null,
         onBack = null,
         noteControls = null,
+        onDeinflectionToggle = null,
       } = {}
     ) {
       const header = element || documentRef.createElement("header");
@@ -1612,6 +1683,11 @@
           }
           headword.appendChild(summary);
         }
+      }
+      const deinflection = buildDeinflectionDisclosure(documentRef, result, windowRef.navigator.language);
+      if (deinflection) {
+        deinflection.addEventListener("toggle", onDeinflectionToggle);
+        headword.appendChild(deinflection);
       }
       if (primary && typeof onBack === "function") {
         const navigation = documentRef.createElement("div");
@@ -1701,6 +1777,7 @@
               : null,
           onBack: resultIndex === 0 ? renderContext.onBack : null,
           noteControls: resultIndex === 0 ? renderContext.noteControls : null,
+          onDeinflectionToggle: positionIfCurrent,
         });
         if (resultIndex !== 0) {
           entry.appendChild(renderedHeader.element);

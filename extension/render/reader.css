@@ -1518,6 +1518,47 @@ html[data-hoshidicts-theme="miku"] .gsm-hoshidicts-popup {
   ruby-position: over;
 }
 
+.gsm-hoshidicts-deinflection {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin-top: 2px;
+  color: var(--text-color-light1);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.gsm-hoshidicts-deinflection > summary {
+  padding: 1px 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.gsm-hoshidicts-deinflection > summary:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.gsm-hoshidicts-deinflection-endpoint,
+.gsm-hoshidicts-deinflection-step-name,
+.gsm-hoshidicts-deinflection-step-description {
+  white-space: pre-wrap;
+}
+
+.gsm-hoshidicts-deinflection-steps {
+  margin: 2px 0 0;
+  padding-inline-start: 1.5em;
+}
+
+.gsm-hoshidicts-deinflection-steps > li {
+  margin-block: 1px;
+}
+
+.gsm-hoshidicts-deinflection-step-description {
+  margin-inline-start: 6px;
+}
+
 .gsm-hoshidicts-expression rt {
   color: var(--text-color-light1);
   font-size: 15px;
