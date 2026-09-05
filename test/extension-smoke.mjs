@@ -7005,11 +7005,11 @@ async function contentNoteStage() {
 
   async function selectionEditingCase() {
     const outcomes = [];
-    for (const tag of ["button", "span", "contents"]) {
+    for (const tag of ["button", "span", "contents", "restored"]) {
       const harness = await createHarness();
       const window = harness.popup.ownerDocument.defaultView;
       harness.anchor.textContent = "食";
-      const control = window.document.createElement(tag === "contents" ? "span" : tag);
+      const control = window.document.createElement(tag === "button" ? "button" : "span");
       control.textContent = "べ";
       control.style.visibility = "visible";
       control.getClientRects = () => tag === "contents" ? [] : [{}];
@@ -7019,7 +7019,13 @@ async function contentNoteStage() {
         Object.defineProperty(control, "isContentEditable", { value: true });
         if (tag === "contents") control.style.display = "contents";
       }
-      harness.anchor.append(control, window.document.createTextNode("た"));
+      let editingNode = control;
+      if (tag === "restored") {
+        editingNode = window.document.createElement("span");
+        editingNode.style.visibility = "hidden";
+        editingNode.append(control);
+      }
+      harness.anchor.append(editingNode, window.document.createTextNode("た"));
       window.getSelection().selectAllChildren(harness.anchor);
       window.document.dispatchEvent(new window.Event("selectionchange"));
       const selected = harness.take("hd_lookup");
@@ -7351,6 +7357,8 @@ async function contentNoteStage() {
       }
       block.append(control, document.createTextNode("語"));
       controls.push(scan(control.firstChild) === null && scan(block.firstChild.firstChild)?.query === "食");
+      control.style.display = "none";
+      controls.push(scan(block.firstChild.firstChild)?.query === "食語");
     }
     harness.close();
     return {
