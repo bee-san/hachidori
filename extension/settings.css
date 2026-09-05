@@ -311,7 +311,13 @@ button.danger:hover:not(:disabled) {
 .update-state:empty,
 .custom-dictionary-status:empty,
 .dict-group-error:empty {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 .import-detail,
 .custom-dictionary-errors {
@@ -446,8 +452,8 @@ input[type="checkbox"] {
   display: grid;
   grid-template-columns: 16px 30px minmax(0, 1fr) auto;
   align-items: start;
-  gap: 12px;
-  padding: 18px;
+  gap: 10px 12px;
+  padding: 14px 16px;
 }
 .dict-row + .dict-row {
   border-top: 1px solid var(--border);
@@ -489,7 +495,7 @@ input[type="checkbox"] {
 .dict-main {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 .dict-heading,
 .dict-badges {
@@ -532,11 +538,15 @@ input[type="checkbox"] {
   gap: 12px;
 }
 .dict-alias {
-  flex: 1 1 180px;
-  max-width: 260px;
+  flex: 1 1 220px;
+  max-width: 320px;
   min-width: 0;
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dict-alias .cell-label {
+  white-space: nowrap;
 }
 .cell-label,
 .field-label {

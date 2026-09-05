@@ -1071,6 +1071,19 @@ async function main() {
       + ` state: ${JSON.stringify(recommendedRetryStorage.dictionaryState)}`,
   );
 
+  if (process.env.HACHIDORI_LIBRARY_SCREENSHOT) {
+    await page.setViewport({ width: 1280, height: 1100 });
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: process.env.HACHIDORI_LIBRARY_SCREENSHOT });
+    if (process.env.HACHIDORI_LIBRARY_DARK_SCREENSHOT) {
+      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+      await page.screenshot({ path: process.env.HACHIDORI_LIBRARY_DARK_SCREENSHOT });
+    }
+    await page.emulateMediaFeatures([]);
+    await page.setViewport({ width: 800, height: 600 });
+  }
+
   for (const { title } of RECOMMENDED_DICTIONARIES) {
     const removed = await page.evaluate((dictionaryTitle) => chrome.runtime.sendMessage({
       target: "hoshidicts-offscreen",
@@ -1308,6 +1321,15 @@ async function main() {
       && links.length === 6
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION");
   });
+  const selectionActions = await page.evaluate(() => {
+    const actions = document.getElementById("dict-bulk-actions");
+    const selected = document.querySelector(".dict-selected");
+    const initiallyHidden = actions.hidden;
+    selected.click();
+    const visibleWhenSelected = !actions.hidden;
+    selected.click();
+    return initiallyHidden && visibleWhenSelected && actions.hidden;
+  });
   await page.setViewport({ width: 320, height: 900 });
   await page.focus('.settings-nav a[href="#lookup"]');
   await page.keyboard.press("Enter");
@@ -1333,9 +1355,9 @@ async function main() {
   const skipFocusedMain = await page.evaluate(() => document.activeElement.id === "settings-content");
   check(
     "Settings puts the library first and supports keyboard navigation at 320px",
-    libraryFirst && skipFocusedMain
+    libraryFirst && selectionActions && skipFocusedMain
       && narrowThemes.every((theme) => theme.noOverflow && theme.fieldsFit && theme.disabledRowReadable),
-    JSON.stringify({ libraryFirst, skipFocusedMain, narrowThemes }),
+    JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, narrowThemes }),
   );
   await page.emulateMediaFeatures([]);
   await page.setViewport({ width: 480, height: 900 });
@@ -2646,19 +2668,8 @@ async function main() {
 
   if (process.env.HACHIDORI_UPDATE_SCREENSHOT) {
     await page.setViewport({ width: 960, height: 900 });
-    const clip = await page.evaluate(() => {
-      const updateCard = document.querySelector('section[aria-labelledby="updates-heading"]');
-      const dictionaryCard = document.querySelector('section[aria-labelledby="dictionaries-heading"]');
-      const first = updateCard.getBoundingClientRect();
-      const last = dictionaryCard.getBoundingClientRect();
-      return {
-        x: first.left,
-        y: first.top + window.scrollY,
-        width: first.width,
-        height: last.bottom - first.top,
-      };
-    });
-    await page.screenshot({ path: process.env.HACHIDORI_UPDATE_SCREENSHOT, clip });
+    const updateCard = await page.$('section[aria-labelledby="updates-heading"]');
+    await updateCard.screenshot({ path: process.env.HACHIDORI_UPDATE_SCREENSHOT });
   }
 
   const beforeUpdateState = checkedStorage.dictionaryState;
