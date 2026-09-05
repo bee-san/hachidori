@@ -7003,6 +7003,64 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function selectionDescriptorCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const query = harness.candidate.query;
+    const exactResults = [harness.term("食"), { ...harness.term("食べる"), matched: query }];
+    harness.emitOptions({ scanLength: 1, kanjiClickDictionary: { title: "Generic", kind: "term" } });
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const first = harness.take("hd_lookup");
+    if (first) harness.reply(first, { dictionaryCount: 1, results: exactResults });
+    await harness.settle();
+    const original = harness.driver.viewRequest();
+    async function noteRefresh(revision, generation, results, eventFirst) {
+      harness.edit(true);
+      const append = harness.callbacks().onAddCustomEntry({ term: "食べる", reading: "たべる", definition: "eat" });
+      const mutation = harness.take("hd_custom_append");
+      const state = harness.state(revision, "Saved Note");
+      if (eventFirst) harness.emitState(state);
+      if (mutation) harness.reply(mutation, { generation, document: { revision }, state });
+      await harness.settle();
+      const refresh = harness.take("hd_lookup");
+      if (refresh) harness.reply(refresh, { generation, dictionaryCount: 2, results });
+      await append;
+      await harness.settle();
+      return refresh;
+    }
+    const selectedRefresh = await noteRefresh(2, 2, exactResults, true);
+    const selectedKept = selectedRefresh?.request.text === query && selectedRefresh.request.scanLength === 3
+      && harness.driver.viewRequest() === original && original?.exactSelection === true
+      && harness.render()?.results.length === 1;
+    const clicked = harness.driver.showKanji("食");
+    const kanji = harness.take("hd_lookup_dictionary");
+    if (kanji) harness.reply(kanji, { generation: 3, results: [harness.term("食")] });
+    await clicked;
+    const back = harness.render()?.context.onBack?.();
+    const backRequest = harness.take("hd_lookup");
+    if (backRequest) harness.reply(backRequest, { generation: 3, dictionaryCount: 2, results: exactResults });
+    await back;
+    const backKept = backRequest?.request.text === query && backRequest.request.scanLength === 3
+      && harness.driver.viewRequest() === original && harness.render()?.results.length === 1;
+    const link = harness.driver.onInternalLink({ query: "別の語", primaryReading: "べつ" });
+    const linked = harness.take("hd_lookup");
+    if (linked) harness.reply(linked, { generation: 3, dictionaryCount: 2, results: [harness.term("別")] });
+    await link;
+    const linkedDescriptor = harness.driver.viewRequest();
+    const linkKept = linked?.request.text === "別の語" && linked.request.options.primaryReading === "べつ"
+      && linked.request.scanLength === 1 && linkedDescriptor?.exactSelection === false
+      && harness.render()?.results[0].matched === "別" && linkedDescriptor.highlightText === query;
+    const linkedRefresh = await noteRefresh(3, 3, [harness.term("別")], false);
+    const linkedRefreshKept = linkedRefresh?.request.text === "別の語"
+      && linkedRefresh.request.options.primaryReading === "べつ"
+      && harness.driver.viewRequest() === linkedDescriptor && harness.render()?.results[0].matched === "別";
+    harness.close();
+    return { "Note and kanji Back preserve exact selection descriptors while linked queries retain their own matching mode":
+      selectedKept && backKept && linkKept && linkedRefreshKept
+        || { selectedKept, backKept, linkKept, linkedRefreshKept } };
+  }
+
   async function selectionRecoveryCase() {
     const recovered = [];
     for (const reason of ["Escape", "disable", "blur", "dictionary-state"]) {
@@ -7883,7 +7941,7 @@ async function contentNoteStage() {
     callbacksWired,
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
-      ...await selectedTextCase() },
+      ...await selectedTextCase(), ...await selectionDescriptorCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
