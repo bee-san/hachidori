@@ -1606,6 +1606,9 @@
       return;
     }
     clearHideTimer();
+    // A new valid pointer lookup owns this popup. Retire the previous view
+    // rather than leave its expired glossary/media and Note controls usable.
+    if (popup && !popup.hidden) hide();
     const lookup = runLookup(candidate);
     const token = lookupToken;
     pendingPointerLookupToken = token;
