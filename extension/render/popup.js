@@ -928,6 +928,8 @@
     let toolbarPosition = options.toolbarPosition === "bottom" ? "bottom" : "top";
     let currentToolbar = null;
     let currentNoteControls = null;
+    let renderRevision = 0;
+    let currentResultPanel = null;
     let masonryFrame = null;
     const masonryObserver = typeof windowRef.ResizeObserver === "function"
       ? new windowRef.ResizeObserver(() => scheduleMasonry())
@@ -1043,6 +1045,8 @@
     }
 
     function clear() {
+      renderRevision += 1;
+      currentResultPanel = null;
       currentNoteControls?.close(false);
       currentNoteControls = null;
       sourceHighlighter.clear();
@@ -1052,6 +1056,21 @@
       popup.replaceChildren();
       popup.scrollTop = 0;
       setDefinitionBlurState("revealed");
+    }
+
+    function runRenderAction(isCurrent, renderContext, action) {
+      if (!isCurrent()) return;
+      try {
+        action();
+      } catch (error) {
+        if (!isCurrent()) return;
+        clear();
+        renderContext.onRenderError?.(error);
+      }
+    }
+
+    function ownsResultPanel(panel, renderContext) {
+      return currentResultPanel === panel && renderContext.isCurrentRequest?.() !== false;
     }
 
     function createNoteControls(readPrefill) {
@@ -1542,6 +1561,9 @@
         tabList,
       } = {}
     ) {
+      const revision = ++renderRevision;
+      const isCurrent = () => revision === renderRevision && ownsResultPanel(panel, renderContext);
+      const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
       panel.replaceChildren();
       const deferredGlossaryFills = [];
       let lookupStats = null;
@@ -1687,7 +1709,7 @@
                 dictionary,
                 generation: renderContext.generation,
                 onInternalLink: renderContext.onInternalLink,
-                onLayoutChange: positionPopup,
+                onLayoutChange: positionIfCurrent,
                 resolveMedia: renderContext.resolveMedia,
               }
             );
@@ -1721,12 +1743,13 @@
         const fills = deferredGlossaryFills.splice(0);
         const run = () => {
           for (const fill of fills) {
+            if (!isCurrent()) return;
             fill();
           }
-          positionPopup();
+          positionIfCurrent();
         };
         if (typeof windowRef.setTimeout === "function") {
-          windowRef.setTimeout(run, 0);
+          windowRef.setTimeout(() => runRenderAction(isCurrent, renderContext, run), 0);
         } else {
           run();
         }
@@ -1740,7 +1763,7 @@
         showMore.type = "button";
         showMore.className = "gsm-hoshidicts-show-more";
         showMore.textContent = `Show ${results.length - initialResultCount} more`;
-        showMore.addEventListener("click", () => {
+        showMore.addEventListener("click", () => runRenderAction(isCurrent, renderContext, () => {
           showMore.remove();
           results.slice(initialResultCount).forEach((result, resultIndex) => {
             appendResult(result, resultIndex + initialResultCount);
@@ -1748,7 +1771,7 @@
           flushDeferredGlossaries();
           onResultsExpanded();
           positionPopup();
-        });
+        }));
         panel.appendChild(showMore);
       }
 
@@ -1982,6 +2005,8 @@
       primaryMetadataCapsule.setAttribute("aria-label", "Entry metadata");
       metadataStrip.appendChild(primaryMetadataCapsule);
       const panel = documentRef.createElement("div");
+      currentResultPanel = panel;
+      const ownsView = () => ownsResultPanel(panel, renderContext);
       panel.id = `${idPrefix}-tab-panel`;
       panel.className = "gsm-hoshidicts-tab-panel";
       if (tabList) {
@@ -2104,6 +2129,10 @@
         positionPopup();
       }
 
+      function activateTabFromEvent(index, focusButton = false) {
+        runRenderAction(ownsView, renderContext, () => activateTab(index, focusButton));
+      }
+
       tabDescriptors.forEach((descriptor, index) => {
         if (!tabList) {
           return;
@@ -2123,7 +2152,7 @@
         if (descriptor.dictionary) {
           button.dataset.dictionary = descriptor.dictionary;
         }
-        button.addEventListener("click", () => activateTab(index));
+        button.addEventListener("click", () => activateTabFromEvent(index));
         button.addEventListener("keydown", (event) => {
           let nextIndex = null;
           if (event.key === "ArrowRight") {
@@ -2138,7 +2167,7 @@
           if (nextIndex !== null) {
             event.preventDefault();
             event.stopPropagation();
-            activateTab(nextIndex, true);
+            activateTabFromEvent(nextIndex, true);
           }
         });
         tabButtons.push(button);
@@ -2180,6 +2209,8 @@
       setToolbarPosition,
       scheduleMasonry,
       destroy() {
+        renderRevision += 1;
+        currentResultPanel = null;
         if (masonryFrame !== null) {
           windowRef.cancelAnimationFrame(masonryFrame);
           masonryFrame = null;

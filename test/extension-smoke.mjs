@@ -6669,13 +6669,18 @@ async function contentNoteStage() {
   async function renderFailureCase() {
     const harness = await createHarness();
     await harness.initialLookup();
+    const previousContext = harness.render().context;
     const previous = harness.render().context.onRenderError;
     await harness.initialLookup();
+    const currentContext = harness.render().context;
     const current = harness.render().context.onRenderError;
+    const requestOwnership = previousContext.isCurrentRequest?.() === false
+      && currentContext.isCurrentRequest?.() === true;
     previous?.(new Error("superseded render"));
     const stayedVisible = !harness.driver.snapshot().popupHidden;
     current?.(new Error("current render"));
     const result = typeof previous === "function" && typeof current === "function"
+      && requestOwnership
       && stayedVisible && harness.driver.snapshot().popupHidden;
     harness.close();
     return result;
@@ -7040,7 +7045,10 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
 function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
   const rejected = (operation) => {
     try { operation(); return false; }
-    catch (error) { return /structured.*limit/iu.test(error.message); }
+    catch (error) {
+      if (error.name !== "RangeError" || !/structured.*limit/iu.test(error.message)) throw error;
+      return true;
+    }
   };
   const nested = (depth) => {
     let value = "leaf";
@@ -7085,6 +7093,7 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   let layouts = 0;
   let media = 0;
   let errors = 0;
+  let requestCurrent = true;
   const view = HDPopup.createPopupView({
     document, window, popup, initialResultCount: 2,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
@@ -7100,6 +7109,7 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   const invalid = entry("Invalid", nested(25));
   const imageEntry = entry("Image", '[{"type":"image","path":"media/image.png","width":16,"height":16}]');
   const context = {
+    isCurrentRequest: () => requestCurrent,
     dictionaryPresentation: [{ title: "Healthy", favorite: true }, { title: "Invalid", favorite: true }],
     onRenderError() { errors += 1; view.clear(); },
     resolveMedia() { media += 1; return Promise.resolve(null); },
@@ -7131,9 +7141,11 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
       () => view.renderResults([healthy], candidate, context),
       () => popup.querySelector('[data-dictionary="Healthy"][role="tab"]')?.click(),
       () => view.clear(),
+      () => { requestCurrent = false; },
       () => view.destroy(),
     ];
     const staleCases = replacements.map((replace) => {
+      requestCurrent = true;
       view.renderResults([healthy, imageEntry], candidate, context);
       replace();
       const before = { fills, layouts, media, errors };
