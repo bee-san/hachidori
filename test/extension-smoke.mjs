@@ -4084,6 +4084,12 @@ async function main() {
       && settingsBatch.statusReads === 1,
     JSON.stringify(settingsBatch),
   );
+  const frequencySettings = await settingsFrequencyStage();
+  check("Settings derives frequency direction only on dictionary selection or explicit Auto",
+    frequencySettings?.explicit === true, JSON.stringify(frequencySettings));
+  check("frequency controls preserve unavailable selections and revision-bound native drafts",
+    frequencySettings?.availability === true && frequencySettings.draft === true,
+    JSON.stringify(frequencySettings));
   const autosave = await settingsAutosaveStage();
   check(
     "Settings coalesces edited fields and queues only one revisioned save at a time",
@@ -4598,6 +4604,113 @@ async function loadJsdom() {
     // missing one, and the two need different fixes.
     jsdomFailure = `${entry} resolved but would not import: ${error.message}`;
     return null;
+  }
+}
+
+async function settingsFrequencyStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/settings.html`,
+  });
+  const { window } = dom;
+  let listener;
+  let storedOptions = { revision: 1, frequencyDictionary: "", frequencyOrder: "disabled" };
+  let state = { schemaVersion: 1, revision: 1, groups: [], dictionaries: [
+    genericPackage({ id: "rank", title: "Rank", frequencyCount: 3, frequencyMode: "rank-based" }),
+    genericPackage({ id: "occurrence", title: "Occurrence", frequencyCount: 3, frequencyMode: "occurrence-based" }),
+    genericPackage({ id: "unknown", title: "Unknown mode", frequencyCount: 3 }),
+  ] };
+  const writes = [];
+  const emitOptions = (patch) => {
+    storedOptions = { ...storedOptions, ...patch, revision: storedOptions.revision + 1 };
+    listener({ options: { newValue: structuredClone(storedOptions) } }, "local");
+  };
+  const emitDictionaries = (patch) => {
+    state = { ...state, revision: state.revision + 1,
+      dictionaries: state.dictionaries.map((dictionary) => dictionary.title === "Rank" ? { ...dictionary, ...patch } : dictionary) };
+    listener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+  };
+  window.chrome = {
+    runtime: { async sendMessage(message) {
+      if (message.type === "hd_state_read") return { ok: true, state: structuredClone(state) };
+      if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 3 };
+      if (message.type !== "hd_options_write") throw new Error(`Unexpected frequency Settings request ${message.type}`);
+      writes.push(structuredClone(message));
+      if (message.baseRevision !== storedOptions.revision) {
+        return { ok: false, conflict: true, error: "Settings changed in another page.", options: structuredClone(storedOptions) };
+      }
+      emitOptions(message.options);
+      return { ok: true, options: structuredClone(storedOptions) };
+    } },
+    storage: {
+      local: { async get() { return { options: structuredClone(storedOptions) }; } },
+      onChanged: { addListener(value) { listener = value; } },
+    },
+  };
+  const field = (name) => window.document.getElementById(`opt-frequency-${name}`);
+  const status = () => window.document.getElementById("options-status").textContent;
+  async function until(predicate) {
+    const deadline = Date.now() + 2000;
+    while (!predicate() && Date.now() < deadline) await new Promise((done) => setTimeout(done, 5));
+    if (!predicate()) throw new Error("Frequency Settings did not reach its expected state");
+  }
+  async function edit(name, value) {
+    const count = writes.length;
+    field(name).value = value;
+    field(name).dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => writes.length === count + 1 && status() === "Saved.");
+    return writes.at(-1).options;
+  }
+  try {
+    loadSettingsScript(window);
+    await until(() => window.document.getElementById("engine-status").textContent.startsWith("Ready"));
+    const auto = field("auto");
+    if (!auto) return { explicit: false, availability: false, draft: false, error: "Auto direction is missing" };
+    const passive = storedOptions.frequencyOrder === "disabled" && field("order").value === "disabled"
+      && auto.disabled && writes.length === 0;
+    const rank = await edit("dictionary", "Rank");
+    await edit("order", "descending");
+    const beforeMetadata = writes.length;
+    emitDictionaries({ displayName: "Rank alias" });
+    const manualKept = field("order").value === "descending" && writes.length === beforeMetadata;
+    auto.click();
+    await until(() => writes.length === beforeMetadata + 1 && status() === "Saved.");
+    const autoOrder = writes.at(-1).options.frequencyOrder;
+    const occurrence = await edit("dictionary", "Occurrence");
+    await edit("dictionary", "Unknown mode");
+    const unknown = storedOptions.frequencyOrder;
+    const any = await edit("dictionary", "");
+    const explicit = passive && manualKept && autoOrder === "ascending"
+      && rank.frequencyDictionary === "Rank" && rank.frequencyOrder === "ascending"
+      && occurrence.frequencyDictionary === "Occurrence" && occurrence.frequencyOrder === "descending"
+      && unknown === "descending" && any.frequencyDictionary === "" && any.frequencyOrder === "auto";
+
+    emitOptions({ frequencyDictionary: "Rank", frequencyOrder: "descending" });
+    emitDictionaries({ frequencyCount: 0 });
+    const manual = [...field("order").options].filter(({ value }) => ["ascending", "descending"].includes(value));
+    const global = [...field("order").options].filter(({ value }) => ["auto", "disabled"].includes(value));
+    const availability = auto.disabled && manual.every(({ disabled }) => disabled) && global.every(({ disabled }) => !disabled)
+      && field("dictionary").value === "Rank" && field("order").value === "descending";
+    emitDictionaries({ frequencyCount: 3 });
+    const baseRevision = storedOptions.revision;
+    const select = field("dictionary");
+    select.focus();
+    select.value = "Occurrence";
+    select.dispatchEvent(new window.Event("input", { bubbles: true }));
+    emitOptions({ frequencyDictionary: "Unknown mode", frequencyOrder: "ascending" });
+    const nativeDraftKept = select.value === "Occurrence";
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => status().includes("Could not save"));
+    const conflict = writes.at(-1);
+    select.blur();
+    window.document.getElementById("options-use-saved").click();
+    const draft = nativeDraftKept && conflict.baseRevision === baseRevision
+      && conflict.options.frequencyDictionary === "Occurrence" && conflict.options.frequencyOrder === "descending"
+      && field("dictionary").value === "Unknown mode" && field("order").value === "ascending";
+    return { explicit, availability, draft, writes };
+  } finally {
+    window.close();
   }
 }
 
