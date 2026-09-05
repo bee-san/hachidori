@@ -311,7 +311,7 @@ function makeBus() {
     listeners.push({ fn, owner });
   }
 
-  function sendMessage(owner, message) {
+  function sendMessage(owner, message, sender = { id: "hachidorismokeextensionid" }) {
     log.push({ from: owner, type: message?.type, relayed: message?.relayed === true });
     return new Promise((resolveReply, rejectReply) => {
       const audience = listeners.filter((entry) => entry.owner !== owner);
@@ -326,7 +326,7 @@ function makeBus() {
       for (const entry of audience) {
         let keepOpen;
         try {
-          keepOpen = entry.fn(message, { id: "smoke" }, respond);
+          keepOpen = entry.fn(message, sender, respond);
         } catch (error) {
           rejectReply(error);
           return;
@@ -718,6 +718,7 @@ function loadClassicScript(file, sandbox) {
 
 function loadBackgroundScript(sandbox) {
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
+  const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
   const customDictionary = readFileSync(resolve(EXTENSION, "custom-dictionary.js"), "utf8")
     .replace(/^export\s+/gmu, "");
@@ -729,11 +730,13 @@ function loadBackgroundScript(sandbox) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
+    .replace(/import "\.\/external-links\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
+  sandbox.URL ??= URL;
   sandbox.Uint8Array ??= Uint8Array;
   sandbox.Uint32Array ??= Uint32Array;
   sandbox.DataView ??= DataView;
@@ -743,11 +746,77 @@ function loadBackgroundScript(sandbox) {
   runInContext(
     `${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${readerOptions}\n${background}`,
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${readerOptions}\n${externalLinks}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
   );
   return context;
+}
+
+async function externalLinksBackgroundStage() {
+  const bus = makeBus();
+  const storage = makeStorage();
+  const chrome = makeChrome("external-links-worker", bus, storage);
+  const tabs = [];
+  chrome.tabs = { async create(properties) { tabs.push(structuredClone(properties)); return { id: tabs.length }; } };
+  loadBackgroundScript({ chrome, console, URL, setTimeout, clearTimeout, Promise, Error });
+  await bus.sendMessage("external-links-reader", {
+    target: "hoshidicts-worker", type: "hd_state_read", requestId: "external-links-ready",
+  });
+  const send = (payload, sender = { id: chrome.runtime.id, tab: { windowId: 9 } }) => bus.sendMessage(
+    "external-links-reader",
+    { target: "hoshidicts-worker", type: "hd_open_external", requestId: "external-link", ...payload },
+    sender,
+  );
+  const accepted = await send({ url: " HTTPS://EXAMPLE.COM:443/日本?q=1#term ", active: false, windowId: 99, openerTabId: 11 });
+  const local = await send({ url: "http://127.0.0.1:9876/reference" });
+  const rejected = [];
+  for (const url of ["javascript:alert(1)", "file:///tmp/a", "chrome://settings", "/relative", "https://", "https://user:pass@example.test/", "https://exam\nple.test/", { href: "https://example.test/" }]) {
+    rejected.push(await send({ url }));
+  }
+  rejected.push(await send({ url: "https://example.test/", active: "yes" }));
+  rejected.push(await send({ url: "https://example.test/" }, { id: "another-extension" }));
+  const validReply = reply => reply?.type === "hd_open_external_result" && reply.requestId === "external-link";
+  check("external links validate HTTP URLs and sender identity before creating one browser-owned tab",
+    accepted?.ok && accepted.opened === true && validReply(accepted)
+      && local?.ok && validReply(local)
+      && JSON.stringify(tabs) === JSON.stringify([
+        { url: "https://example.com/%E6%97%A5%E6%9C%AC?q=1#term", active: false, windowId: 9 },
+        { url: "http://127.0.0.1:9876/reference", active: true, windowId: 9 },
+      ])
+      && rejected.every(reply => validReply(reply) && reply.ok === false && typeof reply.error === "string"),
+    JSON.stringify({ accepted, local, tabs, rejected }));
+
+  const originalSet = chrome.storage.local.set;
+  let releaseWrite;
+  chrome.storage.local.set = items => new Promise((resolveWrite, rejectWrite) => {
+    releaseWrite = () => originalSet(items).then(resolveWrite, rejectWrite);
+  });
+  const writing = bus.sendMessage("external-links-reader", {
+    target: "hoshidicts-worker", type: "hd_options_write", requestId: "held-options-write",
+    baseRevision: 0, options: { scanLength: 17 },
+  });
+  for (let attempt = 0; !releaseWrite && attempt < 100; attempt += 1) {
+    await new Promise(resolveTimer => setTimeout(resolveTimer, 0));
+  }
+  if (!releaseWrite) throw new Error("the external-link test did not hold its options write");
+  let externalSettled = false;
+  const before = { reads: storage.gets.length, writes: storage.sets.length, engine: offscreenState.created };
+  const opening = send({ url: "https://example.test/while-saving" }).then(reply => { externalSettled = reply?.ok === true; return reply; });
+  await new Promise(resolveTimer => setTimeout(resolveTimer, 0));
+  const independent = externalSettled && before.reads === storage.gets.length
+    && before.writes === storage.sets.length && before.engine === offscreenState.created;
+  releaseWrite();
+  await writing;
+  await opening;
+  chrome.storage.local.set = originalSet;
+  let failureAttempts = 0;
+  chrome.tabs.create = async () => { failureAttempts += 1; throw new Error("tab creation failed"); };
+  const failed = await send({ url: "https://example.test/failure" });
+  check("external tab creation bypasses storage and engine queues and reports a failure without retry",
+    independent && failureAttempts === 1 && failed?.ok === false && validReply(failed) && failed.error.includes("tab creation failed")
+      && !bus.log.some(message => message.relayed),
+    JSON.stringify({ independent, failed, log: bus.log }));
 }
 
 async function customBackgroundStage() {
@@ -1643,6 +1712,9 @@ async function main() {
 
   section("option ranges");
   checkOptionRanges();
+
+  section("external dictionary links");
+  await externalLinksBackgroundStage();
 
   section("custom dictionary storage ownership");
   const customBackground = await customBackgroundStage();
@@ -4268,6 +4340,8 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  check("content routes external links to the worker without retrying or changing the current Note view",
+    noteContent?.externalLinks === true, JSON.stringify(noteContent?.externalLinks));
   for (const [name, passed] of Object.entries(noteContent?.scanning ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -8521,8 +8595,34 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function externalLinksCase() {
+    const harness = await createHarness();
+    try {
+      await harness.initialLookup();
+      harness.edit(true);
+      const open = harness.render().context.onExternalLink;
+      if (typeof open !== "function") return false;
+      const before = JSON.stringify({ snapshot: harness.driver.snapshot(), stats: harness.stats() });
+      const descriptor = harness.driver.viewRequest();
+      const sentBefore = harness.sent.length;
+      for (const kind of ["success", "failure", "lost-reply"]) {
+        open({ url: "https://example.test/reference", active: false });
+        const item = harness.take("hd_open_external");
+        if (item?.request.target !== "hoshidicts-worker" || item.request.active !== false
+            || item.request.url !== "https://example.test/reference") return false;
+        if (kind === "lost-reply") item.callback(undefined);
+        else harness.reply(item, kind === "success" ? { opened: true } : { error: "tab creation failed" }, kind === "success");
+        await harness.settle();
+      }
+      return harness.sent.length === sentBefore + 3 && harness.pending.length === 0
+        && harness.driver.viewRequest() === descriptor
+        && JSON.stringify({ snapshot: harness.driver.snapshot(), stats: harness.stats() }) === before;
+    } finally { harness.close(); }
+  }
+
   return {
     callbacksWired,
+    externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
@@ -8561,10 +8661,10 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   const { window } = dom;
   const { document } = window;
 
-  const sandbox = createContext({ window, document, console, globalThis: undefined });
+  const sandbox = createContext({ window, document, console, URL: window.URL, globalThis: undefined });
   sandbox.globalThis = sandbox;
   sandbox.window = window;
-  for (const file of ["render/glossary.js", "render/popup.js"]) {
+  for (const file of ["external-links.js", "render/glossary.js", "render/popup.js"]) {
     runInContext(readFileSync(resolve(EXTENSION, file), "utf8"), sandbox, { filename: file });
   }
   const HDGlossary = sandbox.HDGlossary ?? window.HDGlossary;
@@ -8918,10 +9018,102 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     calculatePopupPosition: HDPopup.calculatePopupPosition,
     result: imageLookup.results[0], mediaUrl: media.dataUrl });
   structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+  externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await mediaRenderStage({ HDGlossary, document, window });
   dom.window.close();
   return true;
+}
+
+function externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  const calls = [];
+  let current = true;
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    parseTagList: HDGlossary.parseTagList, positionPopup() {},
+  });
+  const href = "  HTTPS://EXAMPLE.test:443/参照?q=食#meaning  ";
+  const entry = (dictionary, content) => ({ ...result,
+    term: { ...result.term, glossaries: [{ dictionary, glossary: JSON.stringify([
+      { type: "structured-content", content },
+    ]) }] },
+  });
+  const link = (url, content = "reference <literal>") => ({ tag: "a", href: url, content });
+  const first = entry("Links", link(href));
+  const context = {
+    isCurrentRequest: () => current,
+    onExternalLink(value) { calls.push(value); },
+    dictionaryPresentation: [{ title: "Links", favorite: true }, { title: "Other", favorite: true }],
+  };
+  const dispatch = (anchor, type = "click", options = {}) => {
+    const event = new window.MouseEvent(type, { bubbles: true, cancelable: true, ...options });
+    anchor.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  try {
+    const invalid = ["javascript:alert(1)", "file:///tmp/reference", "/relative", "https://[bad/",
+      "https://user:secret@example.test/", "https://example.test/line\nbreak"];
+    view.renderResults([entry("Links", [link(href), link("http://localhost/reference"), ...invalid.map((url) => link(url))])], candidate, context);
+    const anchors = [...popup.querySelectorAll(".gloss-link")];
+    const normalised = new URL(href.trim()).href;
+    const preserved = anchors[0].href === normalised && anchors[0].target === "_blank"
+      && anchors[0].rel === "noopener noreferrer"
+      && anchors[0].querySelector(".gloss-link-text").textContent === "reference <literal>"
+      && anchors[1].href === "http://localhost/reference"
+      && anchors.slice(2).every((anchor) => !anchor.hasAttribute("href"));
+    anchors[0].href = "https://mutated.test/";
+    const events = [
+      ["click", { detail: 1 }, true], ["click", { detail: 0 }, true],
+      ["click", { ctrlKey: true }, false], ["click", { metaKey: true }, false],
+      ["auxclick", { button: 1 }, false], ["auxclick", { button: 1, shiftKey: true }, true],
+    ];
+    const prevented = events.map(([type, options]) => dispatch(anchors[0], type, options));
+    const nativeContext = !dispatch(anchors[0], "auxclick", { button: 2 })
+      && !dispatch(anchors[0], "contextmenu", { button: 2 });
+    check("external anchors keep safe native links and route primary, keyboard and middle activation exactly once",
+      preserved && prevented.every(Boolean) && nativeContext && calls.length === events.length
+        && calls.every((value, index) => value.url === normalised && value.active === events[index][2]),
+      JSON.stringify({ preserved, prevented, nativeContext, calls }));
+
+    const stale = [
+      () => view.renderResults([first], candidate, context),
+      () => popup.querySelector('[data-dictionary="Other"][role="tab"]').click(),
+      () => { current = false; },
+      (anchor) => anchor.remove(),
+      () => view.clear(),
+      () => view.destroy(),
+    ].map((replace) => {
+      current = true;
+      view.renderResults([first, entry("Other", "other")], candidate, context);
+      const anchor = popup.querySelector(".gloss-link");
+      replace(anchor);
+      const count = calls.length;
+      return dispatch(anchor) && dispatch(anchor, "auxclick", { button: 1 }) && calls.length === count;
+    });
+    check("obsolete external anchors cancel native navigation without dispatching a new tab",
+      stale.every(Boolean), JSON.stringify(stale));
+
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    let internal = 0;
+    const before = calls.length;
+    HDGlossary.appendTextOnlyGlossary(document, parent, JSON.stringify([{ type: "structured-content",
+      content: [link("https://outer.test/", link("https://inner.test/")),
+        link("https://outer.test/", link("?query=食&primary_reading=しょく")),
+        link("?query=outer", link("https://inner.test/second"))],
+    }]), { onExternalLink: context.onExternalLink, onInternalLink() { internal += 1; } });
+    dispatch(parent.querySelector('a[href="https://inner.test/"]'));
+    dispatch(parent.querySelector('[data-hoshidicts-query]'));
+    dispatch(parent.querySelector('a[href="https://inner.test/second"]'));
+    check("nested structured links dispatch only the handled inner action",
+      calls.length === before + 2 && calls[before]?.url === "https://inner.test/"
+        && calls.at(-1)?.url === "https://inner.test/second" && internal === 1,
+      JSON.stringify({ calls: calls.slice(before), internal }));
+    parent.remove();
+  } finally { view.destroy(); popup.remove(); }
 }
 
 async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {

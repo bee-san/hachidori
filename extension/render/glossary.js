@@ -884,10 +884,8 @@
         query,
       };
     }
-    if (/^https?:\/\//iu.test(href)) {
-      return { href, internal: false };
-    }
-    return null;
+    const url = globalThis.HDExternalLinks.normaliseExternalUrl(href);
+    return url ? { href: url, internal: false } : null;
   }
 
   function appendStructuredValue(documentRef, parent, value, state, depth) {
@@ -1002,6 +1000,20 @@
         element.target = "_blank";
         element.rel = "noopener noreferrer";
         element.dataset.external = "true";
+        const activate = (event) => {
+          if (event.defaultPrevented || event.button !== (event.type === "auxclick" ? 1 : 0)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (!element.isConnected || (typeof state.isCurrent === "function" && !state.isCurrent())) return;
+          if (typeof state.onExternalLink === "function") {
+            state.onExternalLink({
+              url: link.href,
+              active: event.shiftKey || !(event.button === 1 || event.ctrlKey || event.metaKey),
+            });
+          }
+        };
+        element.addEventListener("click", activate);
+        element.addEventListener("auxclick", activate);
       }
     }
     let contentParent = element;
@@ -1059,6 +1071,7 @@
     const state = {
       nodes: 0,
       isCurrent: options.isCurrent,
+      onExternalLink: options.onExternalLink,
       onInternalLink: options.onInternalLink,
       onLayoutChange: options.onLayoutChange,
       requestImagePreview: options.requestImagePreview,

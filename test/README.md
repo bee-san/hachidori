@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 276 checks, all of
+full request→reply round trip per contract-C message type. 282 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -431,6 +431,11 @@ What it proves, in order:
    Deferred, tab, and Show more failures reach the current view owner. Replaced,
    cleared, destroyed, or request-superseded fills do no rendering, media, or
    layout work, and the actual content callbacks cannot clear a newer request.
+   External links preserve safe native hrefs while routing current primary,
+   keyboard and middle activation exactly once, including mixed nested links.
+   Worker checks reject invalid URLs/senders before tab creation and bypass held
+   storage writes without waking the engine. Failed or missing navigation replies
+   do not retry, replace the lookup or discard an open Note draft.
    Media tests also pin exact UTF-8 reference and 6 MiB complete-reply boundaries,
    embedded-NUL prefix rejection, bounded correlation on early relay failures,
    and actual oversized native errors without capping archive imports.
@@ -523,7 +528,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 105 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 106 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -544,6 +549,12 @@ text with a real mouse on a page served over `http://127.0.0.1` (content scripts
 opt-in), then relaunches against the same profile and hovers again with no
 re-import — which is the only test that proves direct OPFS persistence through a
 full Chrome restart.
+
+An in-memory external-reference fixture also passes through real WASM. Real Enter
+on its closed-shadow anchor must create exactly one worker-routed browser tab,
+with the exact local HTTP destination, no opener/frame and an unchanged source
+page. An invalid direct gateway request opens nothing; returning to the page
+still permits lookup. This fixture is removed before the remaining checks.
 
 The same run lazily opens the custom source editor, saves through the production
 ZIP compiler and real pthread WASM importer, and checks the fixed package's
@@ -632,7 +643,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 105 assertions, and the summary line
+`PLANNED` at the top of the file names all 106 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

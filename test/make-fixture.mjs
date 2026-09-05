@@ -511,6 +511,20 @@ export function buildTitledZip(title, { banks = true, terms = TERMS, termMeta = 
   return buildZip(entries);
 }
 
+export function externalLinksFixture(destinationUrl) {
+  const title = 'external-links-fixture';
+  const query = '参照';
+  const archive = buildTitledZip(title, { terms: [[query, 'さんしょう', '', '', 0, [
+    { type: 'structured-content', content: { tag: 'div', content: [
+      'Reference: ', { tag: 'a', href: destinationUrl, content: '外部辞典 <reference>' },
+      { tag: 'ul', content: ['usage', 'examples', 'sources'].map(label => ({ tag: 'li', content: {
+        tag: 'a', href: `${destinationUrl.split('#')[0]}#${label}`, content: label,
+      } })) },
+    ] } },
+  ], 1, '']] });
+  return { title, query, archive };
+}
+
 export function frequencyRankingFixture() {
   const query = '頻度語';
   const readings = ['あ', 'い', 'う'];

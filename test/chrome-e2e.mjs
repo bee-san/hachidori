@@ -27,6 +27,7 @@ import {
   GENERIC_KANJI_TITLE,
   buildRecommendedZip,
   buildTitledZip,
+  externalLinksFixture,
   frequencyRankingFixture,
   imagePreviewFixture,
   imageSizingFixture,
@@ -250,6 +251,7 @@ const PLANNED = [
   "the content script attached its closed-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
+  "external dictionary Enter activation creates one safe browser tab through the extension",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
   "the dictionary alias labels its popup tab without replacing the canonical key",
@@ -585,6 +587,24 @@ async function popupReader(page) {
     return result.value === true;
   }
 
+  async function externalLink() {
+    const object = await resolvePopupObject();
+    if (object === null) return null;
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true,
+      functionDeclaration: `function () {
+        const link = this.querySelector('a[data-external="true"]');
+        if (!link) return null;
+        link.focus();
+        return { href: link.href, target: link.target, rel: link.rel,
+          text: link.querySelector(".gloss-link-text").textContent,
+          focused: this.getRootNode().activeElement === link,
+          frames: this.querySelectorAll("iframe").length };
+      }`,
+    });
+    return result.value;
+  }
+
   async function selectGlossaryText() {
     const object = await resolvePopupObject();
     if (object === null) return "";
@@ -736,7 +756,7 @@ async function popupReader(page) {
     return result.value ?? null;
   }
 
-  return { click, deinflection, imagePreview, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+  return { click, deinflection, externalLink, imagePreview, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -831,6 +851,96 @@ async function checkDeinflectionDisclosure(settings, tab, popup) {
       && lastStep.lastStepRect.bottom <= lastStep.popupRect.bottom
       && glossary?.open === true && glossary.glossaryReachable,
     JSON.stringify({ expected, closed, focused, expanded, collapsed, lastStep, glossary, note }));
+}
+
+async function checkExternalLinks(browser, settings, tab, popup) {
+  const sourceUrl = tab.url();
+  const destinationUrl = new URL("external-reference?query=%E5%8F%82%E7%85%A7#meaning", sourceUrl).href;
+  const fixture = externalLinksFixture(destinationUrl);
+  const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
+  await installMediaArchive(settings, fixture.archive);
+  const worker = await (await browser.waitForTarget(target => target.type() === "service_worker"
+    && target.url().startsWith("chrome-extension://"))).worker();
+  await worker.evaluate(() => {
+    const probe = { requests: [], creates: [], pending: [], create: chrome.tabs.create };
+    probe.listener = message => {
+      if (message.type === "hd_open_external") probe.requests.push(message);
+    };
+    chrome.runtime.onMessage.addListener(probe.listener);
+    chrome.tabs.create = function (properties) {
+      const operation = probe.create.call(this, properties).then(tab => {
+        probe.creates.push({ properties, id: tab.id, openerTabId: tab.openerTabId });
+        return tab;
+      });
+      probe.pending.push(operation);
+      return operation;
+    };
+    globalThis.__externalLinksProbe = probe;
+  });
+  const created = [];
+  const onCreated = target => { if (target.type() === "page") created.push(target); };
+  browser.on("targetcreated", onCreated);
+  let evidence;
+  try {
+    await tab.$eval("#verb", (element, query) => { element.textContent = query; }, fixture.query);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await hoverForPopup(tab, popup, "#verb");
+    const link = await popup.externalLink();
+    const [target] = await Promise.all([
+      browser.waitForTarget(target => target.type() === "page" && target.url() === destinationUrl, { timeout: 10_000 }),
+      tab.keyboard.press("Enter"),
+    ]);
+    const destination = await target.page();
+    const navigation = await destination.evaluate(() => ({ url: location.href, opener: window.opener !== null }));
+    const afterOpen = await worker.evaluate(async () => {
+      const probe = globalThis.__externalLinksProbe;
+      await Promise.all(probe.pending);
+      return { requests: probe.requests, creates: probe.creates };
+    });
+    const invalid = await settings.evaluate(() => chrome.runtime.sendMessage({
+      target: "hoshidicts-worker", type: "hd_open_external", requestId: "external-invalid",
+      url: "javascript:document.body.remove()",
+    }));
+    const afterInvalid = await worker.evaluate(() => globalThis.__externalLinksProbe.creates.length);
+    await destination.close();
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    const restored = await hoverForPopup(tab, popup, "#verb");
+    evidence = { link, navigation, afterOpen, afterInvalid, invalid, created: created.length,
+      sourceUnchanged: tab.url() === sourceUrl, restored: restored?.text.includes("外部辞典 <reference>") };
+  } finally {
+    browser.off("targetcreated", onCreated);
+    for (const target of created) {
+      const page = await target.page();
+      if (page && !page.isClosed()) await page.close();
+    }
+    await worker.evaluate(() => {
+      const probe = globalThis.__externalLinksProbe;
+      chrome.tabs.create = probe.create;
+      chrome.runtime.onMessage.removeListener(probe.listener);
+      delete globalThis.__externalLinksProbe;
+    });
+    const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen", type: "hd_remove", title,
+    }), fixture.title);
+    if (!removed.ok) throw new Error(removed.error);
+    await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+  }
+  check("external dictionary Enter activation creates one safe browser tab through the extension",
+    evidence.link?.focused && evidence.link.href === destinationUrl && evidence.link.frames === 0
+      && evidence.link.target === "_blank" && evidence.link.rel === "noopener noreferrer"
+      && evidence.link.text === "外部辞典 <reference>"
+      && evidence.navigation.url === destinationUrl && !evidence.navigation.opener
+      && evidence.created === 1 && evidence.afterOpen.requests.length === 1 && evidence.afterOpen.creates.length === 1
+      && evidence.afterOpen.requests[0].url === destinationUrl
+      && evidence.afterOpen.creates[0].properties.url === destinationUrl
+      && evidence.afterOpen.creates[0].properties.active === true
+      && evidence.afterOpen.creates[0].openerTabId === undefined
+      && evidence.invalid.ok === false && evidence.invalid.requestId === "external-invalid"
+      && evidence.afterInvalid === 1 && evidence.sourceUnchanged && evidence.restored, JSON.stringify(evidence));
 }
 
 async function installMediaArchive(page, archive) {
@@ -1287,6 +1397,7 @@ async function setDictionaryAliasInSettings(page, title, alias) {
 }
 
 async function checkDictionaryStyles(page) {
+  await page.addScriptTag({ url: new URL("external-links.js", page.url()).href });
   await page.addScriptTag({ url: new URL("render/glossary.js", page.url()).href });
   const requests = [];
   const intercept = (request) => {
@@ -3330,6 +3441,7 @@ async function main() {
   );
 
   await checkDeinflectionDisclosure(page, tab, popup);
+  await checkExternalLinks(browser, page, tab, popup);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
   await checkFrequencyDirection(browser, page, tab, popup);

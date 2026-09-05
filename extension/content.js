@@ -806,7 +806,7 @@
     clearDictionaryResources();
   }
 
-  function sendRequest(type, payload) {
+  function sendRequest(type, payload, target = TARGET) {
     return new Promise((resolve, reject) => {
       if (disposed || !extensionAlive()) {
         teardown("context-invalidated");
@@ -814,7 +814,7 @@
         return;
       }
       const requestId = `${type.replace(/^hd_/u, "")}-${nextRequestId += 1}`;
-      const request = { ...payload, requestId, target: TARGET, type };
+      const request = { ...payload, requestId, target, type };
       try {
         chrome.runtime.sendMessage(request, (reply) => {
           const lastError = chrome.runtime.lastError;
@@ -1243,6 +1243,12 @@
       dictionaryTabGroups: [],
       generation: currentGeneration,
       hidePopupGrammarTags: false,
+      onExternalLink({ url, active }) {
+        // A lost reply may follow a successful open, so never retry navigation.
+        void sendRequest("hd_open_external", { url, active }, "hoshidicts-worker").catch((error) => {
+          console.debug("hachidori: external link could not be opened", error);
+        });
+      },
       onInternalLink,
       resolveMedia,
       showCompactDefinitionSummary: false,

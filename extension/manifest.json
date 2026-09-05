@@ -33,6 +33,7 @@
       "run_at": "document_idle",
       "js": [
         "reader-options.js",
+        "external-links.js",
         "render/glossary.js",
         "render/popup.js",
         "content.js"

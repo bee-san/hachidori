@@ -177,6 +177,10 @@ Choose Hachidori when you want the shortest path from a Yomitan dictionary to a 
 
 Lookups make no network calls. Your dictionaries and lookup text stay in Chrome, and the bundled WebAssembly engine queries them locally.
 
+Opening an external reference in a definition navigates to that HTTP(S) website
+in a new browser tab. This happens only when you activate the link; rendering a
+definition does not fetch its external links.
+
 The optional starter action downloads its four named archives directly from the
 publishers linked on the Options page. Manual update checks and scheduled update
 runs request managed dictionaries' HTTPS indexes; installing an update also

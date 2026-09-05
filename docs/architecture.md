@@ -273,6 +273,27 @@ projection, clear, or destroy invalidates obsolete work before it can render or
 request media. Initial synchronous render errors reach the content-script catch;
 later tab, expansion, and deferred errors clear only their owning current view.
 
+### External dictionary links
+
+`external-links.js` shares absolute HTTP(S) URL normalization between the classic
+glossary renderer and module service worker. Credentials, embedded control
+characters, malformed URLs and other schemes are rejected. The renderer retains
+its existing 4,096-character href boundary; the gateway adds no product cap.
+Current, connected anchors route click/Enter and middle-button activation through
+the content script's correlated `hd_open_external` worker request. The captured
+URL cannot be replaced by editing the DOM href. Handled nested actions do not
+bubble into a second link, and stale anchors cancel native navigation too.
+
+The worker independently validates URL, extension sender and boolean tab
+activation, then calls `chrome.tabs.create` once in the sender's browser window,
+without an opener, storage queue or engine relay. Normal and Shift activation
+open a foreground tab; Ctrl/Meta or middle-click open a background tab unless
+Shift is held. Shift deliberately opens a tab, not a separate window. A failed
+or missing reply is logged without retry, native fallback or lookup/Note changes.
+Safe hrefs and `noopener noreferrer` remain for Copy link and native browser
+context-menu commands; those browser-owned commands do not emit routed clicks.
+No dictionary frame, fetch, new permission or configurable action is introduced.
+
 ### Deinflection explanation
 
 Each eligible term header has a native, initially closed `details` disclosure.
@@ -551,6 +572,7 @@ pruning are one compare-and-set transaction rather than two coordinated writes.
 | `hd_import` | Import one Yomitan ZIP and return an exact report; optionally validate a built-in catalogue source in the same transaction |
 | `hd_apply_state` | Load an engine-affecting package change, then compare-and-set it atomically |
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
+| `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |
 | `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, and threading mode |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |
 | `hd_remove` | Stage a package's files, commit its removal, then delete the staged copy |
