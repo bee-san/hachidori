@@ -4700,15 +4700,45 @@ async function settingsNavigationStage() {
     listener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
     const focusKept = row().querySelector(".dict-details").open
       && document.activeElement === row().querySelector(".dict-details-toggle");
+    const firstRow = row();
+    const secondRow = document.querySelector('.dict-row[data-dictionary-id="second"]');
+    const selectVisible = document.getElementById("dict-select-visible");
+    const beforeFiltering = requests.length;
+    selectVisible.click();
+    const selectionKeptRows = row() === firstRow
+      && document.querySelector('.dict-row[data-dictionary-id="second"]') === secondRow
+      && firstRow.querySelector(".dict-selected").checked
+      && secondRow.querySelector(".dict-selected").checked;
+    selectVisible.click();
+    const deselectionKeptRows = row() === firstRow
+      && !firstRow.querySelector(".dict-selected").checked
+      && !secondRow.querySelector(".dict-selected").checked;
     const search = document.getElementById("dict-search");
     search.focus();
+    secondRow.classList.add("is-drop-target");
+    let filteringKeptRows = true;
     for (const value of ["Second", ""]) {
       search.value = value;
       search.dispatchEvent(new window.Event("input", { bubbles: true }));
+      filteringKeptRows &&= document.querySelector('.dict-row[data-dictionary-id="second"]') === secondRow;
     }
-    const details = focusKept && row().querySelector(".dict-details").open
+    let details = focusKept && row().querySelector(".dict-details").open
       && !document.querySelector('.dict-row[data-dictionary-id="second"] .dict-details').open
-      && document.activeElement === search;
+      && document.activeElement === search && selectionKeptRows && deselectionKeptRows
+      && filteringKeptRows && !secondRow.classList.contains("is-drop-target")
+      && requests.length === beforeFiltering;
+    for (const action of ["search", "select-visible"]) {
+      row().querySelector(".dict-display-name").focus();
+      const oldRow = row();
+      const label = `New name before ${action}`;
+      state = { ...state, revision: state.revision + 1,
+        dictionaries: state.dictionaries.map((entry) => entry.id === "first" ? { ...entry, displayName: label } : entry) };
+      listener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+      const deferred = row() === oldRow && row().querySelector(".dict-title").textContent !== label;
+      if (action === "search") search.dispatchEvent(new window.Event("input", { bubbles: true }));
+      else selectVisible.click();
+      details &&= deferred && row() !== oldRow && row().querySelector(".dict-title").textContent === label;
+    }
     await navigate("lookup");
     document.getElementById("options-use-saved").click();
     input.value = "96";
