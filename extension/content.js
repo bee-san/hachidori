@@ -19,7 +19,7 @@
   const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
 
-  const { DEFAULT_OPTIONS, normaliseActivationKey, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
+  const { DEFAULT_OPTIONS, clampOption, normaliseActivationKey, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
   const MODIFIER_PROPERTIES = new Map([
     ["Shift", "shiftKey"],
     ["Control", "ctrlKey"],
@@ -125,6 +125,8 @@
   let activationPressed = false;
   let activationCode = null;
   let pendingPointerLookup = null;
+  let selectionDragActive = false;
+  let activeSelectionCandidate = null;
 
   let activeCandidate = null;
   let activeSignature = null;
@@ -354,23 +356,20 @@
     return element?.isContentEditable === true || EDITING_TAGS.has(element?.localName);
   }
 
-  function isScannableTextNode(node, styleCache) {
-    if (!node || node.nodeType !== Node.TEXT_NODE || !node.parentElement) {
+  function isScannableElement(element, styleCache) {
+    if (!element || element.getRootNode() !== document || isOurNode(element)) {
       return false;
     }
-    if (node.getRootNode() !== document || isOurNode(node)) {
-      return false;
-    }
-    for (
-      let element = node.parentElement;
-      element;
-      element = element.parentElement
-    ) {
-      if (isEditingElement(element) || OPAQUE_TAGS.has(element.localName) || isHiddenElement(element, styleCache)) {
+    for (let current = element; current; current = current.parentElement) {
+      if (isEditingElement(current) || OPAQUE_TAGS.has(current.localName) || isHiddenElement(current, styleCache)) {
         return false;
       }
     }
     return true;
+  }
+
+  function isScannableTextNode(node, styleCache) {
+    return node?.nodeType === Node.TEXT_NODE && isScannableElement(node.parentElement, styleCache);
   }
 
   /**
@@ -601,15 +600,51 @@
     };
   }
 
+  function selectionBoundaryElement(node) {
+    return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  }
+
+  function resolveSelectedLookupCandidate() {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return null;
+    const range = selection.getRangeAt(0);
+    const styleCache = new Map();
+    if (!isScannableElement(selectionBoundaryElement(range.startContainer), styleCache)
+        || !isScannableElement(selectionBoundaryElement(range.endContainer), styleCache)) return null;
+    const query = range.toString();
+    if (!query.trim()) return null;
+    const scanContainer = range.startContainer.nodeType === Node.TEXT_NODE
+      ? resolveScanContainer(range.startContainer, styleCache) : null;
+    const anchor = scanContainer?.contains(range.endContainer)
+      ? scanContainer : selectionBoundaryElement(range.commonAncestorContainer);
+    return {
+      anchor,
+      anchorRange: range.cloneRange(),
+      exactSelection: true,
+      matchOffset: rangeOffsetWithin(anchor, range.startContainer, range.startOffset),
+      query,
+      sentence: anchor.textContent || "",
+      sourceDepth: -1,
+      sourceElements: [anchor],
+      vertical: computedStyleFor(anchor, styleCache).writingMode.startsWith("vertical"),
+    };
+  }
+
+  function candidateStart(candidate) {
+    return candidate.exactSelection === true
+      ? { node: candidate.anchorRange.startContainer, offset: candidate.anchorRange.startOffset }
+      : candidate.scanEntries[0];
+  }
+
   function candidateSignature(candidate) {
-    const first = candidate.scanEntries[0];
-    return `${first.offset}\u001f${candidate.matchOffset}\u001f${candidate.query}`;
+    const first = candidateStart(candidate);
+    return `${candidate.exactSelection === true}\u001f${first.offset}\u001f${candidate.matchOffset}\u001f${candidate.query}`;
   }
 
   function sameAnchorNode(candidate, other) {
     return Boolean(other) &&
       other.anchor === candidate.anchor &&
-      other.scanEntries[0].node === candidate.scanEntries[0].node;
+      candidateStart(other).node === candidateStart(candidate).node;
   }
 
   /**
@@ -621,6 +656,7 @@
    * wrong length whenever the word crosses ruby or a line wrap.
    */
   function rawMatchedText(candidate, matched) {
+    if (candidate.exactSelection === true) return candidate.query;
     const wanted = typeof matched === "string" ? matched.length : 0;
     if (wanted <= 0) {
       return "";
@@ -667,6 +703,8 @@
     hideTimer = null;
     document.removeEventListener("mousemove", onMouseMove, true);
     document.removeEventListener("mousedown", onMouseDown, true);
+    document.removeEventListener("mouseup", onMouseUp, true);
+    document.removeEventListener("selectionchange", onSelectionChange);
     document.removeEventListener("keydown", onKeyDown, true);
     document.removeEventListener("keyup", onKeyUp, true);
     document.removeEventListener("mouseout", onMouseOut, true);
@@ -936,7 +974,12 @@
   function anchorConnected(candidate) {
     return Boolean(candidate) &&
       candidate.anchor.isConnected &&
-      candidate.scanEntries[0].node.isConnected;
+      candidateStart(candidate).node.isConnected &&
+      (candidate.exactSelection !== true || (
+        !candidate.anchorRange.collapsed
+        && candidate.anchor.contains(candidate.anchorRange.startContainer)
+        && candidate.anchor.contains(candidate.anchorRange.endContainer)
+      ));
   }
 
   function requestCanRender(token, candidate) {
@@ -1326,7 +1369,8 @@
     }
     noteGeneration(reply.generation);
     const results = (Array.isArray(reply.results) ? reply.results : [])
-      .filter((result) => result && result.term);
+      .filter((result) => result && result.term
+        && (!request.exactSelection || result.matched === request.payload.text));
     if (results.length === 0) {
       if (reply.dictionaryCount === 0) {
         show(request.candidate);
@@ -1360,8 +1404,10 @@
 
   function runLookup(candidate, overrides = {}) {
     const text = typeof overrides.text === "string" ? overrides.text : candidate.query;
+    const exactSelection = candidate.exactSelection === true && overrides.text === undefined;
     return executeTermRequest({
       candidate,
+      exactSelection,
       highlightText: overrides.keepHighlight === true ? activeHighlightText : undefined,
       kind: "term",
       payload: {
@@ -1373,7 +1419,7 @@
             ? overrides.primaryReading
             : "",
         },
-        scanLength: options.scanLength,
+        scanLength: exactSelection ? clampOption("scanLength", Array.from(text).length) : options.scanLength,
         text,
       },
       previous: overrides.previous ?? null,
@@ -1587,6 +1633,7 @@
       clearHideTimer();
       return;
     }
+    if (selectionDragActive || retainSelectedLookup()) return;
     pointerInPopup = isOurNode(pointer.target) ||
       pointInsidePopup(pointer.clientX, pointer.clientY);
     if (pointerInPopup) {
@@ -1657,6 +1704,7 @@
       cancelPointerScan();
       return;
     }
+    if (selectionDragActive || retainSelectedLookup()) return;
     if (!activationAllowed()) {
       cancelPointerScan();
       scheduleHide();
@@ -1684,8 +1732,45 @@
       return;
     }
     if (!isOurNode(event.target) && !pointInsidePopup(event.clientX, event.clientY)) {
+      activeSelectionCandidate = null;
       hide();
+      selectionDragActive = event.button === 0 && options.hoverEnabled
+        && isScannableElement(selectionBoundaryElement(event.target), new Map());
     }
+  }
+
+  function activeSelectionIsUnchanged() {
+    if (!activeSelectionCandidate) return false;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return false;
+    const range = selection.getRangeAt(0);
+    const previous = activeSelectionCandidate.anchorRange;
+    return range.startContainer === previous.startContainer && range.startOffset === previous.startOffset
+      && range.endContainer === previous.endContainer && range.endOffset === previous.endOffset;
+  }
+
+  function retainSelectedLookup() {
+    if (!activeSelectionCandidate) return false;
+    if (!activeSelectionIsUnchanged()) onSelectionChange();
+    if (!activeSelectionCandidate) return false;
+    clearHideTimer();
+    return true;
+  }
+
+  function onSelectionChange() {
+    if (disposed || !options.hoverEnabled || selectionDragActive || noteEditing
+        || popupHasFocus() || isEditingElement(document.activeElement) || activeSelectionIsUnchanged()) return;
+    const candidate = resolveSelectedLookupCandidate();
+    if (!candidate && !activeSelectionCandidate) return;
+    hide();
+    activeSelectionCandidate = candidate;
+    if (candidate) void runLookup(candidate);
+  }
+
+  function onMouseUp(event) {
+    if (disposed || event.button !== 0 || !selectionDragActive) return;
+    selectionDragActive = false;
+    onSelectionChange();
   }
 
   function onKeyDown(event) {
@@ -1730,6 +1815,7 @@
     }
     if (!activationPressed) activationCode = null;
     if (options.lookupMode === "activation" && !activationPressed) {
+      if (activeSelectionIsUnchanged()) return;
       cancelPointerScan();
       scheduleHide();
     }
@@ -1749,6 +1835,7 @@
 
   function onWindowBlur() {
     if (!disposed) {
+      selectionDragActive = false;
       lastPointer = null;
       activationPressed = false;
       activationCode = null;
@@ -1855,6 +1942,7 @@
     optionsStorageRevision = revision;
     options = next;
     if (!options.hoverEnabled) {
+      selectionDragActive = false;
       lastPointer = null;
       activationPressed = false;
       activationCode = null;
@@ -1899,6 +1987,8 @@
     const observe = { capture: true, passive: true };
     document.addEventListener("mousemove", onMouseMove, observe);
     document.addEventListener("mousedown", onMouseDown, observe);
+    document.addEventListener("mouseup", onMouseUp, observe);
+    document.addEventListener("selectionchange", onSelectionChange);
     document.addEventListener("mouseout", onMouseOut, observe);
     document.addEventListener("keydown", onKeyDown, true);
     document.addEventListener("keyup", onKeyUp, true);
