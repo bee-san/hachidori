@@ -620,18 +620,8 @@ async function hoverForPopup(page, popup, selector, { charFraction = 0.15, attem
   return null;
 }
 
-async function mediaOwnershipChrome({ browser, page, tab, popup }) {
-  const title = "owned-media-fixture";
-  const oldBytes = makePng();
-  const newBytes = Buffer.concat([oldBytes, Buffer.from([1])]);
-  const archive = (bytes) => buildTitledZip(title, { terms: [
-    ["画像", "がぞう", "", "", 0, ["surrounding image definition", {
-      type: "structured-content", content: {
-        tag: "img", path: "media/owned.png", width: 16, height: 16, alt: "Owned dictionary image",
-      },
-    }], 1, ""],
-  ], mediaEntries: [["media/owned.png", bytes]] });
-  const install = (bytes) => page.evaluate(async (base64) => {
+async function installMediaArchive(page, archive) {
+  return page.evaluate(async (base64) => {
     const blobUrl = URL.createObjectURL(new Blob([
       Uint8Array.from(atob(base64), (character) => character.charCodeAt(0)),
     ], { type: "application/zip" }));
@@ -645,7 +635,10 @@ async function mediaOwnershipChrome({ browser, page, tab, popup }) {
     } finally {
       URL.revokeObjectURL(blobUrl);
     }
-  }, archive(bytes).toString("base64"));
+  }, archive.toString("base64"));
+}
+
+async function installMediaReplyProbe(browser) {
   const workerTarget = await browser.waitForTarget((target) => target.type() === "service_worker"
     && target.url().startsWith("chrome-extension://"));
   const worker = await workerTarget.worker();
@@ -653,24 +646,52 @@ async function mediaOwnershipChrome({ browser, page, tab, popup }) {
   // its reply. Other messages and the mutation queue remain production paths.
   await worker.evaluate(() => {
     const original = chrome.runtime.sendMessage;
-    const probe = { original, held: null, holdNext: true, failNext: false, count: 0 };
+    const probe = { original, held: [], holdNext: true, holdAll: false, failNext: false,
+      count: 0, active: 0, maxActive: 0 };
     globalThis.__ownedMediaProbe = probe;
     chrome.runtime.sendMessage = function (message, ...args) {
       const response = original.call(this, message, ...args);
       if (!message.relayed || message.type !== "hd_media") return response;
       probe.count += 1;
-      const hold = probe.holdNext;
+      probe.active += 1;
+      probe.maxActive = Math.max(probe.maxActive, probe.active);
+      const hold = probe.holdNext || probe.holdAll;
       const fail = probe.failNext;
       probe.holdNext = false;
       probe.failNext = false;
       return response.then((reply) => {
         if (hold) return new Promise((resolveReply) => {
-          probe.held = () => { probe.held = null; resolveReply(reply); };
+          probe.held.push(() => resolveReply(reply));
         });
         return fail ? { ...reply, ok: false, dataUrl: null, error: "injected transient media failure" } : reply;
-      });
+      }).finally(() => { probe.active -= 1; });
     };
   });
+  return worker;
+}
+
+async function restoreMediaReplyProbe(worker) {
+  await worker.evaluate(() => {
+    const probe = globalThis.__ownedMediaProbe;
+    chrome.runtime.sendMessage = probe.original;
+    for (const release of probe.held) release();
+    delete globalThis.__ownedMediaProbe;
+  });
+}
+
+async function mediaOwnershipChrome({ browser, page, tab, popup }) {
+  const title = "owned-media-fixture";
+  const oldBytes = makePng();
+  const newBytes = Buffer.concat([oldBytes, Buffer.from([1])]);
+  const archive = (bytes) => buildTitledZip(title, { terms: [
+    ["画像", "がぞう", "", "", 0, ["surrounding image definition", {
+      type: "structured-content", content: {
+        tag: "img", path: "media/owned.png", width: 16, height: 16, alt: "Owned dictionary image",
+      },
+    }], 1, ""],
+  ], mediaEntries: [["media/owned.png", bytes]] });
+  const install = (bytes) => installMediaArchive(page, archive(bytes));
+  const worker = await installMediaReplyProbe(browser);
   async function waitForImage(predicate) {
     const deadline = Date.now() + 10_000;
     do {
@@ -692,7 +713,7 @@ async function mediaOwnershipChrome({ browser, page, tab, popup }) {
     await rehover();
     await worker.evaluate(async () => {
       const deadline = Date.now() + 10_000;
-      while (!globalThis.__ownedMediaProbe.held) {
+      while (globalThis.__ownedMediaProbe.held.length === 0) {
         if (Date.now() >= deadline) throw new Error("real media reply was not held");
         await new Promise((resolveTimer) => setTimeout(resolveTimer, 50));
       }
@@ -702,7 +723,7 @@ async function mediaOwnershipChrome({ browser, page, tab, popup }) {
     await rehover();
     const expectedUrl = `data:image/png;base64,${newBytes.toString("base64")}`;
     await waitForImage((state) => state?.images[0] === expectedUrl && state.imageStates[0]?.width === 16);
-    await worker.evaluate(() => globalThis.__ownedMediaProbe.held());
+    await worker.evaluate(() => globalThis.__ownedMediaProbe.held.shift()());
     await rehover();
     const current = await waitForImage((state) => state?.images[0] === expectedUrl
       && state.imageStates[0]?.width === 16);
@@ -730,12 +751,76 @@ async function mediaOwnershipChrome({ browser, page, tab, popup }) {
         && retried.imageStates[0].state === "loaded" && afterRetry === count + 2,
       JSON.stringify({ failed: failedImage.imageStates, retried: retried.imageStates, count, afterRetry }));
   } finally {
-    await worker.evaluate(() => {
+    await restoreMediaReplyProbe(worker);
+  }
+}
+
+async function boundedMediaChrome({ browser, page, tab, popup }) {
+  const png = makePng();
+  const paths = Array.from({ length: 12 }, (_, index) => `media/burst-${index}.png`);
+  const archive = buildTitledZip("bounded-media-queue-fixture", {
+    terms: [["並列画像", "へいれつがぞう", "", "", 0, [{
+      type: "structured-content", content: paths.flatMap((path) => [
+        { tag: "img", path, width: 16, height: 16 },
+        { tag: "img", path, width: 16, height: 16 },
+      ]),
+    }], 1, ""]],
+    mediaEntries: paths.map((path) => [path, png]),
+  });
+  await installMediaArchive(page, archive);
+  const worker = await installMediaReplyProbe(browser);
+  try {
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdAll = true; });
+    await tab.evaluate(() => { document.getElementById("verb").textContent = "並列画像"; });
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    await hoverForPopup(tab, popup, "#verb");
+    const held = await worker.evaluate(async () => {
       const probe = globalThis.__ownedMediaProbe;
-      chrome.runtime.sendMessage = probe.original;
-      probe.held?.();
-      delete globalThis.__ownedMediaProbe;
+      const deadline = Date.now() + 3000;
+      while (probe.held.length < 4) {
+        if (Date.now() >= deadline) throw new Error("browser media burst never dispatched four jobs");
+        await new Promise((resolveTimer) => setTimeout(resolveTimer, 25));
+      }
+      return { count: probe.count, active: probe.active, maxActive: probe.maxActive };
     });
+    const before = await popup.state();
+    check("media cache deduplicates and bounds a real browser image burst",
+      before.images.length === 24 && before.images.every((url) => url === "")
+        && held.count === 4 && held.active === 4 && held.maxActive === 4,
+      JSON.stringify({ images: before.images.length, held }));
+
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    await worker.evaluate(async () => {
+      const probe = globalThis.__ownedMediaProbe;
+      probe.holdAll = false;
+      for (const release of probe.held.splice(0)) release();
+      // Let delivered callbacks settle before a new view can claim queued work.
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 100));
+    });
+    const afterHide = await worker.evaluate(() => globalThis.__ownedMediaProbe.count);
+    await hoverForPopup(tab, popup, "#verb");
+    const expected = `data:image/png;base64,${png.toString("base64")}`;
+    const deadline = Date.now() + 10_000;
+    let restored;
+    do {
+      restored = await popup.state();
+      if (restored?.images.length === 24 && restored.images.every((url) => url === expected)
+          && restored.imageStates.every((image) => image.width === 16)) break;
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 50));
+    } while (Date.now() < deadline);
+    const after = await worker.evaluate(() => ({
+      count: globalThis.__ownedMediaProbe.count, maxActive: globalThis.__ownedMediaProbe.maxActive,
+    }));
+    check("obsolete queued images never dispatch while started images stay reusable",
+      afterHide === 4 && after.count === 12 && after.maxActive === 4
+        && restored.images.length === 24 && restored.images.every((url) => url === expected)
+        && restored.imageStates.every((image) => image.width === 16),
+      JSON.stringify({ afterHide, after, images: restored.imageStates }));
+  } finally {
+    await restoreMediaReplyProbe(worker);
   }
 }
 
@@ -3600,6 +3685,7 @@ async function main() {
   );
 
   await mediaOwnershipChrome({ browser, page, tab: tab2, popup: popup2 });
+  await boundedMediaChrome({ browser, page, tab: tab2, popup: popup2 });
   await browser.close();
   server.close();
   return report();

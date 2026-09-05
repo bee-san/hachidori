@@ -46,6 +46,11 @@
   const POPUP_GAP_PX = 4;
   const POPUP_PADDING_PX = 6;
   const HIDE_DELAY_MS = 160;
+  const MAX_MEDIA_CACHE_BYTES = 16 * 1024 * 1024;
+  const MAX_MEDIA_CACHE_ENTRIES = 64;
+  const MAX_MEDIA_CONCURRENT_REQUESTS = 4;
+  const MAX_MEDIA_PENDING_REQUESTS = 128;
+  const MEDIA_REQUEST_TIMEOUT_MS = 4000;
   // Range.toString() over the whole sentence runs on every hover, so the
   // container the offsets are relative to has to stay sentence-sized even on
   // pages that put an entire chapter in one element.
@@ -123,6 +128,9 @@
   let styleRequest = null;
   const mediaCache = new Map();
   const pendingMedia = new Map();
+  let mediaCacheBytes = 0;
+  let activeMediaRequests = 0;
+  let mediaQueue = [];
 
   let lastPointer = null;
   let scanTimer = null;
@@ -762,7 +770,11 @@
 
   function clearDictionaryResources() {
     mediaCache.clear();
-    pendingMedia.clear();
+    mediaCacheBytes = 0;
+    mediaQueue = [];
+    for (const job of [...pendingMedia.values()]) {
+      finishMediaJob(job, new Error("obsolete media request"));
+    }
     styleGeneration = -1;
     styleRequest = null;
   }
@@ -816,29 +828,110 @@
     });
   }
 
+  function cacheMedia(key, url) {
+    // The engine produces base64 data URLs. Count decoded bytes without
+    // decoding or copying the payload merely to maintain the cache budget.
+    const padding = url.endsWith("==") ? 2 : url.endsWith("=") ? 1 : 0;
+    const byteLength = (url.length - url.indexOf(",") - 1) / 4 * 3 - padding;
+    mediaCache.set(key, { url, byteLength });
+    mediaCacheBytes += byteLength;
+    while (mediaCache.size > MAX_MEDIA_CACHE_ENTRIES || mediaCacheBytes > MAX_MEDIA_CACHE_BYTES) {
+      const oldestKey = mediaCache.keys().next().value;
+      mediaCacheBytes -= mediaCache.get(oldestKey).byteLength;
+      // These are data URLs, not revocable Blob URLs. Drop our reference;
+      // an image already rendered from it retains its independent DOM owner.
+      mediaCache.delete(oldestKey);
+    }
+  }
+
+  function finishMediaJob(job, error, url) {
+    if (job.settled) return;
+    job.settled = true;
+    if (job.timer !== null) window.clearTimeout(job.timer);
+    if (pendingMedia.get(job.key) === job) pendingMedia.delete(job.key);
+    if (job.active) {
+      job.active = false;
+      activeMediaRequests -= 1;
+    }
+    if (error) job.reject(error);
+    else job.resolve(url);
+  }
+
+  function pruneMediaQueue() {
+    mediaQueue = mediaQueue.filter((job) => {
+      if (job.isCurrent()) return true;
+      finishMediaJob(job, new Error("obsolete media request"));
+      return false;
+    });
+  }
+
+  async function dispatchMedia(job) {
+    try {
+      const reply = await sendRequest("hd_media", job.payload);
+      if (job.settled) return;
+      if (pendingMedia.get(job.key) !== job || job.payload.generation !== currentGeneration
+          || reply.generation !== job.payload.generation) {
+        throw new Error("obsolete media reply");
+      }
+      if (typeof reply.dataUrl !== "string") throw new Error("dictionary image is unavailable");
+      // Started resource fetches may finish while hidden; image callbacks
+      // separately check their current view before touching DOM.
+      cacheMedia(job.key, reply.dataUrl);
+      finishMediaJob(job, null, reply.dataUrl);
+    } catch (error) {
+      finishMediaJob(job, error);
+    } finally {
+      pumpMediaQueue();
+    }
+  }
+
+  function pumpMediaQueue() {
+    while (mediaQueue.length > 0 && activeMediaRequests < MAX_MEDIA_CONCURRENT_REQUESTS) {
+      const job = mediaQueue.shift();
+      if (!job.isCurrent()) {
+        finishMediaJob(job, new Error("obsolete media request"));
+        continue;
+      }
+      job.active = true;
+      activeMediaRequests += 1;
+      job.timer = window.setTimeout(() => {
+        finishMediaJob(job, new Error("dictionary image request timed out"));
+        pumpMediaQueue();
+      }, MEDIA_REQUEST_TIMEOUT_MS);
+      void dispatchMedia(job);
+    }
+  }
+
   function resolveMedia({ dictionary, generation, path, isCurrent }) {
     if (!isCurrent() || generation !== currentGeneration) {
       return Promise.reject(new Error("obsolete media request"));
     }
     const key = `${generation}\u0000${dictionary}\u0000${path}`;
-    if (mediaCache.has(key)) return Promise.resolve(mediaCache.get(key));
+    const cached = mediaCache.get(key);
+    if (cached) {
+      mediaCache.delete(key);
+      mediaCache.set(key, cached);
+      return Promise.resolve(cached.url);
+    }
     const pending = pendingMedia.get(key);
-    if (pending) return pending;
-    const job = sendRequest("hd_media", { dictionary, generation, path }).then((reply) => {
-      if (pendingMedia.get(key) !== job
-          || generation !== currentGeneration || reply.generation !== generation) {
-        throw new Error("obsolete media reply");
-      }
-      if (typeof reply.dataUrl !== "string") throw new Error("dictionary image is unavailable");
-      // Resource ownership outlives a hover. Keep valid bytes that finish while
-      // hidden; each image callback separately checks its current view.
-      mediaCache.set(key, reply.dataUrl);
-      return reply.dataUrl;
-    }).finally(() => {
-      if (pendingMedia.get(key) === job) pendingMedia.delete(key);
+    if (pending) {
+      pending.isCurrent = isCurrent;
+      return pending.promise;
+    }
+    if (pendingMedia.size >= MAX_MEDIA_PENDING_REQUESTS) pruneMediaQueue();
+    if (pendingMedia.size >= MAX_MEDIA_PENDING_REQUESTS) {
+      return Promise.reject(new Error("dictionary image queue is full"));
+    }
+    const job = { key, isCurrent, payload: { dictionary, generation, path },
+      active: false, settled: false, timer: null };
+    job.promise = new Promise((resolveJob, rejectJob) => {
+      job.resolve = resolveJob;
+      job.reject = rejectJob;
     });
     pendingMedia.set(key, job);
-    return job;
+    mediaQueue.push(job);
+    pumpMediaQueue();
+    return job.promise;
   }
 
   function ensureDictionaryStyles(generation) {
