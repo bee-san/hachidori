@@ -150,8 +150,14 @@ function attachSettingsNavigation() {
     element("settings-content").focus();
   });
   for (const link of document.querySelectorAll(".settings-nav a, .section-action")) {
-    link.addEventListener("click", () => {
-      if (link.hash === window.location.hash) showSettingsSection(true);
+    link.addEventListener("click", (event) => {
+      if (link.hash === window.location.hash
+          && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+        // The native same-fragment action would move focus back to the section
+        // after our heading focus. Modified clicks retain their browser action.
+        event.preventDefault();
+        showSettingsSection(true);
+      }
     });
   }
   showSettingsSection();
