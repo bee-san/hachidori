@@ -2040,8 +2040,8 @@ export async function handleEngineMessage(message) {
       ...failurePayload(type),
     };
     if (lookup && !lookupReplyFits(reply)) {
-      reply.requestId = null;
       reply.error = LOOKUP_RESPONSE_ERROR;
+      if (!lookupReplyFits(reply)) reply.requestId = null;
     }
     return reply;
   }

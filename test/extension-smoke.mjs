@@ -3365,8 +3365,12 @@ async function main() {
   const originalCcall = observedEngine.ccall;
   const lookupNativeNames = new Set(["hdw_lookup", "hdw_lookup_dictionary", "hdw_kanji"]);
   let injectedLookupJson = "null";
-  observedEngine.ccall = (name, ...args) => lookupNativeNames.has(name)
-    ? injectedLookupJson : originalCcall(name, ...args);
+  let injectedLookupError = "";
+  observedEngine.ccall = (name, ...args) => {
+    if (lookupNativeNames.has(name)) return injectedLookupJson;
+    if (name === "hdw_last_error") return injectedLookupError;
+    return originalCcall(name, ...args);
+  };
   try {
     const malformedReplies = [];
     for (const type of ["hd_lookup", "hd_lookup_dictionary", "hd_kanji"]) {
@@ -3419,6 +3423,19 @@ async function main() {
         && oversizedId.ok === false && oversizedId.requestId === null
         && Buffer.byteLength(JSON.stringify(oversizedId)) <= responseLimit,
       JSON.stringify({ invalidOk: invalidId.ok, oversizedOk: oversizedId.ok }),
+    );
+    const genericErrorFrame = { ...oversizedId, requestId: "" };
+    const errorId = "x".repeat(responseLimit - Buffer.byteLength(JSON.stringify(genericErrorFrame)));
+    injectedLookupError = "long native failure ".repeat(20);
+    const correlatedFailure = await engineService.handleEngineMessage({
+      type: "hd_lookup", text: "食", requestId: errorId,
+    });
+    check(
+      "an oversized native error retains correlation when the bounded error frame fits",
+      correlatedFailure.ok === false && correlatedFailure.requestId === errorId
+        && correlatedFailure.error === genericErrorFrame.error
+        && Buffer.byteLength(JSON.stringify(correlatedFailure)) === responseLimit,
+      JSON.stringify({ ok: correlatedFailure.ok, idRetained: correlatedFailure.requestId === errorId }),
     );
   } finally {
     observedEngine.ccall = originalCcall;
