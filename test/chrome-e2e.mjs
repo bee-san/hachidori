@@ -27,6 +27,7 @@ import {
   GENERIC_KANJI_TITLE,
   buildRecommendedZip,
   buildTitledZip,
+  frequencyRankingFixture,
   imagePreviewFixture,
   imageSizingFixture,
   makePng,
@@ -199,6 +200,7 @@ const PLANNED = [
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
+  "Settings persists frequency directions and applies them to real-WASM lookup results",
   "exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
   "editable controls preserve normal editing and suppress pointer and selection lookups",
   "Japanese-only preferences change automatic scanning in an already-open tab",
@@ -1401,6 +1403,92 @@ async function editSettingsControls(settings, values) {
   }, values);
   await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
     { polling: 100, timeout: 10_000 });
+}
+
+async function checkFrequencyDirection(browser, settings, tab, popup) {
+  const fixture = frequencyRankingFixture();
+  const original = await readSettingsControls(settings, ["opt-frequency-dictionary", "opt-frequency-order", "opt-max-results"]);
+  const originalVerb = await tab.$eval("#verb", (element) => element.innerHTML);
+  const viewport = settings.viewport();
+  const status = () => settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
+  const before = await status();
+  const installed = [];
+  let worker;
+  const evidence = [];
+  let metadata;
+  let manualSurvived;
+  let cleaned;
+  try {
+    for (const dictionary of fixture.dictionaries) {
+      await installMediaArchive(settings, dictionary.archive);
+      installed.push(dictionary.title);
+    }
+    await settings.waitForFunction((titles) => titles.every((title) =>
+      [...document.getElementById("opt-frequency-dictionary").options].some((option) => option.value === title)),
+    { timeout: 10_000 }, installed);
+    worker = await installMediaReplyProbe(browser);
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
+    await tab.$eval("#verb", (element, query) => { element.textContent = query; }, fixture.query);
+    await editSettingsControls(settings, { "opt-max-results": "1" });
+    async function observe(title, direction, reading) {
+      await tab.bringToFront();
+      await tab.keyboard.press("Escape");
+      await tab.evaluate(() => { window.getSelection().removeAllRanges(); document.activeElement?.blur(); });
+      await worker.evaluate(() => { globalThis.__ownedMediaProbe.lookups.length = 0; });
+      const rendered = await hoverForPopup(tab, popup, "#verb");
+      const requests = await worker.evaluate(() => globalThis.__ownedMediaProbe.lookups);
+      const options = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options);
+      evidence.push(options.frequencyDictionary === title && options.frequencyOrder === direction && options.maxResults === 1
+        && rendered?.text.includes(`${fixture.dictionaries[0].title}: ${reading}`)
+        && requests.some((request) => request.text === fixture.query && request.maxResults === 1
+          && request.options.frequencyDictionary === title && request.options.frequencyOrder === direction));
+      return options;
+    }
+    const [rank, occurrence] = installed;
+    await editSettingsControls(settings, { "opt-frequency-dictionary": rank });
+    const generation = (await status()).generation;
+    await observe(rank, "ascending", "い");
+    await editSettingsControls(settings, { "opt-frequency-order": "descending" });
+    const manual = await observe(rank, "descending", "う");
+    await setDictionaryAliasInSettings(settings, rank, "Rank alias");
+    await settings.reload({ waitUntil: "domcontentloaded" });
+    await settings.waitForFunction(() => document.getElementById("opt-frequency-order").value === "descending");
+    manualSurvived = (await observe(rank, "descending", "う")).revision === manual.revision;
+    await settings.bringToFront();
+    await settings.click("#opt-frequency-auto");
+    await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
+    await observe(rank, "ascending", "い");
+    await editSettingsControls(settings, { "opt-frequency-dictionary": occurrence });
+    await observe(occurrence, "descending", "う");
+    const state = await settings.evaluate(async () => (await chrome.storage.local.get("dictionaryState")).dictionaryState);
+    metadata = fixture.dictionaries.every(({ title, frequencyMode }) =>
+      state.dictionaries.find((dictionary) => dictionary.title === title)?.frequencyMode === frequencyMode);
+    evidence.push((await status()).generation === generation);
+    if (process.env.HACHIDORI_FREQUENCY_SCREENSHOT) {
+      await editSettingsControls(settings, { "opt-max-results": original["opt-max-results"] });
+      await settings.bringToFront();
+      await settings.setViewport({ width: 1280, height: 1000 });
+      await settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+      await (await settings.$("#lookup")).screenshot({ path: process.env.HACHIDORI_FREQUENCY_SCREENSHOT });
+    }
+  } finally {
+    if (worker) await restoreMediaReplyProbe(worker);
+    await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+    await editSettingsControls(settings, original);
+    for (const title of installed) {
+      const removed = await settings.evaluate((title) => chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen", type: "hd_remove", title,
+      }), title);
+      if (!removed.ok) throw new Error(removed.error);
+    }
+    cleaned = (await status()).dictionaryCount === before.dictionaryCount;
+    await settings.setViewport(viewport);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+  }
+  check("Settings persists frequency directions and applies them to real-WASM lookup results",
+    evidence.length === 6 && evidence.every(Boolean) && metadata && manualSurvived && cleaned,
+    JSON.stringify({ evidence, metadata, manualSurvived, cleaned }));
 }
 
 async function checkReaderActivation(settings, tab, popup) {
@@ -3003,6 +3091,7 @@ async function main() {
 
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
+  await checkFrequencyDirection(browser, page, tab, popup);
   await hover("#verb");
 
   const clickedKanji = await popup.click(".gsm-hoshidicts-kanji-link");
@@ -3969,6 +4058,7 @@ async function main() {
     }),
   );
 
+  await editSettingsControls(page, { "opt-frequency-dictionary": "hachidori-fixture", "opt-frequency-order": "ascending" });
   const optionsBeforeRestart = await page.evaluate(async () =>
     (await chrome.storage.local.get("options")).options);
   const chromeProcess = browser.process();
@@ -3999,6 +4089,8 @@ async function main() {
       && document.getElementById("opt-lookup-mode").value === expected.lookupMode
       && document.getElementById("opt-activation-key").value === expected.activationKey
       && document.getElementById("opt-hide-delay").value === String(expected.popupHideDelayMs)
+      && document.getElementById("opt-frequency-dictionary").value === expected.frequencyDictionary
+      && document.getElementById("opt-frequency-order").value === expected.frequencyOrder
       ? options : false;
   }, { timeout: 30_000, polling: 100 }, optionsBeforeRestart).then((handle) => handle.jsonValue()).catch(() => null);
   check("reader settings and their revision survive a full browser restart",
