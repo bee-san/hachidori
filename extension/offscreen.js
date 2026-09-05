@@ -43,6 +43,8 @@ let nextRequestId = 0;
 let engineError = null;
 let activeMutationRequestId = null;
 let lastEngineStatus = {
+  ok: true,
+  error: null,
   ready: false,
   loading: true,
   dictionaryCount: 0,
@@ -82,6 +84,8 @@ function finishRequest(id, response) {
   if (response?.type === "hd_status_result") {
     lastEngineStatus = {
       ...lastEngineStatus,
+      ok: response.ok === true,
+      error: response.error ?? null,
       ready: response.ready === true,
       loading: response.loading === true,
       dictionaryCount: Number(response.dictionaryCount) || 0,
@@ -202,8 +206,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({
       type: "hd_status_result",
       requestId: message.requestId ?? null,
-      ok: true,
-      error: null,
       ...lastEngineStatus,
       loading: activeMutationRequestId !== null || lastEngineStatus.loading,
     });
