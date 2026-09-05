@@ -17,12 +17,12 @@ import {
 } from "./custom-dictionary.js";
 import { sameJsonValue } from "./json-value.js";
 import {
-  LOOKUP_RESPONSE_ERROR,
-  boundLookupFailure,
-  isLookupRequest,
-  lookupReplyFits,
-  validLookupRequestId,
-} from "./lookup-response.js";
+  boundResponseFailure,
+  isBoundedRequest,
+  responseFits,
+  responseLimitError,
+  validResponseRequestId,
+} from "./response-limits.js";
 
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
@@ -57,6 +57,8 @@ const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
 const DEFAULT_MAX_RESULTS = 32;
 const DEFAULT_SCAN_LENGTH = 16;
 const MAX_LOOKUP_TEXT_BYTES = 4 * 1024;
+const MAX_MEDIA_DICTIONARY_BYTES = 1024;
+const MAX_MEDIA_PATH_BYTES = 4 * 1024;
 const UTF8 = new TextEncoder();
 
 const BASE64_CHUNK = 0x8000;
@@ -165,27 +167,26 @@ function parseJson(json, source) {
   }
 }
 
-function lookupText(value, label, cString = true) {
+function boundedText(value, label, maxBytes, cString = true) {
   const result = text(value);
   if (cString && result.includes("\0")) throw new Error(`${label} contains NUL`);
   // Three UTF-8 bytes per UTF-16 code unit is a conservative upper bound.
-  if (result.length * 3 > MAX_LOOKUP_TEXT_BYTES
-      && UTF8.encode(result).byteLength > MAX_LOOKUP_TEXT_BYTES) {
-    throw new Error(`${label} exceeds the 4096-byte lookup limit`);
+  if (result.length * 3 > maxBytes && UTF8.encode(result).byteLength > maxBytes) {
+    throw new Error(`${label} exceeds the ${maxBytes}-byte limit`);
   }
   return result;
 }
 
 function lookupArguments(message) {
   return [
-    lookupText(message.text, "lookup text"),
+    boundedText(message.text, "lookup text", MAX_LOOKUP_TEXT_BYTES),
     clampInt(message.maxResults, 1, 256, DEFAULT_MAX_RESULTS),
     clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH),
     JSON.stringify({
-      frequencyDictionary: lookupText(message.options?.frequencyDictionary, "frequency dictionary", false),
+      frequencyDictionary: boundedText(message.options?.frequencyDictionary, "frequency dictionary", MAX_LOOKUP_TEXT_BYTES, false),
       frequencyOrder: FREQUENCY_ORDERS.includes(message.options?.frequencyOrder)
         ? message.options.frequencyOrder : "auto",
-      primaryReading: lookupText(message.options?.primaryReading, "primary reading", false),
+      primaryReading: boundedText(message.options?.primaryReading, "primary reading", MAX_LOOKUP_TEXT_BYTES, false),
     }),
   ];
 }
@@ -1715,7 +1716,7 @@ const HANDLERS = {
 
   async hd_kanji(message) {
     await ensureLoaded();
-    const character = lookupText(message.character, "kanji text");
+    const character = boundedText(message.character, "kanji text", MAX_LOOKUP_TEXT_BYTES);
     if (character === "") {
       return { kanji: null };
     }
@@ -1738,12 +1739,13 @@ const HANDLERS = {
 
   async hd_media(message) {
     await ensureLoaded();
-    const dictionary = text(message.dictionary);
-    const path = text(message.path);
+    const dictionary = boundedText(message.dictionary, "media dictionary", MAX_MEDIA_DICTIONARY_BYTES);
+    const path = boundedText(message.path, "media path", MAX_MEDIA_PATH_BYTES);
     if (dictionary === "" || path === "") {
       return { dataUrl: null };
     }
     const length = engine.ccall("hdw_media", "number", ["string", "string"], [dictionary, path]);
+    throwIfEngineFailed("hdw_media");
     if (length <= 0) {
       return { dataUrl: null };
     }
@@ -1990,7 +1992,7 @@ function failurePayload(type) {
 }
 
 function engineFailureReply(type, requestId, error) {
-  return boundLookupFailure({
+  return boundResponseFailure({
     type: `${type}_result`, requestId, ok: false, error: describe(error),
     generation, ...failurePayload(type),
   });
@@ -2009,17 +2011,17 @@ export async function handleEngineMessage(message) {
     };
   }
 
-  const lookup = isLookupRequest(type);
+  const bounded = isBoundedRequest(type);
   try {
-    if (lookup) {
-      if (!validLookupRequestId(requestId)) {
+    if (bounded) {
+      if (!validResponseRequestId(requestId)) {
         requestId = null;
-        throw new Error("lookup request ID must be a string, finite number, or null");
+        throw new Error("request ID must be a string, finite number, or null");
       }
-      if (!lookupReplyFits({ type: `${type}_result`, requestId, ok: false,
-        error: LOOKUP_RESPONSE_ERROR, generation, ...failurePayload(type) })) {
+      if (!responseFits({ type: `${type}_result`, requestId, ok: false,
+        error: responseLimitError(type), generation, ...failurePayload(type) })) {
         requestId = null;
-        throw new Error(LOOKUP_RESPONSE_ERROR);
+        throw new Error(responseLimitError(type));
       }
     }
     const handler = HANDLERS[type];
@@ -2029,7 +2031,7 @@ export async function handleEngineMessage(message) {
     const result = await run;
     const { ok = true, error = null, nativeJsonLength = 0, ...payload } = result ?? {};
     const reply = { type: `${type}_result`, requestId, ok, error, generation, ...payload };
-    if (lookup && !lookupReplyFits(reply, nativeJsonLength)) throw new Error(LOOKUP_RESPONSE_ERROR);
+    if (bounded && !responseFits(reply, nativeJsonLength)) throw new Error(responseLimitError(type));
     return reply;
   } catch (error) {
     return engineFailureReply(type, requestId, error);

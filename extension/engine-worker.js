@@ -14,7 +14,7 @@ import {
   startEngine,
 } from "./engine-service.js";
 import createHoshidicts from "./vendor/hoshidicts-threaded.mjs";
-import { boundLookupFailure } from "./lookup-response.js";
+import { boundResponseFailure } from "./response-limits.js";
 
 let nextHostRequestId = 0;
 const HOST_REQUEST_TIMEOUT_MS = 30_000;
@@ -65,7 +65,7 @@ globalThis.onmessage = (event) => { // NOSONAR
     (error) => globalThis.postMessage({
       channel: "engine-response",
       id: data.id,
-      response: boundLookupFailure({
+      response: boundResponseFailure({
         type: `${data.message?.type || "hd_unknown"}_result`,
         requestId: data.message?.requestId ?? null,
         ok: false,

@@ -46,6 +46,9 @@ constexpr size_t MAX_LOOKUP_TEXT_BYTES = 4 * 1024;
 constexpr size_t MAX_GLOSSARY_BYTES = 8 * 1024 * 1024;
 constexpr size_t MAX_LOOKUP_RESPONSE_BYTES = 32 * 1024 * 1024;
 constexpr size_t MAX_TRACE_STEPS = 32;
+constexpr size_t MAX_MEDIA_DICTIONARY_BYTES = 1024;
+constexpr size_t MAX_MEDIA_PATH_BYTES = 4 * 1024;
+constexpr size_t MAX_MEDIA_BYTES = 4 * 1024 * 1024;
 
 // Wire structs deliberately use the camelCase names from the extension's JSON
 // contract so glaze's aggregate reflection emits them verbatim: no rename layer.
@@ -1087,9 +1090,18 @@ EMSCRIPTEN_KEEPALIVE int hdw_media(const char* dictionary, const char* path) {
   try {
     // Copied out of the mmap'd dictionary so the pointer handed to JS survives a
     // later hdw_reset.
+    if (std::string_view{dictionary}.size() > MAX_MEDIA_DICTIONARY_BYTES) {
+      throw std::length_error("media dictionary exceeds the 1024-byte limit");
+    }
+    if (std::string_view{path}.size() > MAX_MEDIA_PATH_BYTES) {
+      throw std::length_error("media path exceeds the 4096-byte limit");
+    }
     const MediaFileView view = engine().query.get_media_file_view(dictionary, path);
     if (view.data == nullptr || view.size == 0) {
       return 0;
+    }
+    if (view.size > MAX_MEDIA_BYTES) {
+      throw std::length_error("media exceeds the 4 MiB byte limit");
     }
     const auto* bytes = reinterpret_cast<const uint8_t*>(view.data);
     g_media.assign(bytes, bytes + view.size);

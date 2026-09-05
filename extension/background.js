@@ -18,7 +18,7 @@ import {
   parseCustomDictionary,
 } from "./custom-dictionary.js";
 import { sameJsonValue } from "./json-value.js";
-import { boundLookupFailure } from "./lookup-response.js";
+import { boundResponseFailure } from "./response-limits.js";
 
 /*
  * Service worker for Hachidori.
@@ -815,7 +815,7 @@ const UPDATE_HANDLERS = {
 };
 
 function failureReply(message, error) {
-  return boundLookupFailure({
+  return boundResponseFailure({
     type: `${message?.type ?? "hd_unknown"}_result`,
     requestId: message?.requestId ?? null,
     ok: false,

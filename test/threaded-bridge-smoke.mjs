@@ -87,12 +87,14 @@ assert.deepEqual(await queued[128], {
   ok: false,
   error: "the dictionary engine request queue is full",
 });
-const responseLimit = 32 * 1024 * 1024;
-const fullQueueOversizedId = await send("hd_lookup", "x".repeat(responseLimit));
-assert.equal(fullQueueOversizedId.ok, false);
-assert.equal(fullQueueOversizedId.requestId, null);
-assert.ok(Buffer.byteLength(JSON.stringify(fullQueueOversizedId)) <= responseLimit);
-assert.equal((await send("hd_lookup", {})).requestId, null);
+const responseLimits = [["hd_lookup", 32 * 1024 * 1024], ["hd_media", 6 * 1024 * 1024]];
+for (const [type, limit] of responseLimits) {
+  const fullQueueOversizedId = await send(type, "x".repeat(limit));
+  assert.equal(fullQueueOversizedId.ok, false);
+  assert.equal(fullQueueOversizedId.requestId, null);
+  assert.ok(Buffer.byteLength(JSON.stringify(fullQueueOversizedId)) <= limit);
+  assert.equal((await send(type, {})).requestId, null);
+}
 
 for (const message of engine.messages.splice(0)) {
   engine.emit("message", {
@@ -132,9 +134,11 @@ for (const [index, type] of mutationTypes.entries()) {
     error: "the dictionary engine is busy mutating",
   });
   if (index === 0) {
-    const oversizedId = await send("hd_lookup", "x".repeat(responseLimit));
-    assert.equal(oversizedId.requestId, null);
-    assert.ok(Buffer.byteLength(JSON.stringify(oversizedId)) <= responseLimit);
+    for (const [boundedType, limit] of responseLimits) {
+      const oversizedId = await send(boundedType, "x".repeat(limit));
+      assert.equal(oversizedId.requestId, null);
+      assert.ok(Buffer.byteLength(JSON.stringify(oversizedId)) <= limit);
+    }
   }
   assert.deepEqual(await send("hd_remove", `remove-during-${type}`), {
     type: "hd_remove_result",

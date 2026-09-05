@@ -717,7 +717,7 @@ function loadBackgroundScript(sandbox) {
     .replace(/^export\s+/gmu, "");
   const jsonValue = readFileSync(resolve(EXTENSION, "json-value.js"), "utf8")
     .replace(/^export\s+/gmu, "");
-  const lookupResponse = readFileSync(resolve(EXTENSION, "lookup-response.js"), "utf8")
+  const responseLimits = readFileSync(resolve(EXTENSION, "response-limits.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
@@ -725,7 +725,7 @@ function loadBackgroundScript(sandbox) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/lookup-response\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.Uint8Array ??= Uint8Array;
   sandbox.Uint32Array ??= Uint32Array;
@@ -735,7 +735,7 @@ function loadBackgroundScript(sandbox) {
   context.globalThis = context;
   runInContext(
     `${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${lookupResponse}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1859,25 +1859,27 @@ async function main() {
     JSON.stringify(bus.log.slice(0, 6)),
   );
   const originalWorkerSend = swChrome.runtime.sendMessage;
-  swChrome.runtime.sendMessage = (message) => message.relayed && message.type === "hd_lookup"
+  swChrome.runtime.sendMessage = (message) => message.relayed && ["hd_lookup", "hd_media"].includes(message.type)
     ? Promise.reject(new Error("long relay failure ".repeat(20))) : originalWorkerSend(message);
   try {
-    const responseLimit = 32 * 1024 * 1024;
-    const sendFailedLookup = (requestId) => pageChrome.runtime.sendMessage({
-      target: "hoshidicts-offscreen", type: "hd_lookup", text: "食", requestId,
-    });
-    const oversized = await sendFailedLookup("x".repeat(responseLimit));
-    const invalid = await sendFailedLookup({});
-    const compact = { ...oversized, requestId: "" };
-    const exactId = "x".repeat(responseLimit - Buffer.byteLength(JSON.stringify(compact)));
-    const correlated = await sendFailedLookup(exactId);
-    check(
-      "service-worker relay failures use the shared bounded lookup correlation rule",
-      oversized.ok === false && oversized.requestId === null && invalid.requestId === null
+    const relayCases = [];
+    for (const [type, responseLimit] of [["hd_lookup", 32 * 1024 * 1024], ["hd_media", 6 * 1024 * 1024]]) {
+      const sendFailed = (requestId) => pageChrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen", type, text: "食", requestId,
+      });
+      const oversized = await sendFailed("x".repeat(responseLimit));
+      const invalid = await sendFailed({});
+      const compact = { ...oversized, requestId: "" };
+      const exactId = "x".repeat(responseLimit - Buffer.byteLength(JSON.stringify(compact)));
+      const correlated = await sendFailed(exactId);
+      relayCases.push(oversized.ok === false && oversized.requestId === null && invalid.requestId === null
         && correlated.ok === false && correlated.requestId === exactId
         && correlated.error === compact.error
-        && Buffer.byteLength(JSON.stringify(correlated)) === responseLimit,
-      JSON.stringify({ oversizedOk: oversized.ok, correlated: correlated.requestId === exactId }),
+        && Buffer.byteLength(JSON.stringify(correlated)) === responseLimit);
+    }
+    check(
+      "service-worker relay failures use the shared bounded lookup and media correlation rule",
+      relayCases.every(Boolean), JSON.stringify(relayCases),
     );
   } finally {
     swChrome.runtime.sendMessage = originalWorkerSend;
