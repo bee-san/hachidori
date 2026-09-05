@@ -173,6 +173,9 @@ activation-key lookup without capturing typing. The live `onlyScanJapaneseText`
 option defaults to true; disabling it permits other scripts in automatic scans.
 Repeated pointer events for one pending candidate share its lookup, while a
 changed anchor/query or failed request can start fresh work.
+Retained selections are rechecked through the existing pointer throttle rather
+than rebuilding their visible string on every mousemove; selection-change and
+mouseup lookups still dispatch immediately.
 
 An explicit page selection takes priority over pointer scanning and bypasses
 the language and activation-key gates, but not reader disablement or editing

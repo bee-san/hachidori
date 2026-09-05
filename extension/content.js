@@ -1742,7 +1742,12 @@
       cancelCandidateScan();
       return;
     }
-    if (selectionDragActive || retainSelectedLookup()) return;
+    if (selectionDragActive) return;
+    if (activeSelectionCandidate) {
+      clearHideTimer();
+      scheduleScan();
+      return;
+    }
     if (!activationAllowed() && window.getSelection()?.isCollapsed !== false) {
       cancelCandidateScan();
       scheduleHide();

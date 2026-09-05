@@ -7205,8 +7205,12 @@ async function contentNoteStage() {
     harness.anchor.innerHTML = '食べ<span hidden>隠し</span>た';
     selection.selectAllChildren(harness.anchor);
     let visible = "食べた";
+    let materializations = 0;
     // jsdom uses raw Range text here; the Chrome suite verifies rendered text.
-    Object.defineProperty(selection, "toString", { configurable: true, value: () => visible });
+    Object.defineProperty(selection, "toString", { configurable: true, value: () => {
+      materializations += 1;
+      return visible;
+    } });
     window.document.dispatchEvent(new window.Event("selectionchange"));
     const first = harness.take("hd_lookup");
     if (first) harness.reply(first, { dictionaryCount: 1, results: [harness.term(visible)] });
@@ -7215,14 +7219,19 @@ async function contentNoteStage() {
       && harness.driver.viewRequest()?.highlightText === "食べ隠した";
     harness.anchor.firstChild.replaceData(1, 1, "ん");
     visible = "食んた";
-    harness.driver.onMouseMove({ target: harness.anchor, clientX: 200, clientY: 200 });
+    materializations = 0;
+    for (let index = 0; index < 4; index += 1) {
+      harness.driver.onMouseMove({ target: harness.anchor, clientX: 200 + index, clientY: 200 });
+    }
+    const throttled = materializations === 0;
+    await harness.settle();
     const changed = harness.take("hd_lookup");
     const changedText = changed?.request.text === visible;
     if (changed) harness.reply(changed, { dictionaryCount: 1, results: [] });
     await harness.settle();
     harness.close();
     return { "selection lookup uses visible text, raw highlight offsets and text-aware unchanged detection":
-      selectedText && changedText };
+      selectedText && changedText && throttled };
   }
 
   async function selectionCancellationCase() {
