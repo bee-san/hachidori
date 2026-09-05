@@ -293,6 +293,7 @@ button.danger:hover:not(:disabled) {
 .import-row,
 .update-actions,
 .custom-dictionary-actions,
+.options-actions,
 .recommended-retry,
 .dict-bulk-actions {
   display: flex;

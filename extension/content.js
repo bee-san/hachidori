@@ -136,7 +136,7 @@
   let pendingCustomAppends = 0;
   let deferredDictionaryInvalidationRevision = -1;
   let lookupToken = 0;
-  let optionsStorageRevision = 0;
+  let optionsStorageRevision = -1;
   let dictionaryStateRevision = -1;
 
   function extensionAlive() {
@@ -1672,10 +1672,7 @@
     let changed = false;
     let dictionaryChanged = false;
     if (changes.options) {
-      optionsStorageRevision += 1;
-      const next = normalizeOptions(changes.options.newValue);
-      changed ||= JSON.stringify(next) !== JSON.stringify(options);
-      options = next;
+      changed = adoptOptions(changes.options.newValue);
     }
     if (changes.dictionaryState) {
       const adoption = adoptDictionaryState(changes.dictionaryState.newValue);
@@ -1687,21 +1684,25 @@
     }
   }
 
+  function adoptOptions(stored) {
+    const revision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
+    if (revision <= optionsStorageRevision) return false;
+    const next = normalizeOptions(stored);
+    const changed = JSON.stringify(next) !== JSON.stringify(options);
+    optionsStorageRevision = revision;
+    options = next;
+    return changed;
+  }
+
   function start() {
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);
-      const requestedOptionsRevision = optionsStorageRevision;
       chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS }, (stored) => {
         if (disposed || chrome.runtime.lastError) {
           return;
         }
-        let changed = false;
+        let changed = adoptOptions(stored && stored.options);
         let dictionaryChanged = false;
-        if (optionsStorageRevision === requestedOptionsRevision) {
-          const next = normalizeOptions(stored && stored.options);
-          changed ||= JSON.stringify(next) !== JSON.stringify(options);
-          options = next;
-        }
         const adoption = adoptDictionaryState(stored && stored.dictionaryState);
         dictionaryChanged = adoption.dictionaryChanged;
         changed ||= dictionaryChanged;

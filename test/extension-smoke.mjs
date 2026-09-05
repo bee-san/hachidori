@@ -1652,6 +1652,31 @@ async function main() {
   });
 
   const pageChrome = makeChrome("page", bus, storage, alarms);
+  const writeReaderOptions = (baseRevision, options) => pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    baseRevision,
+    options,
+  });
+  const firstOptions = await writeReaderOptions(0, { scanLength: 12, maxResults: 24 });
+  const [nextOptions, conflictingOptions] = await Promise.all([
+    writeReaderOptions(1, { scanLength: 18 }),
+    writeReaderOptions(1, { maxResults: 48 }),
+  ]);
+  const unchangedOptions = await writeReaderOptions(2, { scanLength: 18 });
+  const unversionedOptions = await writeReaderOptions(undefined, { scanLength: 2 });
+  check(
+    "reader options use serialized revision-checked patches and preserve unchanged revisions",
+    firstOptions.ok === true && firstOptions.options?.revision === 1
+      && nextOptions.ok === true && nextOptions.options?.revision === 2
+      && nextOptions.options?.maxResults === 24
+      && conflictingOptions.ok === false && conflictingOptions.conflict === true
+      && conflictingOptions.options?.scanLength === 18
+      && conflictingOptions.options?.maxResults === 24
+      && unchangedOptions.ok === true && unchangedOptions.options?.revision === 2
+      && unversionedOptions.ok === false,
+    JSON.stringify({ firstOptions, nextOptions, conflictingOptions, unchangedOptions, unversionedOptions }),
+  );
   let counter = 0;
   async function request(type, fields = {}) {
     counter += 1;
@@ -2836,6 +2861,7 @@ async function main() {
   const preMigrationOptions = await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
     type: "hd_options_write",
+    baseRevision: (await storage.api().local.get("options")).options?.revision ?? 0,
     options: {
       frequencyDictionary: FIXTURE_TITLE,
       kanjiClickDictionary: FIXTURE_TITLE,
@@ -2921,8 +2947,10 @@ async function main() {
   await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
     type: "hd_options_write",
+    baseRevision: (await storage.api().local.get("options")).options?.revision ?? 0,
     options: selectedOptions,
   });
+  const selectedOptionsRevision = (await storage.api().local.get("options")).options.revision;
   await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
     type: "hd_state_cas",
@@ -2933,6 +2961,7 @@ async function main() {
   const staleOptionsWrite = await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
     type: "hd_options_write",
+    baseRevision: selectedOptionsRevision,
     options: selectedOptions,
   });
   equal(
@@ -2944,6 +2973,12 @@ async function main() {
       staleOptionsWrite?.options?.kanjiClickDictionary,
     ],
     ["", "", "", ""],
+  );
+  check(
+    "selector pruning advances the options revision in the dictionary commit",
+    optionsAfterCapabilityRemoval?.revision === selectedOptionsRevision + 1
+      && staleOptionsWrite.conflict === true,
+    JSON.stringify({ selectedOptionsRevision, optionsAfterCapabilityRemoval, staleOptionsWrite }),
   );
   const reloaded = await request("hd_reload");
   const reconciledState = await storedDictionaryState();
@@ -3582,6 +3617,37 @@ async function main() {
       && settingsBatch.statusReads === 1,
     JSON.stringify(settingsBatch),
   );
+  const autosave = await settingsAutosaveStage();
+  check(
+    "Settings coalesces edited fields and queues only one revisioned save at a time",
+    autosave?.writesBeforeDelay === 0 && autosave.writesDuringSave === 1
+      && autosave.firstRequest?.baseRevision === 4
+      && JSON.stringify(autosave.firstRequest?.options) === JSON.stringify({ scanLength: 25, maxResults: 64 })
+      && autosave.secondRequest?.baseRevision === 5
+      && JSON.stringify(autosave.secondRequest?.options) === JSON.stringify({ maxResults: 96 }),
+    JSON.stringify(autosave),
+  );
+  check(
+    "Settings keeps newer committed state and local drafts across old replies and explicit conflicts",
+    autosave?.afterOldReply?.maxResults === "96"
+      && autosave.afterOldReply.frequencyOrder === "descending"
+      && autosave.conflictVisible === true
+      && autosave.afterDiscard?.maxResults === "64"
+      && autosave.afterDiscard.frequencyOrder === "descending"
+      && autosave.afterStaleEvent?.maxResults === "80"
+      && autosave.afterStaleEvent.frequencyOrder === "descending",
+    JSON.stringify(autosave),
+  );
+  check(
+    "Settings retains failed drafts and retries against the current committed revision",
+    autosave?.failedDraft === "90"
+      && autosave.retryRequest?.baseRevision === 7
+      && autosave.retryRequest?.options?.maxResults === 90
+      && autosave.finalValue === "90" && autosave.finalStatus === "Saved."
+      && autosave.typedBeforeExternalRequest?.baseRevision === 8
+      && autosave.startupRequest?.baseRevision === 2 && autosave.undoCanLeave === true,
+    JSON.stringify(autosave),
+  );
   check(
     "settings manage normalized global groups and stable ordered memberships",
     settingsConflict?.groups?.normalisedGroupName === "INDIGO Deck"
@@ -3721,6 +3787,11 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  check(
+    "content readers ignore older and repeated option revisions before their next lookup",
+    noteContent?.newestOnlyOptions === true,
+    JSON.stringify(noteContent?.newestOnlyOptions),
+  );
   check(
     "content Note callbacks replay exact ordinary and internal-link requests with newer state",
     noteContent?.callbacksWired === true
@@ -4046,6 +4117,143 @@ async function loadJsdom() {
     // missing one, and the two need different fixes.
     jsdomFailure = `${entry} resolved but would not import: ${error.message}`;
     return null;
+  }
+}
+
+async function settingsAutosaveStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+    url: `${EXTENSION_ORIGIN}/settings.html`,
+  });
+  const { window } = dom;
+  let listener;
+  let storedOptions = { revision: 2, scanLength: 16, maxResults: 32, frequencyOrder: "auto" };
+  let releaseInitialState;
+  const writes = [];
+  const pending = [];
+  window.chrome = {
+    runtime: {
+      async sendMessage(message) {
+        if (message.type === "hd_state_read") {
+          await new Promise((release) => { releaseInitialState = release; });
+          return { ok: true, state: { schemaVersion: 1, revision: 0, dictionaries: [], groups: [] } };
+        }
+        if (message.type === "hd_status") {
+          return { ok: true, ready: true, loading: false, dictionaryCount: 0 };
+        }
+        if (message.type === "hd_options_write") {
+          writes.push(structuredClone(message));
+          return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+        }
+        throw new Error(`unexpected autosave request ${message.type}`);
+      },
+    },
+    storage: {
+      local: { async get() { return { options: structuredClone(storedOptions) }; } },
+      onChanged: { addListener(value) { listener = value; } },
+    },
+  };
+  const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+  async function until(predicate) {
+    const deadline = Date.now() + 2000;
+    while (!predicate() && Date.now() < deadline) await wait(5);
+    if (!predicate()) throw new Error("Settings autosave did not reach its expected state");
+  }
+  const field = (name) => window.document.getElementById(`opt-${name}`);
+  const state = () => ({ maxResults: field("max-results").value, frequencyOrder: field("frequency-order").value });
+  const edit = (name, value) => {
+    field(name).value = value;
+    field(name).dispatchEvent(new window.Event("change", { bubbles: true }));
+  };
+  const emit = (value) => listener({ options: { newValue: structuredClone(value) } }, "local");
+  const commit = (value) => { storedOptions = value; emit(value); };
+  const status = () => window.document.getElementById("options-status").textContent;
+  try {
+    loadSettingsScript(window);
+    await until(() => typeof releaseInitialState === "function");
+    field("max-results").focus();
+    field("max-results").value = "64";
+    field("max-results").dispatchEvent(new window.Event("input", { bubbles: true }));
+    releaseInitialState();
+    await until(() => window.document.getElementById("engine-status").textContent.startsWith("Ready"));
+    commit({ ...storedOptions, revision: 3, maxResults: 16 });
+    field("max-results").dispatchEvent(new window.Event("change", { bubbles: true }));
+    field("max-results").blur();
+    await until(() => writes.length === 1);
+    const startupRequest = writes[0];
+    pending.shift().resolve({ ok: false, conflict: true, error: "Settings changed in another page.", options: storedOptions });
+    await until(() => status().includes("Could not save"));
+    window.document.getElementById("options-use-saved").click();
+    field("max-results").focus();
+    for (const value of ["64", "16"]) {
+      field("max-results").value = value;
+      field("max-results").dispatchEvent(new window.Event("input", { bubbles: true }));
+    }
+    field("max-results").blur();
+    const leave = new window.Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leave);
+    const undoCanLeave = !leave.defaultPrevented;
+    commit({ ...storedOptions, revision: 4, maxResults: 32 });
+    writes.length = 0;
+    edit("scan-length", "25");
+    edit("max-results", "64");
+    const result = { writesBeforeDelay: writes.length, startupRequest, undoCanLeave };
+    await until(() => writes.length === 1);
+    result.firstRequest = writes[0];
+    edit("max-results", "96");
+    await wait(180);
+    result.writesDuringSave = writes.length;
+    const firstCommit = { revision: 5, scanLength: 25, maxResults: 64, frequencyOrder: "auto" };
+    commit(firstCommit);
+    commit({ ...firstCommit, revision: 6, frequencyOrder: "descending" });
+    pending.shift().resolve({ ok: true, options: firstCommit });
+    await until(() => writes.length === 2);
+    result.secondRequest = writes[1];
+    result.afterOldReply = state();
+    pending.shift().resolve({ ok: false, conflict: true, error: "Settings changed in another page.", options: storedOptions });
+    await until(() => status().includes("Could not save"));
+    await wait(0);
+    result.conflictVisible = !window.document.getElementById("options-conflict-actions").hidden;
+    window.document.getElementById("options-use-saved").click();
+    result.afterDiscard = state();
+    edit("max-results", "80");
+    await until(() => writes.length === 3);
+    const thirdCommit = { ...storedOptions, revision: 7, maxResults: 80 };
+    storedOptions = thirdCommit;
+    pending.shift().resolve({ ok: true, options: thirdCommit });
+    await until(() => status() === "Saved.");
+    emit({ ...firstCommit, revision: 6 });
+    emit(thirdCommit);
+    result.afterStaleEvent = state();
+    edit("max-results", "90");
+    await until(() => writes.length === 4);
+    pending.shift().reject(new Error("worker reply was lost"));
+    await until(() => status().includes("Could not save"));
+    await wait(0);
+    result.failedDraft = field("max-results").value;
+    window.document.getElementById("options-retry").click();
+    await until(() => writes.length === 5);
+    result.retryRequest = writes[4];
+    commit({ ...storedOptions, revision: 8, maxResults: 90 });
+    pending.shift().resolve({ ok: true, options: storedOptions });
+    await until(() => status() === "Saved.");
+    result.finalValue = field("max-results").value;
+    result.finalStatus = status();
+    field("max-results").focus();
+    field("max-results").value = "128";
+    field("max-results").dispatchEvent(new window.Event("input", { bubbles: true }));
+    commit({ ...storedOptions, revision: 9, maxResults: 24 });
+    field("max-results").dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => writes.length === 6);
+    result.typedBeforeExternalRequest = writes[5];
+    pending.shift().resolve({ ok: false, conflict: true, error: "Settings changed in another page.", options: storedOptions });
+    await until(() => status().includes("Could not save"));
+    return result;
+  } finally {
+    dom.window.close();
   }
 }
 
@@ -5625,7 +5833,7 @@ async function staleKanjiResponseStage(invalidation) {
   if (invalidation === "storage-change") {
     storageListener({
       options: {
-        newValue: { kanjiClickDictionary: { title: "Other", kind: "term" } },
+        newValue: { revision: 1, kanjiClickDictionary: { title: "Other", kind: "term" } },
       },
     }, "local");
   } else if (invalidation === "group-storage-change") {
@@ -5896,8 +6104,10 @@ async function contentNoteStage() {
       storageListener?.({ dictionaryState: { newValue: value } }, "local");
     }
 
+    let emittedOptionsRevision = 0;
     function emitOptions(value) {
-      storageListener?.({ options: { newValue: value } }, "local");
+      emittedOptionsRevision += 1;
+      storageListener?.({ options: { newValue: { revision: emittedOptionsRevision, ...value } } }, "local");
     }
 
     function requestPayload(request) {
@@ -5945,6 +6155,10 @@ async function contentNoteStage() {
   const probe = await createHarness();
   const callbacksWired = typeof probe.callbacks()?.onAddCustomEntry === "function"
     && typeof probe.callbacks()?.onNoteEditingChange === "function";
+  probe.emitOptions({ revision: 4, maxResults: 50 });
+  probe.emitOptions({ revision: 2, maxResults: 2 });
+  probe.emitOptions({ revision: 4, maxResults: 3 });
+  const newestOnlyOptions = (await probe.initialLookup()).request.maxResults === 50;
   probe.close();
   if (!callbacksWired) return { callbacksWired };
 
@@ -6315,6 +6529,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
+    newestOnlyOptions,
     deferredInvalidation: await deferredInvalidationCase(),
     detached: await detachedCase(),
     detachedDuringRefresh: await detachedDuringRefreshCase(),

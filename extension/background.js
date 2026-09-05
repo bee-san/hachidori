@@ -336,10 +336,14 @@ function dictionaryCommit(current, currentOptions, dictionaries, groups) {
   if (currentOptions !== undefined) {
     const nextOptions = normaliseDictionarySelections(currentOptions, state.dictionaries);
     if (!sameJsonValue(nextOptions, currentOptions)) {
-      values[OPTIONS_KEY] = nextOptions;
+      values[OPTIONS_KEY] = { ...nextOptions, revision: optionsRevision(currentOptions) + 1 };
     }
   }
   return { state, values };
+}
+
+function optionsRevision(options) {
+  return Number.isInteger(options?.revision) && options.revision >= 0 ? options.revision : 0;
 }
 
 async function removeLegacyDictionaryRows(current, legacyDictionaries) {
@@ -502,12 +506,28 @@ const WORKER_HANDLERS = {
     if (!message?.options || typeof message.options !== "object" || Array.isArray(message.options)) {
       throw new Error("the options write request carried no object");
     }
+    if (!Number.isInteger(message.baseRevision) || message.baseRevision < 0) {
+      throw new Error("the options write request carried no valid base revision");
+    }
     const { state, options: currentOptions } = await readDictionaryStorage();
     assertDictionaryState(state);
+    const revision = optionsRevision(currentOptions);
+    const current = { ...currentOptions, revision };
+    if (message.baseRevision !== revision) {
+      return {
+        ok: false,
+        conflict: true,
+        error: "Settings changed in another page. Review your changes before saving again.",
+        options: current,
+      };
+    }
+    // Patch only edited fields; revision is owned here, never by the caller.
+    const patched = { ...current, ...message.options, revision };
     const options = state === null
-      ? message.options
-      : normaliseDictionarySelections(message.options, state.dictionaries);
-    if (JSON.stringify(options) !== JSON.stringify(currentOptions)) {
+      ? patched
+      : normaliseDictionarySelections(patched, state.dictionaries);
+    if (!sameJsonValue(options, current)) {
+      options.revision += 1;
       await chrome.storage.local.set({ [OPTIONS_KEY]: options });
     }
     return { options };

@@ -263,7 +263,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 186 checks, all of
+full request→reply round trip per contract-C message type. 192 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -463,6 +463,12 @@ Settings layout checks cover library-first task order, selection-aware bulk
 actions, native keyboard section and skip links, short-window sidebar scrolling,
 and 320px layouts in light and dark mode. Disabled rows keep full text opacity,
 and empty status regions stay exposed instead of being removed from display.
+Two real Settings pages exercise debounced option patches with one held reply:
+a newer external commit cannot be rolled back, and a stale queued draft surfaces
+a conflict with explicit discard. Revisioned options also survive the full
+browser restart. The extension harness covers no-op revisions, atomic selector
+pruning, failed-save retry, first-input draft ownership, and old/repeated content
+storage events. `HACHIDORI_OPTIONS_SCREENSHOT` captures the saved Lookup section.
 
 Managed-update indexes are intercepted on the service-worker CDP target and
 archives on the offscreen-document target, which also covers its engine worker;
@@ -491,7 +497,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 79 assertions, and the summary line
+`PLANNED` at the top of the file names all 81 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
