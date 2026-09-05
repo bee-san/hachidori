@@ -752,6 +752,17 @@ textarea {
 .input-suffix input {
   width: 100%;
 }
+.frequency-order-controls {
+  display: flex;
+  gap: 8px;
+}
+.frequency-order-controls select {
+  min-width: 0;
+  flex: 1;
+}
+.frequency-order-controls button {
+  white-space: nowrap;
+}
 [hidden] {
   display: none !important;
 }

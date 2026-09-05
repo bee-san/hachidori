@@ -292,7 +292,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 267 checks, all of
+full request→reply round trip per contract-C message type. 271 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -362,6 +362,10 @@ What it proves, in order:
    control barrier, global group naming and ordering, stable ordered memberships
    and removal pruning, and a three-archive batch whose middle import fails
    without stopping the last one.
+   Frequency controls cover paired source/direction patches, explicit Auto,
+   preserved manual choices, unavailable selections, and focused native drafts
+   across newer options and capability changes. Alias writes retain frequency
+   mode metadata.
    The batch assertion pins sequential requests, completed/total progress, one
    retained outcome and revoked object URL per file, a cleared picker, and one
    final dictionary-state/status refresh. The recommendation stage separately
@@ -384,6 +388,10 @@ What it proves, in order:
    `tags` of contract B and the `null` for a miss), `hd_styles`, `hd_media` (a
    `data:` URL matching the pattern `glossary.js` accepts, and `null` for an
    absent path).
+   Two temporary rank/occurrence archives exercise actual native ranking before
+   one- and three-result truncation, selected ascending/descending directions,
+   disabled and all-dictionary ordering, and stable glossary identity. Their
+   generated index metadata also repairs older stored packages on reload.
 6. **A no-match lookup still reports the real `dictionaryCount`.** `content.js`
    renders "no dictionaries imported" on 0, and 0 is also what the engine's error
    fallback returns, so `offscreen.js` reads `hdw_last_error` after every
@@ -508,7 +516,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 102 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 103 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -547,6 +555,12 @@ a conflict with explicit discard. Revisioned options also survive the full
 browser restart. The extension harness covers no-op revisions, atomic selector
 pruning, failed-save retry, first-input draft ownership, and old/repeated content
 storage events. `HACHIDORI_OPTIONS_SCREENSHOT` captures the saved Lookup section.
+
+Temporary rank/occurrence dictionaries connect the actual Settings controls to
+one-result popup lookups. The browser checks inferred and manual directions,
+explicit Auto, metadata-preserving alias edits, and unchanged engine generation;
+it removes those packages before continuing. A manual direction also survives
+the full browser restart. `HACHIDORI_FREQUENCY_SCREENSHOT` captures these controls.
 
 The real browser also changes hover enablement and activation controls from
 Settings while the reading tab remains open. It proves close/re-enable without
@@ -598,7 +612,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 102 assertions, and the summary line
+`PLANNED` at the top of the file names all 103 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

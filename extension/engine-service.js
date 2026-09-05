@@ -517,6 +517,7 @@ async function packageFromIndex(path) {
     indexUrl: optionalText(index?.indexUrl),
     downloadUrl: optionalText(index?.downloadUrl),
     language: optionalText(index?.sourceLanguage),
+    frequencyMode: optionalText(index?.frequencyMode),
     termCount: count(index?.counts?.terms?.total),
     frequencyCount: count(index?.counts?.termMeta?.freq),
     pitchCount: count(index?.counts?.termMeta?.pitch) + count(index?.counts?.termMeta?.ipa),
