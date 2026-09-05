@@ -1319,6 +1319,26 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
   const unchanged = async (before) => JSON.stringify(await local.get(["options", "dictionaryState"]))
     === JSON.stringify(before);
   try {
+    const readerContext = createContext({});
+    runInContext(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"), readerContext);
+    const reader = readerContext.HDReaderOptions;
+    const plain = reader.normaliseOptions({ modifier: "none" });
+    const held = reader.normaliseOptions({ modifier: "ctrl" });
+    const explicit = reader.projectStoredOptions({ modifier: "alt", lookupMode: "hover", activationKey: "K" });
+    const legacyPatch = reader.validateOptionsPatch({ modifier: "shift" });
+    const invalidActivation = [
+      { hoverEnabled: 1 }, { lookupMode: "always" }, { activationKey: "not a key" },
+      { popupHideDelayMs: -1 }, { popupHideDelayMs: 5001 },
+    ].every((patch) => {
+      try { reader.validateOptionsPatch(patch); return false; } catch { return true; }
+    });
+    check("reader activation options migrate legacy modes without competing policies and validate new fields",
+      plain.hoverEnabled === true && plain.lookupMode === "hover" && plain.activationKey === "Shift"
+        && plain.popupHideDelayMs === 160 && held.lookupMode === "activation" && held.activationKey === "Control"
+        && explicit.lookupMode === "hover" && explicit.activationKey === "K" && explicit.modifier === undefined
+        && legacyPatch.lookupMode === "activation" && legacyPatch.activationKey === "Shift"
+        && legacyPatch.modifier === undefined && invalidActivation,
+      JSON.stringify({ plain, held, explicit, legacyPatch, invalidActivation }));
     const invalid = [
       { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
       { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { modifier: "meta" },
@@ -4183,6 +4203,9 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  for (const [name, passed] of Object.entries(noteContent?.activation ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   for (const [name, passed] of Object.entries(noteContent?.mediaOwnership ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -6430,6 +6453,10 @@ async function contentNoteStage() {
       return popup;
     },
     hideTimerPending() { return hideTimer !== null; },
+    setScanCandidate(candidate) { resolveCandidate = () => candidate; },
+    onMouseMove,
+    onMouseOut,
+    onWindowBlur,
     onInternalLink,
     onKeyDown,
     runLookup,
@@ -6966,6 +6993,108 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function activationCase() {
+    const result = {};
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const timers = new Map();
+    let nextTimer = 0;
+    window.setTimeout = (callback, delay) => {
+      const id = ++nextTimer;
+      timers.set(id, { callback, delay });
+      return id;
+    };
+    window.clearTimeout = (id) => timers.delete(id);
+    const fire = (delay) => {
+      const entry = [...timers].find(([, timer]) => timer.delay === delay);
+      if (!entry) return false;
+      timers.delete(entry[0]);
+      entry[1].callback();
+      return true;
+    };
+    const key = (type, value, code, extra = {}) => window.document.dispatchEvent(
+      new window.KeyboardEvent(type, { key: value, code, bubbles: true, ...extra }),
+    );
+    const move = (target = window.document.body, extra = {}) => harness.driver.onMouseMove({
+      clientX: 200, clientY: 200, target, ...extra,
+    });
+    const settings = { lookupMode: "activation", activationKey: "Shift", hoverDelayMs: 75, popupHideDelayMs: 250 };
+    harness.emitOptions(settings);
+    harness.driver.setScanCandidate(harness.candidate);
+    move();
+    fire(75);
+    const gated = harness.take("hd_lookup") === null;
+    key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
+    const delayed = harness.take("hd_lookup") === null && [...timers.values()].some((timer) => timer.delay === 75);
+    key("keyup", "Shift", "ShiftLeft");
+    const cancelledTimer = !fire(75);
+    key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
+    fire(75);
+    const pending = harness.take("hd_lookup");
+    key("keyup", "Shift", "ShiftLeft");
+    if (pending) harness.reply(pending, { dictionaryCount: 1, results: [harness.term("released")] });
+    await harness.settle();
+    result["activation release cancels delayed scans and a first pending reply without pointer motion"] =
+      gated && delayed && cancelledTimer && pending !== null && harness.driver.snapshot().popupHidden;
+
+    harness.emitOptions({ ...settings, activationKey: "/" });
+    key("keydown", "/", "Slash");
+    key("keydown", "/", "Slash", { repeat: true });
+    const oneTimer = [...timers.values()].filter((timer) => timer.delay === 75).length === 1;
+    fire(75);
+    const printable = harness.take("hd_lookup");
+    key("keyup", "?", "Slash", { shiftKey: true });
+    if (printable) harness.reply(printable, { dictionaryCount: 1, results: [harness.term("released punctuation")] });
+    await harness.settle();
+    result["configured printable activation keys release by physical code and ignore repeats"] =
+      oneTimer && printable !== null && harness.driver.snapshot().popupHidden;
+
+    harness.emitOptions({ ...settings, lookupMode: "hover" });
+    await harness.initialLookup();
+    harness.driver.setScanCandidate(null);
+    move();
+    fire(75);
+    const transferDelay = harness.driver.hideTimerPending() && !harness.driver.snapshot().popupHidden
+      && [...timers.values()].some((timer) => timer.delay === 250);
+    move(harness.popup);
+    const transferred = !harness.driver.hideTimerPending();
+    fire(75);
+    harness.edit(true);
+    move();
+    fire(75);
+    const draftProtected = !harness.driver.hideTimerPending() && !harness.driver.snapshot().popupHidden;
+    harness.edit(false);
+    harness.emitOptions({ ...settings, lookupMode: "hover", popupHideDelayMs: 0 });
+    move();
+    fire(75);
+    fire(0);
+    result["configured transfer delays preserve popup entry and Note editing and allow immediate hide"] =
+      transferDelay && transferred && draftProtected && harness.driver.snapshot().popupHidden;
+
+    harness.driver.setScanCandidate(harness.candidate);
+    move();
+    harness.emitOptions({ ...settings, hoverEnabled: false });
+    const disabledTimer = !fire(75);
+    move();
+    fire(75);
+    const disabledScan = harness.take("hd_lookup") === null;
+    harness.emitOptions({ ...settings, lookupMode: "hover" });
+    await harness.initialLookup();
+    harness.edit(true);
+    const append = harness.callbacks().onAddCustomEntry({ term: "食べた", reading: "たべた", definition: "ate" });
+    const appendRequest = harness.take("hd_custom_append");
+    harness.emitOptions({ ...settings, hoverEnabled: false });
+    const closedDraft = harness.driver.snapshot().popupHidden;
+    harness.reply(appendRequest, { document: { revision: 2 }, state: harness.state(2, "saved while disabled") });
+    await append;
+    await harness.settle();
+    result["master disable stops scans and closes drafts without cancelling or refreshing a committed Note"] =
+      disabledTimer && disabledScan && closedDraft && harness.driver.snapshot().popupHidden
+        && harness.take("hd_lookup") === null;
+    harness.close();
+    return result;
+  }
+
   async function deferredInvalidationCase() {
     const harness = await createHarness();
     await harness.initialLookup();
@@ -7358,6 +7487,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
+    activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),

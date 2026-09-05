@@ -197,6 +197,8 @@ const PLANNED = [
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   "Settings rejects malformed and oversized option frames before commit and still autosaves without reload",
   "reader settings and their revision survive a full browser restart",
+  "hover enablement closes active popups and changes already-open tabs without reloading the engine",
+  "configured activation keys open stationary lookups and release them using the saved delays",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
   "dictionary CSS cannot paint or intercept input outside its glossary card",
