@@ -7300,7 +7300,7 @@ async function contentNoteStage() {
     mouse("mousedown");
     selection.setBaseAndExtent(harness.anchor.lastChild.firstChild, 4, harness.anchor.firstChild.firstChild, 1);
     changed();
-    harness.driver.onMouseMove({ target: harness.anchor, clientX: 200, clientY: 200 });
+    harness.driver.onMouseMove({ target: harness.anchor, clientX: 200, clientY: 200, buttons: 1 });
     await harness.settle();
     const dragQuiet = harness.take("hd_lookup") === null;
     mouse("mouseup");
@@ -7335,6 +7335,29 @@ async function contentNoteStage() {
       "exact reverse inline selections bypass activation and preserve raw context while rejecting prefix results": exactResult,
       "explicit selections preserve whitespace and full queries beyond the engine scan window": exactBound,
     };
+  }
+
+  async function releasedSelectionDragCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const pointer = { target: harness.anchor, clientX: 200, clientY: 200, buttons: 1 };
+    harness.driver.onMouseDown({ ...pointer, button: 0 });
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    harness.driver.onMouseOut({ relatedTarget: null });
+    harness.driver.onMouseMove(pointer);
+    await harness.settle();
+    const held = harness.take("hd_lookup") === null;
+    // The primary button was released outside the document: no mouseup arrives.
+    harness.driver.onMouseMove({ ...pointer, buttons: 0 });
+    await harness.settle();
+    const recovered = harness.take("hd_lookup");
+    if (recovered) harness.reply(recovered, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+    await harness.settle();
+    const visible = !harness.driver.snapshot().popupHidden;
+    harness.close();
+    return { "selection drags remain quiet while held and recover on re-entry after an outside release":
+      held && recovered?.request.text === harness.candidate.query && visible };
   }
 
   async function scanExtractionCase() {
@@ -8111,6 +8134,7 @@ async function contentNoteStage() {
     callbacksWired,
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
+      ...await releasedSelectionDragCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await pendingSelectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),

@@ -1745,6 +1745,10 @@
       target: event.target,
     };
     updateModifierState(event);
+    if (selectionDragActive && (event.buttons & 1) === 0) {
+      selectionDragActive = false;
+      onSelectionChange();
+    }
     // Cancel a pending dismissal here rather than waiting for the throttled
     // scan, so the popup stays reachable even with hoverDelayMs turned up. The
     // retargeted event target is enough; the rect test costs a layout and can
