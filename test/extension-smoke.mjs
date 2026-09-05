@@ -7003,6 +7003,38 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function selectionEditingCase() {
+    const outcomes = [];
+    for (const tag of ["button", "span"]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      harness.anchor.textContent = "食";
+      const control = window.document.createElement(tag);
+      control.textContent = "べ";
+      control.style.visibility = "visible";
+      control.getClientRects = () => [{}];
+      if (tag === "span") {
+        control.setAttribute("contenteditable", "true");
+        Object.defineProperty(control, "isContentEditable", { value: true });
+      }
+      harness.anchor.append(control, window.document.createTextNode("た"));
+      window.getSelection().selectAllChildren(harness.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      const selected = harness.take("hd_lookup");
+      if (selected) harness.reply(selected, { dictionaryCount: 1, results: [] });
+      await harness.settle();
+      harness.driver.setScanCandidate(harness.candidate);
+      harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+      const fallback = harness.take("hd_lookup");
+      outcomes.push(selected === null && fallback === null);
+      if (fallback) harness.reply(fallback, { dictionaryCount: 1, results: [] });
+      await harness.settle();
+      harness.close();
+    }
+    return { "selections spanning editing controls are ignored without falling back to pointer prefixes":
+      outcomes.every(Boolean) || outcomes };
+  }
+
   async function pendingSelectionInvalidationCase() {
     const outcomes = [];
     for (const reason of ["dictionary", "options"]) {
@@ -7965,7 +7997,8 @@ async function contentNoteStage() {
     callbacksWired,
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
-      ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await pendingSelectionInvalidationCase() },
+      ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await pendingSelectionInvalidationCase(),
+      ...await selectionEditingCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
