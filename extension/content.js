@@ -124,6 +124,8 @@
   let shadow = null;
   let highlighter = null;
   let uiPromise = null;
+  let popupLayoutFrame = null;
+  let popupLayoutOwner = null;
 
   let styleGeneration = -1;
   let styleRequest = null;
@@ -735,6 +737,7 @@
       return;
     }
     disposed = true;
+    cancelPopupLayout();
     clearDictionaryResources();
     window.clearTimeout(scanTimer);
     window.clearTimeout(hideTimer);
@@ -779,6 +782,7 @@
   }
 
   function discardUi() {
+    cancelPopupLayout();
     clearDictionaryResources();
     try {
       highlighter?.clearAll();
@@ -1134,6 +1138,30 @@
     }
   }
 
+  function cancelPopupLayout() {
+    if (popupLayoutFrame !== null) window.cancelAnimationFrame(popupLayoutFrame);
+    popupLayoutFrame = null;
+    popupLayoutOwner = null;
+  }
+
+  function positionAfterLayout(level) {
+    if (disposed || level.retired || level.popup.hidden) return;
+    if (levels.length === 1) {
+      positionPopup(level);
+      return;
+    }
+    if (!popupLayoutOwner || level.depth < popupLayoutOwner.depth) popupLayoutOwner = level;
+    if (popupLayoutFrame !== null) return;
+    // All pane masonry callbacks in this frame finish before one placement
+    // pass, including follow-on ResizeObserver notifications after a resize.
+    popupLayoutFrame = window.requestAnimationFrame(() => {
+      const owner = popupLayoutOwner;
+      popupLayoutFrame = null;
+      popupLayoutOwner = null;
+      positionPopup(owner);
+    });
+  }
+
   async function readerStyleSheet() {
     const response = await fetch(chrome.runtime.getURL(READER_STYLESHEET));
     if (!response.ok) {
@@ -1225,6 +1253,7 @@
       parseTagList: window.HDGlossary.parseTagList,
       popup,
       positionPopup: () => positionPopup(level),
+      positionAfterLayout: () => positionAfterLayout(level),
       sourceHighlighter: level.highlighter,
       sourceHighlightEnabled: true,
       toolbarPosition: "top",
@@ -1288,6 +1317,7 @@
       level.view?.destroy();
       level.popup?.remove();
     }
+    if (popupLayoutOwner?.retired) cancelPopupLayout();
     if (restoreFocus && focused && source?.isConnected) source.focus({ preventScroll: true });
     if (levels.length === 1) clearTransferTimer();
   }
@@ -1300,6 +1330,7 @@
       }
       return;
     }
+    cancelPopupLayout();
     clearScanTimer();
     selectionDragActive = false;
     activeSelectionCandidate = null;

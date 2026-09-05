@@ -7302,7 +7302,7 @@ async function contentNoteStage() {
         const grid = window.document.createElement("div");
         grid.className = "gsm-hoshidicts-glossary-grid";
         grid.append(window.document.createElement("div"), window.document.createElement("div"));
-        Object.defineProperty(grid, "clientWidth", { value: 200 });
+        Object.defineProperty(grid, "clientWidth", { get: () => Number.parseFloat(popup.style.width) });
         popup.append(grid);
         // Real per-view resize/masonry callbacks, bound to the real content
         // owners; the request harness continues to own only lookup replies.
@@ -7319,11 +7319,20 @@ async function contentNoteStage() {
             && Number.parseFloat(popup.style.left) + Number.parseFloat(popup.style.width) <= 2394
             && popup.querySelector(".gsm-hoshidicts-glossary-grid").style.height !== "";
         });
+      window.innerWidth = 500;
+      window.dispatchEvent(new window.Event("resize"));
+      frame();
+      frame();
       layouts = 0; rootReads = 0; popupReads = 0;
       observers.forEach(observer => observer.callback());
       frame();
       frame();
-      const observerFollowup = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0;
+      const observerFollowup = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0
+        && [0, 1, 2, 3].every(depth => {
+          const popup = harness.driver.popupAt(depth);
+          const card = popup.querySelector(".gsm-hoshidicts-glossary-grid").firstElementChild;
+          return Number.parseFloat(popup.style.width) === 488 && Number.parseFloat(card.style.width) === 240;
+        });
 
       // A queued root resize still places the surviving chain after a child
       // retires; a queued retired child cannot target its depth replacement.
@@ -7350,7 +7359,7 @@ async function contentNoteStage() {
       const retiring = harness.callbacks(1);
       (retiring.positionAfterLayout || retiring.positionPopup)();
       const childQueued = frames.size === 1;
-      harness.callbacks().onBeforeResultsRendered();
+      harness.render(1).context.onBack();
       const retiredCancelled = frames.size === 0;
       const replacement = harness.internalLink({ query: "same depth" });
       harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("same depth")] });

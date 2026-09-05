@@ -984,6 +984,7 @@
     const appendTextOnlyGlossary = options.appendTextOnlyGlossary;
     const parseTagList = options.parseTagList;
     const positionPopup = options.positionPopup;
+    const positionAfterLayout = options.positionAfterLayout || positionPopup;
     // LookupKanji carries onyomi/kunyomi/tags as space-separated strings, but a
     // caller that already normalized them hands over arrays. Accept both.
     const tokenList = (value) =>
@@ -1152,7 +1153,7 @@
       masonryFrame = windowRef.requestAnimationFrame(() => {
         masonryFrame = null;
         layoutMasonry();
-        positionPopup();
+        positionAfterLayout();
       });
     }
 
