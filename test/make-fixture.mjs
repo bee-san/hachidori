@@ -511,6 +511,40 @@ export function buildTitledZip(title, { banks = true, terms = TERMS, termMeta = 
   return buildZip(entries);
 }
 
+export function imagePreviewFixture() {
+  // Genuine 16x16 AVIF, generated once with FFmpeg 7.0.1 / libaom-av1:
+  // ffmpeg -f lavfi -i color=c=0x3676d9:s=16x16:d=0.04 -frames:v 1
+  //   -c:v libaom-av1 -cpu-used 8 -crf 30 -still-picture 1 -f avif blue.avif
+  // SHA-256: ef64ea8fb6ab6da6b0b2049d7102157c0c6ea587841b86efa6dcff55f72ee66b
+  // Keeping the encoded bytes here avoids a test-time encoder dependency.
+  const avif = Buffer.from(
+    'AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAAD5bWV0YQAAAAAAAAAvaGRscgAAAAAA' +
+    'AAAAcGljdAAAAAAAAAAAAAAAAFBpY3R1cmVIYW5kbGVyAAAAAA5waXRtAAAAAAABAAAAHmlsb2MA' +
+    'AAAARAAAAQABAAAAAQAAASEAAAAaAAAAKGlpbmYAAAAAAAEAAAAaaW5mZQIAAAAAAQAAYXYwMUNv' +
+    'bG9yAAAAAGppcHJwAAAAS2lwY28AAAAUaXNwZQAAAAAAAAAQAAAAEAAAABBwaXhpAAAAAAMICAgA' +
+    'AAAMYXYxQ4EADAAAAAATY29scm5jbHgAAgACAAIAAAAAF2lwbWEAAAAAAAAAAQABBAECgwQAAAAi' +
+    'bWRhdAoGGAz/2gCAMhAXgAAASAAQAprs5iUJK26P', 'base64');
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64">' +
+    '<rect width="96" height="64" fill="#edf5ff"/><circle cx="73" cy="17" r="9" fill="#ffd478"/>' +
+    '<path d="M0 64V49L31 17L65 64Z" fill="#648f8c"/><path d="M34 64L69 29L96 55V64Z" fill="#3d6d70"/></svg>');
+  const images = [
+    { path: 'media/blue.avif', bytes: avif, type: 'image/avif', width: 16, height: 16, alt: 'Blue AVIF sample' },
+    { path: 'media/mountains.svg', bytes: svg, type: 'image/svg+xml', width: 96, height: 64, alt: 'Mountain illustration' },
+  ];
+  const title = 'dictionary-image-preview-fixture';
+  const query = '拡大画像';
+  const archive = buildTitledZip(title, { terms: [[query, 'かくだいがぞう', '', '', 0, [
+    'Hover or focus an image for a larger view.',
+    { type: 'structured-content', content: [
+      ...images.map(({ path, alt }) => ({ tag: 'img', path, width: 64, height: 64, alt })),
+      { tag: 'p', content: 'The next illustration is farther down this definition. Tab to it to test keyboard focus.\n' + '\n'.repeat(35) },
+      { tag: 'img', path: images[1].path, width: 64, height: 64, alt: 'Focus this illustration below the fold' },
+      { tag: 'a', href: '?query=食べる', content: 'Look up 食べる' },
+    ] },
+  ], 1, '']], mediaEntries: images.map(({ path, bytes }) => [path, bytes]) });
+  return { archive, images, query, title };
+}
+
 // Small deterministic stand-ins for the recommended downloads. The browser
 // suite serves these bytes for the production catalogue URLs, so CI exercises
 // the complete download/import path without depending on live publishers.

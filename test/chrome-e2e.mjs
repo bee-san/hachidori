@@ -27,6 +27,7 @@ import {
   GENERIC_KANJI_TITLE,
   buildRecommendedZip,
   buildTitledZip,
+  imagePreviewFixture,
   makePng,
 } from "./make-fixture.mjs";
 import {
@@ -598,7 +599,49 @@ async function popupReader(page) {
     return result.value ?? null;
   }
 
-  return { click, state, visible, waitForVisible, waitForHidden, writeNote };
+  async function imagePreview(index = 0, action = "read") {
+    const object = await resolvePopupObject();
+    if (object === null) return null;
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId,
+      returnByValue: true,
+      arguments: [{ value: index }, { value: action }],
+      functionDeclaration: `function (index, action) {
+        const root = this.getRootNode();
+        const links = [...this.querySelectorAll(".gloss-image-link")];
+        const link = links[index];
+        const image = link?.querySelector("img");
+        if (action === "focus") link.focus();
+        else if (action === "blur") link.blur();
+        else if (action === "scroll") this.scrollTop += 30;
+        else if (action === "mouseenter" || action === "mouseleave") link.dispatchEvent(new Event(action));
+        const preview = root.querySelector(".gsm-hoshidicts-image-hover-preview");
+        const expanded = preview?.querySelector("img");
+        const view = this.ownerDocument.defaultView;
+        return {
+          scrollTop: this.scrollTop,
+          sourceRect: image?.getBoundingClientRect().toJSON(),
+          focusedImage: links.indexOf(root.activeElement),
+          images: links.map(link => {
+            const image = link.querySelector("img");
+            return { source: image.src, width: image.naturalWidth, height: image.naturalHeight };
+          }),
+          preview: preview ? {
+            rect: preview.getBoundingClientRect().toJSON(),
+            source: expanded.src, width: expanded.naturalWidth, height: expanded.naturalHeight,
+            sibling: preview.parentNode === this.parentNode,
+            hiddenFromAccessibility: preview.getAttribute("aria-hidden"),
+            pointerEvents: view.getComputedStyle(preview).pointerEvents,
+            animation: view.getComputedStyle(expanded).animationName,
+            background: view.getComputedStyle(expanded).backgroundColor,
+          } : null,
+        };
+      }`,
+    });
+    return result.value ?? null;
+  }
+
+  return { click, imagePreview, state, visible, waitForVisible, waitForHidden, writeNote };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -649,11 +692,18 @@ async function installMediaReplyProbe(browser) {
   // its reply. Other messages and the mutation queue remain production paths.
   await worker.evaluate(() => {
     const original = chrome.runtime.sendMessage;
-    const probe = { original, held: [], holdNext: true, holdAll: false, failNext: false,
+    const probe = { original, held: [], heldLookups: [], holdNextLookup: false,
+      holdNext: true, holdAll: false, failNext: false,
       count: 0, active: 0, maxActive: 0 };
     globalThis.__ownedMediaProbe = probe;
     chrome.runtime.sendMessage = function (message, ...args) {
       const response = original.call(this, message, ...args);
+      if (message.relayed && message.type === "hd_lookup" && probe.holdNextLookup) {
+        probe.holdNextLookup = false;
+        return response.then(reply => new Promise(resolveReply => {
+          probe.heldLookups.push(() => resolveReply(reply));
+        }));
+      }
       if (!message.relayed || message.type !== "hd_media") return response;
       probe.count += 1;
       probe.active += 1;
@@ -678,6 +728,7 @@ async function restoreMediaReplyProbe(worker) {
     const probe = globalThis.__ownedMediaProbe;
     chrome.runtime.sendMessage = probe.original;
     for (const release of probe.held) release();
+    for (const release of probe.heldLookups) release();
     delete globalThis.__ownedMediaProbe;
   });
 }
@@ -823,6 +874,100 @@ async function boundedMediaChrome({ browser, page, tab, popup }) {
         && restored.imageStates.every((image) => image.width === 16),
       JSON.stringify({ afterHide, after, images: restored.imageStates }));
   } finally {
+    await restoreMediaReplyProbe(worker);
+  }
+}
+
+async function imagePreviewChrome({ browser, page, tab, popup }) {
+  const fixture = imagePreviewFixture();
+  await installMediaArchive(page, fixture.archive);
+  const worker = await installMediaReplyProbe(browser);
+  const expected = [...fixture.images, fixture.images[1]];
+  async function waitForPreview(predicate, index = 0) {
+    const deadline = Date.now() + 6000;
+    let state;
+    do {
+      state = await popup.imagePreview(index);
+      if (predicate(state)) return state;
+      await new Promise(done => setTimeout(done, 25));
+    } while (Date.now() < deadline);
+    throw new Error(`Image preview did not reach its expected state: ${JSON.stringify(state)}`);
+  }
+  try {
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
+    await tab.evaluate(query => { document.getElementById("verb").textContent = query; }, fixture.query);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    await hoverForPopup(tab, popup, "#verb");
+    const decoded = await waitForPreview(state => state?.images.length === expected.length
+      && state.images.every((image, index) => image.width === expected[index].width && image.height === expected[index].height));
+    const requestCount = () => worker.evaluate(() => globalThis.__ownedMediaProbe.count);
+    const initialCount = await requestCount();
+    const inline = decoded.sourceRect;
+    await tab.mouse.move(inline.left + inline.width / 2, inline.top + inline.height / 2);
+    const hovered = await waitForPreview(state => state?.preview?.width === fixture.images[0].width);
+    await tab.mouse.move(1, 1);
+    const left = await waitForPreview(state => state?.preview === null);
+    await popup.imagePreview(0, "focus");
+    await tab.keyboard.press("Tab");
+    const focused = await waitForPreview(state => state?.focusedImage === 1 && state.preview?.width === fixture.images[1].width, 1);
+    const viewport = tab.viewport();
+    const fits = ({ rect }) => rect.left >= 8 && rect.top >= 8
+      && rect.right <= viewport.width - 8 && rect.bottom <= viewport.height - 8;
+    await tab.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
+    const reduced = await waitForPreview(state => state?.preview?.animation === "none", 1);
+    if (process.env.HACHIDORI_IMAGE_PREVIEW_SCREENSHOT) {
+      mkdirSync(dirname(process.env.HACHIDORI_IMAGE_PREVIEW_SCREENSHOT), { recursive: true });
+      await tab.screenshot({ path: process.env.HACHIDORI_IMAGE_PREVIEW_SCREENSHOT });
+    }
+    check("dictionary AVIF and SVG decode through real WASM without extra preview fetches",
+      decoded.images.every((image, index) => image.source === `data:${expected[index].type};base64,${expected[index].bytes.toString("base64")}`)
+        && hovered.preview.source === decoded.images[0].source && focused.preview.source === decoded.images[1].source
+        && initialCount === 2 && await requestCount() === 2,
+      JSON.stringify({ images: decoded.images.map(({ width, height }) => ({ width, height })), initialCount }));
+    check("image hover and keyboard previews stay larger, viewport-clamped and motion-aware",
+      hovered.preview.rect.width > inline.width && hovered.preview.rect.height > inline.height
+        && fits(hovered.preview) && fits(focused.preview) && focused.preview.sibling
+        && focused.preview.hiddenFromAccessibility === "true" && focused.preview.pointerEvents === "none"
+        && focused.preview.animation === "gsm-hoshidicts-image-emerge" && reduced.preview.animation === "none"
+        && focused.preview.background !== "rgba(0, 0, 0, 0)" && left.preview === null,
+      JSON.stringify({ hoverRect: hovered.preview.rect, focusRect: focused.preview.rect, animation: focused.preview.animation }));
+
+    await popup.imagePreview(1, "blur");
+    const blurred = await waitForPreview(state => state?.preview === null);
+    await popup.imagePreview(2, "focus");
+    // Focusing below the fold causes a native scroll after focus. The preview
+    // must survive that event and follow the now-visible keyboard owner.
+    await new Promise(done => setTimeout(done, 100));
+    const scrolledFocus = await popup.imagePreview(2);
+    await popup.imagePreview(2, "blur");
+    await popup.imagePreview(2, "mouseenter");
+    await popup.imagePreview(2, "scroll");
+    const hoverScrollClosed = await waitForPreview(state => state?.preview === null);
+    await popup.imagePreview(2, "focus");
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNextLookup = true; });
+    const navigationClicked = await popup.click(".gsm-hoshidicts-structured-link");
+    if (!navigationClicked) throw new Error(`Navigation link disappeared while focusing images: ${JSON.stringify({
+      scrolledFocus, hoverScrollClosed, current: await popup.state(),
+    })}`);
+    await worker.evaluate(async () => {
+      const deadline = Date.now() + 5000;
+      while (globalThis.__ownedMediaProbe.heldLookups.length === 0) {
+        if (Date.now() >= deadline) throw new Error("navigation lookup never reached the held reply");
+        await new Promise(done => setTimeout(done, 25));
+      }
+    });
+    const pending = await popup.imagePreview(2, "mouseenter");
+    check("image previews close on leave, blur, scrolling and pending navigation",
+      blurred.preview === null && scrolledFocus.scrollTop > 0 && scrolledFocus.focusedImage === 2
+        && scrolledFocus.preview?.source === decoded.images[2].source && fits(scrolledFocus.preview)
+        && hoverScrollClosed.preview === null && pending.images.length === 3 && pending.preview === null,
+      JSON.stringify({ scrolledFocus: { scrollTop: scrolledFocus.scrollTop, focused: scrolledFocus.focusedImage,
+        previewRect: scrolledFocus.preview?.rect }, pendingPreview: pending.preview }));
+    await worker.evaluate(() => { for (const release of globalThis.__ownedMediaProbe.heldLookups.splice(0)) release(); });
+  } finally {
+    await tab.emulateMediaFeatures([]);
     await restoreMediaReplyProbe(worker);
   }
 }
@@ -3689,6 +3834,7 @@ async function main() {
 
   await mediaOwnershipChrome({ browser, page, tab: tab2, popup: popup2 });
   await boundedMediaChrome({ browser, page, tab: tab2, popup: popup2 });
+  await imagePreviewChrome({ browser, page, tab: tab2, popup: popup2 });
   await browser.close();
   server.close();
   return report();

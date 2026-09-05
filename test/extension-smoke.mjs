@@ -34,6 +34,7 @@ import {
   buildRecommendedZip,
   buildTitledZip,
   buildTrainedZip,
+  imagePreviewFixture,
   makePng,
 } from "./make-fixture.mjs";
 import { recommendedIndexUrlMatches } from "../extension/managed-dictionary-source.js";
@@ -3668,6 +3669,21 @@ async function main() {
     fileName: "restore-after-rejected-reimport.zip",
   });
 
+  const previewFixture = imagePreviewFixture();
+  const previewImport = await request("hd_import", {
+    blobUrl: createObjectURL(previewFixture.archive), fileName: "image-preview.zip",
+  });
+  const previewMedia = [];
+  for (const image of previewFixture.images) {
+    const reply = await request("hd_media", {
+      dictionary: previewFixture.title, generation: previewImport.generation, path: image.path,
+    });
+    previewMedia.push(reply.ok && reply.dataUrl === `data:${image.type};base64,${image.bytes.toString("base64")}`);
+  }
+  check("real WASM imports AVIF and SVG and returns their exact bytes with the correct MIME types",
+    previewImport.ok && previewMedia.every(Boolean), JSON.stringify(previewMedia));
+  await request("hd_remove", { title: previewFixture.title });
+
   section("renderer against real engine output");
   // 漢字 is the fixture's structured-content entry, the only one carrying an <img>.
   const imageLookup = await request("hd_lookup", {
@@ -7027,8 +7043,27 @@ async function contentNoteStage() {
       cases.push(dismissedBeforeReply && retainedDraft);
       harness.close();
     }
+    const focused = await createHarness();
+    await focused.initialLookup();
+    const link = focused.popup.ownerDocument.createElement("a");
+    link.href = "#";
+    link.textContent = "Keyboard image owner";
+    focused.popup.appendChild(link);
+    focused.driver.scheduleHide();
+    const pendingBeforeFocus = focused.driver.hideTimerPending();
+    link.focus();
+    const focusCancelledHide = !focused.driver.hideTimerPending();
+    focused.driver.scheduleHide();
+    const stayedUnscheduled = !focused.driver.hideTimerPending();
+    link.blur();
+    const leavingRearmed = focused.driver.hideTimerPending();
+    await new Promise(done => setTimeout(done, 180));
+    const hiddenAfterBlur = focused.driver.snapshot().popupHidden;
+    focused.close();
     return {
       "new term or kanji requests and settings invalidation dismiss previews before their replies": cases.every(Boolean),
+      "popup keyboard focus cancels hover dismissal and leaving focus rearms it": pendingBeforeFocus
+        && focusCancelledHide && stayedUnscheduled && leavingRearmed && hiddenAfterBlur,
     };
   }
 
