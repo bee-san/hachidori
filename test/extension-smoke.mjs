@@ -35,6 +35,7 @@ import {
   buildTitledZip,
   buildTrainedZip,
   imagePreviewFixture,
+  imageSizingFixture,
   makePng,
 } from "./make-fixture.mjs";
 import { recommendedIndexUrlMatches } from "../extension/managed-dictionary-source.js";
@@ -7730,6 +7731,25 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
 }
 
 async function mediaRenderStage({ HDGlossary, document, window }) {
+  const sizing = imageSizingFixture();
+  const sizingParent = document.createElement("div");
+  document.body.appendChild(sizingParent);
+  const sized = sizing.cases.map(({ name, dimensions, width, padding }) => {
+    HDGlossary.appendStructuredImage(document, sizingParent, { path: sizing.path, ...dimensions }, {
+      resolveMedia: async () => `data:image/png;base64,${sizing.bytes.toString("base64")}`,
+    });
+    const container = sizingParent.lastElementChild.querySelector(".gloss-image-container");
+    const actualWidth = Number.parseFloat(container.style.width);
+    const actualPadding = Number.parseFloat(container.querySelector(".gloss-image-sizer").style.paddingTop);
+    return { name, width: actualWidth, padding: actualPadding,
+      dimensionsMatch: Math.abs(actualWidth - width) < 1e-12 && Math.abs(actualPadding - padding) < 0.001,
+      bounded: container.style.aspectRatio === "" && Number.isFinite(actualPadding) && actualPadding <= 10_000 };
+  });
+  check("image aspect sizing uses the existing bounded sizer without a competing raw ratio",
+    sized.every(({ bounded }) => bounded), JSON.stringify(sized));
+  check("image width arithmetic recovers intermediate overflow and underflow without changing valid sizes",
+    sized.every(({ dimensionsMatch }) => dimensionsMatch), JSON.stringify(sized));
+  sizingParent.remove();
   const outcomes = [];
   for (const replyKind of ["missing", "failure", "valid"]) {
     for (const current of [false, true]) {

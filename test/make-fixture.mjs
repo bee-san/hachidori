@@ -511,6 +511,34 @@ export function buildTitledZip(title, { banks = true, terms = TERMS, termMeta = 
   return buildZip(entries);
 }
 
+export function imageSizingFixture() {
+  const cases = [
+    ['landscape', { width: 200, height: 100 }, 200, 50],
+    ['portrait', { width: 67, height: 100 }, 67, 100 / 67 * 100],
+    ['preferred width', { width: 200, height: 100, preferredWidth: 100 }, 100, 100],
+    ['preferred height', { width: 200, height: 100, preferredHeight: 50 }, 100, 25],
+    ['both preferred', { width: 200, height: 100, preferredWidth: 100, preferredHeight: 50 }, 100, 50],
+    ['em', { width: 3, height: 2, sizeUnits: 'em' }, 3, 2 / 3 * 100],
+    ['preferred em', { width: 3, height: 2, preferredWidth: 1.5, sizeUnits: 'em' }, 1.5, 2 / 1.5 * 100],
+    ['tall aspect', { width: 1, height: 1e9 }, 1, 10_000],
+    ['intermediate overflow', { width: 1e308, height: 1e308, preferredHeight: 100 }, 100, 1e-304],
+    ['intermediate underflow', { width: Number.MIN_VALUE, height: Number.MIN_VALUE, preferredHeight: 0.5 }, 0.5, 10_000],
+    ['second grouping overflow', { width: 1e-14, height: Number.MIN_VALUE, preferredHeight: 1e-310 }, 0.20240225330731, 1e-294],
+    ['valid original grouping', { width: 1.5, height: Number.MIN_VALUE, preferredHeight: Number.MIN_VALUE }, 2, 0],
+    ['over display width', { width: 1e308, height: 1, preferredHeight: 1e308 }, 1024, 100],
+    ['under display width', { width: 1e-300, height: 1e300, preferredHeight: 1e-300 }, 0.1, 100],
+  ].map(([name, dimensions, width, padding]) => ({ name, dimensions, width, padding }));
+  const title = 'dictionary-image-sizing-fixture';
+  const query = '画像寸法';
+  const bytes = makePng();
+  const path = 'media/sizing.png';
+  const archive = buildTitledZip(title, { terms: [[query, 'がぞうすんぽう', '', '', 0,
+    cases.map(({ name, dimensions }) => ({ type: 'structured-content', content: {
+      tag: 'div', content: [name, { tag: 'img', path, alt: name, ...dimensions }],
+    } })), 1, '']], mediaEntries: [[path, bytes]] });
+  return { archive, bytes, cases, path, query, title };
+}
+
 export function imagePreviewFixture() {
   // Genuine 16x16 AVIF, generated once with FFmpeg 7.0.1 / libaom-av1:
   // ffmpeg -f lavfi -i color=c=0x3676d9:s=16x16:d=0.04 -frames:v 1
