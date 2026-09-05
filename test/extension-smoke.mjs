@@ -9019,10 +9019,41 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     result: imageLookup.results[0], mediaUrl: media.dataUrl });
   structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+  internalLinksRenderStage({ HDGlossary, document, window });
   await deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await mediaRenderStage({ HDGlossary, document, window });
   dom.window.close();
   return true;
+}
+
+function internalLinksRenderStage({ HDGlossary, document, window }) {
+  const parent = document.createElement("div");
+  document.body.appendChild(parent);
+  const calls = [];
+  let current = true;
+  HDGlossary.appendTextOnlyGlossary(document, parent, JSON.stringify([{ type: "structured-content", content: [
+    { tag: "a", href: "?query=食&primary_reading=しょく", content: "linked term" },
+    { tag: "a", href: "?query=outer", content: { tag: "a", href: "?query=inner", content: "inner term" } },
+  ] }]), { isCurrent: () => current, onInternalLink(value) { calls.push(value); } });
+  const first = parent.querySelector("a");
+  const activate = anchor => {
+    const event = new window.MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 });
+    anchor.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  try {
+    const active = activate(first) && calls.length === 1 && calls[0].anchor === first
+      && calls[0].query === "食" && calls[0].primaryReading === "しょく";
+    current = false;
+    const stale = activate(first) && calls.length === 1;
+    current = true;
+    const nested = activate(parent.querySelector('[data-hoshidicts-query="inner"]'))
+      && calls.length === 2 && calls[1].query === "inner";
+    first.remove();
+    const detached = activate(first) && calls.length === 2;
+    check("internal links retain exact query and reading while rejecting stale, detached and enclosing actions",
+      active && stale && nested && detached, JSON.stringify({ active, stale, nested, detached, queries: calls.map(value => value.query) }));
+  } finally { parent.remove(); }
 }
 
 function externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
