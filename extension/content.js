@@ -1272,9 +1272,13 @@
   }
 
   function pruneLevels(depth, restoreFocus = true) {
+    clearDescendantTimer();
+    if (levels.length <= Math.max(1, depth)) {
+      if (levels.length === 1) clearTransferTimer();
+      return;
+    }
     const source = levels[depth]?.activeCandidate?.anchor;
     const removed = levels.splice(Math.max(1, depth));
-    clearDescendantTimer();
     const focused = removed.some((level) => level.popup?.contains(shadow?.activeElement));
     for (const level of removed.reverse()) {
       level.retired = true;
@@ -1920,19 +1924,23 @@
   }
 
   function pointInsidePopup(clientX, clientY) {
-    const rects = levels.filter((level) => level.popup && !level.popup.hidden)
-      .map((level) => level.popup.getBoundingClientRect());
-    if (rects.some((rect) => clientX >= rect.left && clientX <= rect.right
-        && clientY >= rect.top && clientY <= rect.bottom)) return true;
-    return rects.slice(1).some((child, index) => {
-      const parent = rects[index];
-      const top = Math.max(parent.top, child.top) - 4;
-      const bottom = Math.min(parent.bottom, child.bottom) + 4;
-      const [left, right] = parent.right <= child.left ? [parent.right, child.left]
-        : child.right <= parent.left ? [child.right, parent.left] : [1, 0];
-      return left <= right && clientX >= left - 2 && clientX <= right + 2
-        && clientY >= top && clientY <= bottom;
-    });
+    if (!rootLevel.popup || rootLevel.popup.hidden) return false;
+    let previous = null;
+    for (const level of levels) {
+      if (!level.popup || level.popup.hidden) continue;
+      const rect = level.popup.getBoundingClientRect();
+      if (clientX >= rect.left && clientX <= rect.right
+          && clientY >= rect.top && clientY <= rect.bottom) return true;
+      if (previous) {
+        const left = previous.right <= rect.left ? previous.right : rect.right;
+        const right = previous.right <= rect.left ? rect.left : previous.left;
+        if (left <= right && clientX >= left - 2 && clientX <= right + 2
+            && clientY >= Math.max(previous.top, rect.top) - 4
+            && clientY <= Math.min(previous.bottom, rect.bottom) + 4) return true;
+      }
+      previous = rect;
+    }
+    return false;
   }
 
   function scanPointer(pointer) {

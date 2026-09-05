@@ -1246,18 +1246,18 @@
       setDefinitionBlurState("revealed");
     }
 
-    function mountResultChrome(toolbar, ...content) {
+    function mountResultChrome(toolbar, content) {
       const form = currentNoteControls?.form;
       if (form?.parentNode === popup) {
         if (toolbarPosition === "bottom") {
-          popup.prepend(...content);
+          popup.prepend(content);
           popup.append(toolbar);
         } else {
           popup.prepend(toolbar);
-          popup.append(...content);
+          popup.append(content);
         }
       } else {
-        popup.append(toolbar, ...content);
+        popup.append(toolbar, content);
       }
       setRenderedToolbar(toolbar);
     }
