@@ -35,6 +35,19 @@
   const MAX_STRUCTURED_DATA_VALUE_LENGTH = 4096;
   const MAX_DICTIONARY_STYLE_BYTES = 256 * 1024;
   const MAX_DICTIONARY_STYLES_BYTES = 2 * 1024 * 1024;
+  // These compatibility aliases are typed at each use site. Even a page's
+  // @property registration must not turn their values into resource URLs.
+  const DICTIONARY_STYLE_VARIABLES = new Set([
+    "--text-color", "--background-color", "--fg", "--canvas", "--font-size-no-units",
+  ]);
+  const DICTIONARY_STYLE_GROUPS = new Set([
+    "CSSMediaRule", "CSSSupportsRule", "CSSContainerRule",
+  ]);
+  const DICTIONARY_FONT_FAMILIES = new Set([
+    "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui",
+    "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded", "math", "fangsong",
+    "inherit", "initial", "unset", "revert", "revert-layer",
+  ]);
   const HAN_CHARACTER_PATTERN =
     /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u{20000}-\u{2fa1f}]/u;
   const KANJI_SEGMENT_PATTERN =
@@ -1043,10 +1056,66 @@
       : value.length;
   }
 
-  function cssAttributeString(value) {
-    return `"${value
-      .replace(/\\/gu, "\\\\")
-      .replace(/"/gu, '\\"')}"`;
+  function isSafeDictionaryStyle(style) {
+    const declarations = style.cssText;
+    // Check the whole browser-serialized block: var() shorthands enumerate as
+    // empty longhands until substitution. Residual escapes can disguise both
+    // function names and variable delimiters; drop that cosmetic rule rather
+    // than reinterpret CSS tokens. Do not strip comment-like text in strings.
+    if (declarations.includes("\\")
+      || /\b(?:url|src|image-set|paint|attr)\s*\(/iu.test(declarations)
+      || /--[^(),]*\(/u.test(declarations)) return false;
+    for (const match of declarations.matchAll(/\bvar\(\s*([^,)]+)[,)]/giu)) {
+      if (!DICTIONARY_STYLE_VARIABLES.has(match[1].trim())) return false;
+    }
+    for (const property of style) {
+      if (property.startsWith("--")) return false;
+      // Named fonts can activate an outer page's @font-face without a URL here.
+      // CSSOM expands non-variable font shorthands into font-family as well.
+      if (property === "font-family" && !style.getPropertyValue(property).split(",")
+        .every((family) => DICTIONARY_FONT_FAMILIES.has(family.trim().toLowerCase()))) return false;
+    }
+    return true;
+  }
+
+  function typeDictionaryStyleVariables(style) {
+    const declarations = style.cssText;
+    if (!/\bvar\(/iu.test(declarations)) return;
+    const suffixes = [];
+    // CSSOM has already balanced the declaration block, and residual escapes
+    // were rejected. Keep strings/comments opaque while pairing parentheses.
+    style.cssText = declarations.replace(
+      /"[^"]*"|'[^']*'|\/\*[\s\S]*?\*\/|\bvar\(\s*(--[\w-]+)|[()]/giu,
+      (token, variable) => {
+        if (variable) {
+          const numeric = variable === "--font-size-no-units";
+          suffixes.push(numeric ? " * 1)" : " 100%, transparent)");
+          return (numeric ? "calc(" : "color-mix(in srgb, ") + token;
+        }
+        if (token === "(") suffixes.push("");
+        return token === ")" ? token + suffixes.pop() : token;
+      },
+    );
+  }
+
+  function filterDictionaryStyleRules(parent) {
+    for (let index = parent.cssRules.length - 1; index >= 0; index -= 1) {
+      const rule = parent.cssRules[index];
+      const kind = rule.constructor.name;
+      if (kind === "CSSStyleRule" || kind === "CSSNestedDeclarations") {
+        if (!isSafeDictionaryStyle(rule.style)) {
+          parent.deleteRule(index);
+          continue;
+        }
+        typeDictionaryStyleVariables(rule.style);
+      } else if (!DICTIONARY_STYLE_GROUPS.has(kind)) {
+        // Global definitions (@font-face, @property, keyframes, imports, etc.)
+        // are not glossary-local even when written inside an @scope block.
+        parent.deleteRule(index);
+        continue;
+      }
+      if (rule.cssRules) filterDictionaryStyleRules(rule);
+    }
   }
 
   // Replaces whatever styles a previous generation installed in `host` rather
@@ -1068,8 +1137,8 @@
       const dictionary = boundedString(entry.dictionary, 4096);
       const entryStyles = boundedString(entry.styles, MAX_DICTIONARY_STYLE_BYTES + 1);
       const styleBytes = utf8Length(entryStyles);
-      // A dictionary ships its own CSS, so cap it: one runaway stylesheet must
-      // not be able to repaint or cover the whole popup.
+      // Keep the existing stylesheet transport bounds. Containment is enforced
+      // by parsed scoping and the trusted card's paint boundary, not its size.
       if (
         !dictionary ||
         !entryStyles ||
@@ -1081,12 +1150,17 @@
       }
       dictionaries.add(dictionary);
       totalBytes += styleBytes;
+      // Detached parsing cannot fetch resources. Only browser-serialized rules
+      // enter the controlled scope; raw closing braces must never reach it.
+      const sheet = new documentRef.defaultView.CSSStyleSheet();
+      sheet.replaceSync(entryStyles);
+      filterDictionaryStyleRules(sheet);
       const style = documentRef.createElement("style");
       style.dataset.hoshidictsDictionaryStyle = dictionary;
       style.dataset.hoshidictsGeneration = String(generation);
       style.textContent = [
-        `@scope (.gsm-hoshidicts-glossary-content[data-hoshidicts-dictionary=${cssAttributeString(dictionary)}]) {`,
-        entryStyles,
+        `@scope (.gsm-hoshidicts-glossary-content[data-hoshidicts-dictionary=${documentRef.defaultView.CSS.escape(dictionary)}]) {`,
+        ...[...sheet.cssRules].map((rule) => rule.cssText),
         "}",
       ].join("\n");
       host.appendChild(style);

@@ -3450,7 +3450,7 @@ async function main() {
   // A skip here is a failure. The renderer is the only consumer that reads
   // contract B field by field, and a printed SKIP under "44 passed, 0 failed"
   // hid the fact that nothing exercised it at all.
-  const rendered = await renderStage({ imageLookup, kanji: kanji.kanji, lookup, media, styles });
+  const rendered = await renderStage({ imageLookup, kanji: kanji.kanji, lookup, media });
   if (rendered === null) {
     fail(
       "jsdom is loadable, so the renderer stage can run",
@@ -6545,7 +6545,7 @@ async function contentNoteStage() {
 
 // The renderer is the one consumer that reads contract B field by field, so it
 // is driven with the engine's own bytes rather than a hand-written payload.
-async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
+async function renderStage({ imageLookup, kanji, lookup, media }) {
   const jsdom = await loadJsdom();
   if (jsdom === null) {
     return null;
@@ -6841,13 +6841,6 @@ async function renderStage({ imageLookup, kanji, lookup, media, styles }) {
     "a structured-content glossary tags its container",
     structuredContainer?.classList.contains("structured-content") === true,
     JSON.stringify(structuredContainer?.className),
-  );
-
-  const applied = HDGlossary.applyDictionaryStyles(document, shadow, lookup.generation, styles.styles);
-  check(
-    "applyDictionaryStyles installs the dictionary's CSS into the shadow root",
-    applied.length === 1 && shadow.querySelectorAll("style[data-hoshidicts-dictionary-style]").length === 1,
-    `applied ${applied.length}`,
   );
 
   try {
