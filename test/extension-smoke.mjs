@@ -7124,18 +7124,28 @@ async function contentNoteStage() {
 
     harness.emitOptions({ ...settings, lookupMode: "hover" });
     await harness.initialLookup();
+    const oldViewContext = harness.render().context;
     harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
     move();
     fire(75);
     const supersededPointer = harness.take("hd_lookup");
+    const oldViewRetired = harness.driver.snapshot().popupHidden && !oldViewContext.isCurrentRequest();
     const rendersBeforeNote = harness.renders.length;
-    move(harness.popup.getRootNode().host);
-    harness.edit(true);
+    harness.driver.setScanCandidate(null);
+    move();
+    fire(75);
     if (supersededPointer) harness.reply(supersededPointer, { dictionaryCount: 1, results: [harness.term("late pointer")] });
     await harness.settle();
-    result["popup entry and Note ownership cancel an unfinished pointer lookup before its late reply"] =
-      supersededPointer !== null && harness.renders.length === rendersBeforeNote
-        && harness.driver.snapshot().noteEditing && !harness.driver.snapshot().popupHidden;
+    const cancelledReplacement = harness.driver.snapshot().popupHidden && harness.renders.length === rendersBeforeNote;
+    await harness.initialLookup();
+    harness.edit(true);
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "別の語" });
+    move();
+    fire(75);
+    result["a new pointer candidate retires the old view while an open Note prevents replacement"] =
+      supersededPointer !== null && oldViewRetired && cancelledReplacement
+        && harness.driver.snapshot().noteEditing && harness.render().context.isCurrentRequest()
+        && harness.take("hd_lookup") === null && !harness.driver.snapshot().popupHidden;
     harness.edit(false);
 
     harness.driver.setScanCandidate(harness.candidate);
