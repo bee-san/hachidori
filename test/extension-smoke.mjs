@@ -3341,6 +3341,96 @@ async function main() {
   const missingKanji = await request("hd_kanji", { character: "鰷" });
   equal("an unmatched kanji maps to null", [missingKanji.ok, missingKanji.kanji], [true, null]);
 
+  const invalidLookupRequests = [
+    { type: "hd_lookup", text: "食\0べる" },
+    { type: "hd_lookup_dictionary", dictionary: FIXTURE_TITLE, text: "食\0べる" },
+    { type: "hd_kanji", character: "食\0" },
+    { type: "hd_lookup", text: "あ".repeat(1366) },
+    { type: "hd_lookup", text: "食", options: { primaryReading: "あ".repeat(1366) } },
+    { type: "hd_lookup", text: "食", options: { frequencyDictionary: "あ".repeat(1366) } },
+  ];
+  const invalidLookupReplies = [];
+  for (const message of invalidLookupRequests) {
+    invalidLookupReplies.push(await engineService.handleEngineMessage({ ...message, requestId: "bounded-input" }));
+  }
+  check(
+    "lookup inputs reject oversized UTF-8 and C-string NUL without truncation",
+    invalidLookupReplies.every((reply) => reply.ok === false
+      && reply.requestId === "bounded-input"
+      && /4096-byte|NUL/u.test(reply.error)
+      && (reply.kanji === null || reply.results?.length === 0)),
+    JSON.stringify(invalidLookupReplies),
+  );
+
+  const originalCcall = observedEngine.ccall;
+  const lookupNativeNames = new Set(["hdw_lookup", "hdw_lookup_dictionary", "hdw_kanji"]);
+  let injectedLookupJson = "null";
+  observedEngine.ccall = (name, ...args) => lookupNativeNames.has(name)
+    ? injectedLookupJson : originalCcall(name, ...args);
+  try {
+    const malformedReplies = [];
+    for (const type of ["hd_lookup", "hd_lookup_dictionary", "hd_kanji"]) {
+      for (const json of ["null", "{}", '{"results":[],"dictionaryCount":"4"}', '{"character":"食","entries":{}}']) {
+        injectedLookupJson = json;
+        malformedReplies.push(await engineService.handleEngineMessage({
+          type, requestId: "malformed", dictionary: FIXTURE_TITLE, text: "食", character: "食",
+        }));
+      }
+    }
+    check(
+      "malformed native lookup shapes fail instead of becoming successful misses",
+      malformedReplies.every((reply) => reply.ok === false && /malformed/u.test(reply.error)),
+      JSON.stringify(malformedReplies),
+    );
+
+    const responseLimit = 32 * 1024 * 1024;
+    for (const [type, nativeValue, field] of [
+      ["hd_lookup", { results: [first], dictionaryCount: 4 }, "results"],
+      ["hd_lookup_dictionary", { results: [first], dictionaryCount: 4 }, "results"],
+      ["hd_kanji", kanji.kanji, "kanji"],
+    ]) {
+      injectedLookupJson = JSON.stringify(nativeValue);
+      const message = { type, dictionary: FIXTURE_TITLE, text: "食", character: "食", requestId: "" };
+      const smallReply = await engineService.handleEngineMessage(message);
+      // A long multibyte correlation ID makes the complete public envelope
+      // cross the limit even though the native JSON itself is small.
+      const remaining = responseLimit - Buffer.byteLength(JSON.stringify(smallReply));
+      const exactId = "あ".repeat(Math.floor(remaining / 3)) + "x".repeat(remaining % 3);
+      const exact = await engineService.handleEngineMessage({ ...message, requestId: exactId });
+      const over = await engineService.handleEngineMessage({ ...message, requestId: exactId + "x" });
+      check(
+        `${type} accepts exactly 32 MiB and rejects one extra envelope byte`,
+        exact.ok === true && Buffer.byteLength(JSON.stringify(exact)) === responseLimit
+          && JSON.stringify(exact[field]) === JSON.stringify(smallReply[field])
+          && over.ok === false && /32 MiB/u.test(over.error)
+          && over.requestId === exactId + "x"
+          && Buffer.byteLength(JSON.stringify(over)) <= responseLimit,
+        JSON.stringify({ exactOk: exact.ok, overOk: over.ok, error: over.error }),
+      );
+    }
+    injectedLookupJson = JSON.stringify({ results: [], dictionaryCount: 4 });
+    const invalidId = await engineService.handleEngineMessage({ type: "hd_lookup", text: "食", requestId: {} });
+    const oversizedId = await engineService.handleEngineMessage({
+      type: "hd_lookup", text: "食", requestId: "x".repeat(responseLimit),
+    });
+    check(
+      "lookup correlation IDs fail closed when invalid or unable to fit an error reply",
+      invalidId.ok === false && invalidId.requestId === null
+        && oversizedId.ok === false && oversizedId.requestId === null
+        && Buffer.byteLength(JSON.stringify(oversizedId)) <= responseLimit,
+      JSON.stringify({ invalidOk: invalidId.ok, oversizedOk: oversizedId.ok }),
+    );
+  } finally {
+    observedEngine.ccall = originalCcall;
+  }
+  const afterBoundedFailure = await request("hd_lookup", { text: "食べる" });
+  check(
+    "a healthy lookup after boundary errors keeps its generation and complete result",
+    afterBoundedFailure.ok === true && afterBoundedFailure.generation === lookup.generation
+      && afterBoundedFailure.results[0]?.term.expression === "食べる",
+    JSON.stringify(afterBoundedFailure.error),
+  );
+
   const styles = await request("hd_styles");
   check(
     "hd_styles returns the dictionary's CSS",
