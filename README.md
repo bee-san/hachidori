@@ -63,20 +63,31 @@ Open Hachidori's options page to:
 
 - install Jitendex, JMnedict for Yomitan, Bee's Ultimate Kanji Dictionary, and Jiten Frequency Dictionary in one click;
 - import one or more Yomitan dictionaries;
-- choose whether each dictionary supplies terms, frequencies, pitch accents, or kanji;
+- enable or disable dictionaries without losing their place in your library;
 - search titles and aliases, select visible matches, and bulk enable, disable, favourite, or unfavourite them;
 - reorder dictionaries by dragging, with the arrow buttons, or by entering a position;
 - create ordered dictionary groups and arrange each group's dictionaries;
 - check managed dictionaries for updates or install them on one global schedule;
-- maintain a small personal dictionary from editable source, and add entries from term or kanji popups;
+- maintain a personal dictionary from editable source, and add entries from term or kanji popups;
 - configure the hover key, delay, scan length, result limit, frequency ranking, and the dictionary opened when you click a kanji.
+
+Settings opens with your library in lookup order. Section links take you straight
+to imports, updates, groups, personal entries, or lookup preferences. Bulk actions
+appear when you select dictionaries; disabled dictionaries stay readable and editable.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/settings-dark.png">
+    <img src="docs/assets/settings.png" alt="Hachidori Settings with section navigation and the installed dictionary library first" width="960">
+  </picture>
+</p>
 
 Selected dictionaries import one at a time, with an outcome retained for every archive; a failure does not stop the rest. The starter installer behaves the same way and retries only recommendations that are still missing. Large dictionaries can take several minutes, so keep the page open until the batch finishes.
 
 The kanji dictionary chooser accepts both traditional Yomitan kanji dictionaries and term dictionaries with single-kanji entries.
 
 <p align="center">
-  <img src="docs/assets/managed-dictionary-updates.png" alt="Hachidori Options showing the global managed-update controls and persisted per-dictionary update status" width="760">
+  <img src="docs/assets/managed-dictionary-updates.png" alt="Hachidori Settings showing the automatic update schedule and manual check and install controls" width="760">
 </p>
 
 Recommended dictionaries and imported dictionaries that declare complete HTTPS
