@@ -135,6 +135,8 @@
   let scanTimer = null;
   let hideTimer = null;
   let transferTimer = null;
+  let descendantTimer = null;
+  let pointerLevel = null;
   let pointerInPopup = false;
   let activationPressed = false;
   let activationCode = null;
@@ -735,6 +737,7 @@
     window.clearTimeout(scanTimer);
     window.clearTimeout(hideTimer);
     clearTransferTimer();
+    clearDescendantTimer();
     scanTimer = null;
     hideTimer = null;
     document.removeEventListener("mousemove", onMouseMove, true);
@@ -1044,7 +1047,7 @@
     return false;
   }
 
-  function positionPopup() {
+  function positionPopup(fromLevel = rootLevel) {
     if (!rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
       return;
     }
@@ -1052,26 +1055,28 @@
       hide();
       return;
     }
-    const position = calculatePopupPosition(
-      anchorRectFor(rootLevel.activeCandidate),
-      { height: window.innerHeight, width: window.innerWidth },
-      rootLevel.activeCandidate.vertical
-    );
-    // bpwhelan asked for this in the PR #549 review: the toolbar sits on the
-    // edge nearest the word, so it never covers the text being read.
-    if (position.placement !== "beside") {
-      const desired = position.placement === "above" ? "bottom" : "top";
-      if (rootLevel.popup.dataset.toolbarPosition !== desired) {
-        rootLevel.view.setToolbarPosition(desired);
+    if (fromLevel === rootLevel) {
+      const position = calculatePopupPosition(
+        anchorRectFor(rootLevel.activeCandidate),
+        { height: window.innerHeight, width: window.innerWidth },
+        rootLevel.activeCandidate.vertical
+      );
+      // The toolbar sits on the edge nearest the word being read.
+      if (position.placement !== "beside") {
+        const desired = position.placement === "above" ? "bottom" : "top";
+        if (rootLevel.popup.dataset.toolbarPosition !== desired) {
+          rootLevel.view.setToolbarPosition(desired);
+        }
       }
+      rootLevel.popup.style.left = `${position.left}px`;
+      rootLevel.popup.style.top = `${position.top}px`;
+      rootLevel.popup.style.width = `${position.width}px`;
+      rootLevel.popup.style.height = `${position.height}px`;
     }
-    rootLevel.popup.style.left = `${position.left}px`;
-    rootLevel.popup.style.top = `${position.top}px`;
-    rootLevel.popup.style.width = `${position.width}px`;
-    rootLevel.popup.style.height = `${position.height}px`;
     if (levels.length === 1) return;
-    let parentRect = rootLevel.popup.getBoundingClientRect();
-    for (const level of levels.slice(1)) {
+    const startDepth = Math.max(1, fromLevel.depth);
+    let parentRect = levels[startDepth - 1].popup.getBoundingClientRect();
+    for (const level of levels.slice(startDepth)) {
       if (level.popup.hidden) break;
       if (!anchorConnected(level.activeCandidate)) {
         hide(level);
@@ -1159,7 +1164,8 @@
       clearHideTimer();
     });
     popup.addEventListener("focusout", onPopupFocusOut);
-    popup.addEventListener("scroll", positionPopup, { passive: true });
+    popup.addEventListener("scroll", () => positionPopup(level), { passive: true });
+    popup.addEventListener("mouseenter", () => onPopupEnter(level));
     shadow.appendChild(popup);
     level.popup = popup;
     level.highlighter = highlighter.scope(level);
@@ -1176,7 +1182,7 @@
       onBeforeResultsRendered: () => pruneLevels(level.depth + 1),
       parseTagList: window.HDGlossary.parseTagList,
       popup,
-      positionPopup,
+      positionPopup: () => positionPopup(level),
       sourceHighlighter: level.highlighter,
       sourceHighlightEnabled: true,
       toolbarPosition: "top",
@@ -1226,6 +1232,7 @@
   function pruneLevels(depth, restoreFocus = true) {
     const source = levels[depth]?.activeCandidate?.anchor;
     const removed = levels.splice(Math.max(1, depth));
+    clearDescendantTimer();
     const focused = removed.some((level) => level.popup?.contains(shadow?.activeElement));
     for (const level of removed.reverse()) {
       level.retired = true;
@@ -1250,6 +1257,7 @@
     pendingCandidateLookup = null;
     clearHideTimer();
     clearTransferTimer();
+    pointerLevel = null;
     pruneLevels(1, false);
     rootLevel.activeCandidate = null;
     rootLevel.activeSignature = null;
@@ -1288,8 +1296,31 @@
           || pointInsidePopup(lastPointer.clientX, lastPointer.clientY))) {
         pointerInPopup = true;
         clearHideTimer();
-      } else scheduleHide();
+      } else if (lastPointer) scanPointer(lastPointer);
+      else scheduleHide();
     }, 80);
+  }
+
+  function clearDescendantTimer() {
+    if (descendantTimer !== null) window.clearTimeout(descendantTimer);
+    descendantTimer = null;
+  }
+
+  function onPopupEnter(level) {
+    pointerLevel = level;
+    pointerInPopup = true;
+    clearTransferTimer();
+    clearHideTimer();
+    clearDescendantTimer();
+    const depth = level.depth + 1;
+    if (depth >= levels.length) return;
+    const prune = () => {
+      descendantTimer = null;
+      if (!hasProtectedNote(depth) && (!pointerLevel || pointerLevel.depth < depth)
+          && !levels.slice(depth).some((child) => child.popup.contains(shadow.activeElement))) pruneLevels(depth);
+    };
+    if (options.popupHideDelayMs === 0) prune();
+    else descendantTimer = window.setTimeout(prune, options.popupHideDelayMs);
   }
 
   function popupHasFocus() {
@@ -1481,7 +1512,7 @@
       (level.highlighter || highlighter).apply(candidate, matchedText);
     }
     ensureDictionaryStyles(currentGeneration);
-    positionPopup();
+    positionPopup(level);
     if (typeof renderOptions.onBack === "function") {
       focusPopupControl(".gsm-hoshidicts-kanji-back", level);
     }
@@ -1520,7 +1551,7 @@
           "No dictionaries loaded. Import a Yomitan .zip from the Hachidori options page.",
           request.candidate
         );
-        positionPopup();
+        positionPopup(level);
         return false;
       }
       hide(level);
@@ -1575,7 +1606,8 @@
 
   function onInternalLink({ anchor, primaryReading = "", query }, level = rootLevel) {
     if (level.retired || !level.activeCandidate || !anchor?.isConnected
-        || !level.popup.contains(anchor) || !query || level.depth >= options.popupNestingMaxDepth) {
+        || !level.popup.contains(anchor) || !query || level.depth >= options.popupNestingMaxDepth
+        || window.innerWidth <= POPUP_PADDING_PX * 2 || window.innerHeight <= POPUP_PADDING_PX * 2) {
       return;
     }
     const existing = levels[level.depth + 1];
@@ -1595,6 +1627,7 @@
       vertical: false,
     };
     clearHideTimer();
+    clearDescendantTimer();
     child.pendingLink = runLookup(child.activeCandidate, { primaryReading }, child);
     void child.pendingLink.finally(() => { child.pendingLink = null; });
     return child.pendingLink;
@@ -1669,7 +1702,7 @@
       return false;
     }
     ensureDictionaryStyles(currentGeneration);
-    positionPopup();
+    positionPopup(level);
     focusPopupControl(".gsm-hoshidicts-kanji-back", level);
     return true;
   }
@@ -1900,6 +1933,7 @@
     }
     const leavingChain = pointerInPopup && levels.length > 1;
     pointerInPopup = false;
+    pointerLevel = null;
     if (leavingChain) scheduleTransferCheck();
     if (hasProtectedNote() || popupHasFocus() || pageEditorFocused()) {
       cancelCandidateScan();
