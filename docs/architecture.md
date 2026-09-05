@@ -112,6 +112,16 @@ after publication. A title collision, changed fingerprint, wrong archive
 revision, or failed import leaves the working generation loaded and reports the
 failure without publishing the candidate.
 
+## Settings interface
+
+Settings is one document with native section links: the installed library comes
+first, followed by import, updates, groups, custom source, and lookup preferences.
+The navigation becomes a wrapping link list in narrow windows; it does not need
+a router or duplicate views. Dictionary rows keep their stable controls across
+the existing focus-aware rerenders. Bulk actions appear when a selection exists,
+including selections outside the current search. Source editing remains lazy,
+and lookup preferences apply immediately; custom source still requires Save.
+
 ## Managed custom dictionary
 
 `custom-dictionary.js` is a context-independent ES module shared by Settings,

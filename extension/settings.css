@@ -1,39 +1,35 @@
-/*
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 
 :root {
   color-scheme: light dark;
-
-  --bg: #f6f6f4;
+  --bg: #f4f7f5;
   --surface: #ffffff;
-  --surface-sunken: #f0f0ee;
-  --border: #dedcd6;
-  --border-strong: #c4c1b8;
-  --text: #1c1b19;
-  --text-dim: #6a675f;
-  --accent: #7a4bd8;
+  --surface-sunken: #f6f8f7;
+  --border: #dce4df;
+  --border-strong: #bac9c0;
+  --text: #24372d;
+  --text-dim: #5d6e64;
+  --accent: #27694e;
   --accent-contrast: #ffffff;
-  --ok: #1f7a4d;
-  --error: #b4292b;
-  --radius: 10px;
-  --shadow: 0 1px 2px rgb(28 27 25 / 6%), 0 6px 16px rgb(28 27 25 / 4%);
+  --ok: #27694e;
+  --error: #ac3032;
+  --favorite: #946400;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17161a;
-    --surface: #1f1e23;
-    --surface-sunken: #26252b;
-    --border: #34323a;
-    --border-strong: #4a4752;
-    --text: #eceaf0;
-    --text-dim: #a29fab;
-    --accent: #b294f5;
-    --accent-contrast: #1b1a1f;
-    --ok: #6fd39b;
-    --error: #ff8f8b;
-    --shadow: none;
+    --bg: #171d19;
+    --surface: #1d2520;
+    --surface-sunken: #242e27;
+    --border: #354239;
+    --border-strong: #53665a;
+    --text: #e4ece6;
+    --text-dim: #acbeb1;
+    --accent: #9ad2af;
+    --accent-contrast: #17261c;
+    --ok: #9ad2af;
+    --error: #ffaaa7;
+    --favorite: #e4ba67;
   }
 }
 
@@ -43,131 +39,216 @@
 
 body {
   margin: 0;
-  padding: 0;
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.5 system-ui, sans-serif;
+  font:
+    14px/1.5 system-ui,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-.page {
-  max-width: 880px;
-  margin: 0 auto;
-  padding: 48px 24px 96px;
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
+a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button,
+.file-button {
+  cursor: pointer;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  padding: 10px 16px;
+  background: var(--surface);
+  transform: translateY(-150%);
+}
+.skip-link:focus {
+  transform: none;
+}
+
+.settings-shell {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  max-width: 1240px;
+  margin: 0 auto;
+}
+.settings-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: 100vh;
+  overflow-y: auto;
+  padding: 40px 20px;
+}
 .brand {
   display: flex;
   align-items: center;
-  gap: 14px;
-}
-
-.brand img {
-  border-radius: 12px;
-}
-
-.masthead h1 {
-  margin: 0;
-  font-size: 26px;
+  gap: 10px;
+  font-size: 17px;
   font-weight: 650;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.025em;
 }
-
-.lede {
-  margin: 6px 0 0;
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 36px 0;
+}
+.settings-nav a {
+  padding: 9px 10px;
+  border-radius: 5px;
   color: var(--text-dim);
+  text-decoration: none;
+  font-weight: 500;
 }
-
+.settings-nav a:hover {
+  background: var(--border);
+  color: var(--text);
+}
 .engine-status {
-  margin: 18px 0 0;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
+  display: block;
+  margin: 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
   color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
-.engine-status.is-ready {
+.engine-status.is-ready,
+.import-state.is-ready,
+.import-result.is-ready,
+.custom-dictionary-status.is-ready,
+.update-state.is-ready,
+.dict-update-status.is-ready {
   color: var(--ok);
-  border-color: color-mix(in srgb, var(--ok) 40%, var(--border));
 }
 
-.engine-status.is-error {
+.engine-status.is-error,
+.import-state.is-error,
+.import-result.is-error,
+.custom-dictionary-status.is-error,
+.update-state.is-error,
+.dict-update-status.is-error {
   color: var(--error);
-  border-color: color-mix(in srgb, var(--error) 40%, var(--border));
 }
 
-.card {
+.page {
+  min-width: 0;
+  min-height: 100vh;
+  padding: 38px 44px 80px;
+  border-inline: 1px solid var(--border);
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 22px 24px 24px;
+}
+.masthead {
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--border);
+}
+h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+.lede {
+  margin: 5px 0 0;
+  color: var(--text-dim);
+}
+.card {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  padding: 30px 0;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 24px;
 }
-
-.card-head {
+.card:last-child {
+  border-bottom: 0;
+}
+.section-heading {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
-
-.card h2 {
+.card-head {
+  display: grid;
+  gap: 5px;
+}
+h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 620;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.02em;
 }
-
-.hint {
+h3 {
   margin: 0;
-  max-width: 62ch;
+  font-size: 15px;
+  font-weight: 620;
+}
+.section-action {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.hint,
+.section-note,
+.editor-help {
+  margin: 0;
+  max-width: 66ch;
   color: var(--text-dim);
 }
-
+.section-note,
+.editor-help {
+  font-size: 12px;
+  line-height: 1.6;
+}
 code {
-  padding: 1px 5px;
-  border-radius: 4px;
+  padding: 1px 4px;
+  border-radius: 3px;
   background: var(--surface-sunken);
-  font-family: ui-monospace, monospace;
-  font-size: 0.92em;
+  font:
+    0.95em ui-monospace,
+    monospace;
 }
 
-.import-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 16px;
+.primary-button,
+.file-button {
+  width: fit-content;
+  padding: 9px 15px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
 }
-
+.primary-button:hover:not(:disabled),
+.file-button:hover {
+  filter: brightness(1.1);
+}
 .file-button {
   position: relative;
   display: inline-flex;
-  align-items: center;
-  padding: 9px 18px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-weight: 560;
-  cursor: pointer;
   overflow: hidden;
 }
-
-.file-button:hover {
-  filter: brightness(1.08);
-}
-
 .file-button:focus-within {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
-
 .file-button input {
   position: absolute;
   inset: 0;
@@ -175,266 +256,569 @@ code {
   opacity: 0;
   cursor: pointer;
 }
-
+.primary-button:disabled,
 .file-button:has(input:disabled) {
-  background: var(--border-strong);
+  background: var(--surface-sunken);
+  border-color: var(--border);
   color: var(--text-dim);
   cursor: default;
   filter: none;
 }
-
-.import-state {
-  margin: 0;
+button.ghost {
+  min-height: 32px;
+  min-width: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+}
+button.ghost:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--surface-sunken);
+}
+button.ghost:disabled {
   color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
+  border-color: var(--border);
+  cursor: default;
+  opacity: 0.6;
 }
-
-.import-state.is-ready {
-  color: var(--ok);
-}
-
-.import-state.is-error {
+button.danger {
   color: var(--error);
 }
+button.danger:hover:not(:disabled) {
+  border-color: var(--error);
+}
 
-.import-detail {
+.import-row,
+.update-actions,
+.custom-dictionary-actions,
+.recommended-retry,
+.dict-bulk-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.import-row {
+  gap: 12px;
+}
+.import-state,
+.update-last-checked,
+.update-state,
+.custom-dictionary-status {
   margin: 0;
-  padding: 12px 14px 12px 36px;
-  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.import-state:empty,
+.update-state:empty,
+.custom-dictionary-status:empty,
+.dict-group-error:empty {
+  /* Empty live regions must remain available for their first announcement. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.import-detail,
+.custom-dictionary-errors {
+  margin: 0;
+  padding: 12px 16px 12px 34px;
+  border-left: 3px solid var(--border-strong);
   background: var(--surface-sunken);
   color: var(--text-dim);
   overflow-wrap: anywhere;
 }
-
-.import-result + .import-result {
-  margin-top: 6px;
-}
-
-.import-result.is-ready {
-  color: var(--ok);
-}
-
-.import-result.is-error {
+.custom-dictionary-errors {
+  border-color: var(--error);
   color: var(--error);
 }
-
+.import-result + .import-result,
+.custom-dictionary-errors li + li {
+  margin-top: 6px;
+}
 .recommendations {
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-sunken);
 }
-
-.recommendations[hidden],
-.recommended-retry[hidden] {
-  display: none;
-}
-
 .recommendations-head {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  display: grid;
+  gap: 4px;
 }
-
-.recommendations h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 620;
-}
-
-.primary-button {
-  width: fit-content;
-  padding: 9px 18px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font: inherit;
-  font-weight: 560;
-  cursor: pointer;
-}
-
-.primary-button:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.primary-button:disabled {
-  background: var(--border-strong);
-  color: var(--text-dim);
-  cursor: default;
-}
-
-.recommended-retry {
-  margin: 0;
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 14px;
-  color: var(--text-dim);
-}
-
 .recommended-dictionary-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 24px;
   margin: 0;
   padding: 0;
   list-style: none;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
 }
-
 .recommended-dictionary-list li {
   min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-sunken);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  gap: 3px;
 }
-
 .recommended-dictionary-link {
   width: fit-content;
-  color: var(--accent);
-  font-weight: 560;
-  text-underline-offset: 2px;
+  font-weight: 600;
 }
-
-.recommended-dictionary-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-
-.recommended-dictionary-list span {
+.recommended-dictionary-list span,
+.recommended-retry {
   color: var(--text-dim);
-  font-size: 12.5px;
+  font-size: 12px;
 }
-
-.custom-dictionary-open {
-  width: fit-content;
+.recommended-retry {
+  margin: 0;
 }
-
-.custom-dictionary-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.custom-dictionary-form[hidden] {
-  display: none;
-}
-
-.custom-dictionary-source-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.custom-dictionary-source-field textarea {
-  width: 100%;
-  min-height: 190px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  resize: vertical;
+.track {
+  height: 3px;
   background: var(--surface-sunken);
-  color: var(--text);
-  font: 13px/1.5 ui-monospace, monospace;
-  tab-size: 2;
+  overflow: hidden;
+}
+/* Import progress has no byte count; only the batch outcome is determinate. */
+.track-fill {
+  width: 34%;
+  height: 100%;
+  background: var(--accent);
+  animation: slide 1.4s ease-in-out infinite;
+}
+@keyframes slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
 }
 
-.custom-dictionary-actions {
+.dict-controls {
   display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+}
+.dict-search {
+  flex: 1 1 240px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 10px;
+}
+.dict-search input {
+  grid-column: 1 / -1;
+}
+.dict-match-count {
+  grid-column: 2;
+  grid-row: 1;
+}
+.dict-match-count,
+.dict-selection-count {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.dict-selection-controls {
+  display: grid;
+  gap: 4px;
+}
+.dict-select-all,
+.cell {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.dict-list,
+.dict-group-list,
+.dict-group-members {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dict-list:not(:empty) {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.dict-row {
+  display: grid;
+  grid-template-columns: 16px 30px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px 12px;
+  padding: 14px 16px;
+}
+.dict-row + .dict-row {
+  border-top: 1px solid var(--border);
+}
+.dict-row.is-drop-target {
+  box-shadow: inset 0 3px var(--accent);
+}
+.dict-row.is-off {
+  background: var(--surface-sunken);
+}
+.dict-row-select,
+.dict-order,
+.toggle {
+  padding-top: 3px;
+}
+.dict-order {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+}
+.dict-drag {
+  font-size: 17px;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+}
+.dict-drag:active {
+  cursor: grabbing;
+}
+.dict-drag[draggable="false"] {
+  cursor: default;
+  opacity: 0.4;
+}
+.dict-rank {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.dict-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.dict-heading,
+.dict-badges {
+  display: flex;
+  align-items: baseline;
   flex-wrap: wrap;
   gap: 8px;
 }
-
-.custom-dictionary-status {
-  min-height: 1.5em;
+.dict-title {
+  font-size: 15px;
+  font-weight: 620;
+  overflow-wrap: anywhere;
+}
+.dict-favorite {
+  color: var(--favorite);
+}
+.dict-canonical,
+.dict-metadata,
+.dict-update-status,
+.dict-badge {
+  color: var(--text-dim);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.dict-badge {
+  font-variant-numeric: tabular-nums;
+}
+.dict-badge.is-empty {
+  display: none;
+}
+.dict-update-status.is-available {
+  color: var(--accent);
+  font-weight: 600;
+}
+.dict-footer {
+  grid-column: 3 / -1;
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.dict-alias {
+  flex: 1 1 220px;
+  max-width: 320px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dict-alias .cell-label {
+  white-space: nowrap;
+}
+.cell-label,
+.field-label {
+  font-size: 12px;
+  font-weight: 550;
+}
+.cell-label {
   color: var(--text-dim);
 }
-
-.custom-dictionary-status.is-ready {
-  color: var(--ok);
+.dict-actions,
+.dict-group-actions,
+.dict-group-member-actions {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 6px;
 }
-
-.custom-dictionary-status.is-error {
+.dict-actions {
+  margin-left: auto;
+}
+.dict-position {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+input[type="text"],
+input[type="search"],
+input[type="number"],
+select,
+textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+}
+.dict-display-name,
+.dict-position .dict-position-input {
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.dict-position .dict-position-input {
+  width: 4.5em;
+}
+.dict-group-create {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) auto;
+  justify-content: start;
+  align-items: end;
+  gap: 8px;
+}
+.dict-group-create label,
+.dict-group-name-field {
+  display: grid;
+  gap: 5px;
+}
+.dict-group-error {
+  grid-column: 1 / -1;
   color: var(--error);
+  font-size: 12px;
 }
-
-.custom-dictionary-errors {
+.dict-group-list {
+  display: grid;
+  gap: 12px;
+}
+.dict-group {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.dict-group-head,
+.dict-group-member {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+.dict-group-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.dict-group-add {
+  flex-shrink: 0;
+}
+.dict-group-members {
+  margin-top: 14px;
+}
+.dict-group-member {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  align-items: center;
+}
+.dict-group-member-label {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dict-group-member-canonical,
+.dict-group-members-empty {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.dict-group-members-empty {
+  margin: 12px 0 0;
+}
+.empty-state {
   margin: 0;
-  padding: 12px 14px 12px 36px;
-  border-radius: 8px;
+  padding: 28px 20px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
   background: var(--surface-sunken);
-  color: var(--error);
+  color: var(--text-dim);
+  text-align: center;
 }
-
-.custom-dictionary-errors li + li {
-  margin-top: 4px;
+.empty-state.compact {
+  padding: 16px;
 }
 
 .update-controls {
   display: flex;
-  flex-wrap: wrap;
   align-items: end;
-  gap: 12px 18px;
-}
-
-.update-schedule-field {
-  min-width: 220px;
-}
-
-.update-actions {
-  display: flex;
   flex-wrap: wrap;
+  gap: 16px 24px;
+}
+.update-schedule-field {
+  width: 260px;
+  max-width: 100%;
+}
+.custom-dictionary-open {
+  width: fit-content;
+}
+.custom-dictionary-form,
+.custom-dictionary-source-field {
+  display: grid;
+  gap: 12px;
+}
+.custom-dictionary-source-field {
+  gap: 6px;
+}
+.custom-dictionary-source-field textarea {
+  min-height: 200px;
+  padding: 14px;
+  background: var(--surface-sunken);
+  font:
+    13px/1.7 ui-monospace,
+    monospace;
+  resize: vertical;
+  tab-size: 2;
+}
+.lookup-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.lookup-group + .lookup-group {
+  margin-top: 12px;
+}
+.lookup-group legend {
+  margin-bottom: 14px;
+  padding: 0;
+  font-weight: 600;
+}
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 28px;
+}
+.field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-hint,
+.suffix {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.input-suffix {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
-
-.update-last-checked,
-.update-state {
-  margin: 0;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
+.input-suffix input {
+  width: 100%;
+}
+[hidden] {
+  display: none !important;
 }
 
-.update-state.is-ready,
-.dict-update-status.is-ready {
-  color: var(--ok);
-}
-
-.update-state.is-error,
-.dict-update-status.is-error {
-  color: var(--error);
-}
-
-/* Indeterminate for the current archive: hdw_import has no byte progress
-   callback. The status line reports completed archives across the batch. */
-.track {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--surface-sunken);
-  overflow: hidden;
-}
-
-.track-fill {
-  width: 34%;
-  height: 100%;
-  border-radius: 2px;
-  background: var(--accent);
-  animation: slide 1.4s ease-in-out infinite;
-}
-
-@keyframes slide {
-  0% {
-    transform: translateX(-100%);
+@media (max-width: 900px) {
+  .settings-shell {
+    grid-template-columns: 160px minmax(0, 1fr);
   }
-  100% {
-    transform: translateX(300%);
+  .settings-sidebar {
+    padding: 30px 12px;
+  }
+  .page {
+    padding: 30px 24px 60px;
+  }
+  .dict-footer {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 620px) {
+  .settings-shell {
+    display: block;
+  }
+  .settings-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding: 20px;
+  }
+  .settings-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 16px 0;
+  }
+  .settings-nav a {
+    padding: 6px 9px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .engine-status {
+    padding-top: 12px;
+  }
+  .page {
+    padding: 26px 20px 50px;
+    border-inline: 0;
+    border-top: 1px solid var(--border);
+  }
+  .recommended-dictionary-list,
+  .fields,
+  .dict-group-head,
+  .dict-group-member,
+  .dict-group-create {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dict-row {
+    grid-template-columns: 16px 24px minmax(0, 1fr);
+    gap: 10px;
+    padding: 14px;
+  }
+  .dict-row > .toggle {
+    grid-column: 3;
+  }
+  .dict-alias {
+    max-width: none;
+  }
+  .dict-group-actions,
+  .dict-group-member-actions {
+    justify-content: flex-end;
+  }
+  .dict-group-add-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
@@ -443,498 +827,5 @@ code {
     width: 100%;
     animation: none;
     opacity: 0.5;
-  }
-}
-
-.dict-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.dict-controls {
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-sunken);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 12px 18px;
-}
-
-.dict-controls[hidden] {
-  display: none;
-}
-
-.dict-search {
-  min-width: 220px;
-  flex: 1 1 280px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 4px 10px;
-}
-
-.dict-search .field-label {
-  grid-column: 1;
-}
-
-.dict-search input {
-  grid-column: 1 / -1;
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-}
-
-.dict-match-count,
-.dict-selection-count {
-  color: var(--text-dim);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.dict-match-count {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.dict-selection-controls {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-
-.dict-select-all {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  cursor: pointer;
-}
-
-.dict-select-all input,
-.dict-selected {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
-}
-
-.dict-bulk-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.dict-row {
-  display: grid;
-  grid-template-columns: auto 34px minmax(240px, 1fr) auto;
-  align-items: start;
-  gap: 8px 14px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-sunken);
-}
-
-.dict-row.is-drop-target {
-  border-color: var(--accent);
-}
-
-.dict-row.is-off {
-  opacity: 0.55;
-}
-
-.dict-row-select {
-  padding-top: 3px;
-  cursor: pointer;
-}
-
-.dict-order {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.dict-drag {
-  color: var(--text-dim);
-  cursor: grab;
-  font-size: 17px;
-  line-height: 1.4;
-  user-select: none;
-}
-
-.dict-drag:active {
-  cursor: grabbing;
-}
-
-.dict-drag[draggable="false"] {
-  cursor: default;
-  opacity: 0.4;
-}
-
-.dict-rank {
-  padding-top: 2px;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.dict-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.dict-heading {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-}
-
-.dict-title {
-  font-weight: 560;
-  overflow-wrap: anywhere;
-}
-
-.dict-favorite {
-  color: #c48a00;
-}
-
-.dict-canonical,
-.dict-metadata,
-.dict-update-status {
-  color: var(--text-dim);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
-.dict-update-status.is-available {
-  color: var(--accent);
-}
-
-.dict-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.dict-badge {
-  padding: 2px 7px;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  background: var(--surface);
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-}
-
-.dict-badge.is-empty {
-  color: var(--text-dim);
-}
-
-.dict-alias {
-  max-width: 320px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.dict-display-name,
-.dict-group-create input,
-.dict-group-name {
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-}
-
-.dict-group-create {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
-  align-items: end;
-  gap: 8px;
-}
-
-.dict-group-create label,
-.dict-group-name-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.dict-group-error {
-  grid-column: 1 / -1;
-  color: var(--error);
-  font-size: 12.5px;
-}
-
-.dict-group-error:empty {
-  display: none;
-}
-
-.dict-group-list,
-.dict-group-members {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.dict-group-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.dict-group {
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-sunken);
-}
-
-.dict-group-head,
-.dict-group-member {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 10px;
-}
-
-.dict-group-actions,
-.dict-group-member-actions,
-.dict-group-add-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.dict-group-add-row {
-  margin-top: 12px;
-}
-
-.dict-group-add-select {
-  min-width: 0;
-}
-
-.dict-group-add {
-  white-space: nowrap;
-}
-
-.dict-group-members {
-  margin-top: 10px;
-  border-top: 1px solid var(--border);
-}
-
-.dict-group-member {
-  padding: 9px 0;
-  border-bottom: 1px solid var(--border);
-  align-items: center;
-}
-
-.dict-group-member-label {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.dict-group-member-name {
-  overflow-wrap: anywhere;
-}
-
-.dict-group-member-canonical {
-  color: var(--text-dim);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
-.dict-group-members-empty {
-  margin: 10px 0 0;
-  color: var(--text-dim);
-  font-size: 12.5px;
-}
-
-.empty-state.compact {
-  padding: 14px;
-}
-
-.cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cell-label {
-  color: var(--text-dim);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.toggle {
-  padding-top: 2px;
-  cursor: pointer;
-}
-
-.toggle input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
-}
-
-.dict-actions {
-  grid-column: 3 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: end;
-  gap: 6px;
-}
-
-.dict-position {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.dict-position .dict-position-input {
-  width: 4.5em;
-  padding: 6px 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-}
-
-button.ghost {
-  min-width: 30px;
-  padding: 6px 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-}
-
-button.ghost:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-button.ghost:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-button.ghost.danger:hover:not(:disabled) {
-  border-color: var(--error);
-  color: var(--error);
-}
-
-.empty-state {
-  margin: 0;
-  padding: 22px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 8px;
-  color: var(--text-dim);
-  text-align: center;
-}
-
-.fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px 24px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.field-label {
-  font-weight: 560;
-}
-
-.field-hint {
-  color: var(--text-dim);
-  font-size: 12.5px;
-}
-
-.input-suffix {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.suffix {
-  color: var(--text-dim);
-}
-
-input[type="number"],
-select {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-}
-
-.input-suffix input[type="number"] {
-  width: 7em;
-}
-
-select:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-@media (max-width: 620px) {
-  .recommended-dictionary-list {
-    grid-template-columns: 1fr;
-  }
-
-  .dict-row {
-    grid-template-columns: auto 34px minmax(0, 1fr);
-  }
-
-  .dict-row > .toggle,
-  .dict-actions {
-    grid-column: 3;
-  }
-
-  .dict-group-create,
-  .dict-group-head,
-  .dict-group-member {
-    grid-template-columns: 1fr;
-  }
-
-  .dict-group-actions,
-  .dict-group-member-actions {
-    justify-content: flex-end;
-  }
-
-  .dict-group-add-row {
-    align-items: stretch;
-    flex-direction: column;
   }
 }

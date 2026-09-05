@@ -459,6 +459,11 @@ and kanji views, including projected prefill, hover/Escape draft protection,
 exact-view refresh, Back restoration, source adoption in the already-open
 Settings page, and retirement of each superseded OPFS generation.
 
+Settings layout checks cover library-first task order, selection-aware bulk
+actions, native keyboard section and skip links, short-window sidebar scrolling,
+and 320px layouts in light and dark mode. Disabled rows keep full text opacity,
+and empty status regions stay exposed instead of being removed from display.
+
 Managed-update indexes are intercepted on the service-worker CDP target and
 archives on the offscreen-document target, which also covers its engine worker;
 the harness deliberately does not intercept the dedicated worker directly. The
@@ -486,7 +491,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 78 assertions, and the summary line
+`PLANNED` at the top of the file names all 79 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

@@ -1010,6 +1010,7 @@ function renderDictionarySelection(visible) {
   selectVisible.checked = visible.length > 0 && visibleSelected === visible.length;
   selectVisible.indeterminate = visibleSelected > 0 && visibleSelected < visible.length;
   element("dict-selection-count").textContent = `${selectedDictionaryIds.size} selected`;
+  element("dict-bulk-actions").hidden = selectedDictionaryIds.size === 0;
   element("dict-match-count").textContent = `${visible.length} of ${dictionaries.length}`;
 }
 
