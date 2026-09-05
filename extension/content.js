@@ -234,6 +234,11 @@
     return JSON.stringify(left) === JSON.stringify(right);
   }
 
+  function sameDictionaryContents(left, right) {
+    const contents = (entries) => entries.map(({ displayName, favorite, ...dictionary }) => dictionary);
+    return left === right || sameDictionaries(contents(left), contents(right));
+  }
+
   function hasCapability(dictionary, kind) {
     if (kind === "freq") return dictionary.frequencyCount > 0;
     if (kind === "pitch") return dictionary.pitchCount > 0;
@@ -818,26 +823,22 @@
     const key = `${generation}\u0000${dictionary}\u0000${path}`;
     if (mediaCache.has(key)) return Promise.resolve(mediaCache.get(key));
     const pending = pendingMedia.get(key);
-    if (pending) {
-      // A newer view may reuse an in-flight image, but an obsolete subscriber
-      // must never take ownership back from that view.
-      pending.isCurrent = isCurrent;
-      return pending.promise;
-    }
-    const job = { isCurrent, promise: null };
-    job.promise = sendRequest("hd_media", { dictionary, generation, path }).then((reply) => {
-      if (pendingMedia.get(key) !== job || !job.isCurrent()
+    if (pending) return pending;
+    const job = sendRequest("hd_media", { dictionary, generation, path }).then((reply) => {
+      if (pendingMedia.get(key) !== job
           || generation !== currentGeneration || reply.generation !== generation) {
         throw new Error("obsolete media reply");
       }
       if (typeof reply.dataUrl !== "string") throw new Error("dictionary image is unavailable");
+      // Resource ownership outlives a hover. Keep valid bytes that finish while
+      // hidden; each image callback separately checks its current view.
       mediaCache.set(key, reply.dataUrl);
       return reply.dataUrl;
     }).finally(() => {
       if (pendingMedia.get(key) === job) pendingMedia.delete(key);
     });
     pendingMedia.set(key, job);
-    return job.promise;
+    return job;
   }
 
   function ensureDictionaryStyles(generation) {
@@ -1201,7 +1202,7 @@
   }
 
   async function restoreTermRender(previous, focusTarget) {
-    if (previous.generation !== currentGeneration || !sameDictionaries(previous.dictionaries, dictionaries)) {
+    if (previous.generation !== currentGeneration || !sameDictionaryContents(previous.dictionaries, dictionaries)) {
       const restoring = executeViewRequest(previous.request);
       const token = lookupToken;
       if (await restoring && token === lookupToken && currentViewRequest === previous.request) {
@@ -1671,7 +1672,6 @@
   }
 
   function invalidateStoredState(dictionaryChanged) {
-    if (dictionaryChanged) clearDictionaryResources();
     if (dictionaryChanged && popup && !popup.hidden) {
       if (noteEditing || pendingCustomAppends > 0) {
         deferredDictionaryInvalidationRevision = Math.max(
@@ -1702,6 +1702,7 @@
       return { adopted: false, dictionaryChanged: false };
     }
     const dictionaryChanged = !sameDictionaries(next.dictionaries, dictionaries);
+    if (dictionaryChanged && !sameDictionaryContents(next.dictionaries, dictionaries)) clearDictionaryResources();
     dictionaryStateRevision = next.revision;
     dictionaries = next.dictionaries;
     return { adopted: true, dictionaryChanged };

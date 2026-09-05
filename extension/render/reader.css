@@ -2309,11 +2309,6 @@ html[data-hoshidicts-theme="high-contrast"] .gsm-hoshidicts-audio-menu {
   white-space: normal;
 }
 
-.gloss-image-link[data-image-load-state="load-error"]
-  .gloss-image-container-overlay::after {
-  content: "Image failed to load";
-}
-
 .gloss-image-link[data-image-rendering="pixelated"] .gloss-image,
 .gloss-image-link[data-image-rendering="crisp-edges"] .gloss-image {
   image-rendering: pixelated;
@@ -2353,8 +2348,13 @@ html[data-hoshidicts-theme="high-contrast"] .gsm-hoshidicts-audio-menu {
   display: inline-block;
 }
 
-.gloss-image-link[data-collapsed="true"] .gloss-image-link-text {
+.gloss-image-link[data-collapsed="true"] .gloss-image-link-text,
+.gloss-image-link[data-image-load-state="load-error"] .gloss-image-link-text {
   display: inline;
+}
+
+.gloss-image-link[data-image-load-state="load-error"] .gloss-image-container {
+  display: none;
 }
 
 .gloss-image-link[data-vertical-align="baseline"] { vertical-align: baseline; }

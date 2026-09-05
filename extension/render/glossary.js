@@ -738,7 +738,8 @@
       background.style.removeProperty("--image");
       link.dataset.imageLoadState = "load-error";
       link.setAttribute("role", "img");
-      link.setAttribute("aria-label", image.alt ? `${image.alt}: Image failed to load` : "Image failed to load");
+      linkText.textContent = image.alt ? `${image.alt}: Image failed to load` : "Image failed to load";
+      link.setAttribute("aria-label", linkText.textContent);
       onLayoutChange();
     };
     image.addEventListener("load", () => {
