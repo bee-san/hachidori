@@ -731,8 +731,37 @@
       : () => {};
     const ownsView = typeof state.isCurrent === "function" ? state.isCurrent : () => true;
     const isCurrent = () => image.isConnected && ownsView();
+    let previewHovered = false;
+    let previewFocused = false;
+    const showPreview = () => {
+      if (!isCurrent()) return;
+      state.requestImagePreview?.(link, image);
+    };
+    const hidePreview = () => {
+      state.hideImagePreview?.(link);
+    };
+    const hideUnownedPreview = () => {
+      if (!previewHovered && !previewFocused) hidePreview();
+    };
+    link.addEventListener("mouseenter", () => {
+      previewHovered = true;
+      showPreview();
+    });
+    link.addEventListener("mouseleave", () => {
+      previewHovered = false;
+      hideUnownedPreview();
+    });
+    link.addEventListener("focus", () => {
+      previewFocused = true;
+      showPreview();
+    });
+    link.addEventListener("blur", () => {
+      previewFocused = false;
+      hideUnownedPreview();
+    });
     const failImage = () => {
       if (!isCurrent()) return;
+      hidePreview();
       image.hidden = true;
       link.removeAttribute("href");
       background.style.removeProperty("--image");
@@ -746,6 +775,7 @@
       if (!isCurrent()) return;
       link.dataset.imageLoadState = "loaded";
       onLayoutChange();
+      state.refreshImagePreview?.(link, image);
     });
     image.addEventListener("error", failImage);
     parent.appendChild(link);
@@ -1023,6 +1053,9 @@
       isCurrent: options.isCurrent,
       onInternalLink: options.onInternalLink,
       onLayoutChange: options.onLayoutChange,
+      requestImagePreview: options.requestImagePreview,
+      refreshImagePreview: options.refreshImagePreview,
+      hideImagePreview: options.hideImagePreview,
       resolveMedia: typeof options.resolveMedia === "function"
         ? ({ path, width, height, isCurrent }) => options.resolveMedia({
             dictionary: options.dictionary,

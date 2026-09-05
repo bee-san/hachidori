@@ -34,6 +34,7 @@ import {
   buildRecommendedZip,
   buildTitledZip,
   buildTrainedZip,
+  imagePreviewFixture,
   makePng,
 } from "./make-fixture.mjs";
 import { recommendedIndexUrlMatches } from "../extension/managed-dictionary-source.js";
@@ -3668,6 +3669,21 @@ async function main() {
     fileName: "restore-after-rejected-reimport.zip",
   });
 
+  const previewFixture = imagePreviewFixture();
+  const previewImport = await request("hd_import", {
+    blobUrl: createObjectURL(previewFixture.archive), fileName: "image-preview.zip",
+  });
+  const previewMedia = [];
+  for (const image of previewFixture.images) {
+    const reply = await request("hd_media", {
+      dictionary: previewFixture.title, generation: previewImport.generation, path: image.path,
+    });
+    previewMedia.push(reply.ok && reply.dataUrl === `data:${image.type};base64,${image.bytes.toString("base64")}`);
+  }
+  check("real WASM imports AVIF and SVG and returns their exact bytes with the correct MIME types",
+    previewImport.ok && previewMedia.every(Boolean), JSON.stringify(previewMedia));
+  await request("hd_remove", { title: previewFixture.title });
+
   section("renderer against real engine output");
   // 漢字 is the fixture's structured-content entry, the only one carrying an <img>.
   const imageLookup = await request("hd_lookup", {
@@ -5980,6 +5996,7 @@ async function staleKanjiResponseStage(invalidation) {
     url: "https://example.test/",
   });
   const { window } = dom;
+  window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
   let storageListener = null;
   let initialStorageCallback = null;
   let pending = null;
@@ -6061,6 +6078,7 @@ async function staleKanjiResponseStage(invalidation) {
     popup,
     {
       clear() {},
+      hideImagePreview() {},
       renderKanji(value) { renders.push(value); },
       renderResults(value) { renders.push(value); },
       setToolbarPosition() {},
@@ -6135,6 +6153,7 @@ async function contentNoteStage() {
     let closeNext = false;
     let closeCalls = 0;
     let clearCount = 0;
+    let previewDismissals = 0;
     let stylesGeneration = 2;
     let holdStyles = false;
     const appliedStyles = [];
@@ -6149,6 +6168,7 @@ async function contentNoteStage() {
     }
 
     const view = {
+      hideImagePreview() { previewDismissals += 1; },
       clear() {
         clearCount += 1;
         stopEditing();
@@ -6184,7 +6204,9 @@ async function contentNoteStage() {
       },
       parseTagList() { return []; },
     };
+    window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
     window.HDPopup = {
+      ...window.HDPopup,
       createPopupView(options) {
         popupCallbacks = options;
         return view;
@@ -6393,7 +6415,7 @@ async function contentNoteStage() {
       sent,
       settle,
       state,
-      stats() { return { clearCount, closeCalls }; },
+      stats() { return { clearCount, closeCalls, previewDismissals }; },
       take,
       term,
       setCloseNext(value) { closeNext = value === true; },
@@ -6996,6 +7018,63 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function previewInvalidationCase() {
+    const cases = [];
+    for (const kind of ["term", "clicked-term", "kanji", "options", "dictionary-note"]) {
+      const harness = await createHarness({ title: "Generic", kind: kind === "kanji" ? "kanji" : "term" });
+      await harness.initialLookup();
+      const previous = harness.render().context;
+      const before = harness.stats().previewDismissals;
+      let operation;
+      if (kind === "term") operation = harness.driver.runLookup(harness.candidate);
+      else if (kind === "clicked-term" || kind === "kanji") operation = harness.callbacks().onKanjiClick("食");
+      else if (kind === "options") harness.emitOptions({ maxResults: 9 });
+      else {
+        harness.edit(true);
+        harness.emitState(harness.state(2, "new dictionary state"));
+      }
+      const dismissedBeforeReply = harness.stats().previewDismissals === before + 1
+        && previous.isCurrentRequest() === false;
+      const retainedDraft = kind !== "dictionary-note" || !harness.driver.snapshot().popupHidden;
+      const request = harness.take(kind === "term" ? "hd_lookup" : kind === "kanji" ? "hd_kanji" : "hd_lookup_dictionary");
+      if (request) harness.reply(request, { dictionaryCount: 1, results: [harness.term("食")],
+        kanji: { character: "食", entries: [{ dictionary: "Generic" }] } });
+      await operation;
+      cases.push(dismissedBeforeReply && retainedDraft);
+      harness.close();
+    }
+    const focused = await createHarness();
+    await focused.initialLookup();
+    const link = focused.popup.ownerDocument.createElement("a");
+    link.href = "#";
+    link.textContent = "Keyboard image owner";
+    focused.popup.appendChild(link);
+    focused.driver.scheduleHide();
+    const pendingBeforeFocus = focused.driver.hideTimerPending();
+    link.focus();
+    const focusCancelledHide = !focused.driver.hideTimerPending();
+    focused.driver.scheduleHide();
+    const stayedUnscheduled = !focused.driver.hideTimerPending();
+    link.blur();
+    await focused.settle();
+    const leavingRearmed = focused.driver.hideTimerPending();
+    await new Promise(done => setTimeout(done, 180));
+    const hiddenAfterBlur = focused.driver.snapshot().popupHidden;
+    await focused.initialLookup();
+    link.focus();
+    link.blur();
+    focused.popup.replaceChildren();
+    await focused.settle();
+    const replacementDidNotScheduleHide = !focused.driver.hideTimerPending();
+    focused.close();
+    return {
+      "new term or kanji requests and settings invalidation dismiss previews before their replies": cases.every(Boolean),
+      "popup keyboard focus cancels hover dismissal and leaving focus rearms it": pendingBeforeFocus
+        && focusCancelledHide && stayedUnscheduled && leavingRearmed && hiddenAfterBlur,
+      "replacing focused popup content does not schedule dismissal of its refreshed view": replacementDidNotScheduleHide,
+    };
+  }
+
   async function boundedMediaCase() {
     const result = {};
     const url = "data:image/png;base64,YQ==";
@@ -7127,7 +7206,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
-    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase() },
+    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
     deferredInvalidation: await deferredInvalidationCase(),
@@ -7476,11 +7555,178 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   check("renderNotice replaces the view", popup.textContent.includes("nothing found"), JSON.stringify(popup.textContent));
   view.clear();
   equal("clear empties the popup", popup.childElementCount, 0);
-  view.destroy();
+  await imagePreviewStage({ view, popup, shadow, document, window, candidate,
+    calculatePopupPosition: HDPopup.calculatePopupPosition,
+    result: imageLookup.results[0], mediaUrl: media.dataUrl });
   structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await mediaRenderStage({ HDGlossary, document, window });
   dom.window.close();
   return true;
+}
+
+async function imagePreviewStage({ view, popup, shadow, document, window, candidate, result, mediaUrl, calculatePopupPosition }) {
+  let requests = 0;
+  let ownsRequest = true;
+  let holdFirstMedia = false;
+  let resolveHeldMedia;
+  const preview = () => shadow.querySelector(".gsm-hoshidicts-image-hover-preview");
+  const originalRect = window.Element.prototype.getBoundingClientRect;
+  window.Element.prototype.getBoundingClientRect = function () {
+    if (this === popup) return { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight,
+      width: window.innerWidth, height: window.innerHeight };
+    return this.classList.contains("gsm-hoshidicts-image-hover-preview")
+      ? { left: 0, top: 0, right: 320, bottom: 240, width: 320, height: 240 }
+      : originalRect.call(this);
+  };
+  const render = async () => {
+    ownsRequest = true;
+    view.renderResults([{ ...result, term: { ...result.term, glossaries: ["A", "B"].map((dictionary) => ({
+      dictionary,
+      glossary: JSON.stringify([{ type: "structured-content", content: {
+        tag: "img", path: `media/${dictionary}.png`, width: 16, height: 16,
+        alt: `${dictionary} image`, appearance: "monochrome", pixelated: true,
+      } }]),
+    })) } }], candidate, {
+      generation: 2,
+      dictionaryPresentation: ["A", "B"].map((title) => ({ title, favorite: true })),
+      isCurrentRequest: () => ownsRequest,
+      resolveMedia({ path }) {
+        requests += 1;
+        return holdFirstMedia && path === "media/A.png"
+          ? new Promise((resolveMedia) => { resolveHeldMedia = resolveMedia; })
+          : Promise.resolve(mediaUrl);
+      },
+    });
+    await new Promise((done) => setTimeout(done, 0));
+    const links = [...popup.querySelectorAll(".gloss-image-link")];
+    links.forEach((link, index) => {
+      const image = link.querySelector("img");
+      const left = index === 0 ? 0 : window.innerWidth - 16;
+      const top = index === 0 ? 0 : window.innerHeight - 16;
+      image.getBoundingClientRect = () => ({ left, top, right: left + 16, bottom: top + 16, width: 16, height: 16 });
+      Object.defineProperties(image, {
+        naturalWidth: { value: 16 }, naturalHeight: { value: 16 }, complete: { value: true },
+      });
+    });
+    return links;
+  };
+  const event = (target, type) => target.dispatchEvent(new window.Event(type));
+  try {
+    let links = await render();
+    const lazy = !preview();
+    const beforeRequests = requests;
+    links[0].focus();
+    const first = preview();
+    event(links[0], "mouseenter");
+    const stable = preview() === first;
+    const firstFits = first && Number.parseFloat(first.style.left) >= 8 && Number.parseFloat(first.style.top) >= 8;
+    const firstSource = first?.querySelector("img");
+    check("image preview is lazy, shadow-owned and reuses the exact source without another media request",
+      lazy && first?.parentNode === shadow && first.getAttribute("aria-hidden") === "true"
+        && firstSource?.src === mediaUrl && firstSource.alt === "A image"
+        && first.dataset.appearance === "monochrome" && first.dataset.imageRendering === "pixelated"
+        && shadow.activeElement === links[0] && stable && requests === beforeRequests
+        && links[0].querySelector(".gloss-image-container").style.width === "16px",
+      JSON.stringify({ lazy, stable, requests, beforeRequests, source: firstSource?.src }));
+
+    event(links[0], "mouseleave");
+    const focusSurvivedLeave = preview() === first;
+    event(links[0], "mouseenter");
+    links[0].blur();
+    const hoverSurvivedBlur = preview() === first;
+    event(links[0], "mouseleave");
+    const bothLeftClosed = !preview();
+    links[0].focus();
+    links[1].focus();
+    const second = preview();
+    event(links[0], "mouseleave");
+    event(links[0], "blur");
+    const staleLeaveIgnored = preview() === second;
+    const secondFits = second && Number.parseFloat(second.style.left) + 320 <= window.innerWidth - 8
+      && Number.parseFloat(second.style.top) + 240 <= window.innerHeight - 8;
+    // 92vw/vh produce fractional CSS pixels in a 320x240 Chrome viewport.
+    // Rounding after clamping would cross the right/bottom padding boundary.
+    const fractionalSize = { width: 294.390625, height: 220.796875 };
+    const fractionalCornersFit = [0, 304].every(left => [0, 224].every(top => {
+      const position = calculatePopupPosition({ left, top, right: left + 16, bottom: top + 16 },
+        fractionalSize, { width: 320, height: 240 }, { gap: 8, padding: 8, vertical: true });
+      return position.left >= 8 && position.top >= 8
+        && position.left + fractionalSize.width <= 312 && position.top + fractionalSize.height <= 232;
+    }));
+    event(popup, "scroll");
+    const focusedScrollKept = Boolean(second) && preview() === second;
+    links[1].blur();
+    const blurred = !preview();
+    event(links[1], "mouseenter");
+    event(links[1], "mouseleave");
+    const left = !preview();
+    event(links[0], "mouseenter");
+    event(window, "resize");
+    const resized = !preview();
+    event(links[0], "mouseenter");
+    event(popup, "scroll");
+    const scrolled = !preview();
+    event(links[0], "mouseenter");
+    event(links[0].querySelector("img"), "error");
+    const failed = !preview();
+    check("image previews clamp both viewport corners and close only their current hover or focus owner",
+      firstFits && secondFits && fractionalCornersFit && focusSurvivedLeave && hoverSurvivedBlur && bothLeftClosed
+        && focusedScrollKept && staleLeaveIgnored && blurred && left && resized && scrolled && failed,
+      JSON.stringify({ firstFits, secondFits, fractionalCornersFit, focusSurvivedLeave, hoverSurvivedBlur, bothLeftClosed,
+        focusedScrollKept, staleLeaveIgnored, blurred, left, resized, scrolled, failed }));
+
+    links = await render();
+    event(links[0], "mouseenter");
+    const beforeTab = Boolean(preview());
+    popup.querySelectorAll('[role="tab"]')[1].click();
+    const tabClosed = !preview();
+    const current = popup.querySelector(".gloss-image-link");
+    await new Promise((done) => setTimeout(done, 0));
+    current.focus();
+    ownsRequest = false;
+    view.hideImagePreview?.();
+    event(current, "mouseenter");
+    check("a tab change or pending newer request prevents obsolete connected images from reopening a preview",
+      beforeTab && tabClosed && current.isConnected && !preview(),
+      JSON.stringify({ beforeTab, tabClosed, connected: current.isConnected, open: Boolean(preview()) }));
+
+    holdFirstMedia = true;
+    links = await render();
+    event(links[0], "mouseenter");
+    links[1].focus();
+    const newerPreview = preview();
+    resolveHeldMedia(mediaUrl);
+    await new Promise((done) => setTimeout(done, 0));
+    event(links[0].querySelector("img"), "load");
+    const newerIntentPreserved = Boolean(newerPreview) && preview() === newerPreview;
+    links = await render();
+    event(links[0], "mouseenter");
+    event(window, "resize");
+    resolveHeldMedia(mediaUrl);
+    await new Promise((done) => setTimeout(done, 0));
+    event(links[0].querySelector("img"), "load");
+    check("late image loads cannot steal newer preview intent or revive a dismissed preview",
+      newerIntentPreserved && !preview(),
+      JSON.stringify({ newerIntentPreserved, dismissedRevived: Boolean(preview()) }));
+    holdFirstMedia = false;
+
+    links = await render();
+    event(links[0], "mouseenter");
+    const beforeClear = Boolean(preview());
+    view.clear();
+    const cleared = !preview();
+    links = await render();
+    event(links[0], "mouseenter");
+    const beforeDestroy = Boolean(preview());
+    view.destroy();
+    event(links[0], "mouseenter");
+    check("clearing or destroying the popup removes its preview and invalidates its image listeners",
+      beforeClear && cleared && beforeDestroy && !preview(),
+      JSON.stringify({ beforeClear, cleared, beforeDestroy, open: Boolean(preview()) }));
+  } finally {
+    window.Element.prototype.getBoundingClientRect = originalRect;
+    view.destroy();
+  }
 }
 
 async function mediaRenderStage({ HDGlossary, document, window }) {

@@ -8,7 +8,7 @@ Hachidori is a Manifest V3 Chrome extension with a native C++ dictionary engine 
 web page
   └─ content.js
        ├─ scans Japanese text near the pointer
-       ├─ renders popup.html in an isolated iframe
+       ├─ renders the popup in a closed shadow root
        └─ appends popup Note entries to the managed custom source
 
 settings.html / content.js
@@ -219,8 +219,34 @@ and teardown detach the queue before settling old jobs. Settlement releases
 timers and owned capacity exactly once, so late replies after timeout or
 invalidation cannot publish bytes or disturb replacement jobs. Chrome runtime
 messages already sent cannot be aborted: the deadline bounds logical ownership
-and waiting, not underlying native execution. Larger image hover/focus previews
-remain separate E6 work.
+and waiting, not underlying native execution.
+
+Hovering or keyboard-focusing an image lazily opens one larger, fixed preview.
+It is a sibling of the popup inside the same closed shadow root, so it inherits
+the palette without being clipped by the glossary card or popup scrollport.
+The preview copies the original image's exact current source and alt text; it
+does not resolve media again or change inline dimensions. The shared positioning
+function clamps it to the viewport with an 8-pixel margin. Pixelated and
+monochrome presentation are retained, and reduced motion disables the animation.
+
+One popup-owned requested image, including a still-loading image, controls the
+preview. A load may resume only that current intent: it cannot replace a newer
+focus/hover preview or revive one dismissed during loading. Leave or blur
+dismisses the appropriate owner only when neither hover nor focus remains.
+Image failure, tab/view replacement, pending navigation, settings invalidation
+and teardown dismiss it regardless of those interaction states. Hover scrolling
+closes the preview; keyboard-induced popup scrolling repositions a still-visible
+focused owner.
+There is no document-wide observer, polling or per-image observer.
+
+Keyboard focus inside the popup cancels hover dismissal, while genuine focus
+departure rearms it. Focusout waits for removal/focus transfer to settle so
+replacing a focused Note form cannot schedule dismissal of its refreshed result.
+Escape, outside clicks and a new lookup still explicitly dismiss or replace the
+view. Real-WASM and Chrome checks import genuine AVIF and SVG resources and
+verify exact bytes, MIME types, decoded dimensions and preview source reuse.
+
+![Keyboard-focused dictionary image enlarged outside the glossary card](assets/image-preview.png)
 
 ## Dictionary presentation boundary
 

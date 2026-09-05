@@ -874,6 +874,38 @@
     return null;
   }
 
+  function calculatePopupPosition(anchorRect, popupSize, viewport, { gap = 4, padding = 6, vertical = false } = {}) {
+    const width = Math.min(popupSize.width, Math.max(1, viewport.width - padding * 2));
+    const height = Math.min(popupSize.height, Math.max(1, viewport.height - padding * 2));
+    const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(value, maximum));
+    let left;
+    let top;
+    let placement;
+    if (vertical) {
+      const spaceRight = viewport.width - anchorRect.right - gap;
+      const spaceLeft = anchorRect.left - gap;
+      left = spaceRight >= width || spaceRight >= spaceLeft
+        ? anchorRect.right + gap
+        : anchorRect.left - gap - width;
+      top = anchorRect.top;
+      placement = "beside";
+    } else {
+      const spaceBelow = Math.max(0, viewport.height - padding - anchorRect.bottom - gap);
+      const spaceAbove = Math.max(0, anchorRect.top - gap - padding);
+      const placeAbove = spaceAbove >= height || (spaceBelow < height && spaceAbove >= spaceBelow);
+      top = placeAbove ? anchorRect.top - gap - height : anchorRect.bottom + gap;
+      left = anchorRect.left;
+      placement = placeAbove ? "above" : "below";
+    }
+    return {
+      height,
+      left: clamp(Math.round(left), padding, viewport.width - width - padding),
+      placement,
+      top: clamp(Math.round(top), padding, viewport.height - height - padding),
+      width,
+    };
+  }
+
   function createPopupView(options) {
     const documentRef = options.document;
     const windowRef = options.window;
@@ -930,11 +962,82 @@
     let currentNoteControls = null;
     let renderRevision = 0;
     let currentResultPanel = null;
+    let imagePreview = null;
     let masonryFrame = null;
     const masonryObserver = typeof windowRef.ResizeObserver === "function"
       ? new windowRef.ResizeObserver(() => scheduleMasonry())
       : null;
     popup.dataset.toolbarPosition = toolbarPosition;
+
+    function hideImagePreview(owner = null) {
+      if (!imagePreview || (owner && imagePreview.owner !== owner)) return;
+      imagePreview.element?.remove();
+      imagePreview = null;
+    }
+
+    function positionImagePreview(anchorRect = imagePreview.image.getBoundingClientRect()) {
+      const preview = imagePreview.element;
+      const position = calculatePopupPosition(anchorRect, preview.getBoundingClientRect(), {
+        width: windowRef.innerWidth, height: windowRef.innerHeight,
+      }, { gap: 8, padding: 8, vertical: true });
+      preview.style.left = `${position.left}px`;
+      preview.style.top = `${position.top}px`;
+    }
+
+    function refreshImagePreview(link, image) {
+      // Image completion resumes only the most recent interaction. It must
+      // not steal another image's focus or revive a dismissed pending preview.
+      if (imagePreview?.owner !== link) return;
+      const source = image.currentSrc || image.src;
+      if (image.hidden || !source) return;
+      if (imagePreview.source === source) return;
+      imagePreview.element?.remove();
+      const preview = documentRef.createElement("div");
+      preview.className = "gsm-hoshidicts-image-hover-preview";
+      preview.setAttribute("aria-hidden", "true");
+      preview.dataset.appearance = link.dataset.appearance;
+      preview.dataset.imageRendering = link.dataset.imageRendering;
+      const expanded = documentRef.createElement("img");
+      expanded.src = source;
+      expanded.alt = image.alt;
+      expanded.decoding = "async";
+      expanded.draggable = false;
+      preview.appendChild(expanded);
+      // A sibling in the same shadow root retains the palette while escaping
+      // the glossary card's paint containment and the popup's scroll clipping.
+      popup.parentNode.appendChild(preview);
+      imagePreview.source = source;
+      imagePreview.element = preview;
+      positionImagePreview();
+    }
+
+    function requestImagePreview(link, image) {
+      if (imagePreview?.owner !== link) {
+        hideImagePreview();
+        imagePreview = { owner: link, image, source: null, element: null };
+      }
+      refreshImagePreview(link, image);
+    }
+
+    const onPopupScroll = () => {
+      if (!imagePreview) return;
+      const { owner, image, element } = imagePreview;
+      if (owner.getRootNode().activeElement !== owner || !element) {
+        hideImagePreview();
+        return;
+      }
+      const anchorRect = image.getBoundingClientRect();
+      const bounds = popup.getBoundingClientRect();
+      if (anchorRect.bottom <= bounds.top || anchorRect.top >= bounds.bottom
+          || anchorRect.right <= bounds.left || anchorRect.left >= bounds.right) {
+        hideImagePreview();
+        return;
+      }
+      // Native keyboard focus may scroll its image into view after focus.
+      // Retain that focused preview while closing ordinary hover previews.
+      positionImagePreview(anchorRect);
+    };
+    popup.addEventListener("scroll", onPopupScroll, true);
 
     function resetMasonry(grid) {
       grid.classList.remove("gsm-hoshidicts-glossary-grid-masonry");
@@ -983,7 +1086,10 @@
       });
     }
 
-    const onWindowResize = () => scheduleMasonry();
+    const onWindowResize = () => {
+      hideImagePreview();
+      scheduleMasonry();
+    };
     windowRef.addEventListener("resize", onWindowResize);
 
     function applyToolbarLayout() {
@@ -1045,6 +1151,7 @@
     }
 
     function clear() {
+      hideImagePreview();
       renderRevision += 1;
       currentResultPanel = null;
       currentNoteControls?.close(false);
@@ -1564,6 +1671,7 @@
       const revision = ++renderRevision;
       const isCurrent = () => revision === renderRevision && ownsResultPanel(panel, renderContext);
       const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
+      hideImagePreview();
       panel.replaceChildren();
       const deferredGlossaryFills = [];
       let lookupStats = null;
@@ -1711,6 +1819,9 @@
                 isCurrent,
                 onInternalLink: renderContext.onInternalLink,
                 onLayoutChange: positionIfCurrent,
+                requestImagePreview,
+                refreshImagePreview,
+                hideImagePreview,
                 resolveMedia: renderContext.resolveMedia,
               }
             );
@@ -2198,6 +2309,7 @@
 
     return {
       clear,
+      hideImagePreview,
       closeNoteForm() {
         return currentNoteControls?.close() === true;
       },
@@ -2210,6 +2322,7 @@
       setToolbarPosition,
       scheduleMasonry,
       destroy() {
+        hideImagePreview();
         renderRevision += 1;
         currentResultPanel = null;
         if (masonryFrame !== null) {
@@ -2218,11 +2331,13 @@
         }
         masonryObserver?.disconnect();
         windowRef.removeEventListener("resize", onWindowResize);
+        popup.removeEventListener("scroll", onPopupScroll, true);
       },
     };
   }
 
   return {
+    calculatePopupPosition,
     createDictionaryDisplayNames,
     createFrequencyTags,
     createPitchTag,
