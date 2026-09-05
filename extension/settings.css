@@ -2,34 +2,36 @@
 
 :root {
   color-scheme: light dark;
-  --bg: #f4f7f5;
+  --bg: #f2f3f5;
   --surface: #ffffff;
-  --surface-sunken: #f6f8f7;
-  --border: #dce4df;
-  --border-strong: #bac9c0;
-  --text: #24372d;
-  --text-dim: #5d6e64;
-  --accent: #27694e;
+  --surface-sunken: #f7f8fa;
+  --border: #d9dce3;
+  --border-strong: #858c9b;
+  --text: #20232b;
+  --text-dim: #5c6370;
+  --accent: #2455bd;
+  --accent-soft: #e8efff;
   --accent-contrast: #ffffff;
-  --ok: #27694e;
-  --error: #ac3032;
-  --favorite: #946400;
+  --ok: #21704b;
+  --error: #b13232;
+  --favorite: #966815;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #171d19;
-    --surface: #1d2520;
-    --surface-sunken: #242e27;
-    --border: #354239;
-    --border-strong: #53665a;
-    --text: #e4ece6;
-    --text-dim: #acbeb1;
-    --accent: #9ad2af;
-    --accent-contrast: #17261c;
-    --ok: #9ad2af;
+    --bg: #15171b;
+    --surface: #1d2026;
+    --surface-sunken: #242830;
+    --border: #353b46;
+    --border-strong: #737c8e;
+    --text: #edf0f5;
+    --text-dim: #a8b0be;
+    --accent: #a8c2ff;
+    --accent-soft: #27354d;
+    --accent-contrast: #162449;
+    --ok: #8bd3ab;
     --error: #ffaaa7;
-    --favorite: #e4ba67;
+    --favorite: #eac887;
   }
 }
 
@@ -81,8 +83,8 @@ button,
 
 .settings-shell {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
-  max-width: 1240px;
+  grid-template-columns: 216px minmax(0, 1fr);
+  max-width: 1280px;
   margin: 0 auto;
 }
 .settings-sidebar {
@@ -91,7 +93,7 @@ button,
   align-self: start;
   max-height: 100vh;
   overflow-y: auto;
-  padding: 40px 20px;
+  padding: 32px 16px;
 }
 .brand {
   display: flex;
@@ -100,16 +102,25 @@ button,
   font-size: 17px;
   font-weight: 650;
   letter-spacing: -0.025em;
+  padding: 0 10px;
+}
+.brand-context {
+  display: block;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: normal;
 }
 .settings-nav {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  margin: 36px 0;
+  margin: 28px 0;
 }
 .settings-nav a {
+  display: block;
   padding: 9px 10px;
-  border-radius: 5px;
+  border-radius: 4px;
   color: var(--text-dim);
   text-decoration: none;
   font-weight: 500;
@@ -117,6 +128,24 @@ button,
 .settings-nav a:hover {
   background: var(--border);
   color: var(--text);
+}
+.settings-nav a[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.nav-label {
+  margin: 22px 10px 5px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+.nav-status {
+  display: block;
+  padding: 2px 10px 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 .engine-status {
   display: block;
@@ -129,6 +158,7 @@ button,
 }
 
 .engine-status.is-ready,
+.nav-status.is-ready,
 .import-state.is-ready,
 .import-result.is-ready,
 .custom-dictionary-status.is-ready,
@@ -138,6 +168,7 @@ button,
 }
 
 .engine-status.is-error,
+.nav-status.is-error,
 .import-state.is-error,
 .import-result.is-error,
 .custom-dictionary-status.is-error,
@@ -149,34 +180,21 @@ button,
 .page {
   min-width: 0;
   min-height: 100vh;
-  padding: 38px 44px 80px;
+  padding: 36px 40px 64px;
   border-inline: 1px solid var(--border);
   background: var(--surface);
 }
-.masthead {
-  padding-bottom: 30px;
-  border-bottom: 1px solid var(--border);
-}
 h1 {
   margin: 0;
-  font-size: 30px;
+  font-size: 26px;
   font-weight: 650;
   letter-spacing: -0.035em;
-}
-.lede {
-  margin: 5px 0 0;
-  color: var(--text-dim);
 }
 .card {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 30px 0;
-  border-bottom: 1px solid var(--border);
+  gap: 24px;
   scroll-margin-top: 24px;
-}
-.card:last-child {
-  border-bottom: 0;
 }
 .section-heading {
   display: flex;
@@ -231,7 +249,7 @@ code {
   width: fit-content;
   padding: 9px 15px;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: 4px;
   background: var(--accent);
   color: var(--accent-contrast);
   font-weight: 600;
@@ -269,7 +287,7 @@ button.ghost {
   min-width: 32px;
   padding: 5px 10px;
   border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  border-radius: 4px;
   background: var(--surface);
   color: var(--text);
 }
@@ -314,6 +332,7 @@ button.danger:hover:not(:disabled) {
   font-variant-numeric: tabular-nums;
 }
 .import-state:empty,
+.nav-status:empty,
 .update-state:empty,
 .custom-dictionary-status:empty,
 .dict-group-error:empty {
@@ -346,10 +365,8 @@ button.danger:hover:not(:disabled) {
 .recommendations {
   display: grid;
   gap: 14px;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface-sunken);
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
 }
 .recommendations-head {
   display: grid;
@@ -357,8 +374,7 @@ button.danger:hover:not(:disabled) {
 }
 .recommended-dictionary-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px 24px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -367,6 +383,8 @@ button.danger:hover:not(:disabled) {
   min-width: 0;
   display: grid;
   gap: 3px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
 }
 .recommended-dictionary-link {
   width: fit-content;
@@ -447,8 +465,10 @@ input[type="checkbox"] {
 .lookup-enable {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
 }
 .dict-list,
 .dict-group-list,
@@ -458,15 +478,14 @@ input[type="checkbox"] {
   list-style: none;
 }
 .dict-list:not(:empty) {
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border-block: 1px solid var(--border);
 }
 .dict-row {
   display: grid;
   grid-template-columns: 16px 30px minmax(0, 1fr) auto;
   align-items: start;
-  gap: 10px 12px;
-  padding: 14px 16px;
+  gap: 4px 12px;
+  padding: 14px 0;
 }
 .dict-row + .dict-row {
   border-top: 1px solid var(--border);
@@ -526,6 +545,7 @@ input[type="checkbox"] {
   color: var(--favorite);
 }
 .dict-canonical,
+.dict-pinned,
 .dict-metadata,
 .dict-update-status,
 .dict-badge {
@@ -544,15 +564,52 @@ input[type="checkbox"] {
   font-weight: 600;
 }
 .dict-footer {
-  grid-column: 3 / -1;
   display: flex;
   align-items: end;
   flex-wrap: wrap;
   gap: 12px;
+  padding: 14px;
+  margin-top: 8px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.dict-metadata {
+  flex-basis: 100%;
+}
+.dict-quick-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.dict-order-actions {
+  display: flex;
+  gap: 4px;
+}
+.dict-details {
+  grid-column: 3 / -1;
+  min-width: 0;
+}
+.dict-details-toggle,
+.format-help summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 4px 0;
+}
+.dict-details-toggle:hover,
+.format-help summary:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.format-help .editor-help {
+  margin-top: 8px;
 }
 .dict-alias {
   flex: 1 1 220px;
-  max-width: 320px;
+  max-width: 360px;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -563,7 +620,7 @@ input[type="checkbox"] {
 }
 .cell-label,
 .field-label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 550;
 }
 .cell-label {
@@ -594,7 +651,7 @@ textarea {
   min-width: 0;
   padding: 8px 10px;
   border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  border-radius: 4px;
   background: var(--surface);
   color: var(--text);
 }
@@ -625,12 +682,11 @@ textarea {
 }
 .dict-group-list {
   display: grid;
-  gap: 12px;
+  gap: 24px;
 }
 .dict-group {
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
 }
 .dict-group-head,
 .dict-group-member {
@@ -673,8 +729,7 @@ textarea {
 .empty-state {
   margin: 0;
   padding: 28px 20px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 6px;
+  border-block: 1px solid var(--border);
   background: var(--surface-sunken);
   color: var(--text-dim);
   text-align: center;
@@ -705,7 +760,7 @@ textarea {
   gap: 6px;
 }
 .custom-dictionary-source-field textarea {
-  min-height: 200px;
+  min-height: 320px;
   padding: 14px;
   background: var(--surface-sunken);
   font:
@@ -721,23 +776,46 @@ textarea {
   border: 0;
 }
 .lookup-group + .lookup-group {
-  margin-top: 12px;
+  margin-top: 4px;
 }
 .lookup-group legend {
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   padding: 0;
   font-weight: 600;
 }
 .fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px 28px;
 }
 .field {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.lookup-group .field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 46%);
+  grid-template-rows: auto auto;
+  gap: 3px 24px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  align-items: center;
+}
+.lookup-group .field > .field-label {
+  grid-column: 1;
+  grid-row: 1;
+}
+.lookup-group .field > .field-hint {
+  grid-column: 1;
+  grid-row: 2;
+}
+.lookup-group .field > :not(.field-label, .field-hint) {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  justify-self: end;
+}
+.lookup-group input[type="number"] {
+  width: 8ch;
 }
 .field-hint,
 .suffix {
@@ -750,15 +828,17 @@ textarea {
   gap: 8px;
 }
 .input-suffix input {
-  width: 100%;
+  flex: 0 0 auto;
 }
 .frequency-order-controls {
   display: flex;
   gap: 8px;
+  width: 100%;
+  flex-wrap: wrap;
 }
 .frequency-order-controls select {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 180px;
 }
 .frequency-order-controls button {
   white-space: nowrap;
@@ -769,7 +849,7 @@ textarea {
 
 @media (max-width: 900px) {
   .settings-shell {
-    grid-template-columns: 160px minmax(0, 1fr);
+    grid-template-columns: 192px minmax(0, 1fr);
   }
   .settings-sidebar {
     padding: 30px 12px;
@@ -777,7 +857,7 @@ textarea {
   .page {
     padding: 30px 24px 60px;
   }
-  .dict-footer {
+  .dict-details {
     grid-column: 1 / -1;
   }
 }
@@ -790,30 +870,36 @@ textarea {
     position: static;
     max-height: none;
     overflow: visible;
-    padding: 20px;
+    padding: 16px;
   }
   .settings-nav {
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 4px;
-    margin: 16px 0;
+    gap: 4px 8px;
+    margin: 16px 0 12px;
+  }
+  .nav-item {
+    flex: 1 1 40%;
+    min-width: 0;
+  }
+  .nav-label {
+    flex-basis: 100%;
+    margin: 10px 9px 2px;
   }
   .settings-nav a {
     padding: 6px 9px;
-    background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
     font-size: 12px;
   }
   .engine-status {
     padding-top: 12px;
   }
   .page {
-    padding: 26px 20px 50px;
+    padding: 24px 16px 40px;
     border-inline: 0;
     border-top: 1px solid var(--border);
   }
   .recommended-dictionary-list,
-  .fields,
   .dict-group-head,
   .dict-group-member,
   .dict-group-create {
@@ -822,10 +908,20 @@ textarea {
   .dict-row {
     grid-template-columns: 16px 24px minmax(0, 1fr);
     gap: 10px;
-    padding: 14px;
+    padding: 14px 0;
   }
-  .dict-row > .toggle {
+  .dict-quick-actions {
     grid-column: 3;
+    justify-content: space-between;
+  }
+  .dict-details {
+    grid-column: 1 / -1;
+  }
+  .dict-footer {
+    padding: 12px;
+  }
+  .dict-actions {
+    margin-left: 0;
   }
   .dict-alias {
     max-width: none;
@@ -837,6 +933,15 @@ textarea {
   .dict-group-add-row {
     align-items: stretch;
     flex-direction: column;
+  }
+  .lookup-group .field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .lookup-group .field > :not(.field-label, .field-hint) {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
   }
 }
 

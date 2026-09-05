@@ -76,12 +76,71 @@ let pendingManagementFocus = null;
 let managementPointerDown = false;
 let dictionarySearch = "";
 const selectedDictionaryIds = new Set();
+const expandedDictionaryIds = new Set();
 let draggedDictionaryId = null;
 let statusTimer = null;
 let requestCounter = 0;
 
+const SECTION_STATUSES = {
+  "import-state": { section: "add-dictionaries", label: "Import" },
+  "update-state": { section: "updates", label: "Updates" },
+  "custom-dictionary-status": { section: "custom-dictionary", label: "Personal dictionary" },
+  "options-status": { section: "lookup", label: "Reading" },
+  "dict-group-error": { section: "dictionary-groups", label: "Groups" },
+};
+let activeSection = "dictionaries";
+
 function element(id) {
   return document.getElementById(id);
+}
+
+function syncNavigationStatus(id) {
+  const { section, label } = SECTION_STATUSES[id];
+  const source = element(id);
+  const notice = element(`nav-status-${section}`);
+  const message = section !== activeSection && source.textContent
+    ? `${label}: ${source.textContent}` : "";
+  if (notice.textContent !== message) notice.textContent = message;
+  notice.classList.toggle("is-error", source.classList.contains("is-error"));
+  notice.classList.toggle("is-ready", source.classList.contains("is-ready"));
+}
+
+function setSectionStatus(id, message, tone) {
+  const output = element(id);
+  output.textContent = message;
+  output.classList.toggle("is-error", tone === "error");
+  output.classList.toggle("is-ready", tone === "ready");
+  syncNavigationStatus(id);
+}
+
+function showSettingsSection(focus = false) {
+  const fragment = window.location.hash.slice(1);
+  const requested = fragment === "settings-content" ? activeSection : fragment;
+  const sections = [...document.querySelectorAll("main > section")];
+  activeSection = sections.some((section) => section.id === requested) ? requested : "dictionaries";
+  pendingManagementFocus = null;
+  for (const section of sections) section.hidden = section.id !== activeSection;
+  for (const link of document.querySelectorAll(".settings-nav a")) {
+    if (link.hash === `#${activeSection}`) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+  for (const id of Object.keys(SECTION_STATUSES)) syncNavigationStatus(id);
+  if (fragment === "settings-content") element("settings-content").focus();
+  else if (focus) element(activeSection).querySelector("h1").focus();
+}
+
+function attachSettingsNavigation() {
+  window.addEventListener("hashchange", () => showSettingsSection(true));
+  document.querySelector(".skip-link").addEventListener("click", (event) => {
+    event.preventDefault();
+    element("settings-content").focus();
+  });
+  for (const link of document.querySelectorAll(".settings-nav a, .section-action")) {
+    link.addEventListener("click", () => {
+      if (link.hash === window.location.hash) showSettingsSection(true);
+    });
+  }
+  showSettingsSection();
 }
 
 function describe(error) {
@@ -293,25 +352,16 @@ function setStatus(message, tone) {
 }
 
 function setImportState(message, tone) {
-  const state = element("import-state");
-  state.textContent = message;
-  state.classList.toggle("is-error", tone === "error");
-  state.classList.toggle("is-ready", tone === "ready");
+  setSectionStatus("import-state", message, tone);
   element("import-progress").hidden = tone !== "busy";
 }
 
 function setUpdateState(message, tone = "") {
-  const state = element("update-state");
-  state.textContent = message;
-  state.classList.toggle("is-error", tone === "error");
-  state.classList.toggle("is-ready", tone === "ready");
+  setSectionStatus("update-state", message, tone);
 }
 
 function setCustomDictionaryStatus(message, tone = "") {
-  const status = element("custom-dictionary-status");
-  status.textContent = message;
-  status.classList.toggle("is-error", tone === "error");
-  status.classList.toggle("is-ready", tone === "ready");
+  setSectionStatus("custom-dictionary-status", message, tone);
 }
 
 function renderCustomDictionaryErrors(errors) {
@@ -360,7 +410,7 @@ function showCustomDictionaryEditor(visible) {
   element("custom-dictionary-form").hidden = !visible;
   const open = element("custom-dictionary-open");
   open.setAttribute("aria-expanded", String(visible));
-  open.textContent = visible ? "Close source editor" : "Open source editor";
+  open.textContent = visible ? "Close editor" : "Edit source";
 }
 
 function cancelCustomDictionaryValidation() {
@@ -966,6 +1016,7 @@ function focusedManagementControl() {
   if (dictionaryRow?.dataset.dictionaryId) {
     const controlClass = [
       "dict-selected",
+      "dict-details-toggle",
       "dict-display-name",
       "dict-enabled",
       "dict-up",
@@ -1178,6 +1229,9 @@ function bindDictionaryOrder(row, entry, index) {
 function renderDictionaryRow(template, entry, index) {
   const row = template.content.firstElementChild.cloneNode(true);
   row.dataset.dictionaryId = entry.id;
+  row.querySelector(".dict-details").open = expandedDictionaryIds.has(entry.id);
+  row.querySelector(".dict-details-toggle").setAttribute("aria-label", `Details for ${entry.title}`);
+  row.querySelector(".dict-pinned").hidden = !isManagedCustomDictionary(entry);
   row.classList.toggle("is-off", !entry.enabled);
   row.querySelector(".dict-rank").textContent = String(index + 1);
   bindDictionarySelection(row, entry);
@@ -1225,6 +1279,15 @@ function renderDictionaryRow(template, entry, index) {
 
 function renderDictionaries() {
   const list = element("dict-list");
+  // Retain disclosure state by package identity, including temporarily filtered rows.
+  for (const row of list.children) {
+    if (row.querySelector(".dict-details").open) expandedDictionaryIds.add(row.dataset.dictionaryId);
+    else expandedDictionaryIds.delete(row.dataset.dictionaryId);
+  }
+  const installedIds = new Set(dictionaries.map((entry) => entry.id));
+  for (const id of expandedDictionaryIds) {
+    if (!installedIds.has(id)) expandedDictionaryIds.delete(id);
+  }
   const template = element("dict-row-template");
   const visible = visibleDictionaries();
   const visibleIds = new Set(visible.map((dictionary) => dictionary.id));
@@ -1289,11 +1352,13 @@ function directionalFocus(row, controlClass, upClass, downClass) {
 }
 
 function restoreManagementFocus(focus) {
+  const section = focus.kind === "dictionary" ? "dictionaries" : "dictionary-groups";
+  if (element(section).hidden) return;
   if (focus.kind === "dictionary") {
     const row = [...element("dict-list").children]
       .find((candidate) => candidate.dataset.dictionaryId === focus.id);
     const control = directionalFocus(row, focus.controlClass, "dict-up", "dict-down")
-      ?? row?.querySelector(".dict-display-name");
+      ?? row?.querySelector(".dict-details-toggle");
     control?.focus();
     return;
   }
@@ -1422,6 +1487,7 @@ function commitGroups(update) {
 }
 
 const dictionaryGroupController = createDictionaryGroupController({
+  setError: (message) => setSectionStatus("dict-group-error", message, "error"),
   readState: () => dictionaryState,
   readDictionaries: () => dictionaries,
   commitGroups,
@@ -1922,8 +1988,7 @@ function handleStorageChange(changes, area) {
 }
 
 function setOptionsStatus(message) {
-  element("options-status").textContent = message;
-  element("options-status").classList.toggle("is-error", optionsSaveFailed);
+  setSectionStatus("options-status", message, optionsSaveFailed ? "error" : "");
   element("options-conflict-actions").hidden = !optionsSaveFailed;
 }
 
@@ -1992,6 +2057,7 @@ async function flushOptions() {
 }
 
 async function start() {
+  attachSettingsNavigation();
   renderRecommendedCatalogue();
   attachHandlers();
   const stored = await chrome.storage.local.get(["options", "dictionaryUpdates"]);
