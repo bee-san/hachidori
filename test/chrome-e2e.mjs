@@ -16,6 +16,7 @@
 
 import { createServer } from "node:http";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, rmSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -26,6 +27,7 @@ import {
   GENERIC_KANJI_TITLE,
   buildRecommendedZip,
   buildTitledZip,
+  makePng,
 } from "./make-fixture.mjs";
 import {
   CUSTOM_DICTIONARY_ID,
@@ -271,6 +273,7 @@ const PLANNED = [
   "real-WASM lookup bounds fail one request without poisoning the OPFS engine",
   "an oversized hover clears the previous popup and the next healthy hover recovers",
   "a structured-depth render failure clears its popup and the next healthy hover recovers",
+  "large media imports through OPFS while oversized and malformed fetches fail without poisoning the engine",
 ];
 
 const results = [];
@@ -3344,10 +3347,15 @@ async function main() {
   const boundedTitle = "bounded-response-fixture";
   let deepGlossary = "over-depth leaf";
   for (let depth = 0; depth < 25; depth += 1) deepGlossary = { type: "text", text: deepGlossary };
+  const exactMediaBytes = Buffer.alloc(4 * 1024 * 1024);
+  makePng().copy(exactMediaBytes);
   const boundedArchive = buildTitledZip(boundedTitle, { terms: [
     ["限界", "げんかい", "", "", 0, ["x".repeat(8 * 1024 * 1024 - 3)], 1, ""],
     ["速度", "そくど", "", "", 0, ["healthy bounded lookup"], 2, ""],
     ["深度", "しんど", "", "", 0, [deepGlossary], 3, ""],
+  ], mediaEntries: [
+    ["media/exact.png", exactMediaBytes],
+    ["media/over.png", Buffer.concat([exactMediaBytes, Buffer.from([0])])],
   ] });
   await page.evaluate((base64) => {
     const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
@@ -3422,6 +3430,39 @@ async function main() {
     renderFailures.length === 1 && deepPopupHidden
       && deepPopupAfter?.plain?.includes("healthy bounded lookup"),
     JSON.stringify({ renderFailures, hidden: deepPopupHidden, after: deepPopupAfter?.plain }),
+  );
+
+  const mediaEvidence = await page.evaluate(async (dictionary) => {
+    const request = (type, fields) => chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen", type, requestId: `bounded-media-${type}`, ...fields,
+    });
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const installed = dictionaryState.dictionaries.find((entry) => entry.title === dictionary);
+    const before = await request("hd_status", {});
+    const exact = await request("hd_media", { dictionary, path: "media/exact.png" });
+    const bytes = Uint8Array.from(atob(exact.dataUrl?.split(",")[1] ?? ""), (character) => character.charCodeAt(0));
+    const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+      (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const over = await request("hd_media", { dictionary, path: "media/over.png" });
+    const nul = await request("hd_media", { dictionary, path: "media/exact.png\0suffix" });
+    const absent = await request("hd_media", { dictionary, path: "media/absent.png" });
+    const healthy = await request("hd_lookup", { text: "速度" });
+    const after = await request("hd_status", {});
+    return { mediaCount: installed?.mediaCount, before, exactOk: exact.ok, bytes: bytes.length, digest,
+      over: { ok: over.ok, error: over.error, empty: over.dataUrl === null },
+      nul: { ok: nul.ok, error: nul.error, empty: nul.dataUrl === null }, absent, healthy, after };
+  }, boundedTitle);
+  check(
+    "large media imports through OPFS while oversized and malformed fetches fail without poisoning the engine",
+    mediaEvidence.mediaCount === 2 && mediaEvidence.exactOk && mediaEvidence.bytes === exactMediaBytes.length
+      && mediaEvidence.digest === createHash("sha256").update(exactMediaBytes).digest("hex")
+      && mediaEvidence.over.ok === false && mediaEvidence.over.empty && /media/u.test(mediaEvidence.over.error)
+      && mediaEvidence.nul.ok === false && mediaEvidence.nul.empty && /NUL/u.test(mediaEvidence.nul.error)
+      && mediaEvidence.absent.ok === true && mediaEvidence.absent.dataUrl === null
+      && mediaEvidence.healthy.ok === true && mediaEvidence.healthy.results[0]?.term.expression === "速度"
+      && mediaEvidence.after.ready && mediaEvidence.after.storageBackend === "opfs"
+      && mediaEvidence.before.generation === mediaEvidence.after.generation,
+    JSON.stringify(mediaEvidence),
   );
 
   await browser.close();

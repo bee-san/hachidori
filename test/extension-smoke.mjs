@@ -34,6 +34,7 @@ import {
   buildRecommendedZip,
   buildTitledZip,
   buildTrainedZip,
+  makePng,
 } from "./make-fixture.mjs";
 import { recommendedIndexUrlMatches } from "../extension/managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
@@ -716,7 +717,7 @@ function loadBackgroundScript(sandbox) {
     .replace(/^export\s+/gmu, "");
   const jsonValue = readFileSync(resolve(EXTENSION, "json-value.js"), "utf8")
     .replace(/^export\s+/gmu, "");
-  const lookupResponse = readFileSync(resolve(EXTENSION, "lookup-response.js"), "utf8")
+  const responseLimits = readFileSync(resolve(EXTENSION, "response-limits.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
@@ -724,7 +725,7 @@ function loadBackgroundScript(sandbox) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/lookup-response\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.Uint8Array ??= Uint8Array;
   sandbox.Uint32Array ??= Uint32Array;
@@ -734,7 +735,7 @@ function loadBackgroundScript(sandbox) {
   context.globalThis = context;
   runInContext(
     `${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${lookupResponse}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1858,25 +1859,27 @@ async function main() {
     JSON.stringify(bus.log.slice(0, 6)),
   );
   const originalWorkerSend = swChrome.runtime.sendMessage;
-  swChrome.runtime.sendMessage = (message) => message.relayed && message.type === "hd_lookup"
+  swChrome.runtime.sendMessage = (message) => message.relayed && ["hd_lookup", "hd_media"].includes(message.type)
     ? Promise.reject(new Error("long relay failure ".repeat(20))) : originalWorkerSend(message);
   try {
-    const responseLimit = 32 * 1024 * 1024;
-    const sendFailedLookup = (requestId) => pageChrome.runtime.sendMessage({
-      target: "hoshidicts-offscreen", type: "hd_lookup", text: "食", requestId,
-    });
-    const oversized = await sendFailedLookup("x".repeat(responseLimit));
-    const invalid = await sendFailedLookup({});
-    const compact = { ...oversized, requestId: "" };
-    const exactId = "x".repeat(responseLimit - Buffer.byteLength(JSON.stringify(compact)));
-    const correlated = await sendFailedLookup(exactId);
-    check(
-      "service-worker relay failures use the shared bounded lookup correlation rule",
-      oversized.ok === false && oversized.requestId === null && invalid.requestId === null
+    const relayCases = [];
+    for (const [type, responseLimit] of [["hd_lookup", 32 * 1024 * 1024], ["hd_media", 6 * 1024 * 1024]]) {
+      const sendFailed = (requestId) => pageChrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen", type, text: "食", requestId,
+      });
+      const oversized = await sendFailed("x".repeat(responseLimit));
+      const invalid = await sendFailed({});
+      const compact = { ...oversized, requestId: "" };
+      const exactId = "x".repeat(responseLimit - Buffer.byteLength(JSON.stringify(compact)));
+      const correlated = await sendFailed(exactId);
+      relayCases.push(oversized.ok === false && oversized.requestId === null && invalid.requestId === null
         && correlated.ok === false && correlated.requestId === exactId
         && correlated.error === compact.error
-        && Buffer.byteLength(JSON.stringify(correlated)) === responseLimit,
-      JSON.stringify({ oversizedOk: oversized.ok, correlated: correlated.requestId === exactId }),
+        && Buffer.byteLength(JSON.stringify(correlated)) === responseLimit);
+    }
+    check(
+      "service-worker relay failures use the shared bounded lookup and media correlation rule",
+      relayCases.every(Boolean), JSON.stringify(relayCases),
     );
   } finally {
     swChrome.runtime.sendMessage = originalWorkerSend;
@@ -3490,6 +3493,70 @@ async function main() {
   );
   const absentMedia = await request("hd_media", { dictionary: FIXTURE_TITLE, path: "media/nope.png" });
   equal("absent media is dataUrl null, not an error", [absentMedia.ok, absentMedia.dataUrl], [true, null]);
+
+  const mediaDictionaryBoundary = "あ".repeat(341) + "x";
+  const mediaPathBoundary = "media/" + "あ".repeat(1363) + "x";
+  const exactMediaReferences = await Promise.all([
+    request("hd_media", { dictionary: mediaDictionaryBoundary, path: "media/kanji.png" }),
+    request("hd_media", { dictionary: FIXTURE_TITLE, path: mediaPathBoundary }),
+  ]);
+  const invalidMediaReferences = await Promise.all([
+    request("hd_media", { dictionary: mediaDictionaryBoundary + "x", path: "media/kanji.png" }),
+    request("hd_media", { dictionary: FIXTURE_TITLE, path: mediaPathBoundary + "x" }),
+    request("hd_media", { dictionary: FIXTURE_TITLE + "\0suffix", path: "media/kanji.png" }),
+    request("hd_media", { dictionary: FIXTURE_TITLE, path: "media/kanji.png\0suffix" }),
+  ]);
+  check("media references use exact UTF-8 bounds and never truncate embedded NUL",
+    Buffer.byteLength(mediaDictionaryBoundary) === 1024 && Buffer.byteLength(mediaPathBoundary) === 4096
+      && exactMediaReferences.every((reply) => reply.ok === true && reply.dataUrl === null)
+      && invalidMediaReferences.every((reply) => reply.ok === false && reply.dataUrl === null),
+    JSON.stringify({ exact: exactMediaReferences.map(({ ok }) => ok), invalid: invalidMediaReferences.map(({ ok, error }) => ({ ok, error })) }));
+
+  const mediaFrameLimit = 6 * 1024 * 1024;
+  const mediaMessage = { type: "hd_media", dictionary: FIXTURE_TITLE, path: "media/kanji.png", requestId: "" };
+  const smallMediaFrame = await engineService.handleEngineMessage(mediaMessage);
+  const mediaIdBytes = mediaFrameLimit - Buffer.byteLength(JSON.stringify(smallMediaFrame));
+  const exactMediaId = "あ".repeat(Math.floor(mediaIdBytes / 3)) + "x".repeat(mediaIdBytes % 3);
+  const exactMediaFrame = await engineService.handleEngineMessage({ ...mediaMessage, requestId: exactMediaId });
+  const excessiveMediaFrame = await engineService.handleEngineMessage({ ...mediaMessage, requestId: exactMediaId + "x" });
+  check("media accepts exactly 6 MiB and rejects one extra complete frame byte",
+    exactMediaFrame.ok === true && Buffer.byteLength(JSON.stringify(exactMediaFrame)) === mediaFrameLimit
+      && exactMediaFrame.dataUrl === smallMediaFrame.dataUrl
+      && excessiveMediaFrame.ok === false && excessiveMediaFrame.dataUrl === null
+      && excessiveMediaFrame.requestId === exactMediaId + "x"
+      && /6 MiB/u.test(excessiveMediaFrame.error)
+      && Buffer.byteLength(JSON.stringify(excessiveMediaFrame)) <= mediaFrameLimit,
+    JSON.stringify({ exact: exactMediaFrame.ok, excessive: excessiveMediaFrame.ok, error: excessiveMediaFrame.error }));
+  const invalidMediaId = await engineService.handleEngineMessage({ ...mediaMessage, requestId: {} });
+  const impossibleMediaId = await engineService.handleEngineMessage({ ...mediaMessage, requestId: "x".repeat(mediaFrameLimit) });
+  check("invalid or impossible media correlation IDs receive bounded null-ID errors",
+    [invalidMediaId, impossibleMediaId].every((reply) => reply.ok === false && reply.requestId === null
+      && reply.dataUrl === null && Buffer.byteLength(JSON.stringify(reply)) <= mediaFrameLimit),
+    JSON.stringify({ invalid: invalidMediaId.ok, impossible: impossibleMediaId.ok }));
+
+  const largeMediaTitle = "bounded-media-fixture";
+  const largeMediaBytes = Buffer.alloc(4 * 1024 * 1024);
+  makePng().copy(largeMediaBytes);
+  const largeMediaArchive = buildTitledZip(largeMediaTitle, { mediaEntries: [
+    ["media/exact.png", largeMediaBytes],
+    ["media/over.png", Buffer.concat([largeMediaBytes, Buffer.from([0])])],
+  ] });
+  const largeMediaImport = await request("hd_import", {
+    blobUrl: createObjectURL(largeMediaArchive), fileName: "bounded-media.zip",
+  });
+  const exactNativeMedia = await request("hd_media", { dictionary: largeMediaTitle, path: "media/exact.png" });
+  const overNativeMedia = await request("hd_media", { dictionary: largeMediaTitle, path: "media/over.png" });
+  const healthyMediaAfterError = await request("hd_media", { dictionary: FIXTURE_TITLE, path: "media/kanji.png" });
+  const largeMediaRemoved = await request("hd_remove", { title: largeMediaTitle });
+  check("media imports stay uncapped while oversized native fetches propagate real errors",
+    largeMediaImport.ok === true && largeMediaImport.report.mediaCount === 2
+      && exactNativeMedia.ok === true
+      && Buffer.from(exactNativeMedia.dataUrl?.split(",")[1] ?? "", "base64").equals(largeMediaBytes)
+      && overNativeMedia.ok === false && overNativeMedia.dataUrl === null && /media/u.test(overNativeMedia.error)
+      && healthyMediaAfterError.ok === true && healthyMediaAfterError.dataUrl === media.dataUrl
+      && largeMediaRemoved.ok === true,
+    JSON.stringify({ imported: largeMediaImport.ok, exact: exactNativeMedia.ok, over: overNativeMedia.ok,
+      error: overNativeMedia.error, healthy: healthyMediaAfterError.ok, removed: largeMediaRemoved.ok }));
 
   section("error paths");
   const bogus = await request("hd_bogus");

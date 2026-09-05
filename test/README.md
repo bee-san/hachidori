@@ -84,12 +84,14 @@ Negative fixtures include:
 - `parent-title.zip` — declares `..`; the native baseline proves that direct use
   of Hoshidicts cannot escape and recursively delete its output directory.
 
-`buildTitledZip(title, {banks, terms, termMeta})` builds a third kind on the fly, in memory: the
+`buildTitledZip(title, {banks, terms, termMeta, mediaEntries})` builds a third kind on the fly, in memory: the
 same `index.json` with the title replaced, optionally with no term bank so the
 import fails *after* the importer has read the title and derived a directory from
 it. That is the only moment a title can do damage, so it is what the import
 staging checks are driven with. Optional term and metadata rows also build the
 lookup-byte-boundary fixtures without changing the ordinary fixture counts.
+Optional `[path, bytes]` media entries exercise fetch bounds independently of
+archive importability.
 
 Exports `EXPECTED` (the import counts, derived from the bank arrays rather than
 hardcoded) and `EXPECTED_GLOSSARIES` (the exact raw glossary strings, keyed by
@@ -169,7 +171,7 @@ the real WebAssembly engine by `extension-smoke.mjs`.
 
 The real test. Loads the threaded bundle by default or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-114 checks, ordered by dependency. Exits 0 on success,
+116 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -253,6 +255,11 @@ What it proves, in order:
     option strings retain their exact 4 KiB UTF-8 boundary, including kanji
     queries. Frequency display control bytes survive valid escaped JSON, and
     the loaded dictionary remains usable after each refusal.
+13. **Media response bounds.** Exact 1 KiB dictionary and 4 KiB path references
+    are accepted as well-formed misses, while one extra UTF-8 byte fails. Media
+    at 4 MiB and one byte larger both import and load; the exact fetch preserves
+    all bytes, the oversized fetch reports a native error, and healthy media
+    and term lookups still work afterward.
 
 Two behaviours worth knowing, both asserted so they cannot drift silently:
 
@@ -260,9 +267,9 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
   `{"results":[],"dictionaryCount":0}`, so `dictionaryCount` reads 0 even when
   dictionaries are loaded. Do not treat it as a dictionary count.
 - `hdw_media` returning 0 for a path or dictionary that is simply absent leaves
-  `hdw_last_error` **empty**. Only a null argument sets an error. Callers must
-  distinguish "no such media" from "failed" by something other than the error
-  string.
+  `hdw_last_error` **empty**. Null arguments, oversized references, and oversized
+  payloads set the native error. Callers must inspect it before interpreting a
+  zero length as a successful miss.
 
 ---
 
@@ -270,7 +277,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 205 checks, all of
+full request→reply round trip per contract-C message type. 209 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -385,6 +392,9 @@ What it proves, in order:
    Deferred, tab, and Show more failures reach the current view owner. Replaced,
    cleared, destroyed, or request-superseded fills do no rendering, media, or
    layout work, and the actual content callbacks cannot clear a newer request.
+   Media tests also pin exact UTF-8 reference and 6 MiB complete-reply boundaries,
+   embedded-NUL prefix rejection, bounded correlation on early relay failures,
+   and actual oversized native errors without capping archive imports.
 9. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
    and removing an unknown title does not bump `generation`. Removal strict-loads
    the remaining manifest and commits it before deleting the old root. The
@@ -515,7 +525,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 87 assertions, and the summary line
+`PLANNED` at the top of the file names all 88 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

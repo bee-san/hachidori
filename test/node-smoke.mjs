@@ -1341,6 +1341,48 @@ check('refused lookup responses leave the loaded dictionary usable', () => {
 
 // ---------------------------------------------------------------------------
 
+G('media request and response bounds');
+check('media reference limits count UTF-8 bytes and preserve well-formed misses', () => {
+  const dictionary = 'あ'.repeat(341) + 'x';
+  const path = 'media/' + 'あ'.repeat(1363) + 'x';
+  eq(Buffer.byteLength(dictionary), 1024, 'dictionary boundary fixture');
+  eq(Buffer.byteLength(path), 4096, 'path boundary fixture');
+  for (const [field, exact, over] of [
+    ['dictionary', [dictionary, MEDIA_PATH], [dictionary + 'x', MEDIA_PATH]],
+    ['path', [TITLE, path], [TITLE, path + 'x']],
+  ]) {
+    eq(media(...exact), 0, `absent ${field} at boundary`);
+    eq(lastError(), '', `exact ${field} must not fail`);
+    eq(media(...over), 0, `oversized ${field}`);
+    ok(lastError().includes(field), `${field} overflow must report an error`);
+  }
+});
+check('large media imports and loads but only fetches up to 4 MiB', () => {
+  const title = 'bounded-media-fixture';
+  const limit = 4 * 1024 * 1024;
+  const exact = Buffer.alloc(limit);
+  makePng().copy(exact);
+  const over = Buffer.concat([exact, Buffer.from([0])]);
+  const zipPath = '/work/bounded-media.zip';
+  const output = '/work/bounded-media';
+  M.FS.mkdir(output);
+  M.FS.writeFile(zipPath, buildTitledZip(title, { mediaEntries: [
+    ['media/exact.png', exact], ['media/over.png', over], ['media/small.png', makePng()],
+  ] }));
+  const report = hdwImport(zipPath, output);
+  ok(report.success, `large-media archive import failed: ${JSON.stringify(report)}`);
+  eq(report.mediaCount, 3, 'all media records imported');
+  eq(addDict(`${output}/${title}`, 0), 1, `large-media dictionary load: ${lastError()}`);
+  eq(media(title, 'media/exact.png'), limit, 'exact media limit');
+  eq(lastError(), '', 'exact media fetch error');
+  ok(Buffer.from(mediaBytes(limit)).equals(exact), 'exact media bytes changed');
+  eq(media(title, 'media/over.png'), 0, 'oversized media fetch');
+  ok(lastError().includes('media'), 'oversized native media error missing');
+  eq(media(title, 'media/small.png'), makePng().length, 'healthy media fetch after error');
+  eq(lastError(), '', 'healthy media error');
+  ok(lookup('食べる').results.length > 0, 'dictionary remains usable');
+});
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) {
   console.log('\nfailures:');
