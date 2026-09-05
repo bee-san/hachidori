@@ -249,6 +249,7 @@ const PLANNED = [
   "hovering an inflected verb shows a popup",
   "the content script attached its closed-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
+  "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
   "the dictionary alias labels its popup tab without replacing the canonical key",
@@ -673,7 +674,65 @@ async function popupReader(page) {
     return result.value ?? null;
   }
 
-  return { click, imagePreview, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+  async function deinflection(action = "read") {
+    const object = await resolvePopupObject();
+    if (object === null) return null;
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId,
+      returnByValue: true,
+      awaitPromise: true,
+      arguments: [{ value: action }],
+      functionDeclaration: `async function (action) {
+        const details = this.querySelector(".gsm-hoshidicts-deinflection");
+        const summary = details?.querySelector("summary");
+        if (!summary) return null;
+        const list = details.querySelector("ol");
+        const lastStep = list.lastElementChild;
+        const glossary = this.querySelector(".gsm-hoshidicts-glossary-content");
+        if (action === "focus") summary.focus();
+        else if (action === "blur") summary.blur();
+        else if (action === "last-step") lastStep.scrollIntoView({ block: "center" });
+        else if (action === "glossary") glossary.scrollIntoView({ block: "center" });
+        const view = this.ownerDocument.defaultView;
+        await new Promise(resolve => view.requestAnimationFrame(() => view.requestAnimationFrame(resolve)));
+        const root = this.getRootNode();
+        const note = this.querySelector(".gsm-hoshidicts-note-button");
+        const noteRect = note.getBoundingClientRect();
+        const reachable = element => {
+          const rect = element.getBoundingClientRect();
+          return element.contains(root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+        };
+        return {
+          count: this.querySelectorAll(".gsm-hoshidicts-deinflection").length,
+          language: view.navigator.language,
+          open: details.open,
+          focused: root.activeElement === summary,
+          path: summary.textContent,
+          label: summary.getAttribute("aria-label"),
+          stepsLabel: list.getAttribute("aria-label"),
+          steps: [...list.children].map(item => ({
+            name: item.querySelector(".gsm-hoshidicts-deinflection-step-name").textContent,
+            description: item.querySelector(".gsm-hoshidicts-deinflection-step-description")?.textContent ?? "",
+          })),
+          whitespace: view.getComputedStyle(details.querySelector(".gsm-hoshidicts-deinflection-endpoint")).whiteSpace,
+          marker: view.getComputedStyle(summary).listStyleType,
+          summaryDisplay: view.getComputedStyle(summary).display,
+          popupRect: this.getBoundingClientRect().toJSON(),
+          detailsRect: details.getBoundingClientRect().toJSON(),
+          listRect: list.getBoundingClientRect().toJSON(),
+          noteRect: noteRect.toJSON(),
+          noteReachable: !note.disabled && note.contains(root.elementFromPoint(
+            noteRect.x + noteRect.width / 2, noteRect.y + noteRect.height / 2)),
+          scrollTop: this.scrollTop,
+          lastStepReachable: reachable(lastStep),
+          glossaryReachable: reachable(glossary),
+        };
+      }`,
+    });
+    return result.value ?? null;
+  }
+
+  return { click, deinflection, imagePreview, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -696,6 +755,71 @@ async function hoverForPopup(page, popup, selector, { charFraction = 0.15, attem
     if (state !== null) return state;
   }
   return null;
+}
+
+async function checkDeinflectionDisclosure(settings, tab, popup) {
+  const native = await settings.evaluate(() => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "e2e-deinflection-trace",
+    text: "食べたかった", maxResults: 1, scanLength: 16,
+    options: { frequencyDictionary: "", frequencyOrder: "auto", primaryReading: "" },
+  }));
+  const expected = native.results?.[0];
+  const closed = await popup.deinflection();
+  const labels = new Map([
+    ["en", ["Deinflection steps", `Why this matched: ${expected?.matched} became ${expected?.deinflected}`]],
+    ["ja", ["活用解除の手順", `一致した理由: ${expected?.matched} から ${expected?.deinflected} に戻しました`]],
+    ["uk", ["Кроки відновлення словникової форми", `Чому це збіглося: ${expected?.matched} перетворено на ${expected?.deinflected}`]],
+  ]);
+  const [stepsLabel, summaryLabel] = labels.get(closed?.language.toLowerCase().split("-")[0]) ?? labels.get("en");
+  const viewport = tab.viewport();
+  let focused;
+  let expanded;
+  let collapsed;
+  let lastStep;
+  let glossary;
+  try {
+    await tab.bringToFront();
+    await tab.setViewport({ width: 360, height: 900 });
+    focused = await popup.deinflection("focus");
+    await tab.keyboard.press("Enter");
+    expanded = await popup.deinflection();
+    lastStep = await popup.deinflection("last-step");
+    glossary = await popup.deinflection("glossary");
+    await popup.deinflection("focus");
+    await tab.keyboard.press("Space");
+    collapsed = await popup.deinflection();
+    if (process.env.HACHIDORI_DEINFLECTION_SCREENSHOT) {
+      await tab.setViewport(viewport);
+      await tab.keyboard.press("Enter");
+      await popup.deinflection();
+      await tab.screenshot({ path: process.env.HACHIDORI_DEINFLECTION_SCREENSHOT });
+      await tab.keyboard.press("Space");
+    }
+  } finally {
+    await popup.deinflection("blur");
+    await tab.setViewport(viewport);
+  }
+  const fitsWidth = (outer, inner) => inner?.width > 0 && inner.height > 0
+    && inner.left >= outer.left - 1 && inner.right <= outer.right + 1;
+  check("deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
+    native.ok && expected?.matched === "食べたかった" && expected.deinflected === "食べる"
+      && JSON.stringify(expected.trace.map(step => step.name)) === JSON.stringify(["-た", "-たい"])
+      && closed?.count === 1 && closed.open === false
+      && closed.path === `${expected.matched} → ${expected.deinflected}`
+      && closed.label === summaryLabel && closed.stepsLabel === stepsLabel
+      && JSON.stringify(closed.steps) === JSON.stringify(expected.trace.map(({ name, description }) => ({ name, description })))
+      && focused?.focused === true && expanded?.open === true && expanded.focused
+      && collapsed?.open === false && collapsed.focused
+      && expanded.whitespace === "pre-wrap" && expanded.summaryDisplay === "list-item"
+      && expanded.marker !== "none" && expanded.noteReachable
+      && expanded.popupRect.left >= 0 && expanded.popupRect.right <= 360
+      && fitsWidth(expanded.popupRect, expanded.detailsRect)
+      && fitsWidth(expanded.popupRect, expanded.listRect)
+      && fitsWidth(expanded.popupRect, expanded.noteRect)
+      && Math.abs(expanded.noteRect.top - focused.noteRect.top) <= 1
+      && lastStep?.open === true && lastStep.scrollTop > 0 && lastStep.lastStepReachable
+      && glossary?.open === true && glossary.glossaryReachable,
+    JSON.stringify({ expected, closed, focused, expanded, collapsed, lastStep, glossary }));
 }
 
 async function installMediaArchive(page, archive) {
@@ -3194,6 +3318,7 @@ async function main() {
     `popup tabs: ${JSON.stringify(verbState.tabs)}`,
   );
 
+  await checkDeinflectionDisclosure(page, tab, popup);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
   await checkFrequencyDirection(browser, page, tab, popup);
