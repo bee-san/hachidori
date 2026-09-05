@@ -8646,6 +8646,15 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     (headword?.textContent ?? "").includes(lookup.results[0].term.expression),
     JSON.stringify(headword?.textContent),
   );
+  const explanation = headword?.querySelector(".gsm-hoshidicts-deinflection");
+  check("the real deinflection endpoints and ordered native trace render in a collapsed disclosure",
+    explanation?.open === false
+      && explanation.querySelector("summary").textContent === `${lookup.results[0].matched} → ${lookup.results[0].deinflected}`
+      && JSON.stringify([...explanation.querySelectorAll("ol > li")].map((item) => [
+        item.querySelector(".gsm-hoshidicts-deinflection-step-name").textContent,
+        item.querySelector(".gsm-hoshidicts-deinflection-step-description")?.textContent ?? "",
+      ])) === JSON.stringify(lookup.results[0].trace.map(({ name, description }) => [name, description])),
+    explanation?.outerHTML ?? "missing disclosure");
   const glossaryContent = popup.querySelector(".gsm-hoshidicts-glossary-content");
   check(
     "the raw structured-content glossary was parsed and rendered",
@@ -8905,9 +8914,142 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     calculatePopupPosition: HDPopup.calculatePopupPosition,
     result: imageLookup.results[0], mediaUrl: media.dataUrl });
   structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+  await deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await mediaRenderStage({ HDGlossary, document, window });
   dom.window.close();
   return true;
+}
+
+async function deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  let layouts = 0;
+  let requestCurrent = true;
+  const view = HDPopup.createPopupView({
+    document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    parseTagList: HDGlossary.parseTagList,
+    positionPopup() { layouts += 1; },
+  });
+  const disclosure = () => popup.querySelector(".gsm-hoshidicts-deinflection");
+  const language = Object.getOwnPropertyDescriptor(window.navigator, "language");
+  const settle = async () => {
+    await new Promise((done) => window.setTimeout(done, 0));
+    await new Promise((done) => window.requestAnimationFrame(() => window.requestAnimationFrame(done)));
+  };
+  const entry = (dictionary, matched = "Selected form") => ({
+    ...result, matched, deinflected: "Dictionary form",
+    term: { ...result.term, glossaries: [{ dictionary, glossary: '["definition"]' }] },
+  });
+  try {
+    const raw = { ...entry("Raw"), matched: " <em>{deinflected} $&</em> ", deinflected: " base $' ", trace: [
+      { name: "duplicate", description: "first" },
+      { name: "duplicate", description: "second" },
+      { name: "  ", description: " <img src=x>\n literal $& " },
+      { name: " padded ", description: " padded description " },
+      { name: "長".repeat(1100), description: "" },
+    ] };
+    const before = JSON.stringify(raw);
+    const locales = [
+      ["en-GB", "Deinflection steps", `Why this matched: ${raw.matched} became ${raw.deinflected}`],
+      ["ja-JP", "活用解除の手順", `一致した理由: ${raw.matched} から ${raw.deinflected} に戻しました`],
+      ["uk-UA", "Кроки відновлення словникової форми", `Чому це збіглося: ${raw.matched} перетворено на ${raw.deinflected}`],
+      ["fr-FR", "Deinflection steps", `Why this matched: ${raw.matched} became ${raw.deinflected}`],
+    ];
+    const failures = [];
+    for (const [locale, label, aria] of locales) {
+      Object.defineProperty(window.navigator, "language", { configurable: true, value: locale });
+      view.renderResults([raw], candidate, { hidePopupGrammarTags: false });
+      const details = disclosure();
+      const names = [...popup.querySelectorAll(".gsm-hoshidicts-deinflection-step-name")].map((node) => node.textContent);
+      const descriptions = [...popup.querySelectorAll(".gsm-hoshidicts-deinflection-steps > li")]
+        .map((node) => node.querySelector(".gsm-hoshidicts-deinflection-step-description")?.textContent ?? "");
+      const valid = details?.open === false
+        && details.querySelector("summary").textContent === `${raw.matched} → ${raw.deinflected}`
+        && details.querySelector("summary").getAttribute("aria-label") === aria
+        && details.querySelector("ol").getAttribute("aria-label") === label
+        && JSON.stringify(names) === JSON.stringify(raw.trace.map(({ name }) => name))
+        && JSON.stringify(descriptions) === JSON.stringify(raw.trace.map(({ description }) => description))
+        && !details.querySelector("em, img");
+      if (details) details.open = true;
+      await settle();
+      if (!valid || JSON.stringify(raw) !== before) failures.push(locale);
+    }
+    for (const [index, replacement] of [
+      { matched: "" }, { matched: null }, { deinflected: "" },
+      { deinflected: raw.matched }, { trace: null }, { trace: "not an array" },
+      { trace: [] }, { trace: [null, {}, { name: "" }, { name: 2 }] },
+    ].entries()) {
+      try {
+        view.renderResults([{ ...raw, ...replacement }], candidate, { hidePopupGrammarTags: false });
+        if (disclosure()) failures.push(`ineligible ${index}`);
+      } catch (error) { failures.push(`ineligible ${index}: ${error.message}`); }
+    }
+    check("deinflection disclosure preserves raw duplicate steps and localized literal text without empty explanations",
+      failures.length === 0, JSON.stringify(failures));
+
+    const first = entry("First", "First match");
+    const second = entry("Second", "Second match");
+    const results = [first, second];
+    const originalResults = JSON.stringify(results);
+    const context = {
+      dictionaryPresentation: [{ title: "Second", favorite: true }],
+      isCurrentRequest: () => requestCurrent,
+      onBack() {},
+    };
+    view.renderResults(results, candidate, context);
+    await settle();
+    const primary = disclosure();
+    const primaryOutsidePanel = primary !== null
+      && popup.querySelector(".gsm-hoshidicts-primary-header").contains(primary)
+      && !popup.querySelector(".gsm-hoshidicts-tab-panel").contains(primary);
+    const lazy = popup.querySelectorAll(".gsm-hoshidicts-deinflection").length === 1;
+    const beforeOpening = layouts;
+    if (primary) primary.open = true;
+    await settle();
+    let currentPositioned = layouts > beforeOpening;
+    const beforeClosing = layouts;
+    if (primary) primary.open = false;
+    await settle();
+    currentPositioned &&= layouts > beforeClosing;
+    popup.querySelector(".gsm-hoshidicts-show-more")?.click();
+    const expanded = [...popup.querySelectorAll(".gsm-hoshidicts-deinflection")];
+    const secondary = expanded.length === 2 && expanded[0] === primary && !expanded[1].open
+      && expanded[1].closest("article") !== null
+      && expanded[1].querySelector("summary").textContent === "Second match → Dictionary form";
+    popup.querySelector('[role="tab"][data-dictionary="Second"]')?.click();
+    const projected = disclosure()?.open === false
+      && disclosure().querySelector("summary").textContent === "Second match → Dictionary form";
+    const staleCases = [];
+    for (const replace of [
+      () => view.renderResults(results, candidate, context),
+      () => popup.querySelector('[role="tab"][data-dictionary="Second"]')?.click(),
+      () => view.clear(),
+      () => { requestCurrent = false; },
+      () => view.destroy(),
+    ]) {
+      requestCurrent = true;
+      view.renderResults(results, candidate, context);
+      await settle();
+      const old = disclosure();
+      replace();
+      await settle();
+      const beforeStaleToggle = layouts;
+      old?.dispatchEvent(new window.Event("toggle"));
+      await settle();
+      staleCases.push(old !== null && layouts === beforeStaleToggle);
+    }
+    check("deinflection headers stay lazy and only current projected disclosures can request positioning",
+      primaryOutsidePanel && lazy && currentPositioned && secondary && projected
+        && staleCases.every(Boolean) && JSON.stringify(results) === originalResults,
+      JSON.stringify({ primaryOutsidePanel, lazy, currentPositioned, secondary, projected, staleCases }));
+  } finally {
+    if (language) Object.defineProperty(window.navigator, "language", language);
+    else delete window.navigator.language;
+    view.destroy();
+    popup.remove();
+  }
 }
 
 async function imagePreviewStage({ view, popup, shadow, document, window, candidate, result, mediaUrl, calculatePopupPosition }) {
