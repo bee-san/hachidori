@@ -124,6 +124,45 @@ after publication. A title collision, changed fingerprint, wrong archive
 revision, or failed import leaves the working generation loaded and reports the
 failure without publishing the candidate.
 
+## Hover activation and popup ownership
+
+The reader has one live `hoverEnabled` switch and `lookupMode` (`hover` or
+`activation`). Existing plain-hover behavior remains the default; the configured
+activation key defaults to Shift. `reader-options.js` translates legacy
+`modifier` values into the canonical mode/key on read and accepts old Settings
+patches through the same revision CAS. Explicit modern fields win, and selecting
+Hover does not erase the remembered key. Canonical writes contain no competing
+modifier policy. Letters, digits, punctuation, named browser keys and F1–F24 are
+supported; browser/OS-reserved keys remain subject to their native behavior.
+
+The existing 0–2,000 ms open delay defaults to 50 ms and also applies to a key
+pressed over a stationary pointer. Hide/transfer delay defaults to the existing
+160 ms, with the pinned source's 0–5,000 ms range. These are one global setting
+pair, not per-dictionary policies. Zero hide delay dismisses immediately.
+
+Disabled readers do not create pointer scan timers. Activation-gated readers
+remember the pointer but do not scan or schedule until the key is held. Modifier
+flags handle entering a tab while holding Shift/Control/Alt/Meta; a printable
+key's physical code pairs its release even when Shift changes its character.
+Repeated keydown is ignored, including Escape: a fresh Escape closes Note first,
+then a separate press closes the popup. No page key is captured for activation.
+
+Key release, target/window departure, outside click, Escape, blur and scroll
+cancel delayed or unfinished pointer work immediately; the hide delay only
+retains an already-rendered popup for transfer. Same-candidate hover, popup entry,
+keyboard focus and Note editing preserve the current view. Dispatching a different
+valid pointer candidate retires the previous popup, matching the pinned reader's
+`queueLookup` prune-before-send behavior: an obsolete view cannot accept a Note
+or resume expired glossary/media callbacks. Interaction-only settings changes do
+not invalidate current rendered resources; result-affecting settings still do.
+
+Disabling explicitly closes even a focused popup or Note draft, while an already
+dispatched Note append finishes its transaction without reopening or refreshing
+the disabled reader. Settings changes reach existing tabs and persist through a
+full browser restart without reloading the engine.
+
+![Hover controls in Settings](assets/reader-activation-settings.png)
+
 ## Lookup response boundary
 
 The native bridge rejects lookup text, primary reading, and frequency-dictionary
@@ -373,7 +412,7 @@ retryable.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
-| Scan length, result limit, modifier, delay, frequency ordering, and dictionary selectors | service worker writes; extension pages read | `chrome.storage.local` key `options` |
+| Hover enablement, activation mode/key, open/hide delays, scan/result limits, frequency ordering, and dictionary selectors | service worker writes; extension pages read | `chrome.storage.local` key `options` |
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 

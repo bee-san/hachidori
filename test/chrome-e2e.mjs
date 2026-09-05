@@ -1362,6 +1362,81 @@ async function checkSettingsTransport(page) {
     JSON.stringify({ evidence, saved }));
 }
 
+async function checkReaderActivation(settings, tab, popup) {
+  const original = await settings.evaluate(() => Object.fromEntries([
+    "opt-hover-enabled", "opt-lookup-mode", "opt-activation-key", "opt-hover-delay", "opt-hide-delay",
+  ].map((id) => {
+    const input = document.getElementById(id);
+    return [id, input.type === "checkbox" ? input.checked : input.value];
+  })));
+  const edit = async (values) => {
+    await settings.evaluate((changes) => {
+      for (const [id, value] of Object.entries(changes)) {
+        const input = document.getElementById(id);
+        if (input.type === "checkbox") input.checked = value;
+        else input.value = value;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }, values);
+    await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
+      { polling: 100, timeout: 10_000 });
+  };
+  const pause = (ms) => tab.evaluate((delay) => new Promise((resolveWait) => setTimeout(resolveWait, delay)), ms);
+  const position = await (await tab.$("#verb")).boundingBox();
+  const moveToWord = async () => {
+    await tab.mouse.move(2, 2);
+    await tab.mouse.move(position.x + position.width * 0.15, position.y + position.height / 2);
+  };
+  const generation = async () => settings.evaluate(async () =>
+    (await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" })).generation);
+  const beforeGeneration = await generation();
+  try {
+    const opened = await hoverForPopup(tab, popup, "#verb");
+    await edit({ "opt-hover-enabled": false });
+    const closed = await popup.waitForHidden();
+    await moveToWord();
+    await pause(250);
+    const disabled = !popup.visible(await popup.state());
+    await edit({ "opt-hover-enabled": true });
+    const reopened = await hoverForPopup(tab, popup, "#verb");
+    check("hover enablement closes active popups and changes already-open tabs without reloading the engine",
+      opened !== null && closed && disabled && reopened !== null && await generation() === beforeGeneration,
+      JSON.stringify({ closed, disabled, reopened: reopened !== null }));
+
+    await edit({ "opt-lookup-mode": "activation", "opt-activation-key": "K", "opt-hover-delay": "200", "opt-hide-delay": "400" });
+    await popup.waitForHidden();
+    await moveToWord();
+    await pause(250);
+    const gated = !popup.visible(await popup.state());
+    await tab.keyboard.down("k");
+    await pause(30);
+    const delayed = !popup.visible(await popup.state());
+    const activated = await popup.waitForVisible();
+    await tab.keyboard.up("k");
+    const retained = popup.visible(await popup.state());
+    const released = await popup.waitForHidden();
+    await tab.keyboard.down("k");
+    await tab.keyboard.up("k");
+    await pause(300);
+    const cancelled = !popup.visible(await popup.state());
+    const controls = await settings.evaluate(() => ({
+      key: document.getElementById("opt-activation-key").value,
+      disabled: document.getElementById("opt-activation-key").disabled,
+      mode: document.getElementById("opt-lookup-mode").value,
+    }));
+    check("configured activation keys open stationary lookups and release them using the saved delays",
+      gated && delayed && activated !== null && retained && released && cancelled
+        && controls.key === "K" && controls.mode === "activation" && !controls.disabled,
+      JSON.stringify({ gated, delayed, activated: activated !== null, retained, released, cancelled, controls }));
+  } finally {
+    await tab.keyboard.up("k");
+    // Keep a non-default key in Hover mode to prove that mode changes preserve
+    // it and that the exact setting survives the suite's full browser restart.
+    await edit({ ...original, "opt-activation-key": "K" });
+    await tab.keyboard.press("Escape");
+  }
+}
+
 async function main() {
   if (!CHROME || !existsSync(CHROME)) {
     fatal("no Chrome found (set HACHIDORI_CHROME or install it as described in test/README.md)");
@@ -2712,6 +2787,9 @@ async function main() {
     `popup tabs: ${JSON.stringify(verbState.tabs)}`,
   );
 
+  await checkReaderActivation(page, tab, popup);
+  await hover("#verb");
+
   const clickedKanji = await popup.click(".gsm-hoshidicts-kanji-link");
   let genericKanjiState = null;
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -3696,6 +3774,10 @@ async function main() {
     const { options } = await chrome.storage.local.get("options");
     return JSON.stringify(options) === JSON.stringify(expected)
       && document.getElementById("opt-max-results").value === String(expected.maxResults)
+      && document.getElementById("opt-hover-enabled").checked === expected.hoverEnabled
+      && document.getElementById("opt-lookup-mode").value === expected.lookupMode
+      && document.getElementById("opt-activation-key").value === expected.activationKey
+      && document.getElementById("opt-hide-delay").value === String(expected.popupHideDelayMs)
       ? options : false;
   }, { timeout: 30_000, polling: 100 }, optionsBeforeRestart).then((handle) => handle.jsonValue()).catch(() => null);
   check("reader settings and their revision survive a full browser restart",
