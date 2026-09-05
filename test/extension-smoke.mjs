@@ -6832,6 +6832,7 @@ async function contentNoteStage() {
       parseTagList() { return []; },
     };
     window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
+    const createLayoutView = window.HDPopup.createPopupView;
     window.HDPopup = {
       ...window.HDPopup,
       createPopupView: createView,
@@ -7035,6 +7036,7 @@ async function contentNoteStage() {
       anchor,
       appliedStyles,
       candidate,
+      createLayoutView,
       callbacks: (depth = 0) => popupRecord(depth).callbacks,
       close() { dom.window.close(); },
       driver,
@@ -7251,6 +7253,131 @@ async function contentNoteStage() {
       "child popup depth is live and child geometry is clamped to the viewport": positioned && layoutStartsAtOwner && rootOnlyScroll
         && disabled && limited && lowered && shrunk && noViewport,
     };
+  }
+
+  async function nestedResizeCase() {
+    const harness = await createHarness();
+    const window = harness.anchor.ownerDocument.defaultView;
+    const views = [];
+    const frames = new Map();
+    const observers = [];
+    let nextFrame = 0;
+    let layouts = 0;
+    let popupReads = 0;
+    let rootReads = 0;
+    const frame = () => {
+      for (const [id, callback] of [...frames]) {
+        if (!frames.delete(id)) continue;
+        callback();
+      }
+    };
+    try {
+      await harness.initialLookup();
+      for (let depth = 0; depth < 3; depth += 1) {
+        const operation = harness.internalLink({ query: `level-${depth + 1}` }, depth);
+        harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term(`level-${depth + 1}`)] });
+        await operation;
+      }
+      window.innerWidth = 2400;
+      window.innerHeight = 700;
+      window.requestAnimationFrame = callback => { frames.set(++nextFrame, callback); return nextFrame; };
+      window.cancelAnimationFrame = id => frames.delete(id);
+      window.ResizeObserver = class {
+        constructor(callback) { this.callback = callback; observers.push(this); }
+        observe() {}
+        disconnect() {}
+      };
+      const rootRect = harness.anchor.getBoundingClientRect.bind(harness.anchor);
+      harness.anchor.getBoundingClientRect = () => { rootReads += 1; return rootRect(); };
+      for (let depth = 0; depth < 4; depth += 1) {
+        const popup = harness.driver.popupAt(depth);
+        popup.getBoundingClientRect = () => {
+          popupReads += 1;
+          const left = Number.parseFloat(popup.style.left);
+          const top = Number.parseFloat(popup.style.top);
+          const width = Number.parseFloat(popup.style.width);
+          const height = Number.parseFloat(popup.style.height);
+          return { left, top, width, height, right: left + width, bottom: top + height };
+        };
+        const grid = window.document.createElement("div");
+        grid.className = "gsm-hoshidicts-glossary-grid";
+        grid.append(window.document.createElement("div"), window.document.createElement("div"));
+        Object.defineProperty(grid, "clientWidth", { value: 200 });
+        popup.append(grid);
+        // Real per-view resize/masonry callbacks, bound to the real content
+        // owners; the request harness continues to own only lookup replies.
+        views.push(harness.createLayoutView({ ...harness.callbacks(depth),
+          getPopupColumns() { layouts += 1; return 2; } }));
+      }
+      window.dispatchEvent(new window.Event("resize"));
+      frame();
+      frame();
+      const resize = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0
+        && [0, 1, 2, 3].every(depth => {
+          const popup = harness.driver.popupAt(depth);
+          return Number.parseFloat(popup.style.left) >= 6
+            && Number.parseFloat(popup.style.left) + Number.parseFloat(popup.style.width) <= 2394
+            && popup.querySelector(".gsm-hoshidicts-glossary-grid").style.height !== "";
+        });
+      layouts = 0; rootReads = 0; popupReads = 0;
+      observers.forEach(observer => observer.callback());
+      frame();
+      frame();
+      const observerFollowup = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0;
+
+      // A queued root resize still places the surviving chain after a child
+      // retires; a queued retired child cannot target its depth replacement.
+      const childCallbacks = harness.callbacks(1);
+      views[0].scheduleMasonry();
+      frame();
+      harness.emitOptions({ popupNestingMaxDepth: 0 });
+      views.slice(1).forEach(view => view.destroy());
+      rootReads = 0; popupReads = 0;
+      frame();
+      const rootSurvivesPrune = rootReads === 1 && popupReads === 0;
+      const afterLayout = childCallbacks.positionAfterLayout || childCallbacks.positionPopup;
+      afterLayout();
+      const retiredIgnored = frames.size === 0;
+      rootReads = 0;
+      views[0].scheduleMasonry();
+      frame();
+      const rootSameFrame = rootReads === 1 && frames.size === 0;
+
+      harness.emitOptions({ popupNestingMaxDepth: 1 });
+      const child = harness.internalLink({ query: "replacement" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("replacement")] });
+      await child;
+      const retiring = harness.callbacks(1);
+      (retiring.positionAfterLayout || retiring.positionPopup)();
+      const childQueued = frames.size === 1;
+      harness.callbacks().onBeforeResultsRendered();
+      const retiredCancelled = frames.size === 0;
+      const replacement = harness.internalLink({ query: "same depth" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("same depth")] });
+      await replacement;
+      (retiring.positionAfterLayout || retiring.positionPopup)();
+      const replacementUntouched = frames.size === 0;
+      views[0].scheduleMasonry();
+      frame();
+      harness.driver.onKeyDown({ key: "Escape", repeat: false, stopPropagation() {} });
+      // First Escape closes the unfocused child; the next dismisses the root.
+      harness.driver.onKeyDown({ key: "Escape", repeat: false, stopPropagation() {} });
+      const hiddenCancelled = frames.size === 0;
+      await harness.initialLookup();
+      const next = harness.internalLink({ query: "teardown" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("teardown")] });
+      await next;
+      views[0].scheduleMasonry();
+      frame();
+      harness.driver.teardown();
+      const teardownCancelled = frames.size === 0;
+      return { "viewport and observer layout place a popup chain linearly and retire queued owners":
+        resize && observerFollowup && rootSurvivesPrune && retiredIgnored && rootSameFrame
+        && childQueued && retiredCancelled && replacementUntouched && hiddenCancelled && teardownCancelled };
+    } finally {
+      views.forEach(view => view.destroy());
+      harness.close();
+    }
   }
 
   async function nestedPointerCase() {
@@ -9138,7 +9265,7 @@ async function contentNoteStage() {
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
-      ...await nestedLevelsCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
+      ...await nestedLevelsCase(), ...await nestedResizeCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
