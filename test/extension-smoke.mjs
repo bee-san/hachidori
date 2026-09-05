@@ -7078,27 +7078,39 @@ async function contentNoteStage() {
     return { "selecting popup glossary text preserves the current page-selection view": retained };
   }
 
-  async function pendingSelectionInvalidationCase() {
+  async function selectionInvalidationCase() {
     const outcomes = [];
-    for (const reason of ["dictionary", "options"]) {
+    for (const [reason, phase] of ["dictionary", "options"].flatMap((reason) =>
+      ["pending", "miss", "hit"].map((phase) => [reason, phase]))) {
       const harness = await createHarness();
       const window = harness.popup.ownerDocument.defaultView;
       window.getSelection().selectAllChildren(harness.anchor);
       window.document.dispatchEvent(new window.Event("selectionchange"));
       const first = harness.take("hd_lookup");
+      const exactResults = [harness.term(harness.candidate.query)];
+      if (phase !== "pending" && first) {
+        harness.reply(first, { dictionaryCount: 1, results: phase === "hit" ? exactResults : [] });
+        await harness.settle();
+      }
+      harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+      const unchangedRetained = harness.take("hd_lookup") === null;
       if (reason === "dictionary") harness.emitState(harness.state(2, "New dictionary generation"));
       else harness.emitOptions({ maxResults: 5 });
-      if (first) harness.reply(first, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+      if (phase === "pending" && first) harness.reply(first, { dictionaryCount: 1, results: exactResults });
       await harness.settle();
-      const oldRejected = harness.renders.length === 0 && harness.driver.snapshot().popupHidden;
+      const oldRejected = phase !== "pending"
+        || (harness.renders.length === 0 && harness.driver.snapshot().popupHidden);
       harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
       const retry = harness.take("hd_lookup");
-      outcomes.push(oldRejected && retry?.request.text === harness.candidate.query);
-      if (retry) harness.reply(retry, { dictionaryCount: 1, results: [] });
+      if (retry) harness.reply(retry, { dictionaryCount: 1, results: exactResults });
       await harness.settle();
+      outcomes.push(unchangedRetained && oldRejected && retry?.request.text === harness.candidate.query
+        && (reason !== "options" || retry?.request.maxResults === 5)
+        && harness.render()?.results[0].matched === harness.candidate.query
+        && !harness.driver.snapshot().popupHidden);
       harness.close();
     }
-    return { "pending selections recover after dictionary and result-option invalidation":
+    return { "pending selections and resolved hits or misses retry only after dictionary or result-option invalidation":
       outcomes.every(Boolean) || outcomes };
   }
 
@@ -7151,9 +7163,11 @@ async function contentNoteStage() {
       && linked.request.scanLength === 1 && linkedDescriptor?.exactSelection === false
       && harness.render()?.results[0].matched === "別" && linkedDescriptor.highlightText === query;
     const linkedRefresh = await noteRefresh(3, 3, [harness.term("別")], false);
+    harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
     const linkedRefreshKept = linkedRefresh?.request.text === "別の語"
       && linkedRefresh.request.options.primaryReading === "べつ"
-      && harness.driver.viewRequest() === linkedDescriptor && harness.render()?.results[0].matched === "別";
+      && harness.driver.viewRequest() === linkedDescriptor && harness.render()?.results[0].matched === "別"
+      && harness.take("hd_lookup") === null;
     harness.close();
     return { "Note and kanji Back preserve exact selection descriptors while linked queries retain their own matching mode":
       selectedKept && backKept && linkKept && linkedRefreshKept
@@ -8135,7 +8149,7 @@ async function contentNoteStage() {
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
-      ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await pendingSelectionInvalidationCase(),
+      ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },

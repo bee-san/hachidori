@@ -1946,6 +1946,9 @@
 
   function invalidateStoredState(dictionaryChanged) {
     discardPendingCandidate();
+    // A completed selection hit or miss also belongs to the old lookup state.
+    // Preserve Note's view ownership through its deferred refresh.
+    if (!noteEditing && pendingCustomAppends === 0) activeSelectionCandidate = null;
     view?.hideImagePreview();
     if (dictionaryChanged && popup && !popup.hidden) {
       if (noteEditing || pendingCustomAppends > 0) {

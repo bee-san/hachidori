@@ -196,8 +196,9 @@ and block separators can make `Selection.toString()` differ from `Range.toString
 Reverse/cross-inline ranges retain their exact source offsets. Selecting a
 glossary inside our closed shadow root preserves the current view. Pending
 selection replies share pointer cancellation and are rejected after dismissal
-or relevant storage invalidation; that invalidation also releases ownership for
-a fresh attempt. Note refresh and kanji Back replay the stored exact descriptor,
+or relevant storage invalidation; that invalidation also releases completed hits
+and misses for a fresh attempt with the new dictionaries or result options.
+Note refresh and kanji Back replay the stored exact descriptor,
 while an internal link uses its own query, reading and prefix-matching mode.
 Visibility checks distinguish hidden subtrees (`display:none`) from inherited
 `visibility:hidden`, whose children can restore visible text or editing surfaces.
