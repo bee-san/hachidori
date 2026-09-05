@@ -6457,8 +6457,10 @@ async function contentNoteStage() {
     hideTimerPending() { return hideTimer !== null; },
     setScanCandidate(candidate) { resolveCandidate = () => candidate; },
     onMouseMove,
+    onMouseDown,
     onMouseOut,
     onWindowBlur,
+    onScroll,
     onInternalLink,
     onKeyDown,
     runLookup,
@@ -7052,6 +7054,30 @@ async function contentNoteStage() {
     result["configured printable activation keys release by physical code and ignore repeats"] =
       oneTimer && printable !== null && harness.driver.snapshot().popupHidden;
 
+    const departures = [];
+    for (const reason of ["no-candidate", "window-exit", "blur", "Escape", "click", "scroll"]) {
+      harness.emitOptions({ ...settings, lookupMode: "hover" });
+      harness.driver.setScanCandidate(harness.candidate);
+      move();
+      fire(75);
+      const departed = harness.take("hd_lookup");
+      if (reason === "no-candidate") {
+        harness.driver.setScanCandidate(null);
+        move();
+        fire(75);
+      } else if (reason === "window-exit") harness.driver.onMouseOut({ relatedTarget: null });
+      else if (reason === "blur") harness.driver.onWindowBlur();
+      else if (reason === "Escape") key("keydown", "Escape", "Escape");
+      else if (reason === "scroll") harness.driver.onScroll();
+      else harness.driver.onMouseDown({ target: window.document.body, clientX: 200, clientY: 200 });
+      if (departed) harness.reply(departed, { dictionaryCount: 1, results: [harness.term(reason)] });
+      await harness.settle();
+      departures.push(departed !== null && harness.driver.snapshot().popupHidden);
+      harness.driver.onWindowBlur();
+    }
+    result["pointer departure, click, Escape, blur and scroll cancel the first pending popup"] =
+      departures.every(Boolean) || departures;
+
     harness.emitOptions({ ...settings, lookupMode: "hover" });
     await harness.initialLookup();
     harness.driver.setScanCandidate(null);
@@ -7100,6 +7126,13 @@ async function contentNoteStage() {
     fire(75);
     const disabledScan = harness.take("hd_lookup") === null;
     harness.emitOptions({ ...settings, lookupMode: "hover" });
+    const disabledPending = harness.driver.runLookup(harness.candidate);
+    const disabledRequest = harness.take("hd_lookup");
+    harness.emitOptions({ ...settings, hoverEnabled: false });
+    harness.reply(disabledRequest, { dictionaryCount: 1, results: [harness.term("disabled while pending")] });
+    await disabledPending;
+    const disabledReply = harness.driver.snapshot().popupHidden;
+    harness.emitOptions({ ...settings, lookupMode: "hover" });
     await harness.initialLookup();
     harness.edit(true);
     const append = harness.callbacks().onAddCustomEntry({ term: "食べた", reading: "たべた", definition: "ate" });
@@ -7110,7 +7143,7 @@ async function contentNoteStage() {
     await append;
     await harness.settle();
     result["master disable stops scans and closes drafts without cancelling or refreshing a committed Note"] =
-      disabledTimer && disabledScan && closedDraft && harness.driver.snapshot().popupHidden
+      disabledTimer && disabledScan && disabledReply && closedDraft && harness.driver.snapshot().popupHidden
         && harness.take("hd_lookup") === null;
     harness.close();
     return result;
