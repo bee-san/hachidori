@@ -176,6 +176,11 @@ changed anchor/query or failed request can start fresh work.
 Retained selections are rechecked through the existing pointer throttle rather
 than rebuilding their visible string on every mousemove; selection-change and
 mouseup lookups still dispatch immediately.
+Focus checks follow nested open page shadow roots, and editor focus cancels both
+delayed and already-dispatched candidate work. Closed page shadow roots expose
+only their host through browser focus/event APIs; their private editors cannot
+be inspected. The reader does not intercept shadow creation or block every
+focused component to guess at those internals.
 
 An explicit page selection takes priority over pointer scanning and bypasses
 the language and activation-key gates, but not reader disablement or editing
@@ -194,6 +199,8 @@ selection replies share pointer cancellation and are rejected after dismissal
 or relevant storage invalidation; that invalidation also releases ownership for
 a fresh attempt. Note refresh and kanji Back replay the stored exact descriptor,
 while an internal link uses its own query, reading and prefix-matching mode.
+Visibility checks distinguish hidden subtrees (`display:none`) from inherited
+`visibility:hidden`, whose children can restore visible text or editing surfaces.
 
 ## Lookup response boundary
 

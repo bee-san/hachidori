@@ -292,7 +292,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 265 checks, all of
+full request→reply round trip per contract-C message type. 266 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -563,6 +563,8 @@ observe real worker lookup relays while toggling Japanese-only scanning in the
 open tab. Native input, textarea and contenteditable typing stays intact; direct
 and spanning selections exclude visible editing controls, including boxless
 `display:contents` editors, without treating a hidden control as visible.
+Nested open-shadow editors suppress native activation typing and pending scans;
+visibility-restored descendants are treated as visible even inside a hidden editor.
 The extension suite separately holds replies through selection cancellation,
 retry and storage invalidation; checks exact Note/Back/internal-link descriptors;
 and pins same-candidate pending lookup deduplication.

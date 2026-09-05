@@ -7005,7 +7005,7 @@ async function contentNoteStage() {
 
   async function selectionEditingCase() {
     const outcomes = [];
-    for (const tag of ["button", "span", "contents", "restored"]) {
+    for (const tag of ["button", "span", "contents", "restored", "restored-child"]) {
       const harness = await createHarness();
       const window = harness.popup.ownerDocument.defaultView;
       harness.anchor.textContent = "食";
@@ -7018,6 +7018,14 @@ async function contentNoteStage() {
         control.setAttribute("contenteditable", "true");
         Object.defineProperty(control, "isContentEditable", { value: true });
         if (tag === "contents") control.style.display = "contents";
+      }
+      if (tag === "restored-child") {
+        control.style.visibility = "hidden";
+        const child = window.document.createElement("b");
+        child.style.visibility = "visible";
+        child.textContent = "べ";
+        child.getClientRects = () => [{}];
+        control.append(child);
       }
       let editingNode = control;
       if (tag === "restored") {
@@ -7358,6 +7366,7 @@ async function contentNoteStage() {
       block.innerHTML = '<b style="display:inline">食</b>';
       const control = document.createElement(tag);
       control.style.display = "inline";
+      control.getClientRects = () => [{}];
       control.textContent = "べたかった";
       if (tag === "span") {
         control.setAttribute("contenteditable", "true");
@@ -7369,10 +7378,21 @@ async function contentNoteStage() {
       control.style.display = "none";
       controls.push(scan(block.firstChild.firstChild)?.query === "食語");
     }
+    block.innerHTML = '食<span style="visibility:hidden">隠し<b style="visibility:visible">べ</b></span>た';
+    const restored = block.querySelector("b");
+    const restoredProse = scan(block.firstChild)?.query === "食べた" && scan(restored.firstChild)?.query === "べた";
+    for (const editor of [block.querySelector("span"), restored]) {
+      editor.setAttribute("contenteditable", "true");
+      Object.defineProperty(editor, "isContentEditable", { configurable: true, value: true });
+      restored.getClientRects = () => [{}];
+      controls.push(scan(block.firstChild)?.query === "食");
+      editor.removeAttribute("contenteditable");
+      delete editor.isContentEditable;
+    }
     harness.close();
     return {
       "pointer scans cross ordinary inline text and apply the live Japanese-only preference":
-        crossedInline && japaneseOnly && unrestricted && gatedAgain,
+        crossedInline && japaneseOnly && unrestricted && gatedAgain && restoredProse,
       "editing controls and contenteditable text stop both direct and forward pointer scanning":
         controls.every(Boolean) || controls,
     };
@@ -7408,6 +7428,51 @@ async function contentNoteStage() {
       "focused editing suppresses stationary activation and Japanese gating cancels prior pending scans":
         whileEditing === null && beforeGate !== null && obsoleteRejected,
     };
+  }
+
+  async function shadowEditingCase() {
+    const outcomes = [];
+    for (const tag of ["input", "div"]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      const host = window.document.createElement("div");
+      window.document.body.append(host);
+      const innerHost = window.document.createElement("div");
+      host.attachShadow({ mode: "open" }).append(innerHost);
+      const editor = window.document.createElement(tag);
+      editor.tabIndex = 0;
+      if (tag === "div") {
+        editor.setAttribute("contenteditable", "true");
+        Object.defineProperty(editor, "isContentEditable", { value: true });
+      }
+      innerHost.attachShadow({ mode: "open" }).append(editor);
+      harness.driver.setScanCandidate(harness.candidate);
+      const pointer = { target: harness.anchor, clientX: 200, clientY: 200 };
+      harness.emitOptions({ lookupMode: "activation", activationKey: "K", hoverDelayMs: 0 });
+      harness.driver.onMouseMove(pointer);
+      editor.focus();
+      editor.dispatchEvent(new window.KeyboardEvent("keydown", { key: "k", code: "KeyK", bubbles: true, composed: true }));
+      await harness.settle();
+      const typing = harness.take("hd_lookup");
+      if (typing) harness.reply(typing, {}, false);
+      editor.blur();
+      harness.emitOptions({ lookupMode: "hover", hoverDelayMs: 0 });
+      harness.driver.onMouseMove(pointer);
+      editor.focus();
+      await harness.settle();
+      const delayed = harness.take("hd_lookup");
+      if (delayed) harness.reply(delayed, {}, false);
+      editor.blur();
+      harness.driver.scanPointer(pointer);
+      const pending = harness.take("hd_lookup");
+      editor.focus();
+      if (pending) harness.reply(pending, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+      await harness.settle();
+      outcomes.push(typing === null && delayed === null && pending !== null && harness.driver.snapshot().popupHidden);
+      harness.close();
+    }
+    return { "nested open-shadow editors suppress activation and cancel delayed and pending candidate work":
+      outcomes.every(Boolean) || outcomes };
   }
 
   async function pendingScanCase() {
@@ -8041,7 +8106,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
-    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(),
+    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await pendingSelectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },

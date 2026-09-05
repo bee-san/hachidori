@@ -357,12 +357,20 @@
     return element?.isContentEditable === true || EDITING_TAGS.has(element?.localName);
   }
 
+  function pageEditorFocused() {
+    for (let focused = document.activeElement; focused; focused = focused.shadowRoot?.activeElement) {
+      if (isEditingElement(focused)) return true;
+    }
+    return false;
+  }
+
   function isScannableElement(element, styleCache) {
-    if (!element || element.getRootNode() !== document || isOurNode(element)) {
+    if (!element || element.getRootNode() !== document || isOurNode(element) || isHiddenElement(element, styleCache)) {
       return false;
     }
     for (let current = element; current; current = current.parentElement) {
-      if (isEditingElement(current) || OPAQUE_TAGS.has(current.localName) || isHiddenElement(current, styleCache)) {
+      if (isEditingElement(current) || OPAQUE_TAGS.has(current.localName)
+          || computedStyleFor(current, styleCache).display === "none") {
         return false;
       }
     }
@@ -491,19 +499,22 @@
       {
         acceptNode(node) {
           if (node.nodeType === Node.TEXT_NODE) {
-            return NodeFilter.FILTER_ACCEPT;
+            return isHiddenElement(node.parentElement, styleCache) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
           }
           const editing = isEditingElement(node);
           if (
             (!editing && OPAQUE_TAGS.has(node.localName)) ||
             isOurNode(node) ||
-            isHiddenElement(node, styleCache)
+            computedStyleFor(node, styleCache).display === "none"
           ) {
             return NodeFilter.FILTER_REJECT;
           }
+          if (editing) return hasVisibleContent(node, styleCache) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+          // visibility can be restored by descendants; display:none cannot.
+          if (isHiddenElement(node, styleCache)) return NodeFilter.FILTER_SKIP;
           // Visible controls and block elements are boundaries; ordinary inline
           // elements are skipped so their text keeps flowing into the scan.
-          return editing || node.localName === "br" || isBlockDisplay(node, styleCache)
+          return node.localName === "br" || isBlockDisplay(node, styleCache)
             ? NodeFilter.FILTER_ACCEPT
             : NodeFilter.FILTER_SKIP;
         },
@@ -604,12 +615,19 @@
   }
 
   function hasVisibleContent(element, styleCache) {
-    if (isHiddenElement(element, styleCache)) return false;
-    if (element.getClientRects().length > 0) return true;
-    // A display:contents editor has no box, but its editable text still does.
-    const contents = document.createRange();
-    contents.selectNodeContents(element);
-    return contents.getClientRects().length > 0;
+    if (computedStyleFor(element, styleCache).display === "none") return false;
+    const visible = !isHiddenElement(element, styleCache);
+    if (visible && element.getClientRects().length > 0) return true;
+    for (const child of element.childNodes) {
+      if (child.nodeType === Node.ELEMENT_NODE && hasVisibleContent(child, styleCache)) return true;
+      if (visible && child.nodeType === Node.TEXT_NODE) {
+        // A display:contents editor has no box, but its editable text still does.
+        const range = document.createRange();
+        range.selectNodeContents(child);
+        if (range.getClientRects().length > 0) return true;
+      }
+    }
+    return false;
   }
 
   function resolveSelectedLookupCandidate(selection = window.getSelection()) {
@@ -717,6 +735,7 @@
     document.removeEventListener("mousedown", onMouseDown, true);
     document.removeEventListener("mouseup", onMouseUp, true);
     document.removeEventListener("selectionchange", onSelectionChange);
+    document.removeEventListener("focusin", onPageFocusIn, true);
     document.removeEventListener("keydown", onKeyDown, true);
     document.removeEventListener("keyup", onKeyUp, true);
     document.removeEventListener("mouseout", onMouseOut, true);
@@ -1661,7 +1680,7 @@
       return;
     }
     if (!options.hoverEnabled) return;
-    if (noteEditing || popupHasFocus() || isEditingElement(document.activeElement)) {
+    if (noteEditing || popupHasFocus() || pageEditorFocused()) {
       cancelCandidateScan();
       clearHideTimer();
       return;
@@ -1738,7 +1757,7 @@
       return;
     }
     pointerInPopup = false;
-    if (noteEditing || popupHasFocus() || isEditingElement(document.activeElement)) {
+    if (noteEditing || popupHasFocus() || pageEditorFocused()) {
       cancelCandidateScan();
       return;
     }
@@ -1808,7 +1827,7 @@
 
   function onSelectionChange() {
     if (disposed || !options.hoverEnabled || selectionDragActive || noteEditing
-        || popupHasFocus() || isEditingElement(document.activeElement) || selectionIsUnchanged()) return;
+        || popupHasFocus() || pageEditorFocused() || selectionIsUnchanged()) return;
     const selection = window.getSelection();
     if ([selection?.anchorNode, selection?.focusNode].some((node) =>
       node && (node === host || node.getRootNode() === shadow))) return;
@@ -1822,6 +1841,10 @@
     if (disposed || event.button !== 0 || !selectionDragActive) return;
     selectionDragActive = false;
     onSelectionChange();
+  }
+
+  function onPageFocusIn() {
+    if (!disposed && pageEditorFocused()) cancelCandidateScan();
   }
 
   function onKeyDown(event) {
@@ -1843,7 +1866,7 @@
       hide();
       if (wasPending || options.activationKey !== "Escape") return;
     }
-    if (!options.hoverEnabled || isEditingElement(document.activeElement)) return;
+    if (!options.hoverEnabled || pageEditorFocused()) return;
     // Pressing the gate key while the pointer is stationary should reveal the
     // word under it without asking the reader to jiggle the mouse.
     const wasPressed = activationPressed;
@@ -2048,6 +2071,7 @@
     document.addEventListener("mousedown", onMouseDown, observe);
     document.addEventListener("mouseup", onMouseUp, observe);
     document.addEventListener("selectionchange", onSelectionChange);
+    document.addEventListener("focusin", onPageFocusIn, observe);
     document.addEventListener("mouseout", onMouseOut, observe);
     document.addEventListener("keydown", onKeyDown, true);
     document.addEventListener("keyup", onKeyUp, true);

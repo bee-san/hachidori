@@ -1466,7 +1466,7 @@ async function checkReaderActivation(settings, tab, popup) {
 
 async function checkReaderSelection(browser, settings, tab, popup) {
   const original = await readSettingsControls(settings, [
-    "opt-lookup-mode", "opt-scan-length", "opt-japanese-only", "opt-hover-delay",
+    "opt-lookup-mode", "opt-activation-key", "opt-scan-length", "opt-japanese-only", "opt-hover-delay",
   ]);
   const originalVerb = await tab.$eval("#verb", (element) => element.innerHTML);
   const worker = await installMediaReplyProbe(browser);
@@ -1571,11 +1571,41 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       await pause();
       await dismiss();
     }
+    for (const tag of ["input", "div"]) {
+      await editSettingsControls(settings, { "opt-lookup-mode": "activation", "opt-activation-key": "K" });
+      await tab.evaluate((name) => {
+        const host = document.createElement("div");
+        host.id = "shadow-editor";
+        document.body.append(host);
+        const innerHost = document.createElement("div");
+        host.attachShadow({ mode: "open" }).append(innerHost);
+        const editor = document.createElement(name);
+        if (name === "div") editor.contentEditable = "true";
+        innerHost.attachShadow({ mode: "open" }).append(editor);
+        editor.focus();
+      }, tag);
+      await moveTo("#duplicate");
+      await tab.keyboard.down("k");
+      await pause();
+      await tab.keyboard.up("k");
+      await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
+      await moveTo("#duplicate");
+      edits.push(await tab.evaluate(() => {
+        const host = document.getElementById("shadow-editor");
+        const editor = host.shadowRoot.firstChild.shadowRoot.firstChild;
+        const typed = (editor.value ?? editor.textContent) === "k";
+        editor.blur();
+        host.remove();
+        return typed;
+      }));
+      await dismiss();
+    }
     // Neither range endpoint is editable: the interior control still excludes it.
     for (const editor of [
       '<button>べ</button>',
       '<b contenteditable="true" style="display:contents">べ</b>',
       '<span style="visibility:hidden"><b contenteditable="true" style="visibility:visible">べ</b></span>',
+      '<b contenteditable="true" style="visibility:hidden">隠し<i style="visibility:visible">べ</i></b>',
     ]) {
       await selectVerb(`食${editor}たかった`);
       await moveTo("#verb");
