@@ -1411,6 +1411,21 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && legacyPatch.lookupMode === "activation" && legacyPatch.activationKey === "Shift"
         && legacyPatch.modifier === undefined && invalidActivation,
       JSON.stringify({ plain, held, explicit, legacyPatch, invalidActivation }));
+    const depths = [];
+    for (const depth of [0, 2, Number.MAX_SAFE_INTEGER]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupNestingMaxDepth: depth }));
+      depths.push(reply.ok === true && reply.options?.popupNestingMaxDepth === depth);
+    }
+    const badDepths = [];
+    for (const depth of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, "2", null]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupNestingMaxDepth: depth }));
+      badDepths.push(reply.ok === false && await unchanged(saved));
+    }
+    check("nested lookup depth defaults to ten children and accepts zero through the safe-integer range via options CAS",
+      reader.normaliseOptions({}).popupNestingMaxDepth === 10
+        && depths.every(Boolean) && badDepths.every(Boolean), JSON.stringify({ depths, badDepths }));
     const invalid = [
       { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
       { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { modifier: "meta" },
