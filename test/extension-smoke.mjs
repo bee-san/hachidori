@@ -7003,6 +7003,30 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function pendingSelectionInvalidationCase() {
+    const outcomes = [];
+    for (const reason of ["dictionary", "options"]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      window.getSelection().selectAllChildren(harness.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      const first = harness.take("hd_lookup");
+      if (reason === "dictionary") harness.emitState(harness.state(2, "New dictionary generation"));
+      else harness.emitOptions({ maxResults: 5 });
+      if (first) harness.reply(first, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+      await harness.settle();
+      const oldRejected = harness.renders.length === 0 && harness.driver.snapshot().popupHidden;
+      harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
+      const retry = harness.take("hd_lookup");
+      outcomes.push(oldRejected && retry?.request.text === harness.candidate.query);
+      if (retry) harness.reply(retry, { dictionaryCount: 1, results: [] });
+      await harness.settle();
+      harness.close();
+    }
+    return { "pending selections recover after dictionary and result-option invalidation":
+      outcomes.every(Boolean) || outcomes };
+  }
+
   async function selectionDescriptorCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
@@ -7941,7 +7965,7 @@ async function contentNoteStage() {
     callbacksWired,
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
-      ...await selectedTextCase(), ...await selectionDescriptorCase() },
+      ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await pendingSelectionInvalidationCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
