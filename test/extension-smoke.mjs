@@ -1574,9 +1574,9 @@ async function main() {
     "offscreen.js still contains legacy-storage selection logic",
   );
   check(
-    "the threaded bridge places a hard bound on pending engine requests",
+    "the offscreen bridge places a hard bound on pending engine requests",
     /pending\.size\s*>=\s*MAX_PENDING_REQUESTS/u.test(offscreenSource)
-      && /message\?\.type\s*===\s*"hd_status"/u.test(offscreenSource),
+      && /message\??\.type\s*===\s*"hd_status"/u.test(offscreenSource),
     "offscreen.js does not cap its pending map while preserving status replies",
   );
   const probePath = resolve(EXTENSION, "opfs-capability-worker.js");

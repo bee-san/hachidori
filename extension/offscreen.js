@@ -40,15 +40,13 @@ const CAN_THREAD = supportsSharedWasmMemory();
 let worker = null;
 let localEngine = null;
 let nextRequestId = 0;
-let workerError = null;
+let engineError = null;
 let activeMutationRequestId = null;
-let lastWorkerStatus = {
+let lastEngineStatus = {
   ready: false,
   loading: true,
   dictionaryCount: 0,
   generation: 0,
-  storageBackend: "opfs",
-  threaded: true,
 };
 const pending = new Map();
 
@@ -76,14 +74,29 @@ function failedResponse(message, error) {
   });
 }
 
-function failWorker(error) {
-  if (workerError !== null) return;
-  workerError = describe(error) || "the Hoshidicts engine worker stopped";
-  activeMutationRequestId = null;
-  console.error(`hoshidicts: engine worker failed: ${workerError}`);
+function finishRequest(id, response) {
+  const request = pending.get(id);
+  if (request === undefined) return;
+  pending.delete(id);
+  if (id === activeMutationRequestId) activeMutationRequestId = null;
+  if (response?.type === "hd_status_result") {
+    lastEngineStatus = {
+      ...lastEngineStatus,
+      ready: response.ready === true,
+      loading: response.loading === true,
+      dictionaryCount: Number(response.dictionaryCount) || 0,
+      generation: Number(response.generation) || 0,
+    };
+  }
+  request.sendResponse(response);
+}
+
+function failEngine(error) {
+  if (engineError !== null) return;
+  engineError = describe(error) || "the Hoshidicts engine stopped";
+  console.error(`hoshidicts: engine failed: ${engineError}`);
   for (const [id, request] of pending) {
-    pending.delete(id);
-    request.sendResponse(failedResponse(request.message, workerError));
+    finishRequest(id, failedResponse(request.message, engineError));
   }
 }
 
@@ -135,8 +148,8 @@ function startWorkerEngine() {
     type: "module",
     name: "hoshidicts-engine",
   });
-  worker.addEventListener("error", (event) => failWorker(event.error || event.message));
-  worker.addEventListener("messageerror", () => failWorker("the engine worker sent an unreadable message"));
+  worker.addEventListener("error", (event) => failEngine(event.error || event.message));
+  worker.addEventListener("messageerror", () => failEngine("the engine worker sent an unreadable message"));
   worker.onmessage = (event) => {
     const data = event.data;
     if (data?.channel === "host-request") {
@@ -147,26 +160,12 @@ function startWorkerEngine() {
       return;
     }
     if (data?.channel !== "engine-response") return;
-    const request = pending.get(data.id);
-    if (request === undefined) return;
-    pending.delete(data.id);
-    if (data.id === activeMutationRequestId) activeMutationRequestId = null;
-    if (data.response?.type === "hd_status_result") {
-      lastWorkerStatus = {
-        ready: data.response.ready === true,
-        loading: data.response.loading === true,
-        dictionaryCount: Number(data.response.dictionaryCount) || 0,
-        generation: Number(data.response.generation) || 0,
-        storageBackend: "opfs",
-        threaded: true,
-      };
-    }
-    request.sendResponse(data.response);
+    finishRequest(data.id, data.response);
   };
 }
 
 function startLocalEngine() {
-  localEngine = Promise.all([
+  return Promise.all([
     import("./engine-service.js"),
     import("./vendor/hoshidicts.mjs"),
   ]).then(([service, module]) => {
@@ -179,53 +178,57 @@ function startLocalEngine() {
       },
     );
     service.startEngine();
-    return service;
+    localEngine = service;
   });
 }
 
 const engineSelection = shouldUseThreadedEngine().then((threaded) => {
-  if (threaded) startWorkerEngine();
-  else startLocalEngine();
-});
+  lastEngineStatus.storageBackend = threaded ? "opfs" : "idbfs";
+  lastEngineStatus.threaded = threaded;
+  return threaded ? startWorkerEngine() : startLocalEngine();
+}).catch(failEngine);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.target !== TARGET || message.relayed !== true) {
     return false;
   }
 
+  if (engineError !== null) {
+    sendResponse(failedResponse(message, engineError));
+    return true;
+  }
+  if (message.type === "hd_status"
+      && (activeMutationRequestId !== null || pending.size >= MAX_PENDING_REQUESTS)) {
+    sendResponse({
+      type: "hd_status_result",
+      requestId: message.requestId ?? null,
+      ok: true,
+      error: null,
+      ...lastEngineStatus,
+      loading: activeMutationRequestId !== null || lastEngineStatus.loading,
+    });
+    return true;
+  }
+  if (activeMutationRequestId !== null) {
+    sendResponse(failedResponse(message, "the dictionary engine is busy mutating"));
+    return true;
+  }
+  if (pending.size >= MAX_PENDING_REQUESTS) {
+    sendResponse(failedResponse(message, "the dictionary engine request queue is full"));
+    return true;
+  }
+
+  // Reserve before engine selection or module loading can retain the payload.
+  const id = ++nextRequestId;
+  pending.set(id, { message, sendResponse });
+  if (MUTATION_TYPES.has(message.type)) activeMutationRequestId = id;
   engineSelection.then(() => {
+    if (!pending.has(id)) return undefined;
     if (worker === null) {
-      return localEngine.then((service) => service.handleEngineMessage(message)).then(sendResponse);
+      return localEngine.handleEngineMessage(message).then((response) => finishRequest(id, response));
     }
-    if (workerError !== null) {
-      sendResponse(failedResponse(message, workerError));
-      return undefined;
-    }
-    if (message?.type === "hd_status"
-        && (activeMutationRequestId !== null || pending.size >= MAX_PENDING_REQUESTS)) {
-      sendResponse({
-        type: "hd_status_result",
-        requestId: message.requestId ?? null,
-        ok: true,
-        error: null,
-        ...lastWorkerStatus,
-        loading: activeMutationRequestId !== null || lastWorkerStatus.loading,
-      });
-      return undefined;
-    }
-    if (activeMutationRequestId !== null) {
-      sendResponse(failedResponse(message, "the dictionary engine is busy mutating"));
-      return undefined;
-    }
-    if (pending.size >= MAX_PENDING_REQUESTS) {
-      sendResponse(failedResponse(message, "the dictionary engine request queue is full"));
-      return undefined;
-    }
-    nextRequestId += 1;
-    pending.set(nextRequestId, { message, sendResponse });
-    if (MUTATION_TYPES.has(message.type)) activeMutationRequestId = nextRequestId;
-    worker.postMessage({ channel: "engine-request", id: nextRequestId, message });
+    worker.postMessage({ channel: "engine-request", id, message });
     return undefined;
-  }).catch((error) => sendResponse(failedResponse(message, describe(error))));
+  }).catch((error) => finishRequest(id, failedResponse(message, describe(error))));
   return true;
 });
