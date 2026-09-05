@@ -4205,6 +4205,9 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  for (const [name, passed] of Object.entries(noteContent?.scanning ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   for (const [name, passed] of Object.entries(noteContent?.activation ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -6998,6 +7001,49 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function pendingScanCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const scan = (candidate) => {
+      harness.driver.setScanCandidate(candidate);
+      harness.driver.scanPointer({ target: window.document.body, clientX: 200, clientY: 200 });
+    };
+    scan(harness.candidate);
+    const first = harness.take("hd_lookup");
+    scan(harness.candidate);
+    const duplicate = harness.take("hd_lookup");
+    const otherAnchor = window.document.createElement("span");
+    otherAnchor.textContent = harness.candidate.query;
+    window.document.body.append(otherAnchor);
+    const other = {
+      ...harness.candidate,
+      anchor: otherAnchor,
+      sourceElements: [otherAnchor],
+      scanEntries: [{ ...harness.candidate.scanEntries[0], node: otherAnchor.firstChild }],
+    };
+    scan(other);
+    const newer = harness.take("hd_lookup");
+    for (const request of [first, duplicate].filter(Boolean)) {
+      harness.reply(request, { dictionaryCount: 1, results: [harness.term("old node")] });
+    }
+    await harness.settle();
+    scan(other);
+    const lateDuplicate = harness.take("hd_lookup");
+    for (const request of [newer, lateDuplicate].filter(Boolean)) harness.reply(request, {}, false);
+    await harness.settle();
+    scan(other);
+    const retry = harness.take("hd_lookup");
+    if (retry) harness.reply(retry, { dictionaryCount: 1, results: [harness.term(other.query)] });
+    await harness.settle();
+    scan(other);
+    const renderedDuplicate = harness.take("hd_lookup");
+    const passed = first !== null && newer !== null && retry !== null
+      && duplicate === null && lateDuplicate === null && renderedDuplicate === null
+      && !harness.driver.snapshot().popupHidden;
+    harness.close();
+    return { "pending pointer candidates deduplicate by node and query without losing retries or newer ownership": passed };
+  }
+
   async function activationCase() {
     const result = {};
     const harness = await createHarness();
@@ -7586,6 +7632,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
+    scanning: await pendingScanCase(),
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
