@@ -28,6 +28,8 @@ export function validResponseRequestId(value) {
 export function responseFits(reply, nativeJsonLength = 0) {
   if (reply.type === "hd_options_write" || reply.type === "hd_options_write_result") {
     const json = JSON.stringify(reply);
+    // UTF-8 cannot be shorter than JSON's UTF-16 code-unit count.
+    if (json.length > MAX_OPTIONS_FRAME_BYTES) return false;
     return json.length * 3 <= MAX_OPTIONS_FRAME_BYTES
       || responseFrameEncoder.encode(json).byteLength <= MAX_OPTIONS_FRAME_BYTES;
   }
@@ -54,8 +56,11 @@ export function boundResponseFailure(reply) {
   if (!isBoundedRequest(reply.type.replace(/_result$/u, ""))) return reply;
   if (!validResponseRequestId(reply.requestId)) reply.requestId = null;
   if (!responseFits(reply)) {
-    reply.error = responseLimitError(reply.type);
-    if (!responseFits(reply)) reply.requestId = null;
+    const limitError = responseLimitError(reply.type);
+    const unchangedError = reply.error === limitError;
+    reply.error = limitError;
+    // Replacing an identical error cannot make the same oversized frame fit.
+    if (unchangedError || !responseFits(reply)) reply.requestId = null;
   }
   return reply;
 }
