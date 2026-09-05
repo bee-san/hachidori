@@ -731,8 +731,23 @@
       : () => {};
     const ownsView = typeof state.isCurrent === "function" ? state.isCurrent : () => true;
     const isCurrent = () => image.isConnected && ownsView();
+    let previewRequested = false;
+    const showPreview = () => {
+      if (!isCurrent()) return;
+      previewRequested = true;
+      state.showImagePreview?.(link, image);
+    };
+    const hidePreview = () => {
+      previewRequested = false;
+      state.hideImagePreview?.(link);
+    };
+    link.addEventListener("mouseenter", showPreview);
+    link.addEventListener("mouseleave", hidePreview);
+    link.addEventListener("focus", showPreview);
+    link.addEventListener("blur", hidePreview);
     const failImage = () => {
       if (!isCurrent()) return;
+      hidePreview();
       image.hidden = true;
       link.removeAttribute("href");
       background.style.removeProperty("--image");
@@ -746,6 +761,7 @@
       if (!isCurrent()) return;
       link.dataset.imageLoadState = "loaded";
       onLayoutChange();
+      if (previewRequested) showPreview();
     });
     image.addEventListener("error", failImage);
     parent.appendChild(link);
@@ -1023,6 +1039,8 @@
       isCurrent: options.isCurrent,
       onInternalLink: options.onInternalLink,
       onLayoutChange: options.onLayoutChange,
+      showImagePreview: options.showImagePreview,
+      hideImagePreview: options.hideImagePreview,
       resolveMedia: typeof options.resolveMedia === "function"
         ? ({ path, width, height, isCurrent }) => options.resolveMedia({
             dictionary: options.dictionary,

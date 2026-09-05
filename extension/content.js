@@ -963,56 +963,9 @@
   }
 
   function calculatePopupPosition(anchorRect, viewport, vertical) {
-    const width = Math.min(
-      POPUP_WIDTH_PX,
-      Math.max(1, viewport.width - POPUP_PADDING_PX * 2)
-    );
-    const height = Math.min(
-      POPUP_HEIGHT_PX,
-      Math.max(1, viewport.height - POPUP_PADDING_PX * 2)
-    );
-    const clamp = (value, minimum, maximum) =>
-      Math.max(minimum, Math.min(value, maximum));
-
-    let left;
-    let top;
-    let placement;
-    if (vertical) {
-      const spaceRight = viewport.width - anchorRect.right - POPUP_GAP_PX;
-      const spaceLeft = anchorRect.left - POPUP_GAP_PX;
-      left = spaceRight >= width || spaceRight >= spaceLeft
-        ? anchorRect.right + POPUP_GAP_PX
-        : anchorRect.left - POPUP_GAP_PX - width;
-      top = anchorRect.top;
-      placement = "beside";
-    } else {
-      const spaceBelow = Math.max(
-        0,
-        viewport.height - POPUP_PADDING_PX - anchorRect.bottom - POPUP_GAP_PX
-      );
-      const spaceAbove = Math.max(
-        0,
-        anchorRect.top - POPUP_GAP_PX - POPUP_PADDING_PX
-      );
-      const placeAbove = spaceAbove >= height ||
-        (spaceBelow < height && spaceAbove >= spaceBelow);
-      top = placeAbove
-        ? anchorRect.top - POPUP_GAP_PX - height
-        : anchorRect.bottom + POPUP_GAP_PX;
-      left = anchorRect.left;
-      placement = placeAbove ? "above" : "below";
-    }
-    return {
-      height,
-      left: Math.round(
-        clamp(left, POPUP_PADDING_PX, viewport.width - width - POPUP_PADDING_PX)
-      ),
-      placement,
-      top: Math.round(
-        clamp(top, POPUP_PADDING_PX, viewport.height - height - POPUP_PADDING_PX)
-      ),
-      width,
-    };
+    return window.HDPopup.calculatePopupPosition(anchorRect, {
+      width: POPUP_WIDTH_PX, height: POPUP_HEIGHT_PX,
+    }, viewport, { gap: POPUP_GAP_PX, padding: POPUP_PADDING_PX, vertical });
   }
 
   function anchorRectFor(candidate) {
@@ -1381,6 +1334,7 @@
 
   async function executeTermRequest(request) {
     const token = (lookupToken += 1);
+    view?.hideImagePreview();
     let reply;
     try {
       // The first hover pays for the popup host and the stylesheet fetch; run
@@ -1479,6 +1433,7 @@
     const { candidate, capability, character } = request;
     const useTermDictionary = capability?.kind === "term";
     const token = (lookupToken += 1);
+    view?.hideImagePreview();
     let reply;
     try {
       reply = useTermDictionary
@@ -1746,6 +1701,7 @@
   }
 
   function onScroll() {
+    view?.hideImagePreview();
     if (disposed || !popup || popup.hidden || !activeCandidate) {
       return;
     }
@@ -1765,6 +1721,7 @@
   }
 
   function invalidateStoredState(dictionaryChanged) {
+    view?.hideImagePreview();
     if (dictionaryChanged && popup && !popup.hidden) {
       if (noteEditing || pendingCustomAppends > 0) {
         deferredDictionaryInvalidationRevision = Math.max(
