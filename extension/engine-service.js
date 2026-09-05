@@ -1739,6 +1739,9 @@ const HANDLERS = {
 
   async hd_media(message) {
     await ensureLoaded();
+    if (!Number.isSafeInteger(message.generation) || message.generation !== generation) {
+      throw new Error("media generation no longer matches the loaded dictionaries");
+    }
     const dictionary = boundedText(message.dictionary, "media dictionary", MAX_MEDIA_DICTIONARY_BYTES);
     const path = boundedText(message.path, "media path", MAX_MEDIA_PATH_BYTES);
     if (dictionary === "" || path === "") {

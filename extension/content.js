@@ -120,7 +120,9 @@
   let uiPromise = null;
 
   let styleGeneration = -1;
+  let styleRequest = null;
   const mediaCache = new Map();
+  const pendingMedia = new Map();
 
   let lastPointer = null;
   let scanTimer = null;
@@ -695,6 +697,7 @@
       return;
     }
     disposed = true;
+    clearDictionaryResources();
     window.clearTimeout(scanTimer);
     window.clearTimeout(hideTimer);
     scanTimer = null;
@@ -732,6 +735,7 @@
   }
 
   function discardUi() {
+    clearDictionaryResources();
     try {
       highlighter?.clearAll();
       view?.destroy();
@@ -744,7 +748,6 @@
     popup = null;
     view = null;
     highlighter = null;
-    styleGeneration = -1;
     activeCandidate = null;
     activeSignature = null;
     activeTermRender = null;
@@ -752,13 +755,19 @@
     noteEditing = false;
   }
 
+  function clearDictionaryResources() {
+    mediaCache.clear();
+    pendingMedia.clear();
+    styleGeneration = -1;
+    styleRequest = null;
+  }
+
   function noteGeneration(generation) {
     if (!Number.isFinite(generation) || generation === currentGeneration) {
       return;
     }
     currentGeneration = generation;
-    mediaCache.clear();
-    styleGeneration = -1;
+    clearDictionaryResources();
   }
 
   function sendRequest(type, payload) {
@@ -790,13 +799,9 @@
             return;
           }
           if (reply.ok !== true) {
-            // Only a successful reply's generation is the engine's; background.js
-            // stamps 0 on a relay failure, and trusting that would drop the media
-            // cache and re-fetch the styles for nothing.
             reject(new Error(reply.error || `${type} failed`));
             return;
           }
-          noteGeneration(reply.generation);
           resolve(reply);
         });
       } catch (error) {
@@ -806,20 +811,33 @@
     });
   }
 
-  function resolveMedia({ dictionary, generation, path }) {
-    const key = `${generation}\u0000${dictionary}\u0000${path}`;
-    let pending = mediaCache.get(key);
-    if (!pending) {
-      pending = sendRequest("hd_media", { dictionary, path })
-        .then((reply) => (
-          reply.generation === generation && typeof reply.dataUrl === "string"
-            ? reply.dataUrl
-            : null
-        ))
-        .catch(() => null);
-      mediaCache.set(key, pending);
+  function resolveMedia({ dictionary, generation, path, isCurrent }) {
+    if (!isCurrent() || generation !== currentGeneration) {
+      return Promise.reject(new Error("obsolete media request"));
     }
-    return pending;
+    const key = `${generation}\u0000${dictionary}\u0000${path}`;
+    if (mediaCache.has(key)) return Promise.resolve(mediaCache.get(key));
+    const pending = pendingMedia.get(key);
+    if (pending) {
+      // A newer view may reuse an in-flight image, but an obsolete subscriber
+      // must never take ownership back from that view.
+      pending.isCurrent = isCurrent;
+      return pending.promise;
+    }
+    const job = { isCurrent, promise: null };
+    job.promise = sendRequest("hd_media", { dictionary, generation, path }).then((reply) => {
+      if (pendingMedia.get(key) !== job || !job.isCurrent()
+          || generation !== currentGeneration || reply.generation !== generation) {
+        throw new Error("obsolete media reply");
+      }
+      if (typeof reply.dataUrl !== "string") throw new Error("dictionary image is unavailable");
+      mediaCache.set(key, reply.dataUrl);
+      return reply.dataUrl;
+    }).finally(() => {
+      if (pendingMedia.get(key) === job) pendingMedia.delete(key);
+    });
+    pendingMedia.set(key, job);
+    return job.promise;
   }
 
   function ensureDictionaryStyles(generation) {
@@ -827,10 +845,13 @@
       return;
     }
     styleGeneration = generation;
+    const request = {};
+    styleRequest = request;
     sendRequest("hd_styles", {}).then((reply) => {
-      if (disposed || !shadow || styleGeneration !== generation) {
+      if (disposed || !shadow || styleRequest !== request) {
         return;
       }
+      if (reply.generation !== generation) throw new Error("obsolete dictionary styles");
       window.HDGlossary.applyDictionaryStyles(
         document,
         shadow,
@@ -839,9 +860,10 @@
       );
     }).catch(() => {
       // Dictionary CSS is cosmetic; a failure must not block the lookup that
-      // asked for it. Retry on the next generation change.
-      if (styleGeneration === generation) {
+      // asked for it. Retry on the next render without resetting a newer job.
+      if (styleRequest === request) {
         styleGeneration = -1;
+        styleRequest = null;
       }
     });
   }
@@ -1178,7 +1200,15 @@
     }
   }
 
-  function restoreTermRender(previous, focusTarget) {
+  async function restoreTermRender(previous, focusTarget) {
+    if (previous.generation !== currentGeneration || !sameDictionaries(previous.dictionaries, dictionaries)) {
+      const restoring = executeViewRequest(previous.request);
+      const token = lookupToken;
+      if (await restoring && token === lookupToken && currentViewRequest === previous.request) {
+        focusKanjiLink(focusTarget);
+      }
+      return;
+    }
     lookupToken += 1;
     renderTerms(
       previous.results,
@@ -1217,6 +1247,8 @@
     currentViewRequest = request ?? null;
     activeTermRender = {
       candidate,
+      dictionaries,
+      generation: currentGeneration,
       matchedText,
       renderOptions,
       request: currentViewRequest,
@@ -1271,6 +1303,7 @@
     if (!requestCanRender(token, request.candidate)) {
       return;
     }
+    noteGeneration(reply.generation);
     const results = (Array.isArray(reply.results) ? reply.results : [])
       .filter((result) => result && result.term);
     if (results.length === 0) {
@@ -1363,6 +1396,7 @@
     if (!requestCanRender(token, candidate) || popup.hidden) {
       return false;
     }
+    noteGeneration(reply.generation);
     if (useTermDictionary) {
       const results = projectResultsToDictionary(
         Array.isArray(reply.results) ? reply.results : [],
@@ -1386,6 +1420,7 @@
       if (!requestCanRender(token, candidate) || popup.hidden) {
         return false;
       }
+      noteGeneration(reply.generation);
     }
     const kanji = reply.kanji;
     if (!kanji || !Array.isArray(kanji.entries) || kanji.entries.length === 0) {
@@ -1636,6 +1671,7 @@
   }
 
   function invalidateStoredState(dictionaryChanged) {
+    if (dictionaryChanged) clearDictionaryResources();
     if (dictionaryChanged && popup && !popup.hidden) {
       if (noteEditing || pendingCustomAppends > 0) {
         deferredDictionaryInvalidationRevision = Math.max(

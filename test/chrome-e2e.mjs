@@ -490,6 +490,11 @@ async function popupReader(page) {
           text: flat(this),
           plain: flat(stripped),
           images: Array.from(this.querySelectorAll("img"), img => img.getAttribute("src") || ""),
+          imageStates: Array.from(this.querySelectorAll(".gloss-image-link"), link => ({
+            state: link.dataset.imageLoadState,
+            label: link.getAttribute("aria-label"),
+            width: link.querySelector("img")?.naturalWidth ?? 0,
+          })),
           tags: Array.from(this.querySelectorAll("*"), el => el.tagName.toLowerCase()),
           lists: Array.from(this.querySelectorAll("ul"), ul =>
             Array.from(ul.children, li => li.tagName.toLowerCase() + ":" + flat(li))),
@@ -606,6 +611,124 @@ async function hoverForPopup(page, popup, selector, { charFraction = 0.15, attem
     if (state !== null) return state;
   }
   return null;
+}
+
+async function mediaOwnershipChrome({ browser, page, tab, popup }) {
+  const title = "owned-media-fixture";
+  const oldBytes = makePng();
+  const newBytes = Buffer.concat([oldBytes, Buffer.from([1])]);
+  const archive = (bytes) => buildTitledZip(title, { terms: [
+    ["画像", "がぞう", "", "", 0, ["surrounding image definition", {
+      type: "structured-content", content: {
+        tag: "img", path: "media/owned.png", width: 16, height: 16, alt: "Owned dictionary image",
+      },
+    }], 1, ""],
+  ], mediaEntries: [["media/owned.png", bytes]] });
+  const install = (bytes) => page.evaluate(async (base64) => {
+    const blobUrl = URL.createObjectURL(new Blob([
+      Uint8Array.from(atob(base64), (character) => character.charCodeAt(0)),
+    ], { type: "application/zip" }));
+    try {
+      const reply = await chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen", type: "hd_import", requestId: "owned-media-import",
+        blobUrl, fileName: "owned-media.zip",
+      });
+      if (!reply.ok) throw new Error(reply.error);
+      return reply.generation;
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
+  }, archive(bytes).toString("base64"));
+  const workerTarget = await browser.waitForTarget((target) => target.type() === "service_worker"
+    && target.url().startsWith("chrome-extension://"));
+  const worker = await workerTarget.worker();
+  // Let the real offscreen/WASM operation finish, then delay only delivery of
+  // its reply. Other messages and the mutation queue remain production paths.
+  await worker.evaluate(() => {
+    const original = chrome.runtime.sendMessage;
+    const probe = { original, held: null, holdNext: true, failNext: false, count: 0 };
+    globalThis.__ownedMediaProbe = probe;
+    chrome.runtime.sendMessage = function (message, ...args) {
+      const response = original.call(this, message, ...args);
+      if (!message.relayed || message.type !== "hd_media") return response;
+      probe.count += 1;
+      const hold = probe.holdNext;
+      const fail = probe.failNext;
+      probe.holdNext = false;
+      probe.failNext = false;
+      return response.then((reply) => {
+        if (hold) return new Promise((resolveReply) => {
+          probe.held = () => { probe.held = null; resolveReply(reply); };
+        });
+        return fail ? { ...reply, ok: false, dataUrl: null, error: "injected transient media failure" } : reply;
+      });
+    };
+  });
+  async function waitForImage(predicate) {
+    const deadline = Date.now() + 10_000;
+    do {
+      const state = await popup.state();
+      if (predicate(state)) return state;
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 50));
+    } while (Date.now() < deadline);
+    throw new Error("owned media image did not reach its expected state");
+  }
+  async function rehover() {
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    return hoverForPopup(tab, popup, "#verb");
+  }
+  try {
+    const firstGeneration = await install(oldBytes);
+    await tab.evaluate(() => { document.getElementById("verb").textContent = "画像"; });
+    await rehover();
+    await worker.evaluate(async () => {
+      const deadline = Date.now() + 10_000;
+      while (!globalThis.__ownedMediaProbe.held) {
+        if (Date.now() >= deadline) throw new Error("real media reply was not held");
+        await new Promise((resolveTimer) => setTimeout(resolveTimer, 50));
+      }
+    });
+    const held = await popup.state();
+    const nextGeneration = await install(newBytes);
+    await rehover();
+    const expectedUrl = `data:image/png;base64,${newBytes.toString("base64")}`;
+    await waitForImage((state) => state?.images[0] === expectedUrl && state.imageStates[0]?.width === 16);
+    await worker.evaluate(() => globalThis.__ownedMediaProbe.held());
+    await rehover();
+    const current = await waitForImage((state) => state?.images[0] === expectedUrl
+      && state.imageStates[0]?.width === 16);
+    const count = await worker.evaluate(() => globalThis.__ownedMediaProbe.count);
+    check("a late real media reply cannot replace a current generation image",
+      firstGeneration !== nextGeneration && held.images[0] === "" && count === 2
+        && current.plain.includes("surrounding image definition"),
+      JSON.stringify({ firstGeneration, nextGeneration, held: held.images, count, current: current.imageStates }));
+
+    await install(newBytes);
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.failNext = true; });
+    await rehover();
+    const failedImage = await waitForImage((state) => state?.imageStates[0]?.state === "load-error");
+    if (process.env.HACHIDORI_MEDIA_FAILURE_SCREENSHOT) {
+      await tab.screenshot({ path: process.env.HACHIDORI_MEDIA_FAILURE_SCREENSHOT });
+    }
+    await rehover();
+    const retried = await waitForImage((state) => state?.images[0] === expectedUrl
+      && state.imageStates[0]?.width === 16);
+    const afterRetry = await worker.evaluate(() => globalThis.__ownedMediaProbe.count);
+    check("failed media exposes its failure state and text while a later hover retries",
+      failedImage.plain.includes("surrounding image definition")
+        && failedImage.imageStates[0].label.includes("Owned dictionary image")
+        && retried.imageStates[0].state === "loaded" && afterRetry === count + 2,
+      JSON.stringify({ failed: failedImage.imageStates, retried: retried.imageStates, count, afterRetry }));
+  } finally {
+    await worker.evaluate(() => {
+      const probe = globalThis.__ownedMediaProbe;
+      chrome.runtime.sendMessage = probe.original;
+      probe.held?.();
+      delete globalThis.__ownedMediaProbe;
+    });
+  }
 }
 
 async function setDictionaryEnabledInSettings(page, title, enabled) {
@@ -3441,13 +3564,14 @@ async function main() {
     const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
     const installed = dictionaryState.dictionaries.find((entry) => entry.title === dictionary);
     const before = await request("hd_status", {});
-    const exact = await request("hd_media", { dictionary, path: "media/exact.png" });
+    const generation = before.generation;
+    const exact = await request("hd_media", { generation, dictionary, path: "media/exact.png" });
     const bytes = Uint8Array.from(atob(exact.dataUrl?.split(",")[1] ?? ""), (character) => character.charCodeAt(0));
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
       (byte) => byte.toString(16).padStart(2, "0")).join("");
-    const over = await request("hd_media", { dictionary, path: "media/over.png" });
-    const nul = await request("hd_media", { dictionary, path: "media/exact.png\0suffix" });
-    const absent = await request("hd_media", { dictionary, path: "media/absent.png" });
+    const over = await request("hd_media", { generation, dictionary, path: "media/over.png" });
+    const nul = await request("hd_media", { generation, dictionary, path: "media/exact.png\0suffix" });
+    const absent = await request("hd_media", { generation, dictionary, path: "media/absent.png" });
     const healthy = await request("hd_lookup", { text: "速度" });
     const after = await request("hd_status", {});
     return { mediaCount: installed?.mediaCount, before, exactOk: exact.ok, bytes: bytes.length, digest,
@@ -3467,6 +3591,7 @@ async function main() {
     JSON.stringify(mediaEvidence),
   );
 
+  await mediaOwnershipChrome({ browser, page, tab: tab2, popup: popup2 });
   await browser.close();
   server.close();
   return report();

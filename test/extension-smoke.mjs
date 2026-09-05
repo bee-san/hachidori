@@ -3485,26 +3485,26 @@ async function main() {
     JSON.stringify(styles),
   );
 
-  const media = await request("hd_media", { dictionary: FIXTURE_TITLE, path: "media/kanji.png" });
+  const media = await request("hd_media", { generation: lookup.generation, dictionary: FIXTURE_TITLE, path: "media/kanji.png" });
   check(
     "hd_media returns a data: URL glossary.js will accept",
     media.ok === true && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/u.test(media.dataUrl ?? ""),
     JSON.stringify(media.dataUrl?.slice(0, 48)),
   );
-  const absentMedia = await request("hd_media", { dictionary: FIXTURE_TITLE, path: "media/nope.png" });
+  const absentMedia = await request("hd_media", { generation: lookup.generation, dictionary: FIXTURE_TITLE, path: "media/nope.png" });
   equal("absent media is dataUrl null, not an error", [absentMedia.ok, absentMedia.dataUrl], [true, null]);
 
   const mediaDictionaryBoundary = "あ".repeat(341) + "x";
   const mediaPathBoundary = "media/" + "あ".repeat(1363) + "x";
   const exactMediaReferences = await Promise.all([
-    request("hd_media", { dictionary: mediaDictionaryBoundary, path: "media/kanji.png" }),
-    request("hd_media", { dictionary: FIXTURE_TITLE, path: mediaPathBoundary }),
+    request("hd_media", { generation: lookup.generation, dictionary: mediaDictionaryBoundary, path: "media/kanji.png" }),
+    request("hd_media", { generation: lookup.generation, dictionary: FIXTURE_TITLE, path: mediaPathBoundary }),
   ]);
   const invalidMediaReferences = await Promise.all([
-    request("hd_media", { dictionary: mediaDictionaryBoundary + "x", path: "media/kanji.png" }),
-    request("hd_media", { dictionary: FIXTURE_TITLE, path: mediaPathBoundary + "x" }),
-    request("hd_media", { dictionary: FIXTURE_TITLE + "\0suffix", path: "media/kanji.png" }),
-    request("hd_media", { dictionary: FIXTURE_TITLE, path: "media/kanji.png\0suffix" }),
+    request("hd_media", { generation: lookup.generation, dictionary: mediaDictionaryBoundary + "x", path: "media/kanji.png" }),
+    request("hd_media", { generation: lookup.generation, dictionary: FIXTURE_TITLE, path: mediaPathBoundary + "x" }),
+    request("hd_media", { generation: lookup.generation, dictionary: FIXTURE_TITLE + "\0suffix", path: "media/kanji.png" }),
+    request("hd_media", { generation: lookup.generation, dictionary: FIXTURE_TITLE, path: "media/kanji.png\0suffix" }),
   ]);
   check("media references use exact UTF-8 bounds and never truncate embedded NUL",
     Buffer.byteLength(mediaDictionaryBoundary) === 1024 && Buffer.byteLength(mediaPathBoundary) === 4096
@@ -3513,7 +3513,7 @@ async function main() {
     JSON.stringify({ exact: exactMediaReferences.map(({ ok }) => ok), invalid: invalidMediaReferences.map(({ ok, error }) => ({ ok, error })) }));
 
   const mediaFrameLimit = 6 * 1024 * 1024;
-  const mediaMessage = { type: "hd_media", dictionary: FIXTURE_TITLE, path: "media/kanji.png", requestId: "" };
+  const mediaMessage = { type: "hd_media", generation: lookup.generation, dictionary: FIXTURE_TITLE, path: "media/kanji.png", requestId: "" };
   const smallMediaFrame = await engineService.handleEngineMessage(mediaMessage);
   const mediaIdBytes = mediaFrameLimit - Buffer.byteLength(JSON.stringify(smallMediaFrame));
   const exactMediaId = "あ".repeat(Math.floor(mediaIdBytes / 3)) + "x".repeat(mediaIdBytes % 3);
@@ -3544,9 +3544,9 @@ async function main() {
   const largeMediaImport = await request("hd_import", {
     blobUrl: createObjectURL(largeMediaArchive), fileName: "bounded-media.zip",
   });
-  const exactNativeMedia = await request("hd_media", { dictionary: largeMediaTitle, path: "media/exact.png" });
-  const overNativeMedia = await request("hd_media", { dictionary: largeMediaTitle, path: "media/over.png" });
-  const healthyMediaAfterError = await request("hd_media", { dictionary: FIXTURE_TITLE, path: "media/kanji.png" });
+  const exactNativeMedia = await request("hd_media", { generation: largeMediaImport.generation, dictionary: largeMediaTitle, path: "media/exact.png" });
+  const overNativeMedia = await request("hd_media", { generation: largeMediaImport.generation, dictionary: largeMediaTitle, path: "media/over.png" });
+  const healthyMediaAfterError = await request("hd_media", { generation: largeMediaImport.generation, dictionary: FIXTURE_TITLE, path: "media/kanji.png" });
   const largeMediaRemoved = await request("hd_remove", { title: largeMediaTitle });
   check("media imports stay uncapped while oversized native fetches propagate real errors",
     largeMediaImport.ok === true && largeMediaImport.report.mediaCount === 2
@@ -3636,6 +3636,7 @@ async function main() {
   const stateAfterRejectedReimport = await storedDictionaryState();
   const statusAfterRejectedReimport = await request("hd_status");
   const mediaAfterRejectedReimport = await request("hd_media", {
+    generation: statusAfterRejectedReimport.generation,
     dictionary: FIXTURE_TITLE,
     path: "media/kanji.png",
   });
@@ -6027,7 +6028,7 @@ async function staleKanjiResponseStage(invalidation) {
     setState(candidate, nextPopup, nextView, nextHighlighter) {
       activeCandidate = candidate;
       activeHighlightText = "";
-      activeTermRender = { candidate, matchedText: "食べる", renderOptions: {}, results: [] };
+      activeTermRender = { candidate, dictionaries, generation: 0, matchedText: "食べる", renderOptions: {}, results: [] };
       currentGeneration = 0;
       styleGeneration = 0;
       popup = nextPopup;
@@ -6135,6 +6136,8 @@ async function contentNoteStage() {
     let closeCalls = 0;
     let clearCount = 0;
     let stylesGeneration = 2;
+    let holdStyles = false;
+    const appliedStyles = [];
     const pending = [];
     const sent = [];
     const renders = [];
@@ -6175,7 +6178,10 @@ async function contentNoteStage() {
     window.HDGlossary = {
       appendExpressionRuby() {},
       appendTextOnlyGlossary() {},
-      applyDictionaryStyles() { return []; },
+      applyDictionaryStyles(_document, _shadow, generation, styles) {
+        appliedStyles.push({ generation, styles });
+        return [];
+      },
       parseTagList() { return []; },
     };
     window.HDPopup = {
@@ -6202,7 +6208,7 @@ async function contentNoteStage() {
         getURL: (path) => `chrome-extension://hachidoricontnotesmoke/${path}`,
         sendMessage(request, callback) {
           sent.push(JSON.parse(JSON.stringify(request)));
-          if (request.type === "hd_styles") {
+          if (request.type === "hd_styles" && !holdStyles) {
             callback({
               generation: stylesGeneration,
               ok: true,
@@ -6365,6 +6371,7 @@ async function contentNoteStage() {
 
     return {
       anchor,
+      appliedStyles,
       candidate,
       callbacks: () => popupCallbacks,
       close() { dom.window.close(); },
@@ -6390,6 +6397,7 @@ async function contentNoteStage() {
       term,
       setCloseNext(value) { closeNext = value === true; },
       setStylesGeneration(value) { stylesGeneration = value; },
+      setHoldStyles() { holdStyles = true; },
     };
   }
 
@@ -6529,7 +6537,10 @@ async function contentNoteStage() {
     let backExpression = refreshed.results?.[0]?.term?.expression ?? "";
     const hasBack = typeof refreshed.context?.onBack === "function";
     if (!replaceBeforeReply && hasBack) {
-      refreshed.context.onBack();
+      const restoring = refreshed.context.onBack();
+      const backLookup = harness.take("hd_lookup");
+      harness.reply(backLookup, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+      await restoring;
       backExpression = harness.render().results?.[0]?.term?.expression ?? "";
     }
     const result = {
@@ -6884,6 +6895,23 @@ async function contentNoteStage() {
     result["a mismatched style reply cannot adopt generation and remains retryable"] =
       styles.driver.snapshot().currentGeneration === 3 && styles.driver.snapshot().styleGeneration === -1;
     styles.close();
+    for (const ok of [false, true]) {
+      const reused = await createHarness();
+      reused.setHoldStyles();
+      await reused.initialLookup();
+      const obsoleteStyles = reused.take("hd_styles");
+      reused.emitState(reused.state(2, "new dictionary state"));
+      await reused.initialLookup();
+      const newStyles = reused.take("hd_styles");
+      reused.reply(obsoleteStyles, { styles: ["obsolete"] }, ok);
+      await reused.settle();
+      const oldIgnored = reused.appliedStyles.length === 0 && reused.driver.snapshot().styleGeneration === 2;
+      reused.reply(newStyles, { styles: ["current"] });
+      await reused.settle();
+      result["a mismatched style reply cannot adopt generation and remains retryable"] &&=
+        oldIgnored && reused.appliedStyles.length === 1 && reused.appliedStyles[0].styles[0] === "current";
+      reused.close();
+    }
 
     const back = await createHarness();
     await back.initialLookup();
