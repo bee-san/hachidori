@@ -6913,6 +6913,7 @@ async function contentNoteStage() {
     onWindowBlur,
     onScroll,
     onInternalLink,
+    pointInsidePopup,
     onKeyDown,
     runLookup,
     scanPointer,
@@ -7183,6 +7184,11 @@ async function contentNoteStage() {
     const child = harness.driver.viewRequest(1);
     const childAnchor = child.candidate.anchor;
     const childPopup = harness.driver.popupAt(1);
+    let ancestorLayouts = 0;
+    const anchorRect = harness.anchor.getBoundingClientRect.bind(harness.anchor);
+    harness.anchor.getBoundingClientRect = () => { ancestorLayouts += 1; return anchorRect(); };
+    harness.callbacks(1).positionPopup();
+    const layoutStartsAtOwner = ancestorLayouts === 0;
     const childRect = { left: Number.parseFloat(childPopup.style.left), top: Number.parseFloat(childPopup.style.top),
       width: Number.parseFloat(childPopup.style.width), height: Number.parseFloat(childPopup.style.height) };
     const positioned = Object.values(childRect).every(Number.isFinite)
@@ -7238,7 +7244,8 @@ async function contentNoteStage() {
     harness.close();
     return {
       "linked levels preserve independent Back and render owners, deduplicate, and prune only descendants": deduped && prunedOnlyBelow && reactivated && childBack && returned,
-      "child popup depth is live and child geometry is clamped to the viewport": positioned && disabled && limited && lowered && shrunk && noViewport,
+      "child popup depth is live and child geometry is clamped to the viewport": positioned && layoutStartsAtOwner
+        && disabled && limited && lowered && shrunk && noViewport,
     };
   }
 
@@ -7249,6 +7256,9 @@ async function contentNoteStage() {
     const child = harness.internalLink({ query: "child" });
     harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child")] });
     await child;
+    harness.popup.getBoundingClientRect = () => ({ left: 10, right: 110, top: 10, bottom: 110 });
+    harness.driver.popupAt(1).getBoundingClientRect = () => ({ left: 114, right: 214, top: 60, bottom: 160 });
+    const corridor = harness.driver.pointInsidePopup(112, 90) && !harness.driver.pointInsidePopup(50, 150);
     const timers = new Map();
     let nextTimer = 0;
     window.setTimeout = (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; };
@@ -7290,7 +7300,7 @@ async function contentNoteStage() {
     await harness.settle();
     harness.close();
     return { "ancestor pointer return prunes descendants but preserves drafts and a stationary departure resumes scanning":
-      reactivated && parentReturn && draftRetained && beforeGrace && lookup?.request.text === "new page word" };
+      corridor && reactivated && parentReturn && draftRetained && beforeGrace && lookup?.request.text === "new page word" };
   }
 
   async function nestedNotesCase() {

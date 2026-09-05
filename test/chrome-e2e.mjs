@@ -1033,7 +1033,12 @@ async function checkNestedLinks(settings, tab, popup) {
     await tab.mouse.click(source.linkRect.x + source.linkRect.width / 2, source.linkRect.y + source.linkRect.height / 2);
     const mouseChild = await child.waitForVisible();
     const mousePosition = await child.nested();
+    let corridorRetained = false;
     if (mousePosition) {
+      await popup.nested("blur");
+      await tab.mouse.move((source.rect.right + mousePosition.rect.left) / 2, mousePosition.rect.top + 20);
+      await new Promise(resolve => setTimeout(resolve, 120));
+      corridorRetained = child.visible(await child.state());
       await tab.mouse.move(mousePosition.rect.right - 8, mousePosition.rect.bottom - 8);
       await tab.mouse.move(source.rect.left + 8, source.rect.top + 8);
     }
@@ -1081,7 +1086,7 @@ async function checkNestedLinks(settings, tab, popup) {
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
     const disabled = await popup.nested();
-    evidence = { source, mouseChild, pointerReturn, first, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
+    evidence = { source, mouseChild, corridorRetained, pointerReturn, first, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
       second, fullChain, limited, narrow, lowered, kanji, back, returned, retained, disabled };
   } finally {
     await setDepth(originalOptions.popupNestingMaxDepth ?? 10);
@@ -1096,7 +1101,7 @@ async function checkNestedLinks(settings, tab, popup) {
   }
   check("internal links open a positioned popup chain with level-local Note and Back and live depth limits",
     evidence.source.query === fixture.child && evidence.source.reading === fixture.reading
-      && evidence.mouseChild !== null && evidence.pointerReturn
+      && evidence.mouseChild !== null && evidence.corridorRetained && evidence.pointerReturn
       && evidence.first?.plain.includes(fixture.child) && bounded(evidence.chain)
       && evidence.chain.sameParent && evidence.chain.sameAnchor && evidence.chain.imagesReady
       && evidence.draft?.term === fixture.child && evidence.draft.reading === fixture.reading
@@ -1126,7 +1131,7 @@ async function installMediaReplyProbe(browser) {
     chrome.runtime.sendMessage = function (message, ...args) {
       const response = original.call(this, message, ...args);
       if (message.relayed && message.type === "hd_lookup") probe.lookups.push(message);
-      if (message.relayed && ["hd_lookup", "hd_lookup_dictionary"].includes(message.type) && probe.holdNextLookup) {
+      if (message.relayed && ["hd_lookup", "hd_lookup_dictionary", "hd_kanji"].includes(message.type) && probe.holdNextLookup) {
         probe.holdNextLookup = false;
         return response.then(reply => new Promise(resolveReply => {
           probe.heldLookups.push(() => resolveReply(reply));
