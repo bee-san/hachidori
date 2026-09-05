@@ -4670,18 +4670,22 @@ async function settingsFrequencyStage() {
     const passive = storedOptions.frequencyOrder === "disabled" && field("order").value === "disabled"
       && auto.disabled && writes.length === 0 && auto.getAttribute("aria-label")?.includes(auto.textContent.trim());
     const rank = await edit("dictionary", "Rank");
+    const hint = window.document.getElementById("frequency-order-hint");
+    const rankHint = hint.firstChild;
     await edit("order", "descending");
     const beforeMetadata = writes.length;
     emitDictionaries({ displayName: "Rank alias" });
-    const manualKept = field("order").value === "descending" && writes.length === beforeMetadata;
+    const manualKept = field("order").value === "descending" && writes.length === beforeMetadata
+      && hint.firstChild === rankHint;
     auto.click();
     await until(() => writes.length === beforeMetadata + 1 && status() === "Saved.");
     const autoOrder = writes.at(-1).options.frequencyOrder;
     const occurrence = await edit("dictionary", "Occurrence");
+    const occurrenceHint = hint.textContent.startsWith("Occurrence-based:");
     await edit("dictionary", "Unknown mode");
     const unknown = storedOptions.frequencyOrder;
     const any = await edit("dictionary", "");
-    const explicit = passive && manualKept && autoOrder === "ascending"
+    const explicit = passive && manualKept && occurrenceHint && autoOrder === "ascending"
       && rank.frequencyDictionary === "Rank" && rank.frequencyOrder === "ascending"
       && occurrence.frequencyDictionary === "Occurrence" && occurrence.frequencyOrder === "descending"
       && unknown === "descending" && any.frequencyDictionary === "" && any.frequencyOrder === "auto";

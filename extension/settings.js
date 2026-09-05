@@ -742,7 +742,8 @@ function renderFrequencyOrder() {
   else if (selected.frequencyMode === "rank-based") hint = "Rank-based: Auto puts the lowest numbers first.";
   else if (selected.frequencyMode === "occurrence-based") hint = "Occurrence-based: Auto puts the highest numbers first.";
   else hint = "No mode declared: Auto uses highest numbers first.";
-  element("frequency-order-hint").textContent = hint;
+  const hintElement = element("frequency-order-hint");
+  if (hintElement.textContent !== hint) hintElement.textContent = hint;
 }
 
 function applyFrequencyDirection() {
