@@ -613,7 +613,7 @@ async function popupReader(page) {
         const image = link?.querySelector("img");
         if (action === "focus") link.focus();
         else if (action === "blur") link.blur();
-        else if (action === "scroll") this.scrollTop += 30;
+        else if (action === "scroll") this.scrollTop += this.scrollTop > 0 ? -30 : 30;
         else if (action === "mouseenter" || action === "mouseleave") link.dispatchEvent(new Event(action));
         const preview = root.querySelector(".gsm-hoshidicts-image-hover-preview");
         const expanded = preview?.querySelector("img");
@@ -962,7 +962,8 @@ async function imagePreviewChrome({ browser, page, tab, popup }) {
     check("image previews close on leave, blur, scrolling and pending navigation",
       blurred.preview === null && scrolledFocus.scrollTop > 0 && scrolledFocus.focusedImage === 2
         && scrolledFocus.preview?.source === decoded.images[2].source && fits(scrolledFocus.preview)
-        && hoverScrollClosed.preview === null && pending.images.length === 3 && pending.preview === null,
+        && hoverScrollClosed.images.length === 3 && hoverScrollClosed.preview === null
+        && pending.images.length === 3 && pending.preview === null,
       JSON.stringify({ scrolledFocus: { scrollTop: scrolledFocus.scrollTop, focused: scrolledFocus.focusedImage,
         previewRect: scrolledFocus.preview?.rect }, pendingPreview: pending.preview }));
     await worker.evaluate(() => { for (const release of globalThis.__ownedMediaProbe.heldLookups.splice(0)) release(); });
