@@ -6670,6 +6670,7 @@ async function staleKanjiResponseStage(invalidation) {
       rootLevel.popup = nextPopup;
       rootLevel.view = nextView;
       highlighter = nextHighlighter;
+      rootLevel.highlighter = nextHighlighter;
     },
     restore() {
       return restoreTermRender(rootLevel.activeTermRender, { character: "食", index: 0 }, rootLevel);
@@ -7443,6 +7444,43 @@ async function contentNoteStage() {
     }
     return { "retired child replies and older parent replies cannot replace a new level or roll back engine generation":
       retiredIgnored && detachedIgnored && generations.every(Boolean) };
+  }
+
+  async function retainedParentNavigationCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    const parentRequest = harness.driver.viewRequest();
+    const parentContext = harness.render().context;
+    const child = harness.internalLink({ query: "child", primaryReading: "reading" });
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child")] });
+    await child;
+    harness.edit(true, 1);
+    const append = harness.callbacks(1).onAddCustomEntry({ term: "child", reading: "reading", definition: "saved" });
+    harness.emitState(harness.state(2, "child saved"));
+    harness.reply(harness.take("hd_custom_append"), { state: harness.state(2, "child saved") });
+    await append;
+    harness.setStylesGeneration(3);
+    harness.reply(harness.take("hd_lookup"), { generation: 3, dictionaryCount: 1, results: [harness.term("child")] });
+    await harness.settle();
+    const retained = !parentContext.isCurrentRequest() && parentContext.isCurrentView?.() === true;
+    const next = harness.internalLink({ query: "another child", primaryReading: "another reading" });
+    const linked = harness.take("hd_lookup");
+    if (linked) harness.reply(linked, { generation: 3, dictionaryCount: 1, results: [harness.term("another child")] });
+    await next;
+    parentContext.onDictionaryTabSelected({ dictionary: "Generic" });
+    const delegated = harness.callbacks().onBeforeResultsRendered() === false;
+    const replay = harness.take("hd_lookup");
+    if (replay) harness.reply(replay, { generation: 3, dictionaryCount: 1, results: [harness.term("parent refreshed")] });
+    await harness.settle();
+    const fresh = harness.driver.viewRequest() === parentRequest
+      && harness.render().context.selectedDictionaryTab?.dictionary === "Generic"
+      && harness.render().context.isCurrentRequest() && !harness.driver.popupAt(1);
+    harness.callbacks().onBeforeResultsRendered();
+    const currentTabLocal = harness.take("hd_lookup") === null;
+    harness.close();
+    return { "retained parent navigation stays usable while stale tabs replay current dictionaries without reviving old resources":
+      retained && linked?.request.text === "another child" && linked.request.options.primaryReading === "another reading"
+      && delegated && replay?.request.text === parentRequest.payload.text && fresh && currentTabLocal };
   }
 
   async function replyFirstCase() {
@@ -8960,7 +8998,8 @@ async function contentNoteStage() {
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
-      ...await nestedLevelsCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase() },
+      ...await nestedLevelsCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
+      ...await retainedParentNavigationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
     deferredInvalidation: await deferredInvalidationCase(),
@@ -9351,10 +9390,59 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   internalLinksRenderStage({ HDGlossary, document, window });
+  await retainedNavigationRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await mediaRenderStage({ HDGlossary, document, window });
   dom.window.close();
   return true;
+}
+
+async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  let current = true;
+  let displayed = true;
+  let links = 0;
+  let fills = 0;
+  let replays = 0;
+  let selected = null;
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
+    parseTagList: HDGlossary.parseTagList, positionPopup() {},
+    onBeforeResultsRendered() { if (!current) { replays += 1; return false; } },
+  });
+  const results = ["First", "Second"].map((dictionary) => ({ ...result, term: { ...result.term,
+    glossaries: [{ dictionary, glossary: JSON.stringify([{ type: "structured-content", content: {
+      tag: "a", href: "?query=食", content: "linked word",
+    } }]) }],
+  } }));
+  const context = { isCurrentRequest: () => current, isCurrentView: () => displayed,
+    onInternalLink() { links += 1; }, onDictionaryTabSelected(value) { selected = value; },
+    dictionaryPresentation: [{ title: "First", favorite: true }, { title: "Second", favorite: true }],
+  };
+  try {
+    view.renderResults(results, candidate, context);
+    const first = popup.querySelector("a[data-hoshidicts-query]");
+    const initialFills = fills;
+    current = false;
+    first.click();
+    popup.querySelector('[role="tab"][data-dictionary="Second"]').click();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const retained = links === 1 && replays === 1 && selected?.dictionary === "Second"
+      && first.isConnected && fills === initialFills;
+    displayed = false;
+    first.click();
+    popup.querySelector('[role="tab"][data-dictionary="First"]').click();
+    const obsoleteIgnored = links === 1 && replays === 1;
+    current = true;
+    displayed = true;
+    view.renderResults(results, candidate, context);
+    popup.querySelector('[role="tab"][data-dictionary="Second"]').click();
+    check("retained displayed links and stale-tab handoff never reenable obsolete glossary work",
+      retained && obsoleteIgnored && replays === 1 && fills > initialFills,
+      JSON.stringify({ retained, obsoleteIgnored, links, replays, fills, initialFills }));
+  } finally { view.destroy(); popup.remove(); }
 }
 
 function internalLinksRenderStage({ HDGlossary, document, window }) {
