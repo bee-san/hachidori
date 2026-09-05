@@ -490,11 +490,16 @@ async function popupReader(page) {
           text: flat(this),
           plain: flat(stripped),
           images: Array.from(this.querySelectorAll("img"), img => img.getAttribute("src") || ""),
-          imageStates: Array.from(this.querySelectorAll(".gloss-image-link"), link => ({
-            state: link.dataset.imageLoadState,
-            label: link.getAttribute("aria-label"),
-            width: link.querySelector("img")?.naturalWidth ?? 0,
-          })),
+          imageStates: Array.from(this.querySelectorAll(".gloss-image-link"), link => {
+            const text = link.querySelector(".gloss-image-link-text");
+            return {
+              state: link.dataset.imageLoadState,
+              label: link.getAttribute("aria-label"),
+              width: link.querySelector("img")?.naturalWidth ?? 0,
+              errorVisible: text?.textContent.includes("Image failed to load")
+                && text.getBoundingClientRect().width > 16,
+            };
+          }),
           tags: Array.from(this.querySelectorAll("*"), el => el.tagName.toLowerCase()),
           lists: Array.from(this.querySelectorAll("ul"), ul =>
             Array.from(ul.children, li => li.tagName.toLowerCase() + ":" + flat(li))),
@@ -719,6 +724,7 @@ async function mediaOwnershipChrome({ browser, page, tab, popup }) {
     check("failed media exposes its failure state and text while a later hover retries",
       failedImage.plain.includes("surrounding image definition")
         && failedImage.imageStates[0].label.includes("Owned dictionary image")
+        && failedImage.imageStates[0].errorVisible
         && retried.imageStates[0].state === "loaded" && afterRetry === count + 2,
       JSON.stringify({ failed: failedImage.imageStates, retried: retried.imageStates, count, afterRetry }));
   } finally {

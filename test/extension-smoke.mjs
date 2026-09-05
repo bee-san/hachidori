@@ -6889,6 +6889,42 @@ async function contentNoteStage() {
     }
     result["failed and missing media retry while successful images survive repeat hovers"] = retries.every(Boolean);
 
+    const hidden = await createHarness();
+    await hidden.initialLookup();
+    const hiddenFetch = load(hidden);
+    hidden.popup.ownerDocument.dispatchEvent(new hidden.popup.ownerDocument.defaultView.KeyboardEvent(
+      "keydown", { bubbles: true, cancelable: true, key: "Escape" },
+    ));
+    finish(hidden);
+    await hiddenFetch;
+    await hidden.initialLookup();
+    const afterHidden = load(hidden);
+    const hiddenRefetch = finish(hidden);
+    const hiddenValue = await afterHidden;
+    result["valid media completed while hidden stays reusable without touching an obsolete view"] =
+      !hiddenRefetch && hiddenValue === url;
+    hidden.close();
+
+    const presentation = await createHarness();
+    await presentation.initialLookup();
+    const firstImage = load(presentation);
+    finish(presentation);
+    await firstImage;
+    const stylesBefore = presentation.sent.filter(({ type }) => type === "hd_styles").length;
+    presentation.emitState({
+      revision: 2,
+      dictionaries: presentation.driver.snapshot().dictionaries.map((dictionary) => ({
+        ...dictionary, displayName: "New alias", favorite: !dictionary.favorite,
+      })),
+    });
+    await presentation.initialLookup();
+    const afterPresentation = load(presentation);
+    const presentationRefetch = finish(presentation);
+    await afterPresentation;
+    result["alias and favorite changes preserve successful media and styles without re-fetching"] =
+      !presentationRefetch && presentation.sent.filter(({ type }) => type === "hd_styles").length === stylesBefore;
+    presentation.close();
+
     const styles = await createHarness();
     await styles.initialLookup(3);
     await styles.settle();
@@ -7294,7 +7330,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
 
 async function mediaRenderStage({ HDGlossary, document, window }) {
   const outcomes = [];
-  for (const failure of [false, true]) {
+  for (const replyKind of ["missing", "failure", "valid"]) {
     for (const current of [false, true]) {
       const parent = document.createElement("div");
       let ownsView = true;
@@ -7302,7 +7338,9 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
       let layouts = 0;
       let ownerPassed = false;
       const pending = new Promise((resolveMedia, rejectMedia) => {
-        settleMedia = () => failure ? rejectMedia(new Error("transient media failure")) : resolveMedia(null);
+        settleMedia = () => replyKind === "failure"
+          ? rejectMedia(new Error("transient media failure"))
+          : resolveMedia(replyKind === "valid" ? "data:image/png;base64,YQ==" : null);
       });
       HDGlossary.appendTextOnlyGlossary(document, parent, JSON.stringify([
         "surrounding definition", { type: "structured-content", content: {
@@ -7327,16 +7365,19 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
         image.dispatchEvent(new window.Event("error"));
       }
       outcomes.push(current
-        ? link.dataset.imageLoadState === "load-error" && layouts > 0
+        ? replyKind === "valid"
+          ? image.getAttribute("src") === "data:image/png;base64,YQ==" && link.dataset.imageLoadState === "loaded"
+          : link.dataset.imageLoadState === "load-error" && layouts > 0
           && parent.textContent.includes("surrounding definition")
           && link.getAttribute("aria-label")?.includes("descriptive image")
+          && link.querySelector(".gloss-image-link-text").textContent.includes("Image failed to load")
         : ownerPassed && link.dataset.imageLoadState === "not-loaded" && layouts === 0
           && !image.hasAttribute("src") && !link.hasAttribute("href") && !image.hidden);
       parent.remove();
     }
   }
   check("obsolete connected image callbacks cannot mutate or reposition their old panel",
-    outcomes[0] && outcomes[2], JSON.stringify(outcomes));
+    outcomes[0] && outcomes[2] && outcomes[4] && outcomes[5], JSON.stringify(outcomes));
   check("missing and failed images expose an accessible failure state without losing glossary text",
     outcomes[1] && outcomes[3], JSON.stringify(outcomes));
 }
