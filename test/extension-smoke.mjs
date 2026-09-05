@@ -1341,6 +1341,7 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const ignoredUnchanged = await unchanged(saved);
     const legacy = {
       revision: 2, scanLength: "20.9", maxResults: 900, modifier: "bad",
+      hoverDelayMs: { toString: null },
       kanjiClickDictionary: { title: "旧名", kind: "kanji", ignored: true },
       unknown: "stored junk",
     };
@@ -1355,7 +1356,8 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && conflict.options?.unknown === undefined && conflict.options?.scanLength === 20
         && conflict.options?.maxResults === 256 && conflict.options?.modifier === "none"
         && conflict.options?.kanjiClickDictionary?.ignored === undefined
-        && conflict.options?.hoverDelayMs === undefined && repaired.ok === true
+        && conflict.options?.hoverDelayMs === 50 && conflict.options?.frequencyOrder === undefined
+        && repaired.ok === true
         && repaired.options?.revision === 3 && noOp.options?.revision === 3
         && JSON.stringify((await local.get("options")).options) === JSON.stringify(repaired.options),
       JSON.stringify({ ignored, ignoredUnchanged, conflict, conflictUnchanged, repaired, noOp }));
