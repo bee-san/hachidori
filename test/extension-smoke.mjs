@@ -3558,6 +3558,34 @@ async function main() {
     JSON.stringify({ imported: largeMediaImport.ok, exact: exactNativeMedia.ok, over: overNativeMedia.ok,
       error: overNativeMedia.error, healthy: healthyMediaAfterError.ok, removed: largeMediaRemoved.ok }));
 
+  let nativeMediaCalls = 0;
+  observedEngine.ccall = (name, ...args) => {
+    if (name === "hdw_media") nativeMediaCalls += 1;
+    return originalCcall(name, ...args);
+  };
+  try {
+    const reload = engineService.handleEngineMessage({ type: "hd_reload", requestId: "media-reload" });
+    const staleMedia = engineService.handleEngineMessage({
+      ...mediaMessage, generation: largeMediaRemoved.generation, requestId: "stale-media",
+    });
+    const [reloadedMedia, stale] = await Promise.all([reload, staleMedia]);
+    const invalid = await Promise.all([undefined, -1, 1.5, "1"].map((generation) =>
+      engineService.handleEngineMessage({ ...mediaMessage, generation })));
+    const callsBeforeCurrent = nativeMediaCalls;
+    const current = await engineService.handleEngineMessage({
+      ...mediaMessage, generation: reloadedMedia.generation,
+    });
+    check("queued media rejects stale or invalid generations before native extraction",
+      reloadedMedia.ok && stale.ok === false && /generation/u.test(stale.error)
+        && invalid.every((reply) => !reply.ok && reply.dataUrl === null)
+        && callsBeforeCurrent === 0 && nativeMediaCalls === 1
+        && current.ok && current.generation === reloadedMedia.generation && current.dataUrl === media.dataUrl,
+      JSON.stringify({ stale: stale.ok, invalid: invalid.map(({ ok }) => ok), callsBeforeCurrent,
+        nativeMediaCalls, current: current.ok }));
+  } finally {
+    observedEngine.ccall = originalCcall;
+  }
+
   section("error paths");
   const bogus = await request("hd_bogus");
   equal("an unknown type is answered, not dropped", [bogus.type, bogus.ok], ["hd_bogus_result", false]);
@@ -3988,6 +4016,9 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  for (const [name, passed] of Object.entries(noteContent?.mediaOwnership ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   check(
     "only the current render failure clears the content popup",
     noteContent?.renderFailure === true,
@@ -6103,6 +6134,7 @@ async function contentNoteStage() {
     let closeNext = false;
     let closeCalls = 0;
     let clearCount = 0;
+    let stylesGeneration = 2;
     const pending = [];
     const sent = [];
     const renders = [];
@@ -6172,7 +6204,7 @@ async function contentNoteStage() {
           sent.push(JSON.parse(JSON.stringify(request)));
           if (request.type === "hd_styles") {
             callback({
-              generation: 2,
+              generation: stylesGeneration,
               ok: true,
               requestId: request.requestId,
               styles: [],
@@ -6227,6 +6259,8 @@ async function contentNoteStage() {
     showKanji,
     snapshot() {
       return {
+        currentGeneration,
+        styleGeneration,
         dictionaryStateRevision,
         dictionaries: dictionaries.map((dictionary) => ({ ...dictionary })),
         popupHidden: popup?.hidden === true,
@@ -6321,10 +6355,10 @@ async function contentNoteStage() {
       return payload;
     }
 
-    async function initialLookup() {
+    async function initialLookup(generation = 2) {
       const operation = driver.runLookup(candidate);
       const request = take("hd_lookup");
-      reply(request, { dictionaryCount: 1, results: [term(candidate.query)] });
+      reply(request, { generation, dictionaryCount: 1, results: [term(candidate.query)] });
       await operation;
       return request;
     }
@@ -6355,6 +6389,7 @@ async function contentNoteStage() {
       take,
       term,
       setCloseNext(value) { closeNext = value === true; },
+      setStylesGeneration(value) { stylesGeneration = value; },
     };
   }
 
@@ -6753,8 +6788,127 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function mediaOwnershipCase() {
+    const result = {};
+    const url = "data:image/png;base64,YQ==";
+    const load = (harness, context = harness.render().context) => context.resolveMedia({
+      dictionary: "Generic", generation: context.generation, path: "media/owned.png",
+      isCurrent: context.isCurrentRequest,
+    }).catch(() => null);
+    const finish = (harness, dataUrl = url, ok = true) => {
+      const request = harness.take("hd_media");
+      if (request) harness.reply(request, { dataUrl, generation: harness.render().context.generation }, ok);
+      return request;
+    };
+
+    const late = await createHarness();
+    await late.initialLookup();
+    const old = load(late);
+    const oldRequest = late.take("hd_media");
+    late.setStylesGeneration(3);
+    await late.initialLookup(3);
+    const current = load(late);
+    const currentRequest = finish(late);
+    await current;
+    late.reply(oldRequest, { dataUrl: url, generation: 2 });
+    await old;
+    const generationStayedCurrent = late.driver.snapshot().currentGeneration === 3;
+    const cached = load(late);
+    const unexpected = finish(late);
+    await cached;
+    late.setStylesGeneration(1);
+    await late.initialLookup(1);
+    result["late media cannot roll back generation or evict a newer cached image"] = generationStayedCurrent
+      && oldRequest.request.generation === 2 && currentRequest?.request.generation === 3
+      && !unexpected && late.driver.snapshot().currentGeneration === 1;
+    late.close();
+
+    const shared = await createHarness();
+    await shared.initialLookup();
+    const oldContext = shared.render().context;
+    const first = load(shared);
+    await shared.initialLookup();
+    const second = load(shared);
+    const staleSubscriber = load(shared, oldContext);
+    finish(shared);
+    const values = await Promise.all([first, second, staleSubscriber]);
+    const third = load(shared);
+    const redundant = finish(shared);
+    await third;
+    result["a current view adopts one pending media fetch without a stale subscriber stealing ownership"] =
+      values[1] === url && values[2] === null && !redundant
+      && shared.sent.filter(({ type }) => type === "hd_media").length === 1;
+    shared.close();
+
+    const replaced = await createHarness();
+    await replaced.initialLookup();
+    const abandoned = load(replaced);
+    const abandonedRequest = replaced.take("hd_media");
+    replaced.emitState(replaced.state(2, "replaced"));
+    await replaced.initialLookup();
+    const replacement = load(replaced);
+    const replacementRequest = replaced.take("hd_media");
+    replaced.reply(abandonedRequest, { dataUrl: "data:image/png;base64,b2xk" });
+    await abandoned;
+    const joinReplacement = load(replaced);
+    const extra = finish(replaced);
+    if (replacementRequest) replaced.reply(replacementRequest, { dataUrl: url });
+    const replacementValues = await Promise.all([replacement, joinReplacement]);
+    result["dictionary invalidation prevents old same-generation jobs from poisoning or deleting replacements"] =
+      Boolean(replacementRequest) && !extra && replacementValues.every((value) => value === url);
+    replaced.close();
+
+    const retries = [];
+    for (const ok of [false, true]) {
+      const harness = await createHarness();
+      await harness.initialLookup();
+      const failed = load(harness);
+      finish(harness, null, ok);
+      await failed;
+      await harness.initialLookup();
+      const retry = load(harness);
+      const retried = finish(harness);
+      const value = await retry;
+      await harness.initialLookup();
+      const reused = load(harness);
+      const refetched = finish(harness);
+      await reused;
+      retries.push(Boolean(retried) && value === url && !refetched);
+      harness.close();
+    }
+    result["failed and missing media retry while successful images survive repeat hovers"] = retries.every(Boolean);
+
+    const styles = await createHarness();
+    await styles.initialLookup(3);
+    await styles.settle();
+    result["a mismatched style reply cannot adopt generation and remains retryable"] =
+      styles.driver.snapshot().currentGeneration === 3 && styles.driver.snapshot().styleGeneration === -1;
+    styles.close();
+
+    const back = await createHarness();
+    await back.initialLookup();
+    const clicked = back.callbacks().onKanjiClick("食", null, null, null);
+    back.setStylesGeneration(3);
+    back.reply(back.take("hd_lookup_dictionary"), {
+      generation: 3, dictionaryCount: 1, results: [back.term("clicked newer")],
+    });
+    await clicked;
+    const restoring = back.render().context.onBack();
+    const refresh = back.take("hd_lookup");
+    if (refresh) back.reply(refresh, {
+      generation: 3, dictionaryCount: 1, results: [back.term("refreshed Back")],
+    });
+    await restoring;
+    result["Back refreshes an old result snapshot before requesting current-generation media"] =
+      Boolean(refresh) && back.render().results[0].term.expression === "refreshed Back"
+        && back.render().context.generation === 3;
+    back.close();
+    return result;
+  }
+
   return {
     callbacksWired,
+    mediaOwnership: await mediaOwnershipCase(),
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
     deferredInvalidation: await deferredInvalidationCase(),
@@ -7105,8 +7259,58 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   equal("clear empties the popup", popup.childElementCount, 0);
   view.destroy();
   structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+  await mediaRenderStage({ HDGlossary, document, window });
   dom.window.close();
   return true;
+}
+
+async function mediaRenderStage({ HDGlossary, document, window }) {
+  const outcomes = [];
+  for (const failure of [false, true]) {
+    for (const current of [false, true]) {
+      const parent = document.createElement("div");
+      let ownsView = true;
+      let settleMedia;
+      let layouts = 0;
+      let ownerPassed = false;
+      const pending = new Promise((resolveMedia, rejectMedia) => {
+        settleMedia = () => failure ? rejectMedia(new Error("transient media failure")) : resolveMedia(null);
+      });
+      HDGlossary.appendTextOnlyGlossary(document, parent, JSON.stringify([
+        "surrounding definition", { type: "structured-content", content: {
+          tag: "img", path: "media/owned.png", alt: "descriptive image",
+        } },
+      ]), {
+        isCurrent: () => ownsView,
+        onLayoutChange() { layouts += 1; },
+        resolveMedia({ isCurrent }) {
+          ownerPassed = typeof isCurrent === "function" && isCurrent();
+          return pending;
+        },
+      });
+      document.body.appendChild(parent);
+      ownsView = current;
+      settleMedia();
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 0));
+      const image = parent.querySelector("img");
+      const link = parent.querySelector(".gloss-image-link");
+      if (!current) {
+        image.dispatchEvent(new window.Event("load"));
+        image.dispatchEvent(new window.Event("error"));
+      }
+      outcomes.push(current
+        ? link.dataset.imageLoadState === "load-error" && layouts > 0
+          && parent.textContent.includes("surrounding definition")
+          && link.getAttribute("aria-label")?.includes("descriptive image")
+        : ownerPassed && link.dataset.imageLoadState === "not-loaded" && layouts === 0
+          && !image.hasAttribute("src") && !link.hasAttribute("href") && !image.hidden);
+      parent.remove();
+    }
+  }
+  check("obsolete connected image callbacks cannot mutate or reposition their old panel",
+    outcomes[0] && outcomes[2], JSON.stringify(outcomes));
+  check("missing and failed images expose an accessible failure state without losing glossary text",
+    outcomes[1] && outcomes[3], JSON.stringify(outcomes));
 }
 
 function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {

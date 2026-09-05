@@ -274,6 +274,8 @@ const PLANNED = [
   "an oversized hover clears the previous popup and the next healthy hover recovers",
   "a structured-depth render failure clears its popup and the next healthy hover recovers",
   "large media imports through OPFS while oversized and malformed fetches fail without poisoning the engine",
+  "a late real media reply cannot replace a current generation image",
+  "failed media exposes its failure state and text while a later hover retries",
 ];
 
 const results = [];
