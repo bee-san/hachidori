@@ -7261,6 +7261,12 @@ async function contentNoteStage() {
     };
     harness.driver.popupAt(1).dispatchEvent(new window.MouseEvent("mouseenter"));
     harness.popup.dispatchEvent(new window.MouseEvent("mouseenter"));
+    const originalChild = harness.driver.viewRequest(1);
+    const beforeReactivation = harness.sent.length;
+    await harness.render().context.onInternalLink({ query: "child", primaryReading: "", anchor: originalChild.candidate.anchor });
+    fire(160);
+    const reactivated = harness.driver.viewRequest(1) === originalChild && harness.sent.length === beforeReactivation;
+    harness.popup.dispatchEvent(new window.MouseEvent("mouseenter"));
     const pruneScheduled = fire(160);
     const parentReturn = pruneScheduled && !harness.driver.popupAt(1) && !harness.driver.snapshot().popupHidden;
     const second = harness.internalLink({ query: "child again" });
@@ -7283,7 +7289,7 @@ async function contentNoteStage() {
     await harness.settle();
     harness.close();
     return { "ancestor pointer return prunes descendants but preserves drafts and a stationary departure resumes scanning":
-      parentReturn && draftRetained && beforeGrace && lookup?.request.text === "new page word" };
+      reactivated && parentReturn && draftRetained && beforeGrace && lookup?.request.text === "new page word" };
   }
 
   async function nestedNotesCase() {
@@ -7405,6 +7411,16 @@ async function contentNoteStage() {
     const retiredIgnored = harness.driver.viewRequest(1) === current && harness.driver.popupAt(1) === currentPopup
       && harness.driver.snapshot().currentGeneration === 2 && harness.sent.length === before;
     harness.close();
+    const detached = await createHarness();
+    await detached.initialLookup();
+    const pendingChild = detached.internalLink({ query: "detached ancestor" });
+    const held = detached.take("hd_lookup");
+    detached.anchor.remove();
+    detached.reply(held, { generation: 99, dictionaryCount: 1, results: [detached.term("must not render")] });
+    await pendingChild;
+    const detachedIgnored = detached.driver.snapshot().currentGeneration === 2 && detached.renders.length === 1
+      && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1);
+    detached.close();
     const generations = [];
     for (const generation of [3, 1]) {
       const race = await createHarness();
@@ -7426,7 +7442,7 @@ async function contentNoteStage() {
       race.close();
     }
     return { "retired child replies and older parent replies cannot replace a new level or roll back engine generation":
-      retiredIgnored && generations.every(Boolean) };
+      retiredIgnored && detachedIgnored && generations.every(Boolean) };
   }
 
   async function replyFirstCase() {
