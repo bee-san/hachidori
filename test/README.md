@@ -292,7 +292,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 251 checks, all of
+full request→reply round trip per contract-C message type. 265 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -508,7 +508,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test that runs the extension in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 102 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -555,6 +555,18 @@ on release, and cancellation of a quick press/release. A non-default key is kept
 when switching back to Hover and checked with mode, enablement and hide delay
 after the full browser restart.
 
+Exact-selection checks use a real cross-inline mouse drag, verify the complete
+highlighted text, and reject prefix-only matches despite a one-character scan
+setting. They distinguish visible selection text from hidden DOM text and block
+separators, retain the popup while selecting its closed-shadow glossary, and
+observe real worker lookup relays while toggling Japanese-only scanning in the
+open tab. Native input, textarea and contenteditable typing stays intact; direct
+and spanning selections exclude visible editing controls, including boxless
+`display:contents` editors, without treating a hidden control as visible.
+The extension suite separately holds replies through selection cancellation,
+retry and storage invalidation; checks exact Note/Back/internal-link descriptors;
+and pins same-candidate pending lookup deduplication.
+
 Managed-update indexes are intercepted on the service-worker CDP target and
 archives on the offscreen-document target, which also covers its engine worker;
 the harness deliberately does not intercept the dedicated worker directly. The
@@ -582,7 +594,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 99 assertions, and the summary line
+`PLANNED` at the top of the file names all 102 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
