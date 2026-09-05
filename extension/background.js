@@ -1,4 +1,5 @@
 import "./reader-options.js";
+import "./external-links.js";
 import {
   httpsUrl,
   MANAGED_DICTIONARY_CHANGED,
@@ -24,6 +25,7 @@ import {
 } from "./response-limits.js";
 
 const { projectStoredOptions, validateOptionsPatch } = globalThis.HDReaderOptions;
+const { normaliseExternalUrl } = globalThis.HDExternalLinks;
 
 /*
  * Service worker for Hachidori.
@@ -368,6 +370,16 @@ async function removeLegacyDictionaryRows(current, legacyDictionaries) {
 // message round trip later. A caller includes the revision it read so a stale
 // write cannot discard a change made by another extension context.
 const WORKER_HANDLERS = {
+  async hd_open_external(message, sender) {
+    if (sender.id !== chrome.runtime.id) throw new Error("external link request came from another extension");
+    const url = normaliseExternalUrl(message.url);
+    if (!url) throw new TypeError("external link URL is invalid");
+    const active = message.active === undefined ? true : message.active;
+    if (typeof active !== "boolean") throw new TypeError("external link activation is invalid");
+    await chrome.tabs.create({ url, active, ...(sender.tab ? { windowId: sender.tab.windowId } : {}) });
+    return { opened: true };
+  },
+
   async hd_state_read() {
     const { state, legacyDictionaries } = await readDictionaryStorage();
     return { state, legacyDictionaries };
@@ -877,7 +889,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
   }
-  serialiseStorage(() => WORKER_HANDLERS[type](message)).then(
+  const invoke = () => WORKER_HANDLERS[type](message, sender);
+  // Navigation neither uses storage nor waits for dictionary mutations.
+  const operation = type === "hd_open_external" ? invoke() : serialiseStorage(invoke);
+  operation.then(
     (result) => sendResponse(workerReply(message, result)),
     (error) => {
       sendResponse(failureReply(message, error));

@@ -718,6 +718,7 @@ function loadClassicScript(file, sandbox) {
 
 function loadBackgroundScript(sandbox) {
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
+  const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
   const customDictionary = readFileSync(resolve(EXTENSION, "custom-dictionary.js"), "utf8")
     .replace(/^export\s+/gmu, "");
@@ -729,11 +730,13 @@ function loadBackgroundScript(sandbox) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
+    .replace(/import "\.\/external-links\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
+  sandbox.URL ??= URL;
   sandbox.Uint8Array ??= Uint8Array;
   sandbox.Uint32Array ??= Uint32Array;
   sandbox.DataView ??= DataView;
@@ -743,7 +746,7 @@ function loadBackgroundScript(sandbox) {
   runInContext(
     `${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${readerOptions}\n${background}`,
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${readerOptions}\n${externalLinks}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
   );
@@ -807,10 +810,11 @@ async function externalLinksBackgroundStage() {
   await writing;
   await opening;
   chrome.storage.local.set = originalSet;
-  chrome.tabs.create = async () => { throw new Error("tab creation failed"); };
+  let failureAttempts = 0;
+  chrome.tabs.create = async () => { failureAttempts += 1; throw new Error("tab creation failed"); };
   const failed = await send({ url: "https://example.test/failure" });
   check("external tab creation bypasses storage and engine queues and reports a failure without retry",
-    independent && failed?.ok === false && validReply(failed) && failed.error.includes("tab creation failed")
+    independent && failureAttempts === 1 && failed?.ok === false && validReply(failed) && failed.error.includes("tab creation failed")
       && !bus.log.some(message => message.relayed),
     JSON.stringify({ independent, failed, log: bus.log }));
 }
