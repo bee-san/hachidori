@@ -1719,13 +1719,13 @@
     const existing = levels[level.depth + 1];
     if (existing?.activeCandidate?.anchor === anchor && existing.activeCandidate.query === query
         && existing.primaryReading === primaryReading
-        && (existing.pendingLink || (existing.currentViewRequest?.kind === "term"
+        && (existing.pendingLink?.token === existing.lookupToken || (existing.currentViewRequest?.kind === "term"
           && existing.activeTermRender?.token === existing.lookupToken))) {
       if (focusChild) {
         existing.focusLinkedBack = true;
         if (!existing.popup.hidden) focusPopupControl(".gsm-hoshidicts-kanji-back", existing);
       }
-      return existing.pendingLink;
+      return existing.pendingLink?.promise;
     }
     pruneLevels(level.depth + 1, false);
     const child = createLevelState(level.depth + 1);
@@ -1739,9 +1739,10 @@
       sentence: anchor.textContent || "", sourceElements: [anchor], sourceDepth: level.depth,
       vertical: false,
     };
-    child.pendingLink = runLookup(child.activeCandidate, { primaryReading }, child);
-    void child.pendingLink.finally(() => { child.pendingLink = null; });
-    return child.pendingLink;
+    const promise = runLookup(child.activeCandidate, { primaryReading }, child);
+    child.pendingLink = { promise, token: child.lookupToken };
+    void promise.finally(() => { child.pendingLink = null; });
+    return promise;
   }
 
   async function executeKanjiRequest(request, level = rootLevel, replayOptions = null) {
