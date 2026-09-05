@@ -184,6 +184,19 @@ favourite edits preserve them. Job identity prevents an old completion from
 removing or populating a newer same-key job. Styles similarly own their exact
 request, even when a restart reuses the numeric generation.
 
+Inline image sizing retains the source's existing width range (0.1–1,024 px or
+0.1–64 em) and 10,000% sizer-padding maximum. The bounded percentage sizer is
+the sole aspect-sizing rule: a second raw CSS `aspect-ratio` could bypass it
+and make a one-pixel-wide image millions of pixels tall. Ordinary dimensions
+and preferred/em sizing retain their previous geometry. This limits rendered
+geometry, not imported image bytes or native dimensions.
+
+Preferred-height width calculation keeps its original finite positive result.
+Only an intermediate zero or infinity retries the other multiplication/division
+groupings before the existing display-width clamp. This recovers representable
+widths lost to floating-point overflow/underflow without changing ordinary
+rounding or adding a new dimension limit.
+
 Image fulfillment, failure and load/error callbacks require a connected image
 in the current request and result panel before changing DOM or repositioning.
 Failures expose the image's alt text and a readable message outside the image's

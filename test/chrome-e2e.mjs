@@ -28,6 +28,7 @@ import {
   buildRecommendedZip,
   buildTitledZip,
   imagePreviewFixture,
+  imageSizingFixture,
   makePng,
 } from "./make-fixture.mjs";
 import {
@@ -282,6 +283,7 @@ const PLANNED = [
   "dictionary AVIF and SVG decode through real WASM without extra preview fetches",
   "image hover and keyboard previews stay larger, viewport-clamped and motion-aware",
   "image previews close on leave, blur, scrolling and pending navigation",
+  "dictionary image sizing preserves ordinary geometry and enforces its existing aspect bound",
 ];
 
 const results = [];
@@ -624,7 +626,11 @@ async function popupReader(page) {
           focusedImage: links.indexOf(root.activeElement),
           images: links.map(link => {
             const image = link.querySelector("img");
-            return { source: image.src, width: image.naturalWidth, height: image.naturalHeight };
+            const container = link.querySelector(".gloss-image-container");
+            const rect = container.getBoundingClientRect();
+            return { source: image.src, width: image.naturalWidth, height: image.naturalHeight,
+              display: { width: rect.width, height: rect.height, inlineWidth: container.style.width,
+                fontSize: Number.parseFloat(view.getComputedStyle(container).fontSize) } };
           }),
           preview: preview ? {
             rect: preview.getBoundingClientRect().toJSON(),
@@ -982,6 +988,38 @@ async function imagePreviewChrome({ browser, page, tab, popup }) {
     await tab.emulateMediaFeatures([]);
     await restoreMediaReplyProbe(worker);
   }
+}
+
+async function imageSizingChrome({ page, tab, popup }) {
+  const fixture = imageSizingFixture();
+  await installMediaArchive(page, fixture.archive);
+  await tab.evaluate(query => { document.getElementById("verb").textContent = query; }, fixture.query);
+  await tab.bringToFront();
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await hoverForPopup(tab, popup, "#verb");
+  const deadline = Date.now() + 6000;
+  let state;
+  do {
+    state = await popup.imagePreview();
+    if (state?.images.length === fixture.cases.length && state.images.every(image => image.width === 16)) break;
+    await new Promise(done => setTimeout(done, 25));
+  } while (Date.now() < deadline);
+  const expectedSource = `data:image/png;base64,${fixture.bytes.toString("base64")}`;
+  check("dictionary image sizing preserves ordinary geometry and enforces its existing aspect bound",
+    state?.images.length === fixture.cases.length && state.images.every((image, index) => {
+      const expected = fixture.cases[index];
+      const units = expected.dimensions.sizeUnits === "em" ? "em" : "px";
+      const { display } = image;
+      const maximumWidth = expected.width * (units === "em" ? display.fontSize : 1);
+      return image.source === expectedSource && image.width === 16 && image.height === 16
+        && display.inlineWidth.endsWith(units)
+        // CSSOM rounds the recovered fractional width to 0.202402px.
+        && Math.abs(Number.parseFloat(display.inlineWidth) - expected.width) < 1e-6
+        && display.width <= maximumWidth + 1 / 64
+        && (index >= 7 || Math.abs(display.width - maximumWidth) <= 1 / 64)
+        && Math.abs(display.height - display.width * expected.padding / 100) <= 1 / 32;
+    }), JSON.stringify(state?.images.map(({ display }) => display)));
 }
 
 async function setDictionaryEnabledInSettings(page, title, enabled) {
@@ -3847,6 +3885,7 @@ async function main() {
   await mediaOwnershipChrome({ browser, page, tab: tab2, popup: popup2 });
   await boundedMediaChrome({ browser, page, tab: tab2, popup: popup2 });
   await imagePreviewChrome({ browser, page, tab: tab2, popup: popup2 });
+  await imageSizingChrome({ page, tab: tab2, popup: popup2 });
   await browser.close();
   server.close();
   return report();
