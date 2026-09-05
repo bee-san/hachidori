@@ -9066,7 +9066,7 @@ function externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candi
       && anchors.slice(2).every((anchor) => !anchor.hasAttribute("href"));
     anchors[0].href = "https://mutated.test/";
     const events = [
-      ["click", {}, true], ["click", { detail: 0 }, true],
+      ["click", { detail: 1 }, true], ["click", { detail: 0 }, true],
       ["click", { ctrlKey: true }, false], ["click", { metaKey: true }, false],
       ["auxclick", { button: 1 }, false], ["auxclick", { button: 1, shiftKey: true }, true],
     ];
@@ -9102,12 +9102,15 @@ function externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candi
     const before = calls.length;
     HDGlossary.appendTextOnlyGlossary(document, parent, JSON.stringify([{ type: "structured-content",
       content: [link("https://outer.test/", link("https://inner.test/")),
-        link("https://outer.test/", link("?query=食&primary_reading=しょく"))],
+        link("https://outer.test/", link("?query=食&primary_reading=しょく")),
+        link("?query=outer", link("https://inner.test/second"))],
     }]), { onExternalLink: context.onExternalLink, onInternalLink() { internal += 1; } });
     dispatch(parent.querySelector('a[href="https://inner.test/"]'));
     dispatch(parent.querySelector('[data-hoshidicts-query]'));
+    dispatch(parent.querySelector('a[href="https://inner.test/second"]'));
     check("nested structured links dispatch only the handled inner action",
-      calls.length === before + 1 && calls.at(-1)?.url === "https://inner.test/" && internal === 1,
+      calls.length === before + 2 && calls[before]?.url === "https://inner.test/"
+        && calls.at(-1)?.url === "https://inner.test/second" && internal === 1,
       JSON.stringify({ calls: calls.slice(before), internal }));
     parent.remove();
   } finally { view.destroy(); popup.remove(); }
