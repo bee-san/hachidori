@@ -13,6 +13,7 @@
   --accent-contrast: #ffffff;
   --ok: #27694e;
   --error: #ac3032;
+  --favorite: #946400;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -28,6 +29,7 @@
     --accent-contrast: #17261c;
     --ok: #9ad2af;
     --error: #ffaaa7;
+    --favorite: #e4ba67;
   }
 }
 
@@ -311,6 +313,7 @@ button.danger:hover:not(:disabled) {
 .update-state:empty,
 .custom-dictionary-status:empty,
 .dict-group-error:empty {
+  /* Empty live regions must remain available for their first announcement. */
   position: absolute;
   width: 1px;
   height: 1px;
@@ -510,7 +513,7 @@ input[type="checkbox"] {
   overflow-wrap: anywhere;
 }
 .dict-favorite {
-  color: #946400;
+  color: var(--favorite);
 }
 .dict-canonical,
 .dict-metadata,

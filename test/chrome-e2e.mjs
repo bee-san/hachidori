@@ -1347,6 +1347,7 @@ async function main() {
           return rect.width > 0 && rect.left >= 0 && rect.right <= width;
         }),
         disabledRowReadable: getComputedStyle(document.querySelector(".dict-row.is-off")).opacity === "1",
+        emptyStatusExposed: getComputedStyle(document.getElementById("custom-dictionary-status")).display !== "none",
       };
     }));
   }
@@ -1356,7 +1357,8 @@ async function main() {
   check(
     "Settings puts the library first and supports keyboard navigation at 320px",
     libraryFirst && selectionActions && skipFocusedMain
-      && narrowThemes.every((theme) => theme.noOverflow && theme.fieldsFit && theme.disabledRowReadable),
+      && narrowThemes.every((theme) => theme.noOverflow && theme.fieldsFit
+        && theme.disabledRowReadable && theme.emptyStatusExposed),
     JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, narrowThemes }),
   );
   await page.emulateMediaFeatures([]);
