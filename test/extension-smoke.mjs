@@ -311,7 +311,7 @@ function makeBus() {
     listeners.push({ fn, owner });
   }
 
-  function sendMessage(owner, message) {
+  function sendMessage(owner, message, sender = { id: "hachidorismokeextensionid" }) {
     log.push({ from: owner, type: message?.type, relayed: message?.relayed === true });
     return new Promise((resolveReply, rejectReply) => {
       const audience = listeners.filter((entry) => entry.owner !== owner);
@@ -326,7 +326,7 @@ function makeBus() {
       for (const entry of audience) {
         let keepOpen;
         try {
-          keepOpen = entry.fn(message, { id: "smoke" }, respond);
+          keepOpen = entry.fn(message, sender, respond);
         } catch (error) {
           rejectReply(error);
           return;
@@ -748,6 +748,71 @@ function loadBackgroundScript(sandbox) {
     { filename: resolve(EXTENSION, "background.js") },
   );
   return context;
+}
+
+async function externalLinksBackgroundStage() {
+  const bus = makeBus();
+  const storage = makeStorage();
+  const chrome = makeChrome("external-links-worker", bus, storage);
+  const tabs = [];
+  chrome.tabs = { async create(properties) { tabs.push(structuredClone(properties)); return { id: tabs.length }; } };
+  loadBackgroundScript({ chrome, console, URL, setTimeout, clearTimeout, Promise, Error });
+  await bus.sendMessage("external-links-reader", {
+    target: "hoshidicts-worker", type: "hd_state_read", requestId: "external-links-ready",
+  });
+  const send = (payload, sender = { id: chrome.runtime.id, tab: { windowId: 9 } }) => bus.sendMessage(
+    "external-links-reader",
+    { target: "hoshidicts-worker", type: "hd_open_external", requestId: "external-link", ...payload },
+    sender,
+  );
+  const accepted = await send({ url: " HTTPS://EXAMPLE.COM:443/日本?q=1#term ", active: false, windowId: 99, openerTabId: 11 });
+  const local = await send({ url: "http://127.0.0.1:9876/reference" });
+  const rejected = [];
+  for (const url of ["javascript:alert(1)", "file:///tmp/a", "chrome://settings", "/relative", "https://", "https://user:pass@example.test/", "https://exam\nple.test/", { href: "https://example.test/" }]) {
+    rejected.push(await send({ url }));
+  }
+  rejected.push(await send({ url: "https://example.test/", active: "yes" }));
+  rejected.push(await send({ url: "https://example.test/" }, { id: "another-extension" }));
+  const validReply = reply => reply?.type === "hd_open_external_result" && reply.requestId === "external-link";
+  check("external links validate HTTP URLs and sender identity before creating one browser-owned tab",
+    accepted?.ok && accepted.opened === true && validReply(accepted)
+      && local?.ok && validReply(local)
+      && JSON.stringify(tabs) === JSON.stringify([
+        { url: "https://example.com/%E6%97%A5%E6%9C%AC?q=1#term", active: false, windowId: 9 },
+        { url: "http://127.0.0.1:9876/reference", active: true, windowId: 9 },
+      ])
+      && rejected.every(reply => validReply(reply) && reply.ok === false && typeof reply.error === "string"),
+    JSON.stringify({ accepted, local, tabs, rejected }));
+
+  const originalSet = chrome.storage.local.set;
+  let releaseWrite;
+  chrome.storage.local.set = items => new Promise((resolveWrite, rejectWrite) => {
+    releaseWrite = () => originalSet(items).then(resolveWrite, rejectWrite);
+  });
+  const writing = bus.sendMessage("external-links-reader", {
+    target: "hoshidicts-worker", type: "hd_options_write", requestId: "held-options-write",
+    baseRevision: 0, options: { scanLength: 17 },
+  });
+  for (let attempt = 0; !releaseWrite && attempt < 100; attempt += 1) {
+    await new Promise(resolveTimer => setTimeout(resolveTimer, 0));
+  }
+  if (!releaseWrite) throw new Error("the external-link test did not hold its options write");
+  let externalSettled = false;
+  const before = { reads: storage.gets.length, writes: storage.sets.length, engine: offscreenState.created };
+  const opening = send({ url: "https://example.test/while-saving" }).then(reply => { externalSettled = reply?.ok === true; return reply; });
+  await new Promise(resolveTimer => setTimeout(resolveTimer, 0));
+  const independent = externalSettled && before.reads === storage.gets.length
+    && before.writes === storage.sets.length && before.engine === offscreenState.created;
+  releaseWrite();
+  await writing;
+  await opening;
+  chrome.storage.local.set = originalSet;
+  chrome.tabs.create = async () => { throw new Error("tab creation failed"); };
+  const failed = await send({ url: "https://example.test/failure" });
+  check("external tab creation bypasses storage and engine queues and reports a failure without retry",
+    independent && failed?.ok === false && validReply(failed) && failed.error.includes("tab creation failed")
+      && !bus.log.some(message => message.relayed),
+    JSON.stringify({ independent, failed, log: bus.log }));
 }
 
 async function customBackgroundStage() {
@@ -1643,6 +1708,9 @@ async function main() {
 
   section("option ranges");
   checkOptionRanges();
+
+  section("external dictionary links");
+  await externalLinksBackgroundStage();
 
   section("custom dictionary storage ownership");
   const customBackground = await customBackgroundStage();
