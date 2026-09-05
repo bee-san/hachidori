@@ -76,6 +76,12 @@ Open Hachidori's options page to:
 - maintain a personal dictionary from editable source, and add entries from term or kanji popups;
 - configure the hover key, delay, scan length, result limit, frequency ranking, and the dictionary opened when you click a kanji.
 
+Selecting a frequency dictionary chooses its direction from the dictionary's
+metadata: ascending for ranks, descending for occurrence counts (or an
+undeclared mode). You can reverse it manually or use **Auto direction** to
+restore that choice. **Any** uses automatic ranking across all enabled frequency
+dictionaries; **Disabled** turns frequency sorting off.
+
 Settings opens with your library in lookup order. Section links take you straight
 to imports, updates, groups, personal entries, or lookup preferences. Bulk actions
 appear when you select dictionaries; disabled dictionaries stay readable and editable.

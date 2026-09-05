@@ -206,6 +206,36 @@ while an internal link uses its own query, reading and prefix-matching mode.
 Visibility checks distinguish hidden subtrees (`display:none`) from inherited
 `visibility:hidden`, whose children can restore visible text or editing surfaces.
 
+## Frequency ranking controls
+
+The generated Yomitan index's optional `frequencyMode` survives package metadata,
+Settings presentation writes, reimports and reload reconciliation. Existing
+packages recover it from their committed generation's index without a new schema
+or WebAssembly build.
+
+Selecting one enabled frequency dictionary saves its title and inferred direction
+in one existing options patch: `rank-based` selects ascending; `occurrence-based`
+or an undeclared mode selects descending. The explicit **Auto direction** button
+reapplies that mapping. Manual directions remain unchanged during rendering,
+metadata updates and restart. These are numeric directions, not universally
+"common first" or "rare first" labels.
+
+**Any** selects the existing native automatic mode, comparing enabled frequency
+dictionaries in manifest order with numerically ascending values per dictionary.
+It does not reinterpret mixed occurrence/rank metadata. **Disabled** bypasses
+frequency ranking. Selecting Automatic or Disabled in the order control remembers
+the inactive selected dictionary; choosing Any explicitly clears that selection.
+Only an explicit dictionary selection or Auto action derives a numeric direction.
+
+An unavailable choice remains visible until authoritative options change, with
+manual directions and Auto unavailable. The background still prunes removed or
+disabled dictionary references in its state commit; Settings does not race that
+commit with a local rewrite. A focused chooser retains its native draft and CAS
+base across incoming events, but refuses a choice that lost frequency capability
+before the change event completes.
+
+![Frequency direction controls in Settings](assets/frequency-direction-settings.png)
+
 ## Lookup response boundary
 
 The native bridge rejects lookup text, primary reading, and frequency-dictionary
