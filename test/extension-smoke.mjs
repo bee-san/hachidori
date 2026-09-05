@@ -7934,8 +7934,31 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
 
   view.renderNotice("nothing found", candidate);
   check("renderNotice replaces the view", popup.textContent.includes("nothing found"), JSON.stringify(popup.textContent));
+  const scrollProperty = Object.getOwnPropertyDescriptor(window.Element.prototype, "scrollTop");
+  let scrollWrites = 0;
+  Object.defineProperty(popup, "scrollTop", {
+    configurable: true,
+    get() { return scrollProperty.get.call(this); },
+    set(value) { scrollWrites += 1; scrollProperty.set.call(this, value); },
+  });
+  popup.hidden = true;
   view.clear();
-  equal("clear empties the popup", popup.childElementCount, 0);
+  const hiddenCleared = popup.childElementCount === 0 && scrollWrites === 0;
+  popup.hidden = false;
+  const visibleResets = [
+    () => view.renderNotice("nothing found", candidate),
+    () => view.renderKanji(kanji, candidate),
+    () => view.renderResults(lookup.results, candidate),
+  ].map((render) => {
+    popup.scrollTop = 120;
+    scrollWrites = 0;
+    render();
+    return scrollWrites > 0 && popup.scrollTop === 0;
+  });
+  check("clear empties hidden popups without scrolling and every visible view resets scroll",
+    hiddenCleared && visibleResets.every(Boolean), JSON.stringify({ hiddenCleared, visibleResets }));
+  delete popup.scrollTop;
+  view.clear();
   await imagePreviewStage({ view, popup, shadow, document, window, candidate,
     calculatePopupPosition: HDPopup.calculatePopupPosition,
     result: imageLookup.results[0], mediaUrl: media.dataUrl });
