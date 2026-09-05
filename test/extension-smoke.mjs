@@ -7378,9 +7378,12 @@ async function contentNoteStage() {
       control.style.display = "none";
       controls.push(scan(block.firstChild.firstChild)?.query === "食語");
     }
-    block.innerHTML = '食<span style="visibility:hidden">隠し<b style="visibility:visible">べ</b></span>た';
+    block.innerHTML = '食<span style="display:inline;visibility:hidden">隠し<b style="display:inline;visibility:visible">べ</b></span>た';
     const restored = block.querySelector("b");
     const restoredProse = scan(block.firstChild)?.query === "食べた" && scan(restored.firstChild)?.query === "べた";
+    block.querySelector("span").style.display = "block";
+    const restoredBlock = scan(block.firstChild)?.query === "食";
+    block.querySelector("span").style.display = "inline";
     for (const editor of [block.querySelector("span"), restored]) {
       editor.setAttribute("contenteditable", "true");
       Object.defineProperty(editor, "isContentEditable", { configurable: true, value: true });
@@ -7392,7 +7395,7 @@ async function contentNoteStage() {
     harness.close();
     return {
       "pointer scans cross ordinary inline text and apply the live Japanese-only preference":
-        crossedInline && japaneseOnly && unrestricted && gatedAgain && restoredProse,
+        crossedInline && japaneseOnly && unrestricted && gatedAgain && restoredProse && restoredBlock,
       "editing controls and contenteditable text stop both direct and forward pointer scanning":
         controls.every(Boolean) || controls,
     };

@@ -1612,14 +1612,21 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     }
     const editingQuiet = (await lookups()).length === editingStart && !popup.visible(await popup.state());
     await dismiss();
+    await tab.$eval("#verb", (element) => {
+      element.innerHTML = '<b id="selection-boundary-start">食</b>'
+        + '<div style="visibility:hidden"><b style="visibility:visible">べ</b></div>た';
+    });
+    await moveTo("#selection-boundary-start");
+    const blockBoundary = (await lookups()).at(-1)?.text === "食";
+    await dismiss();
     await tab.$eval("#verb", (element) => { element.innerHTML = '食<input type="hidden">べたかった'; });
     const hiddenPointerAccepted = await hoverForPopup(tab, popup, "#verb");
     await selectVerb('食べ<span style="display:none"><button>隠し</button></span>たかった');
     const hiddenControlAccepted = await popup.waitForVisible();
     check("editable controls preserve normal editing and suppress pointer and selection lookups",
-      edits.every(Boolean) && editingQuiet && hiddenControlAccepted?.plain.includes("食べる")
+      edits.every(Boolean) && editingQuiet && blockBoundary && hiddenControlAccepted?.plain.includes("食べる")
         && hiddenPointerAccepted?.plain.includes("食べる"),
-      JSON.stringify({ edits, editingQuiet, hiddenControlAccepted: hiddenControlAccepted !== null,
+      JSON.stringify({ edits, editingQuiet, blockBoundary, hiddenControlAccepted: hiddenControlAccepted !== null,
         hiddenPointerAccepted: hiddenPointerAccepted !== null }));
 
     await dismiss();

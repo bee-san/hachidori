@@ -510,10 +510,9 @@
             return NodeFilter.FILTER_REJECT;
           }
           if (editing) return hasVisibleContent(node, styleCache) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-          // visibility can be restored by descendants; display:none cannot.
-          if (isHiddenElement(node, styleCache)) return NodeFilter.FILTER_SKIP;
           // Visible controls and block elements are boundaries; ordinary inline
-          // elements are skipped so their text keeps flowing into the scan.
+          // elements are skipped, including hidden wrappers whose descendants
+          // may restore visibility. Hidden blocks still occupy layout space.
           return node.localName === "br" || isBlockDisplay(node, styleCache)
             ? NodeFilter.FILTER_ACCEPT
             : NodeFilter.FILTER_SKIP;
