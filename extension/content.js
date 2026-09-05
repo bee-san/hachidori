@@ -1659,7 +1659,7 @@
   }
 
   function onMouseDown(event) {
-    if (disposed || popup === null || popup.hidden) {
+    if (disposed) {
       return;
     }
     if (!isOurNode(event.target) && !pointInsidePopup(event.clientX, event.clientY)) {
@@ -1708,8 +1708,7 @@
       activationPressed = false;
     }
     if (!activationPressed) activationCode = null;
-    if (options.lookupMode === "activation" && !activationPressed
-        && !pointerInPopup && !noteEditing && !popupHasFocus()) {
+    if (options.lookupMode === "activation" && !activationPressed) {
       cancelPointerScan();
       scheduleHide();
     }
