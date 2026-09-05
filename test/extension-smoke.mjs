@@ -6807,7 +6807,7 @@ async function contentNoteStage() {
           stopEditing();
           return true;
         },
-        destroy() {},
+        destroy() { record.layoutView?.destroy(); },
         renderKanji(value, candidate, context) {
           recordRender({ kind: "kanji", value, candidate, context });
         },
@@ -7036,7 +7036,11 @@ async function contentNoteStage() {
       anchor,
       appliedStyles,
       candidate,
-      createLayoutView,
+      createLayoutView(callbacks) {
+        const view = createLayoutView(callbacks);
+        popupRecords.get(callbacks.popup).layoutView = view;
+        return view;
+      },
       callbacks: (depth = 0) => popupRecord(depth).callbacks,
       close() { dom.window.close(); },
       driver,
@@ -7265,6 +7269,7 @@ async function contentNoteStage() {
     let layouts = 0;
     let popupReads = 0;
     let rootReads = 0;
+    let queueDuringLayout = false;
     const frame = () => {
       for (const [id, callback] of [...frames]) {
         if (!frames.delete(id)) continue;
@@ -7307,9 +7312,17 @@ async function contentNoteStage() {
         // Real per-view resize/masonry callbacks, bound to the real content
         // owners; the request harness continues to own only lookup replies.
         views.push(harness.createLayoutView({ ...harness.callbacks(depth),
-          getPopupColumns() { layouts += 1; return 2; } }));
+          getPopupColumns() {
+            layouts += 1;
+            if (depth === 0 && queueDuringLayout) {
+              queueDuringLayout = false;
+              views[0].scheduleMasonry();
+            }
+            return 2;
+          } }));
       }
       window.dispatchEvent(new window.Event("resize"));
+      const oneBatch = frames.size === 1 && layouts === 0;
       frame();
       const resize = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0
         && [0, 1, 2, 3].every(depth => {
@@ -7335,36 +7348,61 @@ async function contentNoteStage() {
       // retires; a queued retired child cannot target its depth replacement.
       const childCallbacks = harness.callbacks(1);
       views[0].scheduleMasonry();
-      frame();
       harness.emitOptions({ popupNestingMaxDepth: 0 });
-      views.slice(1).forEach(view => view.destroy());
       rootReads = 0; popupReads = 0;
       frame();
       const rootSurvivesPrune = rootReads === 1 && popupReads === 0;
-      const afterLayout = childCallbacks.positionAfterLayout || childCallbacks.positionPopup;
-      afterLayout();
+      childCallbacks.queueMasonry(() => { layouts += 1; });
       const retiredIgnored = frames.size === 0;
-      rootReads = 0;
+      rootReads = 0; layouts = 0;
+      views[0].scheduleMasonry();
       views[0].scheduleMasonry();
       frame();
-      const rootSameFrame = rootReads === 1 && frames.size === 0;
+      const rootSameFrame = layouts === 1 && rootReads === 1 && frames.size === 0;
+
+      // Work queued while a batch runs belongs to the next frame, not this
+      // snapshot. The native observer-width followup is checked separately.
+      layouts = 0; rootReads = 0;
+      queueDuringLayout = true;
+      views[0].scheduleMasonry();
+      frame();
+      const nextBatchQueued = layouts === 1 && rootReads === 1 && frames.size === 1;
+      frame();
+      const nextBatchCompleted = layouts === 2 && rootReads === 2 && frames.size === 0;
 
       harness.emitOptions({ popupNestingMaxDepth: 1 });
       const child = harness.internalLink({ query: "replacement" });
       harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("replacement")] });
       await child;
       const retiring = harness.callbacks(1);
-      (retiring.positionAfterLayout || retiring.positionPopup)();
+      const retiringView = harness.createLayoutView(retiring);
+      views.push(retiringView);
+      retiringView.scheduleMasonry();
       const childQueued = frames.size === 1;
       harness.render(1).context.onBack();
       const retiredCancelled = frames.size === 0;
       const replacement = harness.internalLink({ query: "same depth" });
       harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("same depth")] });
       await replacement;
-      (retiring.positionAfterLayout || retiring.positionPopup)();
+      retiring.queueMasonry(() => { layouts += 1; });
       const replacementUntouched = frames.size === 0;
+      let childLayouts = 0;
+      const replacementView = harness.createLayoutView({ ...harness.callbacks(1),
+        getPopupColumns() { childLayouts += 1; return 2; } });
+      views.push(replacementView);
+      layouts = 0; rootReads = 0;
       views[0].scheduleMasonry();
+      replacementView.scheduleMasonry();
+      replacementView.destroy();
       frame();
+      const liveDestroyPreservesRoot = childLayouts === 0 && layouts === 1
+        && rootReads === 1 && frames.size === 0;
+      const soleView = harness.createLayoutView(harness.callbacks(1));
+      views.push(soleView);
+      soleView.scheduleMasonry();
+      soleView.destroy();
+      const liveDestroyCancelsFrame = frames.size === 0;
+      views[0].scheduleMasonry();
       harness.driver.onKeyDown({ key: "Escape", repeat: false, stopPropagation() {} });
       // First Escape closes the unfocused child; the next dismisses the root.
       harness.driver.onKeyDown({ key: "Escape", repeat: false, stopPropagation() {} });
@@ -7374,11 +7412,11 @@ async function contentNoteStage() {
       harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("teardown")] });
       await next;
       views[0].scheduleMasonry();
-      frame();
       harness.driver.teardown();
       const teardownCancelled = frames.size === 0;
       return { "viewport and observer layout place a popup chain linearly and retire queued owners":
-        resize && observerFollowup && rootSurvivesPrune && retiredIgnored && rootSameFrame
+        oneBatch && resize && observerFollowup && rootSurvivesPrune && retiredIgnored && rootSameFrame
+        && nextBatchQueued && nextBatchCompleted && liveDestroyPreservesRoot && liveDestroyCancelsFrame
         && childQueued && retiredCancelled && replacementUntouched && hiddenCancelled && teardownCancelled };
     } finally {
       views.forEach(view => view.destroy());

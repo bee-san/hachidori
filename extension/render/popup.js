@@ -984,7 +984,6 @@
     const appendTextOnlyGlossary = options.appendTextOnlyGlossary;
     const parseTagList = options.parseTagList;
     const positionPopup = options.positionPopup;
-    const positionAfterLayout = options.positionAfterLayout || positionPopup;
     // LookupKanji carries onyomi/kunyomi/tags as space-separated strings, but a
     // caller that already normalized them hands over arrays. Accept both.
     const tokenList = (value) =>
@@ -1147,13 +1146,17 @@
     }
 
     function scheduleMasonry() {
+      if (options.queueMasonry) {
+        options.queueMasonry(layoutMasonry);
+        return;
+      }
       if (masonryFrame !== null) {
         return;
       }
       masonryFrame = windowRef.requestAnimationFrame(() => {
         masonryFrame = null;
         layoutMasonry();
-        positionAfterLayout();
+        positionPopup();
       });
     }
 
@@ -2476,6 +2479,7 @@
         hideImagePreview();
         renderRevision += 1;
         currentResultPanel = null;
+        options.cancelMasonry?.(layoutMasonry);
         if (masonryFrame !== null) {
           windowRef.cancelAnimationFrame(masonryFrame);
           masonryFrame = null;

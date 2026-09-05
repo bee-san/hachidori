@@ -125,7 +125,7 @@
   let highlighter = null;
   let uiPromise = null;
   let popupLayoutFrame = null;
-  let popupLayoutOwner = null;
+  let popupLayouts = new Map();
 
   let styleGeneration = -1;
   let styleRequest = null;
@@ -1141,24 +1141,32 @@
   function cancelPopupLayout() {
     if (popupLayoutFrame !== null) window.cancelAnimationFrame(popupLayoutFrame);
     popupLayoutFrame = null;
-    popupLayoutOwner = null;
+    popupLayouts.clear();
   }
 
-  function positionAfterLayout(level) {
+  function cancelMasonry(level, layout) {
+    if (popupLayouts.get(level) !== layout) return;
+    popupLayouts.delete(level);
+    if (popupLayouts.size === 0) cancelPopupLayout();
+  }
+
+  function queueMasonry(level, layout) {
     if (disposed || level.retired || level.popup.hidden) return;
-    if (levels.length === 1) {
-      positionPopup(level);
-      return;
-    }
-    if (!popupLayoutOwner || level.depth < popupLayoutOwner.depth) popupLayoutOwner = level;
+    popupLayouts.set(level, layout);
     if (popupLayoutFrame !== null) return;
-    // All pane masonry callbacks in this frame finish before one placement
-    // pass, including follow-on ResizeObserver notifications after a resize.
+    // Lay out every dirty pane before placing the chain once in this frame.
+    // A width change can queue another observer batch without losing its work.
     popupLayoutFrame = window.requestAnimationFrame(() => {
-      const owner = popupLayoutOwner;
+      const layouts = popupLayouts;
+      popupLayouts = new Map();
       popupLayoutFrame = null;
-      popupLayoutOwner = null;
-      positionPopup(owner);
+      let owner = null;
+      for (const [level, layout] of layouts) {
+        if (level.retired || level.popup.hidden) continue;
+        layout();
+        if (!owner || level.depth < owner.depth) owner = level;
+      }
+      if (owner) positionPopup(owner);
     });
   }
 
@@ -1253,7 +1261,8 @@
       parseTagList: window.HDGlossary.parseTagList,
       popup,
       positionPopup: () => positionPopup(level),
-      positionAfterLayout: () => positionAfterLayout(level),
+      queueMasonry: (layout) => queueMasonry(level, layout),
+      cancelMasonry: (layout) => cancelMasonry(level, layout),
       sourceHighlighter: level.highlighter,
       sourceHighlightEnabled: true,
       toolbarPosition: "top",
@@ -1317,7 +1326,6 @@
       level.view?.destroy();
       level.popup?.remove();
     }
-    if (popupLayoutOwner?.retired) cancelPopupLayout();
     if (restoreFocus && focused && source?.isConnected) source.focus({ preventScroll: true });
     if (levels.length === 1) clearTransferTimer();
   }
