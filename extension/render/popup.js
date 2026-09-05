@@ -1800,6 +1800,7 @@
     ) {
       const revision = ++renderRevision;
       const isCurrent = () => revision === renderRevision && ownsResultPanel(panel, renderContext);
+      const isCurrentLink = () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext);
       const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
       hideImagePreview();
       panel.replaceChildren();
@@ -1948,7 +1949,7 @@
                 dictionary,
                 generation: renderContext.generation,
                 isCurrent,
-                isCurrentLink: () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext),
+                isCurrentLink,
                 onExternalLink: renderContext.onExternalLink,
                 onInternalLink: renderContext.onInternalLink,
                 onLayoutChange: positionIfCurrent,
