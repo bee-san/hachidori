@@ -124,7 +124,7 @@
   let pointerInPopup = false;
   let activationPressed = false;
   let activationCode = null;
-  let pendingPointerLookup = null;
+  let pendingCandidateLookup = null;
   let selectionDragActive = false;
   let activeSelectionCandidate = null;
 
@@ -1073,7 +1073,7 @@
     popup.dataset.hoshidictsDepth = "0";
     popup.hidden = true;
     popup.addEventListener("focusin", () => {
-      cancelPointerScan();
+      cancelCandidateScan();
       clearHideTimer();
     });
     popup.addEventListener("focusout", onPopupFocusOut);
@@ -1146,7 +1146,7 @@
 
   function hide() {
     clearScanTimer();
-    pendingPointerLookup = null;
+    pendingCandidateLookup = null;
     clearHideTimer();
     activeCandidate = null;
     activeSignature = null;
@@ -1596,12 +1596,21 @@
     }
   }
 
-  function cancelPointerScan() {
+  function cancelCandidateScan() {
     clearScanTimer();
     // Retaining a rendered popup during transfer must not invalidate its media
-    // or deferred glossary. Only an unfinished pointer lookup loses ownership.
-    if (pendingPointerLookup?.token === lookupToken) lookupToken += 1;
-    pendingPointerLookup = null;
+    // or deferred glossary. Only an unfinished candidate loses ownership.
+    if (pendingCandidateLookup?.token === lookupToken) lookupToken += 1;
+    pendingCandidateLookup = null;
+  }
+
+  function lookupCandidate(candidate) {
+    const lookup = runLookup(candidate);
+    const pending = { token: lookupToken, candidate, signature: candidateSignature(candidate) };
+    pendingCandidateLookup = pending;
+    void lookup.finally(() => {
+      if (pendingCandidateLookup === pending) pendingCandidateLookup = null;
+    });
   }
 
   function activationAllowed() {
@@ -1629,7 +1638,7 @@
     }
     if (!options.hoverEnabled) return;
     if (noteEditing || popupHasFocus() || isEditingElement(document.activeElement)) {
-      cancelPointerScan();
+      cancelCandidateScan();
       clearHideTimer();
       return;
     }
@@ -1637,25 +1646,25 @@
     pointerInPopup = isOurNode(pointer.target) ||
       pointInsidePopup(pointer.clientX, pointer.clientY);
     if (pointerInPopup) {
-      cancelPointerScan();
+      cancelCandidateScan();
       clearHideTimer();
       return;
     }
     if (!activationAllowed()) {
-      cancelPointerScan();
+      cancelCandidateScan();
       scheduleHide();
       return;
     }
     const candidate = resolveCandidate(pointer.clientX, pointer.clientY);
     if (!candidate) {
-      cancelPointerScan();
+      cancelCandidateScan();
       scheduleHide();
       return;
     }
     const signature = candidateSignature(candidate);
-    if (pendingPointerLookup?.token === lookupToken
-        && pendingPointerLookup.signature === signature
-        && sameAnchorNode(candidate, pendingPointerLookup.candidate)) {
+    if (pendingCandidateLookup?.token === lookupToken
+        && pendingCandidateLookup.signature === signature
+        && sameAnchorNode(candidate, pendingCandidateLookup.candidate)) {
       clearHideTimer();
       return;
     }
@@ -1671,12 +1680,7 @@
     // A new valid pointer lookup owns this popup. Retire the previous view
     // rather than leave its expired glossary/media and Note controls usable.
     if (popup && !popup.hidden) hide();
-    const lookup = runLookup(candidate);
-    const pending = { token: lookupToken, candidate, signature };
-    pendingPointerLookup = pending;
-    void lookup.finally(() => {
-      if (pendingPointerLookup === pending) pendingPointerLookup = null;
-    });
+    lookupCandidate(candidate);
   }
 
   function onMouseMove(event) {
@@ -1695,18 +1699,18 @@
     // wait for the scan.
     if (isOurNode(event.target)) {
       pointerInPopup = true;
-      cancelPointerScan();
+      cancelCandidateScan();
       clearHideTimer();
       return;
     }
     pointerInPopup = false;
     if (noteEditing || popupHasFocus() || isEditingElement(document.activeElement)) {
-      cancelPointerScan();
+      cancelCandidateScan();
       return;
     }
     if (selectionDragActive || retainSelectedLookup()) return;
     if (!activationAllowed()) {
-      cancelPointerScan();
+      cancelCandidateScan();
       scheduleHide();
       return;
     }
@@ -1764,7 +1768,7 @@
     if (!candidate && !activeSelectionCandidate) return;
     hide();
     activeSelectionCandidate = candidate;
-    if (candidate) void runLookup(candidate);
+    if (candidate) lookupCandidate(candidate);
   }
 
   function onMouseUp(event) {
@@ -1788,7 +1792,7 @@
         hide();
         return;
       }
-      cancelPointerScan();
+      cancelCandidateScan();
       if (options.activationKey !== "Escape") return;
     }
     if (!options.hoverEnabled || isEditingElement(document.activeElement)) return;
@@ -1816,7 +1820,7 @@
     if (!activationPressed) activationCode = null;
     if (options.lookupMode === "activation" && !activationPressed) {
       if (activeSelectionIsUnchanged()) return;
-      cancelPointerScan();
+      cancelCandidateScan();
       scheduleHide();
     }
   }
@@ -1828,7 +1832,7 @@
     if (!disposed && event.relatedTarget === null) {
       lastPointer = null;
       pointerInPopup = false;
-      cancelPointerScan();
+      cancelCandidateScan();
       scheduleHide();
     }
   }
@@ -1845,7 +1849,7 @@
   }
 
   function onScroll() {
-    cancelPointerScan();
+    cancelCandidateScan();
     view?.hideImagePreview();
     if (disposed || !popup || popup.hidden || !activeCandidate) {
       return;
@@ -1885,7 +1889,7 @@
   function onNoteEditingChange(editing) {
     noteEditing = editing === true;
     if (noteEditing) {
-      cancelPointerScan();
+      cancelCandidateScan();
       clearHideTimer();
     } else if (pendingCustomAppends === 0 && deferredDictionaryInvalidationRevision >= 0) {
       hide();
@@ -1949,7 +1953,7 @@
       hide();
     }
     else if (interactionChanged || scanDelayChanged) {
-      cancelPointerScan();
+      cancelCandidateScan();
       clearHideTimer();
       if (!noteEditing && !popupHasFocus() && !pointerInPopup) {
         if (!activationAllowed()) scheduleHide();
