@@ -1390,14 +1390,40 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const beyond = await send({ ...exact, padding: `${exact.padding}x` });
     const objectId = await send(message({ scanLength: 19 }, { requestId: {} }));
     const largeId = await send(message({ scanLength: 19 }, { requestId: "猫".repeat(frameLimit) }));
+    let failureSerializations = 0;
+    let failureEncodedUnits = 0;
+    const failureContext = createContext({
+      TextEncoder: class {
+        encode(value) {
+          failureEncodedUnits += value.length;
+          return new TextEncoder().encode(value);
+        }
+      },
+      JSON: { stringify(value) { failureSerializations += 1; return JSON.stringify(value); } },
+    });
+    runInContext(readFileSync(resolve(EXTENSION, "response-limits.js"), "utf8")
+      .replace(/^export\s+/gmu, ""), failureContext);
+    const oversizedFailure = failureContext.boundResponseFailure({
+      type: "hd_options_write_result", requestId: "x".repeat(frameLimit), ok: false,
+      error: failureContext.responseLimitError("hd_options_write_result"),
+    });
+    const identicalFailurePasses = failureSerializations;
+    failureSerializations = 0;
+    const shrinkableFailure = failureContext.boundResponseFailure({
+      type: "hd_options_write_result", requestId: "keep-me", ok: false, error: "x".repeat(frameLimit),
+    });
     check("reader option request framing counts the complete UTF-8 envelope and bounds failure correlation",
       bytes(exact) === frameLimit && atLimit.ok === true && beyond.ok === false
         && bytes(beyond) <= frameLimit && beyond.requestId === "options-contract"
         && objectId.ok === false && objectId.requestId === null
         && largeId.ok === false && largeId.requestId === null && bytes(largeId) <= frameLimit
+        && oversizedFailure.requestId === null && identicalFailurePasses === 1
+        && shrinkableFailure.requestId === "keep-me" && failureSerializations === 2
+        && failureEncodedUnits === 0
         && await unchanged(saved),
       JSON.stringify({ exactBytes: bytes(exact), atLimit: atLimit.ok, beyond: beyond.ok,
-        objectId: objectId.ok, largeId: largeId.ok, largeReplyBytes: bytes(largeId) }));
+        objectId: objectId.ok, largeId: largeId.ok, largeReplyBytes: bytes(largeId),
+        identicalFailurePasses, shrinkableFailurePasses: failureSerializations, failureEncodedUnits }));
 
     const next = { revision: 10, scanLength: 17, frequencyDictionary: "猫\\\"" };
     const expectedReply = { type: "hd_options_write_result", requestId: "options-contract", ok: true, error: null, options: next };
