@@ -1357,7 +1357,8 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     check("reader options reject malformed known fields without committing and accept a healthy follow-up",
       rejected.every(Boolean) && healthy.ok === true && healthy.options?.revision === 3
         && healthy.options?.scanLength === 64 && healthy.options?.maxResults === 256
-        && healthy.options?.hoverDelayMs === 2000 && healthy.options?.modifier === "alt",
+        && healthy.options?.hoverDelayMs === 2000 && healthy.options?.lookupMode === "activation"
+        && healthy.options?.activationKey === "Alt" && healthy.options?.modifier === undefined,
       JSON.stringify({ rejected, healthy }));
 
     await local.set({ options: saved.options });
@@ -1378,7 +1379,8 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       ignored.ok === true && ignored.options?.revision === 2 && ignored.options?.unknown === undefined
         && ignoredUnchanged && conflict.ok === false && conflict.conflict === true && conflictUnchanged
         && conflict.options?.unknown === undefined && conflict.options?.scanLength === 20
-        && conflict.options?.maxResults === 256 && conflict.options?.modifier === "none"
+        && conflict.options?.maxResults === 256 && conflict.options?.lookupMode === "hover"
+        && conflict.options?.modifier === undefined
         && conflict.options?.kanjiClickDictionary?.ignored === undefined
         && conflict.options?.hoverDelayMs === 50 && conflict.options?.frequencyOrder === undefined
         && repaired.ok === true
@@ -7056,7 +7058,7 @@ async function contentNoteStage() {
     fire(75);
     const transferDelay = harness.driver.hideTimerPending() && !harness.driver.snapshot().popupHidden
       && [...timers.values()].some((timer) => timer.delay === 250);
-    move(harness.popup);
+    move(harness.popup.getRootNode().host);
     const transferred = !harness.driver.hideTimerPending();
     fire(75);
     harness.edit(true);
@@ -7069,7 +7071,8 @@ async function contentNoteStage() {
     fire(75);
     fire(0);
     result["configured transfer delays preserve popup entry and Note editing and allow immediate hide"] =
-      transferDelay && transferred && draftProtected && harness.driver.snapshot().popupHidden;
+      transferDelay && transferred && draftProtected && harness.driver.snapshot().popupHidden
+        || { transferDelay, transferred, draftProtected, hidden: harness.driver.snapshot().popupHidden };
 
     harness.driver.setScanCandidate(harness.candidate);
     move();

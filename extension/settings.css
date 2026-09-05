@@ -444,6 +444,12 @@ input[type="checkbox"] {
   margin: 0;
   accent-color: var(--accent);
 }
+.lookup-enable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
 .dict-list,
 .dict-group-list,
 .dict-group-members {

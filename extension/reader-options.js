@@ -8,8 +8,11 @@
   const DEFAULT_OPTIONS = {
     scanLength: 16,
     maxResults: 32,
-    modifier: "none",
+    hoverEnabled: true,
+    lookupMode: "hover",
+    activationKey: "Shift",
     hoverDelayMs: 50,
+    popupHideDelayMs: 160,
     kanjiClickDictionary: "",
     frequencyDictionary: "",
     frequencyOrder: "auto",
@@ -18,10 +21,26 @@
     scanLength: [1, 64],
     maxResults: [1, 256],
     hoverDelayMs: [0, 2000],
+    popupHideDelayMs: [0, 5000],
   };
-  const MODIFIERS = ["none", "shift", "ctrl", "alt"];
+  const LEGACY_MODIFIERS = new Map([["none", "Shift"], ["shift", "Shift"], ["ctrl", "Control"], ["alt", "Alt"]]);
+  const LOOKUP_MODES = ["hover", "activation"];
+  // Browser KeyboardEvent names, adapting the source's desktop hotkey names.
+  const ACTIVATION_KEYS = [
+    "Shift", "Control", "Alt", "Meta", "Space", "Enter", "Escape", "Backspace", "Delete", "Tab",
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", "Insert",
+    ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    ...Array.from({ length: 24 }, (_, index) => `F${index + 1}`),
+    ..."-=[]\\;',./`",
+  ];
+  const ACTIVATION_NAMES = new Map(ACTIVATION_KEYS.map((key) => [key.toLowerCase(), key]));
   const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
   const OPTION_KEYS = Object.keys(DEFAULT_OPTIONS);
+
+  function normaliseActivationKey(value, fallback = DEFAULT_OPTIONS.activationKey) {
+    if (value === " ") return "Space";
+    return typeof value === "string" ? ACTIVATION_NAMES.get(value.toLowerCase()) ?? fallback : fallback;
+  }
 
   function clampOption(key, value) {
     let number;
@@ -51,7 +70,9 @@
 
   function normaliseField(key, value) {
     if (Object.hasOwn(NUMBER_RANGES, key)) return clampOption(key, value);
-    if (key === "modifier") return MODIFIERS.includes(value) ? value : DEFAULT_OPTIONS.modifier;
+    if (key === "hoverEnabled") return typeof value === "boolean" ? value : DEFAULT_OPTIONS.hoverEnabled;
+    if (key === "lookupMode") return LOOKUP_MODES.includes(value) ? value : DEFAULT_OPTIONS.lookupMode;
+    if (key === "activationKey") return normaliseActivationKey(value);
     if (key === "frequencyOrder") return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;
     if (key === "kanjiClickDictionary") return normaliseKanjiSelection(value);
     return typeof value === "string" ? value : "";
@@ -60,6 +81,16 @@
   function projectOptions(value, strict) {
     const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const result = {};
+    if (Object.hasOwn(source, "modifier")) {
+      if (strict && !LEGACY_MODIFIERS.has(source.modifier)) {
+        throw new Error("the options write request carried an invalid reader option");
+      }
+      const modifier = LEGACY_MODIFIERS.has(source.modifier) ? source.modifier : "none";
+      result.lookupMode = modifier === "none" ? "hover" : "activation";
+      // An old Settings page can still send its existing patch under CAS.
+      // Plain hover changes mode only, preserving a newer configured key.
+      if (modifier !== "none") result.activationKey = LEGACY_MODIFIERS.get(modifier);
+    }
     for (const key of OPTION_KEYS) {
       if (!Object.hasOwn(source, key)) continue;
       const raw = source[key];
@@ -91,8 +122,8 @@
   }
 
   globalThis.HDReaderOptions = {
-    DEFAULT_OPTIONS, NUMBER_RANGES, MODIFIERS, FREQUENCY_ORDERS,
-    clampOption, normaliseKanjiSelection, normaliseOptions,
+    DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+    clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     projectStoredOptions, validateOptionsPatch,
   };
 }());
