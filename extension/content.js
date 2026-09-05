@@ -1021,7 +1021,10 @@
     popup.className = "gsm-hoshidicts-popup";
     popup.dataset.hoshidictsDepth = "0";
     popup.hidden = true;
-    popup.addEventListener("focusin", clearHideTimer);
+    popup.addEventListener("focusin", () => {
+      cancelPointerScan();
+      clearHideTimer();
+    });
     popup.addEventListener("focusout", onPopupFocusOut);
     shadow.appendChild(popup);
     document.body.appendChild(host);
@@ -1572,12 +1575,14 @@
     }
     if (!options.hoverEnabled) return;
     if (noteEditing) {
+      cancelPointerScan();
       clearHideTimer();
       return;
     }
     pointerInPopup = isOurNode(pointer.target) ||
       pointInsidePopup(pointer.clientX, pointer.clientY);
     if (pointerInPopup) {
+      cancelPointerScan();
       clearHideTimer();
       return;
     }
@@ -1625,7 +1630,7 @@
     // wait for the scan.
     if (isOurNode(event.target)) {
       pointerInPopup = true;
-      clearScanTimer();
+      cancelPointerScan();
       clearHideTimer();
       return;
     }
@@ -1733,6 +1738,7 @@
   }
 
   function onScroll() {
+    cancelPointerScan();
     view?.hideImagePreview();
     if (disposed || !popup || popup.hidden || !activeCandidate) {
       return;
@@ -1772,6 +1778,7 @@
   function onNoteEditingChange(editing) {
     noteEditing = editing === true;
     if (noteEditing) {
+      cancelPointerScan();
       clearHideTimer();
     } else if (pendingCustomAppends === 0 && deferredDictionaryInvalidationRevision >= 0) {
       hide();
@@ -1813,7 +1820,9 @@
     const revision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
     if (revision <= optionsStorageRevision) return false;
     const next = normalizeOptions(stored);
-    const changed = JSON.stringify(next) !== JSON.stringify(options);
+    const lookupChanged = next.scanLength !== options.scanLength || next.maxResults !== options.maxResults
+      || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
+      || JSON.stringify(next.kanjiClickDictionary) !== JSON.stringify(options.kanjiClickDictionary);
     const activationChanged = next.lookupMode !== options.lookupMode || next.activationKey !== options.activationKey;
     const interactionChanged = activationChanged || next.hoverEnabled !== options.hoverEnabled;
     const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
@@ -1841,7 +1850,7 @@
       clearHideTimer();
       scheduleHide();
     }
-    return changed;
+    return lookupChanged;
   }
 
   function start() {
