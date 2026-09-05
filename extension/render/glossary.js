@@ -1079,10 +1079,12 @@
   }
 
   function typeDictionaryStyleVariables(style) {
+    const declarations = style.cssText;
+    if (!/\bvar\(/iu.test(declarations)) return;
     const suffixes = [];
     // CSSOM has already balanced the declaration block, and residual escapes
     // were rejected. Keep strings/comments opaque while pairing parentheses.
-    style.cssText = style.cssText.replace(
+    style.cssText = declarations.replace(
       /"[^"]*"|'[^']*'|\/\*[\s\S]*?\*\/|\bvar\(\s*(--[\w-]+)|[()]/giu,
       (token, variable) => {
         if (variable) {
