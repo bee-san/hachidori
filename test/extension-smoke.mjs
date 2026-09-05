@@ -7224,11 +7224,60 @@ async function contentNoteStage() {
     harness.emitOptions({ popupNestingMaxDepth: 1 });
     const lowered = !harness.driver.popupAt(2) && !harness.driver.snapshot(1).popupHidden
       && harness.driver.viewRequest() === parent;
+    const window = harness.anchor.ownerDocument.defaultView;
+    window.innerWidth = 12;
+    harness.render(1).context.onBack();
+    const noViewport = await open("no viewport") === null && !harness.driver.popupAt(1);
     harness.close();
     return {
       "linked levels preserve independent Back and render owners, deduplicate, and prune only descendants": deduped && prunedOnlyBelow && reactivated && childBack && returned,
-      "child popup depth is live and child geometry is clamped to the viewport": positioned && disabled && limited && lowered,
+      "child popup depth is live and child geometry is clamped to the viewport": positioned && disabled && limited && lowered && noViewport,
     };
+  }
+
+  async function nestedPointerCase() {
+    const harness = await createHarness();
+    const window = harness.anchor.ownerDocument.defaultView;
+    await harness.initialLookup();
+    const child = harness.internalLink({ query: "child" });
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child")] });
+    await child;
+    const timers = new Map();
+    let nextTimer = 0;
+    window.setTimeout = (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; };
+    window.clearTimeout = (id) => timers.delete(id);
+    const fire = (delay) => {
+      const entry = [...timers].find(([, value]) => value.delay === delay);
+      if (!entry) return false;
+      timers.delete(entry[0]);
+      entry[1].callback();
+      return true;
+    };
+    harness.driver.popupAt(1).dispatchEvent(new window.MouseEvent("mouseenter"));
+    harness.popup.dispatchEvent(new window.MouseEvent("mouseenter"));
+    const pruneScheduled = fire(160);
+    const parentReturn = pruneScheduled && !harness.driver.popupAt(1) && !harness.driver.snapshot().popupHidden;
+    const second = harness.internalLink({ query: "child again" });
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child again")] });
+    await second;
+    harness.edit(true, 1);
+    harness.popup.dispatchEvent(new window.MouseEvent("mouseenter"));
+    fire(160);
+    const draftRetained = harness.driver.snapshot(1).noteEditing && !harness.driver.snapshot(1).popupHidden;
+    harness.edit(false, 1);
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "new page word" });
+    harness.driver.onMouseMove({ target: harness.popup.getRootNode().host, clientX: 10, clientY: 10, buttons: 0 });
+    harness.driver.onMouseMove({ target: harness.anchor, clientX: 900, clientY: 700, buttons: 0 });
+    fire(50);
+    const beforeGrace = harness.take("hd_lookup") === null;
+    fire(80);
+    fire(50);
+    const lookup = harness.take("hd_lookup");
+    if (lookup) harness.reply(lookup, { dictionaryCount: 1, results: [harness.term("new page word")] });
+    await harness.settle();
+    harness.close();
+    return { "ancestor pointer return prunes descendants but preserves drafts and a stationary departure resumes scanning":
+      parentReturn && draftRetained && beforeGrace && lookup?.request.text === "new page word" };
   }
 
   async function nestedNotesCase() {
@@ -8790,7 +8839,7 @@ async function contentNoteStage() {
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
-    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(), ...await nestedLevelsCase(), ...await nestedNotesCase() },
+    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(), ...await nestedLevelsCase(), ...await nestedNotesCase(), ...await nestedPointerCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
     deferredInvalidation: await deferredInvalidationCase(),
