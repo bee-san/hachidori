@@ -7005,17 +7005,19 @@ async function contentNoteStage() {
 
   async function selectionEditingCase() {
     const outcomes = [];
-    for (const tag of ["button", "span"]) {
+    for (const tag of ["button", "span", "contents"]) {
       const harness = await createHarness();
       const window = harness.popup.ownerDocument.defaultView;
       harness.anchor.textContent = "食";
-      const control = window.document.createElement(tag);
+      const control = window.document.createElement(tag === "contents" ? "span" : tag);
       control.textContent = "べ";
       control.style.visibility = "visible";
-      control.getClientRects = () => [{}];
-      if (tag === "span") {
+      control.getClientRects = () => tag === "contents" ? [] : [{}];
+      window.Range.prototype.getClientRects = () => [{}];
+      if (tag !== "button") {
         control.setAttribute("contenteditable", "true");
         Object.defineProperty(control, "isContentEditable", { value: true });
+        if (tag === "contents") control.style.display = "contents";
       }
       harness.anchor.append(control, window.document.createTextNode("た"));
       window.getSelection().selectAllChildren(harness.anchor);
@@ -7033,6 +7035,33 @@ async function contentNoteStage() {
     }
     return { "selections spanning editing controls are ignored without falling back to pointer prefixes":
       outcomes.every(Boolean) || outcomes };
+  }
+
+  async function popupSelectionCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const request = harness.take("hd_lookup");
+    if (request) harness.reply(request, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+    await harness.settle();
+    const current = harness.driver.viewRequest();
+    const text = window.document.createTextNode("Selected glossary text");
+    harness.popup.append(text);
+    const range = window.document.createRange();
+    range.selectNodeContents(text);
+    // jsdom cannot select closed-shadow text. Chrome exposes these real endpoints.
+    const originalSelection = window.getSelection;
+    window.getSelection = () => ({
+      anchorNode: text, focusNode: text, isCollapsed: false, rangeCount: 1,
+      getRangeAt: () => range, toString: () => range.toString(),
+    });
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    const retained = current !== null && harness.driver.viewRequest() === current
+      && !harness.driver.snapshot().popupHidden && harness.take("hd_lookup") === null;
+    window.getSelection = originalSelection;
+    harness.close();
+    return { "selecting popup glossary text preserves the current page-selection view": retained };
   }
 
   async function pendingSelectionInvalidationCase() {
@@ -7998,7 +8027,7 @@ async function contentNoteStage() {
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await pendingSelectionInvalidationCase(),
-      ...await selectionEditingCase() },
+      ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
