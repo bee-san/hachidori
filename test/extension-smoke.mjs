@@ -6795,7 +6795,9 @@ async function contentNoteStage() {
         hideImagePreview() { record.previewDismissals += 1; },
         clear() {
           record.clearCount += 1;
+          const wasEditing = record.editing;
           stopEditing();
+          if (wasEditing) callbacks.positionPopup();
         },
         closeNoteForm() {
           record.closeCalls += 1;
@@ -7192,9 +7194,12 @@ async function contentNoteStage() {
     const deduped = harness.sent.length === count && harness.driver.viewRequest(1) === child;
     await open("grandchild", 1);
     const grandchildContext = harness.render(2).context;
-    harness.callbacks(1).onBeforeResultsRendered();
+    await open("great-grandchild", 2);
+    harness.edit(true, 3);
+    let pruneThrew = false;
+    try { harness.callbacks(1).onBeforeResultsRendered(); } catch { pruneThrew = true; }
     const prunedOnlyBelow = !harness.driver.popupAt(2) && harness.driver.viewRequest(1) === child
-      && parentContext.isCurrentRequest() && childContext.isCurrentRequest() && !grandchildContext.isCurrentRequest();
+      && parentContext.isCurrentRequest() && childContext.isCurrentRequest() && !grandchildContext.isCurrentRequest() && !pruneThrew;
     const clicked = harness.callbacks(1).onKanjiClick("食");
     const kanjiRequest = harness.take("hd_lookup_dictionary");
     harness.reply(kanjiRequest, { dictionaryCount: 1, results: [harness.term("食")] });
@@ -7226,12 +7231,13 @@ async function contentNoteStage() {
       && harness.driver.viewRequest() === parent;
     const window = harness.anchor.ownerDocument.defaultView;
     window.innerWidth = 12;
-    harness.render(1).context.onBack();
+    harness.callbacks(1).positionPopup();
+    const shrunk = !harness.driver.popupAt(1) && !harness.driver.snapshot().popupHidden;
     const noViewport = await open("no viewport") === null && !harness.driver.popupAt(1);
     harness.close();
     return {
       "linked levels preserve independent Back and render owners, deduplicate, and prune only descendants": deduped && prunedOnlyBelow && reactivated && childBack && returned,
-      "child popup depth is live and child geometry is clamped to the viewport": positioned && disabled && limited && lowered && noViewport,
+      "child popup depth is live and child geometry is clamped to the viewport": positioned && disabled && limited && lowered && shrunk && noViewport,
     };
   }
 
