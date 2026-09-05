@@ -7611,6 +7611,31 @@ async function contentNoteStage() {
     const detachedIgnored = detached.driver.snapshot().currentGeneration === 2 && detached.renders.length === 1
       && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1);
     detached.close();
+    const optionsRace = await createHarness();
+    await optionsRace.initialLookup();
+    const obsolete = optionsRace.internalLink({ query: "same pending child", primaryReading: "reading" });
+    const obsoleteRequest = optionsRace.take("hd_lookup");
+    const obsoletePopup = optionsRace.driver.popupAt(1);
+    const anchor = optionsRace.popup.lastElementChild;
+    optionsRace.emitOptions({ maxResults: 4 });
+    const retry = optionsRace.render().context.onInternalLink({
+      anchor, query: "same pending child", primaryReading: "reading",
+    });
+    const retryRequest = optionsRace.take("hd_lookup");
+    const replacementPopup = optionsRace.driver.popupAt(1);
+    optionsRace.reply(obsoleteRequest, { generation: 99, dictionaryCount: 1, results: [optionsRace.term("obsolete")] });
+    await obsolete;
+    const obsoletePendingIgnored = optionsRace.renders.length === 1
+      && optionsRace.driver.snapshot().currentGeneration === 2;
+    if (retryRequest) optionsRace.reply(retryRequest, {
+      dictionaryCount: 1, results: [optionsRace.term("same pending child")],
+    });
+    await retry;
+    const invalidatedPendingRetried = retryRequest?.request.maxResults === 4
+      && obsoletePopup !== replacementPopup && obsoletePendingIgnored
+      && optionsRace.driver.viewRequest(1)?.payload.options.primaryReading === "reading"
+      && optionsRace.render(1).context.isCurrentRequest();
+    optionsRace.close();
     const generations = [];
     for (const generation of [3, 1]) {
       const race = await createHarness();
@@ -7632,7 +7657,7 @@ async function contentNoteStage() {
       race.close();
     }
     return { "retired child replies and older parent replies cannot replace a new level or roll back engine generation":
-      retiredIgnored && detachedIgnored && generations.every(Boolean) };
+      retiredIgnored && detachedIgnored && invalidatedPendingRetried && generations.every(Boolean) };
   }
 
   async function retainedParentNavigationCase() {
