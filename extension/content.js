@@ -1185,7 +1185,11 @@
       clearHideTimer();
     });
     popup.addEventListener("focusout", onPopupFocusOut);
-    popup.addEventListener("scroll", () => positionPopup(level), { passive: true });
+    popup.addEventListener("scroll", () => {
+      if (level.retired) return;
+      const child = levels[level.depth + 1];
+      if (child) positionPopup(child);
+    }, { passive: true });
     popup.addEventListener("mouseenter", () => onPopupEnter(level));
     shadow.appendChild(popup);
     level.popup = popup;
@@ -1275,7 +1279,10 @@
 
   function hide(level = rootLevel) {
     if (level !== rootLevel) {
-      if (!level.retired) pruneLevels(level.depth);
+      if (!level.retired) {
+        pruneLevels(level.depth);
+        flushDeferredNotes();
+      }
       return;
     }
     clearScanTimer();
@@ -2215,6 +2222,7 @@
       return;
     }
     let changed = false;
+    const previousLevelCount = levels.length;
     let dictionaryChanged = false;
     if (changes.options) {
       changed = adoptOptions(changes.options.newValue);
@@ -2227,6 +2235,7 @@
     if (changed) {
       invalidateStoredState(dictionaryChanged);
     }
+    if (levels.length < previousLevelCount) flushDeferredNotes();
   }
 
   function adoptOptions(stored) {
