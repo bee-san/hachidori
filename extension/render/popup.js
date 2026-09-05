@@ -1251,6 +1251,11 @@
       return currentResultPanel === panel && renderContext.isCurrentRequest?.() !== false;
     }
 
+    function ownsDisplayedPanel(panel, renderContext) {
+      const isCurrent = renderContext.isCurrentView || renderContext.isCurrentRequest;
+      return currentResultPanel === panel && isCurrent?.() !== false;
+    }
+
     function createNoteControls(readPrefill) {
       const button = documentRef.createElement("button");
       button.type = "button";
@@ -1895,6 +1900,7 @@
                 dictionary,
                 generation: renderContext.generation,
                 isCurrent,
+                isCurrentLink: () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext),
                 onExternalLink: renderContext.onExternalLink,
                 onInternalLink: renderContext.onInternalLink,
                 onLayoutChange: positionIfCurrent,
@@ -2276,6 +2282,10 @@
           );
         }
         if (hasRendered && !selectionChanged) {
+          if (!ownsView()) {
+            onBeforeResultsRendered();
+            return;
+          }
           if (
             button && !popup.hidden
             && typeof button.scrollIntoView === "function"
@@ -2285,7 +2295,7 @@
           return;
         }
         if (hasRendered) {
-          onBeforeResultsRendered();
+          if (onBeforeResultsRendered() === false) return;
         }
         popup.scrollTop = 0;
         const selectedDictionaries = tabDescriptors[selectedIndex].dictionaries;
@@ -2321,7 +2331,7 @@
       }
 
       function activateTabFromEvent(index, focusButton = false) {
-        runRenderAction(ownsView, renderContext, () => activateTab(index, focusButton));
+        runRenderAction(() => ownsDisplayedPanel(panel, renderContext), renderContext, () => activateTab(index, focusButton));
       }
 
       tabDescriptors.forEach((descriptor, index) => {

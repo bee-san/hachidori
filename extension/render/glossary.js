@@ -889,7 +889,8 @@
   }
 
   function ownsStructuredLink(element, state) {
-    return element.isConnected && (typeof state.isCurrent !== "function" || state.isCurrent());
+    const isCurrent = state.isCurrentLink || state.isCurrent;
+    return element.isConnected && (typeof isCurrent !== "function" || isCurrent());
   }
 
   function appendStructuredValue(documentRef, parent, value, state, depth) {
@@ -1078,6 +1079,7 @@
     const state = {
       nodes: 0,
       isCurrent: options.isCurrent,
+      isCurrentLink: options.isCurrentLink,
       onExternalLink: options.onExternalLink,
       onInternalLink: options.onInternalLink,
       onLayoutChange: options.onLayoutChange,

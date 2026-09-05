@@ -115,6 +115,7 @@
       activeTermRender: null, currentViewRequest: null, noteEditing: false,
       pendingCustomAppends: 0, deferredDictionaryInvalidationRevision: -1,
       deferredRefresh: null, lookupToken: 0, pendingLink: null,
+      retainedView: false,
     };
   }
 
@@ -817,7 +818,10 @@
     // Generation is an engine incarnation, not a monotonic storage revision.
     // Invalidate other in-flight owners even when a restarted engine returns 1.
     for (const level of levels) {
-      if (level !== owner) level.lookupToken += 1;
+      if (level !== owner) {
+        level.lookupToken += 1;
+        level.retainedView = Boolean(level.currentViewRequest && !level.popup.hidden);
+      }
     }
   }
 
@@ -1196,7 +1200,13 @@
       onAddCustomEntry: (entry) => appendCustomEntry(entry, level),
       onKanjiClick: (character, result, candidate, link) => showKanji(character, result, candidate, link, level),
       onNoteEditingChange: (editing) => onNoteEditingChange(editing, level),
-      onBeforeResultsRendered: () => pruneLevels(level.depth + 1),
+      onBeforeResultsRendered: () => {
+        pruneLevels(level.depth + 1);
+        if (level.retainedView) {
+          void executeViewRequest(level.currentViewRequest, level);
+          return false;
+        }
+      },
       parseTagList: window.HDGlossary.parseTagList,
       popup,
       positionPopup: () => positionPopup(level),
@@ -1284,6 +1294,7 @@
     rootLevel.noteEditing = false;
     rootLevel.deferredDictionaryInvalidationRevision = -1;
     rootLevel.deferredRefresh = null;
+    rootLevel.retainedView = false;
     rootLevel.lookupToken += 1;
     if (!rootLevel.popup) {
       return;
@@ -1495,6 +1506,7 @@
     request ??= level.currentViewRequest;
     level.deferredRefresh = null;
     level.deferredDictionaryInvalidationRevision = -1;
+    level.retainedView = false;
     pruneLevels(level.depth + 1);
     const token = level.lookupToken;
     level.currentViewRequest = request ?? null;
@@ -1513,6 +1525,8 @@
         ...renderContextFor(level),
         ...renderOptions,
         isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken,
+        isCurrentView: () => !disposed && !level.retired && level.currentViewRequest === request
+          && (token === level.lookupToken || level.retainedView),
         onRenderError(error) { handleLookupFailure(token, error, level); },
         selectedDictionaryTab: level.currentViewRequest?.selectedDictionaryTab ?? null,
         onDictionaryTabSelected(selection) {
@@ -1530,7 +1544,7 @@
       // renderResults already applied the engine's `matched` string; re-apply
       // with the raw-sentence span so ruby and wrapped lines highlight exactly
       // the characters the reader sees.
-      (level.highlighter || highlighter).apply(candidate, matchedText);
+      level.highlighter.apply(candidate, matchedText);
     }
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
@@ -1542,6 +1556,7 @@
 
   async function executeTermRequest(request, level = rootLevel) {
     const token = (level.lookupToken += 1);
+    level.retainedView = false;
     level.view?.hideImagePreview();
     let reply;
     try {
@@ -1667,6 +1682,7 @@
     const { candidate, capability, character } = request;
     const useTermDictionary = capability?.kind === "term";
     const token = (level.lookupToken += 1);
+    level.retainedView = false;
     level.view?.hideImagePreview();
     let reply;
     try {
@@ -1719,6 +1735,7 @@
     level.currentViewRequest = request;
     level.deferredRefresh = null;
     level.deferredDictionaryInvalidationRevision = -1;
+    level.retainedView = false;
     pruneLevels(level.depth + 1);
     try {
       level.view.renderKanji({ ...kanji, entries }, candidate, {
@@ -2159,6 +2176,7 @@
     for (const level of levels) {
       level.view?.hideImagePreview();
       level.lookupToken += 1;
+      level.retainedView = Boolean(level.currentViewRequest && !level.popup.hidden);
       if (dictionaryChanged && level.popup && !level.popup.hidden) {
         if (!hasProtectedNote(level.depth)) {
           hide(level);
