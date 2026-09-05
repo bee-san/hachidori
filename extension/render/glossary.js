@@ -729,35 +729,40 @@
     const onLayoutChange = typeof state.onLayoutChange === "function"
       ? state.onLayoutChange
       : () => {};
+    const ownsView = typeof state.isCurrent === "function" ? state.isCurrent : () => true;
+    const isCurrent = () => image.isConnected && ownsView();
+    const failImage = () => {
+      if (!isCurrent()) return;
+      image.hidden = true;
+      link.removeAttribute("href");
+      background.style.removeProperty("--image");
+      link.dataset.imageLoadState = "load-error";
+      link.setAttribute("role", "img");
+      linkText.textContent = image.alt ? `${image.alt}: Image failed to load` : "Image failed to load";
+      link.setAttribute("aria-label", linkText.textContent);
+      onLayoutChange();
+    };
     image.addEventListener("load", () => {
+      if (!isCurrent()) return;
       link.dataset.imageLoadState = "loaded";
       onLayoutChange();
     });
-    image.addEventListener("error", () => {
-      image.hidden = true;
-      link.removeAttribute("href");
-      link.dataset.imageLoadState = "load-error";
-      onLayoutChange();
-    });
+    image.addEventListener("error", failImage);
     parent.appendChild(link);
     let mediaPromise;
     try {
-      mediaPromise = Promise.resolve(state.resolveMedia({ path, width, height }));
+      mediaPromise = Promise.resolve(state.resolveMedia({ path, width, height, isCurrent: ownsView }));
     } catch (error) {
       mediaPromise = Promise.reject(error);
     }
     mediaPromise.then((url) => {
-      if (image.isConnected && isRenderableMediaUrl(url)) {
-        image.src = url;
-        link.href = url;
-        link.dataset.imageLoadState = "loaded";
-        background.style.setProperty("--image", `url("${url}")`);
-      }
-    }).catch(() => {
-      image.hidden = true;
-      link.dataset.imageLoadState = "load-error";
-      onLayoutChange();
-    });
+      if (!isCurrent()) return;
+      if (!isRenderableMediaUrl(url)) throw new Error("dictionary image is unavailable");
+      image.src = url;
+      link.href = url;
+      link.dataset.imageLoadState = "loaded";
+      background.style.setProperty("--image", `url("${url}")`);
+    }).catch(failImage);
   }
 
   function structuredDataAttributeName(rawKey) {
@@ -1015,13 +1020,15 @@
     }
     const state = {
       nodes: 0,
+      isCurrent: options.isCurrent,
       onInternalLink: options.onInternalLink,
       onLayoutChange: options.onLayoutChange,
       resolveMedia: typeof options.resolveMedia === "function"
-        ? ({ path, width, height }) => options.resolveMedia({
+        ? ({ path, width, height, isCurrent }) => options.resolveMedia({
             dictionary: options.dictionary,
             generation: options.generation,
             height,
+            isCurrent,
             path,
             width,
           })

@@ -1708,6 +1708,7 @@
               {
                 dictionary,
                 generation: renderContext.generation,
+                isCurrent,
                 onInternalLink: renderContext.onInternalLink,
                 onLayoutChange: positionIfCurrent,
                 resolveMedia: renderContext.resolveMedia,
