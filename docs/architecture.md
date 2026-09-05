@@ -149,6 +149,25 @@ projection, clear, or destroy invalidates obsolete work before it can render or
 request media. Initial synchronous render errors reach the content-script catch;
 later tab, expansion, and deferred errors clear only their owning current view.
 
+## Media response boundary
+
+Media fetches bound the dictionary reference to 1 KiB and path to 4 KiB of
+UTF-8. The engine service rejects embedded NUL before passing those references
+through the C-string ABI. The native bridge checks the borrowed media view
+against 4 MiB before copying it, and the service reads the native error before
+interpreting a zero length as a successful missing-file response.
+
+The complete serialized media reply is limited to 6 MiB, including correlation
+and error fields. `response-limits.js` shares lookup/media correlation and
+failure framing across engine, worker, offscreen, and service-worker paths.
+The producer's fixed ASCII MIME prefix and base64 payload permit exact payload
+length accounting without another full data-URL serialization; the remaining
+envelope is measured as UTF-8 when its conservative bound is insufficient.
+
+These are fetch and message limits, not archive admission rules. Larger media
+still imports and strict-loads; only its fetch fails, leaving other media and
+lookups usable. A well-formed missing file remains a successful null result.
+
 ## Dictionary presentation boundary
 
 Imported styles are parsed in a detached browser stylesheet, filtered, and only
