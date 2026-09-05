@@ -75,6 +75,13 @@ Run the narrowest existing checks that exercise the change:
 
 Do not claim a check that was not run. Report each command and its exact outcome in the pull request.
 
+## Performance
+
+- Benchmark changes that may affect runtime speed using representative inputs and the relevant production path. Compare before and after under the same conditions; use the existing [benchmark harness](benchmark/README.md) where it fits. Documentation-only changes do not need benchmarks.
+- Prioritize speed issues introduced or worsened by the change. Fix measured in-scope regressions before merging, then repeat the benchmark and relevant correctness tests; do not stop at reporting the slowdown.
+- Prefer small fixes for demonstrated unnecessary work. Preserve correctness, transaction boundaries, and complete results; do not hide performance problems with arbitrary product caps or expand the task into speculative optimization.
+- Record the benchmark command or reproducible setup, compared revisions, input size, environment, repeated-sample results, and limitations in the pull request. Distinguish targeted timings from end-to-end latency, including work deferred outside the measured interval; do not claim a speedup from a single noisy run.
+
 ## Reviewable pull requests
 
 Before opening the pull request:
