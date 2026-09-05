@@ -1574,7 +1574,7 @@
       return;
     }
     if (!options.hoverEnabled) return;
-    if (noteEditing) {
+    if (noteEditing || popupHasFocus()) {
       cancelPointerScan();
       clearHideTimer();
       return;
@@ -1638,7 +1638,10 @@
       return;
     }
     pointerInPopup = false;
-    if (noteEditing) return;
+    if (noteEditing || popupHasFocus()) {
+      cancelPointerScan();
+      return;
+    }
     if (!activationAllowed()) {
       cancelPointerScan();
       scheduleHide();

@@ -292,7 +292,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 250 checks, all of
+full request→reply round trip per contract-C message type. 251 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -325,7 +325,7 @@ What it proves, in order:
    storage changes. Settings and content harnesses load the same shared script.
    Activation cases cover legacy mode/key migration, strict new fields, delayed
    stationary keydown, physical-code release and repeats, transfer/Note ownership,
-   interaction-only resource retention, and cancellation of the first pending
+   interaction-only resource retention, focused-control pointer protection, and cancellation of the first pending
    popup on departure/click/Escape/blur/scroll. Master disable cancels scans and
    stale replies without rolling back or refreshing a successful Note append.
 1. **Managed custom dictionary.** The source document and package state commit
