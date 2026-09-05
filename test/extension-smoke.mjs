@@ -9424,11 +9424,15 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
   let fills = 0;
   let replays = 0;
   let selected = null;
+  let replayIntent = null;
+  let finishAppend;
+  let appends = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
     appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
-    onBeforeResultsRendered() { if (!current) { replays += 1; return false; } },
+    onBeforeResultsRendered(intent) { if (!current) { replays += 1; replayIntent = intent; return false; } },
+    onAddCustomEntry() { appends += 1; return new Promise(resolve => { finishAppend = resolve; }); },
   });
   const results = ["First", "Second"].map((dictionary) => ({ ...result, term: { ...result.term,
     glossaries: [{ dictionary, glossary: JSON.stringify([{ type: "structured-content", content: {
@@ -9460,6 +9464,77 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     check("retained displayed links and stale-tab handoff never reenable obsolete glossary work",
       retained && obsoleteIgnored && replays === 1 && fills > initialFills,
       JSON.stringify({ retained, obsoleteIgnored, links, replays, fills, initialFills }));
+
+    const preserved = [];
+    for (const toolbarPosition of ["top", "bottom"]) {
+      view.setToolbarPosition(toolbarPosition);
+      view.renderResults(results, candidate, context);
+      current = false;
+      popup.querySelector('[data-dictionary="Second"][role="tab"]').click();
+      // Open after replay started: retain the live form, not request-start state.
+      popup.querySelector(".gsm-hoshidicts-note-button").click();
+      const form = popup.querySelector("form");
+      const definition = form.elements.definition;
+      definition.value = "keep this draft";
+      definition.focus();
+      definition.setSelectionRange(2, 7);
+      const observer = new window.MutationObserver(() => {});
+      observer.observe(popup, { childList: true });
+      current = true;
+      view.renderResults(results, candidate, { ...context, preserveViewControls: true,
+        selectedDictionaryTab: { dictionary: "Second" } });
+      preserved.push(popup.querySelector("form") === form && !form.hidden
+        && definition.value === "keep this draft" && document.activeElement === definition
+        && definition.selectionStart === 2 && definition.selectionEnd === 7
+        && !observer.takeRecords().some(record => [...record.removedNodes].includes(form)));
+      observer.disconnect();
+      // A form opened before a replay and a pending save keep the same controls.
+      form.elements.term.value = "saved";
+      form.elements.reading.value = "reading";
+      const beforeAppend = appends;
+      form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+      view.renderResults(results, candidate, { ...context, preserveViewControls: true });
+      form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+      preserved.push(popup.querySelector("form") === form && form.getAttribute("aria-busy") === "true"
+        && form.elements.definition.disabled && appends === beforeAppend + 1);
+      finishAppend();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const refreshed = [{ ...results[0], term: { ...results[0].term, expression: "new prefill", reading: "new reading" } }];
+      view.renderResults(refreshed, candidate, { ...context, preserveViewControls: true });
+      popup.querySelector(".gsm-hoshidicts-note-button").click();
+      preserved.push(form.elements.term.value === "new prefill" && form.elements.reading.value === "new reading");
+      view.closeNoteForm();
+
+      view.renderResults(results, candidate, context);
+      const oldTab = popup.querySelector('[data-dictionary="Second"][role="tab"]');
+      oldTab.focus();
+      view.renderResults(results, candidate, { ...context, preserveViewControls: true,
+        selectedDictionaryTab: { dictionary: "Second" } });
+      preserved.push(document.activeElement === popup.querySelector('[data-dictionary="Second"][role="tab"]'));
+      const outside = document.createElement("button");
+      document.body.append(outside);
+      outside.focus();
+      view.renderResults(results, candidate, { ...context, preserveViewControls: true });
+      preserved.push(document.activeElement === outside);
+      outside.remove();
+    }
+    check("same-view refresh preserves mounted Note drafts, pending saves and response-time focus",
+      preserved.every(Boolean), JSON.stringify(preserved));
+
+    view.renderResults(results, candidate, context);
+    current = false;
+    const beforeReplay = replays;
+    const beforeFills = fills;
+    popup.querySelector(".gsm-hoshidicts-show-more").click();
+    const expansionDelegated = replays === beforeReplay + 1 && replayIntent?.expandAll === true
+      && fills === beforeFills && popup.querySelectorAll("article").length === 1;
+    current = true;
+    view.renderResults(results, candidate, { ...context, preserveViewControls: true, expandAll: true });
+    const expanded = popup.querySelectorAll("article").length === 2 && !popup.querySelector(".gsm-hoshidicts-show-more");
+    view.renderResults(results, candidate, context);
+    popup.querySelector(".gsm-hoshidicts-show-more").click();
+    check("stale Show more replays fresh results while current expansion remains lookup-free",
+      expansionDelegated && expanded && replays === beforeReplay + 1 && popup.querySelectorAll("article").length === 2);
   } finally { view.destroy(); popup.remove(); }
 }
 
