@@ -878,7 +878,7 @@
 
   function pruneMediaQueue() {
     mediaQueue = mediaQueue.filter((job) => {
-      if (job.isCurrent()) return true;
+      if (job.consumers.some((isCurrent) => isCurrent())) return true;
       finishMediaJob(job, new Error("obsolete media request"));
       return false;
     });
@@ -907,7 +907,7 @@
   function pumpMediaQueue() {
     while (mediaQueue.length > 0 && activeMediaRequests < MAX_MEDIA_CONCURRENT_REQUESTS) {
       const job = mediaQueue.shift();
-      if (!job.isCurrent()) {
+      if (!job.consumers.some((isCurrent) => isCurrent())) {
         finishMediaJob(job, new Error("obsolete media request"));
         continue;
       }
@@ -934,14 +934,14 @@
     }
     const pending = pendingMedia.get(key);
     if (pending) {
-      pending.isCurrent = isCurrent;
+      pending.consumers.push(isCurrent);
       return pending.promise;
     }
     if (pendingMedia.size >= MAX_MEDIA_PENDING_REQUESTS) pruneMediaQueue();
     if (pendingMedia.size >= MAX_MEDIA_PENDING_REQUESTS) {
       return Promise.reject(new Error("dictionary image queue is full"));
     }
-    const job = { key, isCurrent, payload: { dictionary, generation, path },
+    const job = { key, consumers: [isCurrent], payload: { dictionary, generation, path },
       active: false, settled: false, timer: null };
     job.promise = new Promise((resolveJob, rejectJob) => {
       job.resolve = resolveJob;
