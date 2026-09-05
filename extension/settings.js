@@ -807,6 +807,7 @@ function renderOptions() {
     }
   }
   element("opt-hover-enabled").checked = options.hoverEnabled;
+  element("opt-japanese-only").checked = options.onlyScanJapaneseText;
   const mode = element("opt-lookup-mode");
   if (mode !== document.activeElement) mode.value = options.lookupMode;
   const activation = element("opt-activation-key");
@@ -1741,6 +1742,10 @@ function attachHandlers() {
 
   element("opt-hover-enabled").addEventListener("change", (event) => {
     options.hoverEnabled = event.target.checked;
+    writeOptions();
+  });
+  element("opt-japanese-only").addEventListener("change", (event) => {
+    options.onlyScanJapaneseText = event.target.checked;
     writeOptions();
   });
   element("opt-lookup-mode").addEventListener("change", (event) => {

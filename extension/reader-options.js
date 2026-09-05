@@ -9,6 +9,7 @@
     scanLength: 16,
     maxResults: 32,
     hoverEnabled: true,
+    onlyScanJapaneseText: true,
     lookupMode: "hover",
     activationKey: "Shift",
     hoverDelayMs: 50,
@@ -70,7 +71,9 @@
 
   function normaliseField(key, value) {
     if (Object.hasOwn(NUMBER_RANGES, key)) return clampOption(key, value);
-    if (key === "hoverEnabled") return typeof value === "boolean" ? value : DEFAULT_OPTIONS.hoverEnabled;
+    if (key === "hoverEnabled" || key === "onlyScanJapaneseText") {
+      return typeof value === "boolean" ? value : DEFAULT_OPTIONS[key];
+    }
     if (key === "lookupMode") return LOOKUP_MODES.includes(value) ? value : DEFAULT_OPTIONS.lookupMode;
     if (key === "activationKey") return normaliseActivationKey(value);
     if (key === "frequencyOrder") return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;

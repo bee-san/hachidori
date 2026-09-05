@@ -80,6 +80,7 @@
     "title",
     "video",
   ]);
+  const EDITING_TAGS = new Set(["button", "input", "select", "textarea"]);
   // `display` values that keep text flowing inline, so the scan may cross them.
   const INLINE_DISPLAY_PATTERN = /^(?:inline|ruby|contents)/u;
   const PRESERVED_WHITESPACE = new Set([
@@ -349,6 +350,10 @@
     return null;
   }
 
+  function isEditingElement(element) {
+    return element.isContentEditable === true || EDITING_TAGS.has(element.localName);
+  }
+
   function isScannableTextNode(node, styleCache) {
     if (!node || node.nodeType !== Node.TEXT_NODE || !node.parentElement) {
       return false;
@@ -361,7 +366,7 @@
       element;
       element = element.parentElement
     ) {
-      if (OPAQUE_TAGS.has(element.localName) || isHiddenElement(element, styleCache)) {
+      if (isEditingElement(element) || OPAQUE_TAGS.has(element.localName) || isHiddenElement(element, styleCache)) {
         return false;
       }
     }
@@ -488,6 +493,9 @@
           if (node.nodeType === Node.TEXT_NODE) {
             return NodeFilter.FILTER_ACCEPT;
           }
+          // Controls are boundaries, not skipped subtrees: surrounding prose
+          // must not be concatenated into a word across an editing surface.
+          if (isEditingElement(node)) return NodeFilter.FILTER_ACCEPT;
           if (
             OPAQUE_TAGS.has(node.localName) ||
             isOurNode(node) ||
@@ -558,7 +566,7 @@
       return null;
     }
     const query = entries.map((entry) => entry.text).join("");
-    if (!isJapaneseToken(query)) {
+    if (options.onlyScanJapaneseText && !isJapaneseToken(query)) {
       return null;
     }
 
