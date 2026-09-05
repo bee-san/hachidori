@@ -325,8 +325,10 @@ What it proves, in order:
    storage changes. Settings and content harnesses load the same shared script.
    Activation cases cover legacy mode/key migration, strict new fields, delayed
    stationary keydown, physical-code release and repeats, transfer/Note ownership,
-   interaction-only resource retention, focused-control pointer protection, and cancellation of the first pending
-   popup on departure/click/Escape/blur/scroll. Master disable cancels scans and
+   interaction-only resource retention, focused-control pointer protection, and
+   cancellation of the first pending popup on departure/click/Escape/blur/scroll.
+   Hidden cleanup skips scroll writes; visible term, kanji and notice renders
+   reset scrolling. Master disable cancels scans and
    stale replies without rolling back or refreshing a successful Note append.
 1. **Managed custom dictionary.** The source document and package state commit
    as one revision-checked write, ordinary state reads leave the potentially

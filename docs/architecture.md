@@ -155,6 +155,8 @@ valid pointer candidate retires the previous popup, matching the pinned reader's
 `queueLookup` prune-before-send behavior: an obsolete view cannot accept a Note
 or resume expired glossary/media callbacks. Interaction-only settings changes do
 not invalidate current rendered resources; result-affecting settings still do.
+Hidden retirement clears the DOM and owners immediately without a redundant
+scroll reset; every visible term, kanji or notice render still resets scrolling.
 
 Disabling explicitly closes even a focused popup or Note draft, while an already
 dispatched Note append finishes its transaction without reopening or refreshing
