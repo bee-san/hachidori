@@ -52,6 +52,15 @@ const numberFormat = new Intl.NumberFormat();
 let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] };
 let dictionaries = dictionaryState.dictionaries;
 let options = { ...DEFAULT_OPTIONS };
+let savedOptions = { ...DEFAULT_OPTIONS };
+let optionsRevision = -1;
+let pendingOptions = {};
+let pendingOptionsRevision = 0;
+let savingOptions = null;
+let optionsTimer = null;
+let optionsSaveFailed = false;
+let optionsEditRevision = null;
+const OPTIONS_SAVE_DELAY_MS = 150;
 let updateSettings = { schedule: "off", lastCheckedAt: null };
 let customDocument = null;
 let customBaseDocument = null;
@@ -1788,9 +1797,27 @@ function attachHandlers() {
     options.kanjiClickDictionary = selectionFromValue(event.target.value);
     writeOptions();
   });
+  element("lookup").addEventListener("input", () => {
+    optionsEditRevision ??= Math.max(0, optionsRevision);
+  });
+  element("options-retry").addEventListener("click", () => {
+    optionsSaveFailed = false;
+    pendingOptionsRevision = optionsRevision;
+    void flushOptions();
+  });
+  element("options-use-saved").addEventListener("click", () => {
+    window.clearTimeout(optionsTimer);
+    optionsTimer = null;
+    pendingOptions = {};
+    optionsEditRevision = null;
+    optionsSaveFailed = false;
+    renderCurrentOptions();
+    setOptionsStatus("Using saved settings.");
+  });
 
   window.addEventListener("beforeunload", (event) => {
-    if (!importing) {
+    if (!importing && savingOptions === null && optionsEditRevision === null
+        && Object.keys(pendingOptions).length === 0) {
       return;
     }
     // Leaving revokes the blob URL the offscreen document is still reading from.
@@ -1829,17 +1856,22 @@ function handleDictionaryStateChange(change) {
   return true;
 }
 
-function handleOptionsChange(change) {
-  const next = normaliseOptions(change.newValue);
-  if (JSON.stringify(next) === JSON.stringify(options)) {
-    return;
-  }
-  options = next;
-  const changedSelections = normaliseDictionarySelections();
+function renderCurrentOptions() {
+  options = { ...savedOptions, ...savingOptions?.patch, ...pendingOptions };
   renderOptions();
-  if (changedSelections) {
-    void writeOptions();
-  }
+}
+
+function adoptOptions(value) {
+  const revision = Number.isInteger(value?.revision) && value.revision >= 0 ? value.revision : 0;
+  if (revision <= optionsRevision) return false;
+  optionsRevision = revision;
+  savedOptions = normaliseOptions(value);
+  renderCurrentOptions();
+  return true;
+}
+
+function handleOptionsChange(change) {
+  adoptOptions(change.newValue);
 }
 
 function handleCustomDictionarySourceChange(change) {
@@ -1869,29 +1901,83 @@ function handleStorageChange(changes, area) {
   }
 }
 
-// Lookup options are read per request by the content script, so nothing needs a
-// reload here.
-async function writeOptions() {
+function setOptionsStatus(message) {
+  element("options-status").textContent = message;
+  element("options-status").classList.toggle("is-error", optionsSaveFailed);
+  element("options-conflict-actions").hidden = !optionsSaveFailed;
+}
+
+// Keep only edited fields. A storage event can update the committed snapshot,
+// but cannot replace a local draft or authorize a stale draft's write.
+function writeOptions() {
+  const previous = { ...savedOptions, ...savingOptions?.patch };
+  const changes = Object.fromEntries(Object.entries(options).filter(([key, value]) =>
+    JSON.stringify(value) !== JSON.stringify(previous[key])));
+  if (Object.keys(pendingOptions).length === 0) {
+    pendingOptionsRevision = optionsEditRevision ?? Math.max(0, optionsRevision);
+  }
+  optionsEditRevision = null;
+  pendingOptions = changes;
+  window.clearTimeout(optionsTimer);
+  optionsTimer = null;
+  if (optionsSaveFailed) return;
+  setOptionsStatus("Unsaved changes…");
+  optionsTimer = window.setTimeout(() => { void flushOptions(); }, OPTIONS_SAVE_DELAY_MS);
+}
+
+async function flushOptions() {
+  window.clearTimeout(optionsTimer);
+  optionsTimer = null;
+  if (savingOptions !== null || optionsSaveFailed) return;
+  if (Object.keys(pendingOptions).length === 0) {
+    setOptionsStatus("Saved.");
+    return;
+  }
+  const sent = { patch: pendingOptions, baseRevision: pendingOptionsRevision };
+  savingOptions = sent;
+  pendingOptions = {};
+  setOptionsStatus("Saving…");
   try {
-    const reply = await send("hd_options_write", { options }, WORKER_TARGET);
+    const reply = await send("hd_options_write", {
+      baseRevision: sent.baseRevision,
+      options: sent.patch,
+    }, WORKER_TARGET);
+    if (reply.options) adoptOptions(reply.options);
     if (!reply.ok) {
       throw new Error(reply.error || "the options could not be saved");
     }
-    options = normaliseOptions(reply.options);
+    // A newer external event may already have arrived; keep that state, while
+    // binding queued edits to the reply we actually committed, not that event.
+    pendingOptionsRevision = Math.max(pendingOptionsRevision, reply.options.revision);
+    setOptionsStatus("Saved.");
   } catch (error) {
-    setStatus(`Could not save the options: ${describe(error)}`, "error");
+    pendingOptions = { ...sent.patch, ...pendingOptions };
+    optionsSaveFailed = true;
+    setOptionsStatus(`Could not save settings: ${describe(error)}`);
+    // A reply can be lost after storage commits. Read the current revision for
+    // explicit retry; do not silently overwrite it or drop the retained draft.
+    try {
+      const stored = await chrome.storage.local.get("options");
+      adoptOptions(stored.options);
+    } catch { /* The draft stays available even while storage is unreachable. */ }
+  } finally {
+    savingOptions = null;
+    renderCurrentOptions();
+    if (!optionsSaveFailed && Object.keys(pendingOptions).length > 0) {
+      void flushOptions();
+    }
   }
 }
 
 async function start() {
   renderRecommendedCatalogue();
-  const stored = await chrome.storage.local.get(["options", "dictionaryUpdates"]);
-  options = normaliseOptions(stored.options);
-  updateSettings = normaliseUpdateSettings(stored.dictionaryUpdates);
   attachHandlers();
+  const stored = await chrome.storage.local.get(["options", "dictionaryUpdates"]);
+  adoptOptions(stored.options);
+  updateSettings = normaliseUpdateSettings(stored.dictionaryUpdates);
   renderCustomDictionaryControls();
   if (await reloadDictionaries()) {
-    await writeOptions();
+    writeOptions();
   }
   renderOptions();
   renderUpdateControls();
