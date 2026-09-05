@@ -500,11 +500,16 @@ check('reading-only query reaches the kanji headword', () => {
   eq(results[0].term.expression, '食べる', 'expression');
 });
 
-check('text preprocessing is counted', () => {
-  const { results } = lookup('タベル');
-  eq(results.length, 1, 'result count');
-  eq(results[0].term.expression, '食べる', 'expression');
-  ok(results[0].preprocessorSteps > 0, `katakana input should cost preprocessor steps, got ${results[0].preprocessorSteps}`);
+check('text preprocessing preserves raw matched kana, width, decomposition, and kanji variants', () => {
+  for (const [query, expression] of [
+    ['タベル', '食べる'], ['ﾀﾍﾞﾙ', '食べる'], ['たへ\u3099る', '食べる'], ['讀む', '読む'],
+  ]) {
+    const { results } = lookup(query);
+    eq(results.length, 1, `${query}: result count`);
+    eq(results[0].matched, query, `${query}: matched`);
+    eq(results[0].term.expression, expression, `${query}: expression`);
+    ok(results[0].preprocessorSteps > 0, `${query}: normalization should cost preprocessor steps`);
+  }
 });
 
 check('miss returns an empty result set, not an error', () => {

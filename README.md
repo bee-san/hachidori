@@ -46,6 +46,10 @@ Hachidori requires Chrome 118 or newer. The WebAssembly bundle is committed, so 
 
 Hachidori scans forward from the character under your pointer, deinflects forms such as `食べたかった` to `食べる`, ranks matches using your chosen dictionaries, and renders the result beside the text.
 
+Open the small `食べたかった → 食べる` disclosure below the headword to see
+the ordered deinflection steps. It starts closed and supports keyboard
+Enter/Space. [Expanded example](docs/assets/deinflection-disclosure.png).
+
 Select text to look up that exact selection instead. Selection lookup works
 without holding the hover key and is not restricted to Japanese text. In
 Settings, turn off **Japanese text only** to scan other languages automatically
