@@ -191,10 +191,10 @@ struct JsonWriteOptions : glz::opts {
   bool escape_control_characters = true;
 };
 
-template <typename T>
+template <typename T, auto Options = JsonWriteOptions{}>
 std::string to_json(const T& value) {
   std::string out;
-  if (auto ec = glz::write<JsonWriteOptions{}>(value, out)) {
+  if (auto ec = glz::write<Options>(value, out)) {
     throw std::runtime_error("json serialization failed: " + glz::format_error(ec, out));
   }
   return out;
@@ -202,35 +202,46 @@ std::string to_json(const T& value) {
 
 void require_lookup_text_size(std::string_view value, std::string_view label) {
   if (value.size() > MAX_LOOKUP_TEXT_BYTES) {
-    throw std::runtime_error(std::string{label} + " exceeds the 4096-byte lookup limit");
+    throw std::length_error(std::string{label} + " exceeds the 4096-byte lookup limit");
   }
 }
 
-std::string copy_lookup_string(std::string_view value, size_t& budget,
+struct LookupCopyBudget {
+  size_t bytes = 0;
+  bool needs_control_escaping = false;
+};
+
+std::string copy_lookup_string(std::string_view value, LookupCopyBudget& budget,
                                std::string_view label,
                                size_t maximum = MAX_LOOKUP_RESPONSE_BYTES) {
   if (value.size() > maximum) {
-    throw std::runtime_error(std::string{label} + " exceeds the permitted lookup size");
+    throw std::length_error(std::string{label} + " exceeds the permitted lookup size");
   }
   // Claim before allocating the wire copy. Serialized JSON has a separate
   // bound because quotes/control characters expand beyond these native bytes.
-  if (value.size() > MAX_LOOKUP_RESPONSE_BYTES - budget) {
-    throw std::runtime_error("native " + std::string{label} + " exceeds the aggregate response limit");
+  if (value.size() > MAX_LOOKUP_RESPONSE_BYTES - budget.bytes) {
+    throw std::length_error("native " + std::string{label} + " exceeds the aggregate response limit");
   }
-  budget += value.size();
+  budget.bytes += value.size();
+  // Glaze's full-control mode reserves six bytes per source byte, even for
+  // ordinary text. Use its smaller fast path only after checking every copied
+  // wire string; the default writer cannot preserve unescaped control bytes.
+  if (!budget.needs_control_escaping) {
+    budget.needs_control_escaping = std::ranges::any_of(value, [](unsigned char byte) { return byte < 0x20; });
+  }
   return std::string{value};
 }
 
 template <typename T>
-std::string lookup_json(const T& value) {
-  std::string out = to_json(value);
+std::string lookup_json(const T& value, const LookupCopyBudget& budget) {
+  std::string out = budget.needs_control_escaping ? to_json(value) : to_json<T, glz::opts{}>(value);
   if (out.size() > MAX_LOOKUP_RESPONSE_BYTES) {
-    throw std::runtime_error("serialized lookup response exceeds the 33554432-byte limit");
+    throw std::length_error("serialized lookup response exceeds the 33554432-byte limit");
   }
   return out;
 }
 
-WireTerm convert_term(const TermResult& term, size_t& budget) {
+WireTerm convert_term(const TermResult& term, LookupCopyBudget& budget) {
   WireTerm out;
   out.expression = copy_lookup_string(term.expression, budget, "term expression");
   out.reading = copy_lookup_string(term.reading, budget, "term reading");
@@ -241,11 +252,11 @@ WireTerm convert_term(const TermResult& term, size_t& budget) {
   for (const auto& g : term.glossaries) {
     // glossary stays the raw Yomitan structured-content JSON string; the
     // renderer is the only thing that understands it.
-    out.glossaries.push_back({
+    out.glossaries.emplace_back(
         copy_lookup_string(g.dict_name, budget, "glossary dictionary"),
         copy_lookup_string(g.glossary, budget, "glossary", MAX_GLOSSARY_BYTES),
         copy_lookup_string(g.definition_tags, budget, "definition tags"),
-        copy_lookup_string(g.term_tags, budget, "term tags")});
+        copy_lookup_string(g.term_tags, budget, "term tags"));
   }
 
   out.frequencies.reserve(term.frequencies.size());
@@ -254,7 +265,7 @@ WireTerm convert_term(const TermResult& term, size_t& budget) {
     entry.dictionary = copy_lookup_string(f.dict_name, budget, "frequency dictionary");
     entry.frequencies.reserve(f.frequencies.size());
     for (const auto& v : f.frequencies) {
-      entry.frequencies.push_back({v.value, copy_lookup_string(v.display_value, budget, "frequency display value")});
+      entry.frequencies.emplace_back(v.value, copy_lookup_string(v.display_value, budget, "frequency display value"));
     }
     out.frequencies.push_back(std::move(entry));
   }
@@ -265,8 +276,8 @@ WireTerm convert_term(const TermResult& term, size_t& budget) {
     entry.dictionary = copy_lookup_string(p.dict_name, budget, "pitch dictionary");
     entry.pitches.reserve(p.pitches.size());
     for (const auto& pitch : p.pitches) {
-      entry.pitches.push_back({pitch.position, copy_lookup_string(pitch.pattern, budget, "pitch pattern"),
-                               pitch.nasal, pitch.devoice});
+      entry.pitches.emplace_back(pitch.position, copy_lookup_string(pitch.pattern, budget, "pitch pattern"),
+                                 pitch.nasal, pitch.devoice);
     }
     entry.transcriptions.reserve(p.transcriptions.size());
     for (const auto& transcription : p.transcriptions) {
@@ -278,27 +289,26 @@ WireTerm convert_term(const TermResult& term, size_t& budget) {
   return out;
 }
 
-WireLookupResult convert_result(const LookupResult& result, size_t& budget) {
+WireLookupResult convert_result(const LookupResult& result, LookupCopyBudget& budget) {
   WireLookupResult out;
   out.matched = copy_lookup_string(result.matched, budget, "matched text");
   out.deinflected = copy_lookup_string(result.deinflected, budget, "deinflected text");
   if (result.trace.size() > MAX_TRACE_STEPS) {
-    throw std::runtime_error("lookup trace exceeds the 32-step limit");
+    throw std::length_error("lookup trace exceeds the 32-step limit");
   }
   out.trace.reserve(result.trace.size());
   for (const auto& t : result.trace) {
-    out.trace.push_back({copy_lookup_string(t.name, budget, "trace name"),
-                         copy_lookup_string(t.description, budget, "trace description")});
+    out.trace.emplace_back(copy_lookup_string(t.name, budget, "trace name"),
+                           copy_lookup_string(t.description, budget, "trace description"));
   }
   out.term = convert_term(result.term, budget);
   out.preprocessorSteps = result.preprocessor_steps;
   return out;
 }
 
-std::vector<WireLookupResult> convert_results(const std::vector<LookupResult>& results) {
+std::vector<WireLookupResult> convert_results(const std::vector<LookupResult>& results, LookupCopyBudget& budget) {
   std::vector<WireLookupResult> out;
   out.reserve(results.size());
-  size_t budget = 0;
   for (const auto& result : results) {
     out.push_back(convert_result(result, budget));
   }
@@ -931,6 +941,7 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_lookup(const char* text, int max_results, i
     auto& e = engine();
     WireLookupResponse response;
     response.dictionaryCount = e.dictionary_count;
+    LookupCopyBudget budget;
 
     const std::string_view query_text{text == nullptr ? "" : text};
     if (!query_text.empty() && max_results > 0 && scan_length > 0) {
@@ -939,10 +950,10 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_lookup(const char* text, int max_results, i
       // Four-argument overload: the sort preferences have to apply before the
       // max_results cap, otherwise ranking is decided by an arbitrary prefix.
       const auto results =
-          e.lookup.lookup(std::string{query_text}, max_results, static_cast<size_t>(scan_length), options);
-      response.results = convert_results(results);
+          e.lookup.lookup(std::string{query_text}, max_results, scan_length, options);
+      response.results = convert_results(results, budget);
     }
-    out = lookup_json(response);
+    out = lookup_json(response, budget);
   } catch (...) {
     set_error(describe_current_exception());
     out = R"({"results":[],"dictionaryCount":0})";
@@ -960,6 +971,7 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_lookup_dictionary(const char* text, const c
     auto& e = engine();
     WireLookupResponse response;
     response.dictionaryCount = e.dictionary_count;
+    LookupCopyBudget budget;
 
     const std::string_view query_text{text == nullptr ? "" : text};
     const std::string selected_path{dictionary_path == nullptr ? "" : dictionary_path};
@@ -977,10 +989,10 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_lookup_dictionary(const char* text, const c
       Lookup selected_lookup{selected_query, e.deinflector};
       const LookupOptions options = parse_options(options_json);
       const auto results = selected_lookup.lookup(
-          std::string{query_text}, max_results, static_cast<size_t>(scan_length), options);
-      response.results = convert_results(results);
+          std::string{query_text}, max_results, scan_length, options);
+      response.results = convert_results(results, budget);
     }
-    out = lookup_json(response);
+    out = lookup_json(response, budget);
   } catch (...) {
     set_error(describe_current_exception());
     out = R"({"results":[],"dictionaryCount":0})";
@@ -994,11 +1006,11 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_kanji(const char* character) {
 
   try {
     WireKanji wire;
+    LookupCopyBudget budget;
     const std::string_view kanji{character == nullptr ? "" : character};
     if (!kanji.empty()) {
       require_lookup_text_size(kanji, "kanji text");
       KanjiResult result = engine().query.query_kanji(std::string{kanji});
-      size_t budget = 0;
       wire.entries.reserve(result.entries.size());
       for (const auto& entry : result.entries) {
         WireKanjiEntry out_entry;
@@ -1012,8 +1024,8 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_kanji(const char* character) {
         }
         out_entry.stats.reserve(entry.stats.size());
         for (const auto& [name, value] : entry.stats) {
-          out_entry.stats.push_back({copy_lookup_string(name, budget, "kanji stat name"),
-                                     copy_lookup_string(value, budget, "kanji stat value")});
+          out_entry.stats.emplace_back(copy_lookup_string(name, budget, "kanji stat name"),
+                                       copy_lookup_string(value, budget, "kanji stat value"));
         }
         // stats arrive from an unordered_map; sort so the rendered order is stable.
         std::ranges::sort(out_entry.stats, {}, &WireKanjiStat::name);
@@ -1024,7 +1036,7 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_kanji(const char* character) {
         wire.character = copy_lookup_string(result.character, budget, "kanji character");
       }
     }
-    out = lookup_json(wire);
+    out = lookup_json(wire, budget);
   } catch (...) {
     set_error(describe_current_exception());
     out = R"({"character":"","entries":[]})";
