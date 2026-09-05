@@ -134,6 +134,7 @@
   let lastPointer = null;
   let scanTimer = null;
   let hideTimer = null;
+  let transferTimer = null;
   let pointerInPopup = false;
   let activationPressed = false;
   let activationCode = null;
@@ -733,6 +734,7 @@
     clearDictionaryResources();
     window.clearTimeout(scanTimer);
     window.clearTimeout(hideTimer);
+    clearTransferTimer();
     scanTimer = null;
     hideTimer = null;
     document.removeEventListener("mousemove", onMouseMove, true);
@@ -1067,6 +1069,32 @@
     rootLevel.popup.style.top = `${position.top}px`;
     rootLevel.popup.style.width = `${position.width}px`;
     rootLevel.popup.style.height = `${position.height}px`;
+    if (levels.length === 1) return;
+    let parentRect = rootLevel.popup.getBoundingClientRect();
+    for (const level of levels.slice(1)) {
+      if (level.popup.hidden) break;
+      if (!anchorConnected(level.activeCandidate)) {
+        hide(level);
+        break;
+      }
+      const anchorRect = anchorRectFor(level.activeCandidate);
+      const width = Math.min(POPUP_WIDTH_PX, window.innerWidth - POPUP_PADDING_PX * 2);
+      const height = Math.min(POPUP_HEIGHT_PX, window.innerHeight - POPUP_PADDING_PX * 2);
+      const rightRoom = window.innerWidth - parentRect.right - POPUP_GAP_PX - POPUP_PADDING_PX;
+      const leftRoom = parentRect.left - POPUP_GAP_PX - POPUP_PADDING_PX;
+      const preferredLeft = rightRoom >= width || rightRoom >= leftRoom
+        ? parentRect.right + POPUP_GAP_PX
+        : parentRect.left - width - POPUP_GAP_PX;
+      const left = Math.max(POPUP_PADDING_PX, Math.min(preferredLeft, window.innerWidth - width - POPUP_PADDING_PX));
+      const top = Math.max(POPUP_PADDING_PX, Math.min(anchorRect.top, window.innerHeight - height - POPUP_PADDING_PX));
+      level.popup.style.left = `${left}px`;
+      level.popup.style.top = `${top}px`;
+      level.popup.style.width = `${width}px`;
+      level.popup.style.height = `${height}px`;
+      // Each parent box is read once, after its own placement, not once per
+      // ancestor for every descendant. Narrow viewports may overlap panes.
+      parentRect = level.popup.getBoundingClientRect();
+    }
   }
 
   async function readerStyleSheet() {
@@ -1131,6 +1159,7 @@
       clearHideTimer();
     });
     popup.addEventListener("focusout", onPopupFocusOut);
+    popup.addEventListener("scroll", positionPopup, { passive: true });
     shadow.appendChild(popup);
     level.popup = popup;
     level.highlighter = highlighter.scope(level);
@@ -1207,6 +1236,7 @@
       level.popup?.remove();
     }
     if (restoreFocus && focused && source?.isConnected) source.focus({ preventScroll: true });
+    if (levels.length === 1) clearTransferTimer();
   }
 
   function hide(level = rootLevel) {
@@ -1219,6 +1249,7 @@
     activeSelectionCandidate = null;
     pendingCandidateLookup = null;
     clearHideTimer();
+    clearTransferTimer();
     pruneLevels(1, false);
     rootLevel.activeCandidate = null;
     rootLevel.activeSignature = null;
@@ -1244,6 +1275,23 @@
     }
   }
 
+  function clearTransferTimer() {
+    if (transferTimer !== null) window.clearTimeout(transferTimer);
+    transferTimer = null;
+  }
+
+  function scheduleTransferCheck() {
+    clearTransferTimer();
+    transferTimer = window.setTimeout(() => {
+      transferTimer = null;
+      if (lastPointer && (isOurNode(lastPointer.target)
+          || pointInsidePopup(lastPointer.clientX, lastPointer.clientY))) {
+        pointerInPopup = true;
+        clearHideTimer();
+      } else scheduleHide();
+    }, 80);
+  }
+
   function popupHasFocus() {
     return levels.some((level) => level.popup?.contains(shadow?.activeElement));
   }
@@ -1262,7 +1310,8 @@
   }
 
   function scheduleHide() {
-    if (disposed || hasProtectedNote() || !rootLevel.popup || rootLevel.popup.hidden || popupHasFocus() || hideTimer !== null) {
+    if (disposed || hasProtectedNote() || !rootLevel.popup || rootLevel.popup.hidden
+        || popupHasFocus() || hideTimer !== null || transferTimer !== null) {
       return;
     }
     // The gap between the word and the popup is dead space; give the pointer
@@ -1738,12 +1787,19 @@
   }
 
   function pointInsidePopup(clientX, clientY) {
-    if (!rootLevel.popup || rootLevel.popup.hidden) {
-      return false;
-    }
-    const rect = rootLevel.popup.getBoundingClientRect();
-    return clientX >= rect.left && clientX <= rect.right &&
-      clientY >= rect.top && clientY <= rect.bottom;
+    const rects = levels.filter((level) => level.popup && !level.popup.hidden)
+      .map((level) => level.popup.getBoundingClientRect());
+    if (rects.some((rect) => clientX >= rect.left && clientX <= rect.right
+        && clientY >= rect.top && clientY <= rect.bottom)) return true;
+    return rects.slice(1).some((child, index) => {
+      const parent = rects[index];
+      const top = Math.max(parent.top, child.top) - 4;
+      const bottom = Math.min(parent.bottom, child.bottom) + 4;
+      const [left, right] = parent.right <= child.left ? [parent.right, child.left]
+        : child.right <= parent.left ? [child.right, parent.left] : [1, 0];
+      return left <= right && clientX >= left - 2 && clientX <= right + 2
+        && clientY >= top && clientY <= bottom;
+    });
   }
 
   function scanPointer(pointer) {
@@ -1752,6 +1808,7 @@
       return;
     }
     if (!options.hoverEnabled) return;
+    if (transferTimer !== null) return;
     if (hasProtectedNote() || popupHasFocus() || pageEditorFocused()) {
       cancelCandidateScan();
       clearHideTimer();
@@ -1828,11 +1885,14 @@
     // wait for the scan.
     if (isOurNode(event.target)) {
       pointerInPopup = true;
+      clearTransferTimer();
       cancelCandidateScan();
       clearHideTimer();
       return;
     }
+    const leavingChain = pointerInPopup && levels.length > 1;
     pointerInPopup = false;
+    if (leavingChain) scheduleTransferCheck();
     if (hasProtectedNote() || popupHasFocus() || pageEditorFocused()) {
       cancelCandidateScan();
       return;
