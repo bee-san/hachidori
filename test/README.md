@@ -199,8 +199,9 @@ What it proves, in order:
    that last part is the one that catches a binding that grew a field the
    renderer will not know about. By value: exact match; deinflected match
    (`食べたかった` → `食べる`, trace `["-た", "-たい"]`, plus a five-step chain);
-   kana-only entry; reading-only query reaching the kanji headword; katakana
-   input costing a preprocessor step; and two misses. Glossaries are asserted
+   kana-only entry; reading-only query reaching the kanji headword; katakana,
+   half-width kana, decomposed dakuten, and supported kanji variants retaining
+   the raw matched input while counting preprocessing; and two misses. Glossaries are asserted
    byte-for-byte against the raw JSON in the term bank, which is what pins down
    "the renderer parses it, nobody else".
 5. **`hdw_kanji`** (including the `{"character":"","entries":[]}` miss sentinel and
@@ -292,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 273 checks, all of
+full request→reply round trip per contract-C message type. 276 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -418,6 +419,12 @@ What it proves, in order:
    of one term-bank row, so each of its elements must land in its own
    `li.gloss-item` — appending them into one parent runs two senses together with
    no separator, which is asserted against the fixture's own two-sense entry.
+   Deinflection disclosures expose the real engine's ordered trace, retain raw
+   duplicate/whitespace/literal-text cases, and use English/Japanese/Ukrainian
+   browser labels without replacement-string interpretation. Missing/malformed
+   traces are safe even with grammar tags enabled. Secondary headers stay lazy;
+   tab projection resets the disclosure, and stale toggles after replacement,
+   clear, request supersession, or destruction cannot request positioning.
    Focused boundary checks accept depth 24 and reject 25; seed the exported
    traversal's node counter to test exact capacity without a million-node DOM;
    and include containers, wrappers, nulls, and ignored tags in that budget.
@@ -516,7 +523,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 104 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 105 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -565,6 +572,15 @@ one-result popup lookups. The browser checks inferred and manual directions,
 explicit Auto, metadata-preserving alias edits, and unchanged engine generation;
 it removes those packages before continuing. A manual direction also survives
 the full browser restart. `HACHIDORI_FREQUENCY_SCREENSHOT` captures these controls.
+
+The initial real inflected-verb popup exposes the exact native endpoints and
+ordered descriptions in a closed disclosure. Chrome focuses its native summary,
+opens with Enter and closes with Space, and checks its marker, raw whitespace
+styling, horizontal containment, and stable Note-button position at 360px width.
+Scrolling reaches the last step and glossary without the expanded toolbar
+covering them; opening Note keeps its focused input visible. The viewport and
+focus are restored before the remaining hover tests.
+`HACHIDORI_DEINFLECTION_SCREENSHOT` captures the expanded desktop popup.
 
 The real browser also changes hover enablement and activation controls from
 Settings while the reading tab remains open. It proves close/re-enable without
@@ -616,7 +632,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 104 assertions, and the summary line
+`PLANNED` at the top of the file names all 105 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

@@ -273,6 +273,27 @@ projection, clear, or destroy invalidates obsolete work before it can render or
 request media. Initial synchronous render errors reach the content-script catch;
 later tab, expansion, and deferred errors clear only their owning current view.
 
+### Deinflection explanation
+
+Each eligible term header has a native, initially closed `details` disclosure.
+It reads the raw matched/deinflected endpoints and ordered trace from the engine
+response, preserving whitespace and repeated steps with text-only DOM nodes.
+Equal or missing endpoints and traces without a nonempty step name produce no
+disclosure. This presentation does not change normalization, the result object,
+Note prefill, or the trace available to future consumers. Existing native trace
+and response bounds apply; the renderer does not add character truncation.
+
+The visible summary is the endpoint path. Accessibility labels use the browser's
+English, Japanese, or Ukrainian base language, with English for other languages;
+backend rule names and descriptions remain untouched. Additional result headers
+are still created only by Show more. Tab projection creates a fresh closed
+disclosure, and queued toggle positioning uses the existing render-revision,
+panel, and request owner, including primary headers outside the result panel.
+While the primary explanation is expanded, its toolbar scrolls with the popup
+instead of sticking over the glossary; Note and Back stay beside the headword.
+Note opening positions the popup before focusing the term input, so native focus
+scrolling can keep the form visible beyond a long explanation.
+
 ## Media response boundary
 
 Media fetches bound the dictionary reference to 1 KiB and path to 4 KiB of
