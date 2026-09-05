@@ -7002,6 +7002,66 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function exactSelectionCase() {
+    const harness = await createHarness();
+    const window = harness.popup.ownerDocument.defaultView;
+    const document = window.document;
+    const selection = window.getSelection();
+    harness.emitOptions({ lookupMode: "activation", activationKey: "K", scanLength: 1 });
+    const mouse = (type) => harness.anchor.dispatchEvent(new window.MouseEvent(type, {
+      bubbles: true, button: 0, clientX: 200, clientY: 200,
+    }));
+    const changed = () => document.dispatchEvent(new window.Event("selectionchange"));
+    const selectText = (text) => {
+      mouse("mousedown");
+      harness.anchor.textContent = text;
+      selection.selectAllChildren(harness.anchor);
+      changed();
+      mouse("mouseup");
+      changed();
+      return harness.take("hd_lookup");
+    };
+    harness.anchor.innerHTML = '<b style="display:inline"> 食べ</b><i style="display:inline">たかった </i>';
+    mouse("mousedown");
+    selection.setBaseAndExtent(harness.anchor.lastChild.firstChild, 4, harness.anchor.firstChild.firstChild, 1);
+    changed();
+    harness.driver.onMouseMove({ target: harness.anchor, clientX: 200, clientY: 200 });
+    await harness.settle();
+    const dragQuiet = harness.take("hd_lookup") === null;
+    mouse("mouseup");
+    changed();
+    const exact = harness.take("hd_lookup");
+    const query = "食べたかった";
+    if (exact) harness.reply(exact, { dictionaryCount: 1, results: [
+      harness.term("食べ"), { ...harness.term("食べる"), matched: query },
+    ] });
+    await harness.settle();
+    const rendered = harness.render();
+    const exactResult = dragQuiet && exact?.request.text === query
+      && exact.request.scanLength === Array.from(query).length
+      && harness.take("hd_lookup") === null && rendered?.results.length === 1
+      && rendered.results[0].term.expression === "食べる"
+      && rendered.candidate.query === query
+      && rendered.candidate.sentence === " 食べたかった "
+      && rendered.candidate.matchOffset === 1
+      && rendered.candidate.sourceElements.map((node) => node.textContent).join("") === rendered.candidate.sentence;
+    const raw = " hello\n world ";
+    const rawRequest = selectText(raw);
+    if (rawRequest) harness.reply(rawRequest, { dictionaryCount: 1, results: [] });
+    await harness.settle();
+    const long = "あ".repeat(70);
+    const longRequest = selectText(long);
+    if (longRequest) harness.reply(longRequest, { dictionaryCount: 1, results: [harness.term(long.slice(0, 64))] });
+    await harness.settle();
+    const exactBound = rawRequest?.request.text === raw && longRequest?.request.text === long
+      && longRequest.request.scanLength === 64 && harness.driver.snapshot().popupHidden;
+    harness.close();
+    return {
+      "exact reverse inline selections bypass activation and preserve raw context while rejecting prefix results": exactResult,
+      "explicit selections preserve whitespace and full queries beyond the engine scan window": exactBound,
+    };
+  }
+
   async function scanExtractionCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
@@ -7712,7 +7772,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
-    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase() },
+    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await exactSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
     newestOnlyOptions,
