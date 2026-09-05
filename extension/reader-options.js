@@ -37,6 +37,10 @@
     return Math.max(min, Math.min(max, Math.trunc(number)));
   }
 
+  /**
+   * Preserve legacy title-only selections until dictionary state can infer kind.
+   * @returns {string | {title: string, kind: "term" | "kanji"}}
+   */
   function normaliseKanjiSelection(value) {
     if (value && typeof value === "object" && typeof value.title === "string"
         && value.title !== "" && (value.kind === "term" || value.kind === "kanji")) {
