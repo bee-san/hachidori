@@ -19,27 +19,12 @@
   const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
 
-  const DEFAULT_OPTIONS = {
-    scanLength: 16,
-    maxResults: 32,
-    modifier: "none",
-    hoverDelayMs: 50,
-    kanjiClickDictionary: "",
-    frequencyDictionary: "",
-    frequencyOrder: "auto",
-  };
+  const { DEFAULT_OPTIONS, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
   const MODIFIER_PROPERTIES = new Map([
     ["shift", "shiftKey"],
     ["ctrl", "ctrlKey"],
     ["alt", "altKey"],
   ]);
-  const FREQUENCY_ORDERS = new Set([
-    "auto",
-    "ascending",
-    "descending",
-    "disabled",
-  ]);
-  const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
 
   const POPUP_WIDTH_PX = 560;
   const POPUP_HEIGHT_PX = 420;
@@ -155,52 +140,6 @@
     } catch {
       return false;
     }
-  }
-
-  function clampInteger(value, minimum, maximum, fallback) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) {
-      return fallback;
-    }
-    return Math.max(minimum, Math.min(maximum, Math.trunc(number)));
-  }
-
-  function normalizeKanjiSelection(value) {
-    if (
-      value
-      && typeof value === "object"
-      && typeof value.title === "string"
-      && value.title !== ""
-      && KANJI_SELECTION_KINDS.has(value.kind)
-    ) {
-      return { title: value.title, kind: value.kind };
-    }
-    return typeof value === "string" ? value : "";
-  }
-
-  function normalizeOptions(stored) {
-    const source = stored && typeof stored === "object" ? stored : {};
-    return {
-      scanLength: clampInteger(source.scanLength, 1, 64, DEFAULT_OPTIONS.scanLength),
-      // 1..256 is the range settings.html offers, settings.js persists and
-      // offscreen.js accepts; a narrower clamp here would silently shrink the
-      // result set the user asked for.
-      maxResults: clampInteger(source.maxResults, 1, 256, DEFAULT_OPTIONS.maxResults),
-      modifier: MODIFIER_PROPERTIES.has(source.modifier) ? source.modifier : "none",
-      hoverDelayMs: clampInteger(
-        source.hoverDelayMs,
-        0,
-        2000,
-        DEFAULT_OPTIONS.hoverDelayMs
-      ),
-      frequencyDictionary: typeof source.frequencyDictionary === "string"
-        ? source.frequencyDictionary
-        : "",
-      kanjiClickDictionary: normalizeKanjiSelection(source.kanjiClickDictionary),
-      frequencyOrder: FREQUENCY_ORDERS.has(source.frequencyOrder)
-        ? source.frequencyOrder
-        : "auto",
-    };
   }
 
   function nonnegativeCount(value) {

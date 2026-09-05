@@ -2,7 +2,10 @@
 
 const MAX_LOOKUP_RESPONSE_BYTES = 32 * 1024 * 1024;
 const MAX_MEDIA_RESPONSE_BYTES = 6 * 1024 * 1024;
-const BOUNDED_REQUESTS = new Set(["hd_lookup", "hd_lookup_dictionary", "hd_kanji", "hd_media"]);
+// Browser adaptation of the source's 1 MiB control frame, only for reader
+// options messages. Dictionary state, custom source, and archives are separate.
+const MAX_OPTIONS_FRAME_BYTES = 1024 * 1024;
+const BOUNDED_REQUESTS = new Set(["hd_lookup", "hd_lookup_dictionary", "hd_kanji", "hd_media", "hd_options_write"]);
 const responseFrameEncoder = new TextEncoder();
 
 export function isBoundedRequest(type) {
@@ -10,6 +13,9 @@ export function isBoundedRequest(type) {
 }
 
 export function responseLimitError(type) {
+  if (type === "hd_options_write" || type === "hd_options_write_result") {
+    return "reader options message exceeds the 1 MiB serialized limit";
+  }
   return type === "hd_media" || type === "hd_media_result"
     ? "media response exceeds the 6 MiB serialized limit"
     : "lookup response exceeds the 32 MiB serialized limit";
@@ -20,6 +26,13 @@ export function validResponseRequestId(value) {
 }
 
 export function responseFits(reply, nativeJsonLength = 0) {
+  if (reply.type === "hd_options_write" || reply.type === "hd_options_write_result") {
+    const json = JSON.stringify(reply);
+    // UTF-8 cannot be shorter than JSON's UTF-16 code-unit count.
+    if (json.length > MAX_OPTIONS_FRAME_BYTES) return false;
+    return json.length * 3 <= MAX_OPTIONS_FRAME_BYTES
+      || responseFrameEncoder.encode(json).byteLength <= MAX_OPTIONS_FRAME_BYTES;
+  }
   if (reply.type === "hd_media_result") {
     // The producer constructs dataUrl only from fixed ASCII MIME strings and
     // base64. Count that payload exactly without serializing/copying it again.
@@ -43,8 +56,11 @@ export function boundResponseFailure(reply) {
   if (!isBoundedRequest(reply.type.replace(/_result$/u, ""))) return reply;
   if (!validResponseRequestId(reply.requestId)) reply.requestId = null;
   if (!responseFits(reply)) {
-    reply.error = responseLimitError(reply.type);
-    if (!responseFits(reply)) reply.requestId = null;
+    const limitError = responseLimitError(reply.type);
+    const unchangedError = reply.error === limitError;
+    reply.error = limitError;
+    // Replacing an identical error cannot make the same oversized frame fit.
+    if (unchangedError || !responseFits(reply)) reply.requestId = null;
   }
   return reply;
 }

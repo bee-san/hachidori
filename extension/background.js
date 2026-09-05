@@ -1,3 +1,4 @@
+import "./reader-options.js";
 import {
   httpsUrl,
   MANAGED_DICTIONARY_CHANGED,
@@ -18,7 +19,11 @@ import {
   parseCustomDictionary,
 } from "./custom-dictionary.js";
 import { sameJsonValue } from "./json-value.js";
-import { boundResponseFailure } from "./response-limits.js";
+import {
+  boundResponseFailure, responseFits, responseLimitError, validResponseRequestId,
+} from "./response-limits.js";
+
+const { projectStoredOptions, validateOptionsPatch } = globalThis.HDReaderOptions;
 
 /*
  * Service worker for Hachidori.
@@ -335,9 +340,12 @@ function dictionaryCommit(current, currentOptions, dictionaries, groups) {
   };
   const values = { [DICTIONARY_STATE_KEY]: state };
   if (currentOptions !== undefined) {
-    const nextOptions = normaliseDictionarySelections(currentOptions, state.dictionaries);
-    if (!sameJsonValue(nextOptions, currentOptions)) {
-      values[OPTIONS_KEY] = { ...nextOptions, revision: optionsRevision(currentOptions) + 1 };
+    const revision = optionsRevision(currentOptions);
+    const nextOptions = normaliseDictionarySelections(
+      { ...projectStoredOptions(currentOptions), revision }, state.dictionaries,
+    );
+    if (!sameJsonValue(nextOptions, { ...currentOptions, revision })) {
+      values[OPTIONS_KEY] = { ...nextOptions, revision: revision + 1 };
     }
   }
   return { state, values };
@@ -504,34 +512,36 @@ const WORKER_HANDLERS = {
   },
 
   async hd_options_write(message) {
-    if (!message?.options || typeof message.options !== "object" || Array.isArray(message.options)) {
-      throw new Error("the options write request carried no object");
-    }
+    const patch = validateOptionsPatch(message.options);
     if (!Number.isInteger(message.baseRevision) || message.baseRevision < 0) {
       throw new Error("the options write request carried no valid base revision");
     }
     const { state, options: currentOptions } = await readDictionaryStorage();
     assertDictionaryState(state);
     const revision = optionsRevision(currentOptions);
-    const current = { ...currentOptions, revision };
+    const current = { ...projectStoredOptions(currentOptions), revision };
     if (message.baseRevision !== revision) {
-      return {
+      return checkedOptionsResult(message, {
         ok: false,
         conflict: true,
         error: "Settings changed in another page. Review your changes before saving again.",
         options: current,
-      };
+      });
     }
     // Patch only edited fields; revision is owned here, never by the caller.
-    const patched = { ...current, ...message.options, revision };
+    const patched = { ...current, ...patch, revision };
     const options = state === null
       ? patched
       : normaliseDictionarySelections(patched, state.dictionaries);
-    if (!sameJsonValue(options, current)) {
-      options.revision += 1;
+    const changed = !sameJsonValue(options, { ...currentOptions, revision });
+    if (changed) options.revision += 1;
+    // Check the exact prospective reply, including its final revision, before
+    // committing. An oversized success must never become a post-commit error.
+    const result = checkedOptionsResult(message, { options });
+    if (changed) {
       await chrome.storage.local.set({ [OPTIONS_KEY]: options });
     }
-    return { options };
+    return result;
   },
 };
 
@@ -814,6 +824,16 @@ const UPDATE_HANDLERS = {
   },
 };
 
+function workerReply(message, result) {
+  const { ok = true, error = null, ...payload } = result ?? {};
+  return { type: `${message.type}_result`, requestId: message.requestId ?? null, ok, error, ...payload };
+}
+
+function checkedOptionsResult(message, result) {
+  if (!responseFits(workerReply(message, result))) throw new Error(responseLimitError(message.type));
+  return result;
+}
+
 function failureReply(message, error) {
   return boundResponseFailure({
     type: `${message?.type ?? "hd_unknown"}_result`,
@@ -845,11 +865,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse(failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`)));
     return false;
   }
+  if (type === "hd_options_write") {
+    let error = null;
+    if (!validResponseRequestId(message.requestId ?? null)) {
+      error = "the options write request carried an invalid request ID";
+    } else if (!responseFits(message)) {
+      error = responseLimitError(type);
+    }
+    if (error !== null) {
+      sendResponse(failureReply(message, error));
+      return true;
+    }
+  }
   serialiseStorage(() => WORKER_HANDLERS[type](message)).then(
-    (result) => {
-      const { ok = true, error = null, ...payload } = result ?? {};
-      sendResponse({ type: `${type}_result`, requestId: message.requestId ?? null, ok, error, ...payload });
-    },
+    (result) => sendResponse(workerReply(message, result)),
     (error) => {
       sendResponse(failureReply(message, error));
     },

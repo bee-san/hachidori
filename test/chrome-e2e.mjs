@@ -195,6 +195,7 @@ const PLANNED = [
   "manifest and settings page are branded as Hachidori",
   "Settings puts the library first and supports keyboard navigation at 320px",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
+  "Settings rejects malformed and oversized option frames before commit and still autosaves without reload",
   "reader settings and their revision survive a full browser restart",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
@@ -1321,6 +1322,44 @@ async function checkSettingsAutosave(page, browser, settingsUrl) {
   }
 }
 
+async function checkSettingsTransport(page) {
+  const evidence = await page.evaluate(async () => {
+    const read = () => chrome.storage.local.get(["options", "dictionaryState"]);
+    const status = () => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    const before = await read();
+    const generation = (await status()).generation;
+    const request = {
+      target: "hoshidicts-worker", type: "hd_options_write", requestId: "browser-options-frame",
+      baseRevision: before.options?.revision ?? 0, options: { maxResults: "invalid" },
+    };
+    const malformed = await chrome.runtime.sendMessage(request);
+    const oversized = await chrome.runtime.sendMessage({ ...request, options: { maxResults: 48 }, padding: "x".repeat(1024 * 1024) });
+    const after = await read();
+    return { rejected: malformed.ok === false && oversized.ok === false,
+      unchanged: JSON.stringify(before) === JSON.stringify(after), generation,
+      revision: before.options?.revision ?? 0, originalMaxResults: before.options?.maxResults ?? 32 };
+  });
+  const edit = async (value) => {
+    await page.$eval("#opt-max-results", (input, next) => {
+      input.value = String(next);
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }, value);
+    await page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
+      { timeout: 10_000, polling: 100 });
+  };
+  const nextMaxResults = evidence.originalMaxResults === 48 ? 32 : 48;
+  await edit(nextMaxResults);
+  const saved = await page.evaluate(async () => ({
+    options: (await chrome.storage.local.get("options")).options,
+    status: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
+  }));
+  await edit(evidence.originalMaxResults);
+  check("Settings rejects malformed and oversized option frames before commit and still autosaves without reload",
+    evidence.rejected && evidence.unchanged && saved.options.revision === evidence.revision + 1
+      && saved.options.maxResults === nextMaxResults && saved.status.generation === evidence.generation,
+    JSON.stringify({ evidence, saved }));
+}
+
 async function main() {
   if (!CHROME || !existsSync(CHROME)) {
     fatal("no Chrome found (set HACHIDORI_CHROME or install it as described in test/README.md)");
@@ -1470,6 +1509,7 @@ async function main() {
     JSON.stringify(branding),
   );
   await checkSettingsAutosave(page, browser, settingsUrl);
+  await checkSettingsTransport(page);
   await checkDictionaryStyles(page);
 
   await page.waitForFunction(() =>

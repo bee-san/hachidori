@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import "./reader-options.js";
 import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
@@ -23,28 +24,19 @@ import {
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
 const UPDATE_TARGET = "hachidori-updates";
-const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
-const MODIFIERS = ["none", "shift", "ctrl", "alt"];
-const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
+const {
+  DEFAULT_OPTIONS, MODIFIERS, FREQUENCY_ORDERS,
+  clampOption, normaliseKanjiSelection, normaliseOptions,
+} = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
 // settings page can be left open.
 const STATUS_RETRY_MS = 5000;
 
-const DEFAULT_OPTIONS = {
-  scanLength: 16,
-  maxResults: 32,
-  modifier: "none",
-  hoverDelayMs: 50,
-  kanjiClickDictionary: "",
-  frequencyDictionary: "",
-  frequencyOrder: "auto",
-};
-
 const NUMBER_FIELDS = [
-  { key: "scanLength", id: "opt-scan-length", min: 1, max: 64 },
-  { key: "maxResults", id: "opt-max-results", min: 1, max: 256 },
-  { key: "hoverDelayMs", id: "opt-hover-delay", min: 0, max: 2000 },
+  { key: "scanLength", id: "opt-scan-length" },
+  { key: "maxResults", id: "opt-max-results" },
+  { key: "hoverDelayMs", id: "opt-hover-delay" },
 ];
 
 const numberFormat = new Intl.NumberFormat();
@@ -110,14 +102,6 @@ async function send(type, fields = {}, target = TARGET) {
     throw new Error("the extension's service worker did not reply");
   }
   return reply;
-}
-
-function clampInt(value, min, max, fallback) {
-  const number = Math.trunc(Number(value));
-  if (!Number.isFinite(number)) {
-    return fallback;
-  }
-  return Math.min(max, Math.max(min, number));
 }
 
 function nonnegativeCount(value) {
@@ -245,19 +229,6 @@ function isManagedCustomDictionary(dictionary) {
   return dictionary?.id === CUSTOM_DICTIONARY_ID;
 }
 
-function normaliseKanjiSelection(value) {
-  if (
-    value
-    && typeof value === "object"
-    && typeof value.title === "string"
-    && value.title !== ""
-    && KANJI_SELECTION_KINDS.has(value.kind)
-  ) {
-    return { title: value.title, kind: value.kind };
-  }
-  return typeof value === "string" ? value : "";
-}
-
 function selectionParts(value) {
   if (value && typeof value === "object") {
     return value;
@@ -308,22 +279,6 @@ function normaliseDictionarySelections() {
     }
   }
   return changed;
-}
-
-function normaliseOptions(value) {
-  const stored = value ?? {};
-  const next = { ...DEFAULT_OPTIONS };
-  for (const field of NUMBER_FIELDS) {
-    next[field.key] = clampInt(stored[field.key], field.min, field.max, DEFAULT_OPTIONS[field.key]);
-  }
-  next.modifier = MODIFIERS.includes(stored.modifier) ? stored.modifier : DEFAULT_OPTIONS.modifier;
-  next.frequencyOrder = FREQUENCY_ORDERS.includes(stored.frequencyOrder)
-    ? stored.frequencyOrder
-    : DEFAULT_OPTIONS.frequencyOrder;
-  next.frequencyDictionary =
-    typeof stored.frequencyDictionary === "string" ? stored.frequencyDictionary : "";
-  next.kanjiClickDictionary = normaliseKanjiSelection(stored.kanjiClickDictionary);
-  return next;
 }
 
 function setStatus(message, tone) {
@@ -1772,7 +1727,7 @@ function attachHandlers() {
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
     input.addEventListener("change", () => {
-      options[field.key] = clampInt(input.value, field.min, field.max, DEFAULT_OPTIONS[field.key]);
+      options[field.key] = clampOption(field.key, input.value);
       input.value = String(options[field.key]);
       writeOptions();
     });

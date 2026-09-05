@@ -377,6 +377,27 @@ retryable.
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 
+`reader-options.js` supplies one synchronous stored-value view to Settings, the
+content reader, and the service worker. New patches reject malformed supported
+fields and discard unknown fields; the revision remains worker-owned. Legacy
+reads retain numeric coercion and title-only kanji selectors. Sparse stored
+options remain sparse: missing defaults or a missing revision do not force a
+write. A successful patch that repairs malformed values or removes stored junk
+increments the options revision once, as does a repair in a dictionary-state
+transaction. Conflicts return a projected current value without repairing it.
+
+The complete UTF-8 JSON `hd_options_write` request and result each have a 1 MiB
+transport bound. This explicitly adapts the pinned source's
+[`MAX_CONTROL_FRAME_BYTES`](https://github.com/bpwhelan/GameSentenceMiner/blob/524ed0b3b92decae87f65df02df9ef9e512f7674/electron-src/main/features/hoshidicts/control_channel.ts#L17)
+to browser reader-options messages; it is not a Chrome platform limit. Request
+framing is checked before entering the storage queue. The exact prospective
+success result, including its final revision, is checked before writing, so an
+oversized response cannot turn a committed save into a reported failure.
+Oversized conflict replies also fail without writing. Failure correlation is
+scalar and retained only when the error frame fits. Dictionary state, groups,
+custom source, archives, and update messages are outside this options-only bound;
+canonical dictionary titles have no separate length cap.
+
 Dictionary-group normalization and controls live in `dictionary-groups.js`; the
 Settings entrypoint owns imports, package management, and the shared commit
 queue. Groups remain in `dictionaryState` so package removal and membership

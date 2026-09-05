@@ -292,7 +292,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 237 checks, all of
+full request→reply round trip per contract-C message type. 242 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -315,12 +315,14 @@ module and reads the shared global, which is the one wired to the bus as
 
 What it proves, in order:
 
-0. **Option ranges.** `scanLength` and `maxResults` are clamped in four separate
-   places (`settings.html`, `settings.js`, `content.js`, `engine-service.js`) and a
-   narrower bound in the content script silently shrinks the result set the
-   options page accepted and stored. `content.js` needs a page and is not loaded
-   here, so this one check is static: it greps the four literals and fails if they
-   disagree.
+0. **Reader options.** Static checks keep the shared `reader-options.js` ranges
+   aligned with HTML inputs and the independent engine request bounds. Actual
+   worker requests verify strict supported-field validation, unknown-field
+   projection, sparse legacy repairs/no-ops, revision conflicts, and options
+   pruning in dictionary CAS. Complete UTF-8 request and response boundary tests
+   include multibyte/escaped text, invalid/oversized correlation IDs, and a
+   9→10 revision change; an oversized prospective success must fail before
+   storage changes. Settings and content harnesses load the same shared script.
 1. **Managed custom dictionary.** The source document and package state commit
    as one revision-checked write, ordinary state reads leave the potentially
    large source off their hot path, stale Settings saves fail without merging,
@@ -566,7 +568,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 96 assertions, and the summary line
+`PLANNED` at the top of the file names all 97 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
