@@ -1652,6 +1652,31 @@ async function main() {
   });
 
   const pageChrome = makeChrome("page", bus, storage, alarms);
+  const writeReaderOptions = (baseRevision, options) => pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    baseRevision,
+    options,
+  });
+  const firstOptions = await writeReaderOptions(0, { scanLength: 12, maxResults: 24 });
+  const [nextOptions, conflictingOptions] = await Promise.all([
+    writeReaderOptions(1, { scanLength: 18 }),
+    writeReaderOptions(1, { maxResults: 48 }),
+  ]);
+  const unchangedOptions = await writeReaderOptions(2, { scanLength: 18 });
+  const unversionedOptions = await writeReaderOptions(undefined, { scanLength: 2 });
+  check(
+    "reader options use serialized revision-checked patches and preserve unchanged revisions",
+    firstOptions.ok === true && firstOptions.options?.revision === 1
+      && nextOptions.ok === true && nextOptions.options?.revision === 2
+      && nextOptions.options?.maxResults === 24
+      && conflictingOptions.ok === false && conflictingOptions.conflict === true
+      && conflictingOptions.options?.scanLength === 18
+      && conflictingOptions.options?.maxResults === 24
+      && unchangedOptions.ok === true && unchangedOptions.options?.revision === 2
+      && unversionedOptions.ok === false,
+    JSON.stringify({ firstOptions, nextOptions, conflictingOptions, unchangedOptions, unversionedOptions }),
+  );
   let counter = 0;
   async function request(type, fields = {}) {
     counter += 1;
