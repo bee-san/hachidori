@@ -512,7 +512,7 @@ async function loadCustomDictionarySource() {
     customEditorLoaded = true;
     resetCustomDictionaryDraft(customDocument);
     showCustomDictionaryEditor(true);
-    setCustomDictionaryStatus(`Loaded source revision ${customDocument.revision}.`, "ready");
+    setCustomDictionaryStatus(`Loaded source revision ${customDocument.revision}.`, "ready", true);
   } catch (error) {
     setCustomDictionaryStatus(`Could not load the custom dictionary source: ${describe(error)}`, "error");
   } finally {
