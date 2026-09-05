@@ -84,11 +84,12 @@ Negative fixtures include:
 - `parent-title.zip` — declares `..`; the native baseline proves that direct use
   of Hoshidicts cannot escape and recursively delete its output directory.
 
-`buildTitledZip(title, {banks})` builds a third kind on the fly, in memory: the
+`buildTitledZip(title, {banks, terms, termMeta})` builds a third kind on the fly, in memory: the
 same `index.json` with the title replaced, optionally with no term bank so the
 import fails *after* the importer has read the title and derived a directory from
 it. That is the only moment a title can do damage, so it is what the import
-staging checks are driven with.
+staging checks are driven with. Optional term and metadata rows also build the
+lookup-byte-boundary fixtures without changing the ordinary fixture counts.
 
 Exports `EXPECTED` (the import counts, derived from the bank arrays rather than
 hardcoded) and `EXPECTED_GLOSSARIES` (the exact raw glossary strings, keyed by
@@ -168,7 +169,7 @@ the real WebAssembly engine by `extension-smoke.mjs`.
 
 The real test. Loads the threaded bundle by default or the fallback bundle when
 `HACHIDORI_WASM_VARIANT=fallback`, mounts plain MEMFS, and drives the frozen C ABI end to end.
-106 checks, ordered by dependency. Exits 0 on success,
+114 checks, ordered by dependency. Exits 0 on success,
 1 on assertion failure, 2 when the wasm module has not been built.
 
 What it proves, in order:
@@ -246,6 +247,12 @@ What it proves, in order:
 11. **`hdw_lookup_dictionary`.** A dictionary-scoped lookup refuses a path that
     is not loaded, preserves the normal lookup response contract and global
     capability count, and returns definitions from only the selected term path.
+12. **Lookup response bounds.** Both term endpoints accept exact 8 MiB raw
+    glossaries and reject one extra UTF-8 byte, aggregate copied strings above
+    32 MiB, and JSON escaping that expands a response above 32 MiB. Query and
+    option strings retain their exact 4 KiB UTF-8 boundary, including kanji
+    queries. Frequency display control bytes survive valid escaped JSON, and
+    the loaded dictionary remains usable after each refusal.
 
 Two behaviours worth knowing, both asserted so they cannot drift silently:
 
@@ -263,7 +270,7 @@ Two behaviours worth knowing, both asserted so they cannot drift silently:
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 191 checks, all of
+full request→reply round trip per contract-C message type. 199 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -351,6 +358,10 @@ What it proves, in order:
    fallback returns, so `offscreen.js` reads `hdw_last_error` after every
    string-returning call and fails the request rather than forwarding an
    ambiguous empty.
+   Focused boundary checks reject C-string NUL and oversized UTF-8 inputs,
+   malformed native envelopes, and complete replies above 32 MiB. They retain
+   exact-boundary replies and correlated bounded errors, including multibyte
+   request IDs. The next healthy lookup keeps the same engine generation.
 7. **Error paths.** An unknown type is answered as `<type>_result` with
    `ok: false` rather than dropped; a non-zip import fails with a report attached
    and leaves the previously loaded set intact; an import with no blob URL is
@@ -497,7 +508,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 84 assertions, and the summary line
+`PLANNED` at the top of the file names all 86 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
