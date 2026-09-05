@@ -7523,9 +7523,13 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
 async function imagePreviewStage({ view, popup, shadow, document, window, candidate, result, mediaUrl }) {
   let requests = 0;
   let ownsRequest = true;
+  let holdFirstMedia = false;
+  let resolveHeldMedia;
   const preview = () => shadow.querySelector(".gsm-hoshidicts-image-hover-preview");
   const originalRect = window.Element.prototype.getBoundingClientRect;
   window.Element.prototype.getBoundingClientRect = function () {
+    if (this === popup) return { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight,
+      width: window.innerWidth, height: window.innerHeight };
     return this.classList.contains("gsm-hoshidicts-image-hover-preview")
       ? { left: 0, top: 0, right: 320, bottom: 240, width: 320, height: 240 }
       : originalRect.call(this);
@@ -7542,7 +7546,12 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
       generation: 2,
       dictionaryPresentation: ["A", "B"].map((title) => ({ title, favorite: true })),
       isCurrentRequest: () => ownsRequest,
-      resolveMedia() { requests += 1; return Promise.resolve(mediaUrl); },
+      resolveMedia({ path }) {
+        requests += 1;
+        return holdFirstMedia && path === "media/A.png"
+          ? new Promise((resolveMedia) => { resolveHeldMedia = resolveMedia; })
+          : Promise.resolve(mediaUrl);
+      },
     });
     await new Promise((done) => setTimeout(done, 0));
     const links = [...popup.querySelectorAll(".gloss-image-link")];
@@ -7583,6 +7592,8 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
     const staleLeaveIgnored = preview() === second;
     const secondFits = second && Number.parseFloat(second.style.left) + 320 <= window.innerWidth - 8
       && Number.parseFloat(second.style.top) + 240 <= window.innerHeight - 8;
+    event(popup, "scroll");
+    const focusedScrollKept = Boolean(second) && preview() === second;
     links[1].blur();
     const blurred = !preview();
     event(links[1], "mouseenter");
@@ -7598,8 +7609,8 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
     event(links[0].querySelector("img"), "error");
     const failed = !preview();
     check("image previews clamp both viewport corners and close only their current hover or focus owner",
-      firstFits && secondFits && staleLeaveIgnored && blurred && left && resized && scrolled && failed,
-      JSON.stringify({ firstFits, secondFits, staleLeaveIgnored, blurred, left, resized, scrolled, failed }));
+      firstFits && secondFits && focusedScrollKept && staleLeaveIgnored && blurred && left && resized && scrolled && failed,
+      JSON.stringify({ firstFits, secondFits, focusedScrollKept, staleLeaveIgnored, blurred, left, resized, scrolled, failed }));
 
     links = await render();
     event(links[0], "mouseenter");
@@ -7615,6 +7626,26 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
     check("a tab change or pending newer request prevents obsolete connected images from reopening a preview",
       beforeTab && tabClosed && current.isConnected && !preview(),
       JSON.stringify({ beforeTab, tabClosed, connected: current.isConnected, open: Boolean(preview()) }));
+
+    holdFirstMedia = true;
+    links = await render();
+    event(links[0], "mouseenter");
+    links[1].focus();
+    const newerPreview = preview();
+    resolveHeldMedia(mediaUrl);
+    await new Promise((done) => setTimeout(done, 0));
+    event(links[0].querySelector("img"), "load");
+    const newerIntentPreserved = Boolean(newerPreview) && preview() === newerPreview;
+    links = await render();
+    event(links[0], "mouseenter");
+    event(window, "resize");
+    resolveHeldMedia(mediaUrl);
+    await new Promise((done) => setTimeout(done, 0));
+    event(links[0].querySelector("img"), "load");
+    check("late image loads cannot steal newer preview intent or revive a dismissed preview",
+      newerIntentPreserved && !preview(),
+      JSON.stringify({ newerIntentPreserved, dismissedRevived: Boolean(preview()) }));
+    holdFirstMedia = false;
 
     links = await render();
     event(links[0], "mouseenter");
