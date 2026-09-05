@@ -3382,7 +3382,10 @@ async function main() {
   );
   await tab2.evaluate(() => {
     document.getElementById("verb").textContent = "速度";
-    document.getElementById("kanjiword").textContent = "限界";
+    const oversized = document.getElementById("kanjiword");
+    oversized.textContent = "限界";
+    // Keep this target outside the healthy word's popup hit area.
+    oversized.style.cssText = "position:fixed;left:800px;top:32px";
   });
   const boundedPopupBefore = await hoverForPopup(tab2, popup2, "#verb");
   await tab2.mouse.move(2, 2);
