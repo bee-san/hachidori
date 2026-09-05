@@ -1228,6 +1228,12 @@ const multibyteAtLimit = 'あ'.repeat(Math.floor((GLOSSARY_LIMIT - 4) / 3))
   + 'x'.repeat((GLOSSARY_LIMIT - 4) % 3);
 const escapeExpansion = '\\'.repeat(3 * 1024 * 1024 - 2);
 const boundedTerm = (expression, definition) => [expression, '', '', '', 1, [definition], 1, ''];
+const controlMetadata = Array.from({ length: 32 }, (_, byte) => ({
+  expression: `control-byte-${byte}`,
+  // Exercise controls in full eight-byte words and in the scalar tail,
+  // surrounded by both ASCII and high UTF-8 bytes.
+  displayValue: 'x'.repeat(byte % 17) + String.fromCharCode(byte) + 'あいう尾',
+}));
 const boundedTerms = [
   boundedTerm('ascii-limit', definitionAtLimit),
   boundedTerm('multibyte-limit', multibyteAtLimit),
@@ -1235,12 +1241,16 @@ const boundedTerms = [
   ...Array.from({ length: 4 }, () => boundedTerm('aggregate-over', definitionAtLimit)),
   ...Array.from({ length: 3 }, () => boundedTerm('serialized-over', escapeExpansion)),
   boundedTerm('control', 'control bytes in frequency metadata'),
+  ...controlMetadata.map(({ expression }) => boundedTerm(expression, 'individual control byte')),
   boundedTerm('healthy', 'still loaded after a refused reply'),
 ];
 const controlDisplayValue = 'control-\u0000-\u0001-\u001f';
 M.FS.writeFile('/work/bounded-lookup.zip', buildTitledZip(BOUNDED_TITLE, {
   terms: boundedTerms,
-  termMeta: [['control', 'freq', { value: 1, displayValue: controlDisplayValue }]],
+  termMeta: [
+    ['control', 'freq', { value: 1, displayValue: controlDisplayValue }],
+    ...controlMetadata.map(({ expression, displayValue }) => [expression, 'freq', { value: 1, displayValue }]),
+  ],
 }));
 const boundedReport = hdwImport('/work/bounded-lookup.zip', '/dicts');
 check('lookup response limits do not reject the imported archive', () => {
@@ -1313,6 +1323,12 @@ check('native lookup JSON escapes control bytes without truncating the C string'
   eq(lastError(), '', 'control-byte lookup');
   eq(result.results[0]?.term?.frequencies[0]?.frequencies[0]?.displayValue,
     controlDisplayValue, 'frequency display controls');
+  for (const { expression, displayValue } of controlMetadata) {
+    const individual = lookup(expression, 1, 64);
+    eq(lastError(), '', `control-byte lookup ${expression}`);
+    eq(individual.results[0]?.term?.frequencies[0]?.frequencies[0]?.displayValue,
+      displayValue, `unaltered ${expression}`);
+  }
 });
 check('refused lookup responses leave the loaded dictionary usable', () => {
   for (const run of boundedLookups) {

@@ -9,6 +9,7 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -211,6 +212,19 @@ struct LookupCopyBudget {
   bool needs_control_escaping = false;
 };
 
+bool contains_control_byte(std::string_view value) {
+  // Detect any byte below 0x20 in eight-byte groups. memcpy permits unaligned
+  // input; the high-bit mask excludes multibyte UTF-8. A borrow can mark a
+  // neighbouring byte only when a control byte already exists in this word.
+  while (value.size() >= sizeof(uint64_t)) {
+    uint64_t word;
+    std::memcpy(&word, value.data(), sizeof(word));
+    if ((word - 0x2020202020202020ULL) & ~word & 0x8080808080808080ULL) return true;
+    value.remove_prefix(sizeof(word));
+  }
+  return std::ranges::any_of(value, [](unsigned char byte) { return byte < 0x20; });
+}
+
 std::string copy_lookup_string(std::string_view value, LookupCopyBudget& budget,
                                std::string_view label,
                                size_t maximum = MAX_LOOKUP_RESPONSE_BYTES) {
@@ -227,7 +241,7 @@ std::string copy_lookup_string(std::string_view value, LookupCopyBudget& budget,
   // ordinary text. Use its smaller fast path only after checking every copied
   // wire string; the default writer cannot preserve unescaped control bytes.
   if (!budget.needs_control_escaping) {
-    budget.needs_control_escaping = std::ranges::any_of(value, [](unsigned char byte) { return byte < 0x20; });
+    budget.needs_control_escaping = contains_control_byte(value);
   }
   return std::string{value};
 }
