@@ -78,19 +78,22 @@
     return typeof value === "string" ? value : "";
   }
 
+  function legacyActivationOptions(source, strict) {
+    if (!Object.hasOwn(source, "modifier")) return {};
+    const key = LEGACY_MODIFIERS.get(source.modifier);
+    if (strict && key === undefined) {
+      throw new Error("the options write request carried an invalid reader option");
+    }
+    // Old Settings patches still pass through CAS. Plain hover changes mode
+    // only, preserving a newer configured key, without a second stored policy.
+    return source.modifier === "none" || key === undefined
+      ? { lookupMode: "hover" }
+      : { lookupMode: "activation", activationKey: key };
+  }
+
   function projectOptions(value, strict) {
     const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-    const result = {};
-    if (Object.hasOwn(source, "modifier")) {
-      if (strict && !LEGACY_MODIFIERS.has(source.modifier)) {
-        throw new Error("the options write request carried an invalid reader option");
-      }
-      const modifier = LEGACY_MODIFIERS.has(source.modifier) ? source.modifier : "none";
-      result.lookupMode = modifier === "none" ? "hover" : "activation";
-      // An old Settings page can still send its existing patch under CAS.
-      // Plain hover changes mode only, preserving a newer configured key.
-      if (modifier !== "none") result.activationKey = LEGACY_MODIFIERS.get(modifier);
-    }
+    const result = legacyActivationOptions(source, strict);
     for (const key of OPTION_KEYS) {
       if (!Object.hasOwn(source, key)) continue;
       const raw = source[key];
