@@ -180,7 +180,7 @@ fetches dedupe by generation, canonical title and normalized path; successful
 data URLs stay reusable across hovers, including a fetch completing while the
 popup is hidden. Missing or failed fetches are not cached. Package-content
 changes and teardown drop cached resources and pending ownership; alias and
-favourite edits preserve them. Promise identity prevents an old completion from
+favourite edits preserve them. Job identity prevents an old completion from
 removing or populating a newer same-key job. Styles similarly own their exact
 request, even when a restart reuses the numeric generation.
 
@@ -194,8 +194,33 @@ edits do not force a native Back lookup.
 
 ![Readable dictionary image failure with the surrounding definition intact](assets/media-failure.png)
 
-Media cache size, active/pending limits and larger hover/focus previews remain
-separate E6/E9 work.
+The media scheduler and cache use the pinned source's runtime bounds:
+
+| Resource | Limit |
+| --- | --- |
+| Active media jobs | 4 |
+| Total admitted jobs, including active jobs | 128 |
+| Successful cached entries | 64 |
+| Cached decoded media bytes | 16 MiB |
+| Active request deadline | 4 seconds from dispatch |
+
+Cache hits move entries to the newest LRU position. Exact byte and entry limits
+are accepted; insertion evicts the oldest until both bounds hold. Decoded-byte
+accounting uses the engine's base64 length and padding, without decoding or
+copying image payloads. This is a cache-reference budget, not a bound on all DOM,
+decoded-image, or browser memory. Data URLs cannot be revoked; eviction drops
+the cache's reference without invalidating an already rendered image.
+
+Queued jobs have no timer until dispatched. Current same-key consumers may
+reattach queued jobs; obsolete queued jobs are skipped before dispatch and
+pruned before rejecting a newer request for lack of capacity. Already-started
+valid resources may still finish while hidden. Content/generation invalidation
+and teardown detach the queue before settling old jobs. Settlement releases
+timers and owned capacity exactly once, so late replies after timeout or
+invalidation cannot publish bytes or disturb replacement jobs. Chrome runtime
+messages already sent cannot be aborted: the deadline bounds logical ownership
+and waiting, not underlying native execution. Larger image hover/focus previews
+remain separate E6 work.
 
 ## Dictionary presentation boundary
 
