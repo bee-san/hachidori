@@ -39,13 +39,15 @@ test("benchmark defaults follow the current account cache", () => {
   const root = mkdtempSync(join(tmpdir(), "hachidori-portable-browser-"));
   try {
     const cache = join(root, "cache");
+    const executable = process.platform === "darwin"
+      ? ["chrome-mac-arm64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"]
+      : ["chrome-linux64", "chrome"];
     const chrome = join(
       cache,
       "hachidori-browsers",
       "chrome",
-      "linux-999.0.0.0",
-      "chrome-linux64",
-      "chrome",
+      `${process.platform}-999.0.0.0`,
+      ...executable,
     );
     const puppeteerRoot = join(cache, "hachidori-e2e", "node_modules", "puppeteer-core");
     const puppeteer = join(puppeteerRoot, "lib", "puppeteer", "puppeteer-core.js");
