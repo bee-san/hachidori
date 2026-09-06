@@ -578,8 +578,11 @@
     let polledStyles = false;
     let watchedSheets = new Set();
     const styleMedia = new Map();
+    const coverMotion = new WeakSet();
     const motionRoots = new Set();
-    const motionEvents = ["animationstart", "transitionrun", "pointerover", "pointerout", "focusin", "focusout"];
+    const motionStarts = ["animationstart", "transitionrun"];
+    const motionEnds = ["animationend", "animationcancel", "transitionend", "transitioncancel"];
+    const motionEvents = [...motionStarts, ...motionEnds, "pointerover", "pointerout", "focusin", "focusout"];
     const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
     const affectsGeometry = change => !layer.contains(change.target)
       && (change.type === "attributes" || change.type === "characterData"
@@ -696,7 +699,27 @@
       return relevant.length > 0;
     }
 
+    function isCoverPosition(position) {
+      return position === "fixed" || position === "sticky";
+    }
+
     function sourceMotion(event) {
+      const target = event.target;
+      if (motionEnds.includes(event.type) && (coverMotion.delete(target)
+          || pageOccluders?.includes(target) || isCoverPosition(windowRef.getComputedStyle(target).position))) {
+        layoutChanged();
+        return;
+      }
+      // A currently static element may become a cover halfway through motion.
+      // Track only effects with cover-position keyframes, not every animation
+      // on the page. Keep paused effects until they finish or are cancelled.
+      if (motionStarts.includes(event.type) && !motionTargets.has(target)
+          && target.getAnimations().some(animation => animation.effect.getKeyframes()
+            .some(keyframe => isCoverPosition(keyframe.position)))) {
+        coverMotion.add(target);
+        layoutChanged();
+        return;
+      }
       for (const [target, subtree] of motionTargets) {
         if (target === event.target || (subtree && target.contains(event.target))
             || (event.relatedTarget !== undefined && target instanceof windowRef.Element
@@ -799,7 +822,7 @@
           for (const element of tree.querySelectorAll("*")) {
             if (element === root.host || layer.contains(element) || element.closest(".gsm-hoshidicts-popup")) continue;
             const style = windowRef.getComputedStyle(element);
-            if (style.position === "fixed" || style.position === "sticky"
+            if (isCoverPosition(style.position) || coverMotion.has(element)
                 || element.localName === "dialog" || element.hasAttribute("popover")) pageOccluders.push(element);
           }
         }
@@ -820,6 +843,8 @@
         stylesheetTimer ??= windowRef.setInterval(checkStyleSheets, 250);
       }
       return pageOccluders.flatMap(element => {
+        if (!isCoverPosition(clipBounds(element, cache).style.position)
+            && element.localName !== "dialog" && !element.hasAttribute("popover")) return [];
         const clip = visibleClip(element, cache, true);
         const rect = clip && intersectHighlightRect(element.getBoundingClientRect(), clip);
         return rect ? [{ element, rect, tree: element.getRootNode(),

@@ -883,8 +883,12 @@ and a burst of layout changes coalesces without rewalking source text. This
 broader geometry observation is never installed on the native Highlight path.
 Active source/cover/ancestor CSS animations and transitions keep that shared frame
 running until motion finishes or pauses. Scoped motion and pointer/focus boundary
-events wake it, including paused animations resumed by hover or focus; unrelated
-page animations do not request paint. Animation queries precede paint writes.
+events wake it, including paused animations resumed by hover or focus. An initially
+ordinary page element is also tracked when its animation keyframes can make it
+fixed or sticky; only its currently effective cover position suppresses paint.
+Completion/cancellation reconciles membership, including forwards-filled effects,
+without rescanning the page every animation frame. Other unrelated page animations
+do not request paint. Animation queries precede paint writes.
 Unchanged owners retain their paint groups. Removing only an owner does not
 remeasure survivors or re-observe their resize targets; actual pane pruning still
 refreshes paint that may be uncovered. The last owner releases the layer,

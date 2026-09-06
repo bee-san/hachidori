@@ -747,6 +747,8 @@ pointer boundary events cannot mask missing layout observation.
 Page-cover checks compare the remaining paint area and exact bounds under fixed
 and sticky headers, a small centred overlay, pointer-transparent paint, clipped
 header borders, fixed boxes escaping ancestor overflow, and moving overlays.
+Position-keyframe cases begin as ordinary static elements and become fixed
+covers, both after forwards-filled completion and when paused midway.
 Removing covers restores the exact source paint; a box behind the source leaves
 it unchanged.
 Style-only checks settle an offscreen cover before CSSOM rule insertion,

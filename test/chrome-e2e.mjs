@@ -3817,7 +3817,7 @@ async function checkSourceFallback(settings, tab, popup) {
     const uncovered = await snapshot();
     const sourceRect = uncovered.source.expected[0];
     const covers = [];
-    for (const kind of ["partial", "pointer-none", "modal", "sticky", "border", "fixed-escape", "motion", "membership", "behind"]) {
+    for (const kind of ["partial", "pointer-none", "modal", "sticky", "border", "fixed-escape", "motion", "membership", "membership-paused", "behind"]) {
       await tab.evaluate(({ source, kind }) => {
         const element = document.createElement("div");
         element.id = "e17-page-cover";
@@ -3853,7 +3853,7 @@ async function checkSourceFallback(settings, tab, popup) {
           element.getBoundingClientRect();
           element.style.transform = "translateX(160px)";
         }
-        if (kind === "membership") {
+        if (kind.startsWith("membership")) {
           const style = document.createElement("style");
           style.textContent = "@keyframes e17-cover { from { position:static; } to { position:fixed; } }";
           element.append(style);
@@ -3862,9 +3862,13 @@ async function checkSourceFallback(settings, tab, popup) {
         }
       }, { source: sourceRect, kind });
       let initiallyUncovered = true;
-      if (kind === "membership") {
+      if (kind.startsWith("membership")) {
         initiallyUncovered = (await snapshot()).exact;
-        await tab.$eval("#e17-page-cover", element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+        if (kind === "membership-paused") {
+          await tab.waitForFunction(() => document.getElementById("e17-page-cover").getAnimations()
+            .some(animation => animation.currentTime >= 650 && animation.currentTime < 950));
+          await tab.$eval("#e17-page-cover", element => element.getAnimations().forEach(animation => animation.pause()));
+        } else await tab.$eval("#e17-page-cover", element => Promise.all(element.getAnimations().map(animation => animation.finished)));
       }
       if (kind === "motion") await tab.waitForFunction(() => document.querySelector("[data-e17-painted-cover]").getAnimations()
         .some(animation => animation.currentTime >= 300 && animation.currentTime < 800));
