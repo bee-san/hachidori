@@ -222,6 +222,8 @@ const PLANNED = [
   "Anki presets expose editable field templates and persist overwrite modes with visible marker errors",
   "Anki templates survive refresh and reload while disabled values stay disabled and lookup generation stays unchanged",
   "Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
+  "Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
+  "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
   "Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
   "Popup autoplay is optional and does not replay after presentation updates or Back",
