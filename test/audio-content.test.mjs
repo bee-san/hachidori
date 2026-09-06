@@ -85,6 +85,7 @@ test("candidate choice carries exact identity and closes with focus restoration"
   });
   assert.equal(f.controller.selectionFor(v.item.result), play.selection);
   assert.equal(f.controller.hasMenu(), false);
+  assert.equal(f.shadow.activeElement, v.item.button, "choosing returns keyboard focus to Stop/replay");
   v.item.button.dispatchEvent(new f.window.KeyboardEvent("keydown", { key: "ArrowDown" }));
   const pending = f.sent.at(-1);
   assert.equal(f.controller.closeMenu(), true);
@@ -95,6 +96,24 @@ test("candidate choice carries exact identity and closes with focus restoration"
   assert.equal(f.controller.hasMenu(), false);
   f.controller.update({ ...f.window.HDReaderOptions.DEFAULT_OPTIONS, audioSources: [] });
   assert.equal(f.controller.selectionFor(v.item.result), null);
+});
+
+test("a failed explicit pronunciation is forgotten so normal Audio can try ordered fallback", async t => {
+  const f = fixture(t), v = f.view();
+  v.bind();
+  v.item.button.dispatchEvent(new f.window.MouseEvent("click", { shiftKey: true }));
+  f.sent[0].resolveReply({ ok: true, groups: [{ sourceId: "json", sourceKey: "source descriptor", type: "custom-json",
+    candidates: [{ url: "https://example.test/bad", name: "Broken" }, { url: "https://example.test/good", name: "Good" }] }] });
+  await settle();
+  f.shadow.querySelector('[role="dialog"] div button').click();
+  f.sent.at(-1).resolveReply({ ok: false, error: "Cannot decode" });
+  await settle();
+  assert.match(v.item.status.textContent, /Cannot decode/u);
+  assert.equal(f.controller.selectionFor(v.item.result), null);
+  v.item.button.click();
+  assert.equal(f.sent.at(-1).selection, undefined);
+  f.sent.at(-1).resolveReply({ ok: true, status: "success" });
+  await settle();
 });
 
 test("autoplay runs once per logical first result and tab, not expansion, Back or option echoes", async t => {
