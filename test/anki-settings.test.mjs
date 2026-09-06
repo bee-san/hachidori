@@ -141,3 +141,21 @@ test("case-only field refresh preserves the focused template row and subsequent 
   assert.equal(f.read().fieldTemplates.front.value, "next {expression}");
   assert.equal(Object.hasOwn(f.read().fieldTemplates, "Front"), false);
 });
+
+test("field-order refresh rearranges surrounding rows without detaching the focused template editor", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" },
+    Back: { value: "{definition}", overwriteMode: "coalesce" } } });
+  discovery(f.sent[0]);
+  await tick();
+  const pending = f.controller.refresh();
+  const editor = f.el("anki-templates").querySelectorAll("textarea")[1];
+  editor.focus();
+  editor.setSelectionRange(2, 5);
+  discovery(f.sent[1], { fields: ["Back", "Front"] });
+  await pending;
+  assert.equal(f.window.document.activeElement, editor);
+  assert.equal(f.el("anki-templates").querySelector("textarea"), editor);
+  assert.equal(editor.selectionStart, 2);
+  assert.equal(editor.selectionEnd, 5);
+});

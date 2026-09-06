@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiAvailability } from "./anki.js";
 import { ankiFieldNames, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
+import { reorderSettingsRows } from "./settings-dom.js";
 
 export function createAnkiSettingsController({ document, readConfig, editConfig, send }) {
   const { ANKI_FIELDS, ANKI_OVERWRITE_MODES } = document.defaultView.HDReaderOptions;
@@ -73,7 +74,6 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     const renamedRows = new Map([...templateRows].filter(([field]) => !retained.has(field))
       .map(([field, row]) => [field.toLowerCase(), row]));
     const container = element("anki-templates");
-    let index = 0;
     for (const [field, template] of templates) {
       if (!templateRows.has(field)) {
         const previous = renamedRows.get(field.toLowerCase());
@@ -93,12 +93,11 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       if (row.mode.disabled === advanced) row.mode.disabled = !advanced;
       const unavailable = resolved.staleFields.includes(field);
       if (row.remove.hidden === unavailable) row.remove.hidden = !unavailable;
-      if (container.children[index] !== row.row) container.insertBefore(row.row, container.children[index] || null);
-      index += 1;
     }
     for (const [field, row] of templateRows) {
       if (!retained.has(field)) { row.row.remove(); templateRows.delete(field); }
     }
+    reorderSettingsRows(container, templates.map(([field]) => templateRows.get(field).row));
     if (element("anki-fields").hidden !== advanced) element("anki-fields").hidden = advanced;
     element("opt-anki-advanced").checked = advanced;
     const canApply = !loading && currentFields().length > 0;
