@@ -14,7 +14,7 @@ export function ankiBrowseQuery(expression) {
 
 export function ankiNoteOptions(config) {
   const root = config.duplicateScope === "deck-root";
-  return { allowDuplicate: !config.checkForDuplicates || config.duplicateBehavior !== "prevent",
+  return { allowDuplicate: !config.checkForDuplicates || config.duplicateBehavior === "new",
     duplicateScope: root ? "deck" : config.duplicateScope,
     duplicateScopeOptions: { deckName: root ? rootDeck(config.deck) : null,
       checkChildren: root, checkAllModels: config.duplicateScopeCheckAllModels } };
