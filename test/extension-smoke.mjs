@@ -823,7 +823,8 @@ async function externalLinksBackgroundStage() {
 
 async function audioRelayStage() {
   const bus = makeBus();
-  const chrome = makeChrome("audio-worker", bus, makeStorage());
+  const storage = makeStorage();
+  const chrome = makeChrome("audio-worker", bus, storage);
   chrome.runtime.getContexts = async () => [{}];
   const sent = [];
   const backoffs = [];
@@ -861,6 +862,57 @@ async function audioRelayStage() {
     stoppedReply.status === "cancelled" && oldReply.status === "cancelled" && current.status === "success"
       && sent.filter(message => message.type === "hd_audio_test").length === 1
       && sent.at(-1).requestId === "current" && sent.at(-1).owner === "settings-b", JSON.stringify(sent));
+
+  await chrome.storage.local.set({ options: { revision: 1, audioSources: [source, { ...source, id: "disabled", enabled: false }] } });
+  const plays = new Map(), progress = [];
+  chrome.tabs = { async sendMessage(tabId, message, options) { progress.push({ tabId, message, options }); } };
+  chrome.runtime.sendMessage = async message => {
+    sent.push(message);
+    if (message.type === "hd_audio_play") return new Promise(resolve => plays.set(message.requestId, resolve));
+    return { ok: true, status: "cancelled" };
+  };
+  const term = { expression: "聞く", reading: "きく" };
+  const play = requestId => bus.sendMessage("reader", { target: "hachidori-audio", type: "hd_audio_play", requestId, term,
+    sources: [{ ...source, id: "forged" }] }, { id: chrome.runtime.id, documentId: "reader-document", tab: { id: 42 } });
+  const notify = (requestId, owner = "reader-document", url = chrome.runtime.getURL("offscreen.html")) => bus.sendMessage("audio-offscreen", {
+    target: "hachidori-audio-events", type: "hd_audio_playing", requestId, owner, sourceId: source.id,
+  }, { id: chrome.runtime.id, url });
+  const firstPlay = play("owned-play");
+  await new Promise(resolve => setImmediate(resolve));
+  const authoritative = sent.at(-1).sources;
+  await notify("owned-play", "another-document");
+  await notify("owned-play", "reader-document", "https://example.test/");
+  await notify("owned-play");
+  const nextPlay = play("newer-play");
+  await new Promise(resolve => setImmediate(resolve));
+  await notify("owned-play");
+  await send("hd_audio_stop", "old-reader-stop", { playRequestId: "owned-play" }, "reader-document");
+  await notify("newer-play");
+  plays.get("owned-play")({ ok: true, status: "cancelled" });
+  plays.get("newer-play")({ ok: true, status: "success" });
+  await Promise.all([firstPlay, nextPlay]);
+  check("popup audio uses authoritative enabled sources and routes progress only to its newest owning document",
+    authoritative.length === 1 && authoritative[0].id === source.id && progress.length === 2
+      && progress.every(value => value.tabId === 42 && value.options.documentId === "reader-document")
+      && progress[0].message.requestId === "owned-play" && progress[1].message.requestId === "newer-play",
+    JSON.stringify({ authoritative, progress }));
+
+  const read = chrome.storage.local.get;
+  let releaseRead;
+  chrome.storage.local.get = async key => {
+    if (key === "options") await new Promise(resolve => { releaseRead = resolve; });
+    return read(key);
+  };
+  const retiredRead = play("retired-read");
+  await new Promise(resolve => setImmediate(resolve));
+  await send("hd_audio_stop", "retire-read", { playRequestId: "retired-read" }, "reader-document");
+  releaseRead();
+  const retiredReply = await retiredRead;
+  chrome.storage.local.get = read;
+  const invalid = await send("hd_audio_play", "invalid-choice", { term, selection: { index: "toString" } });
+  check("Stop retires popup audio awaiting source storage and malformed choices never reach the offscreen player",
+    retiredReply.status === "cancelled" && invalid.ok === false
+      && !sent.some(message => ["retired-read", "invalid-choice"].includes(message.requestId)), JSON.stringify({ retiredReply, invalid }));
 }
 
 async function customBackgroundStage() {
