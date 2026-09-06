@@ -9,9 +9,9 @@
  * class createSourceHighlighter puts on page elements when the Custom Highlight
  * API is unavailable or a range could not be built, so it has to live here too.
  *
- * Colours mirror reader.css's default palette and read
- * `--hoshidicts-palette-primary` first, so a page-level theme override keeps the
- * highlight in step with the popup.
+ * Colours here are the initial default. The shared popup appearance helper
+ * updates an owned CSSOM sheet from the shadow host's selected palette without
+ * modifying the page's html element or inheriting its theme policy.
  *
  * Copyright (C) 2026 Manhhao
  * SPDX-License-Identifier: GPL-3.0-or-later

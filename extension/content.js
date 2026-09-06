@@ -29,7 +29,6 @@
     ["Meta", "metaKey"],
   ]);
 
-  const { width: POPUP_WIDTH_PX, height: POPUP_HEIGHT_PX } = window.HDPopup.DEFAULT_POPUP_SIZE;
   const POPUP_GAP_PX = 4;
   const POPUP_PADDING_PX = 6;
   const MAX_MEDIA_CACHE_BYTES = 16 * 1024 * 1024;
@@ -100,6 +99,7 @@
   }
 
   let disposed = false;
+  let appearance;
   let options = { ...DEFAULT_OPTIONS };
   let dictionaries = [];
   let dictionaryGroups = [];
@@ -782,6 +782,7 @@
     } catch {
       // Teardown is best effort.
     }
+    appearance?.destroy();
     host?.remove();
     host = null;
     shadow = null;
@@ -1062,7 +1063,7 @@
 
   function calculatePopupPosition(anchorRect, viewport, vertical) {
     return window.HDPopup.calculatePopupPosition(anchorRect, {
-      width: POPUP_WIDTH_PX, height: POPUP_HEIGHT_PX,
+      width: options.popupWidthPx, height: options.popupHeightPx,
     }, viewport, { gap: POPUP_GAP_PX, padding: POPUP_PADDING_PX, vertical });
   }
 
@@ -1176,8 +1177,8 @@
         break;
       }
       const anchorRect = anchorRectFor(level.activeCandidate);
-      const width = Math.min(POPUP_WIDTH_PX, window.innerWidth - POPUP_PADDING_PX * 2);
-      const height = Math.min(POPUP_HEIGHT_PX, window.innerHeight - POPUP_PADDING_PX * 2);
+      const width = Math.min(options.popupWidthPx, window.innerWidth - POPUP_PADDING_PX * 2);
+      const height = Math.min(options.popupHeightPx, window.innerHeight - POPUP_PADDING_PX * 2);
       const rightRoom = window.innerWidth - parentRect.right - POPUP_GAP_PX - POPUP_PADDING_PX;
       const leftRoom = parentRect.left - POPUP_GAP_PX - POPUP_PADDING_PX;
       const preferredLeft = rightRoom >= width || rightRoom >= leftRoom
@@ -1270,6 +1271,8 @@
     }
 
     document.body.appendChild(host);
+    appearance = window.HDPopup.createPopupAppearance(host);
+    appearance.update(options);
 
     highlighter = window.HDPopup.createSourceHighlighter(
       window,
@@ -1326,7 +1329,7 @@
       queueMasonry: (layout) => queueMasonry(level, layout),
       cancelMasonry: (layout) => cancelMasonry(level, layout),
       sourceHighlighter: level.highlighter,
-      sourceHighlightEnabled: true,
+      sourceHighlightEnabled: options.sourceHighlightEnabled,
       toolbarPosition: "top",
       window,
     });
@@ -1657,6 +1660,7 @@
         ...renderContextFor(level),
         ...renderOptions,
         ...replayOptions,
+        highlightText: matchedText,
         isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken,
         isCurrentView: () => !disposed && !level.retired && level.currentViewRequest === request
           && (token === level.lookupToken || level.retainedView),
@@ -1670,12 +1674,6 @@
       return;
     }
     level.activeHighlightText = matchedText;
-    if (matchedText) {
-      // renderResults already applied the engine's `matched` string; re-apply
-      // with the raw-sentence span so ruby and wrapped lines highlight exactly
-      // the characters the reader sees.
-      level.highlighter.apply(candidate, matchedText);
-    }
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
     if (!replayOptions?.preserveViewControls && typeof renderOptions.onBack === "function"
@@ -2441,6 +2439,8 @@
     const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
     const columnsChanged = next.popupColumns !== options.popupColumns;
+    const sizeChanged = next.popupWidthPx !== options.popupWidthPx || next.popupHeightPx !== options.popupHeightPx;
+    const highlightChanged = next.sourceHighlightEnabled !== options.sourceHighlightEnabled;
     const summaryChanged = next.showCompactDefinitionSummary !== options.showCompactDefinitionSummary
       || next.compactDefinitionSummaryCount !== options.compactDefinitionSummaryCount
       || next.compactDefinitionSummaryDictionary !== options.compactDefinitionSummaryDictionary;
@@ -2455,8 +2455,12 @@
     }
     optionsStorageRevision = revision;
     options = next;
+    appearance?.update(options);
+    if (highlightChanged) {
+      for (const level of levels) level.view?.setSourceHighlightEnabled(options.sourceHighlightEnabled);
+    }
     if (levels.length > options.popupNestingMaxDepth + 1) pruneLevels(options.popupNestingMaxDepth + 1);
-    if (columnsChanged && options.hoverEnabled) {
+    if ((columnsChanged || sizeChanged) && options.hoverEnabled) {
       for (const level of levels) {
         if (!level.popup?.hidden) level.view?.scheduleMasonry();
       }

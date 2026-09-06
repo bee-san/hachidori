@@ -4357,7 +4357,11 @@ async function main() {
     preview?.sample === true && preview.note === true && preview.back === true, JSON.stringify(preview));
   check("Design updates presentation without rebuilding cards and skips unchanged option echoes",
     preview?.incremental === true && preview.routing === true, JSON.stringify(preview));
+  check("live preview appearance preserves cards and drafts while term and kanji highlights toggle exactly",
+    preview?.appearance === true && preview.highlight === true, JSON.stringify(preview));
   const frequencySettings = await settingsFrequencyStage();
+  check("Design resets only its shared appearance and content keys through one sparse options write",
+    frequencySettings?.designReset === true, JSON.stringify(frequencySettings));
   check("Settings derives frequency direction only on dictionary selection or explicit Auto",
     frequencySettings?.explicit === true, JSON.stringify(frequencySettings));
   check("frequency controls preserve unavailable selections and revision-bound native drafts",
@@ -5100,6 +5104,8 @@ async function designPreviewStage() {
   try {
     window.fetch = async () => ({ blob: async () => new window.Blob([readFileSync(resolve(EXTENSION, "sample-meal.svg"))], { type: "image/svg+xml" }) });
     window.URL.createObjectURL = () => "blob:sample-meal";
+    window.CSS = { highlights: new Map() };
+    window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
     for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "design-preview.js"]) {
       window.eval(readFileSync(resolve(EXTENSION, file), "utf8"));
     }
@@ -5131,6 +5137,24 @@ async function designPreviewStage() {
     await settle();
     incremental &&= mutations === 0;
     observer.disconnect();
+    options = { ...options, popupTheme: "miku", popupWidthPx: 720, popupHeightPx: 500, popupOpacityPercent: 0,
+      sourceHighlightEnabled: false };
+    update();
+    await settle();
+    const host = window.document.getElementById("preview-host");
+    const appearance = host.dataset.hoshidictsTheme === "miku"
+      && host.style.getPropertyValue("--gsm-hoshidicts-popup-opacity") === "0%"
+      && host.style.getPropertyValue("--gsm-hoshidicts-popup-width") === "720px"
+      && popup.style.width === "720px" && popup.style.height === "500px"
+      && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form
+      && form.elements.definition.value === "A preview draft"
+      && !window.document.documentElement.hasAttribute("data-hoshidicts-theme");
+    let highlight = !window.CSS.highlights.has("gsm-hoshidicts-match");
+    const highlightedText = () => [...(window.CSS.highlights.get("gsm-hoshidicts-match") || [])]
+      .map(range => range.toString()).join("");
+    options = { ...options, sourceHighlightEnabled: true };
+    update();
+    highlight &&= highlightedText() === "食べる";
     form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
     await settle();
     const note = popup.textContent.includes("This is a preview. Notes are not saved.")
@@ -5150,6 +5174,12 @@ async function designPreviewStage() {
     query(".gsm-hoshidicts-kanji-link").click();
     const kanji = query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
       && popup.textContent.includes("ショク");
+    options = { ...options, sourceHighlightEnabled: false };
+    update();
+    highlight &&= !window.CSS.highlights.has("gsm-hoshidicts-match");
+    options = { ...options, sourceHighlightEnabled: true };
+    update();
+    highlight &&= highlightedText() === "食べる";
     query(".gsm-hoshidicts-kanji-back").click();
     await settle();
     const back = kanji && query('[role="tab"][aria-selected="true"]')?.textContent === tab.textContent
@@ -5159,7 +5189,8 @@ async function designPreviewStage() {
     update();
     await settle();
     const routing = query(".gloss-image-link")?.dataset.imageLoadState === "load-error";
-    return { sample, note, back, incremental, routing };
+    highlight &&= highlightedText() === "食べる";
+    return { sample, note, back, incremental, routing, appearance, highlight };
   } finally { window.close(); }
 }
 
@@ -5435,7 +5466,20 @@ async function settingsFrequencyStage() {
         && pitch.selectedOptions[0].textContent.includes("unavailable"));
       metadata = metadataDetails.every(Boolean);
     }
-    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails,
+    emitOptions({ popupTheme: "miku", popupWidthPx: 900, popupHeightPx: 700, popupOpacityPercent: 0,
+      sourceHighlightEnabled: false, popupColumns: 4, scanLength: 24, frequencyOrder: "disabled",
+      kanjiClickDictionary: { title: "Rank", kind: "term" } });
+    const beforeReset = { ...storedOptions };
+    const beforeResetCount = writes.length;
+    window.document.getElementById("reset-design").click();
+    await until(() => writes.length === beforeResetCount + 1 && status() === "Saved.");
+    const { DESIGN_OPTION_KEYS, DEFAULT_OPTIONS } = window.HDReaderOptions;
+    const designReset = DESIGN_OPTION_KEYS.every(key => JSON.stringify(storedOptions[key] ?? DEFAULT_OPTIONS[key])
+        === JSON.stringify(DEFAULT_OPTIONS[key]))
+      && Object.keys(beforeReset).filter(key => key !== "revision" && !DESIGN_OPTION_KEYS.includes(key))
+        .every(key => JSON.stringify(storedOptions[key]) === JSON.stringify(beforeReset[key]))
+      && Object.keys(writes.at(-1).options).every(key => DESIGN_OPTION_KEYS.includes(key));
+    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {

@@ -26,6 +26,7 @@ const WORKER_TARGET = "hoshidicts-worker";
 const UPDATE_TARGET = "hachidori-updates";
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+  POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
   clampOption, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
@@ -41,6 +42,9 @@ const NUMBER_FIELDS = [
   { key: "popupNestingMaxDepth", id: "opt-popup-nesting-depth" },
   { key: "popupColumns", id: "opt-popup-columns" },
   { key: "compactDefinitionSummaryCount", id: "opt-summary-count" },
+  { key: "popupWidthPx", id: "opt-popup-width", live: true },
+  { key: "popupHeightPx", id: "opt-popup-height", live: true },
+  { key: "popupOpacityPercent", id: "opt-popup-opacity", live: true },
 ];
 const METADATA_FIELDS = [
   { key: "showFrequencyDictionaryNames", id: "opt-frequency-names" },
@@ -176,14 +180,16 @@ function updateDesignPreview() {
       new ResizeObserver(resizeDesignPreview).observe(element("preview-viewport"));
     }
   }
+  if (frame.style.width !== `${options.popupWidthPx + 96}px`
+      || frame.style.height !== `${options.popupHeightPx + 136}px`) resizeDesignPreview();
   frame.contentWindow.HDDesignPreview?.update(options, dictionaryState);
 }
 
 function resizeDesignPreview() {
   const viewport = element("preview-viewport");
   const frame = element("design-preview");
-  const width = 656;
-  const height = 556;
+  const width = options.popupWidthPx + 96;
+  const height = options.popupHeightPx + 136;
   const scale = element("preview-size").value === "actual" ? 1 : Math.min(1, viewport.clientWidth / width);
   frame.style.width = `${width}px`;
   frame.style.height = `${height}px`;
@@ -1020,6 +1026,17 @@ function renderOptions() {
   }
   element("opt-hover-enabled").checked = options.hoverEnabled;
   element("opt-japanese-only").checked = options.onlyScanJapaneseText;
+  element("opt-source-highlight").checked = options.sourceHighlightEnabled;
+  const theme = element("opt-popup-theme");
+  if (theme.options.length === 0) {
+    for (const group of POPUP_THEME_GROUPS) {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = group.label;
+      for (const entry of group.themes) optgroup.append(new Option(entry.label, entry.id));
+      theme.append(optgroup);
+    }
+  }
+  if (theme !== document.activeElement) theme.value = options.popupTheme;
   const mode = element("opt-lookup-mode");
   if (mode !== document.activeElement) mode.value = options.lookupMode;
   const activation = element("opt-activation-key");
@@ -1990,6 +2007,19 @@ function attachHandlers() {
     options.hoverEnabled = event.target.checked;
     writeOptions();
   });
+  element("opt-popup-theme").addEventListener("change", (event) => {
+    options.popupTheme = event.target.value;
+    writeOptions();
+  });
+  element("opt-source-highlight").addEventListener("change", (event) => {
+    options.sourceHighlightEnabled = event.target.checked;
+    writeOptions();
+  });
+  element("reset-design").addEventListener("click", () => {
+    for (const key of DESIGN_OPTION_KEYS) options[key] = DEFAULT_OPTIONS[key];
+    renderOptions();
+    writeOptions();
+  });
   for (const field of METADATA_FIELDS) {
     element(field.id).addEventListener("change", (event) => {
       options[field.key] = field.inverted ? !event.target.checked : event.target.checked;
@@ -2056,6 +2086,11 @@ function attachHandlers() {
     section.addEventListener("input", (event) => {
       if (!event.target.id.startsWith("opt-")) return;
       optionsEditRevision ??= Math.max(0, optionsRevision);
+      const field = NUMBER_FIELDS.find(({ id, live }) => live && id === event.target.id);
+      if (field && event.target.value !== "" && event.target.validity.valid) {
+        options[field.key] = Number(event.target.value);
+        writeOptions();
+      }
     });
     section.addEventListener("change", () => {
       optionsEditRevision = null;

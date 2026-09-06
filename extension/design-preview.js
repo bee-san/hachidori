@@ -2,7 +2,9 @@
 // Static, local sample data; the view itself is the production popup renderer.
 (function () {
   "use strict";
-  const shadow = document.getElementById("preview-host").attachShadow({ mode: "open" });
+  const host = document.getElementById("preview-host");
+  const shadow = host.attachShadow({ mode: "open" });
+  const appearance = HDPopup.createPopupAppearance(host);
   const stylesheet = document.createElement("link");
   stylesheet.rel = "stylesheet";
   stylesheet.href = "render/reader.css";
@@ -26,7 +28,7 @@
 
   function positionPopup() {
     const position = HDPopup.calculatePopupPosition(source.getBoundingClientRect(),
-      HDPopup.DEFAULT_POPUP_SIZE, { width: innerWidth, height: innerHeight });
+      { width: options.popupWidthPx, height: options.popupHeightPx }, { width: innerWidth, height: innerHeight });
     for (const key of ["left", "top", "width", "height"]) popup.style[key] = `${position[key]}px`;
     view.setToolbarPosition(position.placement === "above" ? "bottom" : "top");
   }
@@ -122,12 +124,19 @@
   }
 
   window.HDDesignPreview = { update(nextOptions, nextState) {
-    const key = JSON.stringify([HDPopup.metadataOptions(nextOptions), nextOptions.popupColumns,
+    const geometryChanged = !options || options.popupColumns !== nextOptions.popupColumns
+      || options.popupWidthPx !== nextOptions.popupWidthPx || options.popupHeightPx !== nextOptions.popupHeightPx;
+    if (!options || options.sourceHighlightEnabled !== nextOptions.sourceHighlightEnabled) {
+      view.setSourceHighlightEnabled(nextOptions.sourceHighlightEnabled);
+    }
+    appearance.update(nextOptions);
+    options = { ...nextOptions };
+    if (geometryChanged) view.scheduleMasonry();
+    const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
       nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextState.revision]);
     if (key === updateKey) return;
     updateKey = key;
-    options = { ...nextOptions };
     state = nextState;
     const nextSources = HDReaderOptions.resolvePopupImageSources(options.popupImageSource, state.dictionaries, state.groups);
     if (JSON.stringify(nextSources) !== JSON.stringify(imageSources)) imageSources = nextSources;
@@ -139,8 +148,7 @@
       sampleKey = nextSampleKey;
       renderSample(true);
     } else view.updateDictionaryPresentation(context());
-    view.scheduleMasonry();
   } };
-  stylesheet.addEventListener("load", () => view.scheduleMasonry());
-  window.addEventListener("pagehide", () => view.destroy(), { once: true });
+  stylesheet.addEventListener("load", () => { appearance.refreshHighlight(); view.scheduleMasonry(); });
+  window.addEventListener("pagehide", () => { appearance.destroy(); view.destroy(); }, { once: true });
 }());
