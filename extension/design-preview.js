@@ -21,6 +21,7 @@
   let updateKey;
   let imageSources = null;
   let kanjiCharacter = null;
+  let kanjiSource = null;
   let termView;
   let selectedDictionaryTab = null;
   let sampleMedia = null;
@@ -108,6 +109,7 @@
   function renderSample(preserveViewControls = false) {
     if (kanjiCharacter) {
       const capability = HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, state.dictionaries);
+      kanjiSource = capability;
       const renderContext = { ...context(), preserveViewControls, highlightText: candidate.query, onBack() {
         kanjiCharacter = null;
         renderSample();
@@ -135,8 +137,6 @@
   }
 
   window.HDDesignPreview = { update(nextOptions, nextState) {
-    const kanjiSourceChanged = JSON.stringify(options?.kanjiClickDictionary) !== JSON.stringify(nextOptions.kanjiClickDictionary)
-      || state?.revision !== nextState.revision;
     const geometryChanged = !options || options.popupColumns !== nextOptions.popupColumns
       || options.popupWidthPx !== nextOptions.popupWidthPx || options.popupHeightPx !== nextOptions.popupHeightPx;
     if (!options || options.sourceHighlightEnabled !== nextOptions.sourceHighlightEnabled) {
@@ -156,9 +156,12 @@
     const nextSample = createSample();
     const nextSampleKey = JSON.stringify(nextSample.results);
     sample = nextSample;
-    if (sampleKey !== nextSampleKey || (kanjiCharacter && kanjiSourceChanged)) {
+    const changed = kanjiCharacter
+      ? JSON.stringify(kanjiSource) !== JSON.stringify(HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, state.dictionaries))
+      : sampleKey !== nextSampleKey;
+    sampleKey = nextSampleKey;
+    if (changed) {
       if (!kanjiCharacter) termView = { ...view.captureTermView(), selectedDictionaryTab };
-      sampleKey = nextSampleKey;
       renderSample(true);
     } else view.updateDictionaryPresentation(context());
   } };

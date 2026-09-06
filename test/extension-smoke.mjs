@@ -5190,6 +5190,12 @@ async function designPreviewStage() {
     let kanjiSource = popup.textContent.includes("sample single-kanji entry")
       && query(".gsm-hoshidicts-glossary-card").textContent.includes("Second")
       && query("form") === kanjiNote && highlightedText() === "食べる";
+    const kanjiCard = query(".gsm-hoshidicts-glossary-card");
+    kanjiCard.open = false;
+    state = { ...state, revision: 2, dictionaries: state.dictionaries.map(entry => entry.id === "first"
+      ? { ...entry, displayName: "Unrelated renamed dictionary" } : entry) };
+    update();
+    kanjiSource &&= query(".gsm-hoshidicts-glossary-card") === kanjiCard && !kanjiCard.open;
     options = { ...options, kanjiClickDictionary: { title: "Second", kind: "kanji" } };
     update();
     kanjiSource &&= query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
@@ -5198,7 +5204,7 @@ async function designPreviewStage() {
     kanjiNote.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     query(".gsm-hoshidicts-kanji-back").click();
     await settle();
-    const back = kanji && query('[role="tab"][aria-selected="true"]')?.textContent === tab.textContent
+    const back = kanji && query('[role="tab"][aria-selected="true"]')?.dataset.dictionary === tab.dataset.dictionary
       && query(".gsm-hoshidicts-glossary-card").open === false;
     popup.querySelectorAll('[role="tab"]')[0].click();
     options = { ...options, popupImageSource: { kind: "tabGroup", id: "missing" } };
@@ -5482,15 +5488,21 @@ async function settingsFrequencyStage() {
         && pitch.selectedOptions[0].textContent.includes("unavailable"));
       metadata = metadataDetails.every(Boolean);
     }
+    const theme = window.document.getElementById("opt-popup-theme");
+    theme.focus();
+    const previousTheme = theme.value;
     emitOptions({ popupTheme: "miku", popupWidthPx: 900, popupHeightPx: 700, popupOpacityPercent: 0,
       sourceHighlightEnabled: false, popupColumns: 4, scanLength: 24, frequencyOrder: "disabled",
       kanjiClickDictionary: { title: "Rank", kind: "term" } });
+    const focusedThemeKept = theme.value === previousTheme;
+    theme.blur();
+    const themeRefreshed = focusedThemeKept && theme.value === "miku";
     const beforeReset = { ...storedOptions };
     const beforeResetCount = writes.length;
     window.document.getElementById("reset-design").click();
     await until(() => writes.length === beforeResetCount + 1 && status() === "Saved.");
     const { DESIGN_OPTION_KEYS, DEFAULT_OPTIONS } = window.HDReaderOptions;
-    const designReset = DESIGN_OPTION_KEYS.every(key => JSON.stringify(storedOptions[key] ?? DEFAULT_OPTIONS[key])
+    const designReset = themeRefreshed && DESIGN_OPTION_KEYS.every(key => JSON.stringify(storedOptions[key] ?? DEFAULT_OPTIONS[key])
         === JSON.stringify(DEFAULT_OPTIONS[key]))
       && Object.keys(beforeReset).filter(key => key !== "revision" && !DESIGN_OPTION_KEYS.includes(key))
         .every(key => JSON.stringify(storedOptions[key]) === JSON.stringify(beforeReset[key]))

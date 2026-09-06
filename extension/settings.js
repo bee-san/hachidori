@@ -2101,6 +2101,7 @@ function attachHandlers() {
       if (event.target.id === "opt-image-source") renderPopupImageSources();
       if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
       if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
+      if (event.target.id === "opt-popup-theme") event.target.value = options.popupTheme;
       const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
       if (field) event.target.value = String(options[field.key]);
     });
