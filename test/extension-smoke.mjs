@@ -1499,7 +1499,7 @@ async function customEngineStage() {
 function loadSettingsScript(window) {
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8").replace(/^export\s+/gmu, "");
   const ankiSettings = readFileSync(resolve(EXTENSION, "anki-settings.js"), "utf8")
-    .replace(/import \{ ankiAvailability \} from "\.\/anki\.js";\s*/u, "").replace(/^export\s+/gmu, "");
+    .replace(/import \{ ankiAvailability, ankiFieldNames \} from "\.\/anki\.js";\s*/u, "").replace(/^export\s+/gmu, "");
   const audioSettings = readFileSync(resolve(EXTENSION, "audio-settings.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");

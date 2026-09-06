@@ -65,6 +65,10 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 1250 }
 
 // Shared by Settings and authoritative mining readiness checks. Validation
 // reports missing choices instead of changing a saved or in-progress mapping.
+export function ankiFieldNames(fields) {
+  return new Map(fields.map(field => [field.toLowerCase(), field]));
+}
+
 export function ankiAvailability(config, discovery) {
   if (!discovery) return ["Refresh Anki to check this configuration."];
   if (!discovery.connected) return discovery.errors;
@@ -72,7 +76,7 @@ export function ankiAvailability(config, discovery) {
   if (!discovery.decks.includes(config.deck)) errors.push("Choose an available deck.");
   if (!discovery.models.includes(config.model)) errors.push("Choose an available note type.");
   if (config.model !== discovery.model) return [...errors, "Refresh fields for the selected note type."];
-  const fields = new Map(discovery.fields.map(field => [field.toLowerCase(), field]));
+  const fields = ankiFieldNames(discovery.fields);
   const mapped = Object.values(config.fields).filter(Boolean);
   for (const field of new Set(mapped)) {
     if (!fields.has(field.toLowerCase())) errors.push(`Mapped field “${field}” is unavailable.`);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { ankiAvailability } from "./anki.js";
+import { ankiAvailability, ankiFieldNames } from "./anki.js";
 
 export function createAnkiSettingsController({ document, readConfig, editConfig, send }) {
   const { ANKI_FIELDS } = document.defaultView.HDReaderOptions;
@@ -16,13 +16,13 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     render();
   }
 
-  function selectChoices(id, names, value, placeholder) {
+  function selectChoices(id, names, value, placeholder, canonical = "") {
     const select = element(id);
     if (select === document.activeElement) return;
-    const key = JSON.stringify([names, value]);
+    const key = JSON.stringify([names, value, canonical]);
     if (selects.get(select) === key) return;
-    const choices = [["", placeholder], ...names.map(name => [name, name])];
-    if (value && !names.includes(value)) choices.push([value, `${value} (unavailable)`]);
+    const choices = [["", placeholder], ...names.filter(name => name !== canonical || name === value).map(name => [name, name])];
+    if (value && !names.includes(value)) choices.push([value, canonical || `${value} (unavailable)`]);
     select.replaceChildren(...choices.map(([name, label]) => new document.defaultView.Option(label, name)));
     select.value = value;
     selects.set(select, key);
@@ -71,7 +71,9 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     selectChoices("opt-anki-deck", discovery?.decks || [], config.deck, "Choose a deck");
     selectChoices("opt-anki-model", discovery?.models || [], config.model, "Choose a note type");
     const fields = discovery?.model === config.model ? discovery.fields : [];
-    for (const key of ANKI_FIELDS) selectChoices(`opt-anki-field-${key}`, fields, config.fields[key], "Disabled");
+    const fieldNames = ankiFieldNames(fields);
+    for (const key of ANKI_FIELDS) selectChoices(`opt-anki-field-${key}`, fields, config.fields[key], "Disabled",
+      fieldNames.get(config.fields[key].toLowerCase()));
     for (const [key, id] of controls) {
       const control = element(id);
       if (control === document.activeElement) continue;
