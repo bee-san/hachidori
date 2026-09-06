@@ -1146,6 +1146,10 @@
     }
 
     function scheduleMasonry() {
+      if (options.queueMasonry) {
+        options.queueMasonry(layoutMasonry);
+        return;
+      }
       if (masonryFrame !== null) {
         return;
       }
@@ -1220,20 +1224,62 @@
       return definitionBlurState;
     }
 
-    function clear() {
+    function clear(preserveViewControls = false) {
       hideImagePreview();
       renderRevision += 1;
       currentResultPanel = null;
-      currentNoteControls?.close(false);
-      currentNoteControls = null;
+      if (!preserveViewControls) {
+        currentNoteControls?.close(false);
+        currentNoteControls = null;
+      }
       sourceHighlighter.clear();
       currentSourceHighlight = null;
       currentToolbar = null;
       masonryObserver?.disconnect();
-      popup.replaceChildren();
+      const retainedForm = currentNoteControls?.form;
+      if (retainedForm?.parentNode === popup) {
+        // Keep the live form mounted: detaching it loses focus and selection.
+        for (const child of [...popup.childNodes]) {
+          if (child !== retainedForm) child.remove();
+        }
+      } else {
+        popup.replaceChildren();
+      }
       // A hidden retirement needs no layout; the next visible render resets it.
-      if (!popup.hidden) popup.scrollTop = 0;
+      if (!popup.hidden && !preserveViewControls) popup.scrollTop = 0;
       setDefinitionBlurState("revealed");
+    }
+
+    function mountResultChrome(toolbar, content) {
+      const form = currentNoteControls?.form;
+      if (form?.parentNode === popup) {
+        if (toolbarPosition === "bottom") {
+          popup.prepend(content);
+          popup.append(toolbar);
+        } else {
+          popup.prepend(toolbar);
+          popup.append(content);
+        }
+      } else {
+        popup.append(toolbar, content);
+      }
+      setRenderedToolbar(toolbar);
+    }
+
+    function retainedFocus(preserveViewControls) {
+      if (!preserveViewControls) return null;
+      const focused = popup.getRootNode().activeElement;
+      if (!popup.contains(focused)) return null;
+      if (focused.matches('[role="tab"]')) return '[role="tab"][aria-selected="true"]';
+      if (focused.matches(".gsm-hoshidicts-kanji-back")) return ".gsm-hoshidicts-kanji-back";
+      return focused;
+    }
+
+    function restoreRetainedFocus(focused) {
+      const control = typeof focused === "string" ? popup.querySelector(focused) : focused;
+      if (!control || !popup.contains(control)) return;
+      if (popup.getRootNode().activeElement !== control) control.focus();
+      control.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     }
 
     function runRenderAction(isCurrent, renderContext, action) {
@@ -1251,7 +1297,16 @@
       return currentResultPanel === panel && renderContext.isCurrentRequest?.() !== false;
     }
 
+    function ownsDisplayedPanel(panel, renderContext) {
+      const isCurrent = renderContext.isCurrentView || renderContext.isCurrentRequest;
+      return currentResultPanel === panel && isCurrent?.() !== false;
+    }
+
     function createNoteControls(readPrefill) {
+      if (currentNoteControls) {
+        currentNoteControls.setPrefillReader(readPrefill);
+        return currentNoteControls;
+      }
       const button = documentRef.createElement("button");
       button.type = "button";
       button.className = "gsm-hoshidicts-note-button";
@@ -1272,7 +1327,7 @@
       let editor = null;
       button.addEventListener("click", () => {
         if (!editor) {
-          editor = createNoteForm(button, readPrefill);
+          editor = createNoteForm(button, () => readPrefill());
           applyToolbarLayout();
         }
         if (editor.form.hidden) editor.open();
@@ -1282,6 +1337,7 @@
         actions,
         button,
         close: (restoreFocus) => editor?.close(restoreFocus) ?? false,
+        setPrefillReader(value) { readPrefill = value; },
         get form() { return editor?.form ?? null; },
       };
     }
@@ -1747,6 +1803,7 @@
     ) {
       const revision = ++renderRevision;
       const isCurrent = () => revision === renderRevision && ownsResultPanel(panel, renderContext);
+      const isCurrentLink = () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext);
       const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
       hideImagePreview();
       panel.replaceChildren();
@@ -1895,6 +1952,7 @@
                 dictionary,
                 generation: renderContext.generation,
                 isCurrent,
+                isCurrentLink,
                 onExternalLink: renderContext.onExternalLink,
                 onInternalLink: renderContext.onInternalLink,
                 onLayoutChange: positionIfCurrent,
@@ -1946,18 +2004,24 @@
         }
       }
 
-      results.slice(0, initialResultCount).forEach(appendResult);
+      const visibleCount = renderContext.expandAll === true ? results.length : initialResultCount;
+      results.slice(0, visibleCount).forEach(appendResult);
       flushDeferredGlossaries();
 
-      if (results.length > initialResultCount) {
+      if (results.length > visibleCount) {
         const showMore = documentRef.createElement("button");
         showMore.type = "button";
         showMore.className = "gsm-hoshidicts-show-more";
-        showMore.textContent = `Show ${results.length - initialResultCount} more`;
-        showMore.addEventListener("click", () => runRenderAction(isCurrent, renderContext, () => {
+        showMore.textContent = `Show ${results.length - visibleCount} more`;
+        showMore.addEventListener("click", () => runRenderAction(
+          () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
+          if (!isCurrent()) {
+            onBeforeResultsRendered({ expandAll: true });
+            return;
+          }
           showMore.remove();
-          results.slice(initialResultCount).forEach((result, resultIndex) => {
-            appendResult(result, resultIndex + initialResultCount);
+          results.slice(visibleCount).forEach((result, resultIndex) => {
+            appendResult(result, resultIndex + visibleCount);
           });
           flushDeferredGlossaries();
           onResultsExpanded();
@@ -1980,7 +2044,8 @@
     }
 
     function renderKanji(kanji, candidate, renderOptions = {}) {
-      clear();
+      const focused = retainedFocus(renderOptions.preserveViewControls);
+      clear(renderOptions.preserveViewControls);
       const noteControls = createNoteControls(() => ({
         term: kanji.character,
         reading: "",
@@ -2013,7 +2078,7 @@
       navigation.appendChild(glyph);
       primaryHeader.append(navigation, noteControls.actions);
       const toolbar = createResultChrome(primaryHeader);
-      popup.append(toolbar);
+      const entries = documentRef.createDocumentFragment();
 
       for (const kanjiEntry of kanji.entries) {
         const entry = documentRef.createElement("article");
@@ -2089,10 +2154,10 @@
           details.appendChild(list);
           entry.appendChild(details);
         }
-        popup.appendChild(entry);
+        entries.appendChild(entry);
       }
 
-      setRenderedToolbar(toolbar);
+      mountResultChrome(toolbar, entries);
 
       if (sourceHighlightEnabled) {
         sourceHighlighter.apply(
@@ -2100,10 +2165,15 @@
           renderOptions.highlightText || kanji.character
         );
       }
+      if (focused) {
+        positionPopup();
+        restoreRetainedFocus(focused);
+      }
     }
 
     function renderResults(results, candidate, renderContext = {}) {
-      clear();
+      const focused = retainedFocus(renderContext.preserveViewControls);
+      clear(renderContext.preserveViewControls);
       setDefinitionBlurState(renderContext.definitionBlurState);
       const dictionaries = collectGlossaryDictionaries(results);
       const dictionaryPresentation = Array.isArray(
@@ -2215,8 +2285,7 @@
       }));
       currentNoteControls = noteControls;
       const toolbar = createResultChrome(primaryHeader, metadataStrip);
-      popup.append(toolbar, panel);
-      setRenderedToolbar(toolbar);
+      mountResultChrome(toolbar, panel);
 
       const tabButtons = [];
       const requestedTab = isRecord(renderContext.selectedDictionaryTab)
@@ -2276,6 +2345,10 @@
           );
         }
         if (hasRendered && !selectionChanged) {
+          if (!ownsView()) {
+            onBeforeResultsRendered();
+            return;
+          }
           if (
             button && !popup.hidden
             && typeof button.scrollIntoView === "function"
@@ -2285,9 +2358,9 @@
           return;
         }
         if (hasRendered) {
-          onBeforeResultsRendered();
+          if (onBeforeResultsRendered() === false) return;
         }
-        popup.scrollTop = 0;
+        if (hasRendered || !renderContext.preserveViewControls) popup.scrollTop = 0;
         const selectedDictionaries = tabDescriptors[selectedIndex].dictionaries;
         const projectedResults = projectResults(results, selectedDictionaries);
         projectedPrimary = projectedResults[0] || null;
@@ -2298,6 +2371,7 @@
           {
             ...renderContext,
             noteControls,
+            expandAll: !hasRendered && renderContext.expandAll === true,
             // Lookup statistics describe the first unfiltered result. Keep the
             // line on the All tab so a dictionary projection cannot attach the
             // original term's count to a different expression.
@@ -2321,7 +2395,7 @@
       }
 
       function activateTabFromEvent(index, focusButton = false) {
-        runRenderAction(ownsView, renderContext, () => activateTab(index, focusButton));
+        runRenderAction(() => ownsDisplayedPanel(panel, renderContext), renderContext, () => activateTab(index, focusButton));
       }
 
       tabDescriptors.forEach((descriptor, index) => {
@@ -2383,6 +2457,7 @@
       }, { passive: false });
 
       activateTab(selectedIndex);
+      restoreRetainedFocus(focused);
       return rendered;
     }
 
@@ -2404,6 +2479,7 @@
         hideImagePreview();
         renderRevision += 1;
         currentResultPanel = null;
+        options.cancelMasonry?.(layoutMasonry);
         if (masonryFrame !== null) {
           windowRef.cancelAnimationFrame(masonryFrame);
           masonryFrame = null;

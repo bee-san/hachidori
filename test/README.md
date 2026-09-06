@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 282 checks, all of
+full request→reply round trip per contract-C message type. 295 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -436,6 +436,21 @@ What it proves, in order:
    Worker checks reject invalid URLs/senders before tab creation and bypass held
    storage writes without waking the engine. Failed or missing navigation replies
    do not retry, replace the lookup or discard an open Note draft.
+   Internal anchors preserve exact linked query/reading and share connected/current
+   ownership checks; an enclosing structured anchor cannot dispatch a second lookup.
+   Level-aware content checks cover same-link reuse, descendant-only pruning,
+   child-local kanji Back, viewport/depth changes, protected pointer transfer,
+   retired callbacks and replies, and non-monotonic engine generations. Parent
+   and child Note appends complete with reversed replies/storage events without
+   losing drafts, duplicating appends, or reviving a retired depth. Queued shared
+   media remains live while any owning popup still needs it.
+   Same-view refresh keeps the actual mounted Note form, pending save and
+   response-time focus; held failures/misses preserve protected drafts. Repeated
+   stale tab/Show-more actions share the current replay without reviving old
+   resources or leaking transient control preservation into ordinary Back.
+   Four real renderer resize/observer callbacks retain per-pane masonry but
+   position the chain once per deferred pass. Narrow-width recomputation,
+   root-only timing, owner retirement and shared-frame cancellation are pinned.
    Media tests also pin exact UTF-8 reference and 6 MiB complete-reply boundaries,
    embedded-NUL prefix rejection, bounded correlation on early relay failures,
    and actual oversized native errors without capping archive imports.
@@ -528,7 +543,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 106 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 107 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -593,6 +608,16 @@ covering them; opening Note keeps its focused input visible. The viewport and
 focus are restored before the remaining hover tests.
 `HACHIDORI_DEINFLECTION_SCREENSHOT` captures the expanded desktop popup.
 
+The exported `nestedLinksFixture()` supplies three linked term rows and one
+shared deterministic PNG without changing the ordinary fixture counts. The
+real-WASM Chrome chain assertion exercises mouse return versus keyboard focus,
+independent parent/child Note drafts and Escape, same-level kanji Back followed
+by child Back, live depth lowering/zero, and narrow-window geometry. Reimports
+and held service-worker replies also prove top/bottom Note forms stay mounted,
+focused and reachable, and a still-focused tab survives same-view refresh.
+`HACHIDORI_NESTED_SCREENSHOT` captures the three-pane chain;
+`HACHIDORI_OPTIONS_SCREENSHOT` also includes the saved child-depth setting.
+
 The real browser also changes hover enablement and activation controls from
 Settings while the reading tab remains open. It proves close/re-enable without
 engine reload, stationary printable-key activation with open delay, delayed hide
@@ -643,7 +668,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 106 assertions, and the summary line
+`PLANNED` at the top of the file names all 107 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

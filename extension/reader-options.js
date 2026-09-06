@@ -14,6 +14,7 @@
     activationKey: "Shift",
     hoverDelayMs: 50,
     popupHideDelayMs: 160,
+    popupNestingMaxDepth: 10,
     kanjiClickDictionary: "",
     frequencyDictionary: "",
     frequencyOrder: "auto",
@@ -23,6 +24,7 @@
     maxResults: [1, 256],
     hoverDelayMs: [0, 2000],
     popupHideDelayMs: [0, 5000],
+    popupNestingMaxDepth: [0, Number.MAX_SAFE_INTEGER],
   };
   const LEGACY_MODIFIERS = new Map([["none", "Shift"], ["shift", "Shift"], ["ctrl", "Control"], ["alt", "Alt"]]);
   const LOOKUP_MODES = ["hover", "activation"];

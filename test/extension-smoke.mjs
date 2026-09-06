@@ -1411,6 +1411,21 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && legacyPatch.lookupMode === "activation" && legacyPatch.activationKey === "Shift"
         && legacyPatch.modifier === undefined && invalidActivation,
       JSON.stringify({ plain, held, explicit, legacyPatch, invalidActivation }));
+    const depths = [];
+    for (const depth of [0, 2, Number.MAX_SAFE_INTEGER]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupNestingMaxDepth: depth }));
+      depths.push(reply.ok === true && reply.options?.popupNestingMaxDepth === depth);
+    }
+    const badDepths = [];
+    for (const depth of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, "2", null]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupNestingMaxDepth: depth }));
+      badDepths.push(reply.ok === false && await unchanged(saved));
+    }
+    check("nested lookup depth defaults to ten children and accepts zero through the safe-integer range via options CAS",
+      reader.normaliseOptions({}).popupNestingMaxDepth === 10
+        && depths.every(Boolean) && badDepths.every(Boolean), JSON.stringify({ depths, badDepths }));
     const invalid = [
       { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
       { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { modifier: "meta" },
@@ -6647,17 +6662,18 @@ async function staleKanjiResponseStage(invalidation) {
   const instrumented = source.replace(marker, `
   globalThis.__hachidoriContentSmoke = {
     setState(candidate, nextPopup, nextView, nextHighlighter) {
-      activeCandidate = candidate;
-      activeHighlightText = "";
-      activeTermRender = { candidate, dictionaries, generation: 0, matchedText: "食べる", renderOptions: {}, results: [] };
+      rootLevel.activeCandidate = candidate;
+      rootLevel.activeHighlightText = "";
+      rootLevel.activeTermRender = { candidate, dictionaries, generation: 0, matchedText: "食べる", renderOptions: {}, results: [] };
       currentGeneration = 0;
       styleGeneration = 0;
-      popup = nextPopup;
-      view = nextView;
+      rootLevel.popup = nextPopup;
+      rootLevel.view = nextView;
       highlighter = nextHighlighter;
+      rootLevel.highlighter = nextHighlighter;
     },
     restore() {
-      restoreTermRender(activeTermRender, { character: "食", index: 0 });
+      return restoreTermRender(rootLevel.activeTermRender, { character: "食", index: 0 }, rootLevel);
     },
     showKanji,
   };
@@ -6688,7 +6704,7 @@ async function staleKanjiResponseStage(invalidation) {
       renderResults(value) { renders.push(value); },
       setToolbarPosition() {},
     },
-    { apply() {}, clearAll() {} },
+    { apply() {}, clear() {}, clearAll() {}, scope() { return { apply() {}, clear() {} }; } },
   );
   const lookup = window.__hachidoriContentSmoke.showKanji("食");
   if (invalidation === "storage-change") {
@@ -6753,12 +6769,7 @@ async function contentNoteStage() {
     );
     const { window } = dom;
     let storageListener = null;
-    let popupCallbacks = null;
-    let editing = false;
-    let closeNext = false;
-    let closeCalls = 0;
-    let clearCount = 0;
-    let previewDismissals = 0;
+    const popupRecords = new Map();
     let stylesGeneration = 2;
     let holdStyles = false;
     const appliedStyles = [];
@@ -6766,40 +6777,51 @@ async function contentNoteStage() {
     const sent = [];
     const renders = [];
 
-    function stopEditing() {
-      if (!editing || typeof popupCallbacks?.onNoteEditingChange !== "function") return;
-      editing = false;
-      popupCallbacks.onNoteEditingChange(false);
+    function createView(callbacks) {
+      const record = {
+        callbacks, editing: false, closeNext: false, closeCalls: 0,
+        clearCount: 0, previewDismissals: 0, renders: [],
+      };
+      function stopEditing() {
+        if (!record.editing) return;
+        record.editing = false;
+        callbacks.onNoteEditingChange(false);
+      }
+      function recordRender(render) {
+        if (render.context?.preserveViewControls !== true) stopEditing();
+        record.renders.push(render);
+        renders.push(render);
+      }
+      const view = {
+        hideImagePreview() { record.previewDismissals += 1; },
+        clear() {
+          record.clearCount += 1;
+          const wasEditing = record.editing;
+          stopEditing();
+          if (wasEditing) callbacks.positionPopup();
+        },
+        closeNoteForm() {
+          record.closeCalls += 1;
+          if (!record.closeNext) return false;
+          record.closeNext = false;
+          stopEditing();
+          return true;
+        },
+        destroy() { record.layoutView?.destroy(); },
+        renderKanji(value, candidate, context) {
+          recordRender({ kind: "kanji", value, candidate, context });
+        },
+        renderNotice(value, candidate) {
+          recordRender({ kind: "notice", value, candidate, context: {} });
+        },
+        renderResults(results, candidate, context) {
+          recordRender({ kind: "terms", results, candidate, context });
+        },
+        setToolbarPosition() {},
+      };
+      popupRecords.set(callbacks.popup, record);
+      return view;
     }
-
-    const view = {
-      hideImagePreview() { previewDismissals += 1; },
-      clear() {
-        clearCount += 1;
-        stopEditing();
-      },
-      closeNoteForm() {
-        closeCalls += 1;
-        if (!closeNext) return false;
-        closeNext = false;
-        stopEditing();
-        return true;
-      },
-      destroy() {},
-      renderKanji(value, candidate, context) {
-        stopEditing();
-        renders.push({ kind: "kanji", value, candidate, context });
-      },
-      renderNotice(value, candidate) {
-        stopEditing();
-        renders.push({ kind: "notice", value, candidate, context: {} });
-      },
-      renderResults(results, candidate, context) {
-        stopEditing();
-        renders.push({ kind: "terms", results, candidate, context });
-      },
-      setToolbarPosition() {},
-    };
     window.HDGlossary = {
       appendExpressionRuby() {},
       appendTextOnlyGlossary() {},
@@ -6810,14 +6832,12 @@ async function contentNoteStage() {
       parseTagList() { return []; },
     };
     window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
+    const createLayoutView = window.HDPopup.createPopupView;
     window.HDPopup = {
       ...window.HDPopup,
-      createPopupView(options) {
-        popupCallbacks = options;
-        return view;
-      },
+      createPopupView: createView,
       createSourceHighlighter() {
-        return { apply() {}, clearAll() {} };
+        return { apply() {}, clear() {}, clearAll() {}, scope() { return { apply() {}, clear() {} }; } };
       },
     };
     const initialState = {
@@ -6881,10 +6901,11 @@ async function contentNoteStage() {
       uiPromise = Promise.resolve();
       currentGeneration = 1;
       styleGeneration = 1;
-      return popup;
+      return rootLevel.popup;
     },
+    popupAt(depth = 0) { return levels[depth]?.popup; },
     hideTimerPending() { return hideTimer !== null; },
-    viewRequest() { return currentViewRequest; },
+    viewRequest(depth = 0) { return levels[depth]?.currentViewRequest; },
     resolveCandidate,
     setScanCandidate(candidate) { resolveCandidate = () => candidate; },
     onMouseMove,
@@ -6893,20 +6914,23 @@ async function contentNoteStage() {
     onWindowBlur,
     onScroll,
     onInternalLink,
+    pointInsidePopup,
     onKeyDown,
     runLookup,
     scanPointer,
     scheduleHide,
     showKanji,
     teardown,
-    snapshot() {
+    snapshot(depth = 0) {
+      const level = levels[depth];
       return {
         currentGeneration,
         styleGeneration,
         dictionaryStateRevision,
-        noteEditing,
+        noteEditing: level?.noteEditing === true,
+        activeHighlightText: level?.activeHighlightText ?? "",
         dictionaries: dictionaries.map((dictionary) => ({ ...dictionary })),
-        popupHidden: popup?.hidden === true,
+        popupHidden: !level?.popup || level.popup.hidden === true,
       };
     },
   };
@@ -6920,6 +6944,7 @@ async function contentNoteStage() {
     window.eval(instrumented);
     const driver = window.__hachidoriContentNoteSmoke;
     const popup = driver.install();
+    const popupRecord = (depth = 0) => popupRecords.get(driver.popupAt(depth));
     const anchor = window.document.getElementById("anchor");
     const candidate = {
       anchor,
@@ -7011,29 +7036,46 @@ async function contentNoteStage() {
       anchor,
       appliedStyles,
       candidate,
-      callbacks: () => popupCallbacks,
+      createLayoutView(callbacks) {
+        const view = createLayoutView(callbacks);
+        popupRecords.get(callbacks.popup).layoutView = view;
+        return view;
+      },
+      callbacks: (depth = 0) => popupRecord(depth).callbacks,
       close() { dom.window.close(); },
       driver,
-      edit(value) {
-        editing = value === true;
-        popupCallbacks.onNoteEditingChange(editing);
+      edit(value, depth = 0) {
+        const record = popupRecord(depth);
+        record.editing = value === true;
+        record.callbacks.onNoteEditingChange(record.editing);
       },
       emitOptions,
       emitState,
       initialLookup,
+      internalLink(link, depth = 0) {
+        const record = popupRecord(depth);
+        const anchor = window.document.createElement("a");
+        anchor.href = "#";
+        anchor.textContent = link.query;
+        record.callbacks.popup.appendChild(anchor);
+        return record.renders.at(-1).context.onInternalLink({ ...link, anchor });
+      },
       pending,
       popup,
-      render: () => renders.at(-1),
+      render: (depth = 0) => popupRecord(depth)?.renders.at(-1),
       renders,
       reply,
       requestPayload,
       sent,
       settle,
       state,
-      stats() { return { clearCount, closeCalls, previewDismissals }; },
+      stats(depth = 0) {
+        const { clearCount, closeCalls, previewDismissals } = popupRecord(depth);
+        return { clearCount, closeCalls, previewDismissals };
+      },
       take,
       term,
-      setCloseNext(value) { closeNext = value === true; },
+      setCloseNext(value, depth = 0) { popupRecord(depth).closeNext = value === true; },
       setStylesGeneration(value) { stylesGeneration = value; },
       setHoldStyles() { holdStyles = true; },
       installMediaClock() {
@@ -7077,7 +7119,7 @@ async function contentNoteStage() {
   async function eventFirstCase() {
     const harness = await createHarness();
     await harness.initialLookup();
-    const internal = harness.driver.onInternalLink({
+    const internal = harness.internalLink({
       primaryReading: "\u306a\u3044\u3076\u3054",
       query: "\u5185\u90e8\u8a9e",
     });
@@ -7090,8 +7132,8 @@ async function contentNoteStage() {
       ],
     });
     await (internal || harness.settle());
-    harness.render().context.onDictionaryTabSelected({ dictionary: "Projected" });
-    harness.edit(true);
+    harness.render(1).context.onDictionaryTabSelected({ dictionary: "Projected" });
+    harness.edit(true, 1);
     harness.emitOptions({
       frequencyDictionary: "Different",
       frequencyOrder: "ascending",
@@ -7101,7 +7143,7 @@ async function contentNoteStage() {
       modifier: "none",
       scanLength: 2,
     });
-    const append = harness.callbacks().onAddCustomEntry({
+    const append = harness.callbacks(1).onAddCustomEntry({
       definition: "inside",
       reading: "\u306a\u3044\u3076\u3054",
       term: "\u5185\u90e8\u8a9e",
@@ -7120,16 +7162,661 @@ async function contentNoteStage() {
       results: [harness.term("\u5185\u90e8\u8a9e", "Projected")],
     });
     await append;
-    const snapshot = harness.driver.snapshot();
+    const snapshot = harness.driver.snapshot(1);
     const result = {
       displayName: snapshot.dictionaries[0]?.displayName,
       popupHidden: snapshot.popupHidden,
       request,
-      selectedDictionaryTab: harness.render().context.selectedDictionaryTab,
+      selectedDictionaryTab: harness.render(1).context.selectedDictionaryTab,
       stateRevision: snapshot.dictionaryStateRevision,
     };
     harness.close();
     return result;
+  }
+
+  async function nestedLevelsCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    const parent = harness.driver.viewRequest();
+    const parentContext = harness.render().context;
+    const open = async (query, depth = 0) => {
+      const operation = harness.internalLink({ query, primaryReading: "reading" }, depth);
+      const request = harness.take("hd_lookup");
+      if (request) harness.reply(request, { dictionaryCount: 1, results: [harness.term(query)] });
+      await operation;
+      return request;
+    };
+    await open("child");
+    const child = harness.driver.viewRequest(1);
+    const childAnchor = child.candidate.anchor;
+    const childPopup = harness.driver.popupAt(1);
+    let ancestorLayouts = 0;
+    const anchorRect = harness.anchor.getBoundingClientRect.bind(harness.anchor);
+    harness.anchor.getBoundingClientRect = () => { ancestorLayouts += 1; return anchorRect(); };
+    harness.callbacks(1).positionPopup();
+    harness.popup.dispatchEvent(new harness.anchor.ownerDocument.defaultView.Event("scroll"));
+    const layoutStartsAtOwner = ancestorLayouts === 0;
+    const childRect = { left: Number.parseFloat(childPopup.style.left), top: Number.parseFloat(childPopup.style.top),
+      width: Number.parseFloat(childPopup.style.width), height: Number.parseFloat(childPopup.style.height) };
+    const positioned = Object.values(childRect).every(Number.isFinite)
+      && childRect.left >= 6 && childRect.top >= 6
+      && childRect.left + childRect.width <= harness.anchor.ownerDocument.defaultView.innerWidth - 6
+      && childRect.top + childRect.height <= harness.anchor.ownerDocument.defaultView.innerHeight - 6;
+    const childContext = harness.render(1).context;
+    const count = harness.sent.length;
+    await parentContext.onInternalLink({ query: "child", primaryReading: "reading", anchor: childAnchor });
+    const deduped = harness.sent.length === count && harness.driver.viewRequest(1) === child;
+    await open("grandchild", 1);
+    const grandchildContext = harness.render(2).context;
+    await open("great-grandchild", 2);
+    harness.edit(true, 3);
+    let pruneThrew = false;
+    try { harness.callbacks(1).onBeforeResultsRendered(); } catch { pruneThrew = true; }
+    const prunedOnlyBelow = !harness.driver.popupAt(2) && harness.driver.viewRequest(1) === child
+      && parentContext.isCurrentRequest() && childContext.isCurrentRequest() && !grandchildContext.isCurrentRequest() && !pruneThrew;
+    const clicked = harness.callbacks(1).onKanjiClick("食");
+    const kanjiRequest = harness.take("hd_lookup_dictionary");
+    harness.reply(kanjiRequest, { dictionaryCount: 1, results: [harness.term("食")] });
+    await clicked;
+    const relink = parentContext.onInternalLink({ query: "child", primaryReading: "reading", anchor: childAnchor });
+    const relinkRequest = harness.take("hd_lookup");
+    if (relinkRequest) harness.reply(relinkRequest, { dictionaryCount: 1, results: [harness.term("child")] });
+    await relink;
+    const reactivated = relinkRequest?.request.text === "child" && harness.driver.viewRequest(1)?.kind === "term";
+    const currentChild = harness.driver.viewRequest(1);
+    const clickedAgain = harness.callbacks(1).onKanjiClick("食");
+    harness.reply(harness.take("hd_lookup_dictionary"), { dictionaryCount: 1, results: [harness.term("食")] });
+    await clickedAgain;
+    await harness.render(1).context.onBack();
+    const childBack = harness.driver.viewRequest(1) === currentChild && harness.driver.viewRequest() === parent;
+    harness.driver.popupAt(1).tabIndex = -1;
+    harness.driver.popupAt(1).focus();
+    await harness.render(1).context.onBack();
+    const returned = !harness.driver.popupAt(1) && harness.driver.viewRequest() === parent
+      && childAnchor.getRootNode().activeElement === childAnchor;
+    ancestorLayouts = 0;
+    harness.popup.dispatchEvent(new harness.anchor.ownerDocument.defaultView.Event("scroll"));
+    const rootOnlyScroll = ancestorLayouts === 0;
+    harness.emitOptions({ popupNestingMaxDepth: 0 });
+    const disabled = await open("disabled") === null && !harness.driver.popupAt(1);
+    harness.emitOptions({ popupNestingMaxDepth: 2 });
+    await open("one");
+    await open("two", 1);
+    const limited = await open("three", 2) === null && !harness.driver.popupAt(3);
+    harness.emitOptions({ popupNestingMaxDepth: 1 });
+    const lowered = !harness.driver.popupAt(2) && !harness.driver.snapshot(1).popupHidden
+      && harness.driver.viewRequest() === parent;
+    const window = harness.anchor.ownerDocument.defaultView;
+    window.innerWidth = 12;
+    harness.callbacks(1).positionPopup();
+    const shrunk = !harness.driver.popupAt(1) && !harness.driver.snapshot().popupHidden;
+    const noViewport = await open("no viewport") === null && !harness.driver.popupAt(1);
+    harness.close();
+    return {
+      "linked levels preserve independent Back and render owners, deduplicate, and prune only descendants": deduped && prunedOnlyBelow && reactivated && childBack && returned,
+      "child popup depth is live and child geometry is clamped to the viewport": positioned && layoutStartsAtOwner && rootOnlyScroll
+        && disabled && limited && lowered && shrunk && noViewport,
+    };
+  }
+
+  async function nestedResizeCase() {
+    const harness = await createHarness();
+    const window = harness.anchor.ownerDocument.defaultView;
+    const views = [];
+    const frames = new Map();
+    const observers = [];
+    let nextFrame = 0;
+    let layouts = 0;
+    let popupReads = 0;
+    let rootReads = 0;
+    let queueDuringLayout = false;
+    const frame = () => {
+      for (const [id, callback] of [...frames]) {
+        if (!frames.delete(id)) continue;
+        callback();
+      }
+    };
+    try {
+      await harness.initialLookup();
+      for (let depth = 0; depth < 3; depth += 1) {
+        const operation = harness.internalLink({ query: `level-${depth + 1}` }, depth);
+        harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term(`level-${depth + 1}`)] });
+        await operation;
+      }
+      window.innerWidth = 2400;
+      window.innerHeight = 700;
+      window.requestAnimationFrame = callback => { frames.set(++nextFrame, callback); return nextFrame; };
+      window.cancelAnimationFrame = id => frames.delete(id);
+      window.ResizeObserver = class {
+        constructor(callback) { this.callback = callback; observers.push(this); }
+        observe() {}
+        disconnect() {}
+      };
+      const rootRect = harness.anchor.getBoundingClientRect.bind(harness.anchor);
+      harness.anchor.getBoundingClientRect = () => { rootReads += 1; return rootRect(); };
+      for (let depth = 0; depth < 4; depth += 1) {
+        const popup = harness.driver.popupAt(depth);
+        popup.getBoundingClientRect = () => {
+          popupReads += 1;
+          const left = Number.parseFloat(popup.style.left);
+          const top = Number.parseFloat(popup.style.top);
+          const width = Number.parseFloat(popup.style.width);
+          const height = Number.parseFloat(popup.style.height);
+          return { left, top, width, height, right: left + width, bottom: top + height };
+        };
+        const grid = window.document.createElement("div");
+        grid.className = "gsm-hoshidicts-glossary-grid";
+        grid.append(window.document.createElement("div"), window.document.createElement("div"));
+        Object.defineProperty(grid, "clientWidth", { get: () => Number.parseFloat(popup.style.width) });
+        popup.append(grid);
+        // Real per-view resize/masonry callbacks, bound to the real content
+        // owners; the request harness continues to own only lookup replies.
+        views.push(harness.createLayoutView({ ...harness.callbacks(depth),
+          getPopupColumns() {
+            layouts += 1;
+            if (depth === 0 && queueDuringLayout) {
+              queueDuringLayout = false;
+              views[0].scheduleMasonry();
+            }
+            return 2;
+          } }));
+      }
+      window.dispatchEvent(new window.Event("resize"));
+      const oneBatch = frames.size === 1 && layouts === 0;
+      frame();
+      const resize = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0
+        && [0, 1, 2, 3].every(depth => {
+          const popup = harness.driver.popupAt(depth);
+          return Number.parseFloat(popup.style.left) >= 6
+            && Number.parseFloat(popup.style.left) + Number.parseFloat(popup.style.width) <= 2394
+            && popup.querySelector(".gsm-hoshidicts-glossary-grid").style.height !== "";
+        });
+      window.innerWidth = 500;
+      window.dispatchEvent(new window.Event("resize"));
+      frame();
+      layouts = 0; rootReads = 0; popupReads = 0;
+      observers.forEach(observer => observer.callback());
+      frame();
+      const observerFollowup = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0
+        && [0, 1, 2, 3].every(depth => {
+          const popup = harness.driver.popupAt(depth);
+          const card = popup.querySelector(".gsm-hoshidicts-glossary-grid").firstElementChild;
+          return Number.parseFloat(popup.style.width) === 488 && Number.parseFloat(card.style.width) === 240;
+        });
+
+      // A queued root resize still places the surviving chain after a child
+      // retires; a queued retired child cannot target its depth replacement.
+      const childCallbacks = harness.callbacks(1);
+      views[0].scheduleMasonry();
+      harness.emitOptions({ popupNestingMaxDepth: 0 });
+      rootReads = 0; popupReads = 0;
+      frame();
+      const rootSurvivesPrune = rootReads === 1 && popupReads === 0;
+      childCallbacks.queueMasonry(() => { layouts += 1; });
+      const retiredIgnored = frames.size === 0;
+      rootReads = 0; layouts = 0;
+      views[0].scheduleMasonry();
+      views[0].scheduleMasonry();
+      frame();
+      const rootSameFrame = layouts === 1 && rootReads === 1 && frames.size === 0;
+
+      // Work queued while a batch runs belongs to the next frame, not this
+      // snapshot. The native observer-width followup is checked separately.
+      layouts = 0; rootReads = 0;
+      queueDuringLayout = true;
+      views[0].scheduleMasonry();
+      frame();
+      const nextBatchQueued = layouts === 1 && rootReads === 1 && frames.size === 1;
+      frame();
+      const nextBatchCompleted = layouts === 2 && rootReads === 2 && frames.size === 0;
+
+      harness.emitOptions({ popupNestingMaxDepth: 1 });
+      const child = harness.internalLink({ query: "replacement" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("replacement")] });
+      await child;
+      const retiring = harness.callbacks(1);
+      const retiringView = harness.createLayoutView(retiring);
+      views.push(retiringView);
+      retiringView.scheduleMasonry();
+      const childQueued = frames.size === 1;
+      harness.render(1).context.onBack();
+      const retiredCancelled = frames.size === 0;
+      const replacement = harness.internalLink({ query: "same depth" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("same depth")] });
+      await replacement;
+      retiring.queueMasonry(() => { layouts += 1; });
+      const replacementUntouched = frames.size === 0;
+      let childLayouts = 0;
+      const replacementView = harness.createLayoutView({ ...harness.callbacks(1),
+        getPopupColumns() { childLayouts += 1; return 2; } });
+      views.push(replacementView);
+      layouts = 0; rootReads = 0;
+      views[0].scheduleMasonry();
+      replacementView.scheduleMasonry();
+      replacementView.destroy();
+      frame();
+      const liveDestroyPreservesRoot = childLayouts === 0 && layouts === 1
+        && rootReads === 1 && frames.size === 0;
+      const soleView = harness.createLayoutView(harness.callbacks(1));
+      views.push(soleView);
+      soleView.scheduleMasonry();
+      soleView.destroy();
+      const liveDestroyCancelsFrame = frames.size === 0;
+      views[0].scheduleMasonry();
+      harness.driver.onKeyDown({ key: "Escape", repeat: false, stopPropagation() {} });
+      // First Escape closes the unfocused child; the next dismisses the root.
+      harness.driver.onKeyDown({ key: "Escape", repeat: false, stopPropagation() {} });
+      const hiddenCancelled = frames.size === 0;
+      await harness.initialLookup();
+      const next = harness.internalLink({ query: "teardown" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("teardown")] });
+      await next;
+      views[0].scheduleMasonry();
+      harness.driver.teardown();
+      const teardownCancelled = frames.size === 0;
+      return { "viewport and observer layout place a popup chain linearly and retire queued owners":
+        oneBatch && resize && observerFollowup && rootSurvivesPrune && retiredIgnored && rootSameFrame
+        && nextBatchQueued && nextBatchCompleted && liveDestroyPreservesRoot && liveDestroyCancelsFrame
+        && childQueued && retiredCancelled && replacementUntouched && hiddenCancelled && teardownCancelled };
+    } finally {
+      views.forEach(view => view.destroy());
+      harness.close();
+    }
+  }
+
+  async function nestedPointerCase() {
+    const harness = await createHarness();
+    const window = harness.anchor.ownerDocument.defaultView;
+    await harness.initialLookup();
+    const child = harness.internalLink({ query: "child" });
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child")] });
+    await child;
+    harness.popup.getBoundingClientRect = () => ({ left: 10, right: 110, top: 10, bottom: 110 });
+    harness.driver.popupAt(1).getBoundingClientRect = () => ({ left: 114, right: 214, top: 60, bottom: 160 });
+    const corridor = harness.driver.pointInsidePopup(112, 90) && !harness.driver.pointInsidePopup(50, 150);
+    const timers = new Map();
+    let nextTimer = 0;
+    window.setTimeout = (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; };
+    window.clearTimeout = (id) => timers.delete(id);
+    const fire = (delay) => {
+      const entry = [...timers].find(([, value]) => value.delay === delay);
+      if (!entry) return false;
+      timers.delete(entry[0]);
+      entry[1].callback();
+      return true;
+    };
+    harness.driver.popupAt(1).dispatchEvent(new window.MouseEvent("mouseenter"));
+    harness.popup.dispatchEvent(new window.MouseEvent("mouseenter"));
+    const originalChild = harness.driver.viewRequest(1);
+    const beforeReactivation = harness.sent.length;
+    await harness.render().context.onInternalLink({ query: "child", primaryReading: "", anchor: originalChild.candidate.anchor });
+    fire(160);
+    const reactivated = harness.driver.viewRequest(1) === originalChild && harness.sent.length === beforeReactivation;
+    harness.popup.dispatchEvent(new window.MouseEvent("mouseenter"));
+    const pruneScheduled = fire(160);
+    const parentReturn = pruneScheduled && !harness.driver.popupAt(1) && !harness.driver.snapshot().popupHidden;
+    const second = harness.internalLink({ query: "child again" });
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child again")] });
+    await second;
+    harness.edit(true, 1);
+    harness.popup.dispatchEvent(new window.MouseEvent("mouseenter"));
+    fire(160);
+    const draftRetained = harness.driver.snapshot(1).noteEditing && !harness.driver.snapshot(1).popupHidden;
+    harness.edit(false, 1);
+    harness.driver.setScanCandidate({ ...harness.candidate, query: "new page word" });
+    harness.driver.onMouseMove({ target: harness.popup.getRootNode().host, clientX: 10, clientY: 10, buttons: 0 });
+    harness.driver.onMouseMove({ target: harness.anchor, clientX: 900, clientY: 700, buttons: 0 });
+    fire(50);
+    const beforeGrace = harness.take("hd_lookup") === null;
+    fire(80);
+    fire(50);
+    const lookup = harness.take("hd_lookup");
+    if (lookup) harness.reply(lookup, { dictionaryCount: 1, results: [harness.term("new page word")] });
+    await harness.settle();
+    harness.close();
+    return { "ancestor pointer return prunes descendants but preserves drafts and a stationary departure resumes scanning":
+      corridor && reactivated && parentReturn && draftRetained && beforeGrace && lookup?.request.text === "new page word" };
+  }
+
+  async function nestedNotesCase() {
+    const outcomes = [];
+    for (const navigation of ["close", "navigate", "back", "lower"]) {
+      const harness = await createHarness();
+      await harness.initialLookup();
+      const rootRequest = harness.driver.viewRequest();
+      const originalContext = harness.render().context;
+      const child = harness.internalLink({ query: "child" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child")] });
+      await child;
+      const source = harness.driver.viewRequest(1).candidate.anchor;
+      harness.edit(true);
+      harness.edit(true, 1);
+      const append = harness.callbacks().onAddCustomEntry({ term: "parent", reading: "", definition: "saved" });
+      const mutation = harness.take("hd_custom_append");
+      harness.emitState(harness.state(2, "event first"));
+      harness.reply(mutation, { state: harness.state(2, "event first") });
+      await append;
+      const deferred = harness.take("hd_lookup") === null && source.isConnected
+        && harness.driver.snapshot().noteEditing && harness.driver.snapshot(1).noteEditing
+        && !originalContext.isCurrentRequest();
+      if (navigation === "navigate") {
+        const clicked = harness.callbacks().onKanjiClick("食");
+        harness.reply(harness.take("hd_lookup_dictionary"), { generation: 3, dictionaryCount: 1, results: [harness.term("食")] });
+        await clicked;
+        harness.edit(true);
+        harness.edit(false);
+        outcomes.push(deferred && !harness.driver.snapshot().popupHidden
+          && harness.driver.viewRequest()?.kind === "kanji" && !harness.driver.popupAt(1)
+          && harness.take("hd_lookup") === null);
+      } else {
+        harness.edit(false);
+        const retained = source.isConnected && harness.driver.snapshot(1).noteEditing;
+        if (navigation === "back") harness.render(1).context.onBack();
+        else if (navigation === "lower") harness.emitOptions({ popupNestingMaxDepth: 0 });
+        else harness.edit(false, 1);
+        const refresh = harness.take("hd_lookup");
+        if (refresh) harness.reply(refresh, { generation: 3, dictionaryCount: 1, results: [harness.term("parent")] });
+        await harness.settle();
+        outcomes.push(deferred && retained && refresh?.request.text === rootRequest.payload.text
+          && !harness.driver.popupAt(1) && !harness.driver.snapshot().popupHidden);
+      }
+      harness.close();
+    }
+    for (const failedRefresh of [false, true]) {
+      const concurrent = await createHarness();
+      await concurrent.initialLookup();
+      const rootRequest = concurrent.driver.viewRequest();
+      const linked = concurrent.internalLink({ query: "child", primaryReading: "reading" });
+      concurrent.reply(concurrent.take("hd_lookup"), { dictionaryCount: 1, results: [concurrent.term("child")] });
+      await linked;
+      const childRequest = concurrent.driver.viewRequest(1);
+      concurrent.edit(true);
+      concurrent.edit(true, 1);
+      const parentAppend = concurrent.callbacks().onAddCustomEntry({ term: "parent", reading: "", definition: "first" });
+      const parentMutation = concurrent.take("hd_custom_append");
+      const childAppend = concurrent.callbacks(1).onAddCustomEntry({ term: "child", reading: "reading", definition: "second" });
+      const childMutation = concurrent.take("hd_custom_append");
+      concurrent.emitState(concurrent.state(3, "newest"));
+      concurrent.reply(childMutation, { state: concurrent.state(3, "newest") });
+      await childAppend;
+      const childRefresh = concurrent.take("hd_lookup");
+      concurrent.reply(parentMutation, { state: concurrent.state(2, "older reply") });
+      await parentAppend;
+      concurrent.emitState(concurrent.state(2, "older event"));
+      const retainedWhileHeld = concurrent.driver.snapshot().dictionaryStateRevision === 3
+        && concurrent.driver.snapshot().dictionaries[0].displayName === "newest"
+        && concurrent.driver.viewRequest() === rootRequest && concurrent.driver.viewRequest(1) === childRequest
+        && childRequest.candidate.anchor.isConnected && concurrent.take("hd_lookup") === null;
+      concurrent.setStylesGeneration(3);
+      if (childRefresh) concurrent.reply(childRefresh, { generation: 3, dictionaryCount: 1, results: [concurrent.term("child")] }, !failedRefresh);
+      await concurrent.settle();
+      const parentRefresh = concurrent.take("hd_lookup");
+      if (parentRefresh) concurrent.reply(parentRefresh, { generation: 3, dictionaryCount: 1, results: [concurrent.term("parent")] });
+      await concurrent.settle();
+      outcomes.push(retainedWhileHeld && childRefresh?.request.text === "child"
+        && childRefresh.request.options.primaryReading === "reading" && parentRefresh?.request.text === rootRequest.payload.text
+        && concurrent.driver.viewRequest() === rootRequest && !concurrent.driver.popupAt(1)
+        && concurrent.sent.filter(request => request.type === "hd_custom_append").length === 2
+        && concurrent.take("hd_lookup") === null);
+      concurrent.close();
+    }
+
+    const retired = await createHarness();
+    await retired.initialLookup();
+    const first = retired.internalLink({ query: "old child" });
+    retired.reply(retired.take("hd_lookup"), { dictionaryCount: 1, results: [retired.term("old child")] });
+    await first;
+    retired.edit(true, 1);
+    const saving = retired.callbacks(1).onAddCustomEntry({ term: "old child", reading: "", definition: "saved after pruning" });
+    const mutation = retired.take("hd_custom_append");
+    retired.callbacks().onBeforeResultsRendered();
+    const replacement = retired.internalLink({ query: "new child" });
+    retired.reply(retired.take("hd_lookup"), { dictionaryCount: 1, results: [retired.term("new child")] });
+    await replacement;
+    const replacementRequest = retired.driver.viewRequest(1);
+    retired.edit(true, 1);
+    retired.reply(mutation, { state: retired.state(2, "committed retired append") });
+    await saving;
+    outcomes.push(retired.driver.snapshot().dictionaryStateRevision === 2
+      && retired.driver.viewRequest(1) === replacementRequest && retired.driver.snapshot(1).noteEditing
+      && retired.take("hd_lookup") === null);
+    retired.close();
+    return { "parent Note replay waits for a child draft and accepted explicit navigation consumes obsolete deferred state": outcomes.every(Boolean) };
+  }
+
+  async function nestedReplyRaceCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    const first = harness.internalLink({ query: "old child" });
+    const oldRequest = harness.take("hd_lookup");
+    harness.callbacks().onBeforeResultsRendered();
+    const next = harness.internalLink({ query: "new child" });
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("new child")] });
+    await next;
+    const current = harness.driver.viewRequest(1);
+    const currentPopup = harness.driver.popupAt(1);
+    const before = harness.sent.length;
+    harness.reply(oldRequest, { generation: 99, dictionaryCount: 1, results: [harness.term("old child")] });
+    await first;
+    const retiredIgnored = harness.driver.viewRequest(1) === current && harness.driver.popupAt(1) === currentPopup
+      && harness.driver.snapshot().currentGeneration === 2 && harness.sent.length === before;
+    harness.close();
+    const detached = await createHarness();
+    await detached.initialLookup();
+    const pendingChild = detached.internalLink({ query: "detached ancestor" });
+    const held = detached.take("hd_lookup");
+    detached.anchor.remove();
+    detached.reply(held, { generation: 99, dictionaryCount: 1, results: [detached.term("must not render")] });
+    await pendingChild;
+    const detachedIgnored = detached.driver.snapshot().currentGeneration === 2 && detached.renders.length === 1
+      && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1);
+    detached.close();
+    const optionsRace = await createHarness();
+    await optionsRace.initialLookup();
+    const obsolete = optionsRace.internalLink({ query: "same pending child", primaryReading: "reading" });
+    const obsoleteRequest = optionsRace.take("hd_lookup");
+    const obsoletePopup = optionsRace.driver.popupAt(1);
+    const anchor = optionsRace.popup.lastElementChild;
+    optionsRace.emitOptions({ maxResults: 4 });
+    const retry = optionsRace.render().context.onInternalLink({
+      anchor, query: "same pending child", primaryReading: "reading",
+    });
+    const retryRequest = optionsRace.take("hd_lookup");
+    const replacementPopup = optionsRace.driver.popupAt(1);
+    optionsRace.reply(obsoleteRequest, { generation: 99, dictionaryCount: 1, results: [optionsRace.term("obsolete")] });
+    await obsolete;
+    const obsoletePendingIgnored = optionsRace.renders.length === 1
+      && optionsRace.driver.snapshot().currentGeneration === 2;
+    if (retryRequest) optionsRace.reply(retryRequest, {
+      dictionaryCount: 1, results: [optionsRace.term("same pending child")],
+    });
+    await retry;
+    const invalidatedPendingRetried = retryRequest?.request.maxResults === 4
+      && obsoletePopup !== replacementPopup && obsoletePendingIgnored
+      && optionsRace.driver.viewRequest(1)?.payload.options.primaryReading === "reading"
+      && optionsRace.render(1).context.isCurrentRequest();
+    optionsRace.close();
+    const generations = [];
+    for (const generation of [3, 1]) {
+      const race = await createHarness();
+      await race.initialLookup();
+      const parent = race.driver.viewRequest();
+      const child = race.internalLink({ query: "new generation" });
+      const childRequest = race.take("hd_lookup");
+      const kanji = race.callbacks().onKanjiClick("食");
+      const parentRequest = race.take("hd_lookup_dictionary");
+      race.setStylesGeneration(generation);
+      race.reply(childRequest, { generation, dictionaryCount: 1, results: [race.term("new generation")] });
+      await child;
+      race.reply(parentRequest, { generation: 2, dictionaryCount: 1, results: [race.term("obsolete parent")] });
+      await kanji;
+      await race.settle();
+      generations.push(race.driver.snapshot().currentGeneration === generation
+        && race.driver.viewRequest() === parent && race.driver.viewRequest(1)?.payload.text === "new generation"
+        && race.render(1).context.isCurrentRequest() && race.driver.snapshot().styleGeneration === generation);
+      race.close();
+    }
+    return { "retired child replies and older parent replies cannot replace a new level or roll back engine generation":
+      retiredIgnored && detachedIgnored && invalidatedPendingRetried && generations.every(Boolean) };
+  }
+
+  async function retainedParentNavigationCase() {
+    const harness = await createHarness();
+    await harness.initialLookup();
+    const parentRequest = harness.driver.viewRequest();
+    const parentContext = harness.render().context;
+    const child = harness.internalLink({ query: "child", primaryReading: "reading" });
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("child")] });
+    await child;
+    harness.edit(true, 1);
+    const append = harness.callbacks(1).onAddCustomEntry({ term: "child", reading: "reading", definition: "saved" });
+    harness.emitState(harness.state(2, "child saved"));
+    harness.reply(harness.take("hd_custom_append"), { state: harness.state(2, "child saved") });
+    await append;
+    harness.setStylesGeneration(3);
+    harness.reply(harness.take("hd_lookup"), { generation: 3, dictionaryCount: 1, results: [harness.term("child")] });
+    await harness.settle();
+    const retained = !parentContext.isCurrentRequest() && parentContext.isCurrentView?.() === true;
+    const next = harness.internalLink({ query: "another child", primaryReading: "another reading" });
+    const linked = harness.take("hd_lookup");
+    if (linked) harness.reply(linked, { generation: 3, dictionaryCount: 1, results: [harness.term("another child")] });
+    await next;
+    parentContext.onDictionaryTabSelected({ dictionary: "Generic" });
+    const delegated = harness.callbacks().onBeforeResultsRendered() === false;
+    const replay = harness.take("hd_lookup");
+    if (replay) harness.reply(replay, { generation: 3, dictionaryCount: 1, results: [harness.term("parent refreshed")] });
+    await harness.settle();
+    const fresh = harness.driver.viewRequest() === parentRequest
+      && harness.render().context.selectedDictionaryTab?.dictionary === "Generic"
+      && harness.render().context.isCurrentRequest() && !harness.driver.popupAt(1);
+    harness.callbacks().onBeforeResultsRendered();
+    const currentTabLocal = harness.take("hd_lookup") === null;
+    harness.close();
+
+    async function retainedReplay(kind = "term") {
+      const owner = await createHarness();
+      await owner.initialLookup();
+      if (kind === "clicked-term") {
+        const clicked = owner.callbacks().onKanjiClick("食");
+        owner.reply(owner.take("hd_lookup_dictionary"), { dictionaryCount: 1, results: [owner.term("食")] });
+        await clicked;
+      }
+      const request = owner.driver.viewRequest();
+      const context = owner.render().context;
+      const linked = owner.internalLink({ query: "generation child", primaryReading: "reading" });
+      owner.setStylesGeneration(3);
+      owner.reply(owner.take("hd_lookup"), { generation: 3, dictionaryCount: 1, results: [owner.term("generation child")] });
+      await linked;
+      return { owner, request, context, type: kind === "clicked-term" ? "hd_lookup_dictionary" : "hd_lookup" };
+    }
+
+    const protectedReplays = [];
+    for (const [kind, noteTiming, outcome] of [
+      ["term", "before", "hit"],
+      ["term", "during", "failure"],
+      ["term", "during", "miss"],
+      ["term", "during", "empty-library"],
+      ["clicked-term", "during", "hit"],
+    ]) {
+      const { owner, request, context, type } = await retainedReplay(kind);
+      try {
+        if (noteTiming === "before") owner.edit(true);
+        context.onDictionaryTabSelected({ dictionary: "Generic" });
+        owner.callbacks().onBeforeResultsRendered();
+        const held = owner.take(type);
+        if (!held) { protectedReplays.push(false); continue; }
+        if (noteTiming === "during") owner.edit(true);
+        const visible = owner.render();
+        const before = owner.sent.filter(message => message.type === type).length;
+        // Repeated input shares the held exact descriptor, but keeps the latest
+        // projection/expansion intent for the eventual current response.
+        context.onDictionaryTabSelected(null);
+        owner.callbacks().onBeforeResultsRendered({ expandAll: true });
+        context.onDictionaryTabSelected({ dictionary: "Generic" });
+        owner.callbacks().onBeforeResultsRendered();
+        const expandAll = kind === "clicked-term";
+        if (expandAll) owner.callbacks().onBeforeResultsRendered({ expandAll: true });
+        const shared = owner.sent.filter(message => message.type === type).length === before;
+        owner.reply(held, outcome === "failure" ? { error: "held replay failure" } : {
+          generation: 3, dictionaryCount: outcome === "empty-library" ? 0 : 1,
+          results: outcome === "hit" ? [owner.term("fresh projection")] : [],
+        }, outcome !== "failure");
+        await owner.settle();
+        const rendered = owner.render();
+        const protectedNote = owner.driver.snapshot().noteEditing && !owner.driver.snapshot().popupHidden
+          && owner.driver.viewRequest() === request;
+        const refreshed = outcome === "hit"
+          ? rendered !== visible && rendered.context.preserveViewControls === true
+            && rendered.context.expandAll === expandAll
+            && rendered.context.selectedDictionaryTab?.dictionary === "Generic"
+          : rendered === visible && context.isCurrentView() && !context.isCurrentRequest();
+        let normalBack = true;
+        if (kind === "clicked-term") {
+          const back = rendered.context.onBack();
+          const restoring = owner.take("hd_lookup");
+          if (restoring) owner.reply(restoring, { generation: 3, dictionaryCount: 1, results: [owner.term(owner.candidate.query)] });
+          await back;
+          normalBack = Boolean(restoring) && owner.render().context.preserveViewControls !== true
+            && owner.render().context.expandAll !== true && !owner.driver.snapshot().noteEditing;
+        }
+        protectedReplays.push(shared && protectedNote && refreshed && normalBack);
+      } finally { owner.close(); }
+    }
+
+    // A live internal anchor is insufficient when its page-root ancestor was
+    // detached during a protected failed replay.
+    const detached = await createHarness();
+    let detachedProtectedReply;
+    try {
+      await detached.initialLookup();
+      const child = detached.internalLink({ query: "retained child" });
+      detached.reply(detached.take("hd_lookup"), { dictionaryCount: 1, results: [detached.term("retained child")] });
+      await child;
+      const grandchild = detached.internalLink({ query: "new generation" }, 1);
+      detached.setStylesGeneration(3);
+      detached.reply(detached.take("hd_lookup"), { generation: 3, dictionaryCount: 1, results: [detached.term("new generation")] });
+      await grandchild;
+      detached.edit(true, 1);
+      detached.callbacks(1).onBeforeResultsRendered();
+      const failed = detached.take("hd_lookup");
+      const source = detached.driver.viewRequest(1).candidate.anchor;
+      detached.anchor.remove();
+      const ownAnchorStillConnected = source.isConnected;
+      if (failed) detached.reply(failed, { error: "detached ancestor" }, false);
+      await detached.settle();
+      detachedProtectedReply = Boolean(failed) && ownAnchorStillConnected
+        && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1);
+    } finally { detached.close(); }
+
+    // Sharing expires with its token: a child accepting another generation
+    // cannot make the next displayed action join the obsolete held replay.
+    const changed = await retainedReplay();
+    let generationEndsSharing;
+    try {
+      changed.owner.callbacks().onBeforeResultsRendered();
+      const oldReplay = changed.owner.take("hd_lookup");
+      const newerChild = changed.owner.internalLink({ query: "next generation" });
+      const childRequest = changed.owner.take("hd_lookup");
+      changed.owner.setStylesGeneration(4);
+      if (childRequest) changed.owner.reply(childRequest, { generation: 4, dictionaryCount: 1, results: [changed.owner.term("next generation")] });
+      await newerChild;
+      changed.context.onDictionaryTabSelected({ dictionary: "Generic" });
+      changed.owner.callbacks().onBeforeResultsRendered({ expandAll: true });
+      const newReplay = changed.owner.take("hd_lookup");
+      if (newReplay) changed.owner.reply(newReplay, { generation: 4, dictionaryCount: 1, results: [changed.owner.term("latest parent")] });
+      await changed.owner.settle();
+      const latest = changed.owner.render();
+      if (oldReplay) changed.owner.reply(oldReplay, { generation: 3, dictionaryCount: 1, results: [changed.owner.term("obsolete parent")] });
+      await changed.owner.settle();
+      generationEndsSharing = Boolean(oldReplay && childRequest && newReplay)
+        && changed.owner.render() === latest && latest.results[0].term.expression === "latest parent"
+        && latest.context.expandAll === true && changed.owner.driver.snapshot().currentGeneration === 4;
+    } finally { changed.owner.close(); }
+
+    return { "retained parent navigation stays usable while stale tabs replay current dictionaries without reviving old resources":
+      retained && linked?.request.text === "another child" && linked.request.options.primaryReading === "another reading"
+      && delegated && replay?.request.text === parentRequest.payload.text && fresh && currentTabLocal
+      && protectedReplays.every(Boolean) && detachedProtectedReply && generationEndsSharing };
   }
 
   async function replyFirstCase() {
@@ -7552,10 +8239,10 @@ async function contentNoteStage() {
     if (first) harness.reply(first, { dictionaryCount: 1, results: exactResults });
     await harness.settle();
     const original = harness.driver.viewRequest();
-    async function noteRefresh(revision, generation, results, eventFirst) {
-      harness.edit(true);
+    async function noteRefresh(revision, generation, results, eventFirst, depth = 0) {
+      harness.edit(true, depth);
       window.getSelection().removeAllRanges();
-      const append = harness.callbacks().onAddCustomEntry({ term: "食べる", reading: "たべる", definition: "eat" });
+      const append = harness.callbacks(depth).onAddCustomEntry({ term: "食べる", reading: "たべる", definition: "eat" });
       const mutation = harness.take("hd_custom_append");
       const state = harness.state(revision, "Saved Note");
       if (eventFirst) harness.emitState(state);
@@ -7584,19 +8271,21 @@ async function contentNoteStage() {
     window.getSelection().selectAllChildren(harness.anchor);
     const backKept = backRequest?.request.text === query && backRequest.request.scanLength === 3
       && harness.driver.viewRequest() === original && harness.render()?.results.length === 1;
-    const link = harness.driver.onInternalLink({ query: "別の語", primaryReading: "べつ" });
+    const link = harness.internalLink({ query: "別の語", primaryReading: "べつ" });
     const linked = harness.take("hd_lookup");
     if (linked) harness.reply(linked, { generation: 3, dictionaryCount: 2, results: [harness.term("別")] });
     await link;
-    const linkedDescriptor = harness.driver.viewRequest();
+    const linkedDescriptor = harness.driver.viewRequest(1);
     const linkKept = linked?.request.text === "別の語" && linked.request.options.primaryReading === "べつ"
       && linked.request.scanLength === 1 && linkedDescriptor?.exactSelection === false
-      && harness.render()?.results[0].matched === "別" && linkedDescriptor.highlightText === query;
-    const linkedRefresh = await noteRefresh(3, 3, [harness.term("別")], false);
+      && harness.render(1)?.results[0].matched === "別"
+      && harness.driver.viewRequest() === original && harness.driver.snapshot().activeHighlightText === query;
+    const linkedRefresh = await noteRefresh(3, 3, [harness.term("別")], false, 1);
     harness.driver.scanPointer({ target: harness.anchor, clientX: 200, clientY: 200 });
     const linkedRefreshKept = linkedRefresh?.request.text === "別の語"
       && linkedRefresh.request.options.primaryReading === "べつ"
-      && harness.driver.viewRequest() === linkedDescriptor && harness.render()?.results[0].matched === "別"
+      && harness.driver.viewRequest(1) === linkedDescriptor && harness.render(1)?.results[0].matched === "別"
+      && harness.driver.viewRequest() === original && harness.driver.snapshot().activeHighlightText === query
       && harness.take("hd_lookup") === null;
     harness.close();
     return { "Note and kanji Back preserve exact selection descriptors while linked queries retain their own matching mode":
@@ -8546,6 +9235,21 @@ async function contentNoteStage() {
         && await reattached === url && await fresh === url && !startedCache.fetched;
     superseded.close();
 
+    const shared = await createHarness();
+    await shared.initialLookup();
+    const occupied = Array.from({ length: 4 }, (_, index) => load(shared, `occupied-${index}.png`));
+    const parent = load(shared, "shared.png");
+    let childCurrent = true;
+    const child = shared.render().context.resolveMedia({
+      dictionary: "Generic", generation: 2, path: "shared.png", isCurrent: () => childCurrent,
+    }).catch(() => null);
+    childCurrent = false;
+    await drain(shared);
+    await Promise.all(occupied);
+    result["a retired child cannot cancel queued media still owned by its parent"] =
+      await parent === url && await child === url && count(shared) === 5;
+    shared.close();
+
     const invalidations = [];
     for (const kind of ["dictionary", "teardown"]) {
       const harness = await createHarness();
@@ -8629,7 +9333,9 @@ async function contentNoteStage() {
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
-    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase() },
+    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
+      ...await nestedLevelsCase(), ...await nestedResizeCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
+      ...await retainedParentNavigationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
     deferredInvalidation: await deferredInvalidationCase(),
@@ -9019,10 +9725,188 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     result: imageLookup.results[0], mediaUrl: media.dataUrl });
   structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+  internalLinksRenderStage({ HDGlossary, document, window });
+  await retainedNavigationRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await mediaRenderStage({ HDGlossary, document, window });
   dom.window.close();
   return true;
+}
+
+async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  let current = true;
+  let displayed = true;
+  let links = 0;
+  let fills = 0;
+  let replays = 0;
+  let selected = null;
+  let replayIntent = null;
+  let finishAppend;
+  let appends = 0;
+  const linkPredicates = [];
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary(...args) {
+      fills += 1;
+      linkPredicates.push(args[3].isCurrentLink);
+      return HDGlossary.appendTextOnlyGlossary(...args);
+    },
+    parseTagList: HDGlossary.parseTagList, positionPopup() {},
+    onBeforeResultsRendered(intent) { if (!current) { replays += 1; replayIntent = intent; return false; } },
+    onAddCustomEntry() { appends += 1; return new Promise(resolve => { finishAppend = resolve; }); },
+  });
+  const results = ["First", "Second"].map((dictionary) => ({ ...result, term: { ...result.term,
+    glossaries: [{ dictionary, glossary: JSON.stringify([{ type: "structured-content", content: {
+      tag: "a", href: "?query=食", content: "linked word",
+    } }]) }],
+  } }));
+  const context = { isCurrentRequest: () => current, isCurrentView: () => displayed,
+    onInternalLink() { links += 1; }, onDictionaryTabSelected(value) { selected = value; },
+    dictionaryPresentation: [{ title: "First", favorite: true }, { title: "Second", favorite: true }],
+  };
+  try {
+    view.renderResults(results, candidate, { ...context, expandAll: true });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const initialPredicates = linkPredicates.slice();
+    const sharedPredicate = initialPredicates.length === 2
+      && initialPredicates[0] === initialPredicates[1];
+    const first = popup.querySelector("a[data-hoshidicts-query]");
+    const initialFills = fills;
+    current = false;
+    first.click();
+    popup.querySelector('[role="tab"][data-dictionary="Second"]').click();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const retained = links === 1 && replays === 1 && selected?.dictionary === "Second"
+      && first.isConnected && fills === initialFills && initialPredicates.every(owns => owns());
+    displayed = false;
+    first.click();
+    popup.querySelector('[role="tab"][data-dictionary="First"]').click();
+    const obsoleteIgnored = links === 1 && replays === 1 && initialPredicates.every(owns => !owns());
+    current = true;
+    displayed = true;
+    view.renderResults(results, candidate, context);
+    popup.querySelector('[role="tab"][data-dictionary="Second"]').click();
+    check("retained displayed links and stale-tab handoff never reenable obsolete glossary work",
+      sharedPredicate && retained && obsoleteIgnored && replays === 1 && fills > initialFills
+        && initialPredicates.every(owns => !owns()),
+      JSON.stringify({ sharedPredicate, retained, obsoleteIgnored, links, replays, fills, initialFills }));
+
+    const preserved = [];
+    for (const toolbarPosition of ["top", "bottom"]) {
+      view.setToolbarPosition(toolbarPosition);
+      view.renderResults(results, candidate, context);
+      current = false;
+      popup.querySelector('[data-dictionary="Second"][role="tab"]').click();
+      // Open after replay started: retain the live form, not request-start state.
+      popup.querySelector(".gsm-hoshidicts-note-button").click();
+      const form = popup.querySelector("form");
+      const definition = form.elements.definition;
+      definition.value = "keep this draft";
+      definition.focus();
+      definition.setSelectionRange(2, 7);
+      const observer = new window.MutationObserver(() => {});
+      observer.observe(popup, { childList: true });
+      current = true;
+      view.renderResults(results, candidate, { ...context, preserveViewControls: true,
+        selectedDictionaryTab: { dictionary: "Second" } });
+      preserved.push(popup.querySelector("form") === form && !form.hidden
+        && definition.value === "keep this draft" && document.activeElement === definition
+        && definition.selectionStart === 2 && definition.selectionEnd === 7
+        && !observer.takeRecords().some(record => [...record.removedNodes].includes(form)));
+      observer.disconnect();
+      // A form opened before a replay and a pending save keep the same controls.
+      form.elements.term.value = "saved";
+      form.elements.reading.value = "reading";
+      const beforeAppend = appends;
+      form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+      view.renderResults(results, candidate, { ...context, preserveViewControls: true });
+      form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+      preserved.push(popup.querySelector("form") === form && form.getAttribute("aria-busy") === "true"
+        && form.elements.definition.disabled && appends === beforeAppend + 1);
+      finishAppend();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const refreshed = [{ ...results[0], term: { ...results[0].term, expression: "new prefill", reading: "new reading" } }];
+      view.renderResults(refreshed, candidate, { ...context, preserveViewControls: true });
+      popup.querySelector(".gsm-hoshidicts-note-button").click();
+      preserved.push(form.elements.term.value === "new prefill" && form.elements.reading.value === "new reading");
+      view.closeNoteForm();
+
+      view.renderResults(results, candidate, context);
+      const oldTab = popup.querySelector('[data-dictionary="Second"][role="tab"]');
+      oldTab.focus();
+      view.renderResults(results, candidate, { ...context, preserveViewControls: true,
+        selectedDictionaryTab: { dictionary: "Second" } });
+      preserved.push(document.activeElement === popup.querySelector('[data-dictionary="Second"][role="tab"]'));
+      const outside = document.createElement("button");
+      document.body.append(outside);
+      outside.focus();
+      view.renderResults(results, candidate, { ...context, preserveViewControls: true });
+      preserved.push(document.activeElement === outside);
+      outside.remove();
+    }
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const kanjiForm = popup.querySelector("form");
+    kanjiForm.elements.definition.value = "draft during generic fallback";
+    kanjiForm.elements.definition.focus();
+    view.renderKanji({ character: "食", entries: [{ dictionary: "Kanji", tags: "", onyomi: "ショク",
+      kunyomi: "", definitions: ["eat"], stats: [] }] }, candidate, { preserveViewControls: true, onBack() {} });
+    preserved.push(popup.querySelector("form") === kanjiForm && !kanjiForm.hidden
+      && document.activeElement === kanjiForm.elements.definition && kanjiForm.elements.definition.value === "draft during generic fallback");
+    view.closeNoteForm();
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    preserved.push(kanjiForm.elements.term.value === "食" && kanjiForm.elements.reading.value === "");
+    view.renderResults(results, candidate, context);
+    preserved.push(!kanjiForm.isConnected && !popup.querySelector("form"));
+    check("same-view refresh preserves mounted Note drafts, pending saves and response-time focus",
+      preserved.every(Boolean), JSON.stringify(preserved));
+
+    view.renderResults(results, candidate, context);
+    current = false;
+    const beforeReplay = replays;
+    const beforeFills = fills;
+    popup.querySelector(".gsm-hoshidicts-show-more").click();
+    const expansionDelegated = replays === beforeReplay + 1 && replayIntent?.expandAll === true
+      && fills === beforeFills && popup.querySelectorAll("article").length === 1;
+    current = true;
+    view.renderResults(results, candidate, { ...context, preserveViewControls: true, expandAll: true });
+    const expanded = popup.querySelectorAll("article").length === 2 && !popup.querySelector(".gsm-hoshidicts-show-more");
+    view.renderResults(results, candidate, context);
+    popup.querySelector(".gsm-hoshidicts-show-more").click();
+    check("stale Show more replays fresh results while current expansion remains lookup-free",
+      expansionDelegated && expanded && replays === beforeReplay + 1 && popup.querySelectorAll("article").length === 2);
+  } finally { view.destroy(); popup.remove(); }
+}
+
+function internalLinksRenderStage({ HDGlossary, document, window }) {
+  const parent = document.createElement("div");
+  document.body.appendChild(parent);
+  const calls = [];
+  let current = true;
+  HDGlossary.appendTextOnlyGlossary(document, parent, JSON.stringify([{ type: "structured-content", content: [
+    { tag: "a", href: "?query=食&primary_reading=しょく", content: "linked term" },
+    { tag: "a", href: "?query=outer", content: { tag: "a", href: "?query=inner", content: "inner term" } },
+  ] }]), { isCurrent: () => current, onInternalLink(value) { calls.push(value); } });
+  const first = parent.querySelector("a");
+  const activate = (anchor, detail = 0) => {
+    const event = new window.MouseEvent("click", { bubbles: true, cancelable: true, detail });
+    anchor.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  try {
+    const active = activate(first) && calls.length === 1 && calls[0].anchor === first
+      && calls[0].query === "食" && calls[0].primaryReading === "しょく" && calls[0].focusChild === true;
+    current = false;
+    const stale = activate(first) && calls.length === 1;
+    current = true;
+    const nested = activate(parent.querySelector('[data-hoshidicts-query="inner"]'), 1)
+      && calls.length === 2 && calls[1].query === "inner" && calls[1].focusChild === false;
+    first.remove();
+    const detached = activate(first) && calls.length === 2;
+    check("internal links retain exact query and reading while rejecting stale, detached and enclosing actions",
+      active && stale && nested && detached, JSON.stringify({ active, stale, nested, detached, queries: calls.map(value => value.query) }));
+  } finally { parent.remove(); }
 }
 
 function externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {

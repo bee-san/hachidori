@@ -38,6 +38,7 @@ const NUMBER_FIELDS = [
   { key: "maxResults", id: "opt-max-results" },
   { key: "hoverDelayMs", id: "opt-hover-delay" },
   { key: "popupHideDelayMs", id: "opt-hide-delay" },
+  { key: "popupNestingMaxDepth", id: "opt-popup-nesting-depth" },
 ];
 
 const numberFormat = new Intl.NumberFormat();
