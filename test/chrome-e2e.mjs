@@ -3750,7 +3750,7 @@ async function checkSourceFallback(settings, tab, popup) {
     await tab.$eval("#verb", element => { element.style.opacity = "1"; });
     const visible = await snapshot();
     const motion = [];
-    for (const kind of ["transition", "animation", "resume"]) {
+    for (const kind of ["transition", "animation", "resume", "finish", "cancel"]) {
       await tab.$eval("#verb", (element, mode) => {
         if (mode === "transition") {
           element.style.transition = "transform 1s linear";
@@ -3765,7 +3765,8 @@ async function checkSourceFallback(settings, tab, popup) {
           if (mode === "animation") element.parentElement.style.animation = "e17-move 1s linear";
           else {
             element.tabIndex = 0;
-            element.style.animation = "e17-move 1s linear paused";
+            element.style.animation = "e17-move 1s linear forwards paused";
+            if (mode === "finish" || mode === "cancel") element.getAnimations()[0].currentTime = 500;
           }
         }
       }, kind);
@@ -3779,6 +3780,10 @@ async function checkSourceFallback(settings, tab, popup) {
           .some(animation => animation.currentTime >= 150 && animation.currentTime < 800);
       }, {}, kind);
       motion.push(await snapshot());
+      if (kind === "finish" || kind === "cancel") {
+        await tab.$eval("#verb", (element, operation) => element.getAnimations().forEach(animation => animation[operation]()), kind);
+        motion.push(await snapshot());
+      }
       await tab.$eval("#verb", async element => {
         await Promise.all([...element.getAnimations(), ...element.parentElement.getAnimations()].map(animation => animation.finished));
         element.style.transition = "none";
