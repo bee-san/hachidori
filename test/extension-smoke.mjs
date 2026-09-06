@@ -5168,7 +5168,26 @@ async function sourceHighlightStage() {
     const stale = texts() === "読む";
     document.getElementById("b").remove();
     await settle();
-    const mutations = replacement && stale && ranges().length === 0
+    const detached = ranges().length === 0;
+    const left = document.createElement("section"), right = document.createElement("section");
+    const host = document.createElement("div");
+    const shadow = host.attachShadow({ mode: "closed" });
+    const nested = document.createElement("span");
+    nested.textContent = "読む";
+    shadow.append(nested);
+    left.append(host);
+    document.body.append(left, right);
+    a.apply({ sourceElements: [nested], sentence: "読む", matchOffset: 0 }, "読む");
+    right.append(host);
+    await settle();
+    host.remove();
+    await settle();
+    const shadowDetached = ranges().length === 0;
+    a.apply(candidate("selection"), "Keep");
+    const disposableView = window.HDPopup.createPopupView({ document, window, popup: document.createElement("div"),
+      sourceHighlighter: a, positionPopup() {} });
+    disposableView.destroy();
+    const mutations = replacement && stale && detached && shadowDetached && ranges().length === 0
       && window.CSS.highlights.get("page-owned") === unrelated && window.getSelection().toString() === "Keep selection";
     return { ownership, mutations, visits, replacement, stale };
   } finally {
