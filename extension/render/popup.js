@@ -1834,6 +1834,7 @@
           preferredWidth: 36, preferredHeight: 36, sizeUnits: "px", collapsed: false }, {
           isCurrent: () => headword.contains(summary) && media.isCurrent(),
           onLayoutChange: media.onLayoutChange,
+          onImageError: () => thumbnail.remove(),
           requestImagePreview, refreshImagePreview, hideImagePreview,
           resolveMedia: typeof media.resolveMedia === "function"
             ? query => media.resolveMedia({ ...query, dictionary: compact.dictionary, generation: media.generation })

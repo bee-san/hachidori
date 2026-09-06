@@ -437,7 +437,8 @@ unchanged. Default-off rendering does not run summary extraction.
 
 A 36px thumbnail uses the existing safe image renderer and generation/dictionary
 media resolver. Summary and full-card consumers share one in-flight request and
-cache entry. Failed or unsupported images leave the text summary available.
+cache entry. Failed or unsupported images remove the thumbnail wrapper, leaving
+a text-only summary; the full card retains its readable image error.
 The tiny preview is always expanded; a dictionary's collapsed-image setting
 still applies to its unchanged full definition.
 Changing enablement, count or source updates only the summary subtree; expression,
