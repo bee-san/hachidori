@@ -1377,7 +1377,7 @@
     function runRenderAction(isCurrent, renderContext, action) {
       if (!isCurrent()) return;
       try {
-        action();
+        return action();
       } catch (error) {
         if (!isCurrent()) return;
         clear();
@@ -2288,8 +2288,8 @@
       }
 
       mountResultChrome(toolbar, renderEntries());
-      currentPresentationUpdate = (context) => {
-        if (currentToolbar !== toolbar || renderOptions.isCurrentView?.() === false) return true;
+      const ownsKanji = () => currentToolbar === toolbar && renderOptions.isCurrentView?.() !== false;
+      currentPresentationUpdate = (context) => runRenderAction(ownsKanji, renderOptions, () => {
         const next = createDictionaryTabs(dictionaries, context);
         const nextSelected = next.tabs.find(tab => tab.key === selected.key) || next.tabs[0];
         const sameMembers = sameTabMembers(selected.dictionaries, nextSelected.dictionaries, dictionaries);
@@ -2311,7 +2311,7 @@
         }
         if (changed) scheduleMasonry();
         return true;
-      };
+      });
 
       if (sourceHighlightEnabled) {
         sourceHighlighter.apply(
@@ -2564,8 +2564,8 @@
       }, { passive: false });
 
       activateTab(selectedIndex);
-      currentPresentationUpdate = (context) => {
-        if (!ownsDisplayedPanel(panel, renderContext)) return true;
+      currentPresentationUpdate = (context) => runRenderAction(
+        () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
         const next = createDictionaryTabs(dictionaries, context);
         const previous = tabDescriptors;
         const selectedKey = previous[selectedIndex].key;
@@ -2582,10 +2582,18 @@
           renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
         }
         if (sameMembers) changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames) || changed;
-        else { renderProjection(rendered.isExpanded()); changed = true; }
+        else {
+          const focused = retainedFocus(true);
+          renderProjection(rendered.isExpanded());
+          if (focused && typeof focused !== "string") {
+            positionPopup();
+            restoreRetainedFocus(focused);
+          }
+          changed = true;
+        }
         if (changed) scheduleMasonry();
         return true;
-      };
+      });
       restoreRetainedFocus(focused);
       return rendered;
     }
