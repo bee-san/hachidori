@@ -3817,7 +3817,9 @@ async function checkSourceFallback(settings, tab, popup) {
     const uncovered = await snapshot();
     const sourceRect = uncovered.source.expected[0];
     const covers = [];
-    for (const kind of ["partial", "pointer-none", "modal", "sticky", "border", "fixed-escape", "motion", "membership", "membership-paused", "behind"]) {
+    for (const kind of ["partial", "pointer-none", "modal", "sticky", "border", "fixed-escape", "motion",
+      "membership", "membership-paused", "membership-late", "membership-overlap", "behind"]) {
+      if (kind === "membership-late") await editSettingsControls(settings, { "opt-source-highlight": false });
       await tab.evaluate(({ source, kind }) => {
         const element = document.createElement("div");
         element.id = "e17-page-cover";
@@ -3855,16 +3857,25 @@ async function checkSourceFallback(settings, tab, popup) {
         }
         if (kind.startsWith("membership")) {
           const style = document.createElement("style");
-          style.textContent = "@keyframes e17-cover { from { position:static; } to { position:fixed; } }";
+          style.textContent = "@keyframes e17-cover { from { position:static; } to { position:fixed; } }"
+            + "@keyframes e17-other { from { opacity:1; } to { opacity:1; } }";
           element.append(style);
           element.style.position = "static";
           element.style.animation = "e17-cover 1s linear forwards";
+          if (kind === "membership-overlap") element.style.animation += ", e17-other 0.2s linear";
         }
       }, { source: sourceRect, kind });
       let initiallyUncovered = true;
       if (kind.startsWith("membership")) {
+        if (kind === "membership-late") {
+          await tab.waitForFunction(() => document.getElementById("e17-page-cover").getAnimations()
+            .some(animation => animation.currentTime > 0 && animation.currentTime < 400));
+          await tab.$eval("#e17-page-cover", element => element.getAnimations().forEach(animation => animation.pause()));
+          await editSettingsControls(settings, { "opt-source-highlight": true });
+        }
         initiallyUncovered = (await snapshot()).exact;
-        if (kind === "membership-paused") {
+        if (kind === "membership-late") await tab.$eval("#e17-page-cover", element => element.getAnimations().forEach(animation => animation.play()));
+        if (kind === "membership-paused" || kind === "membership-late") {
           await tab.waitForFunction(() => document.getElementById("e17-page-cover").getAnimations()
             .some(animation => animation.currentTime >= 650 && animation.currentTime < 950));
           await tab.$eval("#e17-page-cover", element => element.getAnimations().forEach(animation => animation.pause()));
