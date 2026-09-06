@@ -162,8 +162,20 @@ function showSettingsSection(focus = false) {
 
 function updateDesignPreview() {
   if (activeSection !== "design") return;
-  const frame = element("design-preview");
-  if (!frame.hasAttribute("src")) frame.src = "design-preview.html";
+  let frame = element("design-preview");
+  if (!frame) {
+    frame = document.createElement("iframe");
+    frame.id = "design-preview";
+    frame.title = "Live dictionary popup preview";
+    frame.addEventListener("load", updateDesignPreview);
+    frame.src = "design-preview.html";
+    element("preview-canvas").append(frame);
+    resizeDesignPreview();
+    element("preview-size").addEventListener("change", resizeDesignPreview);
+    if (typeof ResizeObserver === "function") {
+      new ResizeObserver(resizeDesignPreview).observe(element("preview-viewport"));
+    }
+  }
   frame.contentWindow.HDDesignPreview?.update(options, dictionaryState);
 }
 
@@ -2039,11 +2051,6 @@ function attachHandlers() {
     options.kanjiClickDictionary = selectionFromValue(event.target.value);
     writeOptions();
   });
-  element("design-preview").addEventListener("load", updateDesignPreview);
-  element("preview-size").addEventListener("change", resizeDesignPreview);
-  if (typeof ResizeObserver === "function") {
-    new ResizeObserver(resizeDesignPreview).observe(element("preview-viewport"));
-  }
   const optionSections = document.querySelectorAll("#lookup, #design");
   for (const section of optionSections) {
     section.addEventListener("input", (event) => {

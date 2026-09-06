@@ -2806,7 +2806,7 @@ async function checkDesignPreview(page) {
   const original = await readSettingsControls(page, ["opt-popup-columns", "opt-compact-summary", "opt-frequency-names"]);
   const originalViewport = page.viewport();
   const before = await page.evaluate(async (sourceKey) => ({
-    lazy: !document.getElementById("design-preview").hasAttribute("src"),
+    lazy: document.getElementById("design-preview") === null,
     stored: await chrome.storage.local.get(["dictionaryState", sourceKey]),
   }), CUSTOM_DICTIONARY_SOURCE_KEY);
   try {

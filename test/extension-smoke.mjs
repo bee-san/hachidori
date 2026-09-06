@@ -5023,10 +5023,10 @@ async function settingsNavigationStage() {
     const unseenCompletion = mirror.textContent === "Reading: Saved.";
     await navigate("lookup");
     await navigate("dictionaries");
-    const preview = document.getElementById("design-preview");
-    let design = !!preview && !preview.hasAttribute("src");
-    if (preview) {
+    let design = document.getElementById("design-preview") === null;
+    if (document.getElementById("design")) {
       await navigate("design");
+      const preview = document.getElementById("design-preview");
       const updates = [];
       preview.contentWindow.HDDesignPreview = { update(value) { updates.push(structuredClone(value)); } };
       preview.dispatchEvent(new window.Event("load"));

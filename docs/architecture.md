@@ -796,7 +796,9 @@ drafts; their single status/retry region follows the active options section.
 Unsaved edits update the preview immediately, independently of the save delay
 or a failed save. Other sections do not load or update the preview.
 
-The same-origin iframe is loaded on first visiting Design. It contains a neutral
+The same-origin iframe and its resize observer are created only on first
+visiting Design; Library startup does not create even a blank browsing context.
+It contains a neutral
 sample webpage and a shadow root using `render/popup.js`, `render/glossary.js`,
 and `render/reader.css`; the page uses the production `content.css` highlight.
 Four deterministic glossary cards demonstrate all retained column choices,
