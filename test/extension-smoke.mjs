@@ -3138,11 +3138,18 @@ async function main() {
     downloadUrl: communityDownloadUrl,
     lastUpdateCheck: null,
   });
+  const renamedCommunityTitle = "Renamed Community Dictionary";
+  const selectedCommunityImage = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    baseRevision: (await storage.api().local.get("options")).options?.revision ?? 0,
+    options: { popupImageSource: { kind: "dictionary", title: communityTitle } },
+  });
   remoteJson(communityIndexUrl, { revision: "community-3" });
   remoteArchive(
     communityDownloadUrl,
     buildRecommendedZip({
-      title: communityTitle,
+      title: renamedCommunityTitle,
       revision: "community-3",
       indexUrl: communityIndexUrl,
       downloadUrl: communityDownloadUrl,
@@ -3175,6 +3182,23 @@ async function main() {
       && statusFailureCommunity.lastUpdateCheck.error === null
       && failAfterCommittedRevision === null,
     JSON.stringify({ statusFixtureRestored, statusFailureUpdate, statusFailureState }),
+  );
+  const renamedImageOptions = (await storage.api().local.get("options")).options;
+  const staleImageSelection = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    baseRevision: selectedCommunityImage.options.revision,
+    options: { popupImageSource: selectedCommunityImage.options.popupImageSource },
+  });
+  check(
+    "a managed title change migrates its image selection and rejects the old options revision",
+    statusFailureCommunity.id === community.id
+      && statusFailureCommunity.title === renamedCommunityTitle
+      && renamedImageOptions.popupImageSource?.title === renamedCommunityTitle
+      && renamedImageOptions.revision === selectedCommunityImage.options.revision + 1
+      && staleImageSelection.conflict === true
+      && staleImageSelection.options.popupImageSource?.title === renamedCommunityTitle,
+    JSON.stringify({ statusFailureCommunity, renamedImageOptions, staleImageSelection }),
   );
 
   const injectedBlobRowsBefore = idb.keys("/dicts").sort();
@@ -3212,7 +3236,7 @@ async function main() {
       injectedBlobRowsAfter,
     }),
   );
-  await request("hd_remove", { title: communityTitle });
+  await request("hd_remove", { title: renamedCommunityTitle });
   await request("hd_remove", { title: "Jitendex.org [2026-09-08]" });
   await request("hd_remove", { title: localUpdateTitle });
   await request("hd_remove", { title: updatedTitle });
