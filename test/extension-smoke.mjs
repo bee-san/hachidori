@@ -11694,6 +11694,7 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
     sized.every(({ dimensionsMatch }) => dimensionsMatch), JSON.stringify(sized));
   sizingParent.remove();
   const outcomes = [];
+  let supplierLayout = null;
   for (const replyKind of ["missing", "failure", "valid"]) {
     for (const current of [false, true]) {
       const parent = document.createElement("div");
@@ -11701,6 +11702,8 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
       let settleMedia;
       let layouts = 0;
       let ownerPassed = false;
+      let imageHandle;
+      const imageContext = { popupImageSources: ["Pictures"] };
       const pending = new Promise((resolveMedia, rejectMedia) => {
         settleMedia = () => replyKind === "failure"
           ? rejectMedia(new Error("transient media failure"))
@@ -11711,10 +11714,14 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
           tag: "img", path: "media/owned.png", alt: "descriptive image",
         } },
       ]), {
+        dictionary: "Definitions",
+        imageContext,
+        onImageCreated(handle) { imageHandle = handle; },
         isCurrent: () => ownsView,
         onLayoutChange() { layouts += 1; },
-        resolveMedia({ isCurrent }) {
+        resolveMedia({ isCurrent, onResolvedSource }) {
           ownerPassed = typeof isCurrent === "function" && isCurrent();
+          onResolvedSource("Pictures");
           return pending;
         },
       });
@@ -11737,6 +11744,20 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
           && link.querySelector(".gloss-image-link-text").textContent.includes("Image failed to load")
         : ownerPassed && link.dataset.imageLoadState === "not-loaded" && layouts === 0
           && !image.hasAttribute("src") && !link.hasAttribute("href") && !image.hidden);
+      if (current && replyKind === "valid") {
+        const labelBeforeLoad = parent.querySelector(".gloss-image-source")?.textContent === "Image: Pictures";
+        const beforeLoad = layouts;
+        image.dispatchEvent(new window.Event("load"));
+        const afterLoad = layouts;
+        const aliasChanged = imageHandle.updatePresentation({ ...imageContext,
+          dictionaryPresentation: [{ title: "Pictures", displayName: "Picture book" }] });
+        const aliasNeedsLayout = aliasChanged && layouts === afterLoad
+          && parent.querySelector(".gloss-image-source")?.textContent === "Image: Picture book";
+        image.dispatchEvent(new window.Event("error"));
+        supplierLayout = { labelBeforeLoad, beforeLoad, afterLoad, aliasNeedsLayout,
+          failedLayout: layouts === afterLoad + 1 && !parent.querySelector(".gloss-image-source")
+            && link.dataset.imageLoadState === "load-error" };
+      }
       parent.remove();
     }
   }
@@ -11744,6 +11765,9 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
     outcomes[0] && outcomes[2] && outcomes[4] && outcomes[5], JSON.stringify(outcomes));
   check("missing and failed images expose an accessible failure state without losing glossary text",
     outcomes[1] && outcomes[3], JSON.stringify(outcomes));
+  check("supplier labels share the image completion layout while alias changes and failures retain their layout path",
+    supplierLayout?.labelBeforeLoad && supplierLayout.beforeLoad === 0 && supplierLayout.afterLoad === 1
+      && supplierLayout.aliasNeedsLayout && supplierLayout.failedLayout, JSON.stringify(supplierLayout));
 }
 
 function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
