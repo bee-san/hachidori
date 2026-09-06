@@ -3750,8 +3750,16 @@ async function checkSourceFallback(settings, tab, popup) {
     await tab.$eval("#verb", element => { element.style.opacity = "1"; });
     const visible = await snapshot();
     const motion = [];
-    for (const kind of ["transition", "animation", "resume", "finish", "cancel"]) {
+    for (const kind of ["transition", "animation", "resume", "finish", "cancel", "waapi", "waapi-finish", "waapi-cancel"]) {
+      if (kind.startsWith("waapi")) await new Promise(done => setTimeout(done, 350));
       await tab.$eval("#verb", (element, mode) => {
+        if (mode.startsWith("waapi")) {
+          const target = mode === "waapi" ? element.parentElement : element;
+          const animation = target.animate([{ transform: "translateX(0)" }, { transform: "translateX(90px)" }],
+            { duration: 1200, fill: "forwards" });
+          if (mode !== "waapi") { animation.pause(); animation.currentTime = 500; }
+          return;
+        }
         if (mode === "transition") {
           element.style.transition = "transform 1s linear";
           element.getBoundingClientRect();
@@ -3774,18 +3782,21 @@ async function checkSourceFallback(settings, tab, popup) {
         await frame();
         await tab.$eval("#verb", element => element.focus({ preventScroll: true }));
       }
+      if (kind.startsWith("waapi")) await new Promise(done => setTimeout(done, 350));
       await tab.waitForFunction(mode => {
         const source = document.getElementById("verb");
-        return (mode === "animation" ? source.parentElement : source).getAnimations()
+        return (mode === "animation" || mode === "waapi" ? source.parentElement : source).getAnimations()
           .some(animation => animation.currentTime >= 150 && animation.currentTime < 800);
       }, {}, kind);
       motion.push(await snapshot());
-      if (kind === "finish" || kind === "cancel") {
-        await tab.$eval("#verb", (element, operation) => element.getAnimations().forEach(animation => animation[operation]()), kind);
+      if (["finish", "cancel", "waapi-finish", "waapi-cancel"].includes(kind)) {
+        await tab.$eval("#verb", (element, operation) => element.getAnimations().forEach(animation => animation[operation]()),
+          kind.replace("waapi-", ""));
         motion.push(await snapshot());
       }
       await tab.$eval("#verb", async element => {
         await Promise.all([...element.getAnimations(), ...element.parentElement.getAnimations()].map(animation => animation.finished));
+        [...element.getAnimations(), ...element.parentElement.getAnimations()].forEach(animation => animation.cancel());
         element.style.transition = "none";
         element.style.transform = "none";
         element.style.removeProperty("animation");
@@ -3823,7 +3834,7 @@ async function checkSourceFallback(settings, tab, popup) {
     const sourceRect = uncovered.source.expected[0];
     const covers = [];
     for (const kind of ["partial", "pointer-none", "modal", "sticky", "border", "fixed-escape", "motion",
-      "membership", "membership-paused", "membership-late", "membership-overlap", "behind"]) {
+      "membership", "membership-paused", "membership-late", "membership-overlap", "membership-waapi", "behind"]) {
       if (kind === "membership-late") await editSettingsControls(settings, { "opt-source-highlight": false });
       await tab.evaluate(({ source, kind }) => {
         const element = document.createElement("div");
@@ -3866,7 +3877,7 @@ async function checkSourceFallback(settings, tab, popup) {
             + "@keyframes e17-other { from { opacity:1; } to { opacity:1; } }";
           element.append(style);
           element.style.position = "static";
-          element.style.animation = "e17-cover 1s linear forwards";
+          if (kind !== "membership-waapi") element.style.animation = "e17-cover 1s linear forwards";
           if (kind === "membership-overlap") element.style.animation += ", e17-other 0.2s linear";
         }
       }, { source: sourceRect, kind });
@@ -3879,6 +3890,12 @@ async function checkSourceFallback(settings, tab, popup) {
           await editSettingsControls(settings, { "opt-source-highlight": true });
         }
         initiallyUncovered = (await snapshot()).exact;
+        if (kind === "membership-waapi") {
+          await new Promise(done => setTimeout(done, 350));
+          await tab.$eval("#e17-page-cover", element => {
+            element.animate([{ position: "static" }, { position: "fixed" }], { duration: 1200, fill: "forwards" });
+          });
+        }
         if (kind === "membership-late") await tab.$eval("#e17-page-cover", element => element.getAnimations().forEach(animation => animation.play()));
         if (kind !== "membership") {
           await tab.waitForFunction(() => document.getElementById("e17-page-cover").getAnimations()
