@@ -4359,6 +4359,8 @@ async function main() {
     preview?.incremental === true && preview.routing === true, JSON.stringify(preview));
   check("live preview appearance preserves cards and drafts while term and kanji highlights toggle exactly",
     preview?.appearance === true && preview.highlight === true, JSON.stringify(preview));
+  check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
+    preview?.kanjiSource === true, JSON.stringify(preview));
   const frequencySettings = await settingsFrequencyStage();
   check("Design resets only its shared appearance and content keys through one sparse options write",
     frequencySettings?.designReset === true, JSON.stringify(frequencySettings));
@@ -5161,7 +5163,7 @@ async function designPreviewStage() {
       && form.elements.definition.value === "A preview draft";
     state = { revision: 1, dictionaries: [
       { id: "first", title: "First", termCount: 1, pitchCount: 1, enabled: true },
-      { id: "second", title: "Second", termCount: 1, pitchCount: 1, enabled: true },
+      { id: "second", title: "Second", termCount: 1, kanjiCount: 1, pitchCount: 1, enabled: true },
     ], groups: [] };
     options = { ...options, pitchAccentFuriganaDictionary: "Second", compactDefinitionSummaryDictionary: "Second" };
     update();
@@ -5180,6 +5182,20 @@ async function designPreviewStage() {
     options = { ...options, sourceHighlightEnabled: true };
     update();
     highlight &&= highlightedText() === "食べる";
+    query(".gsm-hoshidicts-note-button").click();
+    const kanjiNote = query("form");
+    kanjiNote.elements.definition.value = "Keep across source choices";
+    options = { ...options, kanjiClickDictionary: { title: "Second", kind: "term" } };
+    update();
+    let kanjiSource = popup.textContent.includes("sample single-kanji entry")
+      && query(".gsm-hoshidicts-glossary-card").textContent.includes("Second")
+      && query("form") === kanjiNote && highlightedText() === "食べる";
+    options = { ...options, kanjiClickDictionary: { title: "Second", kind: "kanji" } };
+    update();
+    kanjiSource &&= query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
+      && popup.textContent.includes("Second") && query("form") === kanjiNote
+      && kanjiNote.elements.definition.value === "Keep across source choices";
+    kanjiNote.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     query(".gsm-hoshidicts-kanji-back").click();
     await settle();
     const back = kanji && query('[role="tab"][aria-selected="true"]')?.textContent === tab.textContent
@@ -5190,7 +5206,7 @@ async function designPreviewStage() {
     await settle();
     const routing = query(".gloss-image-link")?.dataset.imageLoadState === "load-error";
     highlight &&= highlightedText() === "食べる";
-    return { sample, note, back, incremental, routing, appearance, highlight };
+    return { sample, note, back, incremental, routing, appearance, highlight, kanjiSource };
   } finally { window.close(); }
 }
 
@@ -7333,8 +7349,10 @@ async function contentNoteStage() {
         destroy() { record.layoutView?.destroy(); },
         scheduleMasonry() {
           record.layoutSchedules += 1;
+          record.layoutWidth = callbacks.popup.style.width;
           record.layoutView?.scheduleMasonry();
         },
+        setSourceHighlightEnabled(enabled) { record.highlightEnabled = enabled; },
         renderKanji(value, candidate, context) {
           recordRender({ kind: "kanji", value, candidate, context });
         },
@@ -7603,8 +7621,8 @@ async function contentNoteStage() {
       settle,
       state,
       stats(depth = 0) {
-        const { clearCount, closeCalls, previewDismissals, layoutSchedules } = popupRecord(depth);
-        return { clearCount, closeCalls, previewDismissals, layoutSchedules };
+        const { clearCount, closeCalls, previewDismissals, layoutSchedules, layoutWidth, highlightEnabled } = popupRecord(depth);
+        return { clearCount, closeCalls, previewDismissals, layoutSchedules, layoutWidth, highlightEnabled };
       },
       take,
       term,
@@ -8285,12 +8303,27 @@ async function contentNoteStage() {
       const sentBefore = harness.sent.length;
       harness.emitOptions({ popupColumns: 4 });
       harness.emitOptions({ popupColumns: 4 });
-      return { "live column preferences relayout each visible owner without lookup, retirement or Note loss":
+      const columns =
         defaultColumns && harness.sent.length === sentBefore && harness.driver.snapshot(1).noteEditing
         && panes.every(({ popup, request, context }, depth) =>
           harness.callbacks(depth).getPopupColumns() === 4 && harness.stats(depth).layoutSchedules === 1
           && harness.driver.popupAt(depth) === popup && !popup.hidden
-          && harness.driver.viewRequest(depth) === request && context.isCurrentRequest()) };
+          && harness.driver.viewRequest(depth) === request && context.isCurrentRequest());
+      harness.emitOptions({ popupColumns: 4, popupWidthPx: 640, popupHeightPx: 500 });
+      const resized = panes.every(({ popup }, depth) => popup.style.width === "640px"
+        && popup.style.height === "500px" && harness.stats(depth).layoutWidth === "640px"
+        && harness.stats(depth).layoutSchedules === 2);
+      harness.emitOptions({ popupColumns: 4, popupWidthPx: 640, popupHeightPx: 500,
+        popupTheme: "miku", popupOpacityPercent: 0, sourceHighlightEnabled: false });
+      const host = panes[0].popup.getRootNode().host;
+      return { "live column preferences relayout each visible owner without lookup, retirement or Note loss": columns,
+        "live geometry precedes masonry while colour and highlight edits preserve every request and Note":
+          resized && host.dataset.hoshidictsTheme === "miku"
+          && host.style.getPropertyValue("--gsm-hoshidicts-popup-opacity") === "0%"
+          && harness.sent.length === sentBefore && harness.driver.snapshot(1).noteEditing
+          && panes.every(({ request, context }, depth) => harness.stats(depth).layoutSchedules === 2
+            && harness.stats(depth).highlightEnabled === false && harness.driver.viewRequest(depth) === request
+            && context.isCurrentRequest()) };
     } finally { harness.close(); }
   }
 

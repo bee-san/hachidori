@@ -41,8 +41,10 @@
     getPopupColumns: () => options.popupColumns,
     positionPopup, sourceHighlightEnabled: true,
     onKanjiClick(character, result, anchor, link) {
-      clickedKanjiIndex = [...popup.querySelectorAll(".gsm-hoshidicts-kanji-link")].indexOf(link);
-      termView = { ...view.captureTermView(), selectedDictionaryTab };
+      if (!kanjiCharacter) {
+        clickedKanjiIndex = [...popup.querySelectorAll(".gsm-hoshidicts-kanji-link")].indexOf(link);
+        termView = { ...view.captureTermView(), selectedDictionaryTab };
+      }
       kanjiCharacter = character;
       renderSample();
       popup.querySelector(".gsm-hoshidicts-kanji-back").focus({ preventScroll: true });
@@ -105,14 +107,23 @@
 
   function renderSample(preserveViewControls = false) {
     if (kanjiCharacter) {
-      view.renderKanji({ character: kanjiCharacter, entries: [{ dictionary: "Sample kanji",
-        onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用", definitions: ["eat", "food"],
-        stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }],
-      }] }, candidate, { ...context(), preserveViewControls, highlightText: candidate.query, onBack() {
+      const capability = HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, state.dictionaries);
+      const renderContext = { ...context(), preserveViewControls, highlightText: candidate.query, onBack() {
         kanjiCharacter = null;
         renderSample();
         popup.querySelectorAll(".gsm-hoshidicts-kanji-link")[clickedKanjiIndex]?.focus({ preventScroll: true });
-      } });
+      } };
+      if (capability?.kind === "term") {
+        view.renderResults([{ matched: kanjiCharacter, trace: [], term: {
+          expression: kanjiCharacter, reading: "しょく", glossaries: [{ dictionary: capability.title,
+            glossary: JSON.stringify(["food; eating — sample single-kanji entry"]) }], frequencies: [], pitches: [],
+        } }], candidate, renderContext);
+      } else {
+        view.renderKanji({ character: kanjiCharacter, entries: [{ dictionary: capability?.title || "Sample kanji",
+          onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用", definitions: ["eat", "food"],
+          stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }],
+        }] }, candidate, renderContext);
+      }
     } else {
       view.renderResults(sample.results, candidate, { ...context(), preserveViewControls,
         onDictionaryTabSelected(selection) { selectedDictionaryTab = selection; },
@@ -124,6 +135,8 @@
   }
 
   window.HDDesignPreview = { update(nextOptions, nextState) {
+    const kanjiSourceChanged = JSON.stringify(options?.kanjiClickDictionary) !== JSON.stringify(nextOptions.kanjiClickDictionary)
+      || state?.revision !== nextState.revision;
     const geometryChanged = !options || options.popupColumns !== nextOptions.popupColumns
       || options.popupWidthPx !== nextOptions.popupWidthPx || options.popupHeightPx !== nextOptions.popupHeightPx;
     if (!options || options.sourceHighlightEnabled !== nextOptions.sourceHighlightEnabled) {
@@ -131,10 +144,10 @@
     }
     appearance.update(nextOptions);
     options = { ...nextOptions };
-    if (geometryChanged) view.scheduleMasonry();
+    if (geometryChanged) { positionPopup(); view.scheduleMasonry(); }
     const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
-      nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextState.revision]);
+      nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextOptions.kanjiClickDictionary, nextState.revision]);
     if (key === updateKey) return;
     updateKey = key;
     state = nextState;
@@ -143,7 +156,7 @@
     const nextSample = createSample();
     const nextSampleKey = JSON.stringify(nextSample.results);
     sample = nextSample;
-    if (sampleKey !== nextSampleKey) {
+    if (sampleKey !== nextSampleKey || (kanjiCharacter && kanjiSourceChanged)) {
       if (!kanjiCharacter) termView = { ...view.captureTermView(), selectedDictionaryTab };
       sampleKey = nextSampleKey;
       renderSample(true);

@@ -208,14 +208,6 @@
     return left === right || sameDictionaries(contents(left), contents(right));
   }
 
-  function hasCapability(dictionary, kind) {
-    if (kind === "freq") return dictionary.frequencyCount > 0;
-    if (kind === "pitch") return dictionary.pitchCount > 0;
-    if (kind === "kanji") return dictionary.kanjiCount > 0;
-    if (dictionary.termCount > 0) return true;
-    return dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0;
-  }
-
   function dictionaryPresentation() {
     return dictionaries
       .filter((entry) => entry.enabled !== false)
@@ -238,23 +230,7 @@
   }
 
   function selectedKanjiDictionaryCapability() {
-    const selection = options.kanjiClickDictionary;
-    const title = typeof selection === "string" ? selection : selection?.title;
-    if (typeof title !== "string" || title === "") {
-      return null;
-    }
-    const selected = dictionaries.find((entry) => entry.title === title && entry.enabled !== false);
-    if (!selected) {
-      return null;
-    }
-    const requestedKind = typeof selection === "object" ? selection.kind : "";
-    const kind = requestedKind === ""
-      ? hasCapability(selected, "kanji") ? "kanji" : "term"
-      : requestedKind;
-    if (!hasCapability(selected, kind)) {
-      return null;
-    }
-    return { kind, title };
+    return globalThis.HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, dictionaries);
   }
 
   function projectResultsToDictionary(results, title) {
@@ -2460,6 +2436,9 @@
       for (const level of levels) level.view?.setSourceHighlightEnabled(options.sourceHighlightEnabled);
     }
     if (levels.length > options.popupNestingMaxDepth + 1) pruneLevels(options.popupNestingMaxDepth + 1);
+    // Masonry must measure the new inline width, not lay out the old width and
+    // wait for ResizeObserver to correct every card in a second frame.
+    if (sizeChanged && options.hoverEnabled && rootLevel.popup && !rootLevel.popup.hidden) positionPopup(rootLevel);
     if ((columnsChanged || sizeChanged) && options.hoverEnabled) {
       for (const level of levels) {
         if (!level.popup?.hidden) level.view?.scheduleMasonry();

@@ -125,6 +125,18 @@
     return typeof value === "string" ? value : "";
   }
 
+  function resolveKanjiDictionary(selection, dictionaries) {
+    const title = typeof selection === "string" ? selection : selection?.title;
+    if (typeof title !== "string" || title === "") return null;
+    const selected = dictionaries.find(entry => entry.title === title && entry.enabled !== false);
+    if (!selected) return null;
+    const requestedKind = typeof selection === "object" ? selection.kind : "";
+    const kind = requestedKind === "" ? selected.kanjiCount > 0 ? "kanji" : "term" : requestedKind;
+    const available = kind === "kanji" ? selected.kanjiCount > 0 : selected.termCount > 0
+      || (selected.frequencyCount === 0 && selected.pitchCount === 0 && selected.kanjiCount === 0);
+    return available ? { kind, title } : null;
+  }
+
   function normalisePopupImageSource(value) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     if (value.kind === "dictionary" && typeof value.title === "string" && value.title !== "") {
@@ -203,5 +215,6 @@
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     projectStoredOptions, validateOptionsPatch,
     resolvePopupImageSources,
+    resolveKanjiDictionary,
   };
 }());
