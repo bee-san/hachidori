@@ -781,7 +781,7 @@ trigger a native dictionary reload.
 
 ### Live Design preview
 
-![Appearance controls beside the production popup preview](assets/live-popup-appearance.png)
+![Appearance controls beside the production popup preview](assets/popup-toolbar-settings.png)
 
 Design moves the existing appearance controls out of Reading, without a second
 options store or save queue. Both sections capture the same revision-bound
@@ -811,9 +811,9 @@ Fit/Actual transforms the outer stage, whose size follows the configured popup
 with room for the sample sentence; resizing does not rebuild the sample.
 
 `reader-options.js` owns the audited 42-theme grouped catalogue (18 dark, 23
-light, one high-contrast), strict option validation, and the 17 Design reset
+light, one high-contrast), strict option validation, and the 18 Design reset
 keys. Defaults are the Hachidori palette, 560 × 420 px, 85% background opacity,
-one column, summary off with three snippets and automatic sources, frequency
+one column, Automatic toolbar placement, summary off with three snippets and automatic sources, frequency
 names/pitch contour/pitch badge/grammar/source highlighting on, and frequency
 averages off. Reset writes those keys through the existing sparse revision CAS;
 Reading preferences, dictionaries, groups, and update policy are untouched.
@@ -831,7 +831,28 @@ apply inline geometry before scheduling masonry so cards measure the new width
 on their first layout. Existing Note, tabs, and disclosure state remain mounted.
 Source highlighting can be toggled on current terms, native kanji, and Back
 without a lookup, retaining the exact raw page span rather than engine spelling.
-Toolbar overrides and custom CSS remain separate follow-up work.
+Custom CSS remains separate follow-up work.
+
+### Toolbar placement
+
+`popupToolbarPosition` stores `auto` (default), `top`, or `bottom` through the
+existing options CAS. Settings and the production preview apply it immediately;
+committed changes also update every live reader level without reprojecting
+results, scheduling masonry, or contacting the engine.
+
+The shared `resolveToolbarPosition` follows the pinned GSM PR #549 rule:
+Automatic places a horizontal root toolbar at the bottom of an above-word popup,
+or the top of a below-word popup. Vertical roots and side-by-side child panes
+retain their edge; new Automatic panes and a change back to Automatic start at
+Top. An explicit edge overrides placement, including after resize or media load.
+The final edge is resolved once, avoiding an intermediate Top move before an
+Automatic root's actual placement is known.
+
+An unchanged edge never reorders controls. A changed edge keeps the toolbar
+and Note form adjacent in DOM and visual order. If a tab, Note field, or glossary
+link has focus, only unfocused immediate siblings move around its owner: the
+focused subtree is never detached or refocused, preserving continuous keyboard
+interaction and draft selection. Only existing popup actions are shown.
 
 ## Managed custom dictionary
 
