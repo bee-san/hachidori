@@ -5455,10 +5455,16 @@ async function designPreviewStage() {
     query(".gsm-hoshidicts-note-button").click();
     const form = query("form");
     form.elements.definition.value = "A preview draft";
+    const source = window.document.getElementById("preview-source");
+    const sourceRect = source.getBoundingClientRect.bind(source);
+    let cssPlacements = 0;
+    source.getBoundingClientRect = () => { cssPlacements += 1; return sourceRect(); };
     options = { ...options, customPopupCss: ".gsm-hoshidicts-popup { color: red; }" };
     update();
     await settle();
-    const cssPreview = parses === 1 && query("form") === form && query(".gsm-hoshidicts-glossary-card") === card;
+    const cssPreview = parses === 1 && cssPlacements === 1 && query("form") === form
+      && query(".gsm-hoshidicts-glossary-card") === card;
+    source.getBoundingClientRect = sourceRect;
     options = { ...options, showFrequencyDictionaryNames: false, showPitchAccentBadge: false,
       showCompactDefinitionSummary: true, popupColumns: 2 };
     update();
