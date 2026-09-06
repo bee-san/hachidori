@@ -1398,6 +1398,29 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const readerContext = createContext({});
     runInContext(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"), readerContext);
     const reader = readerContext.HDReaderOptions;
+    const metadataDefaults = {
+      averageFrequency: false, showFrequencyDictionaryNames: true,
+      showPitchAccentFurigana: true, pitchAccentFuriganaDictionary: "",
+      showPitchAccentBadge: true, hidePopupGrammarTags: false,
+    };
+    const metadataAccepted = [];
+    const metadataRejected = [];
+    for (const [key, value] of Object.entries(metadataDefaults)) {
+      await local.set({ options: saved.options });
+      const desired = typeof value === "boolean" ? !value : "Pitch: 辞書";
+      const reply = await send(message({ [key]: desired }));
+      const noOp = await send(message({ [key]: desired }, { baseRevision: 3 }));
+      metadataAccepted.push(reply.ok === true && reply.options?.[key] === desired
+        && reply.options.revision === 3 && noOp.options?.revision === 3);
+      await local.set({ options: saved.options });
+      const invalid = await send(message({ [key]: typeof value === "boolean" ? "true" : {} }));
+      metadataRejected.push(invalid.ok === false && await unchanged(saved));
+    }
+    check("metadata preferences preserve current defaults and use strict sparse idempotent options CAS",
+      Object.entries(metadataDefaults).every(([key, value]) => reader.normaliseOptions({})[key] === value
+        && !Object.hasOwn(reader.projectStoredOptions({}), key))
+        && metadataAccepted.every(Boolean) && metadataRejected.every(Boolean),
+      JSON.stringify({ metadataAccepted, metadataRejected }));
     const plain = reader.normaliseOptions({ modifier: "none" });
     const held = reader.normaliseOptions({ modifier: "ctrl" });
     const explicit = reader.projectStoredOptions({ modifier: "alt", lookupMode: "hover", activationKey: "K" });
