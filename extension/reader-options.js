@@ -8,9 +8,10 @@
   const ANKI_FIELDS = ["expression", "reading", "definition", "sentence", "frequency", "pitch", "audio"];
   const ANKI_DUPLICATE_SCOPES = ["collection", "deck", "deck-root"];
   const ANKI_DUPLICATE_BEHAVIORS = ["prevent", "new", "overwrite"];
+  const ANKI_OVERWRITE_MODES = ["coalesce", "coalesce-new", "skip", "append", "prepend", "overwrite"];
   const DEFAULT_ANKI = { deck: "Default", model: "", apiKey: "", tags: ["hachidori"],
     fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])), checkForDuplicates: true,
-    duplicateScope: "collection", duplicateScopeCheckAllModels: false, duplicateBehavior: "prevent" };
+    duplicateScope: "collection", duplicateScopeCheckAllModels: false, duplicateBehavior: "prevent", fieldTemplates: null };
   const DEFAULT_OPTIONS = {
     scanLength: 16,
     maxResults: 32,
@@ -118,12 +119,21 @@
       typeof source.fields?.[key] === "string" ? source.fields[key] : ""]));
     if (ANKI_DUPLICATE_SCOPES.includes(source.duplicateScope)) result.duplicateScope = source.duplicateScope;
     if (ANKI_DUPLICATE_BEHAVIORS.includes(source.duplicateBehavior)) result.duplicateBehavior = source.duplicateBehavior;
+    result.fieldTemplates = validAnkiTemplates(source.fieldTemplates) ? source.fieldTemplates : null;
     return result;
+  }
+
+  function validAnkiTemplates(value) {
+    if (value === null) return true;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    return Object.entries(value).every(([field, template]) => field !== "" && template
+      && typeof template.value === "string" && ANKI_OVERWRITE_MODES.includes(template.overwriteMode));
   }
 
   function validAnki(value, normalized) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     return Object.entries(normalized).every(([key, expected]) => {
+      if (key === "fieldTemplates") return validAnkiTemplates(value.fieldTemplates);
       if (key === "fields") return value.fields && !Array.isArray(value.fields)
         && ANKI_FIELDS.every(field => value.fields[field] === expected[field]);
       if (key === "tags") return Array.isArray(value.tags) && value.tags.length === expected.length
@@ -271,7 +281,7 @@
   }
 
   globalThis.HDReaderOptions = {
-    ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS,
+    ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS, ANKI_OVERWRITE_MODES,
     DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,

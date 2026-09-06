@@ -35,6 +35,9 @@ test("Automatic and named presets materialize only discovered fields with visibl
   assert.equal(basic.fieldTemplates.Term.value, "");
   assert.equal(basic.fieldTemplates.Meaning.value, "{definition}");
   assert.equal(basic.fieldTemplates.Unused.value, "");
+  const aliases = applyAnkiPreset(config(), ["ExpressionReading", "Reading", "ExpressionAudio", "WordAudio"], "automatic");
+  assert.equal(aliases.fieldTemplates.Reading.value, "");
+  assert.equal(aliases.fieldTemplates.WordAudio.value, "");
   for (const preset of ["kiku", "lapis"]) {
     const result = applyAnkiPreset(config(), ["Expression", "ExpressionFurigana", "MainDefinition", "PitchPosition", "FreqSort"], preset);
     assert.equal(result.fieldTemplates.ExpressionFurigana.value, "{furigana-plain}");
