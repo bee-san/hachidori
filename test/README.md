@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 309 checks, all of
+full request→reply round trip per contract-C message type. 310 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -387,6 +387,8 @@ What it proves, in order:
    rejected and decode-failed media remove its wrapper but retain full-card errors.
    Combined state delivery invalidates changed contents before summary work, or applies
    current labels and summary preferences together once.
+   Image-source options preserve Automatic, canonical dictionary titles and stable
+   group IDs through strict, idempotent CAS, rejecting malformed known shapes.
    The existing detached-child regression also rejects new summary/media work
    before its obsolete anchor chain can be retired by later positioning.
    The batch assertion pins sequential requests, completed/total progress, one
