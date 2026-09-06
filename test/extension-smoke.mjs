@@ -10303,6 +10303,27 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       && imageAfterBreak?.image?.path === "leading.png",
     JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText, mixedSenses, brokenLines, ruby, renderedDispatch, imageAfterBreak }));
 
+  const aggregateResult = { term: { frequencies: [
+    { dictionary: "Rank A", frequencies: [{ value: 1234, displayValue: "1,234" }, { value: 1 }] },
+    { dictionary: "Occurrences", frequencies: [{ value: 1000 }] },
+    { dictionary: "Rank B", frequencies: [{ value: 0, displayValue: "999" }, { value: 2468, displayValue: "999 label" }] },
+    { dictionary: "Unspecified", frequencies: [{ value: 7 }] },
+    { dictionary: "Empty", frequencies: [{ value: 0, displayValue: "100" }] },
+  ] } };
+  const aggregateInput = JSON.stringify(aggregateResult);
+  const aggregateTags = HDPopup.createFrequencyTags(document, aggregateResult, [
+    { title: "Rank A", frequencyMode: "rank-based" },
+    { title: "Rank B", frequencyMode: "rank-based" },
+    { title: "Occurrences", frequencyMode: "occurrence-based" },
+  ], 12, true, false);
+  check("frequency aggregates use native values once per dictionary and keep rank occurrence and unknown units separate",
+    JSON.stringify(aggregateTags.map(tag => Number(tag.querySelector("[data-frequency]")?.dataset.frequency)))
+      === JSON.stringify([1645, 1000, 7])
+      && JSON.stringify(aggregateTags.map(tag => tag.querySelector(".gsm-hoshidicts-frequency-source")?.textContent))
+        === JSON.stringify(["Rank average", "Occurrence average", "Frequency average (unspecified)"])
+      && JSON.stringify(aggregateResult) === aggregateInput,
+    aggregateTags.map(tag => tag.outerHTML).join("\n"));
+
   const host = document.createElement("div");
   document.body.appendChild(host);
   const shadow = host.attachShadow({ mode: "closed" });
