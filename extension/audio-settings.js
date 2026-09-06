@@ -1,4 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+function labelControl(control, label) {
+  if (control.getAttribute("aria-label") !== label) control.setAttribute("aria-label", label);
+}
+
+function setTesting(row, testing) {
+  const text = testing ? "Stop" : "Test";
+  if (row.test.textContent !== text) row.test.textContent = text;
+  labelControl(row.test, `${testing ? "Stop Test" : "Test 聞く / きく"}: ${row.number.textContent.toLowerCase()}`);
+}
+
 export function createAudioSettingsController({ document, readSources, editSources, send }) {
   const window = document.defaultView;
   const list = document.getElementById("audio-source-list");
@@ -8,16 +18,6 @@ export function createAudioSettingsController({ document, readSources, editSourc
   let voices = [];
   let voiceVersion = 0;
   let active = null;
-
-  function labelControl(control, label) {
-    if (control.getAttribute("aria-label") !== label) control.setAttribute("aria-label", label);
-  }
-
-  function setTesting(row, testing) {
-    const text = testing ? "Stop" : "Test";
-    if (row.test.textContent !== text) row.test.textContent = text;
-    labelControl(row.test, `${testing ? "Stop Test" : "Test 聞く / きく"}: ${row.number.textContent.toLowerCase()}`);
-  }
 
   function stop() {
     if (!active) return;
@@ -46,8 +46,11 @@ export function createAudioSettingsController({ document, readSources, editSourc
       const reply = await send("hd_audio_test", { source, requestId: operation.requestId });
       if (active !== operation) return;
       if (!reply.ok) throw new Error(reply.error);
-      row.status.textContent = reply.status === "success" ? `Played 聞く / きく${reply.candidate?.name ? ` — ${reply.candidate.name}` : ""}.`
-        : reply.status === "no-result" ? "No pronunciation was returned." : "Stopped.";
+      if (reply.status === "success") {
+        const name = reply.candidate?.name ? ` — ${reply.candidate.name}` : "";
+        row.status.textContent = `Played 聞く / きく${name}.`;
+      } else if (reply.status === "no-result") row.status.textContent = "No pronunciation was returned.";
+      else row.status.textContent = "Stopped.";
     } catch (error) {
       if (active === operation) row.status.textContent = `Could not play: ${error.message}`;
     } finally {
@@ -151,7 +154,7 @@ export function createAudioSettingsController({ document, readSources, editSourc
       const focused = ordered.find(row => row.contains(document.activeElement));
       const focusIndex = ordered.indexOf(focused);
       ordered.forEach((row, index) => {
-        if (focused && index < focusIndex) list.insertBefore(row, focused);
+        if (focused && index < focusIndex) focused.before(row);
         else if (row !== focused) list.append(row);
       });
     }

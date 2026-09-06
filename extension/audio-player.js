@@ -82,6 +82,20 @@ export function createAudioPlayer({ window, fetch }) {
     return parseAudioSourceList(await (await response(url, signal)).json());
   }
 
+  async function firstPlayable(found, signal) {
+    let failure;
+    for (const entry of found) {
+      try {
+        await playUrl(entry, signal);
+        return entry;
+      } catch (error) {
+        signal.throwIfAborted();
+        failure = error;
+      }
+    }
+    throw failure;
+  }
+
   return {
     stop,
     async play(source, term) {
@@ -97,18 +111,7 @@ export function createAudioPlayer({ window, fetch }) {
           const found = await candidates(source, term, signal);
           signal.throwIfAborted();
           if (found.length === 0) return { status: "no-result" };
-          let failure;
-          for (const entry of found) {
-            try {
-              await playUrl(entry, signal);
-              candidate = entry;
-              break;
-            } catch (error) {
-              signal.throwIfAborted();
-              failure = error;
-            }
-          }
-          if (!candidate) throw failure;
+          candidate = await firstPlayable(found, signal);
         }
         signal.throwIfAborted();
         return { status: "success", sourceId: source.id, candidate };

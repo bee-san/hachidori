@@ -15,7 +15,7 @@ function httpUrl(value) {
 }
 
 function encodeValue(value) {
-  return encodeURIComponent(value).replace(/[!'()*]/gu, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return encodeURIComponent(value).replace(/[!'()*]/gu, char => `%${char.codePointAt(0).toString(16).toUpperCase()}`);
 }
 
 export function audioSourceUrl(template, { expression, reading }) {
@@ -26,7 +26,7 @@ export function audioSourceUrl(template, { expression, reading }) {
 }
 
 export function parseAudioSourceList(value) {
-  if (!value || value.type !== "audioSourceList" || !Array.isArray(value.audioSources)
+  if (value?.type !== "audioSourceList" || !Array.isArray(value.audioSources)
       || Object.keys(value).some(key => !["type", "audioSources"].includes(key))) {
     throw new Error("The audio provider returned an invalid Yomitan audioSourceList.");
   }
