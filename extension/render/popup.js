@@ -281,13 +281,6 @@
   }
 
   function frequencyNumberForAverage(frequency) {
-    if (typeof frequency.displayValue === "string") {
-      const match = /^\d+/u.exec(frequency.displayValue);
-      if (match) {
-        const value = Number.parseInt(match[0], 10);
-        if (value > 0) return value;
-      }
-    }
     return Number.isFinite(frequency.value) && frequency.value > 0
       ? frequency.value
       : null;
@@ -350,31 +343,37 @@
     showFrequencyDictionaryNames = true
   ) {
     if (averageFrequency) {
-      const frequencies = [];
+      const modes = new Map(dictionaryPresentation.map(({ title, frequencyMode }) => [title, frequencyMode]));
+      const aggregates = new Map();
+      const seen = new Set();
       for (const group of result.term.frequencies) {
+        if (seen.has(group.dictionary)) continue;
         for (const frequency of group.frequencies) {
           const value = frequencyNumberForAverage(frequency);
           if (value !== null) {
-            frequencies.push(value);
+            const mode = modes.get(group.dictionary);
+            const label = mode === "rank-based" ? "Rank average"
+              : mode === "occurrence-based" ? "Occurrence average" : "Frequency average (unspecified)";
+            const aggregate = aggregates.get(label) || { count: 0, reciprocalSum: 0 };
+            aggregate.count += 1;
+            aggregate.reciprocalSum += 1 / value;
+            aggregates.set(label, aggregate);
+            seen.add(group.dictionary);
             break;
           }
         }
       }
-      if (frequencies.length === 0) return [];
-      const value = Math.floor(
-        frequencies.length /
-          frequencies.reduce((total, frequency) => total + 1 / frequency, 0)
-      );
-      const frequency = { value, displayValue: null };
-      return [
-        createFrequencyTag(
+      return Array.from(aggregates, ([label, { count, reciprocalSum }]) => {
+        const value = Math.floor(count / reciprocalSum);
+        return createFrequencyTag(
           documentRef,
           { dictionary: "Frequency" },
-          "Frequency:",
-          [{ display: formatCompactFrequencyNumber(value), frequency }],
-          showFrequencyDictionaryNames
-        ),
-      ];
+          label,
+          [{ display: formatCompactFrequencyNumber(value), frequency: { value, displayValue: null } }],
+          // These labels identify units, not a source dictionary.
+          true
+        );
+      });
     }
     const tags = [];
     const seen = new Set();
