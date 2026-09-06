@@ -10956,6 +10956,31 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
     }
     check("group membership and image-route changes load only the replacement projection's images",
       replacementProjections.every(Boolean), JSON.stringify(replacementProjections));
+
+    const replacementSummaries = [];
+    for (const enabled of [true, false]) {
+      sources = null;
+      Object.assign(context, { popupImageSources: sources, dictionaryTabGroups: [],
+        showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2 });
+      const beforeInitial = requests.length;
+      view.renderResults([projected], candidate, context);
+      settle(requests.slice(beforeInitial));
+      await tick();
+      const oldSummary = popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+      const oldCards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+      const beforeReplacement = requests.length;
+      route(["Pictures"], { showCompactDefinitionSummary: enabled, compactDefinitionSummaryCount: 3 });
+      const pending = requests.slice(beforeReplacement);
+      const expectedImages = enabled ? 2 : 1;
+      replacementSummaries.push(pending.length === expectedImages
+        && pending.every(({ query, supplier }) => query.isCurrent() && supplier === "Pictures")
+        && !oldSummary.isConnected && oldCards.every(card => card.isConnected));
+      settle(pending);
+      await tick();
+      replacementSummaries.push(popup.querySelectorAll("img").length === expectedImages);
+    }
+    check("combined summary and image-route changes load only retained or replacement images",
+      replacementSummaries.every(Boolean), JSON.stringify(replacementSummaries));
   } finally {
     settle(requests);
     view.destroy();
