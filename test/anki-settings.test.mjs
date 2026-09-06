@@ -121,3 +121,23 @@ test("presets and advanced templates save one complete snapshot, retain invalid 
   assert.equal(f.read().fieldTemplates, null);
   assert.ok(Object.values(f.read().fields).every(value => value === ""));
 });
+
+test("case-only field refresh preserves the focused template row and subsequent edits target its current name", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" } } });
+  discovery(f.sent[0]);
+  await tick();
+  const editor = f.el("anki-templates").querySelector("textarea");
+  editor.focus();
+  editor.value = "draft {expression}";
+  editor.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  const pending = f.controller.refresh();
+  discovery(f.sent[1], { fields: ["front", "Back"] });
+  await pending;
+  assert.equal(f.window.document.activeElement, editor);
+  assert.equal(f.el("anki-templates").querySelector("textarea"), editor);
+  editor.value = "next {expression}";
+  editor.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  assert.equal(f.read().fieldTemplates.front.value, "next {expression}");
+  assert.equal(Object.hasOwn(f.read().fieldTemplates, "Front"), false);
+});

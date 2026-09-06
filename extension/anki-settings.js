@@ -51,16 +51,17 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     const names = { coalesce: "Keep existing, fill empty", "coalesce-new": "Use new, keep if empty", skip: "Keep existing",
       append: "Append", prepend: "Prepend", overwrite: "Replace" };
     for (const value of ANKI_OVERWRITE_MODES) mode.add(new document.defaultView.Option(names[value], value));
-    editor.addEventListener("input", () => editTemplate(field, { value: editor.value }));
-    mode.addEventListener("change", () => editTemplate(field, { overwriteMode: mode.value }));
     const remove = row.querySelector("button");
+    const record = { field, row, label, editor, mode, remove };
+    editor.addEventListener("input", () => editTemplate(record.field, { value: editor.value }));
+    mode.addEventListener("change", () => editTemplate(record.field, { overwriteMode: mode.value }));
     remove.addEventListener("click", () => {
       const templates = materializeTemplates();
-      delete templates[field];
+      delete templates[record.field];
       change({ fieldTemplates: templates });
       element("opt-anki-advanced").focus();
     });
-    return { row, label, editor, mode, remove };
+    return record;
   }
 
   function renderTemplates(config) {
@@ -69,13 +70,22 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       ...resolved.staleFields.map(field => [field, config.fieldTemplates[field]])];
     const retained = new Set(templates.map(([field]) => field));
     const advanced = config.fieldTemplates !== null;
-    for (const [field, row] of templateRows) {
-      if (!retained.has(field)) { row.row.remove(); templateRows.delete(field); }
-    }
+    const renamedRows = new Map([...templateRows].filter(([field]) => !retained.has(field))
+      .map(([field, row]) => [field.toLowerCase(), row]));
     const container = element("anki-templates");
     let index = 0;
     for (const [field, template] of templates) {
-      if (!templateRows.has(field)) templateRows.set(field, createTemplateRow(field));
+      if (!templateRows.has(field)) {
+        const previous = renamedRows.get(field.toLowerCase());
+        if (previous) {
+          templateRows.delete(previous.field);
+          renamedRows.delete(field.toLowerCase());
+          previous.field = field;
+          previous.label.textContent = field;
+          previous.mode.setAttribute("aria-label", `On overwrite: ${field}`);
+        }
+        templateRows.set(field, previous || createTemplateRow(field));
+      }
       const row = templateRows.get(field);
       if (row.editor !== document.activeElement && row.editor.value !== template.value) row.editor.value = template.value;
       if (row.mode !== document.activeElement && row.mode.value !== template.overwriteMode) row.mode.value = template.overwriteMode;
@@ -85,6 +95,9 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       if (row.remove.hidden === unavailable) row.remove.hidden = !unavailable;
       if (container.children[index] !== row.row) container.insertBefore(row.row, container.children[index] || null);
       index += 1;
+    }
+    for (const [field, row] of templateRows) {
+      if (!retained.has(field)) { row.row.remove(); templateRows.delete(field); }
     }
     if (element("anki-fields").hidden !== advanced) element("anki-fields").hidden = advanced;
     element("opt-anki-advanced").checked = advanced;
