@@ -680,12 +680,13 @@
       for (const [target, subtree] of targets) {
         record.observer.observe(target, { childList: true, characterData: subtree, subtree });
       }
+      record.observedTargets = targets;
     }
 
     function sourceChanged(record, changes) {
       return record.candidate.sourceElements.some(source => !source.isConnected
         || changes.some(change => source.contains(change.target)
-          || [...change.addedNodes, ...change.removedNodes].some(node => node.contains(source))));
+          || [...change.addedNodes, ...change.removedNodes].some(node => record.observedTargets.has(node))));
     }
 
     function refreshSource(key, record) {
@@ -3084,6 +3085,7 @@
       },
       flushDictionaryPresentation,
       destroy() {
+        sourceHighlighter.clear();
         currentPresentationUpdate = null;
         pendingPresentation = null;
         hideImagePreview();
