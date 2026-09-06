@@ -10431,6 +10431,8 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     JSON.stringify(popup.textContent.slice(0, 200)),
   );
 
+  await metadataRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+
   const glossary = lookup.results[0].term.glossaries[0];
   const noteResults = [
     {
@@ -11104,6 +11106,77 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
     view.destroy();
     popup.remove();
   }
+}
+
+async function metadataRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  let fills = 0;
+  let rubyFills = 0;
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby(...args) { rubyFills += 1; return HDGlossary.appendExpressionRuby(...args); },
+    appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
+    parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
+  });
+  const results = [{ ...result, term: { ...result.term, pitches: [
+    ...result.term.pitches, { dictionary: "IPA only", pitches: [], transcriptions: ["ipa-only", "second transcription"] },
+  ] } }];
+  const original = JSON.stringify(results);
+  const context = { hidePopupGrammarTags: false, showPitchAccentBadge: true,
+    showPitchAccentFurigana: true, showFrequencyDictionaryNames: true, averageFrequency: false,
+    pitchAccentFuriganaDictionary: "", dictionaryPresentation: [{ title: "IPA only", displayName: "Phonetics" }],
+  };
+  try {
+    view.renderResults(results, candidate, context);
+    const initialIpa = [...popup.querySelectorAll(".gsm-hoshidicts-tag-ipa")];
+    const card = popup.querySelector(".gsm-hoshidicts-glossary-card");
+    const body = popup.querySelector(".gsm-hoshidicts-glossary-content");
+    const definitionTag = popup.querySelector(".gsm-hoshidicts-definition-tags");
+    const disclosure = popup.querySelector(".gsm-hoshidicts-deinflection");
+    disclosure.open = true;
+    card.open = false;
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const form = popup.querySelector("form");
+    form.elements.definition.value = "keep this draft";
+    form.elements.definition.focus();
+    form.elements.definition.setSelectionRange(2, 5);
+    const initialFills = fills;
+    const hidden = { ...context, showPitchAccentFurigana: false, showPitchAccentBadge: false,
+      hidePopupGrammarTags: true, showFrequencyDictionaryNames: false };
+    view.updateDictionaryPresentation(hidden);
+    const independent = !popup.querySelector(".gsm-hoshidicts-tag-pitch")
+      && !popup.querySelector(".gsm-hoshidicts-primary-grammar")
+      && !popup.querySelector(".gsm-hoshidicts-frequency-source")
+      && popup.querySelector(".gsm-hoshidicts-tag-ipa")?.textContent.includes("Phonetics")
+      && popup.textContent.includes("ipa-only · second transcription")
+      && definitionTag.isConnected;
+    const preserved = popup.querySelector("form") === form && document.activeElement === form.elements.definition
+      && form.elements.definition.selectionStart === 2 && form.elements.definition.selectionEnd === 5
+      && form.elements.definition.value === "keep this draft" && card.isConnected && !card.open
+      && body.isConnected && disclosure.isConnected && disclosure.open && fills === initialFills;
+    const frequency = popup.querySelector(".gsm-hoshidicts-frequency-value");
+    const ipa = popup.querySelector(".gsm-hoshidicts-tag-ipa");
+    const appliedRuby = rubyFills;
+    view.updateDictionaryPresentation(hidden);
+    const noop = rubyFills === appliedRuby && popup.querySelector(".gsm-hoshidicts-frequency-value") === frequency
+      && popup.querySelector(".gsm-hoshidicts-tag-ipa") === ipa;
+    view.closeNoteForm();
+    const kanji = popup.querySelector(".gsm-hoshidicts-expression .gsm-hoshidicts-kanji-link");
+    kanji.focus();
+    view.updateDictionaryPresentation(context);
+    const deferred = kanji.isConnected && document.activeElement === kanji && rubyFills === appliedRuby
+      && Boolean(popup.querySelector(".gsm-hoshidicts-tag-pitch"));
+    kanji.blur();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const applied = rubyFills === appliedRuby + 1 && !kanji.isConnected;
+    view.flushDictionaryPresentation();
+    check("live metadata keeps IPA independent and preserves Note cards and focused ruby without redundant work",
+      initialIpa.some(tag => tag.textContent.includes("ipa-only · second transcription"))
+        && independent && preserved && noop && deferred && applied && rubyFills === appliedRuby + 1
+        && JSON.stringify(results) === original,
+      JSON.stringify({ initialIpa: initialIpa.map(tag => tag.textContent), independent, preserved, noop,
+        deferred, applied, fills, initialFills, rubyFills, appliedRuby }));
+  } finally { view.destroy(); popup.remove(); }
 }
 
 async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
