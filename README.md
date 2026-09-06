@@ -87,7 +87,7 @@ restore that choice. **Any** uses automatic ranking across all enabled frequency
 dictionaries; **Disabled** turns frequency sorting off.
 
 Settings opens with your library in lookup order. The navigation shows one task
-at a time: Library, Reading, Design, Personal dictionary, Import, Updates, or Groups.
+at a time: Library, Reading, Design, Audio, Personal dictionary, Import, Updates, or Groups.
 Drafts survive switching sections; pending work, errors, and unseen completion
 messages remain visible in the navigation. Both light and dark themes follow
 your system preference. Open a dictionary's **Details** for its display name,
@@ -112,6 +112,15 @@ normally stays near the word being read; choose **Top** or **Bottom** to keep a
 fixed edge, including in nested popups. **Reset Design to defaults** restores
 all Design controls without changing Reading preferences or your library.
 [Design preview screenshot](docs/assets/popup-toolbar-settings.png).
+
+**Audio** starts with text-to-speech enabled, pronouncing the reading when one is
+available. Add custom audio URL templates or Yomitan JSON sources, choose a system
+voice, and reorder, disable, or remove sources. Each row's **Test** plays 聞く / きく
+and reports completion, no result, or a provider/playback error. These settings
+autosave; an explicitly emptied list stays empty. Nothing plays automatically.
+Voice availability depends on Chrome and the operating system; some voices use
+online services. Popup Audio controls follow in E20.
+[Audio settings screenshot](docs/assets/audio-settings.png).
 
 <p align="center">
   <picture>
@@ -206,7 +215,7 @@ This directional smoke comparison uses the full **VNDB Characters by Bee** dicti
 | Imports Yomitan dictionaries | Yes | Yes | Yes |
 | Hover popup on ordinary pages | Yes | Yes | No built-in browser popup |
 | Native helper or local server needed | No | No | The native program itself |
-| Audio, Anki, and mining workflows | Deliberately out of scope | Built in or integrated | Build your own integration |
+| Audio, Anki, and mining workflows | Audio source configuration and testing; popup audio and Anki pending | Built in or integrated | Build your own integration |
 
 Choose Hachidori when you want the shortest path from a Yomitan dictionary to a private hover definition. Choose Yomitan when you want the broader study ecosystem; choose the hoshidicts CLI when you want the native engine outside a browser.
 

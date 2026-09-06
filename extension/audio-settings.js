@@ -33,6 +33,7 @@ export function createAudioSettingsController({ document, readSources, editSourc
     stop();
     const source = readSources().find(source => source.id === id);
     const operation = { id, row, source: JSON.stringify(source), requestId: window.crypto.randomUUID() };
+    row.testedSource = operation.source;
     active = operation;
     row.status.textContent = "Testing 聞く / きく…";
     setTesting(row, true);
@@ -117,6 +118,10 @@ export function createAudioSettingsController({ document, readSources, editSourc
     const ordered = sources.map((source, index) => {
       if (!rows.has(source.id)) rows.set(source.id, createRow(source));
       const row = rows.get(source.id);
+      if (row.testedSource && row.testedSource !== JSON.stringify(source)) {
+        row.status.textContent = "";
+        row.testedSource = null;
+      }
       row.enabled.checked = source.enabled;
       row.number.textContent = `Source ${index + 1}`;
       for (const key of ["type", "url"]) {

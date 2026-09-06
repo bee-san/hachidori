@@ -3081,8 +3081,9 @@ async function checkAudioSettings(page, browser) {
       JSON.stringify({ success, empty, failure, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
     await input(`${customRow} .audio-url`, template);
     if (process.env.HACHIDORI_AUDIO_SCREENSHOT) {
-      await page.setViewport({ width: 1200, height: 1000 });
-      await page.screenshot({ path: process.env.HACHIDORI_AUDIO_SCREENSHOT });
+      await page.setViewport({ width: 1200, height: 1100 });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: process.env.HACHIDORI_AUDIO_SCREENSHOT, fullPage: true });
     }
     // Hold a real request at the offscreen target, then stop and release it.
     let held;

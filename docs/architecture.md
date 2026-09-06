@@ -779,6 +779,34 @@ current-state read before retry is offered. Content scripts use the same
 highest-revision rule, including a delayed initial storage read. Options never
 trigger a native dictionary reload.
 
+### Pronunciation sources
+
+Audio uses the same global revisioned options and Settings save queue. Fresh
+installs receive one enabled reading-TTS source; explicit empty lists are not
+repopulated. Stable source IDs preserve ordered enabled/disabled rows and native
+control focus. The voice list and source controls initialize only on visiting
+Audio. URL templates encode term/expression/reading/language substitutions;
+Yomitan JSON discovery retains ordered named candidates. The four source types
+come from the pinned GSM PR #549 implementation, without its product caps.
+
+The worker forwards validated audio messages separately from engine requests and
+storage writes. Chrome's sender document ID and request ID own Test cancellation.
+A synchronous worker token retires stopped or superseded Tests before an
+offscreen-startup retry can dispatch them. Offscreen lazily imports the player;
+no audio requests wait on engine selection or acquire its mutation lock.
+
+The offscreen document declares DOM_SCRAPING and AUDIO_PLAYBACK together. Chrome
+keeps it while its dictionary-engine purpose remains active, including after
+audio's 30-second idle window. URL playback fetches without credentials and uses
+one temporary Blob URL, releasing it on natural completion, error, or stop.
+Candidate fallback includes actual decoding/playback failures. Speech uses the
+chosen native voice and expression or reading; unavailable browser voices are a
+visible error. Only natural completion reports success; the Settings Test has
+the reference's 15-second deadline. Leaving Audio, editing its tested source, or
+closing Settings stops its owned Test. This stage adds no popup autoplay or cache.
+
+![Ordered pronunciation sources](assets/audio-settings.png)
+
 ### Live Design preview
 
 ![Appearance controls beside the production popup preview](assets/popup-toolbar-settings.png)
