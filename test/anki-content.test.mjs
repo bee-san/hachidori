@@ -130,3 +130,25 @@ test("refresh waits for a second pending submission without spinning on its busy
   await until(() => f.items[1].add.textContent === "Added");
   assert.ok(before <= 2, `pending write caused ${before} status requests`);
 });
+
+test("settings changes during submission preserve confirmed and uncertain outcomes without allowing a retry", async t => {
+  for (const state of ["added", "updated", "uncertain"]) {
+    const held = Promise.withResolvers();
+    let writes = 0;
+    const f = fixture(t, async type => {
+      if (type === "hd_anki_status") return { available: true, configKey: "current" };
+      if (type === "hd_anki_submit") { writes++; return held.promise; }
+      return { state: "addable", canAdd: true };
+    });
+    f.controller.update(configured);
+    f.controller.bind([f.items[0]], f.context);
+    await until(() => f.items[0].add && !f.items[0].add.disabled);
+    f.items[0].add.click();
+    f.controller.update({ ...configured, anki: { ...configured.anki, duplicateBehavior: "new" } });
+    held.resolve({ state, noteId: 42, warnings: [], error: "Use View in Anki before trying again." });
+    await until(() => !f.items[0].output.textContent.includes("Saving"));
+    assert.equal(f.items[0].add.disabled, true, `${state} must remain terminal after configuration changes`);
+    f.items[0].add.click();
+    assert.equal(writes, 1);
+  }
+});
