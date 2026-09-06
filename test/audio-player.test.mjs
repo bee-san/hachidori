@@ -111,3 +111,13 @@ test("retiring an old speech Test cannot cancel the newer utterance", async () =
     assert.equal((await current).status, "success");
   } finally { player.stop(); }
 });
+
+test("a missing configured voice fails without silently using the system default", async () => {
+  const env = environment();
+  const player = createAudioPlayer({ window: env.window, fetch: () => assert.fail("TTS must not fetch audio") });
+  const speech = { ...source, type: "text-to-speech-reading", voice: "removed-voice" };
+  await assert.rejects(player.play(speech, term), /selected speech voice is no longer available/u);
+  assert.equal(env.utterances.length, 0);
+  assert.equal((await player.play({ ...speech, voice: "" }, term)).status, "success");
+  assert.equal(env.utterances[0].voice, undefined);
+});
