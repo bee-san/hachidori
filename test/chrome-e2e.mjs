@@ -852,7 +852,8 @@ async function popupReader(page, depth = 0) {
               right: Math.min(left + element.clientWidth, rect.right), bottom: Math.min(top + element.clientHeight, rect.bottom) }))
               .filter(rect => rect.right > rect.left && rect.bottom > rect.top);
           });
-          source = { expected, html: element.innerHTML, className: element.className, selection: getSelection().toString() };
+          source = { expected, html: element.innerHTML, className: element.className, selection: getSelection().toString(),
+            cover: document.querySelector("[data-e17-painted-cover]")?.getBoundingClientRect().toJSON() };
         }
         return { groups: layer?.children.length || 0, sameOwner,
           rects: ownerRects.flat(), ownerRects, source };
@@ -3815,8 +3816,8 @@ async function checkSourceFallback(settings, tab, popup) {
     const uncovered = await snapshot();
     const sourceRect = uncovered.source.expected[0];
     const covers = [];
-    for (const kind of ["partial", "pointer-none", "modal", "sticky", "behind"]) {
-      const cover = await tab.evaluate(({ source, kind }) => {
+    for (const kind of ["partial", "pointer-none", "modal", "sticky", "border", "fixed-escape", "motion", "behind"]) {
+      await tab.evaluate(({ source, kind }) => {
         const element = document.createElement("div");
         element.id = "e17-page-cover";
         const small = kind === "modal";
@@ -3833,10 +3834,29 @@ async function checkSourceFallback(settings, tab, popup) {
           painted.style.cssText = `position:sticky;top:0;height:${height}px;background:white`;
           element.append(painted);
         }
+        if (kind === "border") {
+          element.style.height = "8px";
+          element.style.borderBottom = "18px solid white";
+          element.style.overflow = "hidden";
+        }
+        if (kind === "fixed-escape") {
+          painted = element.cloneNode();
+          painted.removeAttribute("id");
+          element.style.cssText = "position:absolute;left:0;top:0;width:1px;height:1px;overflow:hidden";
+          element.append(painted);
+        }
         document.body.append(element);
-        return painted.getBoundingClientRect().toJSON();
+        painted.dataset.e17PaintedCover = "";
+        if (kind === "motion") {
+          element.style.transition = "transform 1s linear";
+          element.getBoundingClientRect();
+          element.style.transform = "translateX(160px)";
+        }
       }, { source: sourceRect, kind });
+      if (kind === "motion") await tab.waitForFunction(() => document.querySelector("[data-e17-painted-cover]").getAnimations()
+        .some(animation => animation.currentTime >= 300 && animation.currentTime < 800));
       const current = await snapshot();
+      const cover = current.source.cover;
       const expectedArea = uncovered.source.expected.reduce((total, rect) => total + area(rect)
         - (kind === "behind" ? 0 : overlap(rect, cover)), 0);
       const actualArea = current.paint.rects.reduce((total, rect) => total + area(rect), 0);
