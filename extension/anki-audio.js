@@ -6,13 +6,22 @@ const MIME_EXTENSIONS = { "audio/aac": "aac", "audio/flac": "flac", "audio/mp4":
   "audio/ogg": "ogg", "audio/wav": "wav", "audio/webm": "webm", "audio/x-wav": "wav", "application/ogg": "ogg" };
 const TTS_WARNING = "Browser text-to-speech cannot be attached to Anki. Add a downloadable URL source in Audio Settings.";
 
-function base64(window, blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new window.FileReader();
-    reader.onload = () => resolve(reader.result.slice(reader.result.indexOf(",") + 1));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
+async function base64(window, blob, signal) {
+  signal.throwIfAborted();
+  const reader = new window.FileReader();
+  let abort;
+  try {
+    return await new Promise((resolve, reject) => {
+      reader.onload = () => resolve(reader.result.slice(reader.result.indexOf(",") + 1));
+      reader.onerror = () => reject(reader.error);
+      abort = () => { reader.abort(); reject(signal.reason); };
+      signal.addEventListener("abort", abort, { once: true });
+      reader.readAsDataURL(blob);
+    });
+  } finally {
+    signal.removeEventListener("abort", abort);
+    reader.onload = reader.onerror = null;
+  }
 }
 
 async function candidateFile(window, repository, candidate, signal) {
@@ -32,9 +41,12 @@ async function candidateFile(window, repository, candidate, signal) {
     });
     signal.throwIfAborted();
     const suffix = new URL(candidate.url).pathname.split(".").at(-1).toLowerCase();
-    const extension = MIME_EXTENSIONS[lease.blob.type.split(";")[0].toLowerCase()] || (/^[a-z0-9]+$/u.test(suffix) ? suffix : "bin");
-    const filename = await ankiMediaFilename(await lease.blob.arrayBuffer(), extension);
-    const data = await base64(window, lease.blob);
+    const mime = lease.blob.type.split(";")[0].toLowerCase();
+    const extension = Object.hasOwn(MIME_EXTENSIONS, mime) ? MIME_EXTENSIONS[mime] : (/^[a-z0-9]+$/u.test(suffix) ? suffix : "bin");
+    const bytes = await lease.blob.arrayBuffer();
+    signal.throwIfAborted();
+    const filename = await ankiMediaFilename(bytes, extension);
+    const data = await base64(window, lease.blob, signal);
     signal.throwIfAborted();
     return { filename, data, candidate };
   } finally {
