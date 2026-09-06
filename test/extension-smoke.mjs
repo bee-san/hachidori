@@ -4316,6 +4316,8 @@ async function main() {
     JSON.stringify(navigationSettings));
   check("dictionary details retain their stable identity and focus across rerenders and filtering",
     navigationSettings?.details === true, JSON.stringify(navigationSettings));
+  check("Design lazily previews unsaved presentation edits and retains the shared save feedback across sections",
+    navigationSettings?.design === true, JSON.stringify(navigationSettings));
   const frequencySettings = await settingsFrequencyStage();
   check("Settings derives frequency direction only on dictionary selection or explicit Auto",
     frequencySettings?.explicit === true, JSON.stringify(frequencySettings));
@@ -5016,7 +5018,34 @@ async function settingsNavigationStage() {
     const unseenCompletion = mirror.textContent === "Reading: Saved.";
     await navigate("lookup");
     await navigate("dictionaries");
-    return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details };
+    const preview = document.getElementById("design-preview");
+    let design = !!preview && !preview.hasAttribute("src");
+    if (preview) {
+      await navigate("design");
+      const updates = [];
+      preview.contentWindow.HDDesignPreview = { update(value) { updates.push(structuredClone(value)); } };
+      preview.dispatchEvent(new window.Event("load"));
+      const columns = document.getElementById("opt-popup-columns");
+      const beforeEdit = requests.length;
+      columns.value = "2";
+      columns.dispatchEvent(new window.Event("change", { bubbles: true }));
+      design &&= preview.getAttribute("src") === "design-preview.html"
+        && columns.closest("section").id === "design"
+        && document.getElementById("opt-scan-length").closest("section").id === "lookup"
+        && updates.at(-1)?.popupColumns === 2 && requests.length === beforeEdit
+        && document.getElementById("options-status").closest("section").id === "design";
+      await until(() => requests.length > beforeEdit);
+      pendingSave({ ok: false, conflict: true, error: "Settings changed elsewhere.", options: storedOptions });
+      await until(() => document.getElementById("options-status").textContent.includes("Could not save"));
+      await navigate("lookup");
+      design &&= !document.getElementById("options-conflict-actions").hidden
+        && document.getElementById("options-status").closest("section").id === "lookup";
+      document.getElementById("options-use-saved").click();
+      const beforeReturn = requests.length;
+      await navigate("design");
+      design &&= updates.at(-1)?.popupColumns === 1 && requests.length === beforeReturn;
+    }
+    return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details, design };
   } finally {
     window.close();
   }
