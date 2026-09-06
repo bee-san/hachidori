@@ -578,8 +578,15 @@ async function popupReader(page, depth = 0) {
   async function waitForHidden(timeoutMs = 6_000) {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const current = await state();
-      if (!visible(current)) return true;
+      try {
+        if (!visible(await state())) return true;
+      } catch (error) {
+        // A child can be pruned between getDocument and resolveNode. That
+        // vanished snapshot is not proof of hiding: inspect again in case a
+        // replacement child exists, within the same polling deadline.
+        if (error.originalMessage !== "No node with given id found"
+            || !error.message.includes("(DOM.resolveNode)")) throw error;
+      }
       if (Date.now() >= deadline) return false;
       await new Promise(r => setTimeout(r, 150));
     }
