@@ -66,3 +66,12 @@ test("media above the retention budget remains playable uncached and is released
   assert.equal(f.requests.length, 2);
   assert.deepEqual(f.revoked, [oversized.url, repeated.url]);
 });
+
+test("candidate retention counts source keys as well as response data without limiting accepted URLs", async () => {
+  const f = fixture();
+  const largeSource = { ...source, url: `https://example.test/?padding=${"x".repeat(2 * 1024 * 1024)}&term={term}` };
+  assert.deepEqual(await f.repository.candidates(largeSource, term, signal()), [candidate]);
+  assert.deepEqual(await f.repository.candidates(largeSource, term, signal()), [candidate]);
+  assert.equal(f.requests.length, 2, "an oversized source key must not be retained outside the byte budget");
+  f.repository.clear();
+});
