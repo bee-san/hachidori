@@ -4275,6 +4275,8 @@ async function main() {
     JSON.stringify(frequencySettings));
   check("compact-summary Settings preserve count, soft canonical source and focused revision-bound drafts",
     frequencySettings?.summary === true, JSON.stringify(frequencySettings));
+  check("image-source Settings preserve canonical dictionary and group choices through availability changes and focused conflicts",
+    frequencySettings?.imageSources === true, JSON.stringify(frequencySettings));
   const autosave = await settingsAutosaveStage();
   check(
     "Settings coalesces edited fields and queues only one revisioned save at a time",
@@ -4996,6 +4998,8 @@ async function settingsFrequencyStage() {
   try {
     loadSettingsScript(window);
     await until(() => window.document.getElementById("engine-status").textContent.startsWith("Ready"));
+    const imageSource = window.document.getElementById("opt-image-source");
+    const imageSourceDefault = imageSource?.value === "" && !imageSource.disabled && writes.length === 0;
     const auto = field("auto");
     if (!auto) return { explicit: false, availability: false, draft: false, error: "Auto direction is missing" };
     const passive = storedOptions.frequencyOrder === "disabled" && field("order").value === "disabled"
@@ -5061,16 +5065,16 @@ async function settingsFrequencyStage() {
     if (!summaryToggle || !snippets || !preferred) return { explicit, availability, draft, writes, summary: false };
     const summaryDefault = !summaryToggle.checked && snippets.value === "3" && snippets.disabled
       && preferred.value === "" && preferred.disabled;
-    async function summaryEdit(control, value) {
+    async function editControl(control, value) {
       const before = writes.length;
       if (control === summaryToggle) control.checked = value;
       else control.value = value;
       control.dispatchEvent(new window.Event("change", { bubbles: true }));
       await until(() => writes.length === before + 1 && status() === "Saved.");
     }
-    await summaryEdit(summaryToggle, true);
-    await summaryEdit(snippets, "6");
-    await summaryEdit(preferred, "Rank");
+    await editControl(summaryToggle, true);
+    await editControl(snippets, "6");
+    await editControl(preferred, "Rank");
     const beforePresentation = writes.length;
     preferred.focus();
     const choice = preferred.selectedOptions[0];
@@ -5082,10 +5086,10 @@ async function settingsFrequencyStage() {
     emitDictionaries({ termCount: 0, frequencyCount: 3 });
     const unavailableKept = preferred.value === "Rank" && preferred.selectedOptions[0].textContent.includes("unavailable")
       && !preferred.selectedOptions[0].disabled && writes.length === beforePresentation;
-    await summaryEdit(summaryToggle, false);
+    await editControl(summaryToggle, false);
     const offKept = snippets.disabled && preferred.disabled && snippets.value === "6" && preferred.value === "Rank"
       && JSON.stringify(writes.at(-1).options) === JSON.stringify({ showCompactDefinitionSummary: false });
-    await summaryEdit(summaryToggle, true);
+    await editControl(summaryToggle, true);
     preferred.focus();
     preferred.value = "Occurrence";
     preferred.dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -5099,7 +5103,7 @@ async function settingsFrequencyStage() {
     preferred.blur();
     window.document.getElementById("options-use-saved").click();
     const disabledAfterBlur = preferred.disabled;
-    await summaryEdit(summaryToggle, true);
+    await editControl(summaryToggle, true);
     snippets.focus();
     snippets.value = "4";
     snippets.dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -5114,7 +5118,57 @@ async function settingsFrequencyStage() {
     const summary = summaryDefault && focusedChoice && disabledKept && unavailableKept && offKept
       && nativeSummaryDraft && summaryConflict && disabledAfterBlur && countDraft && countConflict
       && snippets.disabled && preferred.value === "Unknown mode" && snippets.value === "6";
-    return { explicit, availability, draft, writes, summary,
+    let imageSources = false;
+    if (imageSource) {
+      const supplier = { kind: "dictionary", title: "Pictures:日本語" };
+      const group = { kind: "tabGroup", id: "pictures:stable" };
+      const emitImageState = (patch) => {
+        state = { ...state, ...patch, revision: state.revision + 1 };
+        listener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+      };
+      emitImageState({ dictionaries: [...state.dictionaries,
+        genericPackage({ id: "pictures", title: supplier.title, termCount: 0, kanjiCount: 1, mediaCount: 2 }),
+      ], groups: [{ id: group.id, name: "Picture group", dictionaryIds: ["pictures"] }] });
+      await editControl(imageSource, JSON.stringify(supplier));
+      const dictionarySaved = JSON.stringify(writes.at(-1).options) === JSON.stringify({ popupImageSource: supplier });
+      const beforeNames = writes.length;
+      imageSource.focus();
+      const focusedOption = imageSource.selectedOptions[0];
+      emitImageState({ dictionaries: state.dictionaries.map(dictionary => dictionary.id === "pictures"
+        ? { ...dictionary, displayName: "Picture book", enabled: false } : dictionary),
+        groups: [{ ...state.groups[0], name: "Renamed pictures" }],
+      });
+      const nativeImageDraft = imageSource.selectedOptions[0] === focusedOption
+        && imageSource.value === JSON.stringify(supplier);
+      imageSource.blur();
+      const disabledImageKept = imageSource.value === JSON.stringify(supplier)
+        && imageSource.selectedOptions[0].textContent.includes("Picture book")
+        && imageSource.selectedOptions[0].textContent.includes("disabled") && writes.length === beforeNames;
+      await editControl(imageSource, JSON.stringify(group));
+      const groupSaved = JSON.stringify(writes.at(-1).options) === JSON.stringify({ popupImageSource: group })
+        && imageSource.selectedOptions[0].textContent.includes("Renamed pictures");
+      const beforeRemoval = writes.length;
+      emitImageState({ dictionaries: state.dictionaries.filter(dictionary => dictionary.id !== "pictures"), groups: [] });
+      const missingGroupKept = imageSource.value === JSON.stringify(group)
+        && imageSource.selectedOptions[0].textContent.includes("unavailable") && writes.length === beforeRemoval;
+      imageSource.focus();
+      const desiredSource = { kind: "dictionary", title: "Rank" };
+      imageSource.value = JSON.stringify(desiredSource);
+      imageSource.dispatchEvent(new window.Event("input", { bubbles: true }));
+      const imageRevision = storedOptions.revision;
+      emitOptions({ popupImageSource: null, hoverEnabled: false });
+      const imageDraftKept = imageSource.value === JSON.stringify(desiredSource) && !imageSource.disabled;
+      imageSource.dispatchEvent(new window.Event("change", { bubbles: true }));
+      await until(() => status().includes("Could not save"));
+      const imageConflict = writes.at(-1).baseRevision === imageRevision
+        && JSON.stringify(writes.at(-1).options.popupImageSource) === JSON.stringify(desiredSource);
+      imageSource.blur();
+      window.document.getElementById("options-use-saved").click();
+      imageSources = imageSourceDefault && dictionarySaved && nativeImageDraft && disabledImageKept
+        && groupSaved && missingGroupKept && imageDraftKept && imageConflict
+        && imageSource.value === "" && !imageSource.disabled;
+    }
+    return { explicit, availability, draft, writes, summary, imageSources,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {
