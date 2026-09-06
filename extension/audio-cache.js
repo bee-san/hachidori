@@ -14,6 +14,7 @@ export function createAudioCache({ maxEntries, maxBytes, ttlMs, onEvict, now = D
   }
 
   return {
+    delete: remove,
     get(key) {
       const entry = entries.get(key);
       if (!entry) return undefined;
