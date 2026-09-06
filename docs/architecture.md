@@ -833,6 +833,29 @@ Source highlighting can be toggled on current terms, native kanji, and Back
 without a lookup, retaining the exact raw page span rather than engine spelling.
 Custom CSS remains separate follow-up work.
 
+### Exact source highlight ownership
+
+Each live popup owns cached DOM Ranges for its raw source span. Applying the
+same candidate again or closing a child does not walk or replace ancestor
+ranges. Source-scoped mutation observers rebuild an owner's ranges after
+same-text node replacement and retire that owner when its text changes or its
+source disconnects. Direct ancestor child-list observations follow moved
+sources, including shadow hosts, without watching unrelated page subtrees.
+Closing a level or destroying its view disconnects its observers. Page text,
+selection, and unrelated named highlights remain untouched.
+
+The CSS Highlight API is preferred. If unavailable, text-node Range fragments
+supply exact paint rectangles inside the existing extension shadow host, never
+classes on page elements or wrappers around page text. Paint is clipped to the
+viewport and ancestor scrollports, excludes hidden/transparent text, and avoids
+covering later popup panes or the source pane's sticky toolbar. One shared
+fallback animation frame reads geometry before writing paint; scroll, resize,
+source layout changes, and existing popup placement callbacks refresh it.
+Unchanged owners retain their paint groups. The last owner releases the layer,
+observers, listeners, and pending frame; the native path does not allocate them.
+
+![Exact fallback paint clipped at the source scrollport](assets/source-highlight-fallback.png)
+
 ### Toolbar placement
 
 `popupToolbarPosition` stores `auto` (default), `top`, or `bottom` through the
