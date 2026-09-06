@@ -6,7 +6,7 @@ import { isAnkiAudioOnlyTemplate } from "./anki-templates.js";
 const rootDeck = deck => deck.split("::", 1)[0];
 const escapeQuery = value => value.replace(/[\\"*_:]/gu, "\\$&");
 const positiveId = value => Number.isSafeInteger(value) && value > 0;
-const isDuplicate = error => /cannot create note because it is a duplicate/iu.test(error || "");
+export const isAnkiDuplicateError = error => /cannot create note because it is a duplicate/iu.test(error || "");
 
 export function ankiBrowseQuery(expression) {
   return `"${escapeQuery(expression.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;"))}"`;
@@ -58,7 +58,7 @@ export async function checkAnkiDuplicate(invoke, note, config) {
     return { duplicate: allowed && !prevented, addable: allowed && prevented, error: null };
   }
   const error = typeof result.error === "string" && result.error ? result.error : null;
-  return { duplicate: isDuplicate(error), addable: result.canAdd && !error, error };
+  return { duplicate: isAnkiDuplicateError(error), addable: result.canAdd && !error, error };
 }
 
 function duplicateQuery(note, firstField, modelId) {
