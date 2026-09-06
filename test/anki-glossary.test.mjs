@@ -55,6 +55,24 @@ test("Anki first/brief/plain/dictionary variants keep their distinct source mean
   assert.match(render({ dictionary: "A", plain: true }), /\(Alias &lt;A&gt;\)/u);
 });
 
+test("plain Anki definitions omit decorative link icons and preferred image sizes retain the intrinsic ratio", t => {
+  const { document, request } = fixture(t);
+  request.term.glossaries = [{ dictionary: "B", glossary: JSON.stringify([{ type: "structured-content", content: [
+    { tag: "a", href: "https://example.com/", content: "definition link" },
+    { tag: "img", path: "image.png", width: 200, height: 100, preferredWidth: 400 },
+    { tag: "img", path: "image.png", width: 200, height: 100, preferredHeight: 200 },
+  ] }]) }];
+  const render = createAnkiDefinitionRenderer(document, request);
+  assert.equal(render({ plain: true, noDictionary: true }), "definition link");
+  const holder = document.createElement("div");
+  holder.innerHTML = render({});
+  const [wide, tall] = holder.querySelectorAll("img");
+  assert.equal(wide.style.width, "400px");
+  assert.equal(wide.style.height, "auto");
+  assert.equal(tall.style.height, "200px");
+  assert.equal(tall.style.width, "auto");
+});
+
 test("serialized dictionary CSS cannot close its HTML style element and existing CSS escapes stay intact", t => {
   const { document, request } = fixture(t);
   const original = globalThis.HDGlossary.applyDictionaryStyles;

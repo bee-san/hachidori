@@ -46,6 +46,8 @@ test("frequency markers preserve configured order, mode-specific aggregates and 
   assert.equal(render(source, "{frequencies}"), "<b>Rank</b>: 20㋕<br><b>Count</b>: 100");
   assert.equal(render(source, "{single-frequency-count}"), '<ul style="text-align: left;"><li>Count: 100</li></ul>');
   assert.equal(render(request(), "{frequency-average-rank}|{frequency-average-occurrence}"), "9999999|0");
+  source.term.frequencies[0].frequencies.push({ get value() { throw new Error("Aggregate must stop at the first positive frequency"); } });
+  assert.equal(render(source, "{frequency-average-rank}"), "20");
 });
 
 test("pitch, part-of-speech, tags and transcriptions keep source meanings and markup escaping", () => {
