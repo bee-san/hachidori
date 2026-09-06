@@ -5224,6 +5224,12 @@ async function sourceHighlightFallbackCase(window) {
   const first = highlighter.scope("first"), second = highlighter.scope("second");
   const marks = () => [...shadow.querySelectorAll(".gsm-hoshidicts-source-match")];
   const frame = () => new Promise(done => window.requestAnimationFrame(done));
+  const queryDocument = document.querySelectorAll.bind(document);
+  let coverScans = 0;
+  document.querySelectorAll = (selector, ...args) => {
+    if (selector === "*") coverScans += 1;
+    return queryDocument(selector, ...args);
+  };
   try {
     first.apply({ sourceElements: [source], sentence: source.textContent, matchOffset: 1 }, "食べる");
     await frame();
@@ -5250,11 +5256,38 @@ async function sourceHighlightFallbackCase(window) {
     await frame();
     await frame();
     const restored = marks().length === 1;
+    const beforeSibling = coverScans;
     siblingOffset = 20;
     sibling.firstChild.data = "changed sibling layout";
     await frame();
     await frame();
     const siblingMoved = marks()[0]?.style.left === "120px";
+    let discovery = coverScans === beforeSibling;
+    sibling.textContent = "replacement sibling text";
+    const decoration = document.createElement("div");
+    shadow.append(decoration);
+    await frame();
+    await frame();
+    decoration.style.width = "40px";
+    await frame();
+    await frame();
+    discovery &&= coverScans === beforeSibling;
+    decoration.remove();
+    // Empty-boundary changes can alter :empty/:has membership, unlike a clock
+    // changing one non-empty text value to another. New elements can be covers.
+    for (const change of [
+      () => { sibling.firstChild.data = ""; },
+      () => { sibling.firstChild.data = "restored text"; },
+      () => { sibling.className = "new-selector-state"; },
+      () => { sibling.append(document.createElement("div")); },
+      () => { sibling.lastChild.remove(); },
+    ]) {
+      const beforeChange = coverScans;
+      change();
+      await frame();
+      await frame();
+      discovery &&= coverScans === beforeChange + 1;
+    }
     source.style.removeProperty("visibility");
     first.clear();
     const cleaned = shadow.childNodes.length === 0;
@@ -5269,10 +5302,11 @@ async function sourceHighlightFallbackCase(window) {
       await frame();
       documentRoot = document.body.querySelectorAll(":scope > .gsm-hoshidicts-source-highlight-layer").length === 1;
     } finally { view.destroy(); popup.remove(); }
-    return exact && both && retained && hidden && restored && siblingMoved && cleaned && documentRoot
+    return exact && both && retained && hidden && restored && siblingMoved && discovery && cleaned && documentRoot
       && !document.querySelector(".gsm-hoshidicts-source-highlight-layer") && source.innerHTML === before.text
       && source.className === before.className && window.getSelection().toString() === before.selection;
   } finally {
+    document.querySelectorAll = queryDocument;
     highlighter.clearAll();
     host.remove();
     sibling.remove();
