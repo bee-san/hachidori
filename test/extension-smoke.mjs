@@ -1719,12 +1719,36 @@ function checkRecommendedDictionaries() {
 function checkDictionaryGroupModule() {
   const groups = readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8");
+  const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8");
+  const sharedFile = resolve(EXTENSION, "dictionary-group-state.js");
+  const shared = existsSync(sharedFile) ? loadClassicScript(sharedFile, {}).HDDictionaryGroups : null;
+  const dictionaries = [{ id: "first" }, { id: "disabled", enabled: false }, { id: "last" }];
+  const input = [{
+    id: "study", name: "  Ｓｔｕｄｙ\n\t Deck  ",
+    dictionaryIds: ["disabled", "missing", "first", "disabled", "last", "first"],
+    metadata: { retained: true },
+  }, { id: "empty", name: "Empty" }];
+  const before = JSON.stringify(input);
+  const normalised = shared?.normaliseDictionaryGroups([...input, null, { id: "" }, { id: "blank", name: " " }], dictionaries);
+  const pruned = shared?.pruneGroupMemberships(input, dictionaries);
+  const members = ["disabled", "first", "last"];
   check(
     "settings imports its dictionary-group module",
     groups.includes("export function createDictionaryGroupController")
-      && groups.includes("export function normaliseDictionaryGroups")
-      && settings.includes('from "./dictionary-groups.js"'),
-    settings.slice(0, 240),
+      && groups.includes('import "./dictionary-group-state.js"')
+      && background.includes('import "./dictionary-group-state.js"')
+      && settings.includes('from "./dictionary-groups.js"')
+      && shared?.groupNameKey(input[0].name) === "study deck"
+      && JSON.stringify(normalised) === JSON.stringify([
+        { id: "study", name: "Study Deck", dictionaryIds: members },
+        { id: "empty", name: "Empty", dictionaryIds: [] },
+      ])
+      && JSON.stringify(pruned) === JSON.stringify([
+        { ...input[0], dictionaryIds: members }, { ...input[1], dictionaryIds: [] },
+      ])
+      && pruned[0].metadata === input[0].metadata
+      && JSON.stringify(input) === before,
+    JSON.stringify({ normalised, pruned }),
   );
 }
 
