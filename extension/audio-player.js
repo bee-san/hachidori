@@ -51,6 +51,7 @@ export function createAudioPlayer({ window, fetch }) {
     const utterance = new window.SpeechSynthesisUtterance(text);
     utterance.lang = "ja-JP";
     const voice = voices.find(voice => voice.voiceURI === source.voice || voice.name === source.voice);
+    if (source.voice && !voice) throw new Error("The selected speech voice is no longer available. Choose another voice in Audio Settings.");
     if (voice) utterance.voice = voice;
     let abort;
     try {

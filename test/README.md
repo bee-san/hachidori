@@ -585,9 +585,9 @@ Without it, this headless macOS host accepts playback but stalls its audio clock
 at 64 ms. Audible hardware output and installed speech voices are not proved.
 
 `node --test test/audio-sources.test.mjs test/audio-player.test.mjs test/audio-offscreen.test.mjs`
-runs 10 focused tests for strict source options, defaults versus explicit empty
+runs 11 focused tests for strict source options, defaults versus explicit empty
 lists, template encoding, candidate order, native callback ownership, cleanup,
-TTS supersession, document-scoped cancellation and the Test deadline. Extension
+TTS supersession and unavailable selected voices, document-scoped cancellation and the Test deadline. Extension
 checks exercise the actual worker's cancelled startup retries and Settings draft
 conflicts rather than duplicating their storage machinery.
 
