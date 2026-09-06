@@ -2311,11 +2311,7 @@
 
       return { lookupStats,
         isExpanded: () => expanded,
-        updateImages(context, refreshHandles) {
-          for (const key of ["popupImageSources", "dictionaryPresentation", "resolveMedia"]) {
-            if (Object.hasOwn(context, key)) imageContext[key] = context[key];
-          }
-          if (!refreshHandles) return false;
+        updateImages() {
           let changed = false;
           for (const handle of renderedImages) {
             if (!handle.isCurrent()) renderedImages.delete(handle);
@@ -2770,10 +2766,15 @@
           const projectionDeferred = (summaryChanged && popup.contains(focused)
             && focused.closest(".gsm-hoshidicts-compact-definition-summary"))
             || (!sameMembers && (!ownsView() || !canProjectPresentation()));
-          // A replacement uses the latest context but must not start media for
-          // its discarded cards. Protected projections still refresh in place.
-          if (rendered.updateImages(context, sameMembers || projectionDeferred)) scheduleMasonry();
-          if (projectionDeferred) return false;
+          // New cards and summaries use the latest route. Only refresh handles
+          // after replacing their owners, unless the projection is protected.
+          for (const key of ["popupImageSources", "dictionaryPresentation", "resolveMedia"]) {
+            if (Object.hasOwn(context, key)) imageContext[key] = context[key];
+          }
+          if (projectionDeferred) {
+            if (rendered.updateImages()) scheduleMasonry();
+            return false;
+          }
           Object.assign(renderContext, context);
           tabDescriptors = next.tabs;
           dictionaryDisplayNames = next.dictionaryDisplayNames;
@@ -2782,8 +2783,10 @@
           if (selectedKey !== tabDescriptors[index].key) {
             renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
           }
-          if (sameMembers) changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames, summaryChanged) || changed;
-          else {
+          if (sameMembers) {
+            changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames, summaryChanged) || changed;
+            changed = rendered.updateImages() || changed;
+          } else {
             const focused = retainedFocus(true);
             renderProjection(rendered.isExpanded());
             if (focused && typeof focused !== "string") {

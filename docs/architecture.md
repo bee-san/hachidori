@@ -548,8 +548,8 @@ It uses the existing revision-bound autosave and is independent of the hover and
 compact-summary toggles.
 
 Source changes refresh each displayed image in place without reparsing its
-glossary, replacing cards, or disturbing a Note draft. A simultaneous group change
-adopts the new route before rebuilding without queuing media for discarded cards;
+glossary, replacing cards, or disturbing a Note draft. Simultaneous group or summary
+changes adopt the new route before rebuilding without queuing media for discarded owners;
 Note/focus/child deferrals still refresh their retained images. Image-local
 attempts retire old success, failure and decode callbacks; Automatic also captures the
 route identity at the shared resolver boundary. A failed compact thumbnail can
