@@ -10663,6 +10663,19 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     }),
   );
   const termNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
+  const focusedDefinition = termNoteForm.elements.definition;
+  focusedDefinition.value = "Keep this draft";
+  focusedDefinition.focus();
+  focusedDefinition.setSelectionRange(2, 6);
+  view.setToolbarPosition("bottom");
+  const retainedNoteFocus = shadow.activeElement === focusedDefinition
+    && focusedDefinition.selectionStart === 2 && focusedDefinition.selectionEnd === 6;
+  const focusedTab = popup.querySelector('[role="tab"][aria-selected="true"]');
+  focusedTab.focus();
+  view.setToolbarPosition("top");
+  check("toolbar edge changes preserve deliberate tab and Note focus with draft selection",
+    retainedNoteFocus && shadow.activeElement === focusedTab && focusedDefinition.value === "Keep this draft");
+  focusedDefinition.value = "";
   const termInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-term");
   const readingInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-reading");
   const definitionInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-definition");

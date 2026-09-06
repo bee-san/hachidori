@@ -718,6 +718,8 @@ Later tabs do not inherit it. Ordinary retained renders do not read scroll while
 their replacement panel is empty: that layout flush can clamp a bottom Note's
 scroll before its content is rebuilt. The existing highlight, toolbar positioning,
 exact clicked-kanji focus target and previous Back chain remain intact.
+Moving the toolbar to the other edge after a viewport resize preserves deliberate
+tab or Note focus, including the existing draft selection.
 
 This intentionally extends the pinned GSM PR #549 restoration: its saved term
 view does not retain expansion/scroll, and uses the current kanji tab. Issue #9

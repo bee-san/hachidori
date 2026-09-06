@@ -1371,6 +1371,7 @@
         return;
       }
       const noteForm = currentNoteControls?.form ?? null;
+      const focused = popup.getRootNode().activeElement;
       // Only touch the DOM when the toolbar is not already in the desired
       // place. A no-op reposition must never detach a focused control, which
       // throws in jsdom and reorders under focus.
@@ -1388,6 +1389,12 @@
       ) {
         if (noteForm) popup.prepend(currentToolbar, noteForm);
         else popup.prepend(currentToolbar);
+      }
+      // Moving the toolbar between edges can blur its descendants in Chrome.
+      // Keep deliberate tab/Note focus when resize changes the placement.
+      if (focused && popup.getRootNode().activeElement !== focused
+          && (currentToolbar.contains(focused) || noteForm?.contains(focused))) {
+        focused.focus({ preventScroll: true });
       }
     }
 
