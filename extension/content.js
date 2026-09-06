@@ -188,6 +188,7 @@
         favorite: entry.favorite === true,
         termCount: nonnegativeCount(entry.termCount),
         frequencyCount: nonnegativeCount(entry.frequencyCount),
+        frequencyMode: entry.frequencyMode,
         pitchCount: nonnegativeCount(entry.pitchCount),
         kanjiCount: nonnegativeCount(entry.kanjiCount),
       }];
@@ -204,7 +205,7 @@
   }
 
   function sameDictionaryContents(left, right) {
-    const contents = (entries) => entries.map(({ displayName, favorite, ...dictionary }) => dictionary);
+    const contents = (entries) => entries.map(({ displayName, favorite, frequencyMode, ...dictionary }) => dictionary);
     return left === right || sameDictionaries(contents(left), contents(right));
   }
 
@@ -222,6 +223,7 @@
       .map((entry) => ({
         title: entry.title,
         favorite: entry.favorite,
+        frequencyMode: entry.frequencyMode,
         ...(entry.displayName ? { displayName: entry.displayName } : {}),
       }));
   }
@@ -1533,12 +1535,10 @@
 
   function renderContextFor(level = rootLevel) {
     return {
-      averageFrequency: false,
       definitionBlurState: "revealed",
       dictionaryPresentation: dictionaryPresentation(),
       dictionaryTabGroups: dictionaryTabGroups(),
       generation: currentGeneration,
-      hidePopupGrammarTags: false,
       onExternalLink({ url, active }) {
         // A lost reply may follow a successful open, so never retry navigation.
         void sendRequest("hd_open_external", { url, active }, "hoshidicts-worker").catch((error) => {
@@ -1548,9 +1548,7 @@
       onInternalLink: (link) => onInternalLink(link, level),
       ...imageSourceContext(),
       ...compactSummaryOptions(),
-      showFrequencyDictionaryNames: true,
-      showPitchAccentBadge: true,
-      showPitchAccentFurigana: true,
+      ...window.HDPopup.metadataOptions(options),
     };
   }
 
@@ -2383,7 +2381,7 @@
 
   function updateDictionaryPresentation() {
     const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups(),
-      ...compactSummaryOptions(), ...imageSourceContext() };
+      ...compactSummaryOptions(), ...imageSourceContext(), ...window.HDPopup.metadataOptions(options) };
     for (const level of levels) {
       if (level.popup && !level.popup.hidden) level.view.updateDictionaryPresentation(context);
     }
@@ -2455,9 +2453,10 @@
       || next.compactDefinitionSummaryCount !== options.compactDefinitionSummaryCount
       || next.compactDefinitionSummaryDictionary !== options.compactDefinitionSummaryDictionary;
     const imageSourceChanged = JSON.stringify(next.popupImageSource) !== JSON.stringify(options.popupImageSource);
+    const metadataChanged = Object.entries(window.HDPopup.metadataOptions(next)).some(([key, value]) => value !== options[key]);
     // The caller adopts the complete storage delivery before new summary work.
     // A simultaneous dictionary replacement must invalidate the old view first.
-    const adoption = { lookupChanged, presentationChanged: (summaryChanged || imageSourceChanged) && next.hoverEnabled };
+    const adoption = { lookupChanged, presentationChanged: (summaryChanged || imageSourceChanged || metadataChanged) && next.hoverEnabled };
     if (activationChanged) {
       activationPressed = false;
       activationCode = null;

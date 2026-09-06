@@ -316,6 +316,11 @@ function assertCustomDictionaryCasRequest(message) {
   return changesDictionaryState;
 }
 
+function committedSelectionTitle(title, current, dictionaries) {
+  const selected = current?.dictionaries.find((entry) => entry.title === title);
+  return selected ? dictionaries.find((entry) => entry.id === selected.id)?.title ?? "" : title;
+}
+
 function dictionaryCommit(current, currentOptions, dictionaries, groups) {
   const currentRevision = current?.revision ?? 0;
   const state = {
@@ -331,14 +336,13 @@ function dictionaryCommit(current, currentOptions, dictionaries, groups) {
       { ...projectStoredOptions(currentOptions), revision }, state.dictionaries,
     );
     if (nextOptions.popupImageSource?.kind === "dictionary") {
-      const selected = current?.dictionaries.find((entry) =>
-        entry.title === nextOptions.popupImageSource.title);
-      if (selected) {
-        const replacement = dictionaries.find((entry) => entry.id === selected.id);
-        nextOptions.popupImageSource = replacement
-          ? { kind: "dictionary", title: replacement.title }
-          : null;
-      }
+      const title = committedSelectionTitle(nextOptions.popupImageSource.title, current, dictionaries);
+      nextOptions.popupImageSource = title ? { kind: "dictionary", title } : null;
+    }
+    if (nextOptions.pitchAccentFuriganaDictionary) {
+      nextOptions.pitchAccentFuriganaDictionary = committedSelectionTitle(
+        nextOptions.pitchAccentFuriganaDictionary, current, dictionaries,
+      );
     }
     if (!sameJsonValue(nextOptions, { ...currentOptions, revision })) {
       values[OPTIONS_KEY] = { ...nextOptions, revision: revision + 1 };

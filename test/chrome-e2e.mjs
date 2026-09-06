@@ -260,6 +260,7 @@ const PLANNED = [
   "Saved popup columns reflow complete cards after expansion, media load and resize",
   "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
+  "Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
   "external dictionary Enter activation creates one safe browser tab through the extension",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
@@ -921,6 +922,30 @@ async function popupReader(page, depth = 0) {
             text: label.textContent, dictionary: label.dataset.dictionary, title: label.title,
             outsideThumbnail: !label.closest(".gsm-hoshidicts-compact-definition-image"),
           })),
+          metadata: {
+            frequencyNames: [...this.querySelectorAll(".gsm-hoshidicts-frequency-source")].map(node => node.textContent),
+            frequencies: [...this.querySelectorAll(".gsm-hoshidicts-frequency-value")].map(node => Number(node.dataset.frequency)),
+            clippedFrequencies: [...this.querySelectorAll(".gsm-hoshidicts-primary-frequencies .gsm-hoshidicts-frequency-value")].some(node => {
+              const value = node.getBoundingClientRect();
+              const tag = node.closest(".gsm-hoshidicts-tag-frequency").getBoundingClientRect();
+              const capsule = node.closest(".gsm-hoshidicts-primary-metadata-capsule").getBoundingClientRect();
+              return value.right > Math.min(tag.right, capsule.right) + 1 || value.left < Math.max(tag.left, capsule.left) - 1;
+            }),
+            pitch: this.querySelectorAll(".gsm-hoshidicts-tag-pitch").length,
+            ruby: [...this.querySelectorAll(".gsm-hoshidicts-pitch-reading")].map(node => node.dataset.pitchDictionary),
+            ipa: [...this.querySelectorAll(".gsm-hoshidicts-ipa-body")].map(node => node.textContent),
+            ipaFits: [...this.querySelectorAll(".gsm-hoshidicts-ipa-body")].every(node => {
+              const body = node.getBoundingClientRect();
+              const tag = node.parentNode.getBoundingClientRect();
+              const bounds = this.getBoundingClientRect();
+              return body.left >= tag.left - 1 && body.right <= tag.right + 1
+                && tag.left >= bounds.left - 1 && tag.right <= bounds.right + 1;
+            }),
+            ipaSourceEllipsized: [...this.querySelectorAll(".gsm-hoshidicts-ipa-source")]
+              .some(node => node.scrollWidth > node.clientWidth),
+            grammar: this.querySelectorAll(".gsm-hoshidicts-primary-grammar-tag").length,
+            definitionTags: this.querySelectorAll(".gsm-hoshidicts-definition-tags").length,
+          },
           rect: this.getBoundingClientRect().toJSON(), viewport: { width: innerWidth, height: innerHeight },
           grids: [...this.querySelectorAll(".gsm-hoshidicts-glossary-grid")].map(grid => ({
             width: grid.clientWidth, rect: grid.getBoundingClientRect().toJSON(), height: grid.style.height,
@@ -2827,6 +2852,92 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
     JSON.stringify({ evidence, metadata, manualSurvived, cleaned }));
 }
 
+async function checkPopupMetadata(browser, settings, tab, popup) {
+  const controls = ["opt-frequency-names", "opt-average-frequency", "opt-pitch-furigana",
+    "opt-pitch-dictionary", "opt-pitch-badge", "opt-grammar-tags"];
+  const original = await readSettingsControls(settings, controls);
+  const originalAlias = await settings.evaluate(async () => (await chrome.storage.local.get("dictionaryState"))
+    .dictionaryState.dictionaries.find(dictionary => dictionary.title === "hachidori-fixture").displayName || "");
+  const originalViewport = settings.viewport();
+  let worker;
+  const evidence = [];
+  const counts = () => worker.evaluate(() => ({ lookups: globalThis.__ownedMediaProbe.lookups.length,
+    media: globalThis.__ownedMediaProbe.requests.length }));
+  const read = () => popup.dictionaryTabs();
+  async function expectMetadata(predicate) {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const value = await read();
+      if (predicate(value.metadata)) return value;
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+    throw new Error(`metadata did not settle: ${JSON.stringify(await read())}`);
+  }
+  try {
+    await editSettingsControls(settings, { "opt-frequency-names": true, "opt-average-frequency": false,
+      "opt-pitch-furigana": true, "opt-pitch-dictionary": "", "opt-pitch-badge": true, "opt-grammar-tags": true });
+    await tab.bringToFront();
+    await hoverForPopup(tab, popup, "#verb");
+    await expectMetadata(value => value.frequencyNames.length > 0 && value.pitch > 0
+      && value.ruby.length > 0 && value.grammar > 0 && value.ipa.includes("tabeɾɯ"));
+    worker = await installMediaReplyProbe(browser);
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
+    await popup.click(".gsm-hoshidicts-note-button");
+    await popup.writeNote({ definition: "Keep the metadata draft" });
+    await popup.retainedControls("remember");
+    const before = await popup.dictionaryTabs("remember");
+    const beforeRequests = await counts();
+    // Dispatch native Settings changes without activating its tab: a real
+    // tab switch intentionally dismisses a popup through the window blur rule.
+    await editSettingsControls(settings, { "opt-frequency-names": false, "opt-pitch-furigana": false,
+      "opt-pitch-badge": false, "opt-grammar-tags": false });
+    const hidden = await expectMetadata(value => value.frequencyNames.length === 0 && value.pitch === 0
+      && value.ruby.length === 0 && value.grammar === 0);
+    const retained = await popup.retainedControls();
+    evidence.push(hidden.metadata.ipa.includes("tabeɾɯ") && hidden.metadata.definitionTags === before.metadata.definitionTags
+      && hidden.sameCards && hidden.samePanel && await popup.dictionaryTabs("matches", before.entries)
+      && retained.sameForm && retained.mounted && retained.inputFocused && retained.draft === "Keep the metadata draft"
+      && JSON.stringify(retained.selection) === "[2,7]");
+    await editSettingsControls(settings, { "opt-average-frequency": true });
+    const averaged = await expectMetadata(value => value.frequencyNames.includes("Frequency average (unspecified)"));
+    evidence.push(averaged.metadata.frequencies.length > 0 && averaged.metadata.frequencies.every(Number.isFinite)
+      && !averaged.metadata.clippedFrequencies
+      && averaged.sameCards && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
+    await editSettingsControls(settings, { "opt-pitch-furigana": true, "opt-pitch-dictionary": "hachidori-fixture" });
+    const contour = await expectMetadata(value => value.ruby.includes("hachidori-fixture") && value.pitch === 0);
+    evidence.push(contour.metadata.grammar === 0 && contour.metadata.ipa.includes("tabeɾɯ")
+      && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
+    if (process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT) {
+      await popup.click(".gsm-hoshidicts-note-cancel");
+      const { x, y, width, height } = (await read()).rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT, clip: { x, y, width, height } });
+    }
+    if (process.env.HACHIDORI_METADATA_SETTINGS_SCREENSHOT) {
+      await settings.bringToFront();
+      await settings.setViewport({ width: 1280, height: 1000 });
+      await settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+      await (await settings.$("#lookup")).screenshot({ path: process.env.HACHIDORI_METADATA_SETTINGS_SCREENSHOT });
+    }
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await tab.keyboard.press("Escape");
+    await setDictionaryAliasInSettings(settings, "hachidori-fixture", "PhoneticsWithoutSpaces".repeat(6));
+    await tab.bringToFront();
+    await hoverForPopup(tab, popup, "#verb");
+    const longSource = await expectMetadata(value => value.ipa.includes("tabeɾɯ") && value.ipaSourceEllipsized);
+    evidence.push(longSource.metadata.ipaFits);
+  } finally {
+    if (worker) await restoreMediaReplyProbe(worker);
+    await editSettingsControls(settings, original);
+    await setDictionaryAliasInSettings(settings, "hachidori-fixture", originalAlias);
+    await settings.setViewport(originalViewport);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await tab.keyboard.press("Escape");
+  }
+  check("Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
+    evidence.length === 4 && evidence.every(Boolean), JSON.stringify(evidence));
+}
+
 async function checkReaderActivation(settings, tab, popup) {
   const original = await readSettingsControls(settings, [
     "opt-hover-enabled", "opt-lookup-mode", "opt-activation-key", "opt-hover-delay", "opt-hide-delay",
@@ -4502,6 +4613,7 @@ async function main() {
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
   await checkFrequencyDirection(browser, page, tab, popup);
+  await checkPopupMetadata(browser, page, tab, popup);
   await hover("#verb");
 
   const clickedKanji = await popup.click(".gsm-hoshidicts-kanji-link");

@@ -42,6 +42,13 @@ const NUMBER_FIELDS = [
   { key: "popupColumns", id: "opt-popup-columns" },
   { key: "compactDefinitionSummaryCount", id: "opt-summary-count" },
 ];
+const METADATA_FIELDS = [
+  { key: "showFrequencyDictionaryNames", id: "opt-frequency-names" },
+  { key: "averageFrequency", id: "opt-average-frequency" },
+  { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },
+  { key: "showPitchAccentBadge", id: "opt-pitch-badge" },
+  { key: "hidePopupGrammarTags", id: "opt-grammar-tags", inverted: true },
+];
 
 const numberFormat = new Intl.NumberFormat();
 
@@ -810,22 +817,33 @@ function renderCompactSummaryControls() {
   // Disabling Chrome's focused select emits blur before its pending change.
   // Keep that draft's captured revision until the existing focusout boundary.
   if (count !== document.activeElement) count.disabled = !enabled;
-  const select = element("opt-summary-dictionary");
+  renderPreferredDictionary("opt-summary-dictionary", options.compactDefinitionSummaryDictionary,
+    "term", "Automatic — first available definition", enabled);
+}
+
+function renderPreferredDictionary(id, preferred, kind, automaticLabel, enabled) {
+  const select = element(id);
   if (select === document.activeElement) return;
   select.disabled = !enabled;
-  const preferred = options.compactDefinitionSummaryDictionary;
-  select.replaceChildren(new Option("Automatic — first available definition", ""));
+  select.replaceChildren(new Option(automaticLabel, ""));
   let available = preferred === "";
   for (const dictionary of dictionaries) {
-    if (!hasCapability(dictionary, "term")) continue;
+    if (!hasCapability(dictionary, kind)) continue;
     const label = dictionaryLabel(dictionary) + (dictionary.enabled === false ? " (disabled)" : "");
     select.add(new Option(label, dictionary.title));
     available ||= dictionary.title === preferred;
   }
-  // This is a soft preference, not a lookup filter. Keep missing sources so
-  // temporarily disabling/removing one cannot silently erase the preference.
+  // Already-missing sources remain a soft preference, not a lookup filter.
   if (!available) select.add(new Option(`${preferred} (unavailable)`, preferred));
   select.value = preferred;
+}
+
+function renderMetadataControls() {
+  for (const field of METADATA_FIELDS) {
+    element(field.id).checked = field.inverted ? !options[field.key] : options[field.key];
+  }
+  renderPreferredDictionary("opt-pitch-dictionary", options.pitchAccentFuriganaDictionary,
+    "pitch", "Automatic — first available pitch", options.showPitchAccentFurigana);
 }
 
 function renderPopupImageSources() {
@@ -976,6 +994,7 @@ function renderOptions() {
   renderFrequencyChoices();
   renderCompactSummaryControls();
   renderPopupImageSources();
+  renderMetadataControls();
 }
 
 function addCountBadge(container, label, count) {
@@ -1931,6 +1950,17 @@ function attachHandlers() {
     options.hoverEnabled = event.target.checked;
     writeOptions();
   });
+  for (const field of METADATA_FIELDS) {
+    element(field.id).addEventListener("change", (event) => {
+      options[field.key] = field.inverted ? !event.target.checked : event.target.checked;
+      renderMetadataControls();
+      writeOptions();
+    });
+  }
+  element("opt-pitch-dictionary").addEventListener("change", (event) => {
+    options.pitchAccentFuriganaDictionary = event.target.value;
+    writeOptions();
+  });
   element("opt-japanese-only").addEventListener("change", (event) => {
     options.onlyScanJapaneseText = event.target.checked;
     writeOptions();
@@ -1991,6 +2021,7 @@ function attachHandlers() {
     optionsEditRevision = null;
     if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
     if (event.target.id === "opt-image-source") renderPopupImageSources();
+    if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
     if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
     const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
     if (field) event.target.value = String(options[field.key]);

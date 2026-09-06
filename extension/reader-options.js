@@ -20,6 +20,12 @@
     compactDefinitionSummaryCount: 3,
     compactDefinitionSummaryDictionary: "",
     popupImageSource: null,
+    averageFrequency: false,
+    showFrequencyDictionaryNames: true,
+    showPitchAccentFurigana: true,
+    pitchAccentFuriganaDictionary: "",
+    showPitchAccentBadge: true,
+    hidePopupGrammarTags: false,
     kanjiClickDictionary: "",
     frequencyDictionary: "",
     frequencyOrder: "auto",
@@ -80,7 +86,7 @@
 
   function normaliseField(key, value) {
     if (Object.hasOwn(NUMBER_RANGES, key)) return clampOption(key, value);
-    if (key === "hoverEnabled" || key === "onlyScanJapaneseText" || key === "showCompactDefinitionSummary") {
+    if (typeof DEFAULT_OPTIONS[key] === "boolean") {
       return typeof value === "boolean" ? value : DEFAULT_OPTIONS[key];
     }
     if (key === "lookupMode") return LOOKUP_MODES.includes(value) ? value : DEFAULT_OPTIONS.lookupMode;

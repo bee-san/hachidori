@@ -24,6 +24,18 @@
 
   const DEFAULT_INITIAL_RESULT_COUNT = 1;
   const DEFAULT_MAX_METADATA_TAGS = 12;
+  const METADATA_OPTION_KEYS = ["averageFrequency", "showFrequencyDictionaryNames", "showPitchAccentFurigana",
+    "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags"];
+
+  function metadataOptions(context) {
+    return Object.fromEntries(METADATA_OPTION_KEYS.map(key => [key, context[key]]));
+  }
+
+  function frequencyModes(context) {
+    return context.averageFrequency === true
+      ? JSON.stringify((context.dictionaryPresentation || []).map(({ title, frequencyMode }) => [title, frequencyMode]))
+      : "";
+  }
   const DEFAULT_HIGHLIGHT_NAME = "gsm-hoshidicts-match";
   const MASONRY_GAP_PX = 8;
   const DEFINITION_BLUR_STATES = new Set(["pending", "blurred"]);
@@ -281,13 +293,6 @@
   }
 
   function frequencyNumberForAverage(frequency) {
-    if (typeof frequency.displayValue === "string") {
-      const match = /^\d+/u.exec(frequency.displayValue);
-      if (match) {
-        const value = Number.parseInt(match[0], 10);
-        if (value > 0) return value;
-      }
-    }
     return Number.isFinite(frequency.value) && frequency.value > 0
       ? frequency.value
       : null;
@@ -350,31 +355,37 @@
     showFrequencyDictionaryNames = true
   ) {
     if (averageFrequency) {
-      const frequencies = [];
+      const modes = new Map(dictionaryPresentation.map(({ title, frequencyMode }) => [title, frequencyMode]));
+      const aggregates = new Map();
+      const seen = new Set();
       for (const group of result.term.frequencies) {
+        if (seen.has(group.dictionary)) continue;
         for (const frequency of group.frequencies) {
           const value = frequencyNumberForAverage(frequency);
           if (value !== null) {
-            frequencies.push(value);
+            const mode = modes.get(group.dictionary);
+            const label = mode === "rank-based" ? "Rank average"
+              : mode === "occurrence-based" ? "Occurrence average" : "Frequency average (unspecified)";
+            const aggregate = aggregates.get(label) || { count: 0, reciprocalSum: 0 };
+            aggregate.count += 1;
+            aggregate.reciprocalSum += 1 / value;
+            aggregates.set(label, aggregate);
+            seen.add(group.dictionary);
             break;
           }
         }
       }
-      if (frequencies.length === 0) return [];
-      const value = Math.floor(
-        frequencies.length /
-          frequencies.reduce((total, frequency) => total + 1 / frequency, 0)
-      );
-      const frequency = { value, displayValue: null };
-      return [
-        createFrequencyTag(
+      return Array.from(aggregates, ([label, { count, reciprocalSum }]) => {
+        const value = Math.floor(count / reciprocalSum);
+        return createFrequencyTag(
           documentRef,
-          { dictionary: "Frequency" },
-          "Frequency:",
-          [{ display: formatCompactFrequencyNumber(value), frequency }],
-          showFrequencyDictionaryNames
-        ),
-      ];
+          { dictionary: label },
+          label,
+          [{ display: formatCompactFrequencyNumber(value), frequency: { value, displayValue: null } }],
+          // These labels identify units, not a source dictionary.
+          true
+        );
+      });
     }
     const tags = [];
     const seen = new Set();
@@ -438,16 +449,20 @@
       pitch.pattern ? `Pattern ${pitch.pattern}` : "",
       ...group.transcriptions,
     ].filter(Boolean).join(" · ");
-    const tag = createTag(documentRef, "", description, "pitch");
+    return createPronunciationTag(documentRef, group, dictionaryDisplayName, bodyText, description, "pitch");
+  }
+
+  function createPronunciationTag(documentRef, group, dictionaryDisplayName, bodyText, description, kind) {
+    const tag = createTag(documentRef, "", description, kind);
     tag.dataset.dictionary = group.dictionary;
 
     const source = documentRef.createElement("span");
-    source.className = "gsm-hoshidicts-pitch-source";
+    source.className = `gsm-hoshidicts-${kind}-source`;
     source.textContent = dictionaryDisplayName;
     tag.appendChild(source);
 
     const body = documentRef.createElement("span");
-    body.className = "gsm-hoshidicts-pitch-body";
+    body.className = `gsm-hoshidicts-${kind}-body`;
     body.textContent = bodyText;
     tag.appendChild(body);
     tag.setAttribute(
@@ -1744,6 +1759,9 @@
         includePitch = true,
         averageFrequency = false,
         showFrequencyDictionaryNames = true,
+        imageContext,
+        isCurrent,
+        onLayoutChange,
       } = {}
     ) {
       const frequencyRow = documentRef.createElement("div");
@@ -1752,25 +1770,30 @@
       const pitchRow = documentRef.createElement("div");
       pitchRow.className =
         "gsm-hoshidicts-metadata gsm-hoshidicts-pitch-metadata";
-      const seen = new Set();
-      let count = 0;
-      const pitchDictionaryDisplayNames = createDictionaryDisplayNames(
-        result.term.pitches.map(({ dictionary }) => dictionary),
-        dictionaryPresentation
-      );
-      if (includeFrequency) {
-        const frequencyTags = createFrequencyTags(
+      const ipaRow = documentRef.createElement("div");
+      ipaRow.className = "gsm-hoshidicts-metadata gsm-hoshidicts-ipa-metadata";
+      let frequencyCount = 0;
+      function updateFrequency(context) {
+        const frequencyTags = includeFrequency ? createFrequencyTags(
           documentRef,
           result,
-          dictionaryPresentation,
+          context.dictionaryPresentation || [],
           maxMetadataTags,
-          averageFrequency,
-          showFrequencyDictionaryNames
-        );
-        frequencyRow.append(...frequencyTags);
-        count += frequencyTags.length;
+          context.averageFrequency === true,
+          context.showFrequencyDictionaryNames !== false
+        ) : [];
+        const countChanged = frequencyCount !== frequencyTags.length;
+        frequencyCount = frequencyTags.length;
+        frequencyRow.replaceChildren(...frequencyTags);
+        return countChanged;
       }
-      if (includePitch) {
+      function updatePitch(context) {
+        pitchRow.replaceChildren();
+        if (context.showPitchAccentBadge !== true) return;
+        const names = createDictionaryDisplayNames(result.term.pitches.map(({ dictionary }) => dictionary),
+          context.dictionaryPresentation);
+        const seen = new Set();
+        let count = frequencyCount;
         for (const group of result.term.pitches) {
           for (const pitch of group.pitches) {
             const reading = String(
@@ -1787,7 +1810,7 @@
               pitchRow.appendChild(createPitchTag(
                 documentRef,
                 group,
-                pitchDictionaryDisplayNames.get(group.dictionary) || group.dictionary,
+                names.get(group.dictionary) || group.dictionary,
                 pitch,
                 reading
               ));
@@ -1796,12 +1819,38 @@
           }
         }
       }
-      if (frequencyRow.childNodes.length > 0) {
-        entry.appendChild(frequencyRow);
+      const ipaGroups = result.term.pitches.filter(group => group.transcriptions.length > 0);
+      function appendTranscriptions(target) {
+        const names = createDictionaryDisplayNames(ipaGroups.map(({ dictionary }) => dictionary), imageContext.dictionaryPresentation);
+        for (const group of ipaGroups) {
+          const body = group.transcriptions.join(" · ");
+          target.appendChild(createPronunciationTag(documentRef, group, names.get(group.dictionary) || group.dictionary,
+            body, `${group.dictionary}: ${body}`, "ipa"));
+        }
       }
-      if (pitchRow.childNodes.length > 0) {
-        entry.appendChild(pitchRow);
-      }
+      if (ipaGroups.length > maxMetadataTags) {
+        // Reuse the existing metadata display budget as a lazy threshold, not
+        // a data limit. Opening the disclosure still renders every source.
+        const overflow = documentRef.createElement("details");
+        overflow.className = "gsm-hoshidicts-ipa-overflow";
+        const summary = documentRef.createElement("summary");
+        summary.textContent = `Phonetic transcriptions (${ipaGroups.length})`;
+        const body = documentRef.createElement("div");
+        body.className = "gsm-hoshidicts-metadata";
+        overflow.append(summary, body);
+        overflow.addEventListener("toggle", () => {
+          if (!isCurrent()) return;
+          if (overflow.open && !body.hasChildNodes()) appendTranscriptions(body);
+          onLayoutChange();
+        });
+        ipaRow.appendChild(overflow);
+      } else appendTranscriptions(ipaRow);
+      const context = { dictionaryPresentation, averageFrequency, showFrequencyDictionaryNames,
+        showPitchAccentBadge: includePitch };
+      updateFrequency(context);
+      updatePitch(context);
+      entry.append(frequencyRow, pitchRow, ipaRow);
+      return { updateFrequency, updatePitch, rows: [frequencyRow, pitchRow, ipaRow] };
     }
 
     function collectGrammarMetadata(result) {
@@ -1829,46 +1878,61 @@
       return metadata;
     }
 
+    function renderGrammarRow(row, result, hideGrammarTags) {
+      row.replaceChildren();
+      if (hideGrammarTags) return;
+      for (const item of collectGrammarMetadata(result)) {
+        row.appendChild(createTag(documentRef, item.text, item.description, item.kind));
+      }
+    }
+
     function renderPrimaryMetadataCapsule(
       capsule,
       result,
       dictionaryPresentation,
       hideGrammarTags,
       averageFrequency,
-      showFrequencyDictionaryNames
+      showFrequencyDictionaryNames,
+      { frequencyChanged = true, grammarChanged = true } = {}
     ) {
-      capsule.replaceChildren();
-      const frequencyTags = createFrequencyTags(
-        documentRef,
-        result,
-        dictionaryPresentation,
-        maxMetadataTags,
-        averageFrequency,
-        showFrequencyDictionaryNames
-      );
-      if (frequencyTags.length > 0) {
-        const frequencies = documentRef.createElement("span");
-        frequencies.className = "gsm-hoshidicts-primary-frequencies";
-        frequencies.append(...frequencyTags);
-        capsule.appendChild(frequencies);
+      if (frequencyChanged) {
+        capsule.querySelector(".gsm-hoshidicts-primary-frequencies")?.remove();
+        const frequencyTags = createFrequencyTags(
+          documentRef,
+          result,
+          dictionaryPresentation,
+          maxMetadataTags,
+          averageFrequency,
+          showFrequencyDictionaryNames
+        );
+        if (frequencyTags.length > 0) {
+          const frequencies = documentRef.createElement("span");
+          frequencies.className = "gsm-hoshidicts-primary-frequencies";
+          frequencies.dataset.average = String(averageFrequency);
+          frequencies.append(...frequencyTags);
+          capsule.prepend(frequencies);
+        }
       }
-      if (!hideGrammarTags) {
-        const grammarMetadata = collectGrammarMetadata(result);
-        if (grammarMetadata.length > 0) {
-          const grammar = documentRef.createElement("span");
-          grammar.className = "gsm-hoshidicts-primary-grammar";
-          for (const item of grammarMetadata) {
-            const tag = documentRef.createElement("span");
-            tag.className =
-              `gsm-hoshidicts-primary-grammar-tag ` +
-              `gsm-hoshidicts-primary-grammar-tag-${item.kind}`;
-            tag.textContent = item.text;
-            if (item.description) {
-              tag.title = item.description;
+      if (grammarChanged) {
+        capsule.querySelector(".gsm-hoshidicts-primary-grammar")?.remove();
+        if (!hideGrammarTags) {
+          const grammarMetadata = collectGrammarMetadata(result);
+          if (grammarMetadata.length > 0) {
+            const grammar = documentRef.createElement("span");
+            grammar.className = "gsm-hoshidicts-primary-grammar";
+            for (const item of grammarMetadata) {
+              const tag = documentRef.createElement("span");
+              tag.className =
+                `gsm-hoshidicts-primary-grammar-tag ` +
+                `gsm-hoshidicts-primary-grammar-tag-${item.kind}`;
+              tag.textContent = item.text;
+              if (item.description) {
+                tag.title = item.description;
+              }
+              grammar.appendChild(tag);
             }
-            grammar.appendChild(tag);
+            capsule.appendChild(grammar);
           }
-          capsule.appendChild(grammar);
         }
       }
       capsule.hidden = capsule.childNodes.length === 0;
@@ -1958,18 +2022,22 @@
       expression.className = "gsm-hoshidicts-expression";
       const expressionText = String(result.term.expression || "").trim();
       const readingText = String(result.term.reading || "").trim();
-      appendExpressionRuby(
-        documentRef,
-        expression,
-        expressionText,
-        readingText,
-        (character, sourceLink) => onKanjiClick(character, result, candidate, sourceLink),
-        {
-          enabled: showPitchAccentFurigana,
-          groups: result.term.pitches,
-          dictionary: pitchAccentFuriganaDictionary,
-        }
-      );
+      function populateRuby() {
+        expression.replaceChildren();
+        appendExpressionRuby(
+          documentRef,
+          expression,
+          expressionText,
+          readingText,
+          (character, sourceLink) => onKanjiClick(character, result, candidate, sourceLink),
+          {
+            enabled: showPitchAccentFurigana,
+            groups: result.term.pitches,
+            dictionary: pitchAccentFuriganaDictionary,
+          }
+        );
+      }
+      populateRuby();
       expression.setAttribute(
         "aria-label",
         readingText && readingText !== expressionText
@@ -2003,7 +2071,22 @@
       if (primary && noteControls) {
         header.appendChild(noteControls.actions);
       }
-      return { element: header };
+      return { element: header,
+        updateRuby(context) {
+          const enabled = context.showPitchAccentFurigana !== false;
+          const dictionary = typeof context.pitchAccentFuriganaDictionary === "string"
+            ? context.pitchAccentFuriganaDictionary : null;
+          if (enabled === showPitchAccentFurigana && dictionary === pitchAccentFuriganaDictionary) return false;
+          const appearanceChanged = enabled !== showPitchAccentFurigana || enabled;
+          // A kanji button is part of this ruby. Keep its identity until blur;
+          // Note, disclosure and glossary focus need no such deferral.
+          if (appearanceChanged && expression.contains(popup.getRootNode().activeElement)) return null;
+          showPitchAccentFurigana = enabled;
+          pitchAccentFuriganaDictionary = dictionary;
+          if (appearanceChanged) populateRuby();
+          return appearanceChanged;
+        },
+      };
     }
 
     function projectResults(results, dictionaries) {
@@ -2057,10 +2140,15 @@
       renderedImages.clear();
       panel.replaceChildren();
       const deferredGlossaryFills = [];
+      const entryMetadata = [];
+      let appliedMetadata = metadataOptions(imageContext);
+      let appliedFrequencyModes = frequencyModes(imageContext);
+      let appliedDictionaryPresentation = imageContext.dictionaryPresentation;
       let lookupStats = null;
       let expanded = renderContext.expandAll === true;
 
       function appendResult(result, resultIndex) {
+        Object.assign(renderContext, metadataOptions(imageContext));
         const entry = documentRef.createElement("article");
         entry.className = "gsm-hoshidicts-entry";
         entry.dataset.expression = result.term.expression;
@@ -2120,14 +2208,17 @@
           }
         }
 
-        appendMetadata(
+        const metadata = appendMetadata(
           entry,
           result,
-          Array.isArray(renderContext.dictionaryPresentation)
-            ? renderContext.dictionaryPresentation
+          Array.isArray(imageContext.dictionaryPresentation)
+            ? imageContext.dictionaryPresentation
             : [],
           {
             includeFrequency: resultIndex !== 0,
+            imageContext,
+            isCurrent: isCurrentLink,
+            onLayoutChange: scheduleMasonry,
             includePitch: renderContext.showPitchAccentBadge === true,
             averageFrequency: renderContext.averageFrequency === true,
             showFrequencyDictionaryNames:
@@ -2135,24 +2226,13 @@
           }
         );
 
-        if (
-          resultIndex !== 0 &&
-          renderContext.hidePopupGrammarTags === false
-        ) {
-          const tagRow = documentRef.createElement("div");
-          tagRow.className = "gsm-hoshidicts-tags";
-          for (const item of collectGrammarMetadata(result)) {
-            tagRow.appendChild(createTag(
-              documentRef,
-              item.text,
-              item.description,
-              item.kind
-            ));
-          }
-          if (tagRow.childNodes.length > 0) {
-            entry.appendChild(tagRow);
-          }
+        const grammarRow = resultIndex === 0 ? null : documentRef.createElement("div");
+        if (grammarRow) {
+          grammarRow.className = "gsm-hoshidicts-tags";
+          renderGrammarRow(grammarRow, result, renderContext.hidePopupGrammarTags !== false);
+          entry.appendChild(grammarRow);
         }
+        entryMetadata.push({ header: renderedHeader, metadata, grammarRow });
 
         const groupedGlossaries = new Map();
         for (const glossary of result.term.glossaries) {
@@ -2298,9 +2378,9 @@
       }
       function updateMetadataLabels(container, result) {
         let changed = false;
-        for (const [kind, groups] of [["frequency", result.term.frequencies], ["pitch", result.term.pitches]]) {
-          if (kind === "frequency" && renderContext.averageFrequency === true) continue;
-          const names = createDictionaryDisplayNames(groups.map(({ dictionary }) => dictionary), renderContext.dictionaryPresentation);
+        for (const [kind, groups] of [["frequency", result.term.frequencies], ["pitch", result.term.pitches], ["ipa", result.term.pitches]]) {
+          if (kind === "frequency" && imageContext.averageFrequency === true) continue;
+          const names = createDictionaryDisplayNames(groups.map(({ dictionary }) => dictionary), imageContext.dictionaryPresentation);
           for (const source of container.querySelectorAll(`.gsm-hoshidicts-${kind}-source`)) {
             const dictionary = source.parentNode.dataset.dictionary;
             changed = updateLabel(source, names.get(dictionary) || dictionary) || changed;
@@ -2311,6 +2391,39 @@
 
       return { lookupStats,
         isExpanded: () => expanded,
+        updateMetadata() {
+          const nextModes = frequencyModes(imageContext);
+          const labelsChanged = JSON.stringify(imageContext.dictionaryPresentation) !== JSON.stringify(appliedDictionaryPresentation);
+          const frequencyChanged = ["averageFrequency", "showFrequencyDictionaryNames"]
+            .some(key => imageContext[key] !== appliedMetadata[key]) || nextModes !== appliedFrequencyModes;
+          const grammarChanged = imageContext.hidePopupGrammarTags !== appliedMetadata.hidePopupGrammarTags;
+          const pitchChanged = imageContext.showPitchAccentBadge !== appliedMetadata.showPitchAccentBadge;
+          let changed = false;
+          let deferred = false;
+          if (labelsChanged) changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);
+          if (frequencyChanged || grammarChanged) {
+            renderPrimaryMetadataCapsule(primaryMetadataCapsule, results[0], imageContext.dictionaryPresentation || [],
+              imageContext.hidePopupGrammarTags !== false, imageContext.averageFrequency === true,
+              imageContext.showFrequencyDictionaryNames !== false, { frequencyChanged, grammarChanged });
+            updateMetadataStripVisibility(metadataStrip, tabList, primaryMetadataCapsule);
+            changed = true;
+          }
+          entryMetadata.forEach(({ header, metadata, grammarRow }, index) => {
+            const countChanged = frequencyChanged && index > 0 && metadata.updateFrequency(imageContext);
+            if (pitchChanged || countChanged) { metadata.updatePitch(imageContext); changed = true; }
+            if (grammarChanged && grammarRow) renderGrammarRow(grammarRow, results[index], imageContext.hidePopupGrammarTags !== false);
+            if (labelsChanged) {
+              for (const row of metadata.rows) changed = updateMetadataLabels(row, results[index]) || changed;
+            }
+            const rubyChanged = header.updateRuby(imageContext);
+            deferred ||= rubyChanged === null;
+            changed ||= rubyChanged === true;
+          });
+          appliedMetadata = metadataOptions(imageContext);
+          appliedFrequencyModes = nextModes;
+          appliedDictionaryPresentation = imageContext.dictionaryPresentation;
+          return { changed, deferred };
+        },
         updateImages() {
           let changed = false;
           for (const handle of renderedImages) {
@@ -2321,9 +2434,12 @@
         },
         updateDictionaryPresentation(context, names, summaryChanged) {
           summaryChanged &&= isCurrent();
+          const labelsChanged = names.size !== dictionaryDisplayNames.size
+            || [...names].some(([dictionary, label]) => dictionaryDisplayNames.get(dictionary) !== label);
           Object.assign(renderContext, context);
           dictionaryDisplayNames = names;
-          let changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);
+          if (!labelsChanged && !summaryChanged) return false;
+          let changed = false;
           if (summaryChanged) {
             changed = updateCompactSummary(primaryHeader.querySelector(".gsm-hoshidicts-headword"),
               results[0], renderContext, summaryMedia) || changed;
@@ -2334,11 +2450,10 @@
               changed = updateCompactSummary(entry.querySelector(".gsm-hoshidicts-headword"),
                 results[index], renderContext, summaryMedia) || changed;
             }
-            for (const row of entry.querySelectorAll(":scope > .gsm-hoshidicts-metadata")) {
-              changed = updateMetadataLabels(row, results[index]) || changed;
-            }
-            for (const summary of entry.querySelectorAll(":scope > .gsm-hoshidicts-glossary-grid > details > summary")) {
-              changed = updateLabel(summary, names.get(summary.title) || summary.title) || changed;
+            if (labelsChanged) {
+              for (const summary of entry.querySelectorAll(":scope > .gsm-hoshidicts-glossary-grid > details > summary")) {
+                changed = updateLabel(summary, names.get(summary.title) || summary.title) || changed;
+              }
             }
           });
           return changed;
@@ -2505,10 +2620,11 @@
 
     function renderResults(results, candidate, renderContext = {}) {
       renderContext = { ...renderContext };
-      // Source changes are independent of tab/text changes that Note or a
-      // child may defer. Carry the current image context through local tabs.
+      // Visual preferences are independent of tab/text changes that Note or a
+      // child may defer. Carry their current context through local tabs.
       const imageContext = { popupImageSources: renderContext.popupImageSources ?? null,
-        dictionaryPresentation: renderContext.dictionaryPresentation, resolveMedia: renderContext.resolveMedia };
+        dictionaryPresentation: renderContext.dictionaryPresentation, resolveMedia: renderContext.resolveMedia,
+        ...metadataOptions(renderContext) };
       const focused = retainedFocus(renderContext.preserveViewControls);
       clear(renderContext.preserveViewControls);
       setDefinitionBlurState(renderContext.definitionBlurState);
@@ -2636,6 +2752,8 @@
           candidate,
           {
             ...renderContext,
+            ...metadataOptions(imageContext),
+            dictionaryPresentation: imageContext.dictionaryPresentation,
             noteControls,
             expandAll,
             // Lookup statistics describe the first unfiltered result. Keep the
@@ -2768,11 +2886,12 @@
             || (!sameMembers && (!ownsView() || !canProjectPresentation()));
           // New cards and summaries use the latest route. Only refresh handles
           // after replacing their owners, unless the projection is protected.
-          for (const key of ["popupImageSources", "dictionaryPresentation", "resolveMedia"]) {
+          for (const key of ["popupImageSources", "dictionaryPresentation", "resolveMedia", ...METADATA_OPTION_KEYS]) {
             if (Object.hasOwn(context, key)) imageContext[key] = context[key];
           }
           if (projectionDeferred) {
-            if (rendered.updateImages()) scheduleMasonry();
+            const metadata = rendered.updateMetadata();
+            if (rendered.updateImages() || metadata.changed) scheduleMasonry();
             return false;
           }
           Object.assign(renderContext, context);
@@ -2780,10 +2899,14 @@
           dictionaryDisplayNames = next.dictionaryDisplayNames;
           selectedIndex = index;
           let changed = syncTabButtons(previous);
+          let metadataDeferred = false;
           if (selectedKey !== tabDescriptors[index].key) {
             renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
           }
           if (sameMembers) {
+            const metadata = rendered.updateMetadata();
+            changed = metadata.changed || changed;
+            metadataDeferred = metadata.deferred;
             changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames, summaryChanged) || changed;
             changed = rendered.updateImages() || changed;
           } else {
@@ -2796,7 +2919,7 @@
             changed = true;
           }
           if (changed) scheduleMasonry();
-          return true;
+          return !metadataDeferred;
         });
       restoreRetainedFocus(focused);
       return rendered;
@@ -2854,5 +2977,6 @@
     extractCompactDefinitionSummary,
     formatCompactFrequencyNumber,
     formatFrequencyValue,
+    metadataOptions,
   };
 }));
