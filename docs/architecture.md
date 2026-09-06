@@ -236,6 +236,36 @@ before the change event completes.
 
 ![Frequency direction controls in Settings](assets/frequency-direction-settings.png)
 
+## Popup metadata controls
+
+Reading has independent controls for frequency source names and averages, pitch
+contour and its preferred dictionary, pitch badges, and grammar tags. Existing
+defaults keep source names, contour, badges and grammar visible; averages remain
+off. IPA transcriptions and definition tags remain visible independently.
+
+Averages retain GSM PR #549's floored harmonic mean, with two corrections for
+the standalone contract: arithmetic uses the native positive numeric value, not
+its display label, and rank, occurrence and unspecified dictionaries aggregate
+separately. Each dictionary contributes its first usable value once. Type labels
+remain visible even with source names hidden; these display controls do not
+change native frequency sorting or lookup results.
+
+The preferred pitch source is a soft canonical-title preference: unavailable or
+disabled sources fall back to another usable pitch source. A committed rename
+follows the stable package ID, and actual removal clears the selection in the
+same background options/state write. Turning contour off remembers the source.
+
+Live metadata changes replace only changed metadata rows or expression ruby,
+without another lookup, media request or glossary fill. Note drafts, full cards,
+definition tags and deinflection disclosures keep their identity and state.
+A focused kanji button defers ruby replacement until blur. The shared visual
+context carries current preferences through deferred group changes, local tabs
+and Show more; an unchanged delivery performs no metadata rebuild.
+
+![Metadata controls in Settings](assets/metadata-settings.png)
+
+![Independent pitch contour and IPA with typed frequency averages](assets/metadata-popup.png)
+
 ## Lookup response boundary
 
 The native bridge rejects lookup text, primary reading, and frequency-dictionary

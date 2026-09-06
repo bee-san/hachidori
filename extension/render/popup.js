@@ -1891,6 +1891,7 @@
         if (frequencyTags.length > 0) {
           const frequencies = documentRef.createElement("span");
           frequencies.className = "gsm-hoshidicts-primary-frequencies";
+          frequencies.dataset.average = String(averageFrequency);
           frequencies.append(...frequencyTags);
           capsule.prepend(frequencies);
         }
