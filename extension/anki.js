@@ -6,6 +6,8 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 1250 }
   async function invoke(action, params, apiKey) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const unavailable = () => new Error(controller.signal.aborted ? "AnkiConnect timed out. Open Anki and retry."
+      : "Open Anki with the AnkiConnect add-on installed, then retry.");
     try {
       let response;
       try {
@@ -13,13 +15,13 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 1250 }
           headers: { "Content-Type": "application/json" }, signal: controller.signal,
           body: JSON.stringify({ action, version: 6, params, ...(apiKey ? { key: apiKey } : {}) }) });
       } catch {
-        throw new Error(controller.signal.aborted ? "AnkiConnect timed out. Open Anki and retry."
-          : "Open Anki with the AnkiConnect add-on installed, then retry.");
+        throw unavailable();
       }
       if (!response.ok) throw new Error(response.status === 403
         ? "AnkiConnect denied permission. Allow this extension in AnkiConnect’s webCorsOriginList, then retry."
         : `AnkiConnect returned HTTP ${response.status}.`);
       const payload = await response.json().catch(() => null);
+      if (controller.signal.aborted) throw unavailable();
       if (!payload || Object.keys(payload).length !== 2 || !Object.hasOwn(payload, "result")
           || !Object.hasOwn(payload, "error") || (payload.error !== null && typeof payload.error !== "string")) {
         throw new Error("AnkiConnect returned an invalid response. Check the add-on and retry.");

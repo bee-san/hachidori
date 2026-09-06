@@ -76,6 +76,10 @@ test("Anki discovery timeouts abort the fetch and API errors are not mislabeled 
     signal.addEventListener("abort", () => reject(signal.reason), { once: true });
   }) });
   assert.match((await gateway.discover({ model: "" })).errors.join(" "), /timed out/u);
+  const stalledBody = createAnkiGateway({ timeoutMs: 5, fetch: async (_, { signal }) => ({ ok: true,
+    json: () => new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true })),
+  }) });
+  assert.match((await stalledBody.discover({ model: "" })).errors.join(" "), /timed out/u);
   const denied = createAnkiGateway({ fetch: async () => ({ ok: true,
     async json() { return { result: null, error: "valid api key must be provided" }; } }) });
   assert.match((await denied.discover({ model: "" })).errors.join(" "), /API key/u);
