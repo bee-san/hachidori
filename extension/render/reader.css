@@ -2169,6 +2169,7 @@ html[data-hoshidicts-theme="high-contrast"] .gsm-hoshidicts-audio-menu {
 }
 
 .gsm-hoshidicts-glossary-card {
+  box-sizing: border-box;
   /* Outside the dictionary's scope: fixed descendants and paint cannot cover
    * popup controls. The stylesheet filter types compatibility vars at use. */
   contain: paint;
