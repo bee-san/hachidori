@@ -425,13 +425,15 @@ preference is not pruned by package changes.
 
 The existing semantic extractor skips metadata/examples, retains ordered unique
 snippets and splits nonempty bullet-separated text. Each inspected raw glossary
-is parsed once for text and leading-image selection. Snippets are yielded lazily
-until the preview is full; Unicode truncation visits only the needed code points,
-without allocating every bullet fragment or character in a large glossary.
-The lazy native matcher skips empty bullet runs without normalizing every empty
-fragment. Only its first meaningful content can supply the image: text, including
-zero/false, or an unsupported
-leading image prevents searching for a later image. Text/structured wrappers
+is parsed once for text and leading-image selection. Inline text parts stream
+without concatenating unused text or matching/normalizing whole fragments.
+One extra normalized code point beyond the 240-point display budget proves
+truncation without mistaking a long candidate for a previously seen duplicate.
+Adjacent inline parts retain split surrogate pairs and block separators. Native
+character searches skip empty bullet and whitespace runs; full JSON parsing and
+necessary whitespace-prefix scans remain. Only the first meaningful content can
+supply the image: text, including zero/false, or an unsupported leading image
+prevents searching for a later image. Text/structured wrappers
 follow the glossary renderer's dispatch order. Existing display/traversal bounds
 apply only to this preview; native results and complete glossary bytes remain
 unchanged. Default-off rendering does not run summary extraction.

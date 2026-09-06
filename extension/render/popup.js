@@ -764,8 +764,54 @@
     );
   }
 
-  function normalizeCompactDefinitionText(value) {
-    return String(value || "").replace(/\s+/gu, " ").trim();
+  function appendCompactDefinitionCharacter(characters, character) {
+    // Adjacent inline chunks can split one Unicode surrogate pair.
+    const previous = characters.at(-1);
+    if (previous?.length === 1 && previous.charCodeAt(0) >= 0xd800 && previous.charCodeAt(0) <= 0xdbff
+      && character.charCodeAt(0) >= 0xdc00 && character.charCodeAt(0) <= 0xdfff) {
+      characters[characters.length - 1] += character;
+    } else {
+      characters.push(character);
+    }
+  }
+
+  function* compactDefinitionItemsFromText(parts) {
+    const firstText = /[^\s\u2022]/gu;
+    const nextText = /\S/gu;
+    let characters = [];
+    let pendingSpace = false;
+    for (const text of parts) {
+      let index = 0;
+      while (index < text.length) {
+        const matcher = characters.length > 0 ? nextText : firstText;
+        matcher.lastIndex = index;
+        const match = matcher.exec(text);
+        if (!match) {
+          pendingSpace = characters.length > 0;
+          break;
+        }
+        pendingSpace ||= characters.length > 0 && match.index > index;
+        index = matcher.lastIndex;
+        if (match[0] === "\u2022") {
+          yield characters.join("");
+          characters = [];
+          pendingSpace = false;
+          continue;
+        }
+        if (pendingSpace) characters.push(" ");
+        pendingSpace = false;
+        if (characters.length <= COMPACT_DEFINITION_MAX_CHARACTERS) {
+          appendCompactDefinitionCharacter(characters, match[0]);
+        }
+        // One extra normalized point proves truncation. Earlier accepted items
+        // are at most 240 points, so this cannot falsely match a seen duplicate.
+        if (characters.length > COMPACT_DEFINITION_MAX_CHARACTERS) {
+          yield characters.join("");
+          return;
+        }
+      }
+    }
+    if (characters.length > 0) yield characters.join("");
   }
 
   function isCompactDefinitionBlock(value) {
@@ -774,47 +820,51 @@
     );
   }
 
-  function collectCompactDefinitionText(value, state, depth = 0) {
+  function* collectCompactDefinitionText(value, state, depth = 0) {
     if (
       state.nodes >= COMPACT_DEFINITION_MAX_NODES ||
       depth > COMPACT_DEFINITION_MAX_DEPTH
     ) {
-      return "";
+      return;
     }
     state.nodes += 1;
     if (typeof value === "string" || typeof value === "number" ||
         typeof value === "boolean") {
-      return String(value);
+      const text = String(value);
+      if (text) yield text;
+      return;
     }
     if (Array.isArray(value)) {
-      let text = "";
+      let hasText = false;
       let previousWasBlock = false;
       for (const child of value) {
         if (state.nodes >= COMPACT_DEFINITION_MAX_NODES) break;
-        const childText = collectCompactDefinitionText(child, state, depth + 1);
-        if (!childText) continue;
         const childIsBlock = isCompactDefinitionBlock(child);
-        if (text && (previousWasBlock || childIsBlock)) {
-          text += " ";
+        let childHasText = false;
+        for (const text of collectCompactDefinitionText(child, state, depth + 1)) {
+          if (!childHasText && hasText && (previousWasBlock || childIsBlock)) yield " ";
+          childHasText = true;
+          yield text;
         }
-        text += childText;
-        previousWasBlock = childIsBlock;
+        if (childHasText) {
+          hasText = true;
+          previousWasBlock = childIsBlock;
+        }
       }
-      return text;
+      return;
     }
     if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) {
-      return "";
+      return;
     }
     const tag = typeof value.tag === "string" ? value.tag.toLowerCase() : "";
     if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag) || value.type === "image") {
-      return "";
+      return;
     }
     if (value.type === "text" && Object.prototype.hasOwnProperty.call(value, "text")) {
-      return collectCompactDefinitionText(value.text, state, depth + 1);
+      yield* collectCompactDefinitionText(value.text, state, depth + 1);
+    } else if (Object.prototype.hasOwnProperty.call(value, "content")) {
+      yield* collectCompactDefinitionText(value.content, state, depth + 1);
     }
-    return Object.prototype.hasOwnProperty.call(value, "content")
-      ? collectCompactDefinitionText(value.content, state, depth + 1)
-      : "";
   }
 
   function findCompactDefinitionNodes(value, predicate, state, depth = 0) {
@@ -877,12 +927,9 @@
     for (const node of nodes) {
       if (inspected >= COMPACT_DEFINITION_MAX_NODES) break;
       inspected += 1;
-      const text = collectCompactDefinitionText(node, { nodes: 0 });
-      // Skip empty bullet runs without a JS normalization for each fragment.
-      const fragments = /[^\s\u2022][^\u2022]*/gu;
-      for (let match = fragments.exec(text); match; match = fragments.exec(text)) {
+      for (const item of compactDefinitionItemsFromText(collectCompactDefinitionText(node, { nodes: 0 }))) {
         found = true;
-        yield normalizeCompactDefinitionText(match[0]);
+        yield item;
       }
     }
     // The first nonempty semantic list owns the preview, even if deduplication
@@ -973,7 +1020,7 @@
       }
       return null;
     }
-    if (!isRecord(value)) return value != null && String(value).trim() ? false : null;
+    if (!isRecord(value)) return value != null && /\S/u.test(String(value)) ? false : null;
     if (isIgnoredCompactDefinitionSection(value)) return null;
     if (value.type === "structured-content" || value.type === "text") {
       const content = value.type === "text" && Object.hasOwn(value, "text") ? value.text : value.content;
