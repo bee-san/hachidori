@@ -3395,10 +3395,11 @@ async function checkAnkiSettings(page, browser) {
         options: { anki: anki ?? HDReaderOptions.normaliseOptions({}).anki } });
       if (!reply.ok) throw new Error(reply.error);
     }, original.options?.anki);
-    // Later layout checks also visit Anki. Keep its loopback endpoint mocked
-    // until this browser closes; tests must never contact the user's Anki.
+    // Later layout checks also visit Anki. Their caller releases this mock
+    // before worker-restart checks; tests must never contact the user's Anki.
     offline = true;
   }
+  return session;
 }
 
 async function readSettingsControls(settings, ids) {
@@ -4684,7 +4685,7 @@ async function main() {
   await checkSettingsTransport(page);
   await checkDesignPreview(page);
   await checkAudioSettings(page, browser);
-  await checkAnkiSettings(page, browser);
+  const ankiSession = await checkAnkiSettings(page, browser);
   await checkDictionaryStyles(page);
   await showSettingsSection(page, "add-dictionaries");
 
@@ -5306,6 +5307,7 @@ async function main() {
   check("Settings light and dark themes keep every task view readable without horizontal overflow",
     themeLayouts.every((layout) => layout.taskVisible && layout.noOverflow && layout.controlsFit
       && layout.textContrast >= 4.5 && layout.controlContrast >= 3), JSON.stringify(themeLayouts));
+  await ankiSession.detach();
   await page.emulateMediaFeatures([]);
   await page.setViewport({ width: 480, height: 900 });
   await openDictionaryDetails(page, FIXTURE_ID);
