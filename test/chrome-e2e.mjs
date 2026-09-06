@@ -1369,10 +1369,15 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     }
     require((await requests()).length === columnsStart, "E8 columns or resize issued dictionary resource work");
     await setColumns(2);
+    await tab.keyboard.press("Escape");
+    require(!(await popup.state()).noteOpen, "E8 finished column draft did not close");
+    const screenshotView = await until(rootState, value => packed(value, 2), "E8 two-column reader capture");
     if (process.env.HACHIDORI_TABS_SCREENSHOT) {
-      await tab.screenshot({ path: process.env.HACHIDORI_TABS_SCREENSHOT });
+      const { x, y, width, height } = screenshotView.rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_TABS_SCREENSHOT, clip: { x, y, width, height } });
     }
     if (process.env.HACHIDORI_OPTIONS_SCREENSHOT || process.env.HACHIDORI_OPTIONS_DARK_SCREENSHOT) {
+      await settings.bringToFront();
       await settings.setViewport({ width: 1280, height: 1000 });
       await showSettingsSection(settings, "lookup");
       for (const [scheme, path] of [["light", process.env.HACHIDORI_OPTIONS_SCREENSHOT], ["dark", process.env.HACHIDORI_OPTIONS_DARK_SCREENSHOT]]) {
@@ -1381,10 +1386,9 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
         await (await settings.$("#lookup")).screenshot({ path });
       }
     }
-    // A protected old Note deliberately prevents rehover. Close it before
-    // importing a cold generation and arming the real media reply hold.
+    // Retire the old view before importing a cold generation and arming the
+    // real media reply hold; a protected Note would deliberately prevent rehover.
     await tab.bringToFront();
-    await tab.keyboard.press("Escape");
     require(!(await popup.state()).noteOpen, "E8 cold media setup retained Note");
     await tab.keyboard.press("Escape");
     require(await popup.waitForHidden(), "E8 cold media setup retained popup");
