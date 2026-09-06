@@ -26,10 +26,6 @@ export async function enrichAnkiNote(context, { audio, render, media }) {
   if (!Object.keys(templates).length) return warnings;
   try {
     const file = resources.audioPrepared ? resources.audio : await audio(request, context.config);
-    if (!file) {
-      if (resources.audioWarning) warnings.push(resources.audioWarning);
-      return warnings;
-    }
     await store(file);
     const rendered = await render(request, templates, `[sound:${file.filename}]`, resources);
     const incoming = existingFields ? overwriteAnkiFields(rendered.fields, existingFields, templates, { includeAudio: true }) : rendered.fields;

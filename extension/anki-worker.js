@@ -26,12 +26,13 @@ export function createAnkiWorkerService({ gateway, readOptions, readDictionaries
       await currentGeneration(request);
       const dictionaries = await readDictionaries();
       const resources = { dictionaryPaths: Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
-        .map(item => [item.title, item.path])), audioPrepared: false, audio: null, audioWarning: null };
+        .map(item => [item.title, item.path])), audioPrepared: false, audio: null };
       const first = current.resolved.templates[current.discovery.fields[0]];
       if (ankiTemplateMarkerNames(first.value).includes("audio")) {
         resources.audioPrepared = true;
-        try { resources.audio = await audio(request, current.config); }
-        catch (error) { resources.audioWarning = error.message; }
+        // Audio in the first field is part of Anki's duplicate identity. A
+        // failed/stale selection must not turn that identity into text-only.
+        resources.audio = await audio(request, current.config);
       }
       const built = await render(request, current.resolved.templates, resources.audio ? `[sound:${resources.audio.filename}]` : "", resources);
       return { ...resources, ...built };
