@@ -5249,6 +5249,11 @@ async function sourceHighlightFallbackCase(window) {
     otherSource.dispatchEvent(new window.Event("animationstart", { bubbles: true }));
     await frame();
     const retained = marks().length === 1 && marks()[0] === mark && geometryReads === beforeClear;
+    const beforeMotionEnd = coverScans;
+    source.dispatchEvent(new window.Event("animationend", { bubbles: true }));
+    await frame();
+    await frame();
+    const settledMotion = coverScans === beforeMotionEnd;
     second.apply({ sourceElements: [otherSource], sentence: otherSource.textContent, matchOffset: 0 }, "Keep");
     await frame();
     source.style.visibility = "hidden";
@@ -5335,7 +5340,7 @@ async function sourceHighlightFallbackCase(window) {
       await frame();
       documentRoot = document.body.querySelectorAll(":scope > .gsm-hoshidicts-source-highlight-layer").length === 1;
     } finally { view.destroy(); popup.remove(); }
-    return exact && both && retained && hidden && restored && siblingMoved && discovery && cleaned && documentRoot && mediaWatches === 0
+    return exact && both && retained && settledMotion && hidden && restored && siblingMoved && discovery && cleaned && documentRoot && mediaWatches === 0
       && !document.querySelector(".gsm-hoshidicts-source-highlight-layer") && source.innerHTML === before.text
       && source.className === before.className && window.getSelection().toString() === before.selection;
   } finally {
