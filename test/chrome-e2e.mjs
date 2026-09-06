@@ -3817,7 +3817,7 @@ async function checkSourceFallback(settings, tab, popup) {
     const uncovered = await snapshot();
     const sourceRect = uncovered.source.expected[0];
     const covers = [];
-    for (const kind of ["partial", "pointer-none", "modal", "sticky", "border", "fixed-escape", "motion", "behind"]) {
+    for (const kind of ["partial", "pointer-none", "modal", "sticky", "border", "fixed-escape", "motion", "membership", "behind"]) {
       await tab.evaluate(({ source, kind }) => {
         const element = document.createElement("div");
         element.id = "e17-page-cover";
@@ -3853,7 +3853,19 @@ async function checkSourceFallback(settings, tab, popup) {
           element.getBoundingClientRect();
           element.style.transform = "translateX(160px)";
         }
+        if (kind === "membership") {
+          const style = document.createElement("style");
+          style.textContent = "@keyframes e17-cover { from { position:static; } to { position:fixed; } }";
+          element.append(style);
+          element.style.position = "static";
+          element.style.animation = "e17-cover 1s linear forwards";
+        }
       }, { source: sourceRect, kind });
+      let initiallyUncovered = true;
+      if (kind === "membership") {
+        initiallyUncovered = (await snapshot()).exact;
+        await tab.$eval("#e17-page-cover", element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+      }
       if (kind === "motion") await tab.waitForFunction(() => document.querySelector("[data-e17-painted-cover]").getAnimations()
         .some(animation => animation.currentTime >= 300 && animation.currentTime < 800));
       const current = await snapshot();
@@ -3865,10 +3877,10 @@ async function checkSourceFallback(settings, tab, popup) {
         overlap(rect, source) >= area(rect) - 1) && (kind === "behind" || overlap(rect, cover) < 1));
       await tab.$eval("#e17-page-cover", element => element.remove());
       const restored = await snapshot();
-      covers.push({ kind, expectedArea, actualArea, bounded, restored: restored.exact });
+      covers.push({ kind, expectedArea, actualArea, bounded, initiallyUncovered, restored: restored.exact });
     }
     check("fallback source paint stays beneath page headers and overlays",
-      covers.every(value => value.bounded && value.restored && Math.abs(value.expectedArea - value.actualArea) < 2),
+      covers.every(value => value.bounded && value.initiallyUncovered && value.restored && Math.abs(value.expectedArea - value.actualArea) < 2),
       JSON.stringify(covers));
     const styleChanges = [];
     for (const kind of ["insert", "declaration", "adopted", "load", "media-nested", "media-sheet"]) {
