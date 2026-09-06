@@ -9802,14 +9802,50 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   ].map(lead => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Leading text", glossary: JSON.stringify([
     lead, { type: "image", path: "late.png" }, "definition",
   ]) }]));
+  const bulletText = ("first • first • second • " + "unused • ".repeat(50000)).trim();
+  const longText = "長😀".repeat(50000);
+  sandbox.__summaryWork = { bulletText, longText, splitFragments: 0, codePoints: 0 };
+  runInContext(`
+    (() => {
+      const split = String.prototype.split;
+      const iterator = String.prototype[Symbol.iterator];
+      String.prototype.split = function (...args) {
+        const result = split.apply(this, args);
+        if (String(this) === __summaryWork.bulletText) __summaryWork.splitFragments += result.length;
+        return result;
+      };
+      String.prototype[Symbol.iterator] = function* () {
+        const observed = String(this) === __summaryWork.longText;
+        for (const character of { [Symbol.iterator]: () => iterator.call(this) }) {
+          if (observed) __summaryWork.codePoints += 1;
+          yield character;
+        }
+      };
+      globalThis.__restoreSummaryWork = () => {
+        String.prototype.split = split;
+        String.prototype[Symbol.iterator] = iterator;
+      };
+    })();
+  `, sandbox);
+  let boundedSummaryWork;
+  try {
+    const bullets = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Bullets", glossary: JSON.stringify([bulletText]) }], null, 2);
+    const long = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Long", glossary: JSON.stringify([longText]) }], null, 1);
+    boundedSummaryWork = JSON.stringify(bullets?.items) === JSON.stringify(["first", "second"])
+      && long?.items[0] === "長😀".repeat(119) + "長…"
+      && sandbox.__summaryWork.splitFragments === 0 && sandbox.__summaryWork.codePoints <= 241;
+  } finally { sandbox.__restoreSummaryWork(); }
+  const summaryWork = { splitFragments: sandbox.__summaryWork.splitFragments, codePoints: sandbox.__summaryWork.codePoints };
+  delete sandbox.__summaryWork;
+  delete sandbox.__restoreSummaryWork;
   check("compact summaries preserve ordered text, split nonempty bullets and select only a leading image without changing full glossaries",
     JSON.stringify(compact?.items) === JSON.stringify(["first", "second"])
       && compact?.dictionary === "Illustrated" && compact?.image?.path === "media/kanji.png"
       && JSON.stringify(fallback?.items) === JSON.stringify(["plain first"])
       && !lateImage?.image && JSON.stringify(bulletSummary?.items) === JSON.stringify(["first", "second"])
       && nonImageLeads.every(summary => !summary?.image)
-      && JSON.stringify(summaryGlossaries) === summaryBefore,
-    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads }));
+      && JSON.stringify(summaryGlossaries) === summaryBefore && boundedSummaryWork,
+    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork }));
 
   const host = document.createElement("div");
   document.body.appendChild(host);
