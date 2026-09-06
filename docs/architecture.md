@@ -238,7 +238,7 @@ before the change event completes.
 
 ## Popup metadata controls
 
-Reading has independent controls for frequency source names and averages, pitch
+Design has independent controls for frequency source names and averages, pitch
 contour and its preferred dictionary, pitch badges, and grammar tags. Existing
 defaults keep source names, contour, badges and grammar visible; averages remain
 off. IPA transcriptions and definition tags remain visible independently.
@@ -264,8 +264,6 @@ definition tags and deinflection disclosures keep their identity and state.
 A focused kanji button defers ruby replacement until blur. The shared visual
 context carries current preferences through deferred group changes, local tabs
 and Show more; an unchanged delivery performs no metadata rebuild.
-
-![Metadata controls in Settings](assets/metadata-settings.png)
 
 ![Independent pitch contour and IPA with typed frequency averages](assets/metadata-popup.png)
 
@@ -448,7 +446,7 @@ committed state, but never refreshes a new level at the same depth.
 
 ### Compact headword summaries
 
-Reading exposes an opt-in compact summary, a snippet count from one through six
+Design exposes an opt-in compact summary, a snippet count from one through six
 (default three), and a preferred canonical dictionary title. Automatic uses the
 first eligible dictionary in the current projected result order. The preference
 is soft: disabled or unavailable titles remain remembered and visible in
@@ -512,10 +510,6 @@ once against the new state. Startup uses the same ordering.
 
 ![Compact summary with its complete source definitions](assets/compact-definition-summary.png)
 
-[Reading controls in light](assets/compact-summary-settings-light.png) and
-[dark](assets/compact-summary-settings-dark.png) themes retain the native Settings
-layout and palette.
-
 ### Deinflection explanation
 
 Each eligible term header has a native, initially closed `details` disclosure.
@@ -571,7 +565,7 @@ cache/queue. A missing source or exhausted group fails normally; it does not
 silently switch to Automatic. The effective candidate order owns in-flight
 routing, so a changed route cannot publish stale bytes/provenance or start another
 fallback. Alias and group-name changes preserve that identity and cached media.
-Reading's native Image source chooser stores canonical titles and stable group
+Design's native Image source chooser stores canonical titles and stable group
 IDs, with aliases and group names only as labels. Disabled or already-missing
 selections stay remembered, including deleted groups. Removing the selected
 installed package resets its image selection to Automatic in the same dictionary
@@ -604,10 +598,6 @@ resume only an undismissed owner, never a preview closed by failure or scrolling
 Once focus leaves, a failed image drops that temporary tab stop.
 
 ![Alternate image supplier beside the unchanged definition](assets/popup-image-source.png)
-
-[Image source in light](assets/image-source-settings-light.png) and
-[dark](assets/image-source-settings-dark.png) Settings keeps the native controls
-and the existing restrained palette.
 
 The reader separates reusable image resources from DOM ownership. Pending
 fetches dedupe by generation, canonical title and normalized path; successful
@@ -787,6 +777,37 @@ saves retain the draft for explicit retry or discard; a failed reply triggers a
 current-state read before retry is offered. Content scripts use the same
 highest-revision rule, including a delayed initial storage read. Options never
 trigger a native dictionary reload.
+
+### Live Design preview
+
+![Appearance controls beside the production popup preview](assets/design-preview.png)
+
+Design moves the existing appearance controls out of Reading, without a second
+options store or save queue. Both sections capture the same revision-bound
+drafts; their single status/retry region follows the active options section.
+Unsaved edits update the preview immediately, independently of the save delay
+or a failed save. Other sections do not load or update the preview.
+
+The same-origin iframe and its resize observer are created only on first
+visiting Design; Library startup does not create even a blank browsing context.
+It contains a neutral
+sample webpage and a shadow root using `render/popup.js`, `render/glossary.js`,
+and `render/reader.css`; the page uses the production `content.css` highlight.
+Four deterministic glossary cards demonstrate all retained column choices,
+alongside structured media, frequency, pitch, and kanji content. Selected
+installed sources are represented by sample entries, not real lookup results.
+The packaged SVG is fetched once and reused as a blob URL; the preview does not
+contact the engine, fetch dictionary data, or write personal notes.
+
+An unchanged presentation snapshot does no renderer work. Metadata, summary,
+and image-route changes use the production incremental projection; a changed
+representative source keeps open Note controls. Kanji/Back retains the selected
+tab, disclosure state, scroll, source highlight, and keyboard focus. The shared
+image-source selector and default popup size also serve the real content script.
+Fit/Actual changes transform the fixed-size outer stage, not the popup itself;
+resizing does not rebuild the sample. The current fixed theme/opacity/toolbar
+behavior matches the real popup. Future E15–E18 appearance controls must feed
+this same preview; this phase adds no locale, theme, or custom-CSS preferences.
 
 ## Managed custom dictionary
 

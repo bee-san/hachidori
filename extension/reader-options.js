@@ -121,6 +121,18 @@
       : { lookupMode: "activation", activationKey: key };
   }
 
+  // Null uses the definition's dictionary. Empty means no eligible source;
+  // group membership order is the per-image fallback order.
+  function resolvePopupImageSources(source, dictionaries, groups) {
+    if (!source) return null;
+    if (source.kind === "dictionary") {
+      return dictionaries.some(entry => entry.enabled && entry.title === source.title) ? [source.title] : [];
+    }
+    const group = groups.find(entry => entry.id === source.id);
+    const titles = new Map(dictionaries.filter(entry => entry.enabled).map(entry => [entry.id, entry.title]));
+    return (group?.dictionaryIds || []).filter(id => titles.has(id)).map(id => titles.get(id));
+  }
+
   function projectOptions(value, strict) {
     const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const result = legacyActivationOptions(source, strict);
@@ -161,5 +173,6 @@
     DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     projectStoredOptions, validateOptionsPatch,
+    resolvePopupImageSources,
   };
 }());

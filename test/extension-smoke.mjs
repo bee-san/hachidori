@@ -4316,6 +4316,13 @@ async function main() {
     JSON.stringify(navigationSettings));
   check("dictionary details retain their stable identity and focus across rerenders and filtering",
     navigationSettings?.details === true, JSON.stringify(navigationSettings));
+  check("Design lazily previews unsaved presentation edits and retains the shared save feedback across sections",
+    navigationSettings?.design === true, JSON.stringify(navigationSettings));
+  const preview = await designPreviewStage();
+  check("Design uses production term, kanji, media and metadata views without saving sample Notes",
+    preview?.sample === true && preview.note === true && preview.back === true, JSON.stringify(preview));
+  check("Design updates presentation without rebuilding cards and skips unchanged option echoes",
+    preview?.incremental === true && preview.routing === true, JSON.stringify(preview));
   const frequencySettings = await settingsFrequencyStage();
   check("Settings derives frequency direction only on dictionary selection or explicit Auto",
     frequencySettings?.explicit === true, JSON.stringify(frequencySettings));
@@ -5016,10 +5023,110 @@ async function settingsNavigationStage() {
     const unseenCompletion = mirror.textContent === "Reading: Saved.";
     await navigate("lookup");
     await navigate("dictionaries");
-    return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details };
+    let design = document.getElementById("design-preview") === null;
+    if (document.getElementById("design")) {
+      await navigate("design");
+      const preview = document.getElementById("design-preview");
+      const updates = [];
+      preview.contentWindow.HDDesignPreview = { update(value) { updates.push(structuredClone(value)); } };
+      preview.dispatchEvent(new window.Event("load"));
+      const columns = document.getElementById("opt-popup-columns");
+      const beforeEdit = requests.length;
+      columns.value = "2";
+      columns.dispatchEvent(new window.Event("change", { bubbles: true }));
+      design &&= preview.getAttribute("src") === "design-preview.html"
+        && columns.closest("section").id === "design"
+        && document.getElementById("opt-scan-length").closest("section").id === "lookup"
+        && updates.at(-1)?.popupColumns === 2 && requests.length === beforeEdit
+        && document.getElementById("options-status").closest("section").id === "design";
+      await until(() => requests.length > beforeEdit);
+      pendingSave({ ok: false, conflict: true, error: "Settings changed elsewhere.", options: storedOptions });
+      await until(() => document.getElementById("options-status").textContent.includes("Could not save"));
+      await navigate("lookup");
+      design &&= !document.getElementById("options-conflict-actions").hidden
+        && document.getElementById("options-status").closest("section").id === "lookup";
+      document.getElementById("options-use-saved").click();
+      const beforeReturn = requests.length;
+      await navigate("design");
+      design &&= updates.at(-1)?.popupColumns === 1 && requests.length === beforeReturn;
+    }
+    return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details, design };
   } finally {
     window.close();
   }
+}
+
+async function designPreviewStage() {
+  const jsdom = await loadJsdom();
+  if (!jsdom) return null;
+  const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "design-preview.html"), "utf8"), {
+    pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/design-preview.html`,
+  });
+  const { window } = dom;
+  try {
+    window.fetch = async () => ({ blob: async () => new window.Blob([readFileSync(resolve(EXTENSION, "sample-meal.svg"))], { type: "image/svg+xml" }) });
+    window.URL.createObjectURL = () => "blob:sample-meal";
+    for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "design-preview.js"]) {
+      window.eval(readFileSync(resolve(EXTENSION, file), "utf8"));
+    }
+    let state = { revision: 0, dictionaries: [], groups: [] };
+    let options = { ...window.HDReaderOptions.DEFAULT_OPTIONS };
+    const update = () => window.HDDesignPreview.update(options, state);
+    const settle = () => new Promise(done => window.setTimeout(done, 60));
+    update();
+    await settle();
+    const popup = window.document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+    const query = selector => popup.querySelector(selector);
+    const card = query(".gsm-hoshidicts-glossary-card");
+    const sample = popup.textContent.includes("食べる") && popup.textContent.includes("Sample ranks")
+      && query(".gloss-image-link")?.dataset.imageLoadState === "loaded" && !!query(".gsm-hoshidicts-tag-pitch");
+    query(".gsm-hoshidicts-note-button").click();
+    const form = query("form");
+    form.elements.definition.value = "A preview draft";
+    options = { ...options, showFrequencyDictionaryNames: false, showPitchAccentBadge: false,
+      showCompactDefinitionSummary: true, popupColumns: 2 };
+    update();
+    await settle();
+    let incremental = query(".gsm-hoshidicts-glossary-card") === card && query("form") === form
+      && form.elements.definition.value === "A preview draft" && !query(".gsm-hoshidicts-tag-pitch")
+      && !!query(".gsm-hoshidicts-compact-definition-summary");
+    let mutations = 0;
+    const observer = new window.MutationObserver(records => { mutations += records.length; });
+    observer.observe(popup, { subtree: true, childList: true, attributes: true, characterData: true });
+    update();
+    await settle();
+    incremental &&= mutations === 0;
+    observer.disconnect();
+    form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+    await settle();
+    const note = popup.textContent.includes("This is a preview. Notes are not saved.")
+      && form.elements.definition.value === "A preview draft";
+    state = { revision: 1, dictionaries: [
+      { id: "first", title: "First", termCount: 1, pitchCount: 1, enabled: true },
+      { id: "second", title: "Second", termCount: 1, pitchCount: 1, enabled: true },
+    ], groups: [] };
+    options = { ...options, pitchAccentFuriganaDictionary: "Second", compactDefinitionSummaryDictionary: "Second" };
+    update();
+    await settle();
+    incremental &&= query("form") === form && form.elements.definition.value === "A preview draft";
+    form.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    const tab = popup.querySelectorAll('[role="tab"]')[1];
+    tab.click();
+    query(".gsm-hoshidicts-glossary-card").open = false;
+    query(".gsm-hoshidicts-kanji-link").click();
+    const kanji = query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
+      && popup.textContent.includes("ショク");
+    query(".gsm-hoshidicts-kanji-back").click();
+    await settle();
+    const back = kanji && query('[role="tab"][aria-selected="true"]')?.textContent === tab.textContent
+      && query(".gsm-hoshidicts-glossary-card").open === false;
+    popup.querySelectorAll('[role="tab"]')[0].click();
+    options = { ...options, popupImageSource: { kind: "tabGroup", id: "missing" } };
+    update();
+    await settle();
+    const routing = query(".gloss-image-link")?.dataset.imageLoadState === "load-error";
+    return { sample, note, back, incremental, routing };
+  } finally { window.close(); }
 }
 
 async function settingsFrequencyStage() {

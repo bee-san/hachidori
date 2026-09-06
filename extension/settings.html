@@ -22,6 +22,10 @@
             <output class="nav-status" id="nav-status-lookup" aria-live="polite"></output>
           </div>
           <div class="nav-item">
+            <a href="#design" aria-describedby="nav-status-design">Design</a>
+            <output class="nav-status" id="nav-status-design" aria-live="polite"></output>
+          </div>
+          <div class="nav-item">
             <a href="#custom-dictionary" aria-describedby="nav-status-custom-dictionary">Personal dictionary</a>
             <output class="nav-status" id="nav-status-custom-dictionary" aria-live="polite"></output>
           </div>
@@ -417,17 +421,6 @@
               </label>
 
               <label class="field">
-                <span class="field-label">Definition columns</span>
-                <select id="opt-popup-columns">
-                  <option value="1">1 column</option>
-                  <option value="2">2 columns</option>
-                  <option value="3">3 columns</option>
-                  <option value="4">4 columns</option>
-                </select>
-                <span class="field-hint">Arrange definition cards side by side.</span>
-              </label>
-
-              <label class="field">
                 <span class="field-label">Maximum child popups</span>
                 <input id="opt-popup-nesting-depth" type="number" min="0" max="9007199254740991" step="1" />
                 <span class="field-hint">Keep definitions open while following links. 0 disables child popups.</span>
@@ -442,11 +435,6 @@
                 </span>
               </label>
 
-              <label class="field">
-                <span class="field-label">Image source</span>
-                <select id="opt-image-source"></select>
-                <span class="field-hint">Automatic uses the definition's dictionary. A group tries its enabled dictionaries in order for each image.</span>
-              </label>
 
             </div>
           </fieldset>
@@ -477,72 +465,128 @@
                 <span class="field-hint" id="frequency-order-hint"></span>
               </div>
             </div>
-            <label class="lookup-enable">
-              <span>Show dictionary names</span>
-              <input id="opt-frequency-names" type="checkbox" />
-            </label>
-            <label class="lookup-enable">
-              <span>Show frequency averages</span>
-              <input id="opt-average-frequency" type="checkbox" />
-            </label>
-            <p class="field-hint">Harmonic mean within each frequency type. Ranks and occurrence counts stay separate.</p>
           </fieldset>
-          <fieldset class="lookup-group">
-            <legend>Pitch accent</legend>
-            <label class="lookup-enable">
-              <span>Show pitch in furigana</span>
-              <input id="opt-pitch-furigana" type="checkbox" />
-            </label>
-            <div class="fields">
-              <label class="field">
-                <span class="field-label">Preferred dictionary</span>
-                <select id="opt-pitch-dictionary"></select>
-                <span class="field-hint">Falls back to the first available pitch pattern.</span>
-              </label>
-            </div>
-            <label class="lookup-enable">
-              <span>Show pitch badges</span>
-              <input id="opt-pitch-badge" type="checkbox" />
-            </label>
-          </fieldset>
-          <fieldset class="lookup-group">
-            <legend>Tags</legend>
-            <label class="lookup-enable">
-              <span>Show grammar tags</span>
-              <input id="opt-grammar-tags" type="checkbox" />
-            </label>
-            <p class="field-hint">Definition tags and phonetic transcriptions remain visible.</p>
-          </fieldset>
-          <fieldset class="lookup-group">
-            <legend>Compact summary</legend>
-            <label class="lookup-enable">
-              <span>Show brief definitions beside the headword</span>
-              <input id="opt-compact-summary" type="checkbox" />
-            </label>
-            <div class="fields">
-              <label class="field">
-                <span class="field-label">Snippets</span>
-                <select id="opt-summary-count">
-                  <option value="1">1 snippet</option>
-                  <option value="2">2 snippets</option>
-                  <option value="3">3 snippets</option>
-                  <option value="4">4 snippets</option>
-                  <option value="5">5 snippets</option>
-                  <option value="6">6 snippets</option>
-                </select>
-                <span class="field-hint">Full definitions stay available below.</span>
-              </label>
-              <label class="field">
-                <span class="field-label">Preferred dictionary</span>
-                <select id="opt-summary-dictionary"></select>
-                <span class="field-hint">Falls back to the first available definition in the current tab.</span>
-              </label>
-            </div>
-          </fieldset>
+          <div class="options-feedback-slot">
+            <div id="options-feedback">
           <output id="options-status" class="custom-dictionary-status" aria-live="polite"></output>
           <div id="options-conflict-actions" class="options-actions" hidden>
             <button id="options-retry" class="primary-button" type="button">Save my changes</button>
             <button id="options-use-saved" class="ghost" type="button">Use saved settings</button>
+          </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="design" aria-labelledby="design-heading" hidden>
+          <div class="card-head">
+            <h1 id="design-heading" tabindex="-1">Design</h1>
+            <p class="hint">Adjust your popup. Changes save automatically.</p>
+          </div>
+          <div class="options-feedback-slot"></div>
+          <div class="design-layout">
+            <div class="design-controls">
+              <fieldset class="lookup-group">
+                <legend>Definitions</legend>
+                <div class="fields">
+                  <label class="field">
+                    <span class="field-label">Definition columns</span>
+                    <select id="opt-popup-columns">
+                      <option value="1">1 column</option>
+                      <option value="2">2 columns</option>
+                      <option value="3">3 columns</option>
+                      <option value="4">4 columns</option>
+                    </select>
+                    <span class="field-hint">Arrange definition cards side by side.</span>
+                  </label>
+
+                  <label class="field">
+                    <span class="field-label">Image source</span>
+                    <select id="opt-image-source"></select>
+                    <span class="field-hint">Automatic uses the definition's dictionary. A group tries its enabled dictionaries in order for each image.</span>
+                  </label>
+
+                </div>
+              </fieldset>
+              <fieldset class="lookup-group">
+                <legend>Frequency labels</legend>
+                <label class="lookup-enable">
+                  <span>Show dictionary names</span>
+                  <input id="opt-frequency-names" type="checkbox" />
+                </label>
+                <label class="lookup-enable">
+                  <span>Show frequency averages</span>
+                  <input id="opt-average-frequency" type="checkbox" />
+                </label>
+                <p class="field-hint">Harmonic mean within each frequency type. Ranks and occurrence counts stay separate.</p>
+              </fieldset>
+              <fieldset class="lookup-group">
+                <legend>Pitch accent</legend>
+                <label class="lookup-enable">
+                  <span>Show pitch in furigana</span>
+                  <input id="opt-pitch-furigana" type="checkbox" />
+                </label>
+                <div class="fields">
+                  <label class="field">
+                    <span class="field-label">Preferred dictionary</span>
+                    <select id="opt-pitch-dictionary"></select>
+                    <span class="field-hint">Falls back to the first available pitch pattern.</span>
+                  </label>
+                </div>
+                <label class="lookup-enable">
+                  <span>Show pitch badges</span>
+                  <input id="opt-pitch-badge" type="checkbox" />
+                </label>
+              </fieldset>
+              <fieldset class="lookup-group">
+                <legend>Tags</legend>
+                <label class="lookup-enable">
+                  <span>Show grammar tags</span>
+                  <input id="opt-grammar-tags" type="checkbox" />
+                </label>
+                <p class="field-hint">Definition tags and phonetic transcriptions remain visible.</p>
+              </fieldset>
+              <fieldset class="lookup-group">
+                <legend>Compact summary</legend>
+                <label class="lookup-enable">
+                  <span>Show brief definitions beside the headword</span>
+                  <input id="opt-compact-summary" type="checkbox" />
+                </label>
+                <div class="fields">
+                  <label class="field">
+                    <span class="field-label">Snippets</span>
+                    <select id="opt-summary-count">
+                      <option value="1">1 snippet</option>
+                      <option value="2">2 snippets</option>
+                      <option value="3">3 snippets</option>
+                      <option value="4">4 snippets</option>
+                      <option value="5">5 snippets</option>
+                      <option value="6">6 snippets</option>
+                    </select>
+                    <span class="field-hint">Full definitions stay available below.</span>
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Preferred dictionary</span>
+                    <select id="opt-summary-dictionary"></select>
+                    <span class="field-hint">Falls back to the first available definition in the current tab.</span>
+                  </label>
+                </div>
+              </fieldset>
+            </div>
+            <div class="design-sample">
+              <div class="preview-heading">
+                <h2>Live preview</h2>
+                <label class="preview-size-label">View
+                  <select id="preview-size">
+                    <option value="fit">Scale to fit</option>
+                    <option value="actual">Actual size</option>
+                  </select>
+                </label>
+              </div>
+              <p class="field-hint">Sample entries, not a lookup. Click a kanji to try its view. Notes are not saved.</p>
+              <div class="preview-viewport" id="preview-viewport">
+                <div id="preview-canvas"></div>
+              </div>
+            </div>
           </div>
         </section>
       </main>

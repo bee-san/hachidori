@@ -87,7 +87,7 @@ restore that choice. **Any** uses automatic ranking across all enabled frequency
 dictionaries; **Disabled** turns frequency sorting off.
 
 Settings opens with your library in lookup order. The navigation shows one task
-at a time: Library, Reading, Personal dictionary, Import, Updates, or Groups.
+at a time: Library, Reading, Design, Personal dictionary, Import, Updates, or Groups.
 Drafts survive switching sections; pending work, errors, and unseen completion
 messages remain visible in the navigation. Both light and dark themes follow
 your system preference. Open a dictionary's **Details** for its display name,
@@ -99,6 +99,13 @@ when changes are durable. If another Settings page changes them first, your draf
 stays visible: choose **Save my changes** to retry or **Use saved settings** to
 discard it. Already-open readers accept only newer committed settings, without
 reloading dictionaries. [Lookup settings screenshot](docs/assets/lookup-settings.png).
+
+**Design** puts appearance controls beside a live sample of the real popup.
+Try columns, compact summaries, image sources, frequency labels, pitch, and tags
+without importing a dictionary. **Scale to fit** keeps the sample in view;
+**Actual size** shows the popup at its normal size with scrolling when needed.
+The sample supports kanji/Back navigation, but its Note form never saves entries.
+[Design preview screenshot](docs/assets/design-preview.png).
 
 <p align="center">
   <picture>
@@ -114,24 +121,18 @@ The kanji dictionary chooser accepts both traditional Yomitan kanji dictionaries
 Popup tabs show All, each contributing dictionary, Favourites, and your saved
 groups. They filter the returned definitions without another lookup. Renaming or
 reordering groups updates open readers; a Note draft or linked child keeps its
-current definitions until it is safe to apply changed membership. **Reading →
+current definitions until it is safe to apply changed membership. **Design →
 Definition columns** lays out complete dictionary cards in one to four columns
 without replacing an open Note form.
 
-**Reading → Compact summary** adds up to six brief snippets beside each
+**Design → Compact summary** adds up to six brief snippets beside each
 headword, with a small leading image when available. Choose a preferred
 dictionary or let the current tab supply the first available definition.
 Summaries are off by default; full definitions and lookup order are unchanged.
 
 ![Compact snippets and a leading thumbnail above complete definitions](docs/assets/compact-definition-summary.png)
 
-[Compact summary controls, light theme](docs/assets/compact-summary-settings-light.png) ·
-[Compact summary controls, dark theme](docs/assets/compact-summary-settings-dark.png)
-
 ![Dictionary tabs with complete cards in two columns](docs/assets/dictionary-tabs-columns.png)
-
-[Reading controls, light theme](docs/assets/dictionary-tabs-settings-light.png) ·
-[Reading controls, dark theme](docs/assets/dictionary-tabs-settings-dark.png)
 
 Dictionary cross-reference links open beside their parent definition. Follow a
 chain without losing earlier entries; **Back** returns from kanji within the

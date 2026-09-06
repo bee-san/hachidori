@@ -202,6 +202,9 @@ const PLANNED = [
   "Settings light and dark themes keep every task view readable without horizontal overflow",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   "Settings rejects malformed and oversized option frames before commit and still autosaves without reload",
+  "Design lazily renders local sample terms, kanji and images through the production popup",
+  "Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries",
+  "Design fits the popup without changing its actual dimensions and keeps narrow Settings scrollable",
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
@@ -575,8 +578,15 @@ async function popupReader(page, depth = 0) {
   async function waitForHidden(timeoutMs = 6_000) {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const current = await state();
-      if (!visible(current)) return true;
+      try {
+        if (!visible(await state())) return true;
+      } catch (error) {
+        // A child can be pruned between getDocument and resolveNode. That
+        // vanished snapshot is not proof of hiding: inspect again in case a
+        // replacement child exists, within the same polling deadline.
+        if (error.originalMessage !== "No node with given id found"
+            || !error.message.includes("(DOM.resolveNode)")) throw error;
+      }
       if (Date.now() >= deadline) return false;
       await new Promise(r => setTimeout(r, 150));
     }
@@ -2785,7 +2795,8 @@ async function readSettingsControls(settings, ids) {
 }
 
 async function editSettingsControls(settings, values) {
-  await showSettingsSection(settings, "lookup");
+  const section = await settings.evaluate(id => document.getElementById(id).closest("section").id, Object.keys(values)[0]);
+  await showSettingsSection(settings, section);
   await settings.evaluate((changes) => {
     for (const [id, value] of Object.entries(changes)) {
       const input = document.getElementById(id);
@@ -2796,6 +2807,99 @@ async function editSettingsControls(settings, values) {
   }, values);
   await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
     { polling: 100, timeout: 10_000 });
+}
+
+async function checkDesignPreview(page) {
+  const original = await readSettingsControls(page, ["opt-popup-columns", "opt-compact-summary", "opt-frequency-names"]);
+  const originalViewport = page.viewport();
+  const before = await page.evaluate(async (sourceKey) => ({
+    lazy: document.getElementById("design-preview") === null,
+    stored: await chrome.storage.local.get(["dictionaryState", sourceKey]),
+  }), CUSTOM_DICTIONARY_SOURCE_KEY);
+  try {
+    await page.setViewport({ width: 1280, height: 900 });
+    await showSettingsSection(page, "design");
+    const frame = await (await page.$("#design-preview")).contentFrame();
+    await frame.waitForFunction(() => document.getElementById("preview-host")?.shadowRoot
+      ?.querySelector('.gloss-image-link[data-image-load-state="loaded"] img')?.naturalWidth > 0,
+    { timeout: 10_000 });
+    const sample = await frame.evaluate(() => {
+      const root = document.getElementById("preview-host").shadowRoot;
+      const popup = root.querySelector(".gsm-hoshidicts-popup");
+      window.previewCard = popup.querySelector(".gsm-hoshidicts-glossary-card");
+      const initial = popup.textContent.includes("食べる") && !!popup.querySelector(".gsm-hoshidicts-tag-frequency")
+        && !!popup.querySelector(".gsm-hoshidicts-tag-pitch") && CSS.highlights.has("gsm-hoshidicts-match");
+      popup.querySelector(".gsm-hoshidicts-kanji-link").focus();
+      return initial && popup.querySelectorAll(".gsm-hoshidicts-glossary-card").length === 4
+        && root.querySelector('link[href="render/reader.css"]') !== null;
+    });
+    await page.keyboard.press("Enter");
+    const kanji = await frame.evaluate(() => {
+      const root = document.getElementById("preview-host").shadowRoot;
+      return root.querySelector(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
+        && root.activeElement?.classList.contains("gsm-hoshidicts-kanji-back")
+        && [...CSS.highlights.get("gsm-hoshidicts-match")].map(range => range.toString()).join("") === "食べる";
+    });
+    await page.keyboard.press("Enter");
+    const back = await frame.evaluate(() => document.getElementById("preview-host").shadowRoot
+      .activeElement?.classList.contains("gsm-hoshidicts-kanji-link"));
+    check("Design lazily renders local sample terms, kanji and images through the production popup", before.lazy && sample && kanji && back,
+      JSON.stringify({ lazy: before.lazy, sample, kanji, back }));
+    await frame.evaluate(() => {
+      const popup = document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+      window.previewCard = popup.querySelector(".gsm-hoshidicts-glossary-card");
+      popup.querySelector(".gsm-hoshidicts-note-button").click();
+      window.previewForm = popup.querySelector("form");
+      window.previewForm.elements.definition.value = "Preview only";
+    });
+    await editSettingsControls(page, { "opt-popup-columns": "2", "opt-compact-summary": true, "opt-frequency-names": false });
+    const live = await frame.evaluate(async () => {
+      const popup = document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+      const retained = popup.querySelector(".gsm-hoshidicts-glossary-card") === window.previewCard
+        && popup.querySelector("form") === window.previewForm && !!popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+      window.previewForm.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+      return retained && popup.textContent.includes("This is a preview. Notes are not saved.")
+        && window.previewForm.elements.definition.value === "Preview only";
+    });
+    const after = await page.evaluate(sourceKey => chrome.storage.local.get(["dictionaryState", sourceKey]), CUSTOM_DICTIONARY_SOURCE_KEY);
+    check("Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries",
+      live && JSON.stringify(before.stored) === JSON.stringify(after));
+    await frame.evaluate(() => window.previewForm.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    const geometry = () => page.evaluate(() => {
+      const frame = document.getElementById("design-preview");
+      const viewport = document.getElementById("preview-viewport");
+      const popup = frame.contentDocument.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+      return { scale: new DOMMatrix(getComputedStyle(frame).transform).a, frameWidth: frame.getBoundingClientRect().width,
+        available: viewport.clientWidth, width: popup.getBoundingClientRect().width, height: popup.getBoundingClientRect().height,
+        overflow: document.documentElement.scrollWidth > innerWidth,
+        localOverflow: viewport.scrollWidth > viewport.clientWidth,
+        retained: popup.querySelector(".gsm-hoshidicts-glossary-card") === frame.contentWindow.previewCard };
+    });
+    const fit = await geometry();
+    await page.select("#preview-size", "actual");
+    const actual = await geometry();
+    await page.setViewport({ width: 320, height: 900 });
+    await page.select("#preview-size", "fit");
+    await page.waitForFunction(() => document.getElementById("design-preview").getBoundingClientRect().width
+      <= document.getElementById("preview-viewport").clientWidth + 1);
+    const narrow = await geometry();
+    check("Design fits the popup without changing its actual dimensions and keeps narrow Settings scrollable",
+      [fit, actual, narrow].every(value => value.width === 560 && value.height === 420 && !value.overflow && value.retained)
+        && fit.scale < 1 && fit.frameWidth <= fit.available + 1 && actual.scale === 1 && actual.localOverflow
+        && narrow.scale < fit.scale, JSON.stringify({ fit, actual, narrow }));
+    if (process.env.HACHIDORI_DESIGN_SCREENSHOT) {
+      await page.setViewport({ width: 1440, height: 1000 });
+      await frame.evaluate(async () => {
+        for (let index = 0; index < 3; index++) await new Promise(requestAnimationFrame);
+      });
+      await page.screenshot({ path: process.env.HACHIDORI_DESIGN_SCREENSHOT });
+    }
+  } finally {
+    await page.setViewport(originalViewport);
+    await editSettingsControls(page, original);
+    await showSettingsSection(page, "lookup");
+  }
 }
 
 async function checkFrequencyDirection(browser, settings, tab, popup) {
@@ -3369,6 +3473,7 @@ async function main() {
   );
   await checkSettingsAutosave(page, browser, settingsUrl);
   await checkSettingsTransport(page);
+  await checkDesignPreview(page);
   await checkDictionaryStyles(page);
   await showSettingsSection(page, "add-dictionaries");
 
@@ -3879,7 +3984,7 @@ async function main() {
     const links = [...document.querySelectorAll(".settings-nav a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 6
+      && links.length === 7
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION");
   });
   const selectionActions = await page.evaluate(() => {
@@ -3945,7 +4050,7 @@ async function main() {
     await page.setViewport({ width, height: 900 });
     for (const theme of ["light", "dark"]) {
       await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
-      for (const section of ["dictionaries", "lookup", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups"]) {
+      for (const section of ["dictionaries", "lookup", "design", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups"]) {
         await showSettingsSection(page, section);
         themeLayouts.push(await page.evaluate(({ theme, section }) => {
           const root = getComputedStyle(document.documentElement);
@@ -3962,7 +4067,7 @@ async function main() {
           };
           const panel = document.getElementById(section);
           const primary = {
-            dictionaries: "dict-search", lookup: "opt-hover-enabled", "custom-dictionary": "custom-dictionary-open",
+            dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns", "custom-dictionary": "custom-dictionary-open",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]

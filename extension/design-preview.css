@@ -1,0 +1,12 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+body {
+  margin: 0;
+  background: #f6f5f1;
+  color: #343b3b;
+  font: 18px/2 system-ui, sans-serif;
+}
+article { margin: 22px 42px; }
+.eyebrow { margin: 0; font-size: 11px; color: #686e6b; letter-spacing: 0.04em; }
+h1 { margin: 4px 0; font-size: 24px; font-weight: 550; }
+p { margin: 4px 0; }
+#preview-host { position: fixed; inset: 0; pointer-events: none; }
