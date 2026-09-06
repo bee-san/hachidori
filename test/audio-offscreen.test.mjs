@@ -7,6 +7,8 @@ test("offscreen Test cancellation belongs to its document and request, with an i
   const timers = new Map(), requests = [];
   let nextTimer = 0;
   const service = createAudioService({
+    performance,
+    addEventListener() {},
     fetch: (url, { signal }) => new Promise((_, reject) => {
       requests.push({ url, signal });
       signal.addEventListener("abort", () => reject(signal.reason), { once: true });
@@ -31,4 +33,42 @@ test("offscreen Test cancellation belongs to its document and request, with an i
   await rejection;
   assert.equal(timers.size, 0);
   assert.equal(requests[1].url, "https://example.test/%E8%81%9E%E3%81%8F/%E3%81%8D%E3%81%8F.wav");
+});
+
+test("a selected pronunciation binds its exact source, term and candidate even after provider reordering", async () => {
+  let now = 0;
+  const events = [], downloads = [];
+  const source = { id: "json", type: "custom-json", enabled: true, url: "https://example.test/list", voice: "" };
+  const term = { expression: "聞く", reading: "きく" };
+  let candidates = [{ url: "https://example.test/one.wav", name: "Tokyo" }, { url: "https://example.test/two.wav", name: "Osaka" }];
+  const service = createAudioService({
+    performance: { now: () => now }, addEventListener() {}, setTimeout, clearTimeout,
+    URL: { createObjectURL: () => "blob:audio", revokeObjectURL() {} },
+    Audio: class {
+      play() { queueMicrotask(() => { this.onplaying?.(); this.onended?.(); }); return Promise.resolve(); }
+      pause() {} removeAttribute() {} load() {}
+    },
+    chrome: { runtime: { async sendMessage(event) { events.push(event); } } },
+    fetch: async url => {
+      if (url === source.url) return { ok: true, json: async () => ({ type: "audioSourceList", audioSources: candidates }) };
+      downloads.push(url);
+      return { ok: true, blob: async () => new Blob(["audio"]) };
+    },
+  });
+  const message = { sources: [source], term, owner: "reader", requestId: "choose" };
+  const { groups } = await service({ ...message, type: "hd_audio_candidates" });
+  assert.deepEqual(downloads, []);
+  const selection = { sourceId: source.id, sourceKey: groups[0].sourceKey, ...term, index: 1, ...candidates[1] };
+  const result = await service({ ...message, type: "hd_audio_play", selection });
+  assert.equal(result.candidate.index, 1);
+  assert.deepEqual(downloads, [candidates[1].url]);
+  assert.equal(events[0].requestId, message.requestId);
+  assert.equal(events[0].candidate.name, "Osaka");
+  now = 5 * 60_000;
+  candidates = [...candidates].reverse();
+  await assert.rejects(service({ ...message, type: "hd_audio_play", selection }), /choices changed/u);
+  await assert.rejects(service({ ...message, term: { expression: "違う", reading: "ちがう" }, type: "hd_audio_play", selection }), /no longer current/u);
+  await assert.rejects(service({ ...message, sources: [{ ...source, url: "https://example.test/replacement" }],
+    type: "hd_audio_play", selection }), /no longer current/u);
+  assert.equal(downloads.length, 1);
 });

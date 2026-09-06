@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createAudioPlayer } from "./audio-player.js";
+import { createAudioRepository } from "./audio-repository.js";
 
 const TEST_TERM = { expression: "聞く", reading: "きく" };
 // Matches the reference Settings Test deadline; ordinary dictionary work never
 // waits on this timer or the pronunciation's network/audio callbacks.
 const TEST_TIMEOUT_MS = 15_000;
+const FALLBACK_TIMEOUT_MS = 12_000;
 
 export function createAudioService(window) {
-  const player = createAudioPlayer({ window, fetch: window.fetch.bind(window) });
+  const repository = createAudioRepository({ window, fetch: window.fetch.bind(window), now: () => window.performance.now() });
+  const player = createAudioPlayer({ window, repository });
   let active = null;
   let watchingVoices = false;
+
+  function stop(reason = new DOMException("Playback stopped.", "AbortError")) {
+    active?.controller.abort(reason);
+    player.stop(reason);
+  }
+  window.addEventListener("pagehide", () => { stop(); player.dispose(); }, { once: true });
 
   function voices() {
     if (!watchingVoices) {
@@ -23,19 +32,69 @@ export function createAudioService(window) {
       ({ voiceURI, name, lang, localService, default: isDefault }));
   }
 
+  async function candidateGroups(sources, term, signal) {
+    const groups = [];
+    for (const source of sources) {
+      const group = { sourceId: source.id, sourceKey: JSON.stringify(source), type: source.type };
+      try {
+        group.candidates = await repository.candidates(source, term, signal);
+      } catch (error) {
+        signal.throwIfAborted();
+        group.error = error.message;
+      }
+      groups.push(group);
+    }
+    signal.throwIfAborted();
+    return { groups };
+  }
+
+  async function selectedPlan(message, signal) {
+    const selection = message.selection;
+    const source = message.sources.find(source => source.id === selection.sourceId && JSON.stringify(source) === selection.sourceKey);
+    if (!source || selection.expression !== message.term.expression || selection.reading !== message.term.reading) {
+      throw new Error("This pronunciation selection is no longer current. Choose it again.");
+    }
+    const candidates = await repository.candidates(source, message.term, signal);
+    const candidate = candidates[selection.index];
+    if (!candidate || (candidate.url ?? null) !== selection.url || candidate.name !== selection.name) {
+      throw new Error("The provider's pronunciation choices changed. Choose again.");
+    }
+    return { sources: [source], candidate: { ...candidate, index: selection.index } };
+  }
+
   return async message => {
     if (message.type === "hd_audio_voices") return { voices: voices() };
     if (message.type === "hd_audio_stop") {
-      if (active && active.owner === message.owner && active.requestId === message.playRequestId) player.stop();
+      if (active && active.owner === message.owner && active.requestId === message.playRequestId) stop();
       return { status: "cancelled" };
     }
-    if (message.type !== "hd_audio_test") throw new Error("Unknown audio request.");
-    const operation = { owner: message.owner, requestId: message.requestId };
+    if (!["hd_audio_test", "hd_audio_play", "hd_audio_candidates"].includes(message.type)) throw new Error("Unknown audio request.");
+    stop();
+    const operation = { owner: message.owner, requestId: message.requestId, controller: new AbortController() };
     active = operation;
+    const isTest = message.type === "hd_audio_test";
     const timer = window.setTimeout(() => {
-      if (active === operation) player.stop(new Error("Audio Test timed out after 15 seconds."));
-    }, TEST_TIMEOUT_MS);
-    try { return await player.play(message.source, TEST_TERM); }
+      if (active === operation) stop(new Error(isTest ? "Audio Test timed out after 15 seconds." : "Pronunciation discovery timed out after 12 seconds."));
+    }, isTest ? TEST_TIMEOUT_MS : FALLBACK_TIMEOUT_MS);
+    try {
+      if (isTest) return await player.play(message.source, TEST_TERM);
+      const { signal } = operation.controller;
+      if (message.type === "hd_audio_candidates") return await candidateGroups(message.sources, message.term, signal);
+      const plan = message.selection ? await selectedPlan(message, signal) : { sources: message.sources };
+      signal.throwIfAborted();
+      return await player.playSources(plan.sources, message.term, { candidate: plan.candidate,
+        onPlaying(value) {
+          if (active !== operation) return;
+          // This bounds discovery/fallback, not the duration of a playable file.
+          window.clearTimeout(timer);
+          window.chrome.runtime.sendMessage({ target: "hachidori-audio-events", type: "hd_audio_playing",
+            owner: operation.owner, requestId: operation.requestId, ...value }).catch(() => {});
+        },
+      });
+    } catch (error) {
+      if (operation.controller.signal.aborted && error?.name === "AbortError") return { status: "cancelled" };
+      throw error;
+    }
     finally {
       window.clearTimeout(timer);
       if (active === operation) active = null;

@@ -51,7 +51,7 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     const voice = voices.find(voice => voice.voiceURI === source.voice || voice.name === source.voice);
     if (source.voice && !voice) throw new Error("The selected speech voice is no longer available. Choose another voice in Audio Settings.");
     if (voice) utterance.voice = voice;
-    const candidate = { name: voice?.name || "System default", text, voice: source.voice };
+    const candidate = { name: voice?.name || "System default", text, voice: source.voice, index: 0 };
     let abort;
     try {
       await new Promise((resolve, reject) => {
@@ -77,10 +77,11 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
 
   async function firstPlayable(found, signal, onPlaying) {
     let failure;
-    for (const entry of found) {
+    for (const [index, entry] of found.entries()) {
       try {
-        await playUrl(entry, signal, onPlaying);
-        return entry;
+        const candidate = { ...entry, index: entry.index ?? index };
+        await playUrl(candidate, signal, onPlaying);
+        return candidate;
       } catch (error) {
         signal.throwIfAborted();
         failure = error;
@@ -89,7 +90,7 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     throw failure;
   }
 
-  async function playSources(sources, term, { onPlaying } = {}) {
+  async function playSources(sources, term, { onPlaying, candidate: selectedCandidate } = {}) {
     stop();
     const controller = new AbortController();
     current = controller;
@@ -99,7 +100,7 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
       for (const source of sources) {
         try {
           const playing = candidate => onPlaying?.({ sourceId: source.id, candidate });
-          const candidate = await playSource(source, term, signal, playing);
+          const candidate = await playSource(source, term, signal, playing, selectedCandidate);
           signal.throwIfAborted();
           if (candidate) return { status: "success", sourceId: source.id, candidate };
         } catch (error) {
@@ -117,9 +118,9 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     }
   }
 
-  async function playSource(source, term, signal, onPlaying) {
+  async function playSource(source, term, signal, onPlaying, selectedCandidate) {
     if (source.type.startsWith("text-to-speech")) return playSpeech(source, term, signal, onPlaying);
-    const found = await repository.candidates(source, term, signal);
+    const found = selectedCandidate ? [selectedCandidate] : await repository.candidates(source, term, signal);
     signal.throwIfAborted();
     return found.length ? firstPlayable(found, signal, onPlaying) : null;
   }

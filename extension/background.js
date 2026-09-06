@@ -71,7 +71,7 @@ const RELAY_BACKOFF_MS = 40;
 const NOT_LISTENING = /Receiving end does not exist|Could not establish connection/i;
 
 let creating = null;
-let latestAudioTest = null;
+let latestAudioOperation = null;
 
 function describe(error) {
   if (error instanceof Error) {
@@ -864,32 +864,64 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
   let stillCurrent = null;
+  let operation = null;
   if (message.target === AUDIO_TARGET) {
     try {
-      if (!["hd_audio_test", "hd_audio_stop", "hd_audio_voices"].includes(message.type)) throw new Error("Unknown audio request.");
+      if (!["hd_audio_test", "hd_audio_play", "hd_audio_candidates", "hd_audio_stop", "hd_audio_voices"].includes(message.type)) throw new Error("Unknown audio request.");
       if (message.type === "hd_audio_test") {
         globalThis.HDReaderOptions.validateOptionsPatch({ audioSources: [message.source] });
       }
+      if (message.type === "hd_audio_play" || message.type === "hd_audio_candidates") validateAudioRequest(message);
       // Chrome supplies the document ID, so an old Settings tab cannot stop a
       // pronunciation subsequently started by a different document.
       message = { ...message, owner: sender.documentId };
-      if (message.type === "hd_audio_test") {
-        latestAudioTest = message;
-        stillCurrent = () => latestAudioTest === message;
+      if (["hd_audio_test", "hd_audio_play", "hd_audio_candidates"].includes(message.type)) {
+        operation = { ...message, tabId: sender.tab?.id };
+        latestAudioOperation = operation;
+        stillCurrent = () => latestAudioOperation === operation;
       } else if (message.type === "hd_audio_stop"
-          && latestAudioTest?.owner === message.owner && latestAudioTest?.requestId === message.playRequestId) {
+          && latestAudioOperation?.owner === message.owner && latestAudioOperation?.requestId === message.playRequestId) {
         // Retire it before awaiting offscreen startup. Otherwise its relay
         // retry could start playback after this Stop has already completed.
-        latestAudioTest = null;
+        latestAudioOperation = null;
       }
     } catch (error) {
       sendResponse(failureReply(message, error));
       return false;
     }
   }
-  relay(message, stillCurrent).then(sendResponse, (error) => {
+  const response = message.target === AUDIO_TARGET
+    ? prepareAudioRequest(message).then(prepared => relay(prepared, stillCurrent)) : relay(message);
+  response.then(sendResponse, error => {
     sendResponse(failureReply(message, error));
-  });
+  }).finally(() => { if (operation && latestAudioOperation === operation) latestAudioOperation = null; });
+  return true;
+});
+
+function validateAudioRequest(message) {
+  if (typeof message.term?.expression !== "string" || !message.term.expression
+      || typeof message.term.reading !== "string") throw new Error("A pronunciation needs an expression and reading.");
+  const choice = message.selection;
+  if (choice !== undefined && (!choice || !Number.isInteger(choice.index) || choice.index < 0
+      || !["sourceId", "sourceKey", "expression", "reading", "name"].every(key => typeof choice[key] === "string")
+      || (choice.url !== null && typeof choice.url !== "string"))) throw new Error("Invalid pronunciation selection.");
+}
+
+async function prepareAudioRequest(message) {
+  if (message.type !== "hd_audio_play" && message.type !== "hd_audio_candidates") return message;
+  const stored = await chrome.storage.local.get(OPTIONS_KEY);
+  const options = globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]);
+  return { ...message, sources: options.audioSources.filter(source => source.enabled) };
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== "hachidori-audio-events") return false;
+  const operation = latestAudioOperation;
+  if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)
+      || !operation || operation.tabId === undefined || operation.owner !== message.owner
+      || operation.requestId !== message.requestId || message.type !== "hd_audio_playing") return false;
+  chrome.tabs.sendMessage(operation.tabId, { ...message, target: "hachidori-audio-content" }, { documentId: operation.owner })
+    .then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
   return true;
 });
 
