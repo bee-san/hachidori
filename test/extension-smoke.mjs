@@ -2952,9 +2952,11 @@ async function main() {
     }),
   );
 
+  const scheduleBase = (await storage.api().local.get("dictionaryUpdates")).dictionaryUpdates?.revision ?? 0;
   const scheduled = await pageChrome.runtime.sendMessage({
     target: updateTarget,
     type: "hd_updates_schedule",
+    baseRevision: scheduleBase,
     schedule: "hourly",
   });
   const hourlyAlarm = await alarms.api.get(updateAlarmName);
@@ -2966,6 +2968,15 @@ async function main() {
       && alarms.values.size === 1,
     JSON.stringify({ scheduled, hourlyAlarm, alarms: [...alarms.values.values()] }),
   );
+
+  const staleSchedule = await pageChrome.runtime.sendMessage({ target: updateTarget,
+    type: "hd_updates_schedule", baseRevision: scheduleBase, schedule: "weekly" });
+  const latestSchedule = (await storage.api().local.get("dictionaryUpdates")).dictionaryUpdates;
+  check("managed update preferences reject stale schedule writes with the current revision and preserve the alarm",
+    scheduled.settings?.revision === scheduleBase + 1 && staleSchedule?.ok === false
+      && staleSchedule.settings?.revision === latestSchedule.revision
+      && latestSchedule.schedule === "hourly" && (await alarms.api.get(updateAlarmName))?.periodInMinutes === 60,
+    JSON.stringify({ scheduleBase, scheduled, staleSchedule, latestSchedule }));
 
   const alarmRevision = "2026.09.08.0";
   remoteJson(recommended.indexUrl, { revision: alarmRevision });
