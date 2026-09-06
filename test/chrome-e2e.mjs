@@ -3871,10 +3871,11 @@ async function checkSourceFallback(settings, tab, popup) {
       covers.every(value => value.bounded && value.restored && Math.abs(value.expectedArea - value.actualArea) < 2),
       JSON.stringify(covers));
     const styleChanges = [];
-    for (const kind of ["insert", "declaration", "adopted", "load"]) {
+    for (const kind of ["insert", "declaration", "adopted", "load", "media-nested", "media-sheet"]) {
       let stylesSession;
       let pendingStyle;
       try {
+        if (kind.startsWith("media-")) await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
         if (kind === "load") {
           stylesSession = await tab.createCDPSession();
           pendingStyle = new Promise(done => stylesSession.once("Fetch.requestPaused", done));
@@ -3887,6 +3888,7 @@ async function checkSourceFallback(settings, tab, popup) {
           element.style.cssText = "width:220px;height:48px;background:white;z-index:100";
           document.body.append(element);
           const initial = "#e17-page-cover { position:absolute;left:-1000px;top:0; }";
+          const css = `#e17-page-cover { position:fixed;left:${source.left - 10}px;top:${source.top - 8}px; }`;
           if (kind === "adopted") {
             window.e17TestSheet = new CSSStyleSheet();
             window.e17TestSheet.replaceSync(initial);
@@ -3895,8 +3897,16 @@ async function checkSourceFallback(settings, tab, popup) {
             const style = document.createElement("style");
             style.id = "e17-page-style";
             style.textContent = initial;
+            if (kind === "media-nested") style.textContent += `@supports (display:block) { @media (prefers-color-scheme:dark) { ${css} } }`;
             document.head.append(style);
             window.e17TestSheet = style.sheet;
+          }
+          if (kind === "media-sheet") {
+            const style = document.createElement("style");
+            style.id = "e17-media-style";
+            style.media = "(prefers-color-scheme:dark)";
+            style.textContent = css;
+            document.head.append(style);
           }
           if (kind === "load") {
             const link = document.createElement("link");
@@ -3905,14 +3915,15 @@ async function checkSourceFallback(settings, tab, popup) {
             link.href = "/e17-late.css";
             document.head.append(link);
           }
-          return `#e17-page-cover { position:fixed;left:${source.left - 10}px;top:${source.top - 8}px; }`;
+          return css;
         }, { source: sourceRect, kind });
         const before = await snapshot();
         if (stylesSession) {
           const request = await pendingStyle;
           await stylesSession.send("Fetch.fulfillRequest", { requestId: request.requestId, responseCode: 200,
             responseHeaders: [{ name: "Content-Type", value: "text/css" }], body: Buffer.from(css).toString("base64") });
-        } else await tab.evaluate(({ css, kind }) => {
+        } else if (kind.startsWith("media-")) await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+        else await tab.evaluate(({ css, kind }) => {
           const sheet = window.e17TestSheet;
           if (kind === "insert") sheet.insertRule(css, sheet.cssRules.length);
           else if (kind === "adopted") sheet.replaceSync(css);
@@ -3926,8 +3937,9 @@ async function checkSourceFallback(settings, tab, popup) {
         await tab.evaluate(() => {
           document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== window.e17TestSheet);
           delete window.e17TestSheet;
-          for (const id of ["e17-page-cover", "e17-page-style", "e17-late-style"]) document.getElementById(id)?.remove();
+          for (const id of ["e17-page-cover", "e17-page-style", "e17-late-style", "e17-media-style"]) document.getElementById(id)?.remove();
         });
+        if (kind.startsWith("media-")) await tab.emulateMediaFeatures([]);
       }
       styleChanges.at(-1).restored = (await snapshot()).exact;
     }
