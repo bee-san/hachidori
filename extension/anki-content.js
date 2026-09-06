@@ -1,0 +1,150 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+(function () {
+  "use strict";
+  function createAnkiController({ send, onChange }) {
+    const owners = new Map(), bound = new WeakMap();
+    let enabled = false, settingsKey = "", checks = Promise.resolve();
+    const live = group => enabled && owners.get(group.owner) === group && !group.popup.hidden && group.isCurrent();
+    const current = record => live(record.group) && record.control.isConnected;
+    const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
+    function disabled(record) {
+      record.add.disabled = record.busy || record.terminal || record.group.checking || !record.decision?.canAdd;
+    }
+    function decision(record, value) {
+      record.decision = value;
+      if (!record.terminal && !record.busy) {
+        record.add.dataset.state = value.state;
+        text(record.add, value.action === "overwrite" && value.canAdd ? "Overwrite" : value.state === "duplicate" && !value.canAdd ? "In Anki" : "Add to Anki");
+        text(record.output, value.error || "");
+      }
+      disabled(record);
+    }
+    function payload(record) {
+      return { ...record.group.getRequest(record.result), configKey: record.group.configKey };
+    }
+    function refresh(group, all = false) {
+      if (all) for (const record of group.records) record.needsCheck = !record.terminal;
+      if (!live(group) || group.queued || !group.records.some(record => record.needsCheck)) return;
+      group.queued = group.checking = true;
+      group.records.forEach(disabled);
+      const operation = async () => {
+        const epoch = group.epoch;
+        const owns = () => live(group) && epoch === group.epoch;
+        try {
+          if (!owns()) return;
+          const status = await send("hd_anki_status", {});
+          if (!owns()) return;
+          group.configKey = status.configKey;
+          for (const record of group.records) record.control.hidden = !status.available;
+          if (!status.available) { for (const record of group.records) record.needsCheck = false; return; }
+          onChange(group.owner);
+          for (const record of group.records) {
+            if (!owns()) return;
+            if (!record.needsCheck || record.terminal || record.busy) continue;
+            record.needsCheck = false;
+            try {
+              const result = await send("hd_anki_preflight", { request: payload(record) });
+              if (owns()) decision(record, result);
+            } catch (error) { if (owns()) decision(record, { state: "error", canAdd: false, error: error.message }); }
+          }
+        } catch {
+          if (owns()) for (const record of group.records) { record.control.hidden = true; record.needsCheck = false; }
+        } finally {
+          group.queued = group.checking = false;
+          if (live(group)) {
+            group.records.forEach(disabled);
+            onChange(group.owner);
+            refresh(group);
+          }
+        }
+      };
+      checks = checks.then(operation, operation);
+    }
+    function refreshAll() {
+      for (const group of owners.values()) refresh(group, true);
+    }
+    async function submit(record) {
+      if (!current(record) || record.add.disabled || record.busy || record.terminal) return;
+      const request = record.pointerRequest ?? payload(record);
+      record.pointerRequest = null;
+      record.busy = true;
+      disabled(record);
+      text(record.output, "Saving to Anki…");
+      try {
+        const result = await send("hd_anki_submit", { request });
+        if (!current(record)) return;
+        if (result.state === "added" || result.state === "updated") {
+          record.terminal = true;
+          record.add.dataset.state = "success";
+          text(record.add, result.state === "added" ? "Added" : "Updated");
+          text(record.output, `${result.state === "added" ? "Added" : "Updated"} note ${result.noteId}.${result.warnings.length ? ` ${result.warnings.join(" ")}` : ""}`);
+          refreshAll(); // Best-effort checks cannot turn a confirmed write into a retry.
+        } else if (result.state === "uncertain") uncertain(record, result.error);
+        else { decision(record, { ...result, canAdd: false }); refreshAll(); }
+      } catch (error) {
+        if (!current(record)) return;
+        if (error.responseReceived) text(record.output, `Could not add: ${error.message}`);
+        else uncertain(record, `The write could not be confirmed. Use View in Anki before trying again. ${error.message}`);
+      } finally {
+        record.busy = false;
+        if (current(record)) { disabled(record); onChange(record.group.owner); }
+      }
+    }
+    function uncertain(record, error) {
+      record.terminal = true;
+      record.add.dataset.state = "uncertain";
+      text(record.add, "Check Anki");
+      text(record.output, error);
+    }
+    async function browse(record) {
+      if (!current(record) || record.view.disabled) return;
+      record.view.disabled = true;
+      try { await send("hd_anki_browse", { expression: record.result.term.expression }); }
+      catch (error) { if (current(record)) text(record.output, `Could not open Anki: ${error.message}`); }
+      finally { if (current(record)) { record.view.disabled = false; onChange(record.group.owner); } }
+    }
+    function bind(items, context) {
+      let group = owners.get(context.owner);
+      if (!group) { group = { ...context, records: [], epoch: 0, checking: false, queued: false }; owners.set(context.owner, group); }
+      for (const item of items) {
+        let record = bound.get(item.add);
+        if (record?.group === group) continue;
+        if (!record) {
+          record = { ...item, busy: false, terminal: false, decision: null };
+          bound.set(item.add, record);
+          item.add.addEventListener("mousedown", event => { if (event.button === 0 && current(record)) record.pointerRequest = payload(record); });
+          item.add.addEventListener("click", () => { void submit(record); });
+          item.view.addEventListener("click", () => { void browse(record); });
+        }
+        record.group = group;
+        record.needsCheck = true;
+        record.control.hidden = true;
+        group.records.push(record);
+        disabled(record);
+      }
+      refresh(group);
+    }
+    function retire(owner) {
+      for (const [key, group] of owners) {
+        if (owner !== undefined && owner !== key) continue;
+        owners.delete(key);
+        for (const record of group.records) record.control.hidden = true;
+      }
+    }
+    return { bind, retire,
+      refresh(owner) { const group = owners.get(owner); if (group) refresh(group, true); },
+      update(options, ready = true) {
+        const key = JSON.stringify([ready, options.anki, options.audioSources]);
+        if (key === settingsKey) return;
+        settingsKey = key;
+        enabled = ready && Boolean(options.anki.model);
+        for (const group of owners.values()) {
+          group.epoch++;
+          for (const record of group.records) record.control.hidden = true;
+          refresh(group, true);
+        }
+      },
+    };
+  }
+  globalThis.HDAnki = { createAnkiController };
+}());
