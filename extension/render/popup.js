@@ -776,8 +776,9 @@
   }
 
   function* compactDefinitionItemsFromText(parts) {
-    const firstText = /[^\s\u2022]/gu;
-    const nextText = /\S/gu;
+    const textRun = `[^\\s\\u2022]{1,${COMPACT_DEFINITION_MAX_CHARACTERS + 1}}`;
+    const firstText = new RegExp(textRun, "gu");
+    const nextText = new RegExp(`\\u2022|${textRun}`, "gu");
     let characters = [];
     let pendingSpace = false;
     for (const text of parts) {
@@ -801,7 +802,7 @@
         if (pendingSpace) characters.push(" ");
         pendingSpace = false;
         if (characters.length <= COMPACT_DEFINITION_MAX_CHARACTERS) {
-          appendCompactDefinitionCharacter(characters, match[0]);
+          appendCompactDefinitionText(characters, match[0]);
         }
         // One extra normalized point proves truncation. Earlier accepted items
         // are at most 240 points, so this cannot falsely match a seen duplicate.
@@ -812,6 +813,13 @@
       }
     }
     if (characters.length > 0) yield characters.join("");
+  }
+
+  function appendCompactDefinitionText(characters, text) {
+    for (const character of text) {
+      appendCompactDefinitionCharacter(characters, character);
+      if (characters.length > COMPACT_DEFINITION_MAX_CHARACTERS) break;
+    }
   }
 
   function isCompactDefinitionBlock(value) {

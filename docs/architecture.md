@@ -430,7 +430,8 @@ without concatenating unused text or matching/normalizing whole fragments.
 One extra normalized code point beyond the 240-point display budget proves
 truncation without mistaking a long candidate for a previously seen duplicate.
 Adjacent inline parts retain split surrogate pairs and block separators. Native
-character searches skip empty bullet and whitespace runs; full JSON parsing and
+bounded text-run searches skip empty bullet and whitespace runs without a
+matcher call per character; full JSON parsing and
 necessary whitespace-prefix scans remain. Only the first meaningful content can
 supply the image: text, including zero/false, or an unsupported leading image
 prevents searching for a later image. Text/structured wrappers

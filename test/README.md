@@ -374,7 +374,8 @@ What it proves, in order:
    an external off update. Renderer checks pin ordered bullet/semantic extraction,
    lazy fragment production without per-empty-bullet normalization and bounded
    matching/normalization on long text, split Unicode pairs and raw block boundaries,
-   duplicate skipping with a partially filled preview, trailing-whitespace trimming,
+   duplicate skipping with a partially filled preview without per-character matcher
+   calls, trailing-whitespace trimming,
    leading-image dispatch, no default-off summary, unchanged full definitions and
    Note controls, partial presentation no-ops, and independent image ownership.
    A collapsed source image stays expanded only in the compact preview. Missing,
