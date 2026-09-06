@@ -7419,6 +7419,64 @@ async function contentNoteStage() {
       const updates = harness.presentations().length;
       harness.emitState({ ...presentation, revision: 6, groups: [] }, { revision: 99, maxResults: 99 });
       checks.push(harness.presentations().length === updates && !render.context.isCurrentRequest());
+
+      const detached = await createHarness();
+      try {
+        const installed = detached.driver.snapshot().dictionaries;
+        const state = { schemaVersion: 1, revision: 2,
+          dictionaries: [...installed, genericPackage({ id: "other-id", title: "Other", path: "/dicts/Other" })],
+          groups: [{ id: "g", name: "Group", dictionaryIds: [installed[0].id] }],
+        };
+        detached.emitState(state);
+        await detached.initialLookup();
+        detached.render().context.onDictionaryTabSelected({ groupId: "g" });
+        const operation = detached.internalLink({ query: "orphan child" });
+        const result = detached.term("orphan child");
+        Object.assign(result.term, { frequencies: [], pitches: [] });
+        result.term.glossaries.push({ dictionary: "Other", glossary: "other definition" });
+        detached.reply(detached.take("hd_lookup"), { dictionaryCount: 2, results: [result] });
+        await operation;
+        const childRender = detached.render(1);
+        const childPopup = detached.driver.popupAt(1);
+        const callbacks = detached.callbacks(1);
+        const fills = [];
+        let allowed = null;
+        let permissionChecks = 0;
+        const view = detached.createLayoutView({ ...callbacks,
+          appendTextOnlyGlossary(_document, _container, _glossary, context) { fills.push(context.dictionary); },
+          canProjectDictionaryPresentation() {
+            permissionChecks += 1;
+            allowed = callbacks.canProjectDictionaryPresentation();
+            return allowed;
+          },
+        });
+        view.renderResults(childRender.results, childRender.candidate, childRender.context);
+        const beforeFills = fills.length;
+        detached.anchor.remove();
+        const connectedChildSource = childRender.candidate.anchor.isConnected;
+        detached.emitState({ ...state, revision: 3,
+          groups: [{ id: "g", name: "Group", dictionaryIds: ["other-id"] }],
+        });
+        // The content harness records this storage delivery; run it through
+        // the attached real renderer and its actual content owner predicate.
+        const delivered = detached.presentations(1).at(-1);
+        view.updateDictionaryPresentation(delivered);
+        checks.push(beforeFills === 1 && connectedChildSource && allowed === false
+          && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1)
+          && childPopup.hidden && fills.length === beforeFills);
+        const checked = permissionChecks;
+        view.flushDictionaryPresentation();
+        view.updateDictionaryPresentation(delivered);
+        checks.push(permissionChecks === checked && fills.length === beforeFills);
+      } finally { detached.driver.teardown(); detached.close(); }
+
+      const detachedRoot = await createHarness();
+      try {
+        await detachedRoot.initialLookup();
+        detachedRoot.anchor.remove();
+        checks.push(detachedRoot.callbacks().canProjectDictionaryPresentation() === false
+          && detachedRoot.driver.snapshot().popupHidden);
+      } finally { detachedRoot.driver.teardown(); detachedRoot.close(); }
       return { [name]: checks.every(Boolean) || checks };
     } finally { harness.close(); }
   }
@@ -10016,6 +10074,22 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
   let finishAppend;
   let appends = 0;
   const linkPredicates = [];
+  const originalResizeObserver = window.ResizeObserver;
+  const observedTargets = new Set();
+  const observations = [];
+  // Track the renderer's observation ownership, not native layout or heap size.
+  window.ResizeObserver = class {
+    observe(target) { observedTargets.add(target); }
+    unobserve(target) { observedTargets.delete(target); }
+    disconnect() { observedTargets.clear(); }
+  };
+  function observeProjection(stage, expectedCount) {
+    const currentTargets = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-grid, .gsm-hoshidicts-glossary-card")];
+    const detached = [...observedTargets].filter(target => !target.isConnected).length;
+    observations.push({ stage, observed: observedTargets.size, current: currentTargets.length, detached,
+      valid: observedTargets.size === expectedCount && currentTargets.length === expectedCount
+        && currentTargets.every(target => target.isConnected && observedTargets.has(target)) });
+  }
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
     appendTextOnlyGlossary(...args) {
@@ -10058,6 +10132,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     displayed = true;
     view.renderResults(results, candidate, context);
     popup.querySelector('[role="tab"][data-dictionary="Second"]').click();
+    observeProjection("dictionary tab", 2);
     check("retained displayed links and stale-tab handoff never reenable obsolete glossary work",
       sharedPredicate && retained && obsoleteIgnored && replays === 1 && fills > initialFills
         && initialPredicates.every(owns => !owns()),
@@ -10144,6 +10219,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     const expanded = popup.querySelectorAll("article").length === 2 && !popup.querySelector(".gsm-hoshidicts-show-more");
     view.renderResults(results, candidate, context);
     popup.querySelector(".gsm-hoshidicts-show-more").click();
+    observeProjection("Show more retains all current targets", 4);
     check("stale Show more replays fresh results while current expansion remains lookup-free",
       expansionDelegated && expanded && replays === beforeReplay + 1 && popup.querySelectorAll("article").length === 2);
 
@@ -10174,6 +10250,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
       && card.querySelector("summary").textContent === "Renamed" && fills === beforePresentation.fills && replays === beforePresentation.replays
       && popup.querySelector('[role="tabpanel"]').getAttribute("aria-labelledby") === groupButton.id);
     groupButton.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    observeProjection("group tab", 2);
     live.push(selected?.groupId === "second" && document.activeElement === popup.querySelector(secondGroup)
       && popup.querySelector(".gsm-hoshidicts-glossary-card > summary").title === "Second");
     popup.querySelector(".gsm-hoshidicts-note-button").click();
@@ -10190,6 +10267,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
       && popup.querySelector(".gsm-hoshidicts-glossary-card > summary").title === "Second"
       && popup.querySelector("form") === draft && !draft.hidden && draft.elements.definition.value === "presentation draft");
     view.closeNoteForm();
+    observeProjection("live membership flush", 2);
     live.push(popup.querySelector(secondGroup).textContent === "Changed group"
       && popup.querySelector(".gsm-hoshidicts-glossary-card > summary").title === "First"
       && popup.querySelector("form") === draft && draft.hidden && selected?.groupId === "second"
@@ -10256,8 +10334,10 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     popup.querySelector(".gsm-hoshidicts-note-button").click();
     live.push(popup.querySelector("form").elements.term.value === "Second");
     view.closeNoteForm();
+    view.clear();
+    observeProjection("clear", 0);
     check("live presentation keeps keyed tabs and protected views coherent until local projection is safe",
-      live.every(Boolean), JSON.stringify(live));
+      live.every(Boolean) && observations.every(value => value.valid), JSON.stringify({ live, observations }));
 
     const kanji = { character: "食", entries: ["First", "Second"].map(dictionary => ({
       dictionary, tags: "", onyomi: "ショク", kunyomi: "", definitions: [dictionary], stats: [],
@@ -10278,7 +10358,11 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
         && popup.querySelector("form") === kanjiDraft && kanjiDraft.elements.definition.value === "kanji draft"
         && kanji.entries.length === 2,
       JSON.stringify({ aliasOnly, kanjiProtected, selected, entries: popup.querySelectorAll("article").length }));
-  } finally { view.destroy(); popup.remove(); }
+  } finally {
+    view.destroy();
+    window.ResizeObserver = originalResizeObserver;
+    popup.remove();
+  }
 }
 
 function internalLinksRenderStage({ HDGlossary, document, window }) {
