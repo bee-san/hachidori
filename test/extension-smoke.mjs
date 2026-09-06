@@ -5202,7 +5202,9 @@ async function sourceHighlightStage() {
 async function sourceHighlightFallbackCase(window) {
   const { document } = window;
   window.Highlight = undefined;
+  let geometryReads = 0;
   window.Range.prototype.getClientRects = function () {
+    geometryReads += 1;
     const left = this.toString() === "食べる" ? 100 : 300;
     return [{ left, top: 200, right: left + 50, bottom: 216, width: 50, height: 16 }];
   };
@@ -5227,9 +5229,10 @@ async function sourceHighlightFallbackCase(window) {
     second.apply({ sourceElements: [otherSource], sentence: otherSource.textContent, matchOffset: 0 }, "Keep");
     await frame();
     const both = marks().length === 2 && marks()[0] === mark;
+    const beforeClear = geometryReads;
     second.clear();
     await frame();
-    const retained = marks().length === 1 && marks()[0] === mark;
+    const retained = marks().length === 1 && marks()[0] === mark && geometryReads === beforeClear;
     source.style.visibility = "hidden";
     await frame();
     await frame();
