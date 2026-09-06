@@ -472,7 +472,6 @@
             <h1 id="design-heading" tabindex="-1">Design</h1>
             <p class="hint">Adjust your popup. Changes save automatically.</p>
           </div>
-          <div class="options-feedback-slot"></div>
           <div class="design-layout">
             <div class="design-controls">
               <fieldset class="lookup-group">
@@ -612,10 +611,8 @@
               </fieldset>
               <fieldset class="lookup-group">
                 <legend>Custom CSS</legend>
-                <label class="field" for="opt-custom-popup-css">
-                  <span class="field-label">Popup stylesheet</span>
-                  <span class="field-hint" id="custom-css-help">Applied after built-in and dictionary styles, inside the popup only. Changes preview as you type.</span>
-                </label>
+                <label class="field-label" for="opt-custom-popup-css">Popup stylesheet</label>
+                <p class="field-hint" id="custom-css-help">Applied after built-in and dictionary styles, inside the popup only. Changes preview as you type.</p>
                 <textarea id="opt-custom-popup-css" rows="8" spellcheck="false" autocapitalize="off"
                   aria-describedby="custom-css-help custom-css-count"
                   placeholder=".gsm-hoshidicts-popup {&#10;  font-size: 16px;&#10;}"></textarea>
@@ -624,6 +621,7 @@
                   <button id="reset-custom-css" type="button" class="ghost">Reset custom CSS</button>
                 </div>
                 <p class="field-hint">CSS only, not scripts or actions. Invalid rules are ignored by the browser. Styles using URLs can request external resources.</p>
+                <div class="options-feedback-slot"></div>
               </fieldset>
               <button id="reset-design" type="button" class="ghost">Reset Design to defaults</button>
               <p class="field-hint">Resets appearance and content controls above. Reading and your library stay unchanged.</p>
