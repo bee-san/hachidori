@@ -1245,7 +1245,7 @@
       appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
       appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
       document,
-      getPopupColumns: () => 1,
+      getPopupColumns: () => options.popupColumns,
       highlightName: HIGHLIGHT_NAME,
       idPrefix: level === rootLevel ? "hoshidicts" : `hoshidicts-${nextLevelId += 1}`,
       onAddCustomEntry: (entry) => appendCustomEntry(entry, level),
@@ -2336,6 +2336,7 @@
       || next.onlyScanJapaneseText !== options.onlyScanJapaneseText;
     const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
+    const columnsChanged = next.popupColumns !== options.popupColumns;
     if (activationChanged) {
       activationPressed = false;
       activationCode = null;
@@ -2343,6 +2344,11 @@
     optionsStorageRevision = revision;
     options = next;
     if (levels.length > options.popupNestingMaxDepth + 1) pruneLevels(options.popupNestingMaxDepth + 1);
+    if (columnsChanged && options.hoverEnabled) {
+      for (const level of levels) {
+        if (!level.popup?.hidden) level.view?.scheduleMasonry();
+      }
+    }
     if (!options.hoverEnabled) {
       selectionDragActive = false;
       lastPointer = null;

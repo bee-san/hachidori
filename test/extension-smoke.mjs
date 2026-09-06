@@ -7446,6 +7446,9 @@ async function contentNoteStage() {
   async function columnPreferenceCase() {
     const harness = await createHarness();
     try {
+      // Use one complete default option snapshot before starting either
+      // request, so the later event changes columns alone.
+      harness.emitOptions({});
       await harness.initialLookup();
       const linked = harness.internalLink({ query: "columns child" });
       harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("columns child")] });

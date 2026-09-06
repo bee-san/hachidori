@@ -331,6 +331,12 @@ or adding a separate placement frame. A single pane also lays out and positions
 in one frame. Direct Note, image and navigation positioning remains synchronous;
 renderer destruction, retirement and teardown cancel their queued work.
 
+The live **Definition columns** preference defaults to one and supports integers
+one through four. Each glossary grid packs cards into its shortest column while
+retaining their DOM reading order. Changing columns schedules the existing
+owned layout batch for every visible pane; it does not invalidate lookups,
+replace the result DOM or close a Note draft.
+
 Dictionary revisions, generation, media and style transport remain shared. A
 changed accepted engine generation invalidates other level tokens, including
 when a restarted engine reports a lower number. A same-generation child leaves
