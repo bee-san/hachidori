@@ -7505,6 +7505,33 @@ async function contentNoteStage() {
       harness.emitState({ ...presentation, revision: 6, groups: [] }, { revision: 99, maxResults: 99 });
       checks.push(harness.presentations().length === updates && !render.context.isCurrentRequest());
 
+      for (const update of ["contents", "alias", "options"]) {
+        const combined = await createHarness();
+        try {
+          await combined.initialLookup();
+          const current = combined.render().context;
+          const options = { revision: 1, frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
+            kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
+            showCompactDefinitionSummary: true };
+          if (update === "options") combined.emitOptions(options);
+          else combined.emitState({ schemaVersion: 1, revision: 2, groups: [],
+            dictionaries: combined.driver.snapshot().dictionaries.map(dictionary => ({ ...dictionary,
+              ...(update === "contents" ? { path: "/dicts/replacement/Generic", revision: "replacement" }
+                : { displayName: "Combined alias" }),
+            })),
+          }, options);
+          if (update === "contents") {
+            checks.push(combined.presentations().length === 0 && !current.isCurrentRequest()
+              && combined.driver.snapshot().popupHidden);
+          } else {
+            const presentations = combined.presentations();
+            checks.push(presentations.length === 1 && current.isCurrentRequest() && !combined.driver.snapshot().popupHidden
+              && presentations[0].showCompactDefinitionSummary === true
+              && (update === "options" || presentations[0].dictionaryPresentation[0].displayName === "Combined alias"));
+          }
+        } finally { combined.driver.teardown(); combined.close(); }
+      }
+
       for (const update of ["membership", "summary"]) {
         const detached = await createHarness();
         try {
