@@ -4384,6 +4384,8 @@ async function main() {
     sourceHighlight?.ownership === true, JSON.stringify(sourceHighlight));
   check("source mutations rebuild only valid owners and clear stale or detached ranges without changing selection",
     sourceHighlight?.mutations === true, JSON.stringify(sourceHighlight));
+  check("source fallback paints exact Range bounds in its own layer without editing page text, classes or selection",
+    sourceHighlight?.fallback === true, JSON.stringify(sourceHighlight));
   check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
     frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
   check("Design resets only its shared appearance and content keys through one sparse options write",
@@ -5189,10 +5191,51 @@ async function sourceHighlightStage() {
     disposableView.destroy();
     const mutations = replacement && stale && detached && shadowDetached && ranges().length === 0
       && window.CSS.highlights.get("page-owned") === unrelated && window.getSelection().toString() === "Keep selection";
-    return { ownership, mutations, visits, replacement, stale };
+    const fallback = await sourceHighlightFallbackCase(window);
+    return { ownership, mutations, fallback, visits, replacement, stale };
   } finally {
     highlighter.clearAll();
     window.close();
+  }
+}
+
+async function sourceHighlightFallbackCase(window) {
+  const { document } = window;
+  window.Highlight = undefined;
+  window.Range.prototype.getClientRects = function () {
+    const left = this.toString() === "食べる" ? 100 : 300;
+    return [{ left, top: 200, right: left + 50, bottom: 216, width: 50, height: 16 }];
+  };
+  const source = document.getElementById("a");
+  source.textContent = "前食べる後";
+  source.classList.add("gsm-hoshidicts-source-match");
+  const before = { text: source.innerHTML, selection: window.getSelection().toString(), className: source.className };
+  const host = document.createElement("div");
+  document.body.append(host);
+  const shadow = host.attachShadow({ mode: "open" });
+  const highlighter = window.HDPopup.createSourceHighlighter(window, document, "test-fallback", shadow);
+  const otherSource = document.getElementById("selection");
+  const first = highlighter.scope("first"), second = highlighter.scope("second");
+  const marks = () => [...shadow.querySelectorAll(".gsm-hoshidicts-source-match")];
+  const frame = () => new Promise(done => window.requestAnimationFrame(done));
+  try {
+    first.apply({ sourceElements: [source], sentence: source.textContent, matchOffset: 1 }, "食べる");
+    await frame();
+    const mark = marks()[0];
+    const exact = marks().length === 1 && mark.style.left === "100px" && mark.style.top === "200px"
+      && mark.style.width === "50px" && mark.style.height === "16px";
+    second.apply({ sourceElements: [otherSource], sentence: otherSource.textContent, matchOffset: 0 }, "Keep");
+    await frame();
+    const both = marks().length === 2 && marks()[0] === mark;
+    second.clear();
+    await frame();
+    const retained = marks().length === 1 && marks()[0] === mark;
+    first.clear();
+    return exact && both && retained && shadow.childNodes.length === 0 && source.innerHTML === before.text
+      && source.className === before.className && window.getSelection().toString() === before.selection;
+  } finally {
+    highlighter.clearAll();
+    host.remove();
   }
 }
 
