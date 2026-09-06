@@ -5203,6 +5203,8 @@ async function sourceHighlightFallbackCase(window) {
   const { document } = window;
   window.Highlight = undefined;
   window.Element.prototype.getAnimations = () => [];
+  window.Document.prototype.getAnimations = () => [];
+  window.ShadowRoot.prototype.getAnimations = () => [];
   let mediaWatches = 0;
   window.matchMedia = () => ({ addEventListener() { mediaWatches += 1; }, removeEventListener() { mediaWatches -= 1; } });
   let geometryReads = 0;

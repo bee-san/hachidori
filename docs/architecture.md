@@ -887,8 +887,12 @@ events wake it, including paused animations resumed by hover or focus. An initia
 ordinary page element is also tracked when its animation keyframes can make it
 fixed or sticky; only its currently effective cover position suppresses paint.
 Completion/cancellation reconciles membership, including forwards-filled effects,
-without rescanning the page every animation frame. Other unrelated page animations
-do not request paint. Animation queries precede paint writes.
+without rescanning the page every animation frame. Discovery also seeds effects
+already in progress with one animation-list query per containing tree. Overlapping
+effects retain tracking until the last position-changing effect retires. Finishing
+or cancelling paused source motion still schedules geometry, while unchanged
+membership keeps the catalogue cached. Other unrelated page animations do not
+request paint. Animation queries precede paint writes.
 Unchanged owners retain their paint groups. Removing only an owner does not
 remeasure survivors or re-observe their resize targets; actual pane pruning still
 refreshes paint that may be uncovered. The last owner releases the layer,

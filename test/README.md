@@ -749,6 +749,9 @@ and sticky headers, a small centred overlay, pointer-transparent paint, clipped
 header borders, fixed boxes escaping ancestor overflow, and moving overlays.
 Position-keyframe cases begin as ordinary static elements and become fixed
 covers, both after forwards-filled completion and when paused midway.
+They include an effect started before the fallback and overlapping effects whose
+first completion must not retire the remaining position-changing effect. Paused
+source effects also repaint their final/base transform on finish or cancellation.
 Removing covers restores the exact source paint; a box behind the source leaves
 it unchanged.
 Style-only checks settle an offscreen cover before CSSOM rule insertion,

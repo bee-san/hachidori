@@ -578,7 +578,7 @@
     let polledStyles = false;
     let watchedSheets = new Set();
     const styleMedia = new Map();
-    const coverMotion = new WeakSet();
+    let coverMotion = new WeakSet();
     const motionRoots = new Set();
     const motionStarts = ["animationstart", "transitionrun"];
     const motionEnds = ["animationend", "animationcancel", "transitionend", "transitioncancel"];
@@ -711,22 +711,32 @@
       return isCoverPosition(style.position) || element.localName === "dialog" || element.hasAttribute("popover");
     }
 
+    function isCoverMotion(animation) {
+      return (animation.playState === "running" || animation.playState === "paused")
+        && animation.effect.getKeyframes().some(keyframe => isCoverPosition(keyframe.position));
+    }
+
+    function coverMotionChanged(target, ended) {
+      const tracked = coverMotion.has(target);
+      const active = target.getAnimations().some(isCoverMotion);
+      if (active) {
+        coverMotion.add(target);
+        return !tracked;
+      }
+      if (tracked) {
+        coverMotion.delete(target);
+        return true;
+      }
+      return ended && isPageCover(target, windowRef.getComputedStyle(target)) !== (pageOccluders?.includes(target) ?? false);
+    }
+
     function sourceMotion(event) {
       const target = event.target;
-      if (motionEnds.includes(event.type)) {
-        if (isPageElement(target) && (coverMotion.delete(target)
-            || isPageCover(target, windowRef.getComputedStyle(target)) !== (pageOccluders?.includes(target) ?? false))) {
-          layoutChanged();
-        }
-        return;
-      }
+      const ended = motionEnds.includes(event.type);
       // A currently static element may become a cover halfway through motion.
       // Track only effects with cover-position keyframes, not every animation
       // on the page. Keep paused effects until they finish or are cancelled.
-      if (motionStarts.includes(event.type) && isPageElement(target) && !motionTargets.has(target)
-          && target.getAnimations().some(animation => animation.effect.getKeyframes()
-            .some(keyframe => isCoverPosition(keyframe.position)))) {
-        coverMotion.add(target);
+      if ((ended || motionStarts.includes(event.type)) && isPageElement(target) && coverMotionChanged(target, ended)) {
         layoutChanged();
         return;
       }
@@ -734,7 +744,8 @@
         if (target === event.target || (subtree && target.contains(event.target))
             || (event.relatedTarget !== undefined && target instanceof windowRef.Element
               && target.contains(event.target) !== target.contains(event.relatedTarget))) {
-          layoutChanged();
+          if (ended) schedule();
+          else layoutChanged();
           return;
         }
       }
@@ -827,8 +838,15 @@
     function pageCovers(cache) {
       if (pageOccluders === null) {
         pageOccluders = [];
+        coverMotion = new WeakSet();
         for (const tree of layoutRoots) {
           if (tree === root && tree instanceof windowRef.ShadowRoot) continue;
+          // An animation may predate this fallback or its containing-tree
+          // observer. Query each tree once, not every element in its catalogue.
+          for (const animation of tree.getAnimations()) {
+            const target = animation.effect.target;
+            if (target.getRootNode() === tree && isPageElement(target) && isCoverMotion(animation)) coverMotion.add(target);
+          }
           for (const element of tree.querySelectorAll("*")) {
             if (!isPageElement(element)) continue;
             const style = windowRef.getComputedStyle(element);
