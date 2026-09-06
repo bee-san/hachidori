@@ -2311,10 +2311,11 @@
 
       return { lookupStats,
         isExpanded: () => expanded,
-        updateImages(context) {
+        updateImages(context, refreshHandles) {
           for (const key of ["popupImageSources", "dictionaryPresentation", "resolveMedia"]) {
             if (Object.hasOwn(context, key)) imageContext[key] = context[key];
           }
+          if (!refreshHandles) return false;
           let changed = false;
           for (const handle of renderedImages) {
             if (!handle.isCurrent()) renderedImages.delete(handle);
@@ -2759,17 +2760,20 @@
           const imagesChanged = Object.hasOwn(context, "popupImageSources")
             && context.popupImageSources !== imageContext.popupImageSources;
           if ((imagesChanged || summaryChanged) && ownsView() && options.canUpdateCompactSummary?.() === false) return true;
-          if (rendered.updateImages(context)) scheduleMasonry();
           const focused = popup.getRootNode().activeElement;
-          if (summaryChanged && popup.contains(focused)
-              && focused.closest(".gsm-hoshidicts-compact-definition-summary")) return false;
           const next = createDictionaryTabs(dictionaries, context);
           const previous = tabDescriptors;
           const selectedKey = previous[selectedIndex].key;
           let index = next.tabs.findIndex(tab => tab.key === selectedKey);
           if (index < 0) index = 0;
           const sameMembers = sameTabMembers(previous[selectedIndex].dictionaries, next.tabs[index].dictionaries, dictionaries);
-          if (!sameMembers && (!ownsView() || !canProjectPresentation())) return false;
+          const projectionDeferred = (summaryChanged && popup.contains(focused)
+            && focused.closest(".gsm-hoshidicts-compact-definition-summary"))
+            || (!sameMembers && (!ownsView() || !canProjectPresentation()));
+          // A replacement uses the latest context but must not start media for
+          // its discarded cards. Protected projections still refresh in place.
+          if (rendered.updateImages(context, sameMembers || projectionDeferred)) scheduleMasonry();
+          if (projectionDeferred) return false;
           Object.assign(renderContext, context);
           tabDescriptors = next.tabs;
           dictionaryDisplayNames = next.dictionaryDisplayNames;
