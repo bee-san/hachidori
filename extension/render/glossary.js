@@ -866,7 +866,8 @@
         link.dataset.imageLoadState = "loaded";
         background.style.setProperty("--image", `url("${url}")`);
         supplier = resolvedSupplier;
-        if (updateSourceLabel()) onLayoutChange();
+        // The image's load/error callback positions its new label too.
+        updateSourceLabel();
       }).catch(failAttempt);
     }
     state.onImageCreated?.({

@@ -551,7 +551,9 @@ route identity at the shared resolver boundary. A failed compact thumbnail can
 remount its existing wrapper under a new source while its summary text remains
 mounted. Successful alternate suppliers get a small label beside the image,
 outside the compact thumbnail's clip, using the supplier's alias and retaining
-its canonical title. Alias-only changes do not request media again.
+its canonical title. The image's completion callback positions the new label
+with the image, without a duplicate early layout. Alias-only changes still
+schedule their own layout and do not request media again.
 
 The latest image context stays separate from deferred tab/text presentation
 and survives local tab projection. Route changes enter the connected-request
