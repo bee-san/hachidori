@@ -6,7 +6,7 @@ import { createAnkiWorkerService } from "../extension/anki-worker.js";
 
 function fixture(firstAudio = false) {
   const calls = [];
-  let fields, generation = 3, changeDuringCheck = false;
+  let fields, generation = 3, changeDuringCheck = false, audioUnavailable = false;
   const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic", deck: "Default",
     fieldTemplates: { Front: { value: firstAudio ? "{expression}{audio}" : "{expression}", overwriteMode: "overwrite" },
       Audio: { value: "{audio}", overwriteMode: "overwrite" } } } });
@@ -25,7 +25,10 @@ function fixture(firstAudio = false) {
     engine: async message => { calls.push(message.type); return { generation, ready: true, loading: false }; },
     offscreen: async message => {
       calls.push(message.type);
-      if (message.type === "hd_anki_audio") return { filename: "checked.wav", data: "YXVkaW8=" };
+      if (message.type === "hd_anki_audio") {
+        if (audioUnavailable) throw new Error("The chosen pronunciation is unavailable");
+        return { filename: "checked.wav", data: "YXVkaW8=" };
+      }
       assert.deepEqual(message.dictionaryPaths, { A: "/dicts/generation/A" });
       return { fields: Object.fromEntries(Object.entries(message.templates).map(([field, template]) =>
         [field, template.value.replace("{expression}", "猫").replace("{audio}", message.audio)])), media: [] };
@@ -34,7 +37,8 @@ function fixture(firstAudio = false) {
   const request = { term: { expression: "猫", reading: "ねこ", rules: "", glossaries: [], frequencies: [], pitches: [] },
     generation: 3, trace: [], sentence: "猫", matched: "猫", matchOffset: 0, popupSelectionText: "", searchQuery: "猫", documentTitle: "Test",
     dictionaryAliases: {}, frequencyDictionaries: [] };
-  return { service, calls, request, changedGeneration() { generation++; }, duringCheck() { changeDuringCheck = true; }, get fields() { return fields; } };
+  return { service, calls, request, changedGeneration() { generation++; }, duringCheck() { changeDuringCheck = true; },
+    failAudio() { audioUnavailable = true; }, get fields() { return fields; } };
 }
 
 test("the worker defers ordinary audio until verified note success and rejects stale dictionary generations", async () => {
@@ -65,5 +69,15 @@ test("a dictionary update during authoritative Anki checking cannot reach the no
   f.request.configKey = (await f.service.status()).configKey;
   f.duringCheck();
   await assert.rejects(f.service.submit(f.request), /dictionary generation changed/u);
+  assert.equal(f.calls.includes("addNote"), false);
+});
+
+test("unavailable first-field audio cannot silently change duplicate identity to text-only", async () => {
+  const f = fixture(true);
+  f.request.configKey = (await f.service.status()).configKey;
+  f.failAudio();
+  await assert.rejects(f.service.preflight(f.request), /chosen pronunciation is unavailable/u);
+  await assert.rejects(f.service.submit(f.request), /chosen pronunciation is unavailable/u);
+  assert.equal(f.calls.includes("canAddNotesWithErrorDetail"), false);
   assert.equal(f.calls.includes("addNote"), false);
 });
