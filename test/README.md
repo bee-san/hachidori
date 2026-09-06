@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 352 checks, all of
+full request→reply round trip per contract-C message type. 358 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -575,7 +575,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 117 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 120 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -632,6 +632,14 @@ and 320px. `HACHIDORI_DESIGN_SCREENSHOT` captures the Design view after layout
 settles. The extension harness also checks shared Reading/Design save feedback,
 unsaved preview updates, unchanged-echo render skips, unavailable image routes,
 preferred-source draft retention, and exact tab/disclosure restoration.
+
+Three further appearance assertions cover all 42 grouped theme IDs and real
+dark/light/high-contrast palette overrides, immediate unsaved opacity/dimension
+preview and scoped reset, and live reader/child geometry with exact highlight
+restoration and retained Note/cards/resources. Unit coverage checks strict
+option ranges and no-op CAS, first-layout width ordering, and native/term
+clicked-kanji preview switching without losing Note or Back state. Unrelated
+dictionary changes retain the current clicked-kanji cards and disclosures.
 
 Temporary rank/occurrence dictionaries connect the actual Settings controls to
 one-result popup lookups. The browser checks inferred and manual directions,
@@ -748,7 +756,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 117 assertions, and the summary line
+`PLANNED` at the top of the file names all 120 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

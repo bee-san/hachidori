@@ -15,6 +15,11 @@
     hoverDelayMs: 50,
     popupHideDelayMs: 160,
     popupNestingMaxDepth: 10,
+    popupTheme: "default",
+    popupWidthPx: 560,
+    popupHeightPx: 420,
+    popupOpacityPercent: 85,
+    sourceHighlightEnabled: true,
     popupColumns: 1,
     showCompactDefinitionSummary: false,
     compactDefinitionSummaryCount: 3,
@@ -36,9 +41,31 @@
     hoverDelayMs: [0, 2000],
     popupHideDelayMs: [0, 5000],
     popupNestingMaxDepth: [0, Number.MAX_SAFE_INTEGER],
+    popupWidthPx: [280, 1200],
+    popupHeightPx: [200, 900],
+    popupOpacityPercent: [0, 100],
     popupColumns: [1, 4],
     compactDefinitionSummaryCount: [1, 6],
   };
+  // Audited Hoshidicts catalogue from GSM PR #549; palette values live in reader.css.
+  const POPUP_THEME_GROUPS = [
+    { label: "Dark", ids: ["default", "miku", "catppuccin-mocha", "solarized-dark", "dark", "synthwave",
+      "halloween", "forest", "aqua", "black", "luxury", "dracula", "business", "night", "coffee", "dim", "sunset", "abyss"] },
+    { label: "Light", ids: ["girlypop", "solarized-light", "light", "cupcake", "bumblebee", "emerald", "corporate",
+      "retro", "cyberpunk", "valentine", "garden", "lofi", "pastel", "fantasy", "wireframe", "cmyk", "autumn", "acid",
+      "lemonade", "winter", "nord", "caramellatte", "silk"] },
+    { label: "High contrast", ids: ["high-contrast"] },
+  ].map(({ label, ids }) => ({ label, themes: ids.map(id => ({ id,
+    label: id === "default" ? "Hachidori (default)"
+      : id.replace(/(^|-)([a-z])/gu, (_, separator, letter) => `${separator ? " " : ""}${letter.toUpperCase()}`),
+  })) }));
+  const POPUP_THEME_IDS = new Set(POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id)));
+  const DESIGN_OPTION_KEYS = [
+    "popupTheme", "popupWidthPx", "popupHeightPx", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
+    "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
+    "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
+    "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags",
+  ];
   const LEGACY_MODIFIERS = new Map([["none", "Shift"], ["shift", "Shift"], ["ctrl", "Control"], ["alt", "Alt"]]);
   const LOOKUP_MODES = ["hover", "activation"];
   // Browser KeyboardEvent names, adapting the source's desktop hotkey names.
@@ -89,12 +116,28 @@
     if (typeof DEFAULT_OPTIONS[key] === "boolean") {
       return typeof value === "boolean" ? value : DEFAULT_OPTIONS[key];
     }
-    if (key === "lookupMode") return LOOKUP_MODES.includes(value) ? value : DEFAULT_OPTIONS.lookupMode;
-    if (key === "activationKey") return normaliseActivationKey(value);
-    if (key === "frequencyOrder") return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;
-    if (key === "kanjiClickDictionary") return normaliseKanjiSelection(value);
-    if (key === "popupImageSource") return normalisePopupImageSource(value);
-    return typeof value === "string" ? value : "";
+    switch (key) {
+      case "lookupMode": return LOOKUP_MODES.includes(value) ? value : DEFAULT_OPTIONS.lookupMode;
+      case "popupTheme": return POPUP_THEME_IDS.has(value) ? value : DEFAULT_OPTIONS.popupTheme;
+      case "activationKey": return normaliseActivationKey(value);
+      case "frequencyOrder": return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;
+      case "kanjiClickDictionary": return normaliseKanjiSelection(value);
+      case "popupImageSource": return normalisePopupImageSource(value);
+      default: return typeof value === "string" ? value : "";
+    }
+  }
+
+  function resolveKanjiDictionary(selection, dictionaries) {
+    const title = typeof selection === "string" ? selection : selection?.title;
+    if (typeof title !== "string" || title === "") return null;
+    const selected = dictionaries.find(entry => entry.title === title && entry.enabled !== false);
+    if (!selected) return null;
+    const requestedKind = typeof selection === "object" ? selection.kind : "";
+    const defaultKind = selected.kanjiCount > 0 ? "kanji" : "term";
+    const kind = requestedKind === "" ? defaultKind : requestedKind;
+    const available = kind === "kanji" ? selected.kanjiCount > 0 : selected.termCount > 0
+      || (selected.frequencyCount === 0 && selected.pitchCount === 0 && selected.kanjiCount === 0);
+    return available ? { kind, title } : null;
   }
 
   function normalisePopupImageSource(value) {
@@ -171,8 +214,10 @@
 
   globalThis.HDReaderOptions = {
     DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+    POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     projectStoredOptions, validateOptionsPatch,
     resolvePopupImageSources,
+    resolveKanjiDictionary,
   };
 }());

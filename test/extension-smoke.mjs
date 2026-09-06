@@ -1398,6 +1398,40 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const readerContext = createContext({});
     runInContext(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"), readerContext);
     const reader = readerContext.HDReaderOptions;
+    const appearanceDefaults = { popupTheme: "default", popupWidthPx: 560, popupHeightPx: 420,
+      popupOpacityPercent: 85, sourceHighlightEnabled: true };
+    const appearanceAccepted = [];
+    for (const [key, value] of Object.entries({ popupTheme: "miku", popupWidthPx: 1200, popupHeightPx: 200,
+      popupOpacityPercent: 0, sourceHighlightEnabled: false })) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ [key]: value }));
+      const repeated = await send(message({ [key]: value }, { baseRevision: 3 }));
+      appearanceAccepted.push(reply.ok === true && reply.options?.[key] === value
+        && reply.options.revision === 3 && repeated.options?.revision === 3);
+    }
+    const appearanceRejected = [];
+    for (const patch of [{ popupTheme: "unknown" }, { popupTheme: null }, { popupWidthPx: 279 },
+      { popupWidthPx: 1201 }, { popupHeightPx: 199 }, { popupHeightPx: 901 },
+      { popupOpacityPercent: -1 }, { popupOpacityPercent: 101 }, { popupOpacityPercent: 50.5 },
+      { popupWidthPx: "560" }, { sourceHighlightEnabled: "true" }]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message(patch));
+      appearanceRejected.push(reply.ok === false && await unchanged(saved));
+    }
+    const themes = reader.POPUP_THEME_GROUPS?.flatMap(group => group.themes) || [];
+    const cssThemes = new Set(["default", ...[...readFileSync(resolve(EXTENSION, "render/reader.css"), "utf8")
+      .matchAll(/data-hoshidicts-theme="([^"]+)"/gu)].map(match => match[1])]);
+    check("appearance preferences preserve audited defaults, ranges and strict idempotent CAS",
+      Object.entries(appearanceDefaults).every(([key, value]) => reader.normaliseOptions({})[key] === value)
+        && appearanceAccepted.every(Boolean) && appearanceRejected.every(Boolean),
+      JSON.stringify({ appearanceAccepted, appearanceRejected }));
+    check("the grouped 42-theme catalogue matches the production palettes and validates every ID",
+      themes.length === 42 && new Set(themes.map(theme => theme.id)).size === 42
+        && JSON.stringify(reader.POPUP_THEME_GROUPS?.map(group => group.themes.length)) === "[18,23,1]"
+        && themes.every(theme => cssThemes.has(theme.id) && typeof theme.label === "string"
+          && reader.validateOptionsPatch({ popupTheme: theme.id }).popupTheme === theme.id)
+        && reader.normaliseOptions({ popupTheme: "unknown" }).popupTheme === "default",
+      JSON.stringify({ themes, cssThemes: [...cssThemes] }));
     const metadataDefaults = {
       averageFrequency: false, showFrequencyDictionaryNames: true,
       showPitchAccentFurigana: true, pitchAccentFuriganaDictionary: "",
@@ -4323,7 +4357,13 @@ async function main() {
     preview?.sample === true && preview.note === true && preview.back === true, JSON.stringify(preview));
   check("Design updates presentation without rebuilding cards and skips unchanged option echoes",
     preview?.incremental === true && preview.routing === true, JSON.stringify(preview));
+  check("live preview appearance preserves cards and drafts while term and kanji highlights toggle exactly",
+    preview?.appearance === true && preview.highlight === true, JSON.stringify(preview));
+  check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
+    preview?.kanjiSource === true, JSON.stringify(preview));
   const frequencySettings = await settingsFrequencyStage();
+  check("Design resets only its shared appearance and content keys through one sparse options write",
+    frequencySettings?.designReset === true, JSON.stringify(frequencySettings));
   check("Settings derives frequency direction only on dictionary selection or explicit Auto",
     frequencySettings?.explicit === true, JSON.stringify(frequencySettings));
   check("frequency controls preserve unavailable selections and revision-bound native drafts",
@@ -5023,10 +5063,12 @@ async function settingsNavigationStage() {
     const unseenCompletion = mirror.textContent === "Reading: Saved.";
     await navigate("lookup");
     await navigate("dictionaries");
-    let design = document.getElementById("design-preview") === null;
+    let design = document.getElementById("design-preview") === null
+      && document.getElementById("opt-popup-theme").options.length === 0;
     if (document.getElementById("design")) {
       await navigate("design");
       const preview = document.getElementById("design-preview");
+      design &&= document.getElementById("opt-popup-theme").options.length === 42;
       const updates = [];
       preview.contentWindow.HDDesignPreview = { update(value) { updates.push(structuredClone(value)); } };
       preview.dispatchEvent(new window.Event("load"));
@@ -5066,6 +5108,8 @@ async function designPreviewStage() {
   try {
     window.fetch = async () => ({ blob: async () => new window.Blob([readFileSync(resolve(EXTENSION, "sample-meal.svg"))], { type: "image/svg+xml" }) });
     window.URL.createObjectURL = () => "blob:sample-meal";
+    window.CSS = { highlights: new Map() };
+    window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
     for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "design-preview.js"]) {
       window.eval(readFileSync(resolve(EXTENSION, file), "utf8"));
     }
@@ -5097,13 +5141,31 @@ async function designPreviewStage() {
     await settle();
     incremental &&= mutations === 0;
     observer.disconnect();
+    options = { ...options, popupTheme: "miku", popupWidthPx: 720, popupHeightPx: 500, popupOpacityPercent: 0,
+      sourceHighlightEnabled: false };
+    update();
+    await settle();
+    const host = window.document.getElementById("preview-host");
+    const appearance = host.dataset.hoshidictsTheme === "miku"
+      && host.style.getPropertyValue("--gsm-hoshidicts-popup-opacity") === "0%"
+      && host.style.getPropertyValue("--gsm-hoshidicts-popup-width") === "720px"
+      && popup.style.width === "720px" && popup.style.height === "500px"
+      && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form
+      && form.elements.definition.value === "A preview draft"
+      && !window.document.documentElement.hasAttribute("data-hoshidicts-theme");
+    let highlight = !window.CSS.highlights.has("gsm-hoshidicts-match");
+    const highlightedText = () => [...(window.CSS.highlights.get("gsm-hoshidicts-match") || [])]
+      .map(range => range.toString()).join("");
+    options = { ...options, sourceHighlightEnabled: true };
+    update();
+    highlight &&= highlightedText() === "食べる";
     form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
     await settle();
     const note = popup.textContent.includes("This is a preview. Notes are not saved.")
       && form.elements.definition.value === "A preview draft";
     state = { revision: 1, dictionaries: [
       { id: "first", title: "First", termCount: 1, pitchCount: 1, enabled: true },
-      { id: "second", title: "Second", termCount: 1, pitchCount: 1, enabled: true },
+      { id: "second", title: "Second", termCount: 1, kanjiCount: 1, pitchCount: 1, enabled: true },
     ], groups: [] };
     options = { ...options, pitchAccentFuriganaDictionary: "Second", compactDefinitionSummaryDictionary: "Second" };
     update();
@@ -5116,16 +5178,43 @@ async function designPreviewStage() {
     query(".gsm-hoshidicts-kanji-link").click();
     const kanji = query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
       && popup.textContent.includes("ショク");
+    options = { ...options, sourceHighlightEnabled: false };
+    update();
+    highlight &&= !window.CSS.highlights.has("gsm-hoshidicts-match");
+    options = { ...options, sourceHighlightEnabled: true };
+    update();
+    highlight &&= highlightedText() === "食べる";
+    query(".gsm-hoshidicts-note-button").click();
+    const kanjiNote = query("form");
+    kanjiNote.elements.definition.value = "Keep across source choices";
+    options = { ...options, kanjiClickDictionary: { title: "Second", kind: "term" } };
+    update();
+    let kanjiSource = popup.textContent.includes("sample single-kanji entry")
+      && query(".gsm-hoshidicts-glossary-card").textContent.includes("Second")
+      && query("form") === kanjiNote && highlightedText() === "食べる";
+    const kanjiCard = query(".gsm-hoshidicts-glossary-card");
+    kanjiCard.open = false;
+    state = { ...state, revision: 2, dictionaries: state.dictionaries.map(entry => entry.id === "first"
+      ? { ...entry, displayName: "Unrelated renamed dictionary" } : entry) };
+    update();
+    kanjiSource &&= query(".gsm-hoshidicts-glossary-card") === kanjiCard && !kanjiCard.open;
+    options = { ...options, kanjiClickDictionary: { title: "Second", kind: "kanji" } };
+    update();
+    kanjiSource &&= query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
+      && popup.textContent.includes("Second") && query("form") === kanjiNote
+      && kanjiNote.elements.definition.value === "Keep across source choices";
+    kanjiNote.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     query(".gsm-hoshidicts-kanji-back").click();
     await settle();
-    const back = kanji && query('[role="tab"][aria-selected="true"]')?.textContent === tab.textContent
+    const back = kanji && query('[role="tab"][aria-selected="true"]')?.dataset.dictionary === tab.dataset.dictionary
       && query(".gsm-hoshidicts-glossary-card").open === false;
     popup.querySelectorAll('[role="tab"]')[0].click();
     options = { ...options, popupImageSource: { kind: "tabGroup", id: "missing" } };
     update();
     await settle();
     const routing = query(".gloss-image-link")?.dataset.imageLoadState === "load-error";
-    return { sample, note, back, incremental, routing };
+    highlight &&= highlightedText() === "食べる";
+    return { sample, note, back, incremental, routing, appearance, highlight, kanjiSource };
   } finally { window.close(); }
 }
 
@@ -5401,7 +5490,28 @@ async function settingsFrequencyStage() {
         && pitch.selectedOptions[0].textContent.includes("unavailable"));
       metadata = metadataDetails.every(Boolean);
     }
-    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails,
+    const theme = window.document.getElementById("opt-popup-theme");
+    window.location.hash = "#design";
+    await until(() => theme.options.length === 42);
+    theme.focus();
+    const previousTheme = theme.value;
+    emitOptions({ popupTheme: "miku", popupWidthPx: 900, popupHeightPx: 700, popupOpacityPercent: 0,
+      sourceHighlightEnabled: false, popupColumns: 4, scanLength: 24, frequencyOrder: "disabled",
+      kanjiClickDictionary: { title: "Rank", kind: "term" } });
+    const focusedThemeKept = theme.value === previousTheme;
+    theme.blur();
+    const themeRefreshed = focusedThemeKept && theme.value === "miku";
+    const beforeReset = { ...storedOptions };
+    const beforeResetCount = writes.length;
+    window.document.getElementById("reset-design").click();
+    await until(() => writes.length === beforeResetCount + 1 && status() === "Saved.");
+    const { DESIGN_OPTION_KEYS, DEFAULT_OPTIONS } = window.HDReaderOptions;
+    const designReset = themeRefreshed && DESIGN_OPTION_KEYS.every(key => JSON.stringify(storedOptions[key] ?? DEFAULT_OPTIONS[key])
+        === JSON.stringify(DEFAULT_OPTIONS[key]))
+      && Object.keys(beforeReset).filter(key => key !== "revision" && !DESIGN_OPTION_KEYS.includes(key))
+        .every(key => JSON.stringify(storedOptions[key]) === JSON.stringify(beforeReset[key]))
+      && Object.keys(writes.at(-1).options).every(key => DESIGN_OPTION_KEYS.includes(key));
+    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {
@@ -7255,8 +7365,10 @@ async function contentNoteStage() {
         destroy() { record.layoutView?.destroy(); },
         scheduleMasonry() {
           record.layoutSchedules += 1;
+          record.layoutWidth = callbacks.popup.style.width;
           record.layoutView?.scheduleMasonry();
         },
+        setSourceHighlightEnabled(enabled) { record.highlightEnabled = enabled; },
         renderKanji(value, candidate, context) {
           recordRender({ kind: "kanji", value, candidate, context });
         },
@@ -7525,8 +7637,8 @@ async function contentNoteStage() {
       settle,
       state,
       stats(depth = 0) {
-        const { clearCount, closeCalls, previewDismissals, layoutSchedules } = popupRecord(depth);
-        return { clearCount, closeCalls, previewDismissals, layoutSchedules };
+        const { clearCount, closeCalls, previewDismissals, layoutSchedules, layoutWidth, highlightEnabled } = popupRecord(depth);
+        return { clearCount, closeCalls, previewDismissals, layoutSchedules, layoutWidth, highlightEnabled };
       },
       take,
       term,
@@ -8207,12 +8319,27 @@ async function contentNoteStage() {
       const sentBefore = harness.sent.length;
       harness.emitOptions({ popupColumns: 4 });
       harness.emitOptions({ popupColumns: 4 });
-      return { "live column preferences relayout each visible owner without lookup, retirement or Note loss":
+      const columns =
         defaultColumns && harness.sent.length === sentBefore && harness.driver.snapshot(1).noteEditing
         && panes.every(({ popup, request, context }, depth) =>
           harness.callbacks(depth).getPopupColumns() === 4 && harness.stats(depth).layoutSchedules === 1
           && harness.driver.popupAt(depth) === popup && !popup.hidden
-          && harness.driver.viewRequest(depth) === request && context.isCurrentRequest()) };
+          && harness.driver.viewRequest(depth) === request && context.isCurrentRequest());
+      harness.emitOptions({ popupColumns: 4, popupWidthPx: 640, popupHeightPx: 500 });
+      const resized = panes.every(({ popup }, depth) => popup.style.width === "640px"
+        && popup.style.height === "500px" && harness.stats(depth).layoutWidth === "640px"
+        && harness.stats(depth).layoutSchedules === 2);
+      harness.emitOptions({ popupColumns: 4, popupWidthPx: 640, popupHeightPx: 500,
+        popupTheme: "miku", popupOpacityPercent: 0, sourceHighlightEnabled: false });
+      const host = panes[0].popup.getRootNode().host;
+      return { "live column preferences relayout each visible owner without lookup, retirement or Note loss": columns,
+        "live geometry precedes masonry while colour and highlight edits preserve every request and Note":
+          resized && host.dataset.hoshidictsTheme === "miku"
+          && host.style.getPropertyValue("--gsm-hoshidicts-popup-opacity") === "0%"
+          && harness.sent.length === sentBefore && harness.driver.snapshot(1).noteEditing
+          && panes.every(({ request, context }, depth) => harness.stats(depth).layoutSchedules === 2
+            && harness.stats(depth).highlightEnabled === false && harness.driver.viewRequest(depth) === request
+            && context.isCurrentRequest()) };
     } finally { harness.close(); }
   }
 

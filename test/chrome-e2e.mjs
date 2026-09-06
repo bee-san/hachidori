@@ -205,6 +205,9 @@ const PLANNED = [
   "Design lazily renders local sample terms, kanji and images through the production popup",
   "Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries",
   "Design fits the popup without changing its actual dimensions and keeps narrow Settings scrollable",
+  "Design exposes 42 grouped themes and applies real palette overrides without rebuilding the preview",
+  "Design previews opacity and dimensions immediately and resets only Design settings",
+  "live appearance changes preserve reader Notes and resources while applying the selected page highlight",
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
@@ -1380,6 +1383,14 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       && equal(await highlights(), previousHighlights)
       && (await requests()).length === beforeBackRequests;
     require(evidence.back, "E13 exact Back state and no native lookup");
+    await optionsWrite({ popupWidthPx: 640, popupHeightPx: 480 });
+    const resizedChild = await until(childState, value => value.rect.width === Math.min(640, value.viewport.width - 12)
+      && value.rect.height === Math.min(480, value.viewport.height - 12),
+      "E15 live child dimensions");
+    evidence.appearanceChild = bounded(resizedChild) && (await rootState()).rect.width === 640;
+    await optionsWrite({ popupWidthPx: 560, popupHeightPx: 420 });
+    await until(childState, value => value.rect.width === Math.min(560, value.viewport.width - 12)
+      && value.rect.height === Math.min(420, value.viewport.height - 12), "E15 restore child dimensions");
     if (process.env.HACHIDORI_KANJI_BACK_SCREENSHOT) {
       const { x, y, width, height } = back.rect;
       await tab.screenshot({ path: process.env.HACHIDORI_KANJI_BACK_SCREENSHOT, clip: { x, y, width, height } });
@@ -1451,6 +1462,28 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     const columnDraft = await popup.retainedControls("remember");
     await popup.dictionaryTabs("remember");
     const columnsStart = (await requests()).length;
+    const sourceSpan = await highlights();
+    const pageTheme = await tab.evaluate(() => ({ theme: document.documentElement.getAttribute("data-hoshidicts-theme"),
+      style: document.documentElement.getAttribute("style") }));
+    await optionsWrite({ popupTheme: "high-contrast", popupOpacityPercent: 0, sourceHighlightEnabled: false });
+    await tab.waitForFunction(() => document.querySelector("hachidori-host")?.dataset.hoshidictsTheme === "high-contrast"
+      && !CSS.highlights.has("gsm-hoshidicts-match"));
+    await optionsWrite({ sourceHighlightEnabled: true });
+    await until(highlights, value => equal(value, sourceSpan), "E15 restore the exact current source highlight");
+    const appearance = await tab.evaluate(() => {
+      const host = document.querySelector("hachidori-host");
+      return { primary: getComputedStyle(host).getPropertyValue("--hoshidicts-palette-primary").trim(),
+        opacity: host.style.getPropertyValue("--gsm-hoshidicts-popup-opacity"),
+        highlight: getComputedStyle(document.getElementById("verb"), "::highlight(gsm-hoshidicts-match)").backgroundColor,
+        theme: document.documentElement.getAttribute("data-hoshidicts-theme"),
+        style: document.documentElement.getAttribute("style") };
+    });
+    const appearanceDraft = await popup.retainedControls();
+    evidence.appearance = evidence.appearanceChild && appearance.primary === "#ffe000" && appearance.opacity === "0%"
+      && appearance.highlight.endsWith(" / 0.56)") && appearance.theme === pageTheme.theme && appearance.style === pageTheme.style
+      && appearanceDraft.sameForm && appearanceDraft.inputFocused && appearanceDraft.draft === columnDraft.draft
+      && (await rootState()).sameCards && (await requests()).length === columnsStart;
+    await optionsWrite({ popupTheme: "default", popupOpacityPercent: 85 });
     for (const columns of [1, 2, 3, 4, 1]) {
       await setColumns(columns);
       const geometry = await until(rootState, value => packed(value, columns), `E8 ${columns}-column geometry`);
@@ -1536,6 +1569,9 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await clean(() => child.dictionaryTabs("cleanup"));
     await clean(() => popup.dictionaryTabs("cleanup"));
     await clean(() => optionsWrite({ popupColumns: original.options.popupColumns ?? 1,
+      popupTheme: original.options.popupTheme ?? "default", popupOpacityPercent: original.options.popupOpacityPercent ?? 85,
+      popupWidthPx: original.options.popupWidthPx ?? 560, popupHeightPx: original.options.popupHeightPx ?? 420,
+      sourceHighlightEnabled: original.options.sourceHighlightEnabled ?? true,
       popupNestingMaxDepth: original.options.popupNestingMaxDepth ?? 10, maxResults: original.options.maxResults,
       kanjiClickDictionary: original.options.kanjiClickDictionary }));
     for (const title of installed) await clean(async () => {
@@ -1567,6 +1603,8 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     evidence.passed && evidence.live.liveRequests.length === 1, JSON.stringify(evidence.live));
   check("Saved popup columns reflow complete cards after expansion, media load and resize",
     evidence.passed && evidence.columns.length === 5, JSON.stringify({ columns: evidence.columns, media: evidence.media }));
+  check("live appearance changes preserve reader Notes and resources while applying the selected page highlight",
+    evidence.passed && evidence.appearance === true, JSON.stringify({ appearance: evidence.appearance, child: evidence.appearanceChild }));
 }
 
 async function checkCompactSummaries(settings, tab, popup, browser) {
@@ -2809,6 +2847,110 @@ async function editSettingsControls(settings, values) {
     { polling: 100, timeout: 10_000 });
 }
 
+async function checkDesignAppearance(page, frame) {
+  const saved = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
+  const drain = () => frame.evaluate(async () => {
+    for (let index = 0; index < 3; index++) await new Promise(requestAnimationFrame);
+  });
+  try {
+    const catalogue = await page.$eval("#opt-popup-theme", select => ({ count: select.options.length,
+      groups: [...select.children].map(group => group.children.length) }));
+    await frame.evaluate(() => {
+      const host = document.getElementById("preview-host");
+      window.appearanceProof = { card: host.shadowRoot.querySelector(".gsm-hoshidicts-glossary-card"),
+        stylesheet: host.shadowRoot.querySelector("link").sheet, highlightSheet: document.adoptedStyleSheets[0] };
+    });
+    const palettes = [];
+    for (const theme of ["miku", "girlypop", "light", "high-contrast"]) {
+      await editSettingsControls(page, { "opt-popup-theme": theme });
+      palettes.push(await frame.evaluate(() => {
+        const host = document.getElementById("preview-host");
+        const popup = host.shadowRoot.querySelector(".gsm-hoshidicts-popup");
+        return { primary: getComputedStyle(host).getPropertyValue("--hoshidicts-palette-primary").trim(),
+          backdrop: getComputedStyle(popup).backdropFilter,
+          retained: window.appearanceProof.card === popup.querySelector(".gsm-hoshidicts-glossary-card")
+            && window.appearanceProof.stylesheet === host.shadowRoot.querySelector("link").sheet
+            && window.appearanceProof.highlightSheet === document.adoptedStyleSheets[0],
+          pageUntouched: !document.documentElement.hasAttribute("data-hoshidicts-theme") };
+      }));
+      if (theme === "miku" || theme === "girlypop") {
+        const stops = async opacity => {
+          await editSettingsControls(page, { "opt-popup-opacity": String(opacity) });
+          return frame.evaluate(() => {
+            const popup = document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+            return [...getComputedStyle(popup).backgroundImage.matchAll(/color\(srgb[^)]* \/ ([\d.]+)\)/g)]
+              .map(match => Number(match[1]));
+          });
+        };
+        palettes.at(-1).zeroStops = await stops(0);
+        palettes.at(-1).fullStops = await stops(100);
+      }
+    }
+    check("Design exposes 42 grouped themes and applies real palette overrides without rebuilding the preview",
+      catalogue.count === 42 && JSON.stringify(catalogue.groups) === "[18,23,1]"
+        && palettes.every(value => value.retained && value.pageUntouched)
+        && palettes[0].primary === "#39c5bb" && palettes[2].primary === "oklch(45% 0.24 277.023)"
+        && palettes[3].primary === "#ffe000" && palettes[3].backdrop === "none"
+        && palettes.slice(0, 2).every(value => JSON.stringify(value.zeroStops) === "[0,0]")
+        && JSON.stringify(palettes[0].fullStops) === "[0.18,0.12]"
+        && JSON.stringify(palettes[1].fullStops) === "[0.22,0.12]", JSON.stringify({ catalogue, palettes }));
+    await editSettingsControls(page, { "opt-popup-theme": "default" });
+    const immediate = await page.evaluate(async () => {
+      const revision = (await chrome.storage.local.get("options")).options.revision;
+      for (const [id, value] of [["opt-popup-width", "720"], ["opt-popup-height", "500"], ["opt-popup-opacity", "0"]]) {
+        const input = document.getElementById(id);
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      const host = document.getElementById("design-preview").contentDocument.getElementById("preview-host");
+      return host.style.getPropertyValue("--gsm-hoshidicts-popup-width") === "720px"
+        && host.style.getPropertyValue("--gsm-hoshidicts-popup-height") === "500px"
+        && host.style.getPropertyValue("--gsm-hoshidicts-popup-opacity") === "0%"
+        && (await chrome.storage.local.get("options")).options.revision === revision;
+    });
+    await page.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupWidthPx === 720);
+    await drain();
+    const geometry = await frame.evaluate(() => {
+      const popup = document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+      return { width: popup.getBoundingClientRect().width, height: popup.getBoundingClientRect().height,
+        background: getComputedStyle(popup).backgroundColor, opacity: getComputedStyle(popup).opacity };
+    });
+    await editSettingsControls(page, { "opt-popup-opacity": "100" });
+    const opaque = await frame.evaluate(() => getComputedStyle(document.getElementById("preview-host")
+      .shadowRoot.querySelector(".gsm-hoshidicts-popup")).backgroundColor);
+    await frame.evaluate(() => document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-link").click());
+    await editSettingsControls(page, { "opt-source-highlight": false });
+    const disabled = await frame.evaluate(() => !CSS.highlights.has("gsm-hoshidicts-match"));
+    await editSettingsControls(page, { "opt-source-highlight": true });
+    const restored = await frame.evaluate(() => [...CSS.highlights.get("gsm-hoshidicts-match")].map(range => range.toString()).join(""));
+    await frame.evaluate(() => document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-back").click());
+    const beforeReset = await page.evaluate(() => chrome.storage.local.get(["options", "dictionaryState", "dictionaryUpdates"]));
+    await page.$eval("#reset-design", button => button.click());
+    await page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
+    const reset = await page.evaluate(async before => {
+      const after = await chrome.storage.local.get(["options", "dictionaryState", "dictionaryUpdates"]);
+      const { DEFAULT_OPTIONS, DESIGN_OPTION_KEYS, normaliseOptions } = HDReaderOptions;
+      const options = normaliseOptions(after.options);
+      return DESIGN_OPTION_KEYS.every(key => JSON.stringify(options[key]) === JSON.stringify(DEFAULT_OPTIONS[key]))
+        && Object.keys(before.options).filter(key => key !== "revision" && !DESIGN_OPTION_KEYS.includes(key))
+          .every(key => JSON.stringify(after.options[key]) === JSON.stringify(before.options[key]))
+        && JSON.stringify(before.dictionaryState) === JSON.stringify(after.dictionaryState)
+        && JSON.stringify(before.dictionaryUpdates) === JSON.stringify(after.dictionaryUpdates);
+    }, beforeReset);
+    check("Design previews opacity and dimensions immediately and resets only Design settings", immediate && reset
+      && geometry.width === 720 && geometry.height === 500 && geometry.opacity === "1"
+      && geometry.background.endsWith(" / 0)") && !opaque.includes(" / ") && disabled && restored === "食べる",
+    JSON.stringify({ immediate, geometry, opaque, disabled, restored, reset }));
+  } finally {
+    await page.evaluate(async saved => {
+      const { options } = await chrome.storage.local.get("options");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+        baseRevision: options.revision, options: HDReaderOptions.normaliseOptions(saved) });
+      if (!reply.ok) throw new Error(reply.error);
+    }, saved);
+  }
+}
+
 async function checkDesignPreview(page) {
   const original = await readSettingsControls(page, ["opt-popup-columns", "opt-compact-summary", "opt-frequency-names"]);
   const originalViewport = page.viewport();
@@ -2888,6 +3030,8 @@ async function checkDesignPreview(page) {
       [fit, actual, narrow].every(value => value.width === 560 && value.height === 420 && !value.overflow && value.retained)
         && fit.scale < 1 && fit.frameWidth <= fit.available + 1 && actual.scale === 1 && actual.localOverflow
         && narrow.scale < fit.scale, JSON.stringify({ fit, actual, narrow }));
+    await page.setViewport({ width: 1280, height: 900 });
+    await checkDesignAppearance(page, frame);
     if (process.env.HACHIDORI_DESIGN_SCREENSHOT) {
       await page.setViewport({ width: 1440, height: 1000 });
       await frame.evaluate(async () => {

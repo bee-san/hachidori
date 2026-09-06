@@ -2,7 +2,9 @@
 // Static, local sample data; the view itself is the production popup renderer.
 (function () {
   "use strict";
-  const shadow = document.getElementById("preview-host").attachShadow({ mode: "open" });
+  const host = document.getElementById("preview-host");
+  const shadow = host.attachShadow({ mode: "open" });
+  const appearance = HDPopup.createPopupAppearance(host);
   const stylesheet = document.createElement("link");
   stylesheet.rel = "stylesheet";
   stylesheet.href = "render/reader.css";
@@ -19,6 +21,7 @@
   let updateKey;
   let imageSources = null;
   let kanjiCharacter = null;
+  let kanjiSource = null;
   let termView;
   let selectedDictionaryTab = null;
   let sampleMedia = null;
@@ -26,7 +29,7 @@
 
   function positionPopup() {
     const position = HDPopup.calculatePopupPosition(source.getBoundingClientRect(),
-      HDPopup.DEFAULT_POPUP_SIZE, { width: innerWidth, height: innerHeight });
+      { width: options.popupWidthPx, height: options.popupHeightPx }, { width: innerWidth, height: innerHeight });
     for (const key of ["left", "top", "width", "height"]) popup.style[key] = `${position[key]}px`;
     view.setToolbarPosition(position.placement === "above" ? "bottom" : "top");
   }
@@ -39,8 +42,10 @@
     getPopupColumns: () => options.popupColumns,
     positionPopup, sourceHighlightEnabled: true,
     onKanjiClick(character, result, anchor, link) {
-      clickedKanjiIndex = [...popup.querySelectorAll(".gsm-hoshidicts-kanji-link")].indexOf(link);
-      termView = { ...view.captureTermView(), selectedDictionaryTab };
+      if (!kanjiCharacter) {
+        clickedKanjiIndex = [...popup.querySelectorAll(".gsm-hoshidicts-kanji-link")].indexOf(link);
+        termView = { ...view.captureTermView(), selectedDictionaryTab };
+      }
       kanjiCharacter = character;
       renderSample();
       popup.querySelector(".gsm-hoshidicts-kanji-back").focus({ preventScroll: true });
@@ -103,14 +108,24 @@
 
   function renderSample(preserveViewControls = false) {
     if (kanjiCharacter) {
-      view.renderKanji({ character: kanjiCharacter, entries: [{ dictionary: "Sample kanji",
-        onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用", definitions: ["eat", "food"],
-        stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }],
-      }] }, candidate, { ...context(), preserveViewControls, highlightText: candidate.query, onBack() {
+      const capability = HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, state.dictionaries);
+      kanjiSource = capability;
+      const renderContext = { ...context(), preserveViewControls, highlightText: candidate.query, onBack() {
         kanjiCharacter = null;
         renderSample();
         popup.querySelectorAll(".gsm-hoshidicts-kanji-link")[clickedKanjiIndex]?.focus({ preventScroll: true });
-      } });
+      } };
+      if (capability?.kind === "term") {
+        view.renderResults([{ matched: kanjiCharacter, trace: [], term: {
+          expression: kanjiCharacter, reading: "しょく", glossaries: [{ dictionary: capability.title,
+            glossary: JSON.stringify(["food; eating — sample single-kanji entry"]) }], frequencies: [], pitches: [],
+        } }], candidate, renderContext);
+      } else {
+        view.renderKanji({ character: kanjiCharacter, entries: [{ dictionary: capability?.title || "Sample kanji",
+          onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用", definitions: ["eat", "food"],
+          stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }],
+        }] }, candidate, renderContext);
+      }
     } else {
       view.renderResults(sample.results, candidate, { ...context(), preserveViewControls,
         onDictionaryTabSelected(selection) { selectedDictionaryTab = selection; },
@@ -122,25 +137,34 @@
   }
 
   window.HDDesignPreview = { update(nextOptions, nextState) {
-    const key = JSON.stringify([HDPopup.metadataOptions(nextOptions), nextOptions.popupColumns,
+    const geometryChanged = !options || options.popupColumns !== nextOptions.popupColumns
+      || options.popupWidthPx !== nextOptions.popupWidthPx || options.popupHeightPx !== nextOptions.popupHeightPx;
+    if (!options || options.sourceHighlightEnabled !== nextOptions.sourceHighlightEnabled) {
+      view.setSourceHighlightEnabled(nextOptions.sourceHighlightEnabled);
+    }
+    appearance.update(nextOptions);
+    options = { ...nextOptions };
+    if (geometryChanged) { positionPopup(); view.scheduleMasonry(); }
+    const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
-      nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextState.revision]);
+      nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextOptions.kanjiClickDictionary, nextState.revision]);
     if (key === updateKey) return;
     updateKey = key;
-    options = { ...nextOptions };
     state = nextState;
     const nextSources = HDReaderOptions.resolvePopupImageSources(options.popupImageSource, state.dictionaries, state.groups);
     if (JSON.stringify(nextSources) !== JSON.stringify(imageSources)) imageSources = nextSources;
     const nextSample = createSample();
     const nextSampleKey = JSON.stringify(nextSample.results);
     sample = nextSample;
-    if (sampleKey !== nextSampleKey) {
+    const changed = kanjiCharacter
+      ? JSON.stringify(kanjiSource) !== JSON.stringify(HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, state.dictionaries))
+      : sampleKey !== nextSampleKey;
+    sampleKey = nextSampleKey;
+    if (changed) {
       if (!kanjiCharacter) termView = { ...view.captureTermView(), selectedDictionaryTab };
-      sampleKey = nextSampleKey;
       renderSample(true);
     } else view.updateDictionaryPresentation(context());
-    view.scheduleMasonry();
   } };
-  stylesheet.addEventListener("load", () => view.scheduleMasonry());
-  window.addEventListener("pagehide", () => view.destroy(), { once: true });
+  stylesheet.addEventListener("load", () => { appearance.refreshHighlight(); view.scheduleMasonry(); });
+  window.addEventListener("pagehide", () => { appearance.destroy(); view.destroy(); }, { once: true });
 }());

@@ -426,16 +426,6 @@
                 <span class="field-hint">Keep definitions open while following links. 0 disables child popups.</span>
               </label>
 
-              <label class="field">
-                <span class="field-label">Kanji dictionary</span>
-                <select id="opt-kanji-dictionary"></select>
-                <span class="field-hint">
-                  Used when a kanji is clicked. Term dictionaries work when they
-                  contain a single-kanji entry.
-                </span>
-              </label>
-
-
             </div>
           </fieldset>
           <fieldset class="lookup-group">
@@ -486,6 +476,42 @@
           <div class="design-layout">
             <div class="design-controls">
               <fieldset class="lookup-group">
+                <legend>Appearance</legend>
+                <div class="fields">
+                  <label class="field">
+                    <span class="field-label">Theme</span>
+                    <select id="opt-popup-theme"></select>
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Background opacity</span>
+                    <span class="input-suffix">
+                      <input id="opt-popup-opacity" type="number" min="0" max="100" step="1" />
+                      <span class="suffix">%</span>
+                    </span>
+                    <span class="field-hint">Text stays opaque.</span>
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Width</span>
+                    <span class="input-suffix">
+                      <input id="opt-popup-width" type="number" min="280" max="1200" step="1" />
+                      <span class="suffix">px</span>
+                    </span>
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Height</span>
+                    <span class="input-suffix">
+                      <input id="opt-popup-height" type="number" min="200" max="900" step="1" />
+                      <span class="suffix">px</span>
+                    </span>
+                  </label>
+                </div>
+                <p class="field-hint">Popups shrink to fit smaller windows.</p>
+                <label class="lookup-enable">
+                  <span>Highlight the word on the page</span>
+                  <input id="opt-source-highlight" type="checkbox" />
+                </label>
+              </fieldset>
+              <fieldset class="lookup-group">
                 <legend>Definitions</legend>
                 <div class="fields">
                   <label class="field">
@@ -504,7 +530,11 @@
                     <select id="opt-image-source"></select>
                     <span class="field-hint">Automatic uses the definition's dictionary. A group tries its enabled dictionaries in order for each image.</span>
                   </label>
-
+                  <label class="field">
+                    <span class="field-label">Clicked-kanji dictionary</span>
+                    <select id="opt-kanji-dictionary"></select>
+                    <span class="field-hint">Term dictionaries also work when they contain a single-kanji entry.</span>
+                  </label>
                 </div>
               </fieldset>
               <fieldset class="lookup-group">
@@ -571,6 +601,8 @@
                   </label>
                 </div>
               </fieldset>
+              <button id="reset-design" type="button" class="ghost">Reset Design to defaults</button>
+              <p class="field-hint">Resets appearance and content controls above. Reading and your library stay unchanged.</p>
             </div>
             <div class="design-sample">
               <div class="preview-heading">

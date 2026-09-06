@@ -37,6 +37,49 @@
       : "";
   }
   const DEFAULT_HIGHLIGHT_NAME = "gsm-hoshidicts-match";
+  // Both the live reader and Settings preview use the same palette and sizing
+  // boundary. Colour edits touch styles only, not result projection or layout.
+  function createPopupAppearance(host) {
+    const document = host.ownerDocument;
+    const window = document.defaultView;
+    let current = {};
+    let highlightSheet;
+
+    function refreshHighlight() {
+      const primary = window.getComputedStyle(host).getPropertyValue("--hoshidicts-palette-primary").trim();
+      // The preview's linked palette is asynchronous; its load event retries.
+      if (!primary) return;
+      if (!highlightSheet) {
+        highlightSheet = new window.CSSStyleSheet();
+        highlightSheet.insertRule(`::highlight(${DEFAULT_HIGHLIGHT_NAME}) {}`, 0);
+        highlightSheet.insertRule(".gsm-hoshidicts-source-match {}", 1);
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, highlightSheet];
+      }
+      const mix = `color-mix(in srgb, ${primary} ${current.popupTheme === "high-contrast" ? 56 : 34}%, transparent)`;
+      highlightSheet.cssRules[0].style.setProperty("background-color", mix);
+      highlightSheet.cssRules[1].style.setProperty("background-color", mix, "important");
+      highlightSheet.cssRules[1].style.setProperty("box-shadow", `0 0 0 1px color-mix(in srgb, ${primary} 50%, transparent)`);
+    }
+
+    return {
+      update(options) {
+        const themeChanged = current.popupTheme !== options.popupTheme;
+        if (themeChanged) host.dataset.hoshidictsTheme = options.popupTheme;
+        for (const [key, variable, unit] of [
+          ["popupOpacityPercent", "opacity", "%"], ["popupWidthPx", "width", "px"], ["popupHeightPx", "height", "px"],
+        ]) {
+          if (current[key] !== options[key]) host.style.setProperty(`--gsm-hoshidicts-popup-${variable}`, `${options[key]}${unit}`);
+        }
+        current = { popupTheme: options.popupTheme, popupWidthPx: options.popupWidthPx,
+          popupHeightPx: options.popupHeightPx, popupOpacityPercent: options.popupOpacityPercent };
+        if (themeChanged) refreshHighlight();
+      },
+      refreshHighlight,
+      destroy() {
+        if (highlightSheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== highlightSheet);
+      },
+    };
+  }
   const MASONRY_GAP_PX = 8;
   const DEFINITION_BLUR_STATES = new Set(["pending", "blurred"]);
   const DEFAULT_COMPACT_DEFINITION_SUMMARY_COUNT = 3;
@@ -2416,7 +2459,7 @@
 
       currentSourceHighlight = {
         candidate,
-        matchedText: results[0].matched || results[0].term.expression,
+        matchedText: renderContext.highlightText || results[0].matched || results[0].term.expression,
       };
       if (sourceHighlightEnabled) {
         sourceHighlighter.apply(
@@ -2654,12 +2697,8 @@
         return true;
       });
 
-      if (sourceHighlightEnabled) {
-        sourceHighlighter.apply(
-          candidate,
-          renderOptions.highlightText || kanji.character
-        );
-      }
+      currentSourceHighlight = { candidate, matchedText: renderOptions.highlightText || kanji.character };
+      if (sourceHighlightEnabled) sourceHighlighter.apply(candidate, currentSourceHighlight.matchedText);
       if (focused) {
         positionPopup();
         restoreRetainedFocus(focused);
@@ -3028,7 +3067,7 @@
   }
 
   return {
-    DEFAULT_POPUP_SIZE: Object.freeze({ width: 560, height: 420 }),
+    createPopupAppearance,
     calculatePopupPosition,
     createDictionaryDisplayNames,
     createFrequencyTags,
