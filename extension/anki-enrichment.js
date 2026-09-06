@@ -3,6 +3,17 @@ import { ankiTemplateMarkerNames } from "./anki-templates.js";
 import { canonicalAnkiFields, overwriteAnkiFields } from "./anki-duplicates.js";
 import { readAnkiNoteFields, verifyAnkiFields } from "./anki-mining.js";
 
+function pronunciationFields(incoming, current, appliedFields, existingFields, warnings) {
+  const fields = {};
+  for (const [field, value] of Object.entries(incoming)) {
+    const baseline = appliedFields[field] ?? existingFields?.[field] ?? "";
+    if (typeof current[field] !== "string" || current[field].normalize("NFC") !== baseline.normalize("NFC")) {
+      warnings.push(`Field “${field}” changed in Anki; its pronunciation update was skipped.`);
+    } else if (current[field] !== value) fields[field] = value;
+  }
+  return fields;
+}
+
 export async function enrichAnkiNote(context, { audio, render, media }) {
   const { request, invoke, noteId, appliedFields, existingFields, resolved, resources } = context;
   const warnings = [];
@@ -33,13 +44,7 @@ export async function enrichAnkiNote(context, { audio, render, media }) {
     // clobber an external edit or append to our already-applied text a second
     // time. AnkiConnect has no CAS, so the final inter-call race remains.
     const current = await readAnkiNoteFields(invoke, noteId);
-    const fields = {};
-    for (const [field, value] of Object.entries(incoming)) {
-      const baseline = appliedFields[field] ?? existingFields?.[field] ?? "";
-      if (typeof current[field] !== "string" || current[field].normalize("NFC") !== baseline.normalize("NFC")) {
-        warnings.push(`Field “${field}” changed in Anki; its pronunciation update was skipped.`);
-      } else if (current[field] !== value) fields[field] = value;
-    }
+    const fields = pronunciationFields(incoming, current, appliedFields, existingFields, warnings);
     if (Object.keys(fields).length) {
       const result = await invoke("updateNoteFields", { note: { id: noteId, fields } }, 10_000);
       if (result !== null) throw new Error("Anki returned an invalid pronunciation-update acknowledgement. Inspect the saved note.");

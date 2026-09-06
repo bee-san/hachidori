@@ -5,8 +5,8 @@ import { ankiTemplateMarkerNames, renderAnkiTemplate } from "./anki-templates.js
 // Browser-native port of GSM PR #549's hoshidicts_mining.py marker values.
 // DOM glossary rendering and resource preparation remain separate; only values
 // actually used by the selected templates are built here.
-const escape = value => String(value).replace(/&/gu, "&amp;").replace(/</gu, "&lt;")
-  .replace(/>/gu, "&gt;").replace(/"/gu, "&quot;").replace(/'/gu, "&#x27;");
+const escape = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#x27;");
 const uniqueTokens = values => [...new Set(values.flatMap(value => value.split(/[\s,]+/u).filter(Boolean)))];
 const dictionaryMarker = name => name.replace(/[_\s]/gu, "-").replace(/[^\p{L}\p{N}-]/gu, "")
   .replace(/-+/gu, "-").replace(/^-|-$/gu, "").toLowerCase();
@@ -20,7 +20,8 @@ const alias = (request, dictionary) => Object.hasOwn(request.dictionaryAliases, 
 function expressionFurigana(term, plain) {
   return globalThis.HDGlossary.segmentFurigana(term.expression, term.reading).map(({ text, reading }, index) => {
     if (!reading) return escape(text);
-    return plain ? `${index ? " " : ""}${escape(text)}[${escape(reading)}]`
+    const prefix = index ? " " : "";
+    return plain ? `${prefix}${escape(text)}[${escape(reading)}]`
       : `<ruby>${escape(text)}<rt>${escape(reading)}</rt></ruby>`;
   }).join("");
 }
@@ -100,8 +101,8 @@ function dynamicGlossaries(request) {
   const variants = new Map();
   for (const [dictionary, key] of bases) if (!variants.has(key)) variants.set(key, { dictionary });
   for (const [dictionary, key] of bases) {
-    for (const [suffix, options] of [["brief", { brief: true }], ["no-dictionary", { noDictionary: true }],
-      ["plain", { plain: true }], ["plain-no-dictionary", { plain: true, noDictionary: true }]]) {
+    for (const [suffix, options] of Object.entries({ brief: { brief: true }, "no-dictionary": { noDictionary: true },
+      plain: { plain: true }, "plain-no-dictionary": { plain: true, noDictionary: true } })) {
       if (!variants.has(`${key}-${suffix}`)) variants.set(`${key}-${suffix}`, { dictionary, ...options });
     }
   }

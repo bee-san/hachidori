@@ -23,6 +23,18 @@ export async function verifyAnkiFields(invoke, noteId, expected) {
   }
 }
 
+async function decision(prepared) {
+  const { invoke, note, config, firstField } = prepared;
+  const check = await checkAnkiDuplicate(invoke, note, config);
+  if (!check.duplicate) return { state: check.addable ? "addable" : "invalid", canAdd: check.addable, error: check.error };
+  if (config.duplicateBehavior === "overwrite") {
+    const target = await findAnkiOverwriteTarget(invoke, note, firstField, config);
+    return { state: "duplicate", canAdd: target !== null, action: "overwrite", target,
+      error: target ? null : "A duplicate exists, but no matching note type is inside the selected deck scope." };
+  }
+  return { state: "duplicate", canAdd: config.duplicateBehavior === "new", error: null };
+}
+
 export function createAnkiMiningService({ gateway, readConfig, buildFields, beforeWrite, enrich, now = Date.now }) {
   let cached = null;
   let mutations = Promise.resolve();
@@ -63,18 +75,6 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, befo
     const note = { deckName: current.config.deck, modelName: current.config.model, fields,
       options: ankiNoteOptions(current.config), tags: [...new Set(current.config.tags)] };
     return { ...current, note, resources, firstField, invoke: invokeFor(current.config) };
-  }
-
-  async function decision(prepared) {
-    const { invoke, note, config, firstField } = prepared;
-    const check = await checkAnkiDuplicate(invoke, note, config);
-    if (!check.duplicate) return { state: check.addable ? "addable" : "invalid", canAdd: check.addable, error: check.error };
-    if (config.duplicateBehavior === "overwrite") {
-      const target = await findAnkiOverwriteTarget(invoke, note, firstField, config);
-      return { state: "duplicate", canAdd: target !== null, action: "overwrite", target,
-        error: target ? null : "A duplicate exists, but no matching note type is inside the selected deck scope." };
-    }
-    return { state: "duplicate", canAdd: config.duplicateBehavior === "new", error: null };
   }
 
   async function preflight(request) {

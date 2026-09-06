@@ -42,7 +42,8 @@ async function candidateFile(window, repository, candidate, signal) {
     signal.throwIfAborted();
     const suffix = new URL(candidate.url).pathname.split(".").at(-1).toLowerCase();
     const mime = lease.blob.type.split(";")[0].toLowerCase();
-    const extension = Object.hasOwn(MIME_EXTENSIONS, mime) ? MIME_EXTENSIONS[mime] : (/^[a-z0-9]+$/u.test(suffix) ? suffix : "bin");
+    const fallbackExtension = /^[a-z0-9]+$/u.test(suffix) ? suffix : "bin";
+    const extension = Object.hasOwn(MIME_EXTENSIONS, mime) ? MIME_EXTENSIONS[mime] : fallbackExtension;
     const bytes = await lease.blob.arrayBuffer();
     signal.throwIfAborted();
     const filename = await ankiMediaFilename(bytes, extension);

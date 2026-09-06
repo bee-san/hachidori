@@ -4,12 +4,12 @@ import { isAnkiAudioOnlyTemplate } from "./anki-templates.js";
 // GSM PR #549 hoshidicts_anki.py and hoshidicts_markers.py. These policies
 // receive the gateway's private invoker, never a page-selected API action.
 const rootDeck = deck => deck.split("::", 1)[0];
-const escapeQuery = value => value.replace(/[\\"*_:]/gu, "\\$&");
+const escapeQuery = value => value.replace(/[\\"*_:]/gu, String.raw`\$&`);
 const positiveId = value => Number.isSafeInteger(value) && value > 0;
 export const isAnkiDuplicateError = error => /cannot create note because it is a duplicate/iu.test(error || "");
 
 export function ankiBrowseQuery(expression) {
-  return `"${escapeQuery(expression.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;"))}"`;
+  return `"${escapeQuery(expression.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"))}"`;
 }
 
 export function ankiNoteOptions(config) {
@@ -77,7 +77,7 @@ function duplicateQuery(note, firstField, modelId) {
   // Native Anki dupe search uses the same case-sensitive, HTML-stripped
   // comparison as duplicate validation. Ordinary field search does not.
   // Unlike ordinary search, dupe text treats wildcard/colon/comma literally.
-  const text = (note.fields[firstField] ?? "").replace(/[\\"]/gu, "\\$&");
+  const text = (note.fields[firstField] ?? "").replace(/[\\"]/gu, String.raw`\$&`);
   return `"dupe:${modelId},${text}"`;
 }
 

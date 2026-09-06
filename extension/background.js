@@ -886,7 +886,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!reply?.ok) throw new Error(reply?.error || "Anki preparation did not complete.");
         return reply;
       };
-      ankiMining = createAnkiWorkerService({ gateway: ankiGateway ??= createAnkiGateway(),
+      ankiGateway ??= createAnkiGateway();
+      ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
         readOptions: async () => globalThis.HDReaderOptions.normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]),
         readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
         engine: fields => send(TARGET, fields), offscreen: fields => send("hachidori-anki-render", fields),

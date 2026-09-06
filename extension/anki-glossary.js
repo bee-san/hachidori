@@ -9,6 +9,16 @@ function plainText(node) {
   return [...node.childNodes].map(plainText).join("") + (BLOCKS.has(node.nodeName) ? "\n" : "");
 }
 
+function imageSize(image, value) {
+  for (const dimension of ["width", "height"]) {
+    if (Number.isFinite(value[dimension]) && value[dimension] > 0) image.setAttribute(dimension, String(value[dimension]));
+    const preferred = value[dimension === "width" ? "preferredWidth" : "preferredHeight"];
+    if (Number.isFinite(preferred) && preferred > 0) image.style[dimension] = `${preferred}${value.sizeUnits === "em" ? "em" : "px"}`;
+  }
+  if (image.style.width && !image.style.height) image.style.height = "auto";
+  else if (image.style.height && !image.style.width) image.style.width = "auto";
+}
+
 export function createAnkiDefinitionRenderer(document, request, filenameFor) {
   const inert = document.implementation.createHTMLDocument("");
   const groups = new Map();
@@ -29,13 +39,7 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor) {
     image.alt = typeof value.title === "string" ? value.title : "Dictionary image";
     image.style.maxWidth = "100%";
     image.style.objectFit = "contain";
-    for (const dimension of ["width", "height"]) {
-      if (Number.isFinite(value[dimension]) && value[dimension] > 0) image.setAttribute(dimension, String(value[dimension]));
-      const preferred = value[dimension === "width" ? "preferredWidth" : "preferredHeight"];
-      if (Number.isFinite(preferred) && preferred > 0) image.style[dimension] = `${preferred}${value.sizeUnits === "em" ? "em" : "px"}`;
-    }
-    if (image.style.width && !image.style.height) image.style.height = "auto";
-    else if (image.style.height && !image.style.width) image.style.width = "auto";
+    imageSize(image, value);
     parent.append(image);
   }
 
@@ -74,6 +78,27 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor) {
     return wrapper;
   }
 
+  function appendStyles(root, selected) {
+    const names = new Set(selected.map(([name]) => name));
+    const styles = request.dictionaryStyles.filter(style => names.has(style.dictionary));
+    if (!styles.length) return;
+    const applied = globalThis.HDGlossary.applyDictionaryStyles(document, root, request.generation, styles);
+    // Escape a serialized closing style tag's slash without corrupting CSS
+    // strings or pre-existing selector escapes.
+    for (const style of applied) style.textContent = style.textContent.replace(/<\/style/giu, value => String.raw`<\/${value.slice(2)}`);
+  }
+
+  function appendDetails(root) {
+    const details = [];
+    if (request.term.rules) details.push(`Rules: ${escape(request.term.rules)}`);
+    if (request.trace.length) details.push(`Deinflection: ${request.trace.map(step => escape(step.name)).join(" &gt; ")}`);
+    if (!details.length) return;
+    const small = inert.createElement("small");
+    small.className = "yomitan-glossary-details";
+    small.innerHTML = details.join("<br>");
+    root.append(small);
+  }
+
   return async ({ dictionary, firstOnly = false, brief = false, noDictionary = false, plain = false }) => {
     let selected = [...groups].filter(([name]) => dictionary === undefined || name === dictionary);
     if (firstOnly) selected = selected.slice(0, 1);
@@ -96,22 +121,8 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor) {
       list.append(page);
     }
     root.append(list);
-    const names = new Set(selected.map(([name]) => name));
-    const styles = request.dictionaryStyles.filter(style => names.has(style.dictionary));
-    if (styles.length) {
-      const applied = globalThis.HDGlossary.applyDictionaryStyles(document, root, request.generation, styles);
-      // A CSS string containing </style> is harmless in textContent but would
-      // break out after note HTML serialization. Escape the slash, preserving
-      // both the CSS string's contents and any existing selector escapes.
-      for (const style of applied) style.textContent = style.textContent.replace(/<\/style/giu, value => `<\\/${value.slice(2)}`);
-    }
-    if (!brief) {
-      const details = [];
-      if (request.term.rules) details.push(`Rules: ${escape(request.term.rules)}`);
-      if (request.trace.length) details.push(`Deinflection: ${request.trace.map(step => escape(step.name)).join(" &gt; ")}`);
-      if (details.length) { const small = inert.createElement("small"); small.className = "yomitan-glossary-details";
-        small.innerHTML = details.join("<br>"); root.append(small); }
-    }
+    appendStyles(root, selected);
+    if (!brief) appendDetails(root);
     await Promise.all(pending);
     return root.outerHTML;
   };
