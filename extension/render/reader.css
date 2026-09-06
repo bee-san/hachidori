@@ -2398,6 +2398,14 @@ html[data-hoshidicts-theme="high-contrast"] .gsm-hoshidicts-audio-menu {
   vertical-align: top;
 }
 
+.gloss-image-source {
+  display: inline-block;
+  margin-inline: 0.4em;
+  color: var(--text-color-light1);
+  font-size: 0.8em;
+  line-height: 1.4;
+}
+
 .gloss-image-container {
   display: inline-block;
   position: relative;

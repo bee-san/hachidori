@@ -739,6 +739,34 @@
       : () => {};
     const ownsView = typeof state.isCurrent === "function" ? state.isCurrent : () => true;
     const isCurrent = () => image.isConnected && ownsView();
+    const ownsDisplayedImage = state.isImageCurrent
+      || (() => image.isConnected && (state.isCurrentLink || ownsView)());
+    let imageContext = state.imageContext || {};
+    let appliedSources = imageContext.popupImageSources ?? null;
+    let attempt = 0;
+    let supplier = null;
+    let sourceLabel = null;
+    function updateSourceLabel() {
+      if (!supplier || supplier === state.dictionary) {
+        if (!sourceLabel) return false;
+        sourceLabel.remove();
+        sourceLabel = null;
+        return true;
+      }
+      const name = imageContext.dictionaryPresentation?.find(entry => entry.title === supplier)?.displayName || supplier;
+      const text = `Image: ${name}`;
+      if (sourceLabel?.textContent === text && sourceLabel.dataset.dictionary === supplier) return false;
+      if (!sourceLabel) {
+        sourceLabel = documentRef.createElement("span");
+        sourceLabel.className = "gloss-image-source";
+        if (state.imageSourceLabelHost) state.imageSourceLabelHost.appendChild(sourceLabel);
+        else link.after(sourceLabel);
+      }
+      sourceLabel.textContent = text;
+      sourceLabel.dataset.dictionary = supplier;
+      sourceLabel.title = supplier;
+      return true;
+    }
     let previewHovered = false;
     let previewFocused = false;
     const showPreview = () => {
@@ -777,31 +805,76 @@
       link.setAttribute("role", "img");
       linkText.textContent = image.alt ? `${image.alt}: Image failed to load` : "Image failed to load";
       link.setAttribute("aria-label", linkText.textContent);
+      supplier = null;
+      updateSourceLabel();
       state.onImageError?.();
       onLayoutChange();
     };
-    image.addEventListener("load", () => {
-      if (!isCurrent()) return;
-      link.dataset.imageLoadState = "loaded";
-      onLayoutChange();
-      state.refreshImagePreview?.(link, image);
-    });
-    image.addEventListener("error", failImage);
     parent.appendChild(link);
-    let mediaPromise;
-    try {
-      mediaPromise = Promise.resolve(state.resolveMedia({ path, width, height, isCurrent: ownsView }));
-    } catch (error) {
-      mediaPromise = Promise.reject(error);
+    let onLoad = null;
+    let onError = null;
+    function loadImage(refresh = false) {
+      const currentAttempt = ++attempt;
+      const ownsAttempt = () => attempt === currentAttempt && ownsView();
+      const canPublish = () => image.isConnected && ownsAttempt();
+      if (onLoad) image.removeEventListener("load", onLoad);
+      if (onError) image.removeEventListener("error", onError);
+      onLoad = () => {
+        if (!canPublish() || image.hidden) return;
+        link.dataset.imageLoadState = "loaded";
+        onLayoutChange();
+        state.refreshImagePreview?.(link, image);
+      };
+      const failAttempt = () => { if (canPublish()) failImage(); };
+      onError = () => { if (!image.hidden) failAttempt(); };
+      image.addEventListener("load", onLoad);
+      image.addEventListener("error", onError);
+      if (refresh) {
+        state.onImageStart?.();
+        image.hidden = true;
+        image.removeAttribute("src");
+        link.removeAttribute("href");
+        link.removeAttribute("role");
+        link.removeAttribute("aria-label");
+        linkText.textContent = "Image";
+        background.style.removeProperty("--image");
+        link.dataset.imageLoadState = "not-loaded";
+        supplier = null;
+        updateSourceLabel();
+        state.refreshImagePreview?.(link, image);
+      }
+      let resolvedSupplier = state.dictionary;
+      let mediaPromise;
+      try {
+        mediaPromise = Promise.resolve(state.resolveMedia({ path, width, height, isCurrent: ownsAttempt,
+          onResolvedSource(title) { if (ownsAttempt()) resolvedSupplier = title; },
+        }));
+      } catch (error) {
+        mediaPromise = Promise.reject(error);
+      }
+      mediaPromise.then((url) => {
+        if (!canPublish()) return;
+        if (!isRenderableMediaUrl(url)) throw new Error("dictionary image is unavailable");
+        image.hidden = false;
+        image.src = url;
+        link.href = url;
+        link.dataset.imageLoadState = "loaded";
+        background.style.setProperty("--image", `url("${url}")`);
+        supplier = resolvedSupplier;
+        if (updateSourceLabel()) onLayoutChange();
+      }).catch(failAttempt);
     }
-    mediaPromise.then((url) => {
-      if (!isCurrent()) return;
-      if (!isRenderableMediaUrl(url)) throw new Error("dictionary image is unavailable");
-      image.src = url;
-      link.href = url;
-      link.dataset.imageLoadState = "loaded";
-      background.style.setProperty("--image", `url("${url}")`);
-    }).catch(failImage);
+    state.onImageCreated?.({
+      isCurrent: ownsDisplayedImage,
+      updatePresentation(context) {
+        imageContext = context;
+        if (appliedSources === (context.popupImageSources ?? null) || !ownsView()) return updateSourceLabel();
+        appliedSources = context.popupImageSources ?? null;
+        loadImage(true);
+        return true;
+      },
+    });
+    loadImage();
   }
 
   function structuredDataAttributeName(rawKey) {
@@ -1079,6 +1152,9 @@
     }
     const state = {
       nodes: 0,
+      dictionary: options.dictionary,
+      imageContext: options.imageContext,
+      onImageCreated: options.onImageCreated,
       isCurrent: options.isCurrent,
       isCurrentLink: options.isCurrentLink,
       onExternalLink: options.onExternalLink,
@@ -1088,11 +1164,12 @@
       refreshImagePreview: options.refreshImagePreview,
       hideImagePreview: options.hideImagePreview,
       resolveMedia: typeof options.resolveMedia === "function"
-        ? ({ path, width, height, isCurrent }) => options.resolveMedia({
+        ? ({ path, width, height, isCurrent, onResolvedSource }) => options.resolveMedia({
             dictionary: options.dictionary,
             generation: options.generation,
             height,
             isCurrent,
+            onResolvedSource,
             path,
             width,
           })

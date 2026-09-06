@@ -9842,9 +9842,8 @@ async function contentNoteStage() {
     const oldValues = await Promise.all(obsolete);
     const startedCache = await fetch(superseded, "old-0.png");
     result["new views reattach matching queued media and prune obsolete work before capacity rejection"] =
-      count(superseded) === 6 && oldValues.slice(0, 5).every((value) => value === url)
-        && oldValues.slice(5).every((value) => value === null)
-        && await reattached === url && await fresh === url && !startedCache.fetched;
+      count(superseded) === 6 && oldValues.every((value) => value === null)
+        && await reattached === url && await fresh === url && !startedCache.fetched && startedCache.value === url;
     superseded.close();
 
     const shared = await createHarness();
@@ -9859,7 +9858,7 @@ async function contentNoteStage() {
     await drain(shared);
     await Promise.all(occupied);
     result["a retired child cannot cancel queued media still owned by its parent"] =
-      await parent === url && await child === url && count(shared) === 5;
+      await parent === url && await child === null && count(shared) === 5;
     shared.close();
 
     const invalidations = [];

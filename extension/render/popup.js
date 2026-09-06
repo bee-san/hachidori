@@ -1205,6 +1205,7 @@
     let currentPresentationUpdate = null;
     let pendingPresentation = null;
     let imagePreview = null;
+    const renderedImages = new Set();
     let masonryFrame = null;
     const masonryObserver = typeof windowRef.ResizeObserver === "function"
       ? new windowRef.ResizeObserver(() => scheduleMasonry())
@@ -1231,7 +1232,12 @@
       // not steal another image's focus or revive a dismissed pending preview.
       if (imagePreview?.owner !== link) return;
       const source = image.currentSrc || image.src;
-      if (image.hidden || !source) return;
+      if (image.hidden || !source) {
+        imagePreview.element?.remove();
+        imagePreview.element = null;
+        imagePreview.source = null;
+        return;
+      }
       if (imagePreview.source === source) return;
       imagePreview.element?.remove();
       const preview = documentRef.createElement("div");
@@ -1402,6 +1408,7 @@
       currentPresentationUpdate = null;
       pendingPresentation = null;
       hideImagePreview();
+      renderedImages.clear();
       renderRevision += 1;
       currentResultPanel = null;
       if (!preserveViewControls) {
@@ -1895,8 +1902,14 @@
         appendStructuredImage(documentRef, thumbnail, { ...compact.image,
           preferredWidth: 36, preferredHeight: 36, sizeUnits: "px", collapsed: false }, {
           isCurrent: () => headword.contains(summary) && media.isCurrent(),
+          isImageCurrent: () => summary.isConnected && headword.contains(summary) && media.isCurrentLink(),
+          dictionary: compact.dictionary,
+          imageContext: media.imageContext,
+          imageSourceLabelHost: summary,
+          onImageCreated: media.onImageCreated,
           onLayoutChange: media.onLayoutChange,
           onImageError: () => thumbnail.remove(),
+          onImageStart: () => { if (!summary.contains(thumbnail)) summary.prepend(thumbnail); },
           requestImagePreview, refreshImagePreview, hideImagePreview,
           resolveMedia: typeof media.resolveMedia === "function"
             ? query => media.resolveMedia({ ...query, dictionary: compact.dictionary, generation: media.generation })
@@ -2033,9 +2046,16 @@
       const isCurrent = () => revision === renderRevision && ownsResultPanel(panel, renderContext);
       const isCurrentLink = () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext);
       const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
-      const summaryMedia = { isCurrent, generation: renderContext.generation,
-        resolveMedia: renderContext.resolveMedia, onLayoutChange: positionIfCurrent };
+      const imageContext = { popupImageSources: renderContext.popupImageSources ?? null,
+        dictionaryPresentation: renderContext.dictionaryPresentation, resolveMedia: renderContext.resolveMedia };
+      const onImageCreated = handle => renderedImages.add(handle);
+      const resolveImage = query => imageContext.resolveMedia(query);
+      const summaryMedia = { isCurrent, isCurrentLink, generation: renderContext.generation,
+        imageContext, onImageCreated,
+        resolveMedia: typeof imageContext.resolveMedia === "function" ? resolveImage : null,
+        onLayoutChange: positionIfCurrent };
       hideImagePreview();
+      renderedImages.clear();
       panel.replaceChildren();
       const deferredGlossaryFills = [];
       let lookupStats = null;
@@ -2191,7 +2211,9 @@
                 requestImagePreview,
                 refreshImagePreview,
                 hideImagePreview,
-                resolveMedia: renderContext.resolveMedia,
+                imageContext,
+                onImageCreated,
+                resolveMedia: typeof imageContext.resolveMedia === "function" ? resolveImage : null,
               }
             );
             // Glossary bodies are most of a render. Only the first entry is
@@ -2290,6 +2312,17 @@
 
       return { lookupStats,
         isExpanded: () => expanded,
+        updateImages(context) {
+          for (const key of ["popupImageSources", "dictionaryPresentation", "resolveMedia"]) {
+            if (Object.hasOwn(context, key)) imageContext[key] = context[key];
+          }
+          let changed = false;
+          for (const handle of renderedImages) {
+            if (!handle.isCurrent()) renderedImages.delete(handle);
+            else changed = handle.updatePresentation(imageContext) || changed;
+          }
+          return changed;
+        },
         updateDictionaryPresentation(context, names, summaryChanged) {
           summaryChanged &&= isCurrent();
           Object.assign(renderContext, context);
@@ -2716,13 +2749,16 @@
         () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
           const summaryChanged = ["showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary"]
             .some(key => Object.hasOwn(context, key) && context[key] !== renderContext[key]);
+          // Image-only changes may proceed while Note, focus or a child keeps
+          // the old tab/text projection mounted. Enter the same connected
+          // request boundary before admitting new asynchronous image work.
+          const imagesChanged = Object.hasOwn(context, "popupImageSources")
+            && context.popupImageSources !== renderContext.popupImageSources;
+          if ((imagesChanged || summaryChanged) && ownsView() && options.canUpdateCompactSummary?.() === false) return true;
+          if (rendered.updateImages(context)) scheduleMasonry();
           const focused = popup.getRootNode().activeElement;
           if (summaryChanged && popup.contains(focused)
               && focused.closest(".gsm-hoshidicts-compact-definition-summary")) return false;
-          // Unlike local body projection, a summary may update with an open
-          // Note or child. It still needs the connected request boundary before
-          // parsing or admitting media; that boundary may retire this view.
-          if (summaryChanged && ownsView() && options.canUpdateCompactSummary?.() === false) return true;
           const next = createDictionaryTabs(dictionaries, context);
           const previous = tabDescriptors;
           const selectedKey = previous[selectedIndex].key;
@@ -2779,6 +2815,7 @@
         currentPresentationUpdate = null;
         pendingPresentation = null;
         hideImagePreview();
+        renderedImages.clear();
         renderRevision += 1;
         currentResultPanel = null;
         options.cancelMasonry?.(layoutMasonry);

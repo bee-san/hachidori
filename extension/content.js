@@ -1009,12 +1009,19 @@
   }
 
   function resolvePopupMedia(request) {
+    const sources = popupImageSources;
+    const isCurrent = () => sources === popupImageSources && request.generation === currentGeneration && request.isCurrent();
+    const ownedRequest = { ...request, isCurrent };
+    if (sources !== null) return resolveRoutedMedia(ownedRequest, sources);
     // Automatic retains the direct cache/queue path without candidate scans.
-    return popupImageSources === null ? resolveMedia(request) : resolveRoutedMedia(request, popupImageSources);
+    return resolveMedia(ownedRequest).then(url => {
+      if (!isCurrent()) throw new Error("obsolete media reply");
+      return url;
+    });
   }
 
   async function resolveRoutedMedia(request, sources) {
-    const isCurrent = () => sources === popupImageSources && request.generation === currentGeneration && request.isCurrent();
+    const { isCurrent } = request;
     for (const dictionary of sources) {
       if (!isCurrent()) throw new Error("obsolete media request");
       let url;

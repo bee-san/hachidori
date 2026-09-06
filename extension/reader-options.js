@@ -122,20 +122,18 @@
       if (!Object.hasOwn(source, key)) continue;
       const raw = source[key];
       const normalized = normaliseField(key, raw);
-      if (strict) {
-        let valid;
-        if (key === "kanjiClickDictionary") {
-          valid = typeof raw === "string" || typeof normalized === "object";
-        } else if (key === "popupImageSource") {
-          valid = raw === null || normalized !== null;
-        } else {
-          valid = typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
-        }
-        if (!valid) throw new Error("the options write request carried an invalid reader option");
+      if (strict && !isValidOptionField(key, raw, normalized)) {
+        throw new Error("the options write request carried an invalid reader option");
       }
       result[key] = normalized;
     }
     return result;
+  }
+
+  function isValidOptionField(key, raw, normalized) {
+    if (key === "kanjiClickDictionary") return typeof raw === "string" || typeof normalized === "object";
+    if (key === "popupImageSource") return raw === null || normalized !== null;
+    return typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
   }
 
   function projectStoredOptions(value) {
