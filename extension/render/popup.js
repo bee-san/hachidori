@@ -703,17 +703,27 @@
       return position === "fixed" || position === "sticky";
     }
 
+    function isPageElement(element) {
+      return element !== root.host && !layer.contains(element) && !element.closest(".gsm-hoshidicts-popup");
+    }
+
+    function isPageCover(element, style) {
+      return isCoverPosition(style.position) || element.localName === "dialog" || element.hasAttribute("popover");
+    }
+
     function sourceMotion(event) {
       const target = event.target;
-      if (motionEnds.includes(event.type) && (coverMotion.delete(target)
-          || pageOccluders?.includes(target) || isCoverPosition(windowRef.getComputedStyle(target).position))) {
-        layoutChanged();
+      if (motionEnds.includes(event.type)) {
+        if (isPageElement(target) && (coverMotion.delete(target)
+            || isPageCover(target, windowRef.getComputedStyle(target)) !== (pageOccluders?.includes(target) ?? false))) {
+          layoutChanged();
+        }
         return;
       }
       // A currently static element may become a cover halfway through motion.
       // Track only effects with cover-position keyframes, not every animation
       // on the page. Keep paused effects until they finish or are cancelled.
-      if (motionStarts.includes(event.type) && !motionTargets.has(target)
+      if (motionStarts.includes(event.type) && isPageElement(target) && !motionTargets.has(target)
           && target.getAnimations().some(animation => animation.effect.getKeyframes()
             .some(keyframe => isCoverPosition(keyframe.position)))) {
         coverMotion.add(target);
@@ -820,10 +830,9 @@
         for (const tree of layoutRoots) {
           if (tree === root && tree instanceof windowRef.ShadowRoot) continue;
           for (const element of tree.querySelectorAll("*")) {
-            if (element === root.host || layer.contains(element) || element.closest(".gsm-hoshidicts-popup")) continue;
+            if (!isPageElement(element)) continue;
             const style = windowRef.getComputedStyle(element);
-            if (isCoverPosition(style.position) || coverMotion.has(element)
-                || element.localName === "dialog" || element.hasAttribute("popover")) pageOccluders.push(element);
+            if (isPageCover(element, style) || coverMotion.has(element)) pageOccluders.push(element);
           }
         }
         coverTargets = new Set();
@@ -843,8 +852,7 @@
         stylesheetTimer ??= windowRef.setInterval(checkStyleSheets, 250);
       }
       return pageOccluders.flatMap(element => {
-        if (!isCoverPosition(clipBounds(element, cache).style.position)
-            && element.localName !== "dialog" && !element.hasAttribute("popover")) return [];
+        if (!isPageCover(element, clipBounds(element, cache).style)) return [];
         const clip = visibleClip(element, cache, true);
         const rect = clip && intersectHighlightRect(element.getBoundingClientRect(), clip);
         return rect ? [{ element, rect, tree: element.getRootNode(),
