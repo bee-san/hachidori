@@ -121,24 +121,18 @@ The kanji dictionary chooser accepts both traditional Yomitan kanji dictionaries
 Popup tabs show All, each contributing dictionary, Favourites, and your saved
 groups. They filter the returned definitions without another lookup. Renaming or
 reordering groups updates open readers; a Note draft or linked child keeps its
-current definitions until it is safe to apply changed membership. **Reading →
+current definitions until it is safe to apply changed membership. **Design →
 Definition columns** lays out complete dictionary cards in one to four columns
 without replacing an open Note form.
 
-**Reading → Compact summary** adds up to six brief snippets beside each
+**Design → Compact summary** adds up to six brief snippets beside each
 headword, with a small leading image when available. Choose a preferred
 dictionary or let the current tab supply the first available definition.
 Summaries are off by default; full definitions and lookup order are unchanged.
 
 ![Compact snippets and a leading thumbnail above complete definitions](docs/assets/compact-definition-summary.png)
 
-[Compact summary controls, light theme](docs/assets/compact-summary-settings-light.png) ·
-[Compact summary controls, dark theme](docs/assets/compact-summary-settings-dark.png)
-
 ![Dictionary tabs with complete cards in two columns](docs/assets/dictionary-tabs-columns.png)
-
-[Reading controls, light theme](docs/assets/dictionary-tabs-settings-light.png) ·
-[Reading controls, dark theme](docs/assets/dictionary-tabs-settings-dark.png)
 
 Dictionary cross-reference links open beside their parent definition. Follow a
 chain without losing earlier entries; **Back** returns from kanji within the
