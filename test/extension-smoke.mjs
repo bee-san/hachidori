@@ -7221,6 +7221,56 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function inheritedTabsCase() {
+    const outcomes = [];
+    for (const kind of ["term", "kanji"]) {
+      for (const selection of [{ dictionary: "Generic" }, { groupId: "study" }, { favourites: true }]) {
+        const harness = await createHarness({ title: "Generic", kind });
+        await harness.initialLookup();
+        const dictionaries = harness.driver.snapshot().dictionaries;
+        const memberId = dictionaries[0].id;
+        harness.emitState({ revision: 2, dictionaries,
+          groups: [{ id: "study", name: "Study", dictionaryIds: [memberId, "missing", memberId] }] });
+        harness.render().context.onDictionaryTabSelected(selection);
+        const parent = harness.driver.viewRequest();
+        const operation = harness.internalLink({ query: "child", primaryReading: "reading" });
+        const pending = harness.take("hd_lookup");
+        harness.emitState({ revision: 3, dictionaries,
+          groups: [{ id: "study", name: "Latest group", dictionaryIds: [memberId] }] });
+        harness.emitState({ revision: 2, dictionaries, groups: [] });
+        harness.reply(pending, { dictionaryCount: 1, results: [harness.term("child")] });
+        await operation;
+        const child = harness.driver.viewRequest(1);
+        const childContext = harness.render(1).context;
+        const sameSelection = (value) => JSON.stringify(value) === JSON.stringify(selection);
+        const inherited = sameSelection(childContext.selectedDictionaryTab)
+          && child.selectedDictionaryTab !== parent.selectedDictionaryTab
+          && JSON.stringify(childContext.dictionaryTabGroups) === JSON.stringify([
+            { id: "study", name: "Latest group", dictionaries: ["Generic"] },
+          ]);
+        const clicked = harness.callbacks(1).onKanjiClick("食");
+        const request = harness.take(kind === "term" ? "hd_lookup_dictionary" : "hd_kanji");
+        harness.reply(request, kind === "term"
+          ? { dictionaryCount: 1, results: [harness.term("食")] }
+          : { kanji: { character: "食", entries: [{ dictionary: "Generic" }] } });
+        await clicked;
+        const clickedRequest = harness.driver.viewRequest(1);
+        const clickedContext = harness.render(1).context;
+        const copied = sameSelection(clickedContext.selectedDictionaryTab)
+          && clickedRequest.selectedDictionaryTab !== child.selectedDictionaryTab;
+        clickedContext.onDictionaryTabSelected?.(null);
+        const independent = clickedRequest.selectedDictionaryTab === null
+          && sameSelection(child.selectedDictionaryTab) && sameSelection(parent.selectedDictionaryTab);
+        const beforeBack = harness.sent.length;
+        await clickedContext.onBack();
+        outcomes.push(inherited && copied && independent && harness.sent.length === beforeBack
+          && harness.driver.viewRequest(1) === child && sameSelection(harness.render(1).context.selectedDictionaryTab));
+        harness.close();
+      }
+    }
+    return { "linked and clicked-kanji requests copy tab context and retain exact parent and Back selections": outcomes.every(Boolean) };
+  }
+
   async function nestedLevelsCase() {
     const harness = await createHarness();
     await harness.initialLookup();
@@ -9409,7 +9459,7 @@ async function contentNoteStage() {
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
-      ...await nestedLevelsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
+      ...await nestedLevelsCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
@@ -9588,7 +9638,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   tabResults[0].term.glossaries.push({ ...glossary, dictionary: "Dictionary C" });
   const originalTabResults = JSON.stringify(tabResults);
   const tabSelections = [];
-  view.renderResults(tabResults, candidate, {
+  const tabContext = {
     dictionaryPresentation: [
       { title: "Dictionary A", displayName: "All", favorite: true },
       { title: "Dictionary B", displayName: "Favourite B", favorite: true },
@@ -9600,7 +9650,8 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       { id: "empty", name: "Empty", dictionaries: ["Missing"] },
     ],
     onDictionaryTabSelected(selection) { tabSelections.push(selection); },
-  });
+  };
+  view.renderResults(tabResults, candidate, tabContext);
   const allTabs = [...popup.querySelectorAll('[role="tab"]')];
   check("dictionary tabs include every contributor, aggregate favourites and ordered nonempty groups",
     JSON.stringify(allTabs.map((tab) => [tab.textContent, { ...tab.dataset }])) === JSON.stringify([
@@ -9638,6 +9689,29 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       && sameTabPanel === popup.querySelector(".gsm-hoshidicts-tab-panel").firstElementChild
       && positioned === beforeSameTab,
     JSON.stringify({ tabProjections, tabSelections, positioned, beforeSameTab }));
+  const inheritedProjections = [];
+  for (const selection of [
+    { dictionary: "Dictionary C" }, { groupId: "bc" }, { favourites: true }, { groupId: "empty" },
+  ]) {
+    let selected;
+    const context = { ...tabContext, selectedDictionaryTab: selection, expandAll: true,
+      onDictionaryTabSelected(value) { selected = value; } };
+    view.renderResults(tabResults, candidate, context);
+    inheritedProjections.push([selected,
+      [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card > summary")].map((item) => item.title)]);
+    selected = undefined;
+    view.renderKanji({ ...kanji, entries: ["Dictionary A", "Dictionary C", "Dictionary B"]
+      .map((dictionary) => ({ ...kanji.entries[0], dictionary })) }, candidate, context);
+    inheritedProjections.push([selected,
+      [...popup.querySelectorAll(".gsm-hoshidicts-kanji-entry")].map((item) => item.dataset.dictionary)]);
+  }
+  check("term and native-kanji destinations adopt contributing tab context or explicitly fall back to All",
+    JSON.stringify(inheritedProjections) === JSON.stringify([
+      [{ dictionary: "Dictionary C" }, ["Dictionary C"]], [{ dictionary: "Dictionary C" }, ["Dictionary C"]],
+      [{ groupId: "bc" }, ["Dictionary C", "Dictionary B"]], [{ groupId: "bc" }, ["Dictionary C", "Dictionary B"]],
+      [{ favourites: true }, ["Dictionary A", "Dictionary B"]], [{ favourites: true }, ["Dictionary A", "Dictionary B"]],
+      [null, ["Dictionary A", "Dictionary C", "Dictionary B"]], [null, ["Dictionary A", "Dictionary C", "Dictionary B"]],
+    ]), JSON.stringify(inheritedProjections));
   const selectedTabs = [];
   view.renderResults(noteResults, candidate, {
     dictionaryPresentation: [{ title: "Dictionary B", displayName: "Favourite B", favorite: true }],
