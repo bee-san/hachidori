@@ -5,6 +5,7 @@
   const host = document.getElementById("preview-host");
   const shadow = host.attachShadow({ mode: "open" });
   const appearance = HDPopup.createPopupAppearance(host);
+  const customStyle = HDPopup.createCustomPopupStyle(shadow);
   const stylesheet = document.createElement("link");
   stylesheet.rel = "stylesheet";
   stylesheet.href = "render/reader.css";
@@ -14,7 +15,7 @@
   const source = document.getElementById("preview-source");
   const candidate = { query: "食べる", sentence: source.textContent,
     sourceElements: [source], matchOffset: source.textContent.indexOf("食べる") };
-  let options;
+  let options = { ...HDReaderOptions.DEFAULT_OPTIONS };
   let state;
   let sample;
   let sampleKey;
@@ -139,16 +140,17 @@
   }
 
   window.HDDesignPreview = { update(nextOptions, nextState) {
-    const toolbarChanged = !options || options.popupToolbarPosition !== nextOptions.popupToolbarPosition;
-    const geometryChanged = !options || options.popupColumns !== nextOptions.popupColumns
+    const toolbarChanged = !state || options.popupToolbarPosition !== nextOptions.popupToolbarPosition;
+    const geometryChanged = !state || options.popupColumns !== nextOptions.popupColumns
       || options.popupWidthPx !== nextOptions.popupWidthPx || options.popupHeightPx !== nextOptions.popupHeightPx;
-    if (!options || options.sourceHighlightEnabled !== nextOptions.sourceHighlightEnabled) {
+    if (!state || options.sourceHighlightEnabled !== nextOptions.sourceHighlightEnabled) {
       view.setSourceHighlightEnabled(nextOptions.sourceHighlightEnabled);
     }
     appearance.update(nextOptions);
+    const cssChanged = customStyle.update(nextOptions.customPopupCss);
     options = { ...nextOptions };
-    if (geometryChanged || toolbarChanged) positionPopup(toolbarChanged);
-    if (geometryChanged) view.scheduleMasonry();
+    if (geometryChanged || toolbarChanged || cssChanged) positionPopup(toolbarChanged);
+    if (geometryChanged || cssChanged) view.scheduleMasonry();
     const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
       nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextOptions.kanjiClickDictionary, nextState.revision]);
@@ -170,5 +172,5 @@
     } else view.updateDictionaryPresentation(context());
   } };
   stylesheet.addEventListener("load", () => { appearance.refreshHighlight(); view.scheduleMasonry(); });
-  window.addEventListener("pagehide", () => { appearance.destroy(); view.destroy(); }, { once: true });
+  window.addEventListener("pagehide", () => { customStyle.destroy(); appearance.destroy(); view.destroy(); }, { once: true });
 }());

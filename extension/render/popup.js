@@ -37,6 +37,26 @@
       : "";
   }
   const DEFAULT_HIGHLIGHT_NAME = "gsm-hoshidicts-match";
+  // Adopted sheets follow ordinary dictionary styles, even ones appended later.
+  // Shadow DOM provides the scope; wrapping user rules would change their CSS.
+  function createCustomPopupStyle(shadow) {
+    let current = "";
+    let sheet;
+    const detach = () => { shadow.adoptedStyleSheets = shadow.adoptedStyleSheets.filter(value => value !== sheet); };
+    return {
+      update(css) {
+        if (css === current) return false;
+        if (css) {
+          sheet ??= new shadow.ownerDocument.defaultView.CSSStyleSheet();
+          sheet.replaceSync(css);
+          if (!current) shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, sheet];
+        } else detach();
+        current = css;
+        return true;
+      },
+      destroy() { if (current) detach(); },
+    };
+  }
   // Both the live reader and Settings preview use the same palette and sizing
   // boundary. Colour edits touch styles only, not result projection or layout.
   function createPopupAppearance(host) {
@@ -3633,6 +3653,7 @@
 
   return {
     createPopupAppearance,
+    createCustomPopupStyle,
     resolveToolbarPosition,
     calculatePopupPosition,
     createDictionaryDisplayNames,

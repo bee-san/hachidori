@@ -696,6 +696,20 @@ textarea {
   background: var(--surface);
   color: var(--text);
 }
+#opt-custom-popup-css {
+  margin-top: 10px;
+  resize: vertical;
+  font: 13px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+  tab-size: 2;
+}
+.custom-css-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
 .dict-display-name,
 .dict-position .dict-position-input {
   padding: 5px 8px;
