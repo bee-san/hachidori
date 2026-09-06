@@ -2,6 +2,19 @@
 (function () {
   "use strict";
 
+  function current(record) {
+    return record.button.isConnected && !record.popup.hidden && record.isCurrent();
+  }
+
+  function setBusy(record, busy) {
+    record.button.textContent = busy ? "Stop" : "Audio";
+    record.button.setAttribute("aria-busy", String(busy));
+  }
+
+  function candidateLabel(candidate) {
+    return candidate?.name ? ` — ${candidate.name}` : "";
+  }
+
   function createAudioController({ window, send, onMenuChange }) {
     const document = window.document;
     const bound = new WeakMap(), visited = new WeakMap(), feedback = new WeakMap();
@@ -10,13 +23,8 @@
     let sourceKey = JSON.stringify(options.audioSources);
     let active = null, menu = null;
 
-    function current(record) {
-      return record.button.isConnected && !record.popup.hidden && record.isCurrent();
-    }
-
-    function setBusy(record, busy) {
-      record.button.textContent = busy ? "Stop" : "Audio";
-      record.button.setAttribute("aria-busy", String(busy));
+    function owns(operation) {
+      return active === operation && current(operation.record);
     }
 
     function setStatus(record, text) {
@@ -66,11 +74,11 @@
       setStatus(record, type === "hd_audio_play" ? "Finding pronunciation…" : "Finding choices…");
       try {
         const reply = await send(type, { term: record.term, requestId: operation.requestId, ...fields });
-        if (active !== operation || !current(record)) return;
+        if (!owns(operation)) return;
         if (!reply.ok) throw new Error(reply.error);
         accept(reply);
       } catch (error) {
-        if (active === operation && current(record)) {
+        if (owns(operation)) {
           if (type === "hd_audio_play" && selections.get(record.result) === fields.selection) selections.delete(record.result);
           setStatus(record, `Could not play: ${error.message}`);
           if (menu?.record === record) menu.output.textContent = error.message;
@@ -83,9 +91,10 @@
     function play(record, selection = selections.get(record.result)) {
       closeMenu();
       return request(record, "hd_audio_play", selection ? { selection } : {}, reply => {
-        setStatus(record, reply.status === "success"
-          ? `Played${reply.candidate?.name ? ` — ${reply.candidate.name}` : ""}.`
-          : reply.status === "no-result" ? "No pronunciation was returned. Check Audio Settings." : "Stopped.");
+        let text = "Stopped.";
+        if (reply.status === "success") text = `Played${candidateLabel(reply.candidate)}.`;
+        else if (reply.status === "no-result") text = "No pronunciation was returned. Check Audio Settings.";
+        setStatus(record, text);
       });
     }
 
@@ -180,9 +189,9 @@
     }
 
     const listener = message => {
-      if (message?.target !== "hachidori-audio-content" || message.type !== "hd_audio_playing"
+      if (!active || message?.target !== "hachidori-audio-content" || message.type !== "hd_audio_playing"
           || message.requestId !== active?.requestId || !current(active.record)) return;
-      setStatus(active.record, `Playing${message.candidate?.name ? ` — ${message.candidate.name}` : ""}…`);
+      setStatus(active.record, `Playing${candidateLabel(message.candidate)}…`);
     };
     window.chrome.runtime.onMessage.addListener(listener);
     return {

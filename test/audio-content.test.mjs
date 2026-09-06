@@ -47,6 +47,7 @@ test("default-off popup binding is silent; only the newest owned play updates co
   delete parent.item.status;
   parent.bind(); child.bind();
   assert.equal(f.sent.length, 0);
+  f.event({ target: "hachidori-audio-content", type: "hd_audio_playing" });
   parent.item.button.click();
   parent.item.status = parent.context.popup.querySelector(".gsm-hoshidicts-audio-status");
   assert.ok(parent.item.status, "play lazily creates its feedback");

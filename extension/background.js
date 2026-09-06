@@ -868,10 +868,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.target === AUDIO_TARGET) {
     try {
       if (!["hd_audio_test", "hd_audio_play", "hd_audio_candidates", "hd_audio_stop", "hd_audio_voices"].includes(message.type)) throw new Error("Unknown audio request.");
-      if (message.type === "hd_audio_test") {
-        globalThis.HDReaderOptions.validateOptionsPatch({ audioSources: [message.source] });
-      }
-      if (message.type === "hd_audio_play" || message.type === "hd_audio_candidates") validateAudioRequest(message);
+      validateAudioRequest(message);
       // Chrome supplies the document ID, so an old Settings tab cannot stop a
       // pronunciation subsequently started by a different document.
       message = { ...message, owner: sender.documentId };
@@ -899,6 +896,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 function validateAudioRequest(message) {
+  if (message.type === "hd_audio_test") {
+    globalThis.HDReaderOptions.validateOptionsPatch({ audioSources: [message.source] });
+    return;
+  }
+  if (message.type !== "hd_audio_play" && message.type !== "hd_audio_candidates") return;
   if (typeof message.term?.expression !== "string" || !message.term.expression
       || typeof message.term.reading !== "string") throw new Error("A pronunciation needs an expression and reading.");
   const choice = message.selection;
@@ -918,7 +920,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== "hachidori-audio-events") return false;
   const operation = latestAudioOperation;
   if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)
-      || !operation || operation.tabId === undefined || operation.owner !== message.owner
+      || operation?.tabId === undefined || operation.owner !== message.owner
       || operation.requestId !== message.requestId || message.type !== "hd_audio_playing") return false;
   chrome.tabs.sendMessage(operation.tabId, { ...message, target: "hachidori-audio-content" }, { documentId: operation.owner })
     .then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
