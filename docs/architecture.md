@@ -788,6 +788,33 @@ current-state read before retry is offered. Content scripts use the same
 highest-revision rule, including a delayed initial storage read. Options never
 trigger a native dictionary reload.
 
+### Live Design preview
+
+Design moves the existing appearance controls out of Reading, without a second
+options store or save queue. Both sections capture the same revision-bound
+drafts; their single status/retry region follows the active options section.
+Unsaved edits update the preview immediately, independently of the save delay
+or a failed save. Other sections do not load or update the preview.
+
+The same-origin iframe is loaded on first visiting Design. It contains a neutral
+sample webpage and a shadow root using `render/popup.js`, `render/glossary.js`,
+and `render/reader.css`; the page uses the production `content.css` highlight.
+Four deterministic glossary cards demonstrate all retained column choices,
+alongside structured media, frequency, pitch, and kanji content. Selected
+installed sources are represented by sample entries, not real lookup results.
+The packaged SVG is fetched once and reused as a blob URL; the preview does not
+contact the engine, fetch dictionary data, or write personal notes.
+
+An unchanged presentation snapshot does no renderer work. Metadata, summary,
+and image-route changes use the production incremental projection; a changed
+representative source keeps open Note controls. Kanji/Back retains the selected
+tab, disclosure state, scroll, source highlight, and keyboard focus. The shared
+image-source selector and default popup size also serve the real content script.
+Fit/Actual changes transform the fixed-size outer stage, not the popup itself;
+resizing does not rebuild the sample. The current fixed theme/opacity/toolbar
+behavior matches the real popup. Future E15–E18 appearance controls must feed
+this same preview; this phase adds no locale, theme, or custom-CSS preferences.
+
 ## Managed custom dictionary
 
 `custom-dictionary.js` is a context-independent ES module shared by Settings,

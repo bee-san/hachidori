@@ -2883,6 +2883,9 @@ async function checkDesignPreview(page) {
         && narrow.scale < fit.scale, JSON.stringify({ fit, actual, narrow }));
     if (process.env.HACHIDORI_DESIGN_SCREENSHOT) {
       await page.setViewport({ width: 1440, height: 1000 });
+      await frame.evaluate(async () => {
+        for (let index = 0; index < 3; index++) await new Promise(requestAnimationFrame);
+      });
       await page.screenshot({ path: process.env.HACHIDORI_DESIGN_SCREENSHOT });
     }
   } finally {

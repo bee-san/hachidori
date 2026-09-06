@@ -87,7 +87,7 @@ restore that choice. **Any** uses automatic ranking across all enabled frequency
 dictionaries; **Disabled** turns frequency sorting off.
 
 Settings opens with your library in lookup order. The navigation shows one task
-at a time: Library, Reading, Personal dictionary, Import, Updates, or Groups.
+at a time: Library, Reading, Design, Personal dictionary, Import, Updates, or Groups.
 Drafts survive switching sections; pending work, errors, and unseen completion
 messages remain visible in the navigation. Both light and dark themes follow
 your system preference. Open a dictionary's **Details** for its display name,
@@ -99,6 +99,13 @@ when changes are durable. If another Settings page changes them first, your draf
 stays visible: choose **Save my changes** to retry or **Use saved settings** to
 discard it. Already-open readers accept only newer committed settings, without
 reloading dictionaries. [Lookup settings screenshot](docs/assets/lookup-settings.png).
+
+**Design** puts appearance controls beside a live sample of the real popup.
+Try columns, compact summaries, image sources, frequency labels, pitch, and tags
+without importing a dictionary. **Scale to fit** keeps the sample in view;
+**Actual size** shows the popup at its normal size with scrolling when needed.
+The sample supports kanji/Back navigation, but its Note form never saves entries.
+[Design preview screenshot](docs/assets/design-preview.png).
 
 <p align="center">
   <picture>

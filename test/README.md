@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 349 checks, all of
+full request→reply round trip per contract-C message type. 352 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -575,7 +575,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 114 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 117 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -612,7 +612,7 @@ Settings page, and retirement of each superseded OPFS generation.
 
 Settings layout checks cover library-first task order, selection-aware bulk
 actions, native keyboard section and skip links, Back/Forward, same-hash focus,
-short-window sidebar scrolling, and mounted source drafts. All six views are
+short-window sidebar scrolling, and mounted source drafts. All seven views are
 checked at 320px and desktop widths in light and dark mode, including palette
 text/control contrast and visible-control overflow. Empty live regions stay
 available for their first announcement. The extension harness pins hidden-view
@@ -624,6 +624,14 @@ a conflict with explicit discard. Revisioned options also survive the full
 browser restart. The extension harness covers no-op revisions, atomic selector
 pruning, failed-save retry, first-input draft ownership, and old/repeated content
 storage events. `HACHIDORI_OPTIONS_SCREENSHOT` captures the saved Lookup section.
+
+Design adds three browser assertions: lazy production-rendered sample content
+and keyboard kanji/Back highlighting, live presentation edits with retained
+cards/Notes and no sample source mutation, and Fit/Actual geometry at desktop
+and 320px. `HACHIDORI_DESIGN_SCREENSHOT` captures the Design view after layout
+settles. The extension harness also checks shared Reading/Design save feedback,
+unsaved preview updates, unchanged-echo render skips, unavailable image routes,
+preferred-source draft retention, and exact tab/disclosure restoration.
 
 Temporary rank/occurrence dictionaries connect the actual Settings controls to
 one-result popup lookups. The browser checks inferred and manual directions,
@@ -740,7 +748,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 114 assertions, and the summary line
+`PLANNED` at the top of the file names all 117 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
