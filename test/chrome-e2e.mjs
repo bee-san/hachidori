@@ -3375,6 +3375,7 @@ async function checkAnkiSettings(page, browser) {
     await choose("deck", "Japanese");
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.getElementById("anki-status").textContent.includes("configuration ready"));
+    await saved();
     const persisted = await page.evaluate(async () => ({
       anki: (await chrome.storage.local.get("options")).options.anki,
       status: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
@@ -3394,7 +3395,9 @@ async function checkAnkiSettings(page, browser) {
         options: { anki: anki ?? HDReaderOptions.normaliseOptions({}).anki } });
       if (!reply.ok) throw new Error(reply.error);
     }, original.options?.anki);
-    await session.detach();
+    // Later layout checks also visit Anki. Keep its loopback endpoint mocked
+    // until this browser closes; tests must never contact the user's Anki.
+    offline = true;
   }
 }
 
@@ -5192,7 +5195,7 @@ async function main() {
     const links = [...document.querySelectorAll(".settings-nav a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 8
+      && links.length === 9
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION");
   });
   const selectionActions = await page.evaluate(() => {
@@ -5258,7 +5261,7 @@ async function main() {
     await page.setViewport({ width, height: 900 });
     for (const theme of ["light", "dark"]) {
       await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
-      for (const section of ["dictionaries", "lookup", "design", "audio", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups"]) {
+      for (const section of ["dictionaries", "lookup", "design", "audio", "anki", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups"]) {
         await showSettingsSection(page, section);
         themeLayouts.push(await page.evaluate(({ theme, section }) => {
           const root = getComputedStyle(document.documentElement);
@@ -5275,7 +5278,7 @@ async function main() {
           };
           const panel = document.getElementById(section);
           const primary = {
-            dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns", audio: "audio-source-add", "custom-dictionary": "custom-dictionary-open",
+            dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns", audio: "audio-source-add", anki: "anki-refresh", "custom-dictionary": "custom-dictionary-open",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
