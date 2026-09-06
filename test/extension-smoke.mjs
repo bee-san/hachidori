@@ -10081,6 +10081,89 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     popup.querySelector(".gsm-hoshidicts-show-more").click();
     check("stale Show more replays fresh results while current expansion remains lookup-free",
       expansionDelegated && expanded && replays === beforeReplay + 1 && popup.querySelectorAll("article").length === 2);
+
+    const live = [];
+    const presentation = {
+      dictionaryPresentation: [{ title: "First", displayName: "First alias", favorite: true }, { title: "Second", favorite: true }],
+      dictionaryTabGroups: [{ id: "first", name: "First group", dictionaries: ["First"] },
+        { id: "second", name: "Second group", dictionaries: ["Second"] }],
+    };
+    const firstGroup = '[role="tab"][data-group-id="first"]';
+    const secondGroup = '[role="tab"][data-group-id="second"]';
+    current = true;
+    view.renderResults(results, candidate, { ...context, ...presentation, selectedDictionaryTab: { groupId: "first" } });
+    const groupButton = popup.querySelector(firstGroup);
+    groupButton.focus();
+    const anchor = popup.querySelector("a[data-hoshidicts-query]");
+    const card = popup.querySelector("details");
+    card.open = false;
+    const beforePresentation = { fills, replays };
+    const reordered = { ...presentation,
+      dictionaryPresentation: [{ title: "First", displayName: "Renamed", favorite: true }, { title: "Second", favorite: true }],
+      dictionaryTabGroups: [presentation.dictionaryTabGroups[1], { ...presentation.dictionaryTabGroups[0], name: "Renamed group" }],
+    };
+    view.updateDictionaryPresentation?.(reordered);
+    live.push(popup.querySelector(firstGroup) === groupButton && document.activeElement === groupButton
+      && groupButton.textContent === "Renamed group" && groupButton.previousElementSibling === popup.querySelector(secondGroup)
+      && popup.querySelector("a[data-hoshidicts-query]") === anchor && popup.querySelector("details") === card && !card.open
+      && card.querySelector("summary").textContent === "Renamed" && fills === beforePresentation.fills && replays === beforePresentation.replays
+      && popup.querySelector('[role="tabpanel"]').getAttribute("aria-labelledby") === groupButton.id);
+    groupButton.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    live.push(selected?.groupId === "second" && document.activeElement === popup.querySelector(secondGroup)
+      && popup.querySelector(".gsm-hoshidicts-glossary-card > summary").title === "Second");
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const draft = popup.querySelector("form");
+    draft.elements.definition.value = "presentation draft";
+    const changedMembers = { ...reordered, dictionaryTabGroups: [
+      { id: "second", name: "Changed group", dictionaries: ["First"] }, reordered.dictionaryTabGroups[1],
+    ] };
+    view.updateDictionaryPresentation?.(changedMembers);
+    live.push(popup.querySelector(secondGroup).textContent === "Second group"
+      && popup.querySelector(".gsm-hoshidicts-glossary-card > summary").title === "Second"
+      && popup.querySelector("form") === draft && !draft.hidden && draft.elements.definition.value === "presentation draft");
+    view.closeNoteForm();
+    live.push(popup.querySelector(secondGroup).textContent === "Changed group"
+      && popup.querySelector(".gsm-hoshidicts-glossary-card > summary").title === "First"
+      && popup.querySelector("form") === draft && draft.hidden && selected?.groupId === "second");
+    const protectedLink = popup.querySelector("a[data-hoshidicts-query]");
+    protectedLink.focus();
+    view.updateDictionaryPresentation?.(reordered);
+    live.push(popup.querySelector("a[data-hoshidicts-query]") === protectedLink && protectedLink.isConnected);
+    protectedLink.blur();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    live.push(popup.querySelector(".gsm-hoshidicts-glossary-card > summary").title === "Second");
+    current = false;
+    const staleAnchor = popup.querySelector("a[data-hoshidicts-query]");
+    const staleFills = fills;
+    view.updateDictionaryPresentation?.(changedMembers);
+    view.flushDictionaryPresentation?.();
+    live.push(popup.querySelector("a[data-hoshidicts-query]") === staleAnchor && fills === staleFills);
+    current = true;
+    view.renderResults(results, candidate, context);
+    view.flushDictionaryPresentation?.();
+    live.push(!popup.querySelector(secondGroup) && selected === null);
+    check("live presentation keeps keyed tabs and protected views coherent until local projection is safe",
+      live.every(Boolean), JSON.stringify(live));
+
+    const kanji = { character: "食", entries: ["First", "Second"].map(dictionary => ({
+      dictionary, tags: "", onyomi: "ショク", kunyomi: "", definitions: [dictionary], stats: [],
+    })) };
+    view.renderKanji(kanji, candidate, { ...context, ...presentation, selectedDictionaryTab: { groupId: "first" } });
+    const kanjiEntry = popup.querySelector("article");
+    view.updateDictionaryPresentation?.(reordered);
+    const aliasOnly = popup.querySelector("article") === kanjiEntry
+      && kanjiEntry.querySelector("h3").textContent === "Renamed";
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const kanjiDraft = popup.querySelector("form");
+    kanjiDraft.elements.definition.value = "kanji draft";
+    view.updateDictionaryPresentation?.({ ...reordered, dictionaryTabGroups: [] });
+    const kanjiProtected = popup.querySelectorAll("article").length === 1 && selected?.groupId === "first";
+    view.closeNoteForm();
+    check("native kanji presentation refreshes its original entries without replacing Note controls or term history",
+      aliasOnly && kanjiProtected && selected === null && popup.querySelectorAll("article").length === 2
+        && popup.querySelector("form") === kanjiDraft && kanjiDraft.elements.definition.value === "kanji draft"
+        && kanji.entries.length === 2,
+      JSON.stringify({ aliasOnly, kanjiProtected, selected, entries: popup.querySelectorAll("article").length }));
   } finally { view.destroy(); popup.remove(); }
 }
 
