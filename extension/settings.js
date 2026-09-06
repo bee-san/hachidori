@@ -76,7 +76,9 @@ let optionsTimer = null;
 let optionsSaveFailed = false;
 let optionsEditRevision = null;
 const OPTIONS_SAVE_DELAY_MS = 150;
-let updateSettings = { schedule: "off", lastCheckedAt: null };
+let updateSettings = { revision: -1, schedule: "off", lastCheckedAt: null };
+let pendingSchedule = null, savingSchedule = null, scheduleTimer = null;
+let scheduleSaveFailed = false;
 let customDocument = null;
 let customBaseDocument = null;
 let customBaseEditorText = "";
@@ -122,7 +124,7 @@ function element(id) {
 function sectionHasPendingWork(id) {
   switch (id) {
     case "import-state": return importing;
-    case "update-state": return updating;
+    case "update-state": return updating || savingSchedule !== null;
     case "custom-dictionary-status": return customLoading || customSaving || customDictionaryDirty();
     case "options-status": return savingOptions !== null || Object.keys(pendingOptions).length > 0;
     default: return false;
@@ -352,6 +354,13 @@ function adoptDictionaryState(value) {
   dictionaryState = next;
   dictionaries = dictionaryState.dictionaries;
   pruneDictionarySelection();
+  return true;
+}
+
+function adoptUpdateSettings(value) {
+  const next = normaliseUpdateSettings(value);
+  if (next.revision <= updateSettings.revision) return false;
+  updateSettings = next;
   return true;
 }
 
@@ -707,9 +716,9 @@ function availableUpdates() {
 
 function renderUpdateControls() {
   const schedule = element("update-schedule");
-  if (schedule !== document.activeElement) {
-    schedule.value = updateSettings.schedule;
-  }
+  const value = pendingSchedule?.schedule ?? savingSchedule?.schedule ?? updateSettings.schedule;
+  if (schedule.value !== value) schedule.value = value;
+  element("update-schedule-conflict-actions").hidden = !scheduleSaveFailed;
   const checked = updateSettings.lastCheckedAt === null
     ? null
     : new Date(updateSettings.lastCheckedAt);
@@ -1906,7 +1915,7 @@ async function runManagedUpdate(type, dictionaryIds = null) {
     if (!reply.ok) {
       throw new Error(reply.error || "the dictionary update operation failed");
     }
-    updateSettings = normaliseUpdateSettings(reply.settings);
+    adoptUpdateSettings(reply.settings);
     await reloadDictionaries();
     const summary = updateOutcomeSummary(type, reply.outcomes ?? []);
     setUpdateState(summary.message, summary.tone);
@@ -1919,17 +1928,45 @@ async function runManagedUpdate(type, dictionaryIds = null) {
   }
 }
 
-async function writeUpdateSchedule(schedule) {
+function writeUpdateSchedule(schedule) {
+  pendingSchedule = { schedule, baseRevision: pendingSchedule?.baseRevision ?? savingSchedule?.baseRevision ?? updateSettings.revision };
+  window.clearTimeout(scheduleTimer);
+  scheduleTimer = null;
+  if (scheduleSaveFailed) return;
+  setUpdateState("Unsaved schedule…", "");
+  scheduleTimer = window.setTimeout(() => { void flushUpdateSchedule(); }, OPTIONS_SAVE_DELAY_MS);
+}
+
+async function flushUpdateSchedule() {
+  window.clearTimeout(scheduleTimer);
+  scheduleTimer = null;
+  if (savingSchedule || scheduleSaveFailed || !pendingSchedule) return;
+  const sent = pendingSchedule;
+  pendingSchedule = null;
+  savingSchedule = sent;
+  renderUpdateControls();
+  setUpdateState("Saving schedule…", "");
   try {
-    const reply = await send("hd_updates_schedule", { schedule, baseRevision: updateSettings.revision }, UPDATE_TARGET);
-    if (!reply.ok) {
-      throw new Error(reply.error || "the dictionary update schedule could not be saved");
-    }
-    updateSettings = normaliseUpdateSettings(reply.settings);
-    renderUpdateControls();
+    const reply = await send("hd_updates_schedule", sent, UPDATE_TARGET);
+    if (reply.settings) adoptUpdateSettings(reply.settings);
+    if (!reply.ok) throw new Error(reply.error || "the dictionary update schedule could not be saved");
+    // Advance a queued draft only through our own commit, never through an
+    // unrelated newer event that happened to arrive before this reply.
+    if (pendingSchedule) pendingSchedule.baseRevision = Math.max(pendingSchedule.baseRevision, reply.settings.revision);
+    setUpdateState(pendingSchedule ? "Unsaved schedule…" : "Schedule saved.", pendingSchedule ? "" : "ready");
   } catch (error) {
-    element("update-schedule").value = updateSettings.schedule;
-    setUpdateState(`Could not save the update schedule: ${describe(error)}`, "error");
+    pendingSchedule ??= sent;
+    scheduleSaveFailed = true;
+    try {
+      const stored = await chrome.storage.local.get("dictionaryUpdates");
+      adoptUpdateSettings(stored.dictionaryUpdates);
+    } catch { /* Keep the draft even if the committed state cannot be read. */ }
+    setUpdateState(`Could not save the schedule: ${describe(error)} Current schedule: ${updateSettings.schedule}. Your draft is retained.`, "error");
+  } finally {
+    savingSchedule = null;
+    renderUpdateControls();
+    syncNavigationStatus("update-state");
+    if (!scheduleSaveFailed && scheduleTimer === null && pendingSchedule) void flushUpdateSchedule();
   }
 }
 
@@ -2040,6 +2077,19 @@ function attachHandlers() {
   });
   element("update-schedule").addEventListener("change", (event) => {
     void writeUpdateSchedule(event.target.value);
+  });
+  element("update-schedule-retry").addEventListener("click", () => {
+    if (!pendingSchedule) return;
+    pendingSchedule.baseRevision = updateSettings.revision;
+    scheduleSaveFailed = false;
+    void flushUpdateSchedule();
+  });
+  element("update-schedule-discard").addEventListener("click", () => {
+    window.clearTimeout(scheduleTimer);
+    scheduleTimer = pendingSchedule = null;
+    scheduleSaveFailed = false;
+    renderUpdateControls();
+    setUpdateState("Current schedule restored.", "ready");
   });
 
   for (const field of NUMBER_FIELDS) {
@@ -2193,10 +2243,10 @@ function attachHandlers() {
 
   window.addEventListener("beforeunload", (event) => {
     if (!importing && savingOptions === null && optionsEditRevision === null
-        && Object.keys(pendingOptions).length === 0) {
+        && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null) {
       return;
     }
-    // Leaving revokes the blob URL the offscreen document is still reading from.
+    // Leaving can revoke an import's blob URL or discard a queued settings draft.
     event.preventDefault();
     event.returnValue = "";
   });
@@ -2272,8 +2322,7 @@ function handleStorageChange(changes, area) {
     handleOptionsChange(changes.options);
   }
   if (changes.dictionaryUpdates) {
-    updateSettings = normaliseUpdateSettings(changes.dictionaryUpdates.newValue);
-    renderUpdateControls();
+    if (adoptUpdateSettings(changes.dictionaryUpdates.newValue)) renderUpdateControls();
   }
 }
 
@@ -2354,7 +2403,7 @@ async function start() {
   attachHandlers();
   const stored = await chrome.storage.local.get(["options", "dictionaryUpdates"]);
   adoptOptions(stored.options);
-  updateSettings = normaliseUpdateSettings(stored.dictionaryUpdates);
+  adoptUpdateSettings(stored.dictionaryUpdates);
   renderCustomDictionaryControls();
   if (await reloadDictionaries()) {
     writeOptions();
