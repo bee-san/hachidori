@@ -435,6 +435,8 @@ unchanged. Default-off rendering does not run summary extraction.
 A 36px thumbnail uses the existing safe image renderer and generation/dictionary
 media resolver. Summary and full-card consumers share one in-flight request and
 cache entry. Failed or unsupported images leave the text summary available.
+The tiny preview is always expanded; a dictionary's collapsed-image setting
+still applies to its unchanged full definition.
 Changing enablement, count or source updates only the summary subtree; expression,
 Back, Note controls, full cards, focus and child anchors stay mounted. A focused
 thumbnail defers its own replacement until the existing focusout flush. Deferred
@@ -448,6 +450,9 @@ delivery. An external off change does not disable a currently focused count or
 source control until focusout: Chrome would otherwise blur it synchronously and
 discard a pending input-before-change draft. That edit still uses its captured
 revision and surfaces a conflict normally; no second draft state is introduced.
+Options and dictionary state in one delivery are adopted before summary work:
+content invalidation takes precedence, while combined presentation changes apply
+once against the new state. Startup uses the same ordering.
 
 ![Compact summary with its complete source definitions](assets/compact-definition-summary.png)
 

@@ -374,6 +374,9 @@ What it proves, in order:
    an external off update. Renderer checks pin ordered bullet/semantic extraction,
    leading-image dispatch, no default-off summary, unchanged full definitions and
    Note controls, partial presentation no-ops, and independent image ownership.
+   A collapsed source image stays expanded only in the compact preview. Combined
+   state delivery invalidates changed contents before summary work, or applies
+   current labels and summary preferences together once.
    The existing detached-child regression also rejects new summary/media work
    before its obsolete anchor chain can be retired by later positioning.
    The batch assertion pins sequential requests, completed/total progress, one
@@ -649,8 +652,9 @@ the Reading controls in light and dark themes.
 importer without changing generated fixture counts. Its single predeclared
 Chrome check proves persisted summary controls, one shared cold image request,
 exact PNG bytes and 36px thumbnail geometry, complete unchanged cards and a
-focused Note during live changes. Tab fallback, a child's non-leading image,
-genuine prefix Show more, failed-media text fallback and a held valid lookup
+focused Note during live changes. The source image is collapsed in its full
+definition but remains visible in the compact thumbnail. Tab fallback, a child's
+non-leading image, genuine prefix Show more, failed-media text fallback and a held valid lookup
 using newer summary options are included. Focused control drafts survive a real
 external off CAS and then surface their old-revision conflict; only the initial
 input-before-change seed is synthetic. `HACHIDORI_SUMMARY_SETTINGS_SCREENSHOT`

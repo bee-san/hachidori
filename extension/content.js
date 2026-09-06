@@ -2371,12 +2371,14 @@
     let dictionaryChanged = false;
     let presentationChanged = false;
     if (changes.options) {
-      changed = adoptOptions(changes.options.newValue);
+      const adoption = adoptOptions(changes.options.newValue);
+      changed = adoption.lookupChanged;
+      presentationChanged = adoption.presentationChanged;
     }
     if (changes.dictionaryState) {
       const adoption = adoptDictionaryState(changes.dictionaryState.newValue);
       dictionaryChanged = adoption.dictionaryChanged;
-      presentationChanged = adoption.presentationChanged;
+      presentationChanged ||= adoption.presentationChanged;
       changed ||= dictionaryChanged;
     }
     if (changed) {
@@ -2390,7 +2392,7 @@
 
   function adoptOptions(stored) {
     const revision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
-    if (revision <= optionsStorageRevision) return false;
+    if (revision <= optionsStorageRevision) return { lookupChanged: false, presentationChanged: false };
     const next = normalizeOptions(stored);
     const lookupChanged = next.scanLength !== options.scanLength || next.maxResults !== options.maxResults
       || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
@@ -2404,6 +2406,9 @@
     const summaryChanged = next.showCompactDefinitionSummary !== options.showCompactDefinitionSummary
       || next.compactDefinitionSummaryCount !== options.compactDefinitionSummaryCount
       || next.compactDefinitionSummaryDictionary !== options.compactDefinitionSummaryDictionary;
+    // The caller adopts the complete storage delivery before new summary work.
+    // A simultaneous dictionary replacement must invalidate the old view first.
+    const adoption = { lookupChanged, presentationChanged: summaryChanged && next.hoverEnabled };
     if (activationChanged) {
       activationPressed = false;
       activationCode = null;
@@ -2416,7 +2421,6 @@
         if (!level.popup?.hidden) level.view?.scheduleMasonry();
       }
     }
-    if (summaryChanged && !lookupChanged && options.hoverEnabled) updateDictionaryPresentation();
     if (!options.hoverEnabled) {
       selectionDragActive = false;
       lastPointer = null;
@@ -2428,7 +2432,7 @@
       if (selectionIsUnchanged()) {
         clearScanTimer();
         clearHideTimer();
-        return lookupChanged;
+        return adoption;
       }
       cancelCandidateScan();
       clearHideTimer();
@@ -2440,7 +2444,7 @@
       clearHideTimer();
       scheduleHide();
     }
-    return lookupChanged;
+    return adoption;
   }
 
   function start() {
@@ -2450,14 +2454,11 @@
         if (disposed || chrome.runtime.lastError) {
           return;
         }
-        let changed = adoptOptions(stored && stored.options);
-        let dictionaryChanged = false;
+        const optionsAdoption = adoptOptions(stored && stored.options);
         const adoption = adoptDictionaryState(stored && stored.dictionaryState);
-        dictionaryChanged = adoption.dictionaryChanged;
-        changed ||= dictionaryChanged;
-        if (changed) {
-          invalidateStoredState(dictionaryChanged);
-        } else if (adoption.presentationChanged) updateDictionaryPresentation();
+        if (optionsAdoption.lookupChanged || adoption.dictionaryChanged) {
+          invalidateStoredState(adoption.dictionaryChanged);
+        } else if (optionsAdoption.presentationChanged || adoption.presentationChanged) updateDictionaryPresentation();
       });
     } catch {
       // Without storage access the defaults are still usable.
