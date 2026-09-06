@@ -10828,6 +10828,14 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
         && !images[1].hidden && images[1].src === mediaUrl && links[1].dataset.imageLoadState === "loaded",
       JSON.stringify({ previewOpened, pendingFocused, dismissedKept }));
     delete images[1].addEventListener;
+    const beforeFocusedFailure = requests.length;
+    route(["Missing focused source"]);
+    settle(requests.slice(beforeFocusedFailure), null);
+    await tick();
+    const failedStillFocused = document.activeElement === links[1] && links[1].dataset.imageLoadState === "load-error";
+    links[1].blur();
+    check("a failed refreshed image drops its temporary tab stop when keyboard focus leaves",
+      failedStillFocused && !links[1].hasAttribute("href") && !links[1].hasAttribute("tabindex"));
     form.elements.definition.focus();
 
     const beforeAutomatic = requests.length;
