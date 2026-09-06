@@ -3306,6 +3306,108 @@ async function checkAudioSettings(page, browser) {
   }
 }
 
+async function checkAnkiSubmission(settings, browser) {
+  const original = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options);
+  const notes = new Map(), calls = [], files = new Map();
+  const apiRoute = { requests: 0, async respond(request) {
+    const { action, params } = JSON.parse(request.postData);
+    calls.push({ action, params });
+    let result;
+    if (action === "deckNames") result = ["Default"];
+    else if (action === "modelNames") result = ["Basic"];
+    else if (action === "modelFieldNames") result = ["Front", "Back", "Audio"];
+    else if (action === "canAddNotesWithErrorDetail") result = params.notes.map(note => {
+      const duplicate = [...notes.values()].some(fields => fields.Front === note.fields.Front);
+      return { canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null };
+    });
+    else if (action === "addNote") { result = notes.size + 1; notes.set(result, params.note.fields); }
+    else if (action === "notesInfo") result = params.notes.map(noteId => ({ noteId,
+      fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value]) => [field, { value }])) }));
+    else if (action === "updateNoteFields") { notes.set(params.note.id, { ...notes.get(params.note.id), ...params.note.fields }); result = null; }
+    else if (action === "storeMediaFile") { files.set(params.filename, params.data); result = params.filename; }
+    else throw new Error(`Unexpected Anki action ${action}`);
+    return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
+  } };
+  const worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
+  const api = await interceptFetches(worker, new Map([["http://127.0.0.1:8765/", apiRoute]]), "anki-submission");
+  const source = { id: "anki-json", type: "custom-json", url: "https://audio.example.test/anki-list", enabled: true, voice: "" };
+  const chosen = { url: "https://audio.example.test/anki-chosen.wav", name: "Chosen recording" };
+  const other = { url: "https://audio.example.test/anki-other.wav", name: "Other recording" };
+  const wav = makeAudioWav();
+  const routes = new Map([
+    [source.url, { body: JSON.stringify({ type: "audioSourceList", audioSources: [other, chosen] }), contentType: "application/json", status: 200, requests: 0 }],
+    [chosen.url, { body: wav, contentType: "audio/wav", status: 200, requests: 0 }],
+    [other.url, { body: "must not download", contentType: "audio/wav", status: 200, requests: 0 }],
+  ]);
+  const target = await browser.waitForTarget(target => target.url().endsWith("/offscreen.html"));
+  const media = await interceptFetches(target, routes, "anki-audio");
+  const native = await target.createCDPSession();
+  await native.send("Runtime.evaluate", { expression: `globalThis.__ankiNativePlay = Audio.prototype.play; globalThis.__ankiPlayCount = 0;
+    Audio.prototype.play = function (...args) { globalThis.__ankiPlayCount++; return __ankiNativePlay.apply(this, args); };` });
+  const configure = audio => settings.evaluate(async ({ audio, source }) => {
+    const { options } = await chrome.storage.local.get("options");
+    const template = value => ({ value, overwriteMode: "overwrite" });
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
+      options: { audioSources: [source], audioAutoplay: false, anki: { ...HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+        fieldTemplates: { Front: template(audio ? "{expression}{audio}" : "{expression}"), Back: template("{glossary}"), Audio: template(audio ? "{audio}" : "") } } } });
+    if (!reply.ok) throw new Error(reply.error);
+  }, { audio, source });
+  const operation = (type, request) => settings.evaluate(async ({ type, request }) => {
+    const reply = await chrome.runtime.sendMessage({ target: "hachidori-anki", type, requestId: "anki-browser-test", request });
+    if (!reply.ok) throw new Error(reply.error);
+    return reply;
+  }, { type, request });
+  try {
+    await configure(false);
+    const request = await settings.evaluate(async () => {
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "食べる", maxResults: 4 });
+      if (!reply.ok || !reply.results.length) throw new Error(reply.error || "No Anki fixture result");
+      return { ...reply.results[0], generation: reply.generation, sentence: "食べる。", matched: "食べる", matchOffset: 0,
+        popupSelectionText: "", searchQuery: "食べる", documentTitle: "Anki browser test", dictionaryAliases: {}, frequencyDictionaries: [] };
+    });
+    request.configKey = (await operation("hd_anki_status")).configKey;
+    const before = await operation("hd_anki_preflight", request);
+    const readOnly = !calls.some(call => ["addNote", "updateNoteFields", "storeMediaFile"].includes(call.action));
+    const added = await operation("hd_anki_submit", request);
+    const duplicate = await operation("hd_anki_preflight", request);
+    const note = notes.get(added.noteId);
+    const images = [...note.Back.matchAll(/<img[^>]+src="([^"]+)"/gu)].map(match => match[1]);
+    check("Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
+      before.canAdd && readOnly && added.state === "added" && added.warnings.length === 0 && duplicate.state === "duplicate" && !duplicate.canAdd
+        && images.length > 0 && images.every(filename => files.has(filename)) && note.Back.includes("@scope")
+        && calls.filter(call => call.action === "addNote").length === 1 && [...routes.values()].every(route => route.requests === 0),
+      JSON.stringify({ before, readOnly, added, duplicate, images, actions: calls.map(call => call.action) }));
+
+    await configure(true);
+    request.configKey = (await operation("hd_anki_status")).configKey;
+    request.audioSelection = { sourceId: source.id, sourceKey: JSON.stringify(source), expression: request.term.expression,
+      reading: request.term.reading, index: 1, ...chosen };
+    const uploadsBefore = calls.filter(call => call.action === "storeMediaFile").length;
+    await operation("hd_anki_preflight", request);
+    const checked = calls.filter(call => call.action === "canAddNotesWithErrorDetail").at(-1).params.notes[0].fields.Front;
+    const noUpload = calls.filter(call => call.action === "storeMediaFile").length === uploadsBefore;
+    const withAudio = await operation("hd_anki_submit", request);
+    const filename = /\[sound:([^\]]+)\]/u.exec(checked)?.[1];
+    const playCount = (await native.send("Runtime.evaluate", { expression: "globalThis.__ankiPlayCount", returnByValue: true })).result.value;
+    check("Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
+      noUpload && withAudio.state === "added" && withAudio.warnings.length === 0 && notes.get(withAudio.noteId).Front === checked
+        && files.get(filename) === wav.toString("base64") && routes.get(chosen.url).requests === 1
+        && routes.get(other.url).requests === 0 && playCount === 0,
+      JSON.stringify({ noUpload, withAudio, checked, filename, playCount, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
+  } finally {
+    await settings.evaluate(async original => {
+      const { options } = await chrome.storage.local.get("options");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
+        options: { anki: original.anki, audioSources: original.audioSources, audioAutoplay: original.audioAutoplay } });
+      if (!reply.ok) throw new Error(reply.error);
+    }, original);
+    await native.send("Runtime.evaluate", { expression: "Audio.prototype.play = __ankiNativePlay; delete globalThis.__ankiNativePlay; delete globalThis.__ankiPlayCount;" });
+    await native.detach();
+    await media.detach();
+    await api.detach();
+  }
+}
+
 async function checkAnkiGlossaryExport(page) {
   const imageRequests = [];
   const observe = request => { if (request.url().includes("hd-anki-inert-image.png")) imageRequests.push(request.url()); };
@@ -6070,6 +6172,7 @@ async function main() {
   await checkFrequencyDirection(browser, page, tab, popup);
   await checkPopupMetadata(browser, page, tab, popup);
   await checkPopupAudio(page, tab, popup, browser);
+  await checkAnkiSubmission(page, browser);
   await hover("#verb");
 
   const clickedKanji = await popup.click(".gsm-hoshidicts-kanji-link");
