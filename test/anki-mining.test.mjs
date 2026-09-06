@@ -53,7 +53,7 @@ test("submissions recheck inside one queue so stale cross-tab preflight cannot a
   assert.equal(f.discovers, 3, "each mutation refreshes authoritative model fields");
 });
 
-test("committed note success survives readback/enrichment errors and stale configuration never reaches mutation", async () => {
+test("a committed note with failed readback skips enrichment and stale configuration never reaches mutation", async () => {
   const f = fixture();
   const { configKey } = await f.service.status();
   f.change({ tags: ["changed"] });
@@ -64,13 +64,25 @@ test("committed note success survives readback/enrichment errors and stale confi
     if (action === "notesInfo") throw new Error("readback offline");
     return invoke(action, params);
   };
-  const service = createAnkiMiningService({ ...f.dependencies, enrich: async () => { throw new Error("audio unavailable"); } });
+  let enrichments = 0;
+  const service = createAnkiMiningService({ ...f.dependencies, enrich: async () => { enrichments++; return []; } });
   const status = await service.status();
   const result = await service.submit({ expression: "猫", configKey: status.configKey });
   assert.equal(result.state, "added");
   assert.equal(result.noteId, 123);
   assert.match(result.warnings.join(" "), /readback offline/u);
-  assert.match(result.warnings.join(" "), /audio unavailable/u);
+  assert.equal(enrichments, 0, "do not enrich from fields whose committed values could not be verified");
+  assert.equal(f.calls.filter(action => action === "addNote").length, 1);
+});
+
+test("enrichment failure cannot turn a verified textual add into a duplicate-inviting failed submission", async () => {
+  const f = fixture();
+  const service = createAnkiMiningService({ ...f.dependencies, enrich: async () => { throw new Error("audio unavailable"); } });
+  const { configKey } = await service.status();
+  const result = await service.submit({ expression: "猫", configKey });
+  assert.equal(result.state, "added");
+  assert.equal(result.noteId, 123);
+  assert.deepEqual(result.warnings, ["audio unavailable"]);
   assert.equal(f.calls.filter(action => action === "addNote").length, 1);
 });
 
