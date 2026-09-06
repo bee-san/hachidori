@@ -6,6 +6,7 @@
     let enabled = false, settingsKey = "", checks = Promise.resolve();
     const live = group => enabled && owners.get(group.owner) === group && !group.popup.hidden && group.isCurrent();
     const current = record => live(record.group) && record.control.isConnected;
+    const needsCheck = record => record.needsCheck && !record.busy && !record.terminal;
     const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
     function disabled(record) {
       record.add.disabled = record.busy || record.terminal || record.group.checking || !record.decision?.canAdd;
@@ -24,7 +25,7 @@
     }
     function refresh(group, all = false) {
       if (all) for (const record of group.records) record.needsCheck = !record.terminal;
-      if (!live(group) || group.queued || !group.records.some(record => record.needsCheck)) return;
+      if (!live(group) || group.queued || !group.records.some(needsCheck)) return;
       group.queued = group.checking = true;
       group.records.forEach(disabled);
       const operation = async () => {
@@ -40,7 +41,7 @@
           onChange(group.owner);
           for (const record of group.records) {
             if (!owns()) return;
-            if (!record.needsCheck || record.terminal || record.busy) continue;
+            if (!needsCheck(record)) continue;
             record.needsCheck = false;
             try {
               const result = await send("hd_anki_preflight", { request: payload(record) });
@@ -63,16 +64,18 @@
     function refreshAll() {
       for (const group of owners.values()) refresh(group, true);
     }
-    async function submit(record) {
+    async function submit(record, fromPointer) {
       if (!current(record) || record.add.disabled || record.busy || record.terminal) return;
-      const request = record.pointerRequest ?? payload(record);
+      const group = record.group, epoch = group.epoch;
+      const owns = () => current(record) && record.group === group && group.epoch === epoch;
+      const request = (fromPointer && record.pointerRequest) || payload(record);
       record.pointerRequest = null;
       record.busy = true;
       disabled(record);
       text(record.output, "Saving to Anki…");
       try {
         const result = await send("hd_anki_submit", { request });
-        if (!current(record)) return;
+        if (!owns()) return;
         if (result.state === "added" || result.state === "updated") {
           record.terminal = true;
           record.add.dataset.state = "success";
@@ -82,12 +85,12 @@
         } else if (result.state === "uncertain") uncertain(record, result.error);
         else { decision(record, { ...result, canAdd: false }); refreshAll(); }
       } catch (error) {
-        if (!current(record)) return;
+        if (!owns()) return;
         if (error.responseReceived) text(record.output, `Could not add: ${error.message}`);
         else uncertain(record, `The write could not be confirmed. Use View in Anki before trying again. ${error.message}`);
       } finally {
         record.busy = false;
-        if (current(record)) { disabled(record); onChange(record.group.owner); }
+        if (current(record)) { disabled(record); onChange(record.group.owner); refresh(record.group); }
       }
     }
     function uncertain(record, error) {
@@ -113,7 +116,7 @@
           record = { ...item, busy: false, terminal: false, decision: null };
           bound.set(item.add, record);
           item.add.addEventListener("mousedown", event => { if (event.button === 0 && current(record)) record.pointerRequest = payload(record); });
-          item.add.addEventListener("click", () => { void submit(record); });
+          item.add.addEventListener("click", event => { void submit(record, event.detail > 0); });
           item.view.addEventListener("click", () => { void browse(record); });
         }
         record.group = group;
