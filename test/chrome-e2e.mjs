@@ -219,6 +219,8 @@ const PLANNED = [
   "Anki discovery is lazy and refresh recovers an offline connection through the real service worker",
   "Anki Settings reject stale model replies and preserve unavailable mappings without discovery writes",
   "Anki configuration persists through reload without reloading the dictionary engine",
+  "Anki presets expose editable field templates and persist overwrite modes with visible marker errors",
+  "Anki templates survive refresh and reload while disabled values stay disabled and lookup generation stays unchanged",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
   "Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
   "Popup autoplay is optional and does not replay after presentation updates or Back",
@@ -3384,6 +3386,52 @@ async function checkAnkiSettings(page, browser) {
       persisted.anki.deck === "Japanese" && persisted.anki.model === "Japanese"
         && persisted.anki.fields.expression === "Expression" && persisted.anki.fields.audio === "Audio"
         && persisted.status.generation === original.status.generation, JSON.stringify(persisted));
+    await page.select("#anki-preset", "kiku");
+    await page.click("#anki-apply-preset");
+    await saved();
+    const templateEditor = await page.$("#anki-templates textarea");
+    const templateId = await templateEditor.evaluate(node => node.id);
+    await templateEditor.dispose();
+    const editTemplate = async value => {
+      await page.$eval(`#${templateId}`, (node, text) => {
+        node.focus(); node.value = text; node.dispatchEvent(new Event("input", { bubbles: true }));
+      }, value);
+      await saved();
+    };
+    await editTemplate("<b>{expression}</b> {unknown}");
+    const invalidMarker = await status();
+    await editTemplate("<b>{expression}</b>");
+    await page.$eval(".anki-details", node => { node.open = true; });
+    await choose("duplicate-behavior", "overwrite");
+    await page.select(`#${templateId}-mode`, "coalesce-new");
+    await saved();
+    const templateState = await page.evaluate(async () => ({
+      config: (await chrome.storage.local.get("options")).options.anki,
+      editors: [...document.querySelectorAll("#anki-templates textarea")].map(node => ({ value: node.value, readOnly: node.readOnly })),
+    }));
+    check("Anki presets expose editable field templates and persist overwrite modes with visible marker errors",
+      invalidMarker.includes("Unknown marker: {unknown}") && templateState.config.fieldTemplates.Expression.value === "<b>{expression}</b>"
+        && templateState.config.fieldTemplates.Expression.overwriteMode === "coalesce-new"
+        && templateState.editors.every(row => !row.readOnly), JSON.stringify({ invalidMarker, templateState }));
+    // Kiku does not map this model's generic Reading field; a blank template
+    // remains intentional through discovery and restart, not an auto-fill hint.
+    const beforeTemplateRefresh = await page.evaluate(async () => (await chrome.storage.local.get("options")).options.revision);
+    await page.click("#anki-refresh");
+    await settled();
+    const afterTemplateRefresh = await page.evaluate(async () => (await chrome.storage.local.get("options")).options.revision);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.getElementById("anki-status").textContent.includes("configuration ready"));
+    await saved();
+    const templateReload = await page.evaluate(async () => ({
+      config: (await chrome.storage.local.get("options")).options.anki,
+      status: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
+      editor: document.querySelector("#anki-templates textarea").value,
+    }));
+    check("Anki templates survive refresh and reload while disabled values stay disabled and lookup generation stays unchanged",
+      beforeTemplateRefresh === afterTemplateRefresh && templateReload.config.fieldTemplates.Reading.value === ""
+        && templateReload.config.fieldTemplates.Expression.overwriteMode === "coalesce-new"
+        && templateReload.editor === "<b>{expression}</b>" && templateReload.status.generation === original.status.generation,
+      JSON.stringify({ beforeTemplateRefresh, afterTemplateRefresh, templateReload }));
     if (process.env.HACHIDORI_ANKI_SCREENSHOT) await page.screenshot({ path: process.env.HACHIDORI_ANKI_SCREENSHOT, fullPage: true });
   } finally {
     releaseA?.();

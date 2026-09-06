@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { reorderSettingsRows } from "./settings-dom.js";
 function labelControl(control, label) {
   if (control.getAttribute("aria-label") !== label) control.setAttribute("aria-label", label);
 }
@@ -149,14 +150,7 @@ export function createAudioSettingsController({ document, readSources, editSourc
       setTesting(row, active?.id === source.id);
       return row.element;
     });
-    if (ordered.some((row, index) => list.children[index] !== row)) {
-      const focused = ordered.find(row => row.contains(document.activeElement));
-      const focusIndex = ordered.indexOf(focused);
-      ordered.forEach((row, index) => {
-        if (focused && index < focusIndex) focused.before(row);
-        else if (row !== focused) list.append(row);
-      });
-    }
+    reorderSettingsRows(list, ordered);
     const empty = document.getElementById("audio-source-empty");
     if (empty.hidden !== (sources.length > 0)) empty.hidden = sources.length > 0;
   }

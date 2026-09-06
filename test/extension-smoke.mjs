@@ -717,7 +717,10 @@ function loadClassicScript(file, sandbox) {
 }
 
 function loadBackgroundScript(sandbox) {
-  const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8").replace(/^export\s+/gmu, "");
+  const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
+  const ankiTemplates = readFileSync(resolve(EXTENSION, "anki-templates.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
@@ -748,9 +751,9 @@ function loadBackgroundScript(sandbox) {
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
-    `${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${anki}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${readerOptions}\n${externalLinks}\n${groupState}\n${background}`,
+    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${ankiTemplates}\n${anki}\n`
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
   );
@@ -1497,10 +1500,15 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
-  const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8").replace(/^export\s+/gmu, "");
+  const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
+  const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
+  const ankiTemplates = readFileSync(resolve(EXTENSION, "anki-templates.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const ankiSettings = readFileSync(resolve(EXTENSION, "anki-settings.js"), "utf8")
-    .replace(/import \{ ankiAvailability, ankiFieldNames \} from "\.\/anki\.js";\s*/u, "").replace(/^export\s+/gmu, "");
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const audioSettings = readFileSync(resolve(EXTENSION, "audio-settings.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "")
     .replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
@@ -1523,7 +1531,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${readerOptions}\n${audioSettings}\n${anki}\n${ankiSettings}\n${settings}`,
+    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${settings}`,
   );
 }
 

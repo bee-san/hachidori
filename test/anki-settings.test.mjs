@@ -90,3 +90,91 @@ test("case-only Anki field renames stay available without rewriting saved mappin
   assert.match(f.el("anki-status").textContent, /configuration ready/u);
   assert.equal(f.edits.length, 0);
 });
+
+test("presets and advanced templates save one complete snapshot, retain invalid drafts and clear on model change", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fields: { ...f.read().fields, expression: "Front" } });
+  discovery(f.sent[0]);
+  await tick();
+  const rows = () => [...f.el("anki-templates").children];
+  assert.equal(rows().length, 2);
+  assert.equal(rows()[0].querySelector("textarea").value, "{expression}");
+  assert.equal(rows()[0].querySelector("textarea").readOnly, true);
+  f.el("anki-preset").value = "automatic";
+  f.el("anki-apply-preset").click();
+  assert.equal(f.edits.length, 1);
+  assert.equal(f.read().fieldTemplates.Front.value, "{expression}");
+  assert.equal(f.read().fieldTemplates.Back.value, "");
+  const editor = rows()[0].querySelector("textarea");
+  editor.focus();
+  editor.value = "literal {unknown}";
+  editor.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  assert.equal(f.read().fieldTemplates.Front.value, "literal {unknown}");
+  assert.match(f.el("anki-status").textContent, /Unknown marker/u);
+  const mode = rows()[0].querySelector("select");
+  mode.value = "coalesce-new";
+  mode.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.equal(f.read().fieldTemplates.Front.overwriteMode, "coalesce-new");
+  const model = f.el("opt-anki-model");
+  model.value = "B";
+  model.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.equal(f.read().fieldTemplates, null);
+  assert.ok(Object.values(f.read().fields).every(value => value === ""));
+});
+
+test("entering template mode waits for discovered fields instead of replacing basic mappings with an empty snapshot", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fields: { ...f.read().fields, expression: "Front" } });
+  const advanced = f.el("opt-anki-advanced");
+  assert.equal(advanced.disabled, true);
+  advanced.click();
+  assert.equal(f.edits.length, 0);
+  f.sent[0].resolve({ ok: false, error: "Offline" });
+  await tick();
+  assert.equal(advanced.disabled, true);
+  const pending = f.controller.refresh();
+  discovery(f.sent[1]);
+  await pending;
+  assert.equal(advanced.disabled, false);
+  advanced.click();
+  assert.equal(f.edits.length, 1);
+  assert.equal(f.read().fieldTemplates.Front.value, "{expression}");
+});
+
+test("case-only field refresh preserves the focused template row and subsequent edits target its current name", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" } } });
+  discovery(f.sent[0]);
+  await tick();
+  const editor = f.el("anki-templates").querySelector("textarea");
+  editor.focus();
+  editor.value = "draft {expression}";
+  editor.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  const pending = f.controller.refresh();
+  discovery(f.sent[1], { fields: ["front", "Back"] });
+  await pending;
+  assert.equal(f.window.document.activeElement, editor);
+  assert.equal(f.el("anki-templates").querySelector("textarea"), editor);
+  editor.value = "next {expression}";
+  editor.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  assert.equal(f.read().fieldTemplates.front.value, "next {expression}");
+  assert.equal(Object.hasOwn(f.read().fieldTemplates, "Front"), false);
+});
+
+test("field-order refresh rearranges surrounding rows without detaching the focused template editor", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" },
+    Back: { value: "{definition}", overwriteMode: "coalesce" } } });
+  discovery(f.sent[0]);
+  await tick();
+  const pending = f.controller.refresh();
+  const editor = f.el("anki-templates").querySelectorAll("textarea")[1];
+  editor.focus();
+  editor.setSelectionRange(2, 5);
+  discovery(f.sent[1], { fields: ["Back", "Front"] });
+  await pending;
+  assert.equal(f.window.document.activeElement, editor);
+  assert.equal(f.el("anki-templates").querySelector("textarea"), editor);
+  assert.equal(editor.selectionStart, 2);
+  assert.equal(editor.selectionEnd, 5);
+});
