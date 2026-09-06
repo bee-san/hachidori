@@ -36,7 +36,6 @@
   const COMPACT_DEFINITION_BLOCK_TAGS = new Set([
     "article",
     "blockquote",
-    "br",
     "dd",
     "div",
     "dt",
@@ -55,11 +54,14 @@
   ]);
   const COMPACT_DEFINITION_IGNORED_TAGS = new Set([
     "audio",
+    "button",
     "canvas",
     "iframe",
     "img",
+    "input",
     "rt",
     "script",
+    "source",
     "style",
     "svg",
     "video",
@@ -820,10 +822,20 @@
     buffer.characters += Math.min(characters, available) - joined;
   }
 
+  // Typed wrappers select their payload before incidental tags, as in the full
+  // renderer. Discovery, collection and leading-image selection share this rule.
+  function compactDefinitionTag(value) {
+    if (value.type === "text" || value.type === "structured-content") return "";
+    if (value.type === "image") return "img";
+    return typeof value.tag === "string" ? value.tag.toLowerCase() : "";
+  }
+
+  function compactDefinitionContent(value) {
+    return value.type === "text" && Object.hasOwn(value, "text") ? value.text : value.content;
+  }
+
   function isCompactDefinitionBlock(value) {
-    return isRecord(value) && COMPACT_DEFINITION_BLOCK_TAGS.has(
-      String(value.tag || "").toLowerCase()
-    );
+    return isRecord(value) && COMPACT_DEFINITION_BLOCK_TAGS.has(compactDefinitionTag(value));
   }
 
   function* collectCompactDefinitionText(value, state, depth = 0) {
@@ -865,15 +877,16 @@
     if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) {
       return;
     }
-    const tag = typeof value.tag === "string" ? value.tag.toLowerCase() : "";
-    if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag) || value.type === "image") {
+    const tag = compactDefinitionTag(value);
+    if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) {
       return;
     }
-    if (value.type === "text" && Object.prototype.hasOwnProperty.call(value, "text")) {
-      yield* collectCompactDefinitionText(value.text, state, depth + 1);
-    } else if (Object.prototype.hasOwnProperty.call(value, "content")) {
-      yield* collectCompactDefinitionText(value.content, state, depth + 1);
+    if (tag === "br") {
+      yield " ";
+      return;
     }
+    const content = compactDefinitionContent(value);
+    if (content !== undefined) yield* collectCompactDefinitionText(content, state, depth + 1);
   }
 
   function findCompactDefinitionNodes(value, predicate, state, depth = 0) {
@@ -900,16 +913,18 @@
     if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) {
       return [];
     }
-    if (predicate(value)) {
+    const tag = compactDefinitionTag(value);
+    if (tag === "br" || COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) return [];
+    if (predicate(value, tag)) {
       return [value];
     }
-    return Object.prototype.hasOwnProperty.call(value, "content")
-      ? findCompactDefinitionNodes(value.content, predicate, state, depth + 1)
+    const content = compactDefinitionContent(value);
+    return content !== undefined
+      ? findCompactDefinitionNodes(content, predicate, state, depth + 1)
       : [];
   }
 
-  function isCompactDefinitionList(value) {
-    const tag = String(value.tag || "").toLowerCase();
+  function isCompactDefinitionList(_value, tag) {
     return tag === "ul" || tag === "ol";
   }
 
@@ -917,13 +932,9 @@
   function findCompactDefinitionLeafBlocks(root, state = { nodes: 0 }) {
     return findCompactDefinitionNodes(
       root,
-      (value) => COMPACT_DEFINITION_BLOCK_TAGS.has(
-        String(value.tag || "").toLowerCase()
-      ) && findCompactDefinitionNodes(
+      (value, tag) => COMPACT_DEFINITION_BLOCK_TAGS.has(tag) && findCompactDefinitionNodes(
         value.content,
-        (child) => COMPACT_DEFINITION_BLOCK_TAGS.has(
-          String(child.tag || "").toLowerCase()
-        ),
+        (_child, childTag) => COMPACT_DEFINITION_BLOCK_TAGS.has(childTag),
         { nodes: 0 }
       ).length === 0,
       state
@@ -953,7 +964,7 @@
     const children = rawChildren.slice(0, COMPACT_DEFINITION_MAX_NODES);
     const listItems = [];
     for (const child of children) {
-      if (isRecord(child) && String(child.tag || "").toLowerCase() === "li") {
+      if (isRecord(child) && compactDefinitionTag(child) === "li") {
         listItems.push(child);
       }
     }
@@ -963,13 +974,14 @@
   }
 
   function* compactDefinitionItemsFromMarkedNode(node) {
-    const tag = String(node.tag || "").toLowerCase();
+    const tag = compactDefinitionTag(node);
     if (tag === "ul" || tag === "ol") {
       yield* compactDefinitionItemsFromList(node);
       return;
     }
+    const content = compactDefinitionContent(node);
     const nestedLists = findCompactDefinitionNodes(
-      node.content,
+      content,
       isCompactDefinitionList,
       { nodes: 0 }
     );
@@ -977,7 +989,7 @@
       for (const list of nestedLists) yield* compactDefinitionItemsFromList(list);
       return;
     }
-    const leafBlocks = findCompactDefinitionLeafBlocks(node.content);
+    const leafBlocks = findCompactDefinitionLeafBlocks(content);
     yield* leafBlocks.length > 0
       ? compactDefinitionItemsFromNodes(leafBlocks)
       : compactDefinitionItemsFromNodes([node]);
@@ -1033,14 +1045,10 @@
     }
     if (!isRecord(value)) return value != null && /\S/u.test(String(value)) ? false : null;
     if (isIgnoredCompactDefinitionSection(value)) return null;
-    if (value.type === "structured-content" || value.type === "text") {
-      const content = value.type === "text" && Object.hasOwn(value, "text") ? value.text : value.content;
-      return leadingCompactDefinitionImage(content, state, depth + 1);
-    }
-    const tag = String(value.tag || "").toLowerCase();
-    if (value.type === "image" || tag === "img") return value;
-    if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) return null;
-    return leadingCompactDefinitionImage(value.content, state, depth + 1);
+    const tag = compactDefinitionTag(value);
+    if (tag === "img") return value;
+    if (tag === "br" || COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) return null;
+    return leadingCompactDefinitionImage(compactDefinitionContent(value), state, depth + 1);
   }
 
   function extractCompactDefinitionSummary(

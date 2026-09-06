@@ -9896,8 +9896,9 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       && sandbox.__summaryWork.duplicateMatches <= 6 && sandbox.__summaryWork.duplicateBoundaries <= 3
       && sandbox.__summaryWork.duplicatePointArrays === 0
       && JSON.stringify(afterEmptySenses?.items) === JSON.stringify(["useful final sense"])
-      // Observed tag work before streaming/per-sense fallback, not an input cap.
-      && sandbox.__summaryWork.spanNormalizations <= 2832;
+      // Original tag work plus 256 records classified by the marked-section
+      // visibility pass; neither number is a product input cap.
+      && sandbox.__summaryWork.spanNormalizations <= 2832 + 256;
   } finally { sandbox.__restoreSummaryWork(); }
   const summaryWork = { splitFragments: sandbox.__summaryWork.splitFragments, codePoints: sandbox.__summaryWork.codePoints,
     emptyNormalizations: sandbox.__summaryWork.emptyNormalizations, largeNormalizations: sandbox.__summaryWork.largeNormalizations,

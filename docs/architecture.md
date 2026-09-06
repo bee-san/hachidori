@@ -443,7 +443,12 @@ point array only when a run needs truncation. Full JSON parsing and necessary
 whitespace-prefix scans remain. Only the first meaningful content can
 supply the image: text, including zero/false, or an unsupported leading image
 prevents searching for a later image. Text/structured wrappers
-follow the glossary renderer's dispatch order. Existing display/traversal bounds
+follow the glossary renderer's dispatch order through shared tag/payload helpers
+used by discovery, text collection and leading-image selection. A real line break
+separates text rather than becoming a sense leaf. Void/ignored elements cannot
+expose hidden child lists or suppress a following leading image; wrapper-selected
+text takes precedence over an incidental tag or unused content field.
+Existing display/traversal bounds
 apply only to this preview; native results and complete glossary bytes remain
 unchanged. Default-off rendering does not run summary extraction.
 

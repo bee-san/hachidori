@@ -378,7 +378,8 @@ What it proves, in order:
    calls, per-point boundary checks or unnecessary point arrays,
    trailing-whitespace trimming, mixed
    plain/structured top-level senses, shared fallback discovery and no empty-child
-   block checks without losing a later useful sense,
+   block checks without losing a later useful sense, line-break separators,
+   wrapper-selected payloads and exclusion of unrendered child lists/text,
    leading-image dispatch, no default-off summary, unchanged full definitions and
    Note controls, partial presentation no-ops, and independent image ownership.
    A collapsed source image stays expanded only in the compact preview. Missing,
