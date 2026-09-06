@@ -28,8 +28,8 @@ function environment({ failFirst = false, hold = false } = {}) {
     SpeechSynthesisUtterance: class { constructor(text) { this.text = text; } },
     speechSynthesis: {
       getVoices() { voiceReads += 1; return [voice]; },
-      speak(utterance) { utterances.push(utterance); if (!hold) queueMicrotask(() => utterance.onend?.()); },
-      cancel() {},
+      speak(utterance) { this.active = utterance; utterances.push(utterance); if (!hold) queueMicrotask(() => utterance.onend?.()); },
+      cancel() { if (this.active) this.active.cancelled = true; this.active = null; },
     },
   };
   return { window, audio, revoked, utterances, voice, voiceReads: () => voiceReads };
@@ -96,4 +96,18 @@ test("Tests distinguish empty candidate lists from provider failures and use the
   }
   assert.deepEqual(env.utterances.map(utterance => utterance.text), ["聞く", "きく"]);
   assert.ok(env.utterances.every(utterance => utterance.voice === env.voice && utterance.lang === "ja-JP"));
+});
+
+test("retiring an old speech Test cannot cancel the newer utterance", async () => {
+  const env = environment({ hold: true });
+  const player = createAudioPlayer({ window: env.window, fetch: () => assert.fail("TTS must not fetch audio") });
+  const speech = { ...source, type: "text-to-speech", voice: "ja-voice" };
+  const old = player.play(speech, term);
+  const current = player.play(speech, { ...term, expression: "新しい" });
+  try {
+    assert.equal((await old).status, "cancelled");
+    assert.equal(env.utterances[1].cancelled, undefined);
+    env.utterances[1].onend();
+    assert.equal((await current).status, "success");
+  } finally { player.stop(); }
 });
