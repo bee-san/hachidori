@@ -7403,12 +7403,21 @@ async function contentNoteStage() {
       harness.render(1).context.onBack();
       checks.push(!harness.driver.popupAt(1) && harness.callbacks().canProjectDictionaryPresentation?.() === true
         && harness.presentationFlushes() > flushes);
-      harness.edit(true);
+      const resizeChild = harness.internalLink({ query: "resize child" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("resize child")] });
+      await resizeChild;
       harness.emitState({ ...presentation, revision: 4 });
+      const beforeResizeFlush = harness.presentationFlushes();
+      Object.defineProperty(harness.popup.ownerDocument.defaultView, "innerWidth", { configurable: true, value: 10 });
+      harness.callbacks().positionPopup();
+      await harness.settle();
+      checks.push(!harness.driver.popupAt(1) && harness.presentationFlushes() > beforeResizeFlush);
+      harness.edit(true);
+      harness.emitState({ ...presentation, revision: 5 });
       checks.push(harness.callbacks().canProjectDictionaryPresentation?.() === false && render.context.isCurrentRequest());
       harness.edit(false);
       const updates = harness.presentations().length;
-      harness.emitState({ ...presentation, revision: 5, groups: [] }, { revision: 99, maxResults: 99 });
+      harness.emitState({ ...presentation, revision: 6, groups: [] }, { revision: 99, maxResults: 99 });
       checks.push(harness.presentations().length === updates && !render.context.isCurrentRequest());
       return { [name]: checks.every(Boolean) || checks };
     } finally { harness.close(); }
@@ -10173,6 +10182,9 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     const changedMembers = { ...reordered, dictionaryTabGroups: [
       { id: "second", name: "Changed group", dictionaries: ["First"] }, reordered.dictionaryTabGroups[1],
     ] };
+    view.updateDictionaryPresentation({ ...changedMembers, dictionaryTabGroups: [
+      { id: "second", name: "Intermediate group", dictionaries: ["First", "Second"] }, reordered.dictionaryTabGroups[1],
+    ] });
     view.updateDictionaryPresentation?.(changedMembers);
     live.push(popup.querySelector(secondGroup).textContent === "Second group"
       && popup.querySelector(".gsm-hoshidicts-glossary-card > summary").title === "Second"
@@ -10199,6 +10211,51 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     view.renderResults(results, candidate, context);
     view.flushDictionaryPresentation?.();
     live.push(!popup.querySelector(secondGroup) && selected === null);
+
+    view.renderResults(results, candidate, { ...context, ...presentation, selectedDictionaryTab: { groupId: "first" } });
+    popup.querySelector(firstGroup).focus();
+    view.updateDictionaryPresentation({ ...presentation, dictionaryTabGroups: [] });
+    live.push(selected === null && document.activeElement === popup.querySelector('[role="tab"][aria-selected="true"]'));
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    view.renderResults(results, candidate, { ...context, ...presentation, selectedDictionaryTab: { groupId: "first" } });
+    outside.focus();
+    view.updateDictionaryPresentation({ ...presentation, dictionaryTabGroups: [] });
+    live.push(selected === null && document.activeElement === outside);
+    outside.remove();
+
+    const metadataResults = results.map(entry => ({ ...entry, term: { ...entry.term,
+      expression: entry.term.glossaries[0].dictionary,
+      frequencies: [{ dictionary: "Rank", frequencies: [{ value: 42, displayValue: null }] }],
+      pitches: [{ dictionary: "Pitch", transcriptions: [], pitches: [{ position: 1, pattern: "LH" }] }],
+    } }));
+    const metadataBefore = JSON.stringify(metadataResults);
+    view.renderResults(metadataResults, candidate, { ...context, showPitchAccentBadge: true });
+    const frequencyValue = popup.querySelector(".gsm-hoshidicts-frequency-value");
+    const pitchBody = popup.querySelector(".gsm-hoshidicts-pitch-body");
+    view.updateDictionaryPresentation({ dictionaryPresentation: [
+      { title: "Rank", displayName: "Rank alias" }, { title: "Pitch", displayName: "Pitch alias" },
+      { title: "Second", displayName: "Second alias" },
+    ], dictionaryTabGroups: [] });
+    live.push(popup.querySelector(".gsm-hoshidicts-frequency-value") === frequencyValue && frequencyValue.textContent === "42"
+      && popup.querySelector(".gsm-hoshidicts-pitch-body") === pitchBody
+      && popup.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
+      && popup.querySelector(".gsm-hoshidicts-pitch-source").textContent === "Pitch alias");
+    popup.querySelector(".gsm-hoshidicts-show-more").click();
+    const secondary = popup.querySelectorAll("article")[1];
+    live.push(secondary.querySelector(".gsm-hoshidicts-glossary-card > summary").textContent === "Second alias"
+      && secondary.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
+      && secondary.querySelector(".gsm-hoshidicts-pitch-source").textContent === "Pitch alias"
+      && JSON.stringify(metadataResults) === metadataBefore);
+    const expandedGroup = { ...presentation, dictionaryTabGroups: [{ id: "expanded", name: "Expanded", dictionaries: ["First", "Second"] }] };
+    view.renderResults(metadataResults, candidate, { ...context, ...expandedGroup, expandAll: true, selectedDictionaryTab: { groupId: "expanded" } });
+    view.updateDictionaryPresentation({ ...expandedGroup, dictionaryTabGroups: [{ id: "expanded", name: "Narrow", dictionaries: ["First"] }] });
+    view.updateDictionaryPresentation(expandedGroup);
+    live.push(popup.querySelectorAll("article").length === 2 && !popup.querySelector(".gsm-hoshidicts-show-more"));
+    view.updateDictionaryPresentation({ ...expandedGroup, dictionaryTabGroups: [{ id: "expanded", name: "Only second", dictionaries: ["Second"] }] });
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    live.push(popup.querySelector("form").elements.term.value === "Second");
+    view.closeNoteForm();
     check("live presentation keeps keyed tabs and protected views coherent until local projection is safe",
       live.every(Boolean), JSON.stringify(live));
 
