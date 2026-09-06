@@ -573,7 +573,8 @@
     const motionEvents = ["animationstart", "transitionrun", "pointerover", "pointerout", "focusin", "focusout"];
     const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
     const needsGeometry = changes => changes.some(change => !layer.contains(change.target)
-      && (change.type === "attributes" || [...change.addedNodes, ...change.removedNodes].some(node => node !== layer)));
+      && (change.type === "attributes" || change.type === "characterData"
+        || [...change.addedNodes, ...change.removedNodes].some(node => node !== layer)));
     const geometry = new windowRef.MutationObserver(changes => { if (needsGeometry(changes)) schedule(); });
     windowRef.addEventListener("scroll", schedule, true);
     root.addEventListener("scroll", schedule, true);
@@ -603,14 +604,21 @@
       geometry.disconnect();
       const nextResizeTargets = new Set();
       const nextMotionRoots = new Set();
-      for (const [target, subtree] of targets) {
-        geometry.observe(target, { attributes: true, childList: true, subtree });
+      for (const target of targets.keys()) {
         if (target instanceof windowRef.Element) {
           nextResizeTargets.add(target);
           if (!resizeTargets.has(target)) resize?.observe(target);
         } else if (target === documentRef || target instanceof windowRef.ShadowRoot) {
           nextMotionRoots.add(target);
         }
+      }
+      // A sibling can move the source inside a fixed-size ancestor without
+      // resizing any observed source. Layout notifications therefore span its
+      // containing trees; native range observers remain source-scoped.
+      const layoutRoots = new Set(nextMotionRoots);
+      if (root instanceof windowRef.ShadowRoot) layoutRoots.add(root);
+      for (const target of layoutRoots) {
+        geometry.observe(target, { attributes: true, characterData: true, childList: true, subtree: true });
       }
       for (const target of resizeTargets) if (!nextResizeTargets.has(target)) resize?.unobserve(target);
       resizeTargets = nextResizeTargets;

@@ -851,6 +851,11 @@ viewport and ancestor scrollports, excludes hidden/transparent text, and avoids
 covering later popup panes or the source pane's sticky toolbar. One shared
 fallback animation frame reads geometry before writing paint; scroll, resize,
 source layout changes, and existing popup placement callbacks refresh it.
+Fallback layout observation spans each containing Document/ShadowRoot once,
+including sibling text and attribute changes: a fixed-size ancestor can hide
+position-only movement from ResizeObserver. Owned paint mutations are ignored,
+and a burst of layout changes coalesces without rewalking source text. This
+broader geometry observation is never installed on the native Highlight path.
 Active source/ancestor CSS animations and transitions keep that shared frame
 running until motion finishes or pauses. Scoped motion and pointer/focus boundary
 events wake it, including paused animations resumed by hover or focus; unrelated
