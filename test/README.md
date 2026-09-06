@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 335 checks, all of
+full request→reply round trip per contract-C message type. 348 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -575,7 +575,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 113 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 114 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -651,10 +651,17 @@ focused and reachable, and a still-focused tab survives same-view refresh.
 `HACHIDORI_OPTIONS_SCREENSHOT` also includes the saved child-depth setting.
 
 `dictionaryTabsFixture()` extends that linked source with three unequal glossary
-cards, without changing the generated fixture files. Three Chrome checks project
+cards, without changing the generated fixture files. Four Chrome checks project
 every contributing dictionary, aggregate favourites and ordered groups from the
 complete native result; warmed tab changes must issue no lookup, media or style
 requests. Linked-child, clicked-kanji and Back retain their semantic selection.
+Back also restores an expanded, scrolled child with a collapsed dictionary card,
+its prior tab, highlight and toolbar, without another native lookup; its next
+Back still closes the child. Extension checks cover native-source fallback and
+terminal misses, cached versus changed-generation restoration, lazy IPA and
+structured disclosures, and cancellation by newer projections or deliberate
+scroll. A focused scroll-read assertion prevents forcing layout while a retained
+Note's replacement panel is empty.
 Live labels and group order preserve keyed focus, and changed membership waits
 for protected Note forms and child anchors to retire before local projection.
 
@@ -733,7 +740,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 113 assertions, and the summary line
+`PLANNED` at the top of the file names all 114 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

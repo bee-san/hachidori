@@ -1345,7 +1345,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
 
     // Internal-link → clicked-kanji → Back preserves semantic Study context.
     await popup.dictionaryTabs("select", studyKey);
-    await tab.setViewport({ width: 1880, height: 400 });
+    await tab.setViewport({ width: 1880, height: 240 });
     const inherited = await openChild();
     require(await child.click(".gsm-hoshidicts-show-more"), "E13 expand linked results before drill-down");
     const studyResultCount = childExpected.filter(entry => entry.dictionaries.some(title => [links, usage, GENERIC_KANJI_TITLE].includes(title))).length;
@@ -1391,7 +1391,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       && renamed.tabs.filter(tab => tab.key.startsWith("group:")).map(tab => tab.key).join() === `group:${examplesId},${studyKey}`
       && renamed.tabs.every(tab => tab.same)
       && renamed.tabs.find(tab => tab.key === studyKey).focused
-      && renamed.entries[0].cards.find(card => card.dictionary === usage).label === "Usage notes", "E8 labels/order preserve focused keyed controls and bodies");
+      && renamed.entries[0].cards.find(card => card.dictionary === usage).label === "Usage notes", `E8 labels/order preserve focused keyed controls and bodies: ${JSON.stringify(renamed)}`);
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNextLookup = true; });
     await popup.nested("remember");
     await popup.nested("focus-link");
