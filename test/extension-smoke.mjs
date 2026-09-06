@@ -5204,9 +5204,10 @@ async function sourceHighlightFallbackCase(window) {
   window.Highlight = undefined;
   window.Element.prototype.getAnimations = () => [];
   let geometryReads = 0;
+  let siblingOffset = 0;
   window.Range.prototype.getClientRects = function () {
     geometryReads += 1;
-    const left = this.toString() === "食べる" ? 100 : 300;
+    const left = this.toString() === "食べる" ? 100 + siblingOffset : 300;
     return [{ left, top: 200, right: left + 50, bottom: 216, width: 50, height: 16 }];
   };
   const source = document.getElementById("a");
@@ -5214,7 +5215,9 @@ async function sourceHighlightFallbackCase(window) {
   source.classList.add("gsm-hoshidicts-source-match");
   const before = { text: source.innerHTML, selection: window.getSelection().toString(), className: source.className };
   const host = document.createElement("div");
-  document.body.append(host);
+  const sibling = document.createElement("div");
+  sibling.textContent = "spacer";
+  document.body.append(host, sibling);
   const shadow = host.attachShadow({ mode: "open" });
   const highlighter = window.HDPopup.createSourceHighlighter(window, document, "test-fallback", shadow);
   const otherSource = document.getElementById("selection");
@@ -5247,6 +5250,11 @@ async function sourceHighlightFallbackCase(window) {
     await frame();
     await frame();
     const restored = marks().length === 1;
+    siblingOffset = 20;
+    sibling.firstChild.data = "changed sibling layout";
+    await frame();
+    await frame();
+    const siblingMoved = marks()[0]?.style.left === "120px";
     source.style.removeProperty("visibility");
     first.clear();
     const cleaned = shadow.childNodes.length === 0;
@@ -5261,12 +5269,13 @@ async function sourceHighlightFallbackCase(window) {
       await frame();
       documentRoot = document.body.querySelectorAll(":scope > .gsm-hoshidicts-source-highlight-layer").length === 1;
     } finally { view.destroy(); popup.remove(); }
-    return exact && both && retained && hidden && restored && cleaned && documentRoot
+    return exact && both && retained && hidden && restored && siblingMoved && cleaned && documentRoot
       && !document.querySelector(".gsm-hoshidicts-source-highlight-layer") && source.innerHTML === before.text
       && source.className === before.className && window.getSelection().toString() === before.selection;
   } finally {
     highlighter.clearAll();
     host.remove();
+    sibling.remove();
   }
 }
 

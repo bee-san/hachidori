@@ -3790,6 +3790,12 @@ async function checkSourceFallback(settings, tab, popup) {
     }
     check("fallback source paint tracks CSS transitions and animated ancestors",
       motion.every(value => value.exact), JSON.stringify(motion));
+    await popup.click(".gsm-hoshidicts-note-button");
+    await popup.writeNote({ definition: "Keep the source layout test open" });
+    // Keep the pointer away: a stationary pointer over moving source text can
+    // synthesize pointerout and accidentally hide missing layout observation.
+    await tab.mouse.move(2, 2);
+    await frame();
     const fixedBefore = await tab.$eval("#e17-source-box", box => box.getBoundingClientRect().toJSON());
     await tab.$eval("#e17-source-sibling", sibling => { sibling.style.height = "20px"; });
     const siblingStyle = await snapshot();
@@ -3802,6 +3808,7 @@ async function checkSourceFallback(settings, tab, popup) {
       siblingStyle.exact && siblingText.exact && JSON.stringify(fixedBefore) === JSON.stringify(fixedAfter)
         && siblingStyle.source.expected[0].top !== siblingText.source.expected[0].top,
       JSON.stringify({ fixedBefore, fixedAfter, siblingStyle, siblingText }));
+    await tab.keyboard.press("Escape"); // Close the unsaved Note draft first.
     await tab.keyboard.press("Escape");
     await frame();
     const closed = await popup.sourcePaint();
