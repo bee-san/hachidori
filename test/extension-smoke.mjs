@@ -9516,6 +9516,126 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function imageSourceRoutingCase() {
+    const harness = await createHarness();
+    const results = {};
+    const url = "data:image/png;base64,Yg==";
+    const otherUrl = "data:image/png;base64,Yw==";
+    const sourceOptions = {
+      frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
+      kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7,
+      modifier: "none", scanLength: 9,
+    };
+    const select = (popupImageSource) => harness.emitOptions({ ...sourceOptions, popupImageSource });
+    const inventory = {
+      revision: 2,
+      dictionaries: [...harness.driver.snapshot().dictionaries,
+        genericPackage({ id: "image-b", title: "Images:B", path: "/dicts/images-b", termCount: 0 }),
+        genericPackage({ id: "image-c", title: "Images:C", path: "/dicts/images-c", termCount: 0 }),
+      ],
+      groups: [{ id: "image-order", name: "Images", dictionaryIds: ["image-b", "image-c"] }],
+    };
+    harness.emitState(inventory);
+    await harness.initialLookup();
+    const context = harness.render().context;
+    const descriptor = harness.driver.viewRequest();
+    const renderCount = harness.renders.length;
+    const sources = [];
+    const load = (path, owns = () => true) => context.resolveMedia({
+      dictionary: "Generic", generation: context.generation, path,
+      isCurrent: () => owns() && context.isCurrentRequest(),
+      onResolvedSource: (title) => sources.push({ path, title }),
+    }).catch(() => null);
+    const finish = (dataUrl = url) => {
+      const request = harness.take("hd_media");
+      if (request) harness.reply(request, { dataUrl });
+      return request?.request;
+    };
+    try {
+      select({ kind: "dictionary", title: "Images:B" });
+      const explicit = load("explicit.png");
+      const explicitRequest = finish();
+      results["explicit image sources resolve another dictionary's path without changing its text or lookup owner"] =
+        await explicit === url && explicitRequest?.dictionary === "Images:B"
+        && sources.at(-1)?.title === "Images:B"
+        && harness.driver.viewRequest() === descriptor && context.isCurrentRequest()
+        && harness.renders.length === renderCount && harness.driver.snapshot().currentGeneration === 2;
+
+      select({ kind: "tabGroup", id: "image-order" });
+      const firstPath = load("group-x.png");
+      const firstCandidate = finish(null);
+      await harness.settle();
+      const fallback = finish(otherUrl);
+      const firstValue = await firstPath;
+      const secondPath = load("group-y.png");
+      const secondCandidate = finish();
+      const secondValue = await secondPath;
+      const exhausted = load("absent.png");
+      finish(null);
+      await harness.settle();
+      finish(null);
+      const exhaustedValue = await exhausted;
+      const beforeUnavailable = harness.sent.length;
+      select({ kind: "tabGroup", id: "removed-group" });
+      const unavailable = load("unavailable.png");
+      finish();
+      const unavailableValue = await unavailable;
+      results["image groups fall through separately for each path and unavailable or exhausted sources fail normally"] =
+        firstCandidate?.dictionary === "Images:B" && fallback?.dictionary === "Images:C"
+        && firstValue === otherUrl && secondCandidate?.dictionary === "Images:B" && secondValue === url
+        && exhaustedValue === null && unavailableValue === null && harness.sent.length === beforeUnavailable;
+
+      select({ kind: "tabGroup", id: "image-order" });
+      let ownsFirst = true;
+      const beforeShared = harness.sent.length;
+      const first = load("shared-route.png", () => ownsFirst);
+      const second = load("shared-route.png");
+      ownsFirst = false;
+      const sharedFirst = finish(null);
+      await harness.settle();
+      const sharedFallback = finish(otherUrl);
+      const sharedValues = await Promise.all([first, second]);
+      results["routed media shares pending candidates without a retired consumer publishing provenance or cancelling its peer"] =
+        sharedFirst?.dictionary === "Images:B" && sharedFallback?.dictionary === "Images:C"
+        && sharedValues[0] === null && sharedValues[1] === otherUrl
+        && harness.sent.length === beforeShared + 2
+        && sources.filter(({ path }) => path === "shared-route.png").length === 1;
+
+      const stale = [];
+      for (const successful of [false, true]) {
+        select({ kind: "tabGroup", id: "image-order" });
+        const path = `obsolete-${successful}.png`;
+        const operation = load(path);
+        const request = harness.take("hd_media");
+        const beforeChange = harness.sent.length;
+        select({ kind: "dictionary", title: "Images:C" });
+        harness.reply(request, { dataUrl: successful ? url : null });
+        await harness.settle();
+        finish();
+        stale.push(await operation === null && harness.sent.length === beforeChange
+          && !sources.some(item => item.path === path));
+      }
+      results["changing the effective image route stops stale success and further fallback without invalidating the lookup"] =
+        stale.every(Boolean) && context.isCurrentRequest() && harness.driver.viewRequest() === descriptor;
+
+      select({ kind: "tabGroup", id: "image-order" });
+      const pendingAlias = load("alias.png");
+      const aliasRequest = harness.take("hd_media");
+      const beforeAlias = harness.sent.length;
+      harness.emitState({ ...inventory, revision: 3, dictionaries: inventory.dictionaries.map(dictionary =>
+        dictionary.id === "image-b" ? { ...dictionary, displayName: "Picture book" } : dictionary),
+      });
+      harness.reply(aliasRequest, { dataUrl: url });
+      const aliasValue = await pendingAlias;
+      const cachedAlias = await load("alias.png");
+      results["image-source aliases retain pending ownership and cached bytes without additional content requests"] =
+        aliasValue === url && cachedAlias === url && sources.at(-1)?.title === "Images:B"
+        && harness.sent.length === beforeAlias && context.isCurrentRequest()
+        && harness.driver.viewRequest() === descriptor && harness.renders.length === renderCount;
+      return results;
+    } finally { harness.close(); }
+  }
+
   async function previewInvalidationCase() {
     const cases = [];
     for (const kind of ["term", "clicked-term", "kanji", "options", "dictionary-note"]) {
@@ -9751,7 +9871,7 @@ async function contentNoteStage() {
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
-    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
+    mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
       ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },
     newestOnlyOptions,
