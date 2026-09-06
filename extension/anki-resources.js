@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { buildAnkiFields } from "./anki-values.js";
 import { createAnkiDefinitionRenderer } from "./anki-glossary.js";
+import { ankiDigest } from "./anki-digest.js";
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp", "ico", "tiff"]);
 
 export async function ankiMediaFilename(bytes, extension) {
-  const hash = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes));
-  return `hachidori_${[...hash].map(byte => byte.toString(16).padStart(2, "0")).join("")}.${extension}`;
+  return `hachidori_${await ankiDigest(bytes)}.${extension}`;
 }
 
 // Planning reads no dictionary bytes and uploads nothing. Stable generation

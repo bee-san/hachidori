@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiAvailability } from "./anki.js";
 import { resolveAnkiTemplates } from "./anki-templates.js";
+import { ankiDigest } from "./anki-digest.js";
 import { ankiBrowseQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, findAnkiOverwriteTarget,
   isAnkiDuplicateError, overwriteAnkiFields } from "./anki-duplicates.js";
 
@@ -29,17 +30,20 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, enri
 
   async function configuration(fresh = false) {
     const config = await readConfig();
-    const configKey = JSON.stringify(config);
-    if (!fresh && cached?.key === configKey && now() < cached.expires) return cached.promise;
+    const configJson = JSON.stringify(config);
+    if (!fresh && cached?.key === configJson && now() < cached.expires) return cached.promise;
     const promise = (async () => {
-      if (!config.model) return { config, configKey, errors: ["Choose an Anki note type in Settings."] };
+      // Correlate reader requests without returning the saved API key/source
+      // credentials in a serialized configuration string to each content script.
+      const configKey = await ankiDigest(new TextEncoder().encode(configJson));
+      if (!config.model) return { config, configKey, configJson, errors: ["Choose an Anki note type in Settings."] };
       const discovery = await gateway.discover(config);
       const resolved = resolveAnkiTemplates(config, discovery.fields);
-      return { config, configKey, discovery, resolved, errors: ankiAvailability(config, discovery, resolved) };
+      return { config, configKey, configJson, discovery, resolved, errors: ankiAvailability(config, discovery, resolved) };
     })();
     // GSM's two-second status cache, sharing concurrent callers as well. Only
     // read-only preparation may use it; each submission refreshes discovery.
-    cached = { key: configKey, expires: now() + 2000, promise };
+    cached = { key: configJson, expires: now() + 2000, promise };
     return promise;
   }
 
@@ -82,11 +86,11 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, enri
     const prepared = await prepare(request, true);
     const checked = await decision(prepared);
     if (!checked.canAdd) return { state: checked.state, error: checked.error };
-    const { configKey, note, resolved, invoke } = prepared;
+    const { configJson, note, resolved, invoke } = prepared;
     const target = checked.target;
     const canonical = target ? canonicalAnkiFields(note.fields, resolved.templates, target.fields) : null;
     const fields = target ? overwriteAnkiFields(canonical.fields, target.fields, canonical.templates) : note.fields;
-    if (JSON.stringify(await readConfig()) !== configKey) throw new Error(CONFIG_CHANGED);
+    if (JSON.stringify(await readConfig()) !== configJson) throw new Error(CONFIG_CHANGED);
     let noteId;
     try {
       if (target) {

@@ -33,6 +33,7 @@ test("mining readiness shares its short source-backed cache and skips Anki when 
   const [a, b] = await Promise.all([f.service.status(), f.service.status()]);
   assert.equal(a.available, true);
   assert.equal(a.configKey, b.configKey);
+  assert.match(a.configKey, /^[0-9a-f]{64}$/u, "reader correlation does not expose the saved configuration or API key");
   assert.equal(f.discovers, 1);
   f.change({ model: "" });
   assert.equal((await f.service.status()).available, false);
