@@ -18,7 +18,7 @@
     popupTheme: "default",
     popupToolbarPosition: "auto",
     customPopupCss: "",
-    audioSources: [],
+    audioSources: [{ id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" }],
     popupWidthPx: 560,
     popupHeightPx: 420,
     popupOpacityPercent: 85,
