@@ -5,6 +5,7 @@ import "./render/glossary.js";
 const BLOCKS = new Set(["BR", "DIV", "LI", "OL", "P", "TABLE", "TBODY", "TD", "TFOOT", "TH", "THEAD", "TR", "UL"]);
 function plainText(node) {
   if (node.nodeType === 3) return node.textContent;
+  if (node.getAttribute?.("aria-hidden") === "true") return "";
   return [...node.childNodes].map(plainText).join("") + (BLOCKS.has(node.nodeName) ? "\n" : "");
 }
 
@@ -33,6 +34,8 @@ export function createAnkiDefinitionRenderer(document, request) {
       const preferred = value[dimension === "width" ? "preferredWidth" : "preferredHeight"];
       if (Number.isFinite(preferred) && preferred > 0) image.style[dimension] = `${preferred}${value.sizeUnits === "em" ? "em" : "px"}`;
     }
+    if (image.style.width && !image.style.height) image.style.height = "auto";
+    else if (image.style.height && !image.style.width) image.style.width = "auto";
     parent.append(image);
   }
 

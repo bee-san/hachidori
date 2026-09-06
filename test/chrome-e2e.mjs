@@ -3304,6 +3304,57 @@ async function checkAudioSettings(page, browser) {
   }
 }
 
+async function checkAnkiGlossaryExport(page) {
+  const imageRequests = [];
+  const observe = request => { if (request.url().includes("hd-anki-inert-image.png")) imageRequests.push(request.url()); };
+  page.on("request", observe);
+  try {
+    const result = await page.evaluate(async () => {
+      const { createAnkiDefinitionRenderer } = await import("./anki-glossary.js");
+      const dictionary = "Anki <Dictionary>";
+      const source = { term: { rules: "", glossaries: [{ dictionary, glossary: JSON.stringify([
+        { type: "structured-content", content: [
+          { tag: "strong", content: "Scoped definition" },
+          { tag: "img", path: "image.png", width: 200, height: 100, preferredWidth: 400 },
+          { tag: "img", path: "image.png", width: 200, height: 100, preferredHeight: 200 },
+        ] },
+      ]) }] }, trace: [], dictionaryAliases: {}, generation: 1,
+      dictionaryMedia: [{ dictionary, path: "image.png", filename: "hd-anki-inert-image.png" }],
+      dictionaryStyles: [{ dictionary, styles: '.gloss-sc-strong { color: rgb(17, 34, 51) } .gloss-sc-strong::before { content: "</style><img src=x onerror=alert(1)>" }' }] };
+      const html = createAnkiDefinitionRenderer(document, source)({});
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const inert = document.implementation.createHTMLDocument("");
+      inert.body.innerHTML = html;
+      const images = [...inert.querySelectorAll("img")];
+      const safe = images.length === 2 && !inert.querySelector("[onerror], script")
+        && images.every(image => image.getAttribute("src") === "hd-anki-inert-image.png");
+      if (!safe) return { safe, html };
+      // Only now mount a copy, replacing planned Anki filenames with a local
+      // image so layout is measured without fetching the exported media.
+      for (const image of images) image.src = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"></svg>');
+      const holder = document.createElement("div");
+      holder.style.cssText = "width: 1000px; color: rgb(0, 0, 0);";
+      holder.append(...inert.body.childNodes);
+      const outside = document.createElement("strong");
+      outside.className = "gloss-sc-strong";
+      outside.textContent = "Outside glossary";
+      holder.append(outside);
+      document.body.append(holder);
+      try {
+        await Promise.all(images.map(image => image.decode()));
+        const color = getComputedStyle(holder.querySelector(".gsm-hoshidicts-glossary-content strong")).color;
+        const outsideColor = getComputedStyle(outside).color;
+        const sizes = images.map(image => { const rect = image.getBoundingClientRect(); return [rect.width, rect.height]; });
+        return { safe, color, outsideColor, sizes, style: holder.querySelector("style").textContent };
+      } finally { holder.remove(); }
+    });
+    check("Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
+      result.safe && result.color === "rgb(17, 34, 51)" && result.outsideColor === "rgb(0, 0, 0)"
+        && result.sizes.every(([width, height]) => width === 400 && height === 200)
+        && imageRequests.length === 0, JSON.stringify({ ...result, imageRequests }));
+  } finally { page.off("request", observe); }
+}
+
 async function checkAnkiSettings(page, browser) {
   const original = await page.evaluate(async () => ({
     options: (await chrome.storage.local.get("options")).options,
@@ -3433,6 +3484,7 @@ async function checkAnkiSettings(page, browser) {
         && templateReload.config.fieldTemplates.Expression.overwriteMode === "coalesce-new"
         && templateReload.editor === "<b>{expression}</b>" && templateReload.status.generation === original.status.generation,
       JSON.stringify({ beforeTemplateRefresh, afterTemplateRefresh, templateReload }));
+    await checkAnkiGlossaryExport(page);
     if (process.env.HACHIDORI_ANKI_SCREENSHOT) await page.screenshot({ path: process.env.HACHIDORI_ANKI_SCREENSHOT, fullPage: true });
   } finally {
     releaseA?.();

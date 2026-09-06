@@ -32,8 +32,14 @@ function frequencyNumber(frequency) {
 }
 
 function frequencyAggregate(term, mode, harmonic) {
-  const values = term.frequencies.filter(group => !group.frequencyMode || group.frequencyMode === mode)
-    .map(group => group.frequencies.map(frequencyNumber).find(value => value > 0)).filter(value => value !== undefined);
+  const values = [];
+  for (const group of term.frequencies) {
+    if (group.frequencyMode && group.frequencyMode !== mode) continue;
+    for (const frequency of group.frequencies) {
+      const value = frequencyNumber(frequency);
+      if (value > 0) { values.push(value); break; }
+    }
+  }
   if (!values.length) return mode === "rank-based" ? "9999999" : "0";
   const mean = harmonic ? values.length / values.reduce((sum, value) => sum + 1 / value, 0)
     : values.reduce((sum, value) => sum + value, 0) / values.length;
