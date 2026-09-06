@@ -4250,6 +4250,8 @@ async function main() {
   check("frequency controls preserve unavailable selections and revision-bound native drafts",
     frequencySettings?.availability === true && frequencySettings.draft === true,
     JSON.stringify(frequencySettings));
+  check("compact-summary Settings preserve count, soft canonical source and focused revision-bound drafts",
+    frequencySettings?.summary === true, JSON.stringify(frequencySettings));
   const autosave = await settingsAutosaveStage();
   check(
     "Settings coalesces edited fields and queues only one revisioned save at a time",
@@ -5030,7 +5032,53 @@ async function settingsFrequencyStage() {
     const draft = nativeDraftKept && conflict.baseRevision === baseRevision
       && conflict.options.frequencyDictionary === "Occurrence" && conflict.options.frequencyOrder === "descending"
       && field("dictionary").value === "Unknown mode" && field("order").value === "ascending";
-    return { explicit, availability, draft, writes };
+    const summaryToggle = window.document.getElementById("opt-compact-summary");
+    const snippets = window.document.getElementById("opt-summary-count");
+    const preferred = window.document.getElementById("opt-summary-dictionary");
+    if (!summaryToggle || !snippets || !preferred) return { explicit, availability, draft, writes, summary: false };
+    const summaryDefault = !summaryToggle.checked && snippets.value === "3" && snippets.disabled
+      && preferred.value === "" && preferred.disabled;
+    async function summaryEdit(control, value) {
+      const before = writes.length;
+      if (control === summaryToggle) control.checked = value;
+      else control.value = value;
+      control.dispatchEvent(new window.Event("change", { bubbles: true }));
+      await until(() => writes.length === before + 1 && status() === "Saved.");
+    }
+    await summaryEdit(summaryToggle, true);
+    await summaryEdit(snippets, "6");
+    await summaryEdit(preferred, "Rank");
+    const beforePresentation = writes.length;
+    preferred.focus();
+    const choice = preferred.selectedOptions[0];
+    emitDictionaries({ enabled: false, displayName: "Dormant source" });
+    const focusedChoice = preferred.selectedOptions[0] === choice && preferred.value === "Rank";
+    preferred.blur();
+    const disabledKept = preferred.value === "Rank" && preferred.selectedOptions[0].textContent.includes("Dormant source")
+      && !preferred.selectedOptions[0].disabled && writes.length === beforePresentation;
+    emitDictionaries({ termCount: 0, frequencyCount: 3 });
+    const unavailableKept = preferred.value === "Rank" && preferred.selectedOptions[0].textContent.includes("unavailable")
+      && !preferred.selectedOptions[0].disabled && writes.length === beforePresentation;
+    await summaryEdit(summaryToggle, false);
+    const offKept = snippets.disabled && preferred.disabled && snippets.value === "6" && preferred.value === "Rank"
+      && JSON.stringify(writes.at(-1).options) === JSON.stringify({ showCompactDefinitionSummary: false });
+    await summaryEdit(summaryToggle, true);
+    preferred.focus();
+    preferred.value = "Occurrence";
+    preferred.dispatchEvent(new window.Event("input", { bubbles: true }));
+    const summaryRevision = storedOptions.revision;
+    emitOptions({ compactDefinitionSummaryDictionary: "Unknown mode" });
+    const nativeSummaryDraft = preferred.value === "Occurrence";
+    preferred.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => status().includes("Could not save"));
+    const summaryConflict = writes.at(-1).baseRevision === summaryRevision
+      && writes.at(-1).options.compactDefinitionSummaryDictionary === "Occurrence";
+    preferred.blur();
+    window.document.getElementById("options-use-saved").click();
+    const summary = summaryDefault && focusedChoice && disabledKept && unavailableKept && offKept
+      && nativeSummaryDraft && summaryConflict && preferred.value === "Unknown mode" && snippets.value === "6";
+    return { explicit, availability, draft, writes, summary,
+      summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft, summaryConflict } };
   } finally {
     window.close();
   }
@@ -10129,8 +10177,77 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   await retainedNavigationRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await mediaRenderStage({ HDGlossary, document, window });
+  await compactSummaryRenderStage({ HDGlossary, HDPopup, document, window, candidate,
+    result: lookup.results[0], mediaUrl: media.dataUrl, summaryGlossaries });
   dom.window.close();
   return true;
+}
+
+async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window, candidate, result, mediaUrl, summaryGlossaries }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  const projected = { ...result, term: { ...result.term, glossaries: summaryGlossaries } };
+  const original = JSON.stringify(projected);
+  const mediaRequests = [];
+  let finishMedia;
+  const pendingMedia = new Promise(resolve => { finishMedia = resolve; });
+  let positions = 0;
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    appendStructuredImage: HDGlossary.appendStructuredImage,
+    parseTagList: HDGlossary.parseTagList, positionPopup() { positions += 1; },
+  });
+  const context = { generation: 23, dictionaryPresentation: [], dictionaryTabGroups: [],
+    resolveMedia(query) { mediaRequests.push(query); return pendingMedia; },
+    showCompactDefinitionSummary: false, compactDefinitionSummaryCount: 2,
+    compactDefinitionSummaryDictionary: "Illustrated" };
+  try {
+    view.renderResults([projected], candidate, context);
+    const absent = popup.querySelector(".gsm-hoshidicts-compact-definition-summary") === null && mediaRequests.length === 1;
+    const cards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+    const bodies = cards.map(card => card.textContent);
+    const expression = popup.querySelector(".gsm-hoshidicts-expression");
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const note = popup.querySelector(".gsm-hoshidicts-note-form");
+    const input = note.querySelector(".gsm-hoshidicts-note-definition");
+    input.value = "retained draft";
+    input.focus();
+    input.setSelectionRange(2, 6);
+    view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true });
+    const summary = popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+    const image = summary?.querySelector("img");
+    const live = summary?.dataset.hoshidictsDictionary === "Illustrated"
+      && JSON.stringify([...summary.querySelectorAll("li")].map(node => node.textContent)) === JSON.stringify(["first", "second"])
+      && image && mediaRequests.length === 2 && mediaRequests[1].generation === 23
+      && mediaRequests[1].dictionary === "Illustrated" && mediaRequests[1].isCurrent();
+    const retained = popup.querySelector(".gsm-hoshidicts-expression") === expression
+      && popup.querySelector(".gsm-hoshidicts-note-form") === note && document.activeElement === input
+      && input.value === "retained draft" && input.selectionStart === 2 && input.selectionEnd === 6
+      && cards.every((card, index) => card.isConnected && card.textContent === bodies[index]);
+    view.updateDictionaryPresentation(context);
+    const obsolete = image && !image.isConnected && mediaRequests[1].isCurrent() === false;
+    await new Promise(done => window.setTimeout(done, 40));
+    const beforeReply = positions;
+    finishMedia(mediaUrl);
+    await new Promise(done => window.setTimeout(done, 0));
+    const oldImageUntouched = !image?.getAttribute("src");
+    // The full-card consumer remains current; only its actual load can position.
+    const noLatePosition = positions === beforeReply;
+    view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true,
+      compactDefinitionSummaryDictionary: "Absent", compactDefinitionSummaryCount: 1 });
+    const fallback = popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+    check("live compact summaries preserve Note and cards while retiring only their own media and falling back within projected results",
+      absent && live && retained && obsolete && oldImageUntouched && noLatePosition
+        && fallback?.textContent === "plain first" && fallback.dataset.hoshidictsDictionary === "Plain"
+        && JSON.stringify(projected) === original,
+      JSON.stringify({ absent, live: Boolean(live), retained, obsolete, oldImageUntouched, noLatePosition,
+        fallback: fallback?.outerHTML, mediaRequests: mediaRequests.map(({ isCurrent, ...query }) => query) }));
+  } finally {
+    finishMedia(mediaUrl);
+    view.destroy();
+    popup.remove();
+  }
 }
 
 async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
