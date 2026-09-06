@@ -1357,7 +1357,7 @@
       const term = { ...result.term, frequencies: result.term.frequencies.map(group =>
         ({ ...group, frequencyMode: frequencyModes.get(group.dictionary) })) };
       return { ...result, term, generation: level.activeTermRender.generation, sentence: candidate.sentence,
-        matchOffset: candidate.matchOffset, matched: result.matched || result.term.expression,
+        matchOffset: candidate.matchOffset, matched: rawMatchedText(candidate, result.matched || result.term.expression),
         searchQuery: request?.payload?.text ?? request?.termPayload?.text ?? candidate.query,
         popupSelectionText: selection?.anchorNode && level.popup.contains(selection.anchorNode) ? selection.toString() : "",
         documentTitle: document.title, audioSelection: audio.selectionFor(result) ?? undefined,
