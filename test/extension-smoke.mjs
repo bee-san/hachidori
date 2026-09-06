@@ -6744,6 +6744,8 @@ async function staleKanjiResponseStage(invalidation) {
     {
       clear() {},
       hideImagePreview() {},
+      updateDictionaryPresentation() {},
+      flushDictionaryPresentation() {},
       renderKanji(value) { renders.push(value); },
       renderResults(value) { renders.push(value); },
       setToolbarPosition() {},
@@ -6825,6 +6827,7 @@ async function contentNoteStage() {
       const record = {
         callbacks, editing: false, closeNext: false, closeCalls: 0,
         clearCount: 0, previewDismissals: 0, layoutSchedules: 0, renders: [],
+        presentations: [], presentationFlushes: 0,
       };
       function stopEditing() {
         if (!record.editing) return;
@@ -6837,6 +6840,8 @@ async function contentNoteStage() {
         renders.push(render);
       }
       const view = {
+        updateDictionaryPresentation(context) { record.presentations.push(context); },
+        flushDictionaryPresentation() { record.presentationFlushes += 1; },
         hideImagePreview() { record.previewDismissals += 1; },
         clear() {
           record.clearCount += 1;
@@ -7058,8 +7063,10 @@ async function contentNoteStage() {
       };
     }
 
-    function emitState(value) {
-      storageListener?.({ dictionaryState: { newValue: value } }, "local");
+    function emitState(value, nextOptions) {
+      storageListener?.({ dictionaryState: { newValue: value },
+        ...(nextOptions ? { options: { newValue: nextOptions } } : {}),
+      }, "local");
     }
 
     let emittedOptionsRevision = 0;
@@ -7112,6 +7119,8 @@ async function contentNoteStage() {
       pending,
       popup,
       render: (depth = 0) => popupRecord(depth)?.renders.at(-1),
+      presentations: (depth = 0) => popupRecord(depth)?.presentations,
+      presentationFlushes: (depth = 0) => popupRecord(depth)?.presentationFlushes,
       renders,
       reply,
       requestPayload,
@@ -7356,6 +7365,53 @@ async function contentNoteStage() {
       "child popup depth is live and child geometry is clamped to the viewport": positioned && layoutStartsAtOwner && rootOnlyScroll
         && disabled && limited && lowered && shrunk && noViewport,
     };
+  }
+
+  async function livePresentationCase() {
+    const harness = await createHarness();
+    const checks = [];
+    const name = "presentation-only state adopts newest labels without invalidating requests or pending child anchors";
+    try {
+      await harness.initialLookup();
+      const request = harness.driver.viewRequest();
+      const render = harness.render();
+      const snapshot = harness.driver.snapshot();
+      const presentation = { schemaVersion: 1, revision: 2,
+        dictionaries: snapshot.dictionaries.map(dictionary => ({ ...dictionary, displayName: "Live alias", favorite: false })),
+        groups: [{ id: "live", name: "Live group", dictionaryIds: [snapshot.dictionaries[0].id] }],
+      };
+      const sent = harness.sent.length;
+      harness.emitState(presentation);
+      checks.push(harness.render() === render && harness.driver.viewRequest() === request && render.context.isCurrentRequest()
+        && !harness.driver.snapshot().popupHidden && harness.sent.length === sent
+        && harness.presentations().at(-1)?.dictionaryPresentation[0].displayName === "Live alias"
+        && harness.presentations().at(-1)?.dictionaryTabGroups[0].dictionaries[0] === "Generic");
+      harness.emitState(presentation);
+      harness.emitState({ ...presentation, revision: 1 });
+      checks.push(harness.presentations().length === 1);
+      const child = harness.internalLink({ query: "pending child" });
+      const pending = harness.take("hd_lookup");
+      if (!pending) return { [name]: false };
+      const anchor = harness.popup.lastElementChild;
+      harness.emitState({ ...presentation, revision: 3, groups: [] });
+      checks.push(harness.driver.popupAt(1)?.hidden === true && anchor.isConnected && render.context.isCurrentRequest()
+        && harness.callbacks().canProjectDictionaryPresentation?.() === false);
+      harness.reply(pending, { dictionaryCount: 1, results: [harness.term("pending child")] });
+      await child;
+      checks.push(harness.render(1).context.dictionaryTabGroups.length === 0 && !harness.driver.snapshot(1).popupHidden);
+      const flushes = harness.presentationFlushes();
+      harness.render(1).context.onBack();
+      checks.push(!harness.driver.popupAt(1) && harness.callbacks().canProjectDictionaryPresentation?.() === true
+        && harness.presentationFlushes() > flushes);
+      harness.edit(true);
+      harness.emitState({ ...presentation, revision: 4 });
+      checks.push(harness.callbacks().canProjectDictionaryPresentation?.() === false && render.context.isCurrentRequest());
+      harness.edit(false);
+      const updates = harness.presentations().length;
+      harness.emitState({ ...presentation, revision: 5, groups: [] }, { revision: 99, maxResults: 99 });
+      checks.push(harness.presentations().length === updates && !render.context.isCurrentRequest());
+      return { [name]: checks.every(Boolean) || checks };
+    } finally { harness.close(); }
   }
 
   async function nestedResizeCase() {
@@ -9461,7 +9517,7 @@ async function contentNoteStage() {
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
-      ...await nestedLevelsCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
+      ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
