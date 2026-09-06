@@ -10180,7 +10180,8 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     view.closeNoteForm();
     live.push(popup.querySelector(secondGroup).textContent === "Changed group"
       && popup.querySelector(".gsm-hoshidicts-glossary-card > summary").title === "First"
-      && popup.querySelector("form") === draft && draft.hidden && selected?.groupId === "second");
+      && popup.querySelector("form") === draft && draft.hidden && selected?.groupId === "second"
+      && document.activeElement === popup.querySelector(".gsm-hoshidicts-note-button"));
     const protectedLink = popup.querySelector("a[data-hoshidicts-query]");
     protectedLink.focus();
     view.updateDictionaryPresentation?.(reordered);
@@ -10808,6 +10809,21 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
     check("deferred, tab and expanded render failures reach their owner without escaping",
       deferredHandled && tabHandled && errors === 3 && moreEscaped === 0 && popup.childElementCount === 0,
       JSON.stringify({ deferredHandled, tabHandled, errors, escaped, moreEscaped }));
+
+    const projectionContext = { ...context, selectedDictionaryTab: { groupId: "live" },
+      dictionaryTabGroups: [{ id: "live", name: "Live", dictionaries: ["Healthy"] }],
+    };
+    view.renderResults([healthy, invalid], candidate, projectionContext);
+    let presentationEscaped = false;
+    const beforePresentationError = errors;
+    try {
+      view.updateDictionaryPresentation({ ...projectionContext,
+        dictionaryTabGroups: [{ id: "live", name: "Live", dictionaries: ["Invalid"] }],
+      });
+    } catch { presentationEscaped = true; }
+    check("storage-driven projection failures use the current render error boundary",
+      !presentationEscaped && errors === beforePresentationError + 1 && popup.childElementCount === 0,
+      JSON.stringify({ presentationEscaped, errors, beforePresentationError }));
 
     const replacements = [
       () => view.renderResults([healthy], candidate, context),
