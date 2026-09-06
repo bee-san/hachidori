@@ -575,6 +575,7 @@
     let pageOccluders = null;
     let stylesheetState = null;
     let stylesheetTimer = null;
+    let polledStyles = false;
     const motionRoots = new Set();
     const motionEvents = ["animationstart", "transitionrun", "pointerover", "pointerout", "focusin", "focusout"];
     const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
@@ -596,30 +597,39 @@
     }
 
     function stylesheetSnapshot() {
-      const seen = new Map();
+      const seen = new Set();
+      const snapshot = [];
       function sheetState(sheet) {
-        if (seen.has(sheet)) return ["ref", seen.get(sheet)];
-        const index = seen.size;
-        seen.set(sheet, index);
-        let rules;
+        // Object references retain shared-sheet identity without serializing
+        // each rule into a nested array and copying all CSS through JSON.
+        snapshot.push(sheet, sheet.disabled, sheet.media?.mediaText);
+        if (seen.has(sheet)) return;
+        seen.add(sheet);
         try {
-          rules = [...sheet.cssRules].map(rule => [rule.cssText, rule.styleSheet ? sheetState(rule.styleSheet) : null]);
+          for (const rule of sheet.cssRules) {
+            snapshot.push(rule.cssText);
+            if (rule.styleSheet) sheetState(rule.styleSheet);
+          }
         } catch (error) {
           if (error.name !== "SecurityError") throw error;
           // Cross-origin rules are unreadable and cannot be edited by page
           // CSSOM either. Their load event still refreshes effective styles.
-          rules = null;
         }
-        return ["sheet", index, sheet.disabled, sheet.media?.mediaText, rules];
+        snapshot.push(null);
       }
-      return JSON.stringify([...layoutRoots].filter(tree => tree !== root || !(root instanceof windowRef.ShadowRoot))
-        .map(tree => [...(tree.styleSheets || []), ...(tree.adoptedStyleSheets || [])].map(sheetState)));
+      for (const tree of layoutRoots) {
+        if (tree === root && root instanceof windowRef.ShadowRoot) continue;
+        snapshot.push(tree);
+        for (const sheet of [...(tree.styleSheets || []), ...(tree.adoptedStyleSheets || [])]) sheetState(sheet);
+      }
+      return snapshot;
     }
 
     function checkStyleSheets() {
       const next = stylesheetSnapshot();
-      if (next !== stylesheetState) {
+      if (next.length !== stylesheetState.length || next.some((value, index) => value !== stylesheetState[index])) {
         stylesheetState = next;
+        polledStyles = true;
         layoutChanged();
       }
     }
@@ -772,7 +782,8 @@
         // fallback-only poll reads stylesheet text, never page geometry, and
         // only a changed snapshot requests discovery/paint. Snapshot before
         // starting the timer so early CSSOM edits cannot become its baseline.
-        stylesheetState = stylesheetSnapshot();
+        if (!polledStyles) stylesheetState = stylesheetSnapshot();
+        polledStyles = false;
         stylesheetTimer ??= windowRef.setInterval(checkStyleSheets, 250);
       }
       return pageOccluders.flatMap(element => {
