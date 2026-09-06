@@ -216,7 +216,7 @@ const PLANNED = [
   "Settings persists frequency directions and applies them to real-WASM lookup results",
   "exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
   "source highlights reconcile selected text mutations without changing selection",
-  "nested source highlights retain ancestor Range identity when children close",
+  "nested source highlights retain ancestor ownership when children close in native and fallback modes",
   "fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
   "editable controls preserve normal editing and suppress pointer and selection lookups",
   "Japanese-only preferences change automatic scanning in an already-open tab",
@@ -817,6 +817,28 @@ async function popupReader(page, depth = 0) {
     return result.value;
   }
 
+  async function sourcePaint(action = "read") {
+    const object = await resolvePopupObject();
+    if (!object) return null;
+    const { result, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true, arguments: [{ value: action }],
+      functionDeclaration: `function (action) {
+        const root = this.getRootNode();
+        const layer = root.querySelector(".gsm-hoshidicts-source-highlight-layer");
+        if (action === "remember") root.__sourcePaintOwner = layer?.firstElementChild;
+        const sameOwner = layer?.firstElementChild === root.__sourcePaintOwner;
+        if (action === "forget") delete root.__sourcePaintOwner;
+        const ownerRects = [...(layer?.children || [])].map(group => [...group.children].map(mark => ({
+          ...mark.getBoundingClientRect().toJSON(), pointerEvents: getComputedStyle(mark).pointerEvents,
+        })));
+        return { groups: layer?.children.length || 0, sameOwner,
+          rects: ownerRects.flat(), ownerRects };
+      }`,
+    });
+    if (exceptionDetails) throw new Error(exceptionDetails.text);
+    return result.value;
+  }
+
   async function retainedControls(action = "read") {
     const object = await resolvePopupObject();
     if (!object) return null;
@@ -1009,7 +1031,47 @@ async function popupReader(page, depth = 0) {
     });
     return reply.result.value;
   }
-  return { click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview, nested, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+  return { click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview, nested, sourcePaint, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+}
+
+// Content scripts have their own Highlight constructor; changing the page's
+// main-world global would leave the production path untested.
+async function forceSourceFallback(tab, settings) {
+  const cdp = await tab.createCDPSession();
+  const contexts = [];
+  cdp.on("Runtime.executionContextCreated", ({ context }) => contexts.push(context.id));
+  await cdp.send("Runtime.enable");
+  const extensionId = new URL(settings.url()).host;
+  let contextId;
+  for (const id of contexts) {
+    const { result } = await cdp.send("Runtime.evaluate", { contextId: id,
+      expression: `typeof HDPopup === "object" && globalThis.chrome?.runtime?.id === ${JSON.stringify(extensionId)}` });
+    if (result.value === true) { contextId = id; break; }
+  }
+  if (contextId === undefined) { await cdp.detach(); throw new Error("Hachidori content world not found"); }
+  const evaluate = async expression => {
+    const { exceptionDetails } = await cdp.send("Runtime.evaluate", { contextId, expression });
+    if (exceptionDetails) throw new Error(exceptionDetails.text);
+  };
+  const toggle = async () => {
+    for (const enabled of [false, true]) {
+      await settings.evaluate(async sourceHighlightEnabled => {
+        const { options } = await chrome.storage.local.get("options");
+        const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+          baseRevision: options.revision, options: { sourceHighlightEnabled } });
+        if (!reply.ok) throw new Error(reply.error);
+      }, enabled);
+      await tab.evaluate(() => new Promise(done => setTimeout(done, 100)));
+    }
+  };
+  await evaluate("globalThis.__sourceHighlightConstructor = globalThis.Highlight; globalThis.Highlight = undefined");
+  await toggle();
+  return async () => {
+    try {
+      await evaluate("globalThis.Highlight = globalThis.__sourceHighlightConstructor; delete globalThis.__sourceHighlightConstructor");
+      await toggle();
+    } finally { await cdp.detach(); }
+  };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -1969,6 +2031,9 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.bringToFront();
     await tab.keyboard.press("Escape");
     await hoverForPopup(tab, popup, "#verb");
+    await tab.evaluate(name => {
+      window.__sourceAncestorRanges = [...CSS.highlights.get(name)];
+    }, HIGHLIGHT_NAME);
     await popup.nested("remember");
     const source = await popup.nested("focus-link");
     await tab.mouse.click(source.linkRect.x + source.linkRect.width / 2, source.linkRect.y + source.linkRect.height / 2);
@@ -2004,6 +2069,12 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     const second = await waitForPopupState(grandchild, state => state.plain.includes(fixture.grandchild)
       && state.imageStates.length === 1 && state.imageStates[0].width === 16);
     const fullChain = await grandchild.nested();
+    const fullHighlights = await tab.evaluate(name => {
+      const ranges = [...(CSS.highlights.get(name) || [])];
+      const rootRetained = ranges[0] === window.__sourceAncestorRanges[0];
+      window.__sourceAncestorRanges = ranges;
+      return { rootRetained, texts: ranges.map(range => range.toString()) };
+    }, HIGHLIGHT_NAME);
     await grandchild.nested("focus-link");
     await tab.keyboard.press("Enter");
     const limited = await grandchild.nested();
@@ -2023,6 +2094,34 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await child.click(".gsm-hoshidicts-kanji-back");
     const returned = await child.waitForHidden();
     const retained = await popup.nested();
+    const ancestorHighlight = await tab.evaluate(name => {
+      const ranges = [...(CSS.highlights.get(name) || [])];
+      const same = ranges.length === 1 && ranges[0] === window.__sourceAncestorRanges[0];
+      delete window.__sourceAncestorRanges;
+      return { same, text: ranges[0]?.toString() };
+    }, HIGHLIGHT_NAME);
+    await popup.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    await child.waitForVisible();
+    const linkRects = await tab.evaluate(name => Array.from([...CSS.highlights.get(name)][1]
+      .getClientRects(), rect => rect.toJSON()), HIGHLIGHT_NAME);
+    const restoreHighlight = await forceSourceFallback(tab, settings);
+    let fallback;
+    try {
+      const before = await popup.sourcePaint("remember");
+      await child.click(".gsm-hoshidicts-kanji-back");
+      await child.waitForHidden();
+      const after = await popup.sourcePaint("forget");
+      fallback = { before, after, linkRects };
+    } finally { await restoreHighlight(); }
+    check("nested source highlights retain ancestor ownership when children close in native and fallback modes",
+      fullHighlights.rootRetained && fullHighlights.texts.length === 3
+        && fullHighlights.texts.every(Boolean) && ancestorHighlight.same && ancestorHighlight.text === fixture.query
+        && fallback.before.groups === 2 && fallback.before.ownerRects[1].length > 0
+        && fallback.before.ownerRects[1].every(rect => linkRects.some(source => rect.left >= source.left - 1
+          && rect.right <= source.right + 1 && rect.top >= source.top - 1 && rect.bottom <= source.bottom + 1))
+        && fallback.after.groups === 1 && fallback.after.sameOwner,
+      JSON.stringify({ fullHighlights, ancestorHighlight, fallback }));
     await setDepth(0);
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
@@ -3425,6 +3524,25 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await pause();
     const glossaryRetained = glossarySelection.includes("to eat") && popup.visible(await popup.state())
       && (await lookups()).length === startCount + 1;
+    const mutationHighlight = await tab.evaluate(async name => {
+      const element = document.getElementById("verb");
+      const first = [...CSS.highlights.get(name)][0];
+      const selected = window.getSelection().toString();
+      const unrelated = new Highlight();
+      CSS.highlights.set("e17-page-owned", unrelated);
+      try {
+        element.innerHTML = element.innerHTML;
+        await new Promise(done => requestAnimationFrame(done));
+        const replacement = [...(CSS.highlights.get(name) || [])][0];
+        const valid = replacement !== first && replacement?.toString() === "食べたかった";
+        element.querySelector("b").firstChild.insertData(1, "別");
+        await new Promise(done => requestAnimationFrame(done));
+        return { valid, cleared: !CSS.highlights.has(name), selection: window.getSelection().toString() === selected,
+          unrelated: CSS.highlights.get("e17-page-owned") === unrelated };
+      } finally { CSS.highlights.delete("e17-page-owned"); }
+    }, HIGHLIGHT_NAME);
+    check("source highlights reconcile selected text mutations without changing selection",
+      Object.values(mutationHighlight).every(Boolean), JSON.stringify(mutationHighlight));
     const hiddenText = await selectVerb('食べ<span style="display:none">隠し</span>たかった');
     const hiddenPopup = await popup.waitForVisible();
     const hiddenHighlight = await tab.evaluate((name) =>
@@ -3546,6 +3664,81 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
     await editSettingsControls(settings, original);
     await restoreMediaReplyProbe(worker);
+  }
+}
+
+async function checkSourceFallback(settings, tab, popup) {
+  const original = await readSettingsControls(settings, ["opt-lookup-mode", "opt-scan-length", "opt-hover-delay"]);
+  const sourceBefore = await tab.$eval("#verb", element => ({ html: element.innerHTML,
+    style: element.getAttribute("style"), className: element.className }));
+  const frame = () => tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+  const snapshot = async () => {
+    await frame();
+    const paint = await popup.sourcePaint();
+    const source = await tab.$eval("#verb", element => {
+      const clip = element.getBoundingClientRect();
+      const left = clip.left + element.clientLeft, top = clip.top + element.clientTop;
+      const expected = [...element.querySelectorAll("b,i")].flatMap(part => {
+        const range = document.createRange();
+        range.selectNodeContents(part.firstChild);
+        return [...range.getClientRects()].map(rect => ({ left: Math.max(left, rect.left), top: Math.max(top, rect.top),
+          right: Math.min(left + element.clientWidth, rect.right), bottom: Math.min(top + element.clientHeight, rect.bottom) }))
+          .filter(rect => rect.right > rect.left && rect.bottom > rect.top);
+      });
+      return { expected, html: element.innerHTML, className: element.className, selection: getSelection().toString() };
+    });
+    const exact = paint.groups === 1 && paint.rects.length === source.expected.length && paint.rects.length > 0
+      && paint.rects.every((rect, index) => rect.pointerEvents === "none"
+        && ["left", "top", "right", "bottom"].every(key => Math.abs(rect[key] - source.expected[index][key]) < 1));
+    return { paint, source, exact };
+  };
+  let restore;
+  let evidence;
+  try {
+    await tab.keyboard.press("Escape");
+    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16", "opt-hover-delay": "0" });
+    await tab.$eval("#verb", element => {
+      getSelection().removeAllRanges();
+      element.innerHTML = '前<b id="e17-source" style="padding:0 4px">食べ</b><i>たかった</i>後';
+      element.classList.add("gsm-hoshidicts-source-match");
+      element.style.cssText = "width:180px;overflow:hidden;white-space:nowrap;border:3px solid #888;padding:0 8px";
+    });
+    await tab.bringToFront();
+    const opened = await hoverForPopup(tab, popup, "#e17-source");
+    restore = await forceSourceFallback(tab, settings);
+    const initial = await snapshot();
+    if (process.env.HACHIDORI_HIGHLIGHT_SCREENSHOT) await tab.screenshot({ path: process.env.HACHIDORI_HIGHLIGHT_SCREENSHOT });
+    await tab.$eval("#verb", element => { element.scrollLeft = 45; });
+    const scrolled = await snapshot();
+    await tab.$eval("#verb", element => { element.style.width = "110px"; });
+    const resized = await snapshot();
+    await tab.$eval("#verb", element => { element.style.visibility = "hidden"; });
+    await frame();
+    const hidden = await popup.sourcePaint();
+    await tab.$eval("#verb", element => { element.style.visibility = "visible"; element.style.opacity = "0"; });
+    await frame();
+    const transparent = await popup.sourcePaint();
+    await tab.$eval("#verb", element => { element.style.opacity = "1"; });
+    const visible = await snapshot();
+    await tab.keyboard.press("Escape");
+    await frame();
+    const closed = await popup.sourcePaint();
+    const snapshots = [initial, scrolled, resized, visible];
+    evidence = { opened: !!opened, initial, scrolled, resized, hidden, transparent, visible, closed };
+    check("fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
+      !!opened && snapshots.every(value => value.exact && value.source.html === initial.source.html
+        && value.source.className === initial.source.className && value.source.selection === initial.source.selection)
+        && initial.paint.rects[0].left !== scrolled.paint.rects[0].left
+        && hidden.rects.length === 0 && transparent.rects.length === 0 && closed.groups === 0,
+      JSON.stringify(evidence));
+  } finally {
+    if (restore) await restore();
+    await tab.$eval("#verb", (element, value) => {
+      element.innerHTML = value.html;
+      element.className = value.className;
+      if (value.style === null) element.removeAttribute("style"); else element.setAttribute("style", value.style);
+    }, sourceBefore);
+    await editSettingsControls(settings, original);
   }
 }
 
@@ -4976,6 +5169,7 @@ async function main() {
   await checkCompactSummaries(page, tab, popup, browser);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
+  await checkSourceFallback(page, tab, popup);
   await checkFrequencyDirection(browser, page, tab, popup);
   await checkPopupMetadata(browser, page, tab, popup);
   await hover("#verb");
