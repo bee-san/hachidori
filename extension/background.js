@@ -380,7 +380,7 @@ const WORKER_HANDLERS = {
       throw new Error("Anki discovery is available only from Hachidori Settings");
     }
     if (typeof message.model !== "string" || typeof message.apiKey !== "string") {
-      throw new Error("Anki discovery requires a note type and API key string");
+      throw new TypeError("Anki discovery requires a note type and API key string");
     }
     ankiGateway ??= createAnkiGateway();
     return ankiGateway.discover({ model: message.model, apiKey: message.apiKey });

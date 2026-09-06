@@ -31,9 +31,9 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
   function renderStatus(config) {
     const status = element("anki-status");
     const errors = ankiAvailability(config, discovery);
-    const message = loading ? "Checking AnkiConnect…" : [discovery?.connected
-      ? errors.length ? "Connected · configuration needs attention" : "Connected · configuration ready"
-      : "Not connected", ...errors].join("\n");
+    let state = "Not connected";
+    if (discovery?.connected) state = errors.length ? "Connected · configuration needs attention" : "Connected · configuration ready";
+    const message = loading ? "Checking AnkiConnect…" : [state, ...errors].join("\n");
     if (status.textContent !== message) status.textContent = message;
     const invalid = !loading && errors.length > 0;
     if (status.classList.contains("is-error") !== invalid) status.classList.toggle("is-error", invalid);
