@@ -1600,7 +1600,7 @@
 
   async function restoreTermRender(previous, focusTarget, level = rootLevel) {
     if (previous.generation !== currentGeneration || !sameDictionaryContents(previous.dictionaries, dictionaries)) {
-      const restoring = executeViewRequest(previous.request, level);
+      const restoring = executeViewRequest(previous.request, level, previous.viewport);
       const token = level.lookupToken;
       if (await restoring && token === level.lookupToken && level.currentViewRequest === previous.request) {
         focusKanjiLink(focusTarget, level);
@@ -1615,6 +1615,7 @@
       previous.renderOptions,
       previous.request,
       level,
+      previous.viewport,
     );
     focusKanjiLink(focusTarget, level);
   }
@@ -1872,16 +1873,13 @@
     }
     const kanji = reply.kanji;
     if (!kanji || !Array.isArray(kanji.entries) || kanji.entries.length === 0) {
-      retainProtectedReplay(request, token, level, replayOptions);
+      if (!retainProtectedReplay(request, token, level, replayOptions)) hide(level);
       return false;
     }
-    const entries = capability?.kind === "kanji"
+    const selectedEntries = capability?.kind === "kanji"
       ? kanji.entries.filter((entry) => entry.dictionary === capability.title)
       : kanji.entries;
-    if (entries.length === 0) {
-      retainProtectedReplay(request, token, level, replayOptions);
-      return false;
-    }
+    const entries = selectedEntries.length > 0 ? selectedEntries : kanji.entries;
     level.currentViewRequest = request;
     level.deferredRefresh = null;
     level.deferredDictionaryInvalidationRevision = -1;
@@ -1922,7 +1920,10 @@
       highlightText: level.activeHighlightText || character,
       kanjiPayload: { character },
       kind: "kanji",
-      previous: level.activeTermRender,
+      previous: level.activeTermRender && {
+        ...level.activeTermRender,
+        viewport: level.view.captureTermView?.(),
+      },
       returnFocus: kanjiLinkFocusTarget(sourceLink, character, level),
       selectedDictionaryTab: normalizedDictionaryTab(level.currentViewRequest?.selectedDictionaryTab),
       termPayload: capability?.kind === "term"

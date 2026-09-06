@@ -695,6 +695,38 @@ verify exact bytes, MIME types, decoded dimensions and preview source reuse.
 
 ![Keyboard-focused dictionary image enlarged outside the glossary card](assets/image-preview.png)
 
+## Clicked-kanji navigation and Back
+
+An explicit term source is restricted before native ranking and result limits.
+A missing, disabled or empty selected source falls back to native kanji. For an
+enabled native source with no matching entry, the already returned automatic
+entries supply that fallback without another request. A terminal native miss
+retires that popup level; a protected same-view Note refresh retains its draft.
+Obsolete replies cannot dismiss or replace a newer view.
+
+Back stores the exact term request and its current tab, expanded-results flag,
+scroll position and disclosure states as data, not detached DOM or renderer
+closures. The renderer-owned capture accessor follows local tab changes and is
+cleared when the view is retired. Matching content and tab membership restore
+collapsed glossary cards and open deinflection, structured and IPA disclosures.
+Lazy IPA is populated before the restored layout. Changed content cannot inherit
+unrelated disclosure states; a changed generation replays the exact request.
+
+Scroll restoration runs once after deferred glossary bodies and masonry, only
+for the current projection and while the reader has not deliberately scrolled.
+Later tabs do not inherit it. Ordinary retained renders do not read scroll while
+their replacement panel is empty: that layout flush can clamp a bottom Note's
+scroll before its content is rebuilt. The existing highlight, toolbar positioning,
+exact clicked-kanji focus target and previous Back chain remain intact.
+Moving the toolbar to the other edge after a viewport resize preserves deliberate
+tab or Note focus, including the existing draft selection.
+
+This intentionally extends the pinned GSM PR #549 restoration: its saved term
+view does not retain expansion/scroll, and uses the current kanji tab. Issue #9
+requires the prior term view's exact state instead.
+
+![Back restores an expanded Study view with its first dictionary card collapsed](assets/kanji-back.png)
+
 ## Dictionary presentation boundary
 
 Imported styles are parsed in a detached browser stylesheet, filtered, and only

@@ -267,6 +267,7 @@ const PLANNED = [
   "the dictionary alias labels its popup tab without replacing the canonical key",
   "selected term dictionary wins even when maximum results is one",
   "Back preserves the complete clicked-kanji drill-down history",
+  "Back restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
   "Back restores the term results after a generic kanji lookup",
   "clicked-kanji navigation moves and restores keyboard focus",
   "Back restores focus to the exact clicked duplicate kanji",
@@ -832,6 +833,8 @@ async function popupReader(page, depth = 0) {
           draft: input?.value, selection: [input?.selectionStart, input?.selectionEnd],
           inputFocused: root.activeElement === input,
           inputReachable: rect && root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === input,
+          inputRect: rect?.toJSON(), popupRect: this.getBoundingClientRect().toJSON(), scrollTop: this.scrollTop,
+          centerOwner: rect && root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.className,
           tabFocused: root.activeElement === this.querySelector('[role="tab"][aria-selected="true"]'),
           replaced: this.querySelector('.gsm-hoshidicts-tab-panel') !== saved?.panel,
         };
@@ -849,6 +852,7 @@ async function popupReader(page, depth = 0) {
       functionDeclaration: function (action, key) {
         const root = this.getRootNode();
         const tabs = [...this.querySelectorAll('[role="tab"]')];
+        if (action === "scroll") this.scrollTop = key;
         const tabKey = button => button.dataset.dictionary ? `dictionary:${button.dataset.dictionary}`
           : button.dataset.groupId ? `group:${button.dataset.groupId}`
             : button.dataset.favourites === "true" ? "favourites" : "all";
@@ -868,6 +872,7 @@ async function popupReader(page, depth = 0) {
         const panel = this.querySelector(".gsm-hoshidicts-tab-panel");
         const selected = tabs.find(button => button.getAttribute("aria-selected") === "true");
         const cards = [...this.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+        if (action === "collapse-card") cards[key].open = false;
         if (action === "remember") this.__dictionaryTabs = {
           panel, selected, tabs: new Map(tabs.map(button => [tabKey(button), button])), cards,
           link: this.querySelector("a[data-hoshidicts-query]"),
@@ -879,6 +884,7 @@ async function popupReader(page, depth = 0) {
           aria: (index === 0 ? this.querySelector(".gsm-hoshidicts-primary-header") : entry)
             ?.querySelector(".gsm-hoshidicts-expression")?.getAttribute("aria-label"),
           cards: [...entry.querySelectorAll(".gsm-hoshidicts-glossary-card")].map(card => ({
+            open: card.open,
             dictionary: card.querySelector("summary").title,
             label: card.querySelector("summary").textContent,
             bodies: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body => body.innerHTML),
@@ -892,7 +898,7 @@ async function popupReader(page, depth = 0) {
           return entry.expression === expected.expression && entry.aria === expected.aria
             && entry.cards.length === expected.cards.length && entry.cards.every((card, cardIndex) => {
               const other = expected.cards[cardIndex];
-              return card.dictionary === other.dictionary && card.bodies.length === other.bodies.length
+              return card.dictionary === other.dictionary && card.open === other.open && card.bodies.length === other.bodies.length
                 && card.bodies.every((html, bodyIndex) => {
                   const left = this.ownerDocument.createElement("template");
                   const right = this.ownerDocument.createElement("template");
@@ -902,7 +908,9 @@ async function popupReader(page, depth = 0) {
             });
         });
         return {
-          hidden: this.hidden, entries,
+          hidden: this.hidden, entries, scrollTop: this.scrollTop,
+          showMore: Boolean(this.querySelector(".gsm-hoshidicts-show-more")),
+          toolbar: this.dataset.toolbarPosition,
           tabs: tabs.map(button => ({ key: tabKey(button), label: button.textContent, title: button.title,
             selected: button.getAttribute("aria-selected") === "true", focused: root.activeElement === button,
             tabIndex: button.tabIndex, controls: button.getAttribute("aria-controls"), id: button.id,
@@ -1337,14 +1345,37 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
 
     // Internal-link → clicked-kanji → Back preserves semantic Study context.
     await popup.dictionaryTabs("select", studyKey);
+    await tab.setViewport({ width: 1880, height: 240 });
     const inherited = await openChild();
+    require(await child.click(".gsm-hoshidicts-show-more"), "E13 expand linked results before drill-down");
+    const studyResultCount = childExpected.filter(entry => entry.dictionaries.some(title => [links, usage, GENERIC_KANJI_TITLE].includes(title))).length;
+    await until(childState, value => value?.entries.length === studyResultCount
+      && value.entries.at(-1).cards.some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E13 complete deferred bodies");
+    await child.dictionaryTabs("collapse-card", 0);
+    const beforeBack = await child.dictionaryTabs("scroll", 80);
+    require(beforeBack.scrollTop > 0, "E13 nonzero prior scroll");
+    const highlights = () => tab.evaluate(name => Array.from(CSS.highlights.get(name) ?? [], range => range.toString()), HIGHLIGHT_NAME);
+    const previousHighlights = await highlights();
     require(await child.click(".gsm-hoshidicts-kanji-link"), "E8 clicked-kanji control");
     const kanji = await until(childState, value => selectedReady(studyKey)(value)
       && value.entries[0].cards[0].dictionary === GENERIC_KANJI_TITLE, "E8 clicked-kanji group context");
+    await child.dictionaryTabs("select", "all");
+    const beforeBackRequests = (await requests()).length;
     require(await child.click(".gsm-hoshidicts-kanji-back"), "E8 term Back");
     const back = await until(childState, value => selectedReady(studyKey)(value)
-      && value.entries[0].expression === fixture.child, "E8 linked Back context");
+      && value.entries.length === beforeBack.entries.length && !value.showMore
+      && Math.abs(value.scrollTop - beforeBack.scrollTop) < 1, "E13 expanded linked Back viewport");
+    evidence.back = back.toolbar === beforeBack.toolbar
+      && await child.dictionaryTabs("matches", beforeBack.entries)
+      && equal(await highlights(), previousHighlights)
+      && (await requests()).length === beforeBackRequests;
+    require(evidence.back, "E13 exact Back state and no native lookup");
+    if (process.env.HACHIDORI_KANJI_BACK_SCREENSHOT) {
+      const { x, y, width, height } = back.rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_KANJI_BACK_SCREENSHOT, clip: { x, y, width, height } });
+    }
     require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E8 close child Back");
+    await tab.setViewport({ width: 1880, height: 960 });
     evidence.inheritance = { inherited: inherited.selected, kanji: kanji.selected, back: back.selected,
       parent: (await rootState()).selected };
     require(evidence.inheritance.parent === studyKey, "E8 child navigation changed parent tab");
@@ -1360,7 +1391,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       && renamed.tabs.filter(tab => tab.key.startsWith("group:")).map(tab => tab.key).join() === `group:${examplesId},${studyKey}`
       && renamed.tabs.every(tab => tab.same)
       && renamed.tabs.find(tab => tab.key === studyKey).focused
-      && renamed.entries[0].cards.find(card => card.dictionary === usage).label === "Usage notes", "E8 labels/order preserve focused keyed controls and bodies");
+      && renamed.entries[0].cards.find(card => card.dictionary === usage).label === "Usage notes", `E8 labels/order preserve focused keyed controls and bodies: ${JSON.stringify(renamed)}`);
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNextLookup = true; });
     await popup.nested("remember");
     await popup.nested("focus-link");
@@ -1518,6 +1549,8 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     if (errors.length) failure = new AggregateError(failure ? [failure, ...errors] : errors, "E8 scenario/cleanup failure");
   }
   if (failure) throw failure;
+  check("Back restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
+    evidence.back === true, JSON.stringify(evidence.inheritance));
   check("Popup tabs project every contributing dictionary, favourites and ordered groups without another lookup",
     evidence.passed && evidence.projections.length === 8, JSON.stringify({ projections: evidence.projections, inheritance: evidence.inheritance }));
   check("Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
@@ -1949,7 +1982,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       && evidence.lowered && evidence.kanji && evidence.back && evidence.returned
       && evidence.retained.sameParent && evidence.retained.sameAnchor && evidence.retained.imagesReady
       && JSON.stringify(evidence.disabled.depths) === "[0]"
-      && evidence.refreshedControls.every(Boolean), JSON.stringify(evidence));
+      && evidence.refreshedControls.every(value => value === true), JSON.stringify(evidence));
 }
 
 async function checkRetainedLinkControls(browser, settings, tab, popup, child, fixture, setDepth) {
@@ -2016,7 +2049,7 @@ async function checkRetainedLinkControls(browser, settings, tab, popup, child, f
       const after = await refreshed();
       evidence.push(after?.toolbar === position && after.sameForm && after.mounted
         && after.inputFocused && after.inputReachable && after.draft === before.draft
-        && JSON.stringify(after.selection) === "[2,7]");
+        && JSON.stringify(after.selection) === "[2,7]" || { position, before, after });
       await installMediaArchive(settings, fixture.archive);
       await hold();
       await popup.retainedControls("remember-panel");
