@@ -1827,6 +1827,7 @@
         }
       }
       const ipaGroups = result.term.pitches.filter(group => group.transcriptions.length > 0);
+      let fillOpenIpa = () => {};
       function appendTranscriptions(target) {
         const names = createDictionaryDisplayNames(ipaGroups.map(({ dictionary }) => dictionary), imageContext.dictionaryPresentation);
         for (const group of ipaGroups) {
@@ -1845,9 +1846,12 @@
         const body = documentRef.createElement("div");
         body.className = "gsm-hoshidicts-metadata";
         overflow.append(summary, body);
+        fillOpenIpa = () => {
+          if (overflow.open && !body.hasChildNodes()) appendTranscriptions(body);
+        };
         overflow.addEventListener("toggle", () => {
           if (!isCurrent()) return;
-          if (overflow.open && !body.hasChildNodes()) appendTranscriptions(body);
+          fillOpenIpa();
           onLayoutChange();
         });
         ipaRow.appendChild(overflow);
@@ -1857,7 +1861,7 @@
       updateFrequency(context);
       updatePitch(context);
       entry.append(frequencyRow, pitchRow, ipaRow);
-      return { updateFrequency, updatePitch, rows: [frequencyRow, pitchRow, ipaRow] };
+      return { updateFrequency, updatePitch, fillOpenIpa, rows: [frequencyRow, pitchRow, ipaRow] };
     }
 
     function collectGrammarMetadata(result) {
@@ -2154,9 +2158,23 @@
       let lookupStats = null;
       let expanded = renderContext.expandAll === true;
       let restoreScrollTop = renderContext.restoreScrollTop;
-      const initialScrollTop = popup.scrollTop;
+      let restoreDisclosures = renderContext.restoreDisclosures;
+      // Reading scrollTop flushes layout. Ordinary retained renders must not
+      // clamp their Note form's scroll while this replacement panel is empty.
+      const initialScrollTop = restoreScrollTop === undefined ? undefined : popup.scrollTop;
 
       function restoreViewportAfterFill() {
+        if (restoreDisclosures) {
+          const details = [...popup.querySelectorAll("details")];
+          if (details.length === restoreDisclosures.length
+              && details.every((node, index) => node.className === restoreDisclosures[index].className)) {
+            details.forEach((node, index) => { node.open = restoreDisclosures[index].open; });
+            // Native toggle delivery is deferred. Populate restored lazy IPA
+            // now so the first restored layout includes all its text.
+            for (const { metadata } of entryMetadata) metadata.fillOpenIpa();
+          }
+          restoreDisclosures = undefined;
+        }
         if (restoreScrollTop === undefined) return;
         const savedScrollTop = restoreScrollTop;
         restoreScrollTop = undefined;
@@ -2769,6 +2787,10 @@
         if (hasRendered) masonryObserver?.disconnect();
         const selectedDictionaries = tabDescriptors[selectedIndex].dictionaries;
         const projectedResults = projectResults(results, selectedDictionaries);
+        const saved = !hasRendered && renderContext.disclosures;
+        const matchingDisclosures = saved && (saved.results === results
+          || JSON.stringify(saved.results) === JSON.stringify(results))
+          && sameTabMembers(new Set(saved.dictionaries), selectedDictionaries, dictionaries);
         projectedPrimary = projectedResults[0] || null;
         rendered = renderResultPanel(
           panel,
@@ -2781,6 +2803,7 @@
             noteControls,
             expandAll,
             restoreScrollTop: !hasRendered ? renderContext.restoreScrollTop : undefined,
+            restoreDisclosures: matchingDisclosures ? saved.states : undefined,
             // Lookup statistics describe the first unfiltered result. Keep the
             // line on the All tab so a dictionary projection cannot attach the
             // original term's count to a different expression.
@@ -2947,7 +2970,11 @@
           return !metadataDeferred;
         });
       restoreRetainedFocus(focused);
-      captureTermView = () => ({ expandAll: rendered.isExpanded(), restoreScrollTop: popup.scrollTop });
+      captureTermView = () => ({ expandAll: rendered.isExpanded(), restoreScrollTop: popup.scrollTop,
+        disclosures: { results, dictionaries: [...tabDescriptors[selectedIndex].dictionaries],
+          states: [...popup.querySelectorAll("details")].map(node => ({ className: node.className, open: node.open })),
+        },
+      });
       return rendered;
     }
 

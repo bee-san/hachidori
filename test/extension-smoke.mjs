@@ -7128,6 +7128,7 @@ async function contentNoteStage() {
         renders.push(render);
       }
       const view = {
+        captureTermView: () => record.viewport,
         updateDictionaryPresentation(context) { record.presentations.push(context); },
         flushDictionaryPresentation() { record.presentationFlushes += 1; },
         hideImagePreview() { record.previewDismissals += 1; },
@@ -7407,6 +7408,7 @@ async function contentNoteStage() {
       pending,
       popup,
       render: (depth = 0) => popupRecord(depth)?.renders.at(-1),
+      setTermViewport(value) { popupRecord().viewport = value; },
       presentations: (depth = 0) => popupRecord(depth)?.presentations,
       presentationFlushes: (depth = 0) => popupRecord(depth)?.presentationFlushes,
       renders,
@@ -7513,6 +7515,29 @@ async function contentNoteStage() {
           !harness.popup.hidden && harness.render() === current && current.context.isCurrentView();
       } finally { harness.close(); }
     }
+    const viewportChecks = [];
+    for (const generation of [2, 3]) {
+      const harness = await createHarness({ title: "Generic", kind: "kanji" });
+      try {
+        await harness.initialLookup();
+        const previous = harness.driver.viewRequest();
+        harness.render().context.onDictionaryTabSelected({ dictionary: "Generic" });
+        harness.setTermViewport({ expandAll: true, restoreScrollTop: 80 });
+        const operation = harness.driver.showKanji("食");
+        harness.reply(harness.take("hd_kanji"), { generation,
+          kanji: { character: "食", entries: [{ dictionary: "Generic", meanings: ["eat"] }] } });
+        await operation;
+        const back = harness.render().context.onBack();
+        const refresh = harness.take("hd_lookup");
+        if (refresh) harness.reply(refresh, { generation, results: [harness.term(harness.candidate.query)] });
+        await back;
+        viewportChecks.push(Boolean(refresh) === (generation === 3)
+          && harness.driver.viewRequest() === previous
+          && harness.render().context.selectedDictionaryTab?.dictionary === "Generic"
+          && harness.render().context.expandAll === true && harness.render().context.restoreScrollTop === 80);
+      } finally { harness.close(); }
+    }
+    outcomes["cached and changed-generation Back preserve the exact request, selected tab and saved viewport"] = viewportChecks.every(Boolean);
     return outcomes;
   }
 
@@ -10874,6 +10899,45 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
     layout();
     check("a newer tab or deliberate scroll cancels deferred Back viewport restoration",
       newerTab && popup.scrollTop === 23);
+    const disclosureResult = { ...result, term: { ...result.term,
+      pitches: Array.from({ length: 13 }, (_, index) => ({ ...result.term.pitches[0], dictionary: `IPA ${index}` })),
+      glossaries: [{ ...result.term.glossaries[0], glossary: JSON.stringify([{ type: "structured-content", content: {
+        tag: "details", content: [{ tag: "summary", content: "Example" }, { tag: "div", content: "Nested definition" }],
+      } }]) }],
+    } };
+    const disclosureResults = [disclosureResult, disclosureResult];
+    view.renderResults(disclosureResults, candidate, { expandAll: true });
+    await settle();
+    for (const details of popup.querySelectorAll("details")) details.open = !details.classList.contains("gsm-hoshidicts-glossary-card");
+    await settle();
+    const states = () => [...popup.querySelectorAll("details")].map(details => [details.className, details.open]);
+    const beforeDetails = states();
+    const prior = view.captureTermView();
+    view.renderResults(disclosureResults, candidate, prior);
+    await settle();
+    layout();
+    check("Back restores collapsed cards, open structured details and complete lazy IPA before layout",
+      JSON.stringify(states()) === JSON.stringify(beforeDetails)
+        && popup.querySelectorAll(".gsm-hoshidicts-tag-ipa").length === 26);
+    const changed = disclosureResults.map(value => ({ ...value, term: { ...value.term,
+      glossaries: [{ ...value.term.glossaries[0], glossary: '["Changed definition"]' }],
+    } }));
+    view.renderResults(changed, candidate, prior);
+    await settle();
+    layout();
+    check("Back does not apply saved disclosures to changed dictionary content",
+      [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")].every(card => card.open)
+        && !popup.querySelector(".gsm-hoshidicts-ipa-overflow").open);
+    let scrollReads = 0;
+    let retainedScroll = 85;
+    Object.defineProperty(popup, "scrollTop", { configurable: true,
+      get() { scrollReads++; return retainedScroll; },
+      set(value) { retainedScroll = value; },
+    });
+    view.renderResults(results, candidate, { preserveViewControls: true });
+    check("ordinary retained renders do not force scroll layout while their replacement panel is empty",
+      scrollReads === 0 && retainedScroll === 85);
+    delete popup.scrollTop;
   } finally { view.destroy(); popup.remove(); }
 }
 

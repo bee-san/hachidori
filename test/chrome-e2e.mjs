@@ -872,6 +872,7 @@ async function popupReader(page, depth = 0) {
         const panel = this.querySelector(".gsm-hoshidicts-tab-panel");
         const selected = tabs.find(button => button.getAttribute("aria-selected") === "true");
         const cards = [...this.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+        if (action === "collapse-card") cards[key].open = false;
         if (action === "remember") this.__dictionaryTabs = {
           panel, selected, tabs: new Map(tabs.map(button => [tabKey(button), button])), cards,
           link: this.querySelector("a[data-hoshidicts-query]"),
@@ -883,6 +884,7 @@ async function popupReader(page, depth = 0) {
           aria: (index === 0 ? this.querySelector(".gsm-hoshidicts-primary-header") : entry)
             ?.querySelector(".gsm-hoshidicts-expression")?.getAttribute("aria-label"),
           cards: [...entry.querySelectorAll(".gsm-hoshidicts-glossary-card")].map(card => ({
+            open: card.open,
             dictionary: card.querySelector("summary").title,
             label: card.querySelector("summary").textContent,
             bodies: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body => body.innerHTML),
@@ -896,7 +898,7 @@ async function popupReader(page, depth = 0) {
           return entry.expression === expected.expression && entry.aria === expected.aria
             && entry.cards.length === expected.cards.length && entry.cards.every((card, cardIndex) => {
               const other = expected.cards[cardIndex];
-              return card.dictionary === other.dictionary && card.bodies.length === other.bodies.length
+              return card.dictionary === other.dictionary && card.open === other.open && card.bodies.length === other.bodies.length
                 && card.bodies.every((html, bodyIndex) => {
                   const left = this.ownerDocument.createElement("template");
                   const right = this.ownerDocument.createElement("template");
@@ -1349,6 +1351,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     const studyResultCount = childExpected.filter(entry => entry.dictionaries.some(title => [links, usage, GENERIC_KANJI_TITLE].includes(title))).length;
     await until(childState, value => value?.entries.length === studyResultCount
       && value.entries.at(-1).cards.some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E13 complete deferred bodies");
+    await child.dictionaryTabs("collapse-card", 0);
     const beforeBack = await child.dictionaryTabs("scroll", 80);
     require(beforeBack.scrollTop > 0, "E13 nonzero prior scroll");
     const highlights = () => tab.evaluate(name => Array.from(CSS.highlights.get(name) ?? [], range => range.toString()), HIGHLIGHT_NAME);
