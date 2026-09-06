@@ -8377,7 +8377,7 @@ async function contentNoteStage() {
       harness.emitOptions({ popupColumns: 4, popupWidthPx: 640, popupHeightPx: 500,
         popupTheme: "miku", popupOpacityPercent: 0, sourceHighlightEnabled: false });
       const host = panes[0].popup.getRootNode().host;
-      return { "live column preferences relayout each visible owner without lookup, retirement or Note loss": columns,
+      const results = { "live column preferences relayout each visible owner without lookup, retirement or Note loss": columns,
         "live toolbar overrides update root and child without lookup, masonry or Note loss": toolbar
           && harness.sent.length === sentBefore && harness.driver.snapshot(1).noteEditing,
         "live geometry precedes masonry while colour and highlight edits preserve every request and Note":
@@ -8387,6 +8387,11 @@ async function contentNoteStage() {
           && panes.every(({ request, context }, depth) => harness.stats(depth).layoutSchedules === 2
             && harness.stats(depth).highlightEnabled === false && harness.driver.viewRequest(depth) === request
             && context.isCurrentRequest()) };
+      harness.emitOptions({ popupToolbarPosition: "bottom" });
+      harness.emitOptions({ popupToolbarPosition: "auto", hoverEnabled: false });
+      results["live toolbar overrides update root and child without lookup, masonry or Note loss"] &&=
+        panes[0].popup.hidden && panes[0].popup.dataset.toolbarPosition === "top";
+      return results;
     } finally { harness.close(); }
   }
 

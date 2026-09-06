@@ -208,6 +208,8 @@ const PLANNED = [
   "Design exposes 42 grouped themes and applies real palette overrides without rebuilding the preview",
   "Design previews opacity and dimensions immediately and resets only Design settings",
   "live appearance changes preserve reader Notes and resources while applying the selected page highlight",
+  "toolbar preferences persist and move the preview without detaching focused Notes or rebuilding cards",
+  "live toolbar overrides apply to root and child and survive resize without focus or resource loss",
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
@@ -1388,6 +1390,13 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       && value.rect.height === Math.min(480, value.viewport.height - 12),
       "E15 live child dimensions");
     evidence.appearanceChild = bounded(resizedChild) && (await rootState()).rect.width === 640;
+    const automaticRoot = (await rootState()).toolbar;
+    evidence.toolbarChild = true;
+    for (const edge of ["bottom", "top", "auto"]) {
+      await optionsWrite({ popupToolbarPosition: edge });
+      await until(childState, value => value.toolbar === (edge === "auto" ? "top" : edge), "E16 child toolbar edge");
+      evidence.toolbarChild &&= (await rootState()).toolbar === (edge === "auto" ? automaticRoot : edge);
+    }
     await optionsWrite({ popupWidthPx: 560, popupHeightPx: 420 });
     await until(childState, value => value.rect.width === Math.min(560, value.viewport.width - 12)
       && value.rect.height === Math.min(420, value.viewport.height - 12), "E15 restore child dimensions");
@@ -1462,6 +1471,21 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     const columnDraft = await popup.retainedControls("remember");
     await popup.dictionaryTabs("remember");
     const columnsStart = (await requests()).length;
+    const toolbarEdges = [];
+    for (const edge of ["bottom", "top"]) {
+      await optionsWrite({ popupToolbarPosition: edge });
+      await until(rootState, value => value.toolbar === edge, "E16 root toolbar edge");
+      for (const size of [{ width: 520, height: 740 }, { width: 1880, height: 960 }]) {
+        await tab.setViewport(size);
+        const placed = await until(rootState, value => value.viewport.width === size.width && value.toolbar === edge,
+          "E16 fixed edge survives resize");
+        const controls = await popup.retainedControls();
+        toolbarEdges.push(placed.sameCards && placed.samePanel && controls.sameForm && controls.mounted
+          && controls.inputFocused && controls.draft === columnDraft.draft && equal(controls.selection, [2, 7]));
+      }
+    }
+    await optionsWrite({ popupToolbarPosition: "auto" });
+    evidence.toolbar = evidence.toolbarChild && toolbarEdges.every(Boolean) && (await requests()).length === columnsStart;
     const sourceSpan = await highlights();
     const pageTheme = await tab.evaluate(() => ({ theme: document.documentElement.getAttribute("data-hoshidicts-theme"),
       style: document.documentElement.getAttribute("style") }));
@@ -1605,6 +1629,8 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     evidence.passed && evidence.columns.length === 5, JSON.stringify({ columns: evidence.columns, media: evidence.media }));
   check("live appearance changes preserve reader Notes and resources while applying the selected page highlight",
     evidence.passed && evidence.appearance === true, JSON.stringify({ appearance: evidence.appearance, child: evidence.appearanceChild }));
+  check("live toolbar overrides apply to root and child and survive resize without focus or resource loss",
+    evidence.passed && evidence.toolbar === true, JSON.stringify({ toolbar: evidence.toolbar, child: evidence.toolbarChild }));
 }
 
 async function checkCompactSummaries(settings, tab, popup, browser) {
@@ -2833,8 +2859,12 @@ async function readSettingsControls(settings, ids) {
 }
 
 async function editSettingsControls(settings, values) {
-  const section = await settings.evaluate(id => document.getElementById(id).closest("section").id, Object.keys(values)[0]);
-  await showSettingsSection(settings, section);
+  const section = await settings.evaluate(id => {
+    const owner = document.getElementById(id).closest("section");
+    return { id: owner.id, hidden: owner.hidden };
+  }, Object.keys(values)[0]);
+  // Re-clicking the active navigation tab would itself blur a focused preview.
+  if (section.hidden) await showSettingsSection(settings, section.id);
   await settings.evaluate((changes) => {
     for (const [id, value] of Object.entries(changes)) {
       const input = document.getElementById(id);
@@ -2845,6 +2875,54 @@ async function editSettingsControls(settings, values) {
   }, values);
   await settings.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.",
     { polling: 100, timeout: 10_000 });
+}
+
+async function checkToolbarPreview(page, frame) {
+  const original = await readSettingsControls(page, ["opt-popup-toolbar"]);
+  await frame.evaluate(() => {
+    const root = document.getElementById("preview-host").shadowRoot;
+    const popup = root.querySelector(".gsm-hoshidicts-popup");
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const form = popup.querySelector("form");
+    const input = form.elements.definition;
+    input.value = "A toolbar draft";
+    input.focus();
+    input.setSelectionRange(2, 7);
+    const proof = { form, input, cards: [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")], removed: false, blurs: 0 };
+    input.addEventListener("blur", () => { proof.blurs += 1; });
+    proof.observer = new MutationObserver(records => {
+      proof.removed ||= records.some(record => [...record.removedNodes].some(node => node.contains(input)));
+    });
+    proof.observer.observe(popup, { childList: true });
+    window.toolbarProof = proof;
+  });
+  try {
+    const cases = [];
+    for (const edge of ["bottom", "top", "auto"]) {
+      await editSettingsControls(page, { "opt-popup-toolbar": edge });
+      const saved = await page.evaluate(async () => (await chrome.storage.local.get("options")).options.popupToolbarPosition);
+      cases.push(saved === edge && await frame.evaluate(edge => {
+        const proof = window.toolbarProof;
+        const root = document.getElementById("preview-host").shadowRoot;
+        const popup = root.querySelector(".gsm-hoshidicts-popup");
+        const cards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+        return popup.dataset.toolbarPosition === (edge === "auto" ? "top" : edge)
+          && root.activeElement === proof.input && proof.input.value === "A toolbar draft"
+          && proof.input.selectionStart === 2 && proof.input.selectionEnd === 7 && !proof.removed && proof.blurs === 0
+          && proof.form === popup.querySelector("form") && cards.length === proof.cards.length
+          && cards.every((card, index) => card === proof.cards[index]);
+      }, edge));
+    }
+    check("toolbar preferences persist and move the preview without detaching focused Notes or rebuilding cards",
+      cases.every(Boolean), JSON.stringify(cases));
+  } finally {
+    await frame.evaluate(() => {
+      window.toolbarProof.observer.disconnect();
+      window.toolbarProof.form.querySelector(".gsm-hoshidicts-note-cancel").click();
+      delete window.toolbarProof;
+    });
+    await editSettingsControls(page, original);
+  }
 }
 
 async function checkDesignAppearance(page, frame) {
@@ -3032,6 +3110,7 @@ async function checkDesignPreview(page) {
         && narrow.scale < fit.scale, JSON.stringify({ fit, actual, narrow }));
     await page.setViewport({ width: 1280, height: 900 });
     await checkDesignAppearance(page, frame);
+    await checkToolbarPreview(page, frame);
     if (process.env.HACHIDORI_DESIGN_SCREENSHOT) {
       await page.setViewport({ width: 1440, height: 1000 });
       await frame.evaluate(async () => {
