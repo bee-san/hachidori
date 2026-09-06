@@ -54,3 +54,22 @@ test("Anki first/brief/plain/dictionary variants keep their distinct source mean
   assert.equal(render({ dictionary: "Missing" }), "");
   assert.match(render({ dictionary: "A", plain: true }), /\(Alias &lt;A&gt;\)/u);
 });
+
+test("serialized dictionary CSS cannot close its HTML style element and existing CSS escapes stay intact", t => {
+  const { document, request } = fixture(t);
+  const original = globalThis.HDGlossary.applyDictionaryStyles;
+  t.after(() => { globalThis.HDGlossary.applyDictionaryStyles = original; });
+  globalThis.HDGlossary.applyDictionaryStyles = (doc, parent) => {
+    const style = doc.createElement("style");
+    style.textContent = '.x\\<y { content: "</StYlE><img src=x onerror=evil()>"; }';
+    parent.append(style);
+    return [style];
+  };
+  request.dictionaryStyles = [{ dictionary: "A", styles: "parsed by the shared native sanitizer" }];
+  const html = createAnkiDefinitionRenderer(document, request)({ dictionary: "A" });
+  const holder = document.createElement("div");
+  holder.innerHTML = html;
+  assert.equal(holder.querySelector("img"), null);
+  assert.match(holder.querySelector("style").textContent, /\.x\\<y/u);
+  assert.match(holder.querySelector("style").textContent, /<\\\/StYlE>/u);
+});

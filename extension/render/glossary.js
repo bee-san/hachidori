@@ -633,7 +633,14 @@
 
   function appendStructuredImage(documentRef, parent, value, state) {
     const path = normalizeMediaPath(value.path);
-    if (!path || typeof state.resolveMedia !== "function") {
+    if (!path) return;
+    // The Anki exporter shares structured parsing, but writes inert portable
+    // image markup instead of installing a popup's asynchronous preview owner.
+    if (typeof state.appendImage === "function") {
+      state.appendImage(documentRef, parent, value, { dictionary: state.dictionary, path });
+      return;
+    }
+    if (typeof state.resolveMedia !== "function") {
       return;
     }
 
@@ -1159,6 +1166,7 @@
     const state = {
       nodes: 0,
       dictionary: options.dictionary,
+      appendImage: options.appendImage,
       imageContext: options.imageContext,
       onImageCreated: options.onImageCreated,
       isCurrent: options.isCurrent,
