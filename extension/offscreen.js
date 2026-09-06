@@ -11,7 +11,15 @@ import { boundResponseFailure } from "./response-limits.js";
 
 const TARGET = "hoshidicts-offscreen";
 const AUDIO_TARGET = "hachidori-audio";
-let audioService;
+const ANKI_TARGET = "hachidori-anki-render";
+let audioService, ankiService, audioRepository;
+
+function getAudioRepository() {
+  audioRepository ??= import("./audio-repository.js").then(module => module.createAudioRepository({
+    window: globalThis, fetch: globalThis.fetch.bind(globalThis), now: () => performance.now(),
+  }));
+  return audioRepository;
+}
 const MAX_PENDING_REQUESTS = 128;
 const PROBE_TIMEOUT_MS = 10_000;
 const MUTATION_TYPES = new Set([
@@ -195,9 +203,17 @@ const engineSelection = shouldUseThreadedEngine().then((threaded) => {
 }).catch(failEngine);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.target !== AUDIO_TARGET || message.relayed !== true) return false;
-  audioService ??= import("./audio-offscreen.js").then(module => module.createAudioService(globalThis));
-  audioService.then(handle => handle(message)).then(
+  if (![AUDIO_TARGET, ANKI_TARGET].includes(message?.target) || message.relayed !== true) return false;
+  let service;
+  if (message.target === AUDIO_TARGET) {
+    audioService ??= Promise.all([import("./audio-offscreen.js"), getAudioRepository()])
+      .then(([module, repository]) => module.createAudioService(globalThis, repository));
+    service = audioService;
+  } else {
+    ankiService ??= import("./anki-offscreen.js").then(module => module.createAnkiOffscreenService(globalThis, getAudioRepository));
+    service = ankiService;
+  }
+  service.then(handle => handle(message)).then(
     result => sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true, ...result }),
     error => sendResponse(failedResponse(message, describe(error))),
   );

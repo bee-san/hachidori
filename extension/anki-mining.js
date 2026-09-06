@@ -23,7 +23,7 @@ export async function verifyAnkiFields(invoke, noteId, expected) {
   }
 }
 
-export function createAnkiMiningService({ gateway, readConfig, buildFields, enrich, now = Date.now }) {
+export function createAnkiMiningService({ gateway, readConfig, buildFields, beforeWrite, enrich, now = Date.now }) {
   let cached = null;
   let mutations = Promise.resolve();
   const invokeFor = config => (action, params, timeoutMs) => gateway.invoke(action, params, config.apiKey, timeoutMs);
@@ -91,6 +91,7 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, enri
     const canonical = target ? canonicalAnkiFields(note.fields, resolved.templates, target.fields) : null;
     const fields = target ? overwriteAnkiFields(canonical.fields, target.fields, canonical.templates) : note.fields;
     if (JSON.stringify(await readConfig()) !== configJson) throw new Error(CONFIG_CHANGED);
+    await beforeWrite(request);
     let noteId;
     try {
       if (target) {

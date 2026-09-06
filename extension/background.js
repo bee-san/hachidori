@@ -1,5 +1,6 @@
 import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
+import { createAnkiWorkerService } from "./anki-worker.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
 import {
@@ -57,7 +58,7 @@ const AUDIO_TARGET = "hachidori-audio";
 // `relayed` and handed straight back to the offscreen document, where the
 // engine's own request queue would then wait on itself.
 const WORKER_TARGET = "hoshidicts-worker";
-let ankiGateway;
+let ankiGateway, ankiMining;
 
 const DICTIONARY_STATE_KEY = "dictionaryState";
 const LEGACY_DICTIONARIES_KEY = "dictionaries";
@@ -870,6 +871,31 @@ function failureReply(message, error) {
     generation: 0,
   });
 }
+
+const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight", hd_anki_submit: "submit", hd_anki_browse: "browse" };
+
+// Anki owns its own mutation queue. Discovery, DOM rendering and network I/O
+// must never hold the dictionary storage queue while the engine calls into it.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== "hachidori-anki") return false;
+  Promise.resolve().then(async () => {
+    if (sender.id !== chrome.runtime.id || !Object.hasOwn(ANKI_METHODS, message.type)) throw new Error("Unknown Anki request.");
+    if (!ankiMining) {
+      const send = async (target, fields) => {
+        const reply = await relay({ ...fields, target, requestId: `anki-${crypto.randomUUID()}` });
+        if (!reply?.ok) throw new Error(reply?.error || "Anki preparation did not complete.");
+        return reply;
+      };
+      ankiMining = createAnkiWorkerService({ gateway: ankiGateway ??= createAnkiGateway(),
+        readOptions: async () => globalThis.HDReaderOptions.normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]),
+        readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
+        engine: fields => send(TARGET, fields), offscreen: fields => send("hachidori-anki-render", fields),
+      });
+    }
+    return ankiMining[ANKI_METHODS[message.type]](message.type === "hd_anki_browse" ? message.expression : message.request);
+  }).then(result => sendResponse(workerReply(message, result)), error => sendResponse(failureReply(message, error)));
+  return true;
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || (message.target !== TARGET && message.target !== AUDIO_TARGET) || message.relayed === true) {

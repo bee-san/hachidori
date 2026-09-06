@@ -22,7 +22,7 @@ function fixture() {
     },
   };
   const dependencies = { gateway, readConfig: async () => config,
-    buildFields: async request => ({ fields: { Front: request.expression, Back: "cat" } }), enrich: async () => [] };
+    buildFields: async request => ({ fields: { Front: request.expression, Back: "cat" } }), beforeWrite: async () => {}, enrich: async () => [] };
   const service = createAnkiMiningService(dependencies);
   return { service, gateway, calls, dependencies, get discovers() { return discovers; },
     config: () => config, change(patch) { config = { ...config, ...patch }; } };
