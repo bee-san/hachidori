@@ -5233,7 +5233,10 @@ async function sourceHighlightFallbackCase(window) {
     second.clear();
     await frame();
     const retained = marks().length === 1 && marks()[0] === mark && geometryReads === beforeClear;
+    second.apply({ sourceElements: [otherSource], sentence: otherSource.textContent, matchOffset: 0 }, "Keep");
+    await frame();
     source.style.visibility = "hidden";
+    second.clear(); // Preserve pending source geometry before reconnecting observers.
     await frame();
     await frame();
     const hidden = marks().length === 0;

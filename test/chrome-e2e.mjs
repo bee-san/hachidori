@@ -218,6 +218,7 @@ const PLANNED = [
   "source highlights reconcile selected text mutations without changing selection",
   "nested source highlights retain ancestor ownership when children close in native and fallback modes",
   "fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
+  "fallback source paint tracks CSS transitions and animated ancestors",
   "editable controls preserve normal editing and suppress pointer and selection lookups",
   "Japanese-only preferences change automatic scanning in an already-open tab",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
@@ -817,12 +818,12 @@ async function popupReader(page, depth = 0) {
     return result.value;
   }
 
-  async function sourcePaint(action = "read") {
+  async function sourcePaint(action = "read", sourceSelector = null) {
     const object = await resolvePopupObject();
     if (!object) return null;
     const { result, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
-      objectId: object.objectId, returnByValue: true, arguments: [{ value: action }],
-      functionDeclaration: `function (action) {
+      objectId: object.objectId, returnByValue: true, arguments: [{ value: action }, { value: sourceSelector }],
+      functionDeclaration: `function (action, sourceSelector) {
         const root = this.getRootNode();
         const layer = root.querySelector(".gsm-hoshidicts-source-highlight-layer");
         if (action === "remember") root.__sourcePaintOwner = layer?.firstElementChild;
@@ -837,8 +838,22 @@ async function popupReader(page, depth = 0) {
         const ownerRects = [...(layer?.children || [])].map(group => [...group.children].map(mark => ({
           ...mark.getBoundingClientRect().toJSON(), pointerEvents: getComputedStyle(mark).pointerEvents,
         })));
+        let source;
+        if (sourceSelector) {
+          const element = document.querySelector(sourceSelector);
+          const clip = element.getBoundingClientRect();
+          const left = clip.left + element.clientLeft, top = clip.top + element.clientTop;
+          const expected = [...element.querySelectorAll("b,i")].flatMap(part => {
+            const range = document.createRange();
+            range.selectNodeContents(part.firstChild);
+            return [...range.getClientRects()].map(rect => ({ left: Math.max(left, rect.left), top: Math.max(top, rect.top),
+              right: Math.min(left + element.clientWidth, rect.right), bottom: Math.min(top + element.clientHeight, rect.bottom) }))
+              .filter(rect => rect.right > rect.left && rect.bottom > rect.top);
+          });
+          source = { expected, html: element.innerHTML, className: element.className, selection: getSelection().toString() };
+        }
         return { groups: layer?.children.length || 0, sameOwner,
-          rects: ownerRects.flat(), ownerRects };
+          rects: ownerRects.flat(), ownerRects, source };
       }`,
     });
     if (exceptionDetails) throw new Error(exceptionDetails.text);
@@ -3685,19 +3700,8 @@ async function checkSourceFallback(settings, tab, popup) {
   const frame = () => tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
   const snapshot = async () => {
     await frame();
-    const paint = await popup.sourcePaint();
-    const source = await tab.$eval("#verb", element => {
-      const clip = element.getBoundingClientRect();
-      const left = clip.left + element.clientLeft, top = clip.top + element.clientTop;
-      const expected = [...element.querySelectorAll("b,i")].flatMap(part => {
-        const range = document.createRange();
-        range.selectNodeContents(part.firstChild);
-        return [...range.getClientRects()].map(rect => ({ left: Math.max(left, rect.left), top: Math.max(top, rect.top),
-          right: Math.min(left + element.clientWidth, rect.right), bottom: Math.min(top + element.clientHeight, rect.bottom) }))
-          .filter(rect => rect.right > rect.left && rect.bottom > rect.top);
-      });
-      return { expected, html: element.innerHTML, className: element.className, selection: getSelection().toString() };
-    });
+    const paint = await popup.sourcePaint("read", "#verb");
+    const { source } = paint;
     const exact = paint.groups === 1 && paint.rects.length === source.expected.length && paint.rects.length > 0
       && paint.rects.every((rect, index) => rect.pointerEvents === "none"
         && ["left", "top", "right", "bottom"].every(key => Math.abs(rect[key] - source.expected[index][key]) < 1));
@@ -3731,6 +3735,38 @@ async function checkSourceFallback(settings, tab, popup) {
     const transparent = await popup.sourcePaint();
     await tab.$eval("#verb", element => { element.style.opacity = "1"; });
     const visible = await snapshot();
+    const motion = [];
+    for (const kind of ["transition", "animation"]) {
+      await tab.$eval("#verb", (element, mode) => {
+        if (mode === "transition") {
+          element.style.transition = "transform 1s linear";
+          element.getBoundingClientRect();
+          element.style.transform = "translateX(90px)";
+        } else {
+          const style = document.createElement("style");
+          style.id = "e17-animation";
+          style.textContent = "@keyframes e17-move { to { transform: translateX(90px); } }";
+          document.head.append(style);
+          element.parentElement.style.animation = "e17-move 1s linear";
+        }
+      }, kind);
+      await tab.waitForFunction(mode => {
+        const source = document.getElementById("verb");
+        return (mode === "transition" ? source : source.parentElement).getAnimations()
+          .some(animation => animation.currentTime >= 150 && animation.currentTime < 800);
+      }, {}, kind);
+      motion.push(await snapshot());
+      await tab.$eval("#verb", async element => {
+        await Promise.all([...element.getAnimations(), ...element.parentElement.getAnimations()].map(animation => animation.finished));
+        element.style.transition = "none";
+        element.style.transform = "none";
+        element.parentElement.style.removeProperty("animation");
+        document.getElementById("e17-animation")?.remove();
+      });
+      await frame();
+    }
+    check("fallback source paint tracks CSS transitions and animated ancestors",
+      motion.every(value => value.exact), JSON.stringify(motion));
     await tab.keyboard.press("Escape");
     await frame();
     const closed = await popup.sourcePaint();
