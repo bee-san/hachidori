@@ -69,7 +69,7 @@
   ];
   const LEGACY_MODIFIERS = new Map([["none", "Shift"], ["shift", "Shift"], ["ctrl", "Control"], ["alt", "Alt"]]);
   const LOOKUP_MODES = ["hover", "activation"];
-  const POPUP_TOOLBAR_POSITIONS = ["auto", "top", "bottom"];
+  const POPUP_TOOLBAR_POSITIONS = new Set(["auto", "top", "bottom"]);
   // Browser KeyboardEvent names, adapting the source's desktop hotkey names.
   const ACTIVATION_KEYS = [
     "Shift", "Control", "Alt", "Meta", "Space", "Enter", "Escape", "Backspace", "Delete", "Tab",
@@ -121,7 +121,7 @@
     switch (key) {
       case "lookupMode": return LOOKUP_MODES.includes(value) ? value : DEFAULT_OPTIONS.lookupMode;
       case "popupTheme": return POPUP_THEME_IDS.has(value) ? value : DEFAULT_OPTIONS.popupTheme;
-      case "popupToolbarPosition": return POPUP_TOOLBAR_POSITIONS.includes(value) ? value : DEFAULT_OPTIONS.popupToolbarPosition;
+      case "popupToolbarPosition": return POPUP_TOOLBAR_POSITIONS.has(value) ? value : DEFAULT_OPTIONS.popupToolbarPosition;
       case "activationKey": return normaliseActivationKey(value);
       case "frequencyOrder": return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;
       case "kanjiClickDictionary": return normaliseKanjiSelection(value);
