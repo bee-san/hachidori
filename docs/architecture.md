@@ -538,6 +538,11 @@ cache/queue. A missing source or exhausted group fails normally; it does not
 silently switch to Automatic. The effective candidate order owns in-flight
 routing, so a changed route cannot publish stale bytes/provenance or start another
 fallback. Alias and group-name changes preserve that identity and cached media.
+Reading's native Image source chooser stores canonical titles and stable group
+IDs, with aliases and group names only as labels. Disabled and missing selections
+stay remembered; inventory updates preserve a focused selection until focusout.
+It uses the existing revision-bound autosave and is independent of the hover and
+compact-summary toggles.
 
 The reader separates reusable image resources from DOM ownership. Pending
 fetches dedupe by generation, canonical title and normalized path; successful
