@@ -1001,7 +1001,7 @@ textarea {
 }
 
 .audio-source-list {
-  margin: 24px 0 16px;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -1029,6 +1029,8 @@ textarea {
 .audio-url { width: 100%; }
 .audio-test-status { color: var(--text-dim); overflow-wrap: anywhere; }
 .audio-test-line { align-items: baseline; }
+#audio > p { margin: 0; }
+#audio-source-add { align-self: flex-start; }
 
 @media (prefers-reduced-motion: reduce) {
   .track-fill {
