@@ -55,6 +55,16 @@ export function ankiTemplateErrors(template) {
     .map(match => `Unknown marker: ${match[0]}`))];
 }
 
+export function isAnkiAudioOnlyTemplate(template) {
+  let hasAudio = false;
+  const rest = template.replace(MARKER_PATTERN, (match, name) => {
+    if (name.toLowerCase() !== "audio") return match;
+    hasAudio = true;
+    return "";
+  }).replace(BREAK_PATTERN, "");
+  return hasAudio && !rest.trim();
+}
+
 export function renderAnkiTemplate(template, values) {
   const errors = ankiTemplateErrors(template);
   if (errors.length) throw new Error(errors.join("\n"));
