@@ -684,6 +684,7 @@ input[type="checkbox"] {
   gap: 6px;
 }
 input[type="text"],
+input[type="password"],
 input[type="search"],
 input[type="number"],
 select,
@@ -840,6 +841,22 @@ textarea {
 }
 .fields {
   display: grid;
+}
+.anki-status {
+  display: block;
+  white-space: pre-line;
+  line-height: 1.6;
+}
+.anki-details {
+  border-top: 1px solid var(--border);
+  padding: 18px 0;
+}
+.anki-details > summary {
+  cursor: pointer;
+  font-weight: 550;
+}
+.anki-details[open] > summary {
+  margin-bottom: 16px;
 }
 .field {
   min-width: 0;

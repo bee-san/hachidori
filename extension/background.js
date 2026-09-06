@@ -1,4 +1,5 @@
 import "./reader-options.js";
+import { createAnkiGateway } from "./anki.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
 import {
@@ -56,6 +57,7 @@ const AUDIO_TARGET = "hachidori-audio";
 // `relayed` and handed straight back to the offscreen document, where the
 // engine's own request queue would then wait on itself.
 const WORKER_TARGET = "hoshidicts-worker";
+let ankiGateway;
 
 const DICTIONARY_STATE_KEY = "dictionaryState";
 const LEGACY_DICTIONARIES_KEY = "dictionaries";
@@ -373,6 +375,16 @@ async function removeLegacyDictionaryRows(current, legacyDictionaries) {
 // message round trip later. A caller includes the revision it read so a stale
 // write cannot discard a change made by another extension context.
 const WORKER_HANDLERS = {
+  async hd_anki_discover(message, sender) {
+    if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
+      throw new Error("Anki discovery is available only from Hachidori Settings");
+    }
+    if (typeof message.model !== "string" || typeof message.apiKey !== "string") {
+      throw new TypeError("Anki discovery requires a note type and API key string");
+    }
+    ankiGateway ??= createAnkiGateway();
+    return ankiGateway.discover({ model: message.model, apiKey: message.apiKey });
+  },
   async hd_open_external(message, sender) {
     if (sender.id !== chrome.runtime.id) throw new Error("external link request came from another extension");
     const url = normaliseExternalUrl(message.url);
@@ -951,8 +963,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   }
   const invoke = () => WORKER_HANDLERS[type](message, sender);
-  // Navigation neither uses storage nor waits for dictionary mutations.
-  const operation = type === "hd_open_external" ? invoke() : serialiseStorage(invoke);
+  // Navigation and read-only Anki discovery must not hold up storage commits.
+  const operation = type === "hd_open_external" || type === "hd_anki_discover" ? invoke() : serialiseStorage(invoke);
   operation.then(
     (result) => sendResponse(workerReply(message, result)),
     (error) => {

@@ -717,6 +717,7 @@ function loadClassicScript(file, sandbox) {
 }
 
 function loadBackgroundScript(sandbox) {
+  const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8").replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
@@ -730,6 +731,7 @@ function loadBackgroundScript(sandbox) {
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+    .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/external-links\.js";\s*/u, "")
     .replace(/import "\.\/dictionary-group-state\.js";\s*/u, "")
@@ -747,7 +749,7 @@ function loadBackgroundScript(sandbox) {
   context.globalThis = context;
   runInContext(
     `${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${anki}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${readerOptions}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -819,6 +821,48 @@ async function externalLinksBackgroundStage() {
     independent && failureAttempts === 1 && failed?.ok === false && validReply(failed) && failed.error.includes("tab creation failed")
       && !bus.log.some(message => message.relayed),
     JSON.stringify({ independent, failed, log: bus.log }));
+}
+
+async function ankiBackgroundStage() {
+  const bus = makeBus();
+  const storage = makeStorage();
+  const chrome = makeChrome("anki-worker", bus, storage);
+  const requests = [];
+  const releases = [];
+  const context = loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController,
+    fetch(url, options) {
+      const body = JSON.parse(options.body);
+      requests.push({ url, body });
+      return new Promise(resolve => releases.push(() => resolve({ ok: true,
+        async json() { return { result: body.action === "deckNames" ? ["Default"] : [], error: null }; } })));
+    },
+  });
+  const send = (patch = {}, sender = { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html#anki") }) =>
+    bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_anki_discover",
+      requestId: "anki-discover", model: "", apiKey: "", ...patch }, sender);
+  const rejected = await send({}, { id: chrome.runtime.id, url: "https://example.test" });
+  const invalid = await send({ model: null });
+  const pending = send({ endpoint: "https://untrusted.test", action: "deleteDecks" });
+  const written = await bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_options_write",
+    requestId: "anki-parallel-options", baseRevision: 0, options: { scanLength: 19 } });
+  const read = await bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_state_read" });
+  const independent = releases.length === 2 && written.ok && read.ok;
+  releases.forEach(release => release());
+  const result = await pending;
+  check("Anki discovery uses only fixed read-only calls from Settings and never holds the storage queue",
+    !rejected.ok && !invalid.ok && independent && result.ok && result.connected
+      && requests.every(({ url }) => url === "http://127.0.0.1:8765")
+      && requests.map(({ body }) => body.action).join() === "deckNames,modelNames"
+      && !bus.log.some(message => message.relayed), JSON.stringify({ rejected, invalid, independent, result, requests }));
+  const options = context.HDReaderOptions.normaliseOptions({}).anki;
+  const commit = await bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_options_write",
+    requestId: "anki-config-write", baseRevision: written.options.revision,
+    options: { anki: { ...options, model: "Basic", fields: { ...options.fields, expression: "Front" } } } });
+  const stale = await bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_options_write",
+    requestId: "anki-config-stale", baseRevision: written.options.revision, options: { anki: options } });
+  check("Anki model and mappings commit together through the existing options CAS and reject stale edits",
+    commit.ok && commit.options.anki.model === "Basic" && commit.options.anki.fields.expression === "Front"
+      && !stale.ok && stale.options.anki.model === "Basic", JSON.stringify({ commit, stale }));
 }
 
 async function audioRelayStage() {
@@ -1453,6 +1497,9 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8").replace(/^export\s+/gmu, "");
+  const ankiSettings = readFileSync(resolve(EXTENSION, "anki-settings.js"), "utf8")
+    .replace(/import \{ ankiAvailability, ankiFieldNames \} from "\.\/anki\.js";\s*/u, "").replace(/^export\s+/gmu, "");
   const audioSettings = readFileSync(resolve(EXTENSION, "audio-settings.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
@@ -1467,6 +1514,7 @@ function loadSettingsScript(window) {
     .replace(/import "\.\/dictionary-group-state\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/import \{ createAnkiSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{ createAudioSettingsController \}\s*from\s*"\.\/audio-settings\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
@@ -1475,7 +1523,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${readerOptions}\n${audioSettings}\n${settings}`,
+    `${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${readerOptions}\n${audioSettings}\n${anki}\n${ankiSettings}\n${settings}`,
   );
 }
 
@@ -2005,6 +2053,7 @@ async function main() {
   section("external dictionary links");
   await externalLinksBackgroundStage();
   await audioRelayStage();
+  await ankiBackgroundStage();
 
   section("custom dictionary storage ownership");
   const customBackground = await customBackgroundStage();

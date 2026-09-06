@@ -6,6 +6,7 @@
 
 import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
+import { createAnkiSettingsController } from "./anki-settings.js";
 import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
@@ -26,7 +27,7 @@ const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
 const UPDATE_TARGET = "hachidori-updates";
 const AUDIO_TARGET = "hachidori-audio";
-const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio" };
+const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", anki: "Anki" };
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
@@ -102,6 +103,7 @@ let draggedDictionaryId = null;
 let statusTimer = null;
 let requestCounter = 0;
 let audioController;
+let ankiController;
 
 const SECTION_STATUSES = {
   "import-state": { section: "add-dictionaries", label: "Import" },
@@ -170,6 +172,7 @@ function showSettingsSection(focus = false) {
   renderThemeChoices();
   updateDesignPreview();
   updateAudioSettings();
+  updateAnkiSettings();
   if (fragment === "settings-content") element("settings-content").focus();
   else if (focus) element(activeSection).querySelector("h1").focus();
 }
@@ -186,6 +189,15 @@ function updateAudioSettings() {
     send: (type, fields) => send(type, fields, AUDIO_TARGET),
   });
   audioController.render();
+}
+
+function updateAnkiSettings() {
+  if (activeSection !== "anki" || optionsRevision < 0) return;
+  ankiController ??= createAnkiSettingsController({ document, readConfig: () => options.anki,
+    editConfig: config => { options.anki = config; writeOptions(); },
+    send: (type, fields) => send(type, fields, WORKER_TARGET),
+  });
+  ankiController.render();
 }
 
 function updateDesignPreview() {
@@ -1094,6 +1106,7 @@ function renderOptions() {
   renderMetadataControls();
   updateDesignPreview();
   updateAudioSettings();
+  updateAnkiSettings();
 }
 
 function addCountBadge(container, label, count) {
