@@ -1398,6 +1398,23 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const readerContext = createContext({});
     runInContext(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"), readerContext);
     const reader = readerContext.HDReaderOptions;
+    const toolbarCases = [];
+    for (const value of ["auto", "top", "bottom"]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupToolbarPosition: value }));
+      const repeated = await send(message({ popupToolbarPosition: value }, { baseRevision: reply.options?.revision }));
+      toolbarCases.push(reply.ok === true && reply.options?.popupToolbarPosition === value
+        && repeated.options?.revision === reply.options.revision);
+    }
+    for (const value of ["left", "", null, 1]) {
+      await local.set({ options: saved.options });
+      toolbarCases.push((await send(message({ popupToolbarPosition: value }))).ok === false && await unchanged(saved));
+    }
+    check("toolbar preferences default to Automatic and accept only the three persisted idempotent choices",
+      reader.normaliseOptions({}).popupToolbarPosition === "auto"
+        && reader.normaliseOptions({ popupToolbarPosition: "left" }).popupToolbarPosition === "auto"
+        && reader.DESIGN_OPTION_KEYS.includes("popupToolbarPosition") && toolbarCases.every(Boolean),
+      JSON.stringify(toolbarCases));
     const appearanceDefaults = { popupTheme: "default", popupWidthPx: 560, popupHeightPx: 420,
       popupOpacityPercent: 85, sourceHighlightEnabled: true };
     const appearanceAccepted = [];
@@ -10901,14 +10918,30 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   focusedDefinition.value = "Keep this draft";
   focusedDefinition.focus();
   focusedDefinition.setSelectionRange(2, 6);
+  const focusRemovals = [];
+  let edgeBlurs = 0;
+  focusedDefinition.addEventListener("blur", () => { edgeBlurs += 1; });
+  const edgeObserver = new window.MutationObserver(() => {});
+  edgeObserver.observe(popup, { childList: true });
   view.setToolbarPosition("bottom");
+  focusRemovals.push(...edgeObserver.takeRecords().flatMap(record => [...record.removedNodes])
+    .filter(node => node.contains(focusedDefinition)));
   const retainedNoteFocus = shadow.activeElement === focusedDefinition
     && focusedDefinition.selectionStart === 2 && focusedDefinition.selectionEnd === 6;
   const focusedTab = popup.querySelector('[role="tab"][aria-selected="true"]');
   focusedTab.focus();
+  edgeBlurs = 0;
+  focusedTab.addEventListener("blur", () => { edgeBlurs += 1; });
   view.setToolbarPosition("top");
+  focusRemovals.push(...edgeObserver.takeRecords().flatMap(record => [...record.removedNodes])
+    .filter(node => node.contains(focusedTab)));
+  view.setToolbarPosition("top");
+  const sameEdgeUntouched = edgeObserver.takeRecords().length === 0;
+  edgeObserver.disconnect();
   check("toolbar edge changes preserve deliberate tab and Note focus with draft selection",
-    retainedNoteFocus && shadow.activeElement === focusedTab && focusedDefinition.value === "Keep this draft");
+    retainedNoteFocus && shadow.activeElement === focusedTab && focusedDefinition.value === "Keep this draft"
+      && focusRemovals.length === 0 && edgeBlurs === 0 && sameEdgeUntouched,
+    JSON.stringify({ removals: focusRemovals.length, edgeBlurs, sameEdgeUntouched }));
   focusedDefinition.value = "";
   const termInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-term");
   const readingInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-reading");
