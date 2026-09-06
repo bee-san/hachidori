@@ -59,6 +59,7 @@
     "iframe",
     "img",
     "input",
+    "rp",
     "rt",
     "script",
     "source",

@@ -379,7 +379,8 @@ What it proves, in order:
    trailing-whitespace trimming, mixed
    plain/structured top-level senses, shared fallback discovery and no empty-child
    block checks without losing a later useful sense, line-break separators,
-   wrapper-selected payloads and exclusion of unrendered child lists/text,
+   wrapper-selected payloads, ruby without annotation/fallback delimiters, and
+   exclusion of unrendered child lists/text,
    leading-image dispatch, no default-off summary, unchanged full definitions and
    Note controls, partial presentation no-ops, and independent image ownership.
    A collapsed source image stays expanded only in the compact preview. Missing,

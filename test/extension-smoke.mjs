@@ -9934,14 +9934,17 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   ].map(content => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Line breaks",
     glossary: JSON.stringify([{ type: "structured-content", content }]) }])?.items);
   const ruby = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Ruby", glossary: JSON.stringify([
-    { tag: "ruby", content: ["食", { tag: "rp", content: "(" },
-      { tag: "rt", content: "た" }, { tag: "rp", content: ")" }] },
+    { tag: "p", content: [
+      { tag: "ruby", content: ["食", { tag: "rp", content: "(" },
+        { tag: "rt", content: "た" }, { tag: "rp", content: ")" }] }, "べる (literal)",
+    ] },
   ]) }]);
   const phantomList = { tag: "ul", content: { tag: "li", content: "not rendered" } };
   const renderedDispatch = [
     ...["br", "img", "script", "button", "input", "source"].map(tag => [{ tag, content: phantomList }, "visible"]),
     [{ type: "text", tag: "img", text: "visible", content: phantomList }],
     [{ type: "text", tag: "br", text: "visible", content: phantomList }],
+    [{ type: "text", tag: "rp", text: "visible", content: phantomList }],
     [{ type: "structured-content", tag: "img", content: "visible" }],
   ].map(content => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Dispatch", glossary: JSON.stringify(content) }])?.items);
   const imageAfterBreak = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Break image", glossary: JSON.stringify([
@@ -9956,7 +9959,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       && JSON.stringify(summaryGlossaries) === summaryBefore && boundedSummaryWork && streamedText
       && mixedSenses.every(items => JSON.stringify(items) === JSON.stringify(["first sense", "second sense"]))
       && brokenLines.every(items => JSON.stringify(items) === JSON.stringify(["first second"]))
-      && JSON.stringify(ruby?.items) === JSON.stringify(["食"])
+      && JSON.stringify(ruby?.items) === JSON.stringify(["食べる (literal)"])
       && renderedDispatch.every(items => JSON.stringify(items) === JSON.stringify(["visible"]))
       && imageAfterBreak?.image?.path === "leading.png",
     JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText, mixedSenses, brokenLines, ruby, renderedDispatch, imageAfterBreak }));

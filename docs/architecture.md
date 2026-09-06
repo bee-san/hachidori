@@ -448,6 +448,8 @@ used by discovery, text collection and leading-image selection. A real line brea
 separates text rather than becoming a sense leaf. Void/ignored elements cannot
 expose hidden child lists or suppress a following leading image; wrapper-selected
 text takes precedence over an incidental tag or unused content field.
+Ruby annotations and their fallback delimiters are omitted from the plain summary;
+the complete definition retains its native ruby markup.
 Existing display/traversal bounds
 apply only to this preview; native results and complete glossary bytes remain
 unchanged. Default-off rendering does not run summary extraction.
