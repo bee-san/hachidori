@@ -116,13 +116,15 @@
     if (typeof DEFAULT_OPTIONS[key] === "boolean") {
       return typeof value === "boolean" ? value : DEFAULT_OPTIONS[key];
     }
-    if (key === "lookupMode") return LOOKUP_MODES.includes(value) ? value : DEFAULT_OPTIONS.lookupMode;
-    if (key === "popupTheme") return POPUP_THEME_IDS.has(value) ? value : DEFAULT_OPTIONS.popupTheme;
-    if (key === "activationKey") return normaliseActivationKey(value);
-    if (key === "frequencyOrder") return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;
-    if (key === "kanjiClickDictionary") return normaliseKanjiSelection(value);
-    if (key === "popupImageSource") return normalisePopupImageSource(value);
-    return typeof value === "string" ? value : "";
+    switch (key) {
+      case "lookupMode": return LOOKUP_MODES.includes(value) ? value : DEFAULT_OPTIONS.lookupMode;
+      case "popupTheme": return POPUP_THEME_IDS.has(value) ? value : DEFAULT_OPTIONS.popupTheme;
+      case "activationKey": return normaliseActivationKey(value);
+      case "frequencyOrder": return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;
+      case "kanjiClickDictionary": return normaliseKanjiSelection(value);
+      case "popupImageSource": return normalisePopupImageSource(value);
+      default: return typeof value === "string" ? value : "";
+    }
   }
 
   function resolveKanjiDictionary(selection, dictionaries) {
@@ -131,7 +133,8 @@
     const selected = dictionaries.find(entry => entry.title === title && entry.enabled !== false);
     if (!selected) return null;
     const requestedKind = typeof selection === "object" ? selection.kind : "";
-    const kind = requestedKind === "" ? selected.kanjiCount > 0 ? "kanji" : "term" : requestedKind;
+    const defaultKind = selected.kanjiCount > 0 ? "kanji" : "term";
+    const kind = requestedKind === "" ? defaultKind : requestedKind;
     const available = kind === "kanji" ? selected.kanjiCount > 0 : selected.termCount > 0
       || (selected.frequencyCount === 0 && selected.pitchCount === 0 && selected.kanjiCount === 0);
     return available ? { kind, title } : null;
