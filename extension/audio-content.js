@@ -4,7 +4,7 @@
 
   function createAudioController({ window, send, onMenuChange }) {
     const document = window.document;
-    const bound = new WeakSet(), visited = new WeakMap();
+    const bound = new WeakMap(), visited = new WeakMap(), feedback = new WeakMap();
     let selections = new WeakMap();
     let options = window.HDReaderOptions.DEFAULT_OPTIONS;
     let sourceKey = JSON.stringify(options.audioSources);
@@ -19,12 +19,24 @@
       record.button.setAttribute("aria-busy", String(busy));
     }
 
+    function setStatus(record, text) {
+      let output = feedback.get(record.button) || record.status;
+      if (!output) {
+        output = document.createElement("output");
+        output.className = "gsm-hoshidicts-audio-status";
+        output.setAttribute("aria-live", "polite");
+        record.button.after(output);
+      }
+      feedback.set(record.button, output);
+      output.textContent = text;
+    }
+
     function stop() {
       if (!active) return;
       const previous = active;
       active = null;
       setBusy(previous.record, false);
-      previous.record.status.textContent = "Stopped.";
+      setStatus(previous.record, "Stopped.");
       void send("hd_audio_stop", { playRequestId: previous.requestId }).catch(() => {});
     }
 
@@ -51,7 +63,7 @@
       const operation = { record, type, requestId: window.crypto.randomUUID() };
       active = operation;
       setBusy(record, true);
-      record.status.textContent = type === "hd_audio_play" ? "Finding pronunciation…" : "Finding choices…";
+      setStatus(record, type === "hd_audio_play" ? "Finding pronunciation…" : "Finding choices…");
       try {
         const reply = await send(type, { term: record.term, requestId: operation.requestId, ...fields });
         if (active !== operation || !current(record)) return;
@@ -60,7 +72,7 @@
       } catch (error) {
         if (active === operation && current(record)) {
           if (type === "hd_audio_play" && selections.get(record.result) === fields.selection) selections.delete(record.result);
-          record.status.textContent = `Could not play: ${error.message}`;
+          setStatus(record, `Could not play: ${error.message}`);
           if (menu?.record === record) menu.output.textContent = error.message;
         }
       } finally {
@@ -71,9 +83,9 @@
     function play(record, selection = selections.get(record.result)) {
       closeMenu();
       return request(record, "hd_audio_play", selection ? { selection } : {}, reply => {
-        record.status.textContent = reply.status === "success"
+        setStatus(record, reply.status === "success"
           ? `Played${reply.candidate?.name ? ` — ${reply.candidate.name}` : ""}.`
-          : reply.status === "no-result" ? "No pronunciation was returned. Check Audio Settings." : "Stopped.";
+          : reply.status === "no-result" ? "No pronunciation was returned. Check Audio Settings." : "Stopped.");
       });
     }
 
@@ -131,7 +143,7 @@
           }
           element.append(section);
         }
-        record.status.textContent = "";
+        setStatus(record, "");
         output.textContent = count ? "Choose a pronunciation to play." : "No pronunciations found. Check Audio Settings.";
         onMenuChange(record.owner);
       });
@@ -142,9 +154,9 @@
       if (menu?.record.owner === context.owner && !current(menu.record)) closeMenu(false);
       for (const item of items) {
         if (bound.has(item.button)) continue;
-        bound.add(item.button);
         const record = { ...item, ...context,
           term: { expression: item.result.term.expression, reading: item.result.term.reading || "" } };
+        bound.set(item.button, record);
         item.button.addEventListener("click", event => {
           if (event.shiftKey) choices(record);
           else if (active?.record.button === item.button) stop();
@@ -163,15 +175,14 @@
       if (keys.has(key)) return;
       keys.add(key);
       if (options.audioAutoplay && current({ ...first, ...context })) {
-        void play({ ...first, ...context,
-          term: { expression: first.result.term.expression, reading: first.result.term.reading || "" } });
+        void play(bound.get(first.button));
       }
     }
 
     const listener = message => {
       if (message?.target !== "hachidori-audio-content" || message.type !== "hd_audio_playing"
           || message.requestId !== active?.requestId || !current(active.record)) return;
-      active.record.status.textContent = `Playing${message.candidate?.name ? ` — ${message.candidate.name}` : ""}…`;
+      setStatus(active.record, `Playing${message.candidate?.name ? ` — ${message.candidate.name}` : ""}…`);
     };
     window.chrome.runtime.onMessage.addListener(listener);
     return {

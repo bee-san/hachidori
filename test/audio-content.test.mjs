@@ -45,7 +45,11 @@ test("default-off popup binding is silent; only the newest owned play updates co
   const parent = f.view(), child = f.view("食べる");
   parent.bind(); child.bind();
   assert.equal(f.sent.length, 0);
+  parent.item.status.remove();
+  delete parent.item.status;
   parent.item.button.click();
+  parent.item.status = parent.context.popup.querySelector(".gsm-hoshidicts-audio-status");
+  assert.ok(parent.item.status, "play lazily creates its feedback");
   const first = f.sent[0];
   f.controller.retire(child.context.owner);
   assert.equal(f.sent.length, 1, "pruning a child preserves a parent's manual play");

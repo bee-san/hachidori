@@ -2707,7 +2707,7 @@
       }
       const actions = primary && noteControls ? noteControls.actions : documentRef.createElement("div");
       actions.className = "gsm-hoshidicts-entry-actions";
-      actions.querySelector(".gsm-hoshidicts-audio-control")?.remove();
+      if (primary && noteControls) actions.querySelector(".gsm-hoshidicts-audio-control")?.remove();
       const audio = documentRef.createElement("div");
       audio.className = "gsm-hoshidicts-audio-control";
       const button = documentRef.createElement("button");
@@ -2718,13 +2718,10 @@
       button.setAttribute("aria-label", `Play pronunciation for ${expressionText}`);
       button.setAttribute("aria-haspopup", "dialog");
       button.setAttribute("aria-expanded", "false");
-      const status = documentRef.createElement("output");
-      status.className = "gsm-hoshidicts-audio-status";
-      status.setAttribute("aria-live", "polite");
-      audio.append(button, status);
+      audio.append(button);
       actions.prepend(audio);
       header.append(actions);
-      return { element: header, audio: { button, status, result },
+      return { element: header, audio: { button, result },
         updateRuby(context) {
           const enabled = context.showPitchAccentFurigana !== false;
           const dictionary = typeof context.pitchAccentFuriganaDictionary === "string"
