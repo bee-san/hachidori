@@ -1077,11 +1077,18 @@ async function popupReader(page, depth = 0) {
         const button = this.querySelectorAll(".gsm-hoshidicts-audio-button")[index];
         if (action === "play") button.click();
         if (action === "choose") button.dispatchEvent(new view.MouseEvent("click", { shiftKey: true, bubbles: true }));
-        if (action === "candidate") this.querySelectorAll(".gsm-hoshidicts-audio-choices div button")[index].click();
+        const candidate = this.querySelectorAll(".gsm-hoshidicts-audio-choices div button")[index];
+        if (action === "candidate") candidate.scrollIntoView({ block: "nearest" });
+        const menu = this.querySelector(".gsm-hoshidicts-audio-choices");
+        const menuRect = menu?.getBoundingClientRect();
+        const popupRect = this.getBoundingClientRect();
+        const candidateRect = candidate?.getBoundingClientRect();
         return { text: this.textContent, button: button?.textContent,
           feedback: [...this.querySelectorAll(".gsm-hoshidicts-audio-status")].map(node => node.textContent),
           choices: [...this.querySelectorAll(".gsm-hoshidicts-audio-choices div button")].map(node => node.textContent),
           menu: Boolean(this.querySelector(".gsm-hoshidicts-audio-choices")),
+          menuFits: Boolean(menuRect && menuRect.height > 100 && menuRect.top >= popupRect.top && menuRect.bottom <= popupRect.bottom),
+          candidatePoint: candidateRect && { x: candidateRect.x + candidateRect.width / 2, y: candidateRect.y + candidateRect.height / 2 },
           focused: root.activeElement?.className, rect: this.getBoundingClientRect().toJSON() };
       }.toString(),
     });
@@ -3113,14 +3120,15 @@ async function checkPopupAudio(settings, tab, popup, browser) {
     const escaped = await popup.audio();
     await popup.audio("choose");
     await until(state => state?.choices.length === 4);
-    await popup.audio("candidate", 3);
+    const candidate = await popup.audio("candidate", 3);
+    await tab.mouse.click(candidate.candidatePoint.x, candidate.candidatePoint.y);
     const chosen = await completed();
     const beforeWarm = count();
     await popup.audio("play");
     const warm = await completed();
     const media = await evaluate("__e20Audio.map(audio => ({ ended: audio.ended, source: audio.getAttribute('src'), paused: audio.paused }))");
     check("Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
-      choices.choices.join(",") === "Pronunciation 1,Unplayable,Tokyo,Osaka" && !escaped.menu
+      choices.menuFits && choices.choices.join(",") === "Pronunciation 1,Unplayable,Tokyo,Osaka" && !escaped.menu
         && escaped.focused === "gsm-hoshidicts-audio-button" && chosen.feedback[0] === "Played — Osaka."
         && warm.feedback[0] === chosen.feedback[0] && count() === beforeWarm && media.length === 4
         && media.every(item => item.paused && item.source === null), JSON.stringify({ choices, escaped, chosen, warm, media }));

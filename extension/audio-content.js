@@ -81,16 +81,19 @@
       closeMenu(false);
       if (!current(record)) return;
       const element = document.createElement("section");
-      element.className = "gsm-hoshidicts-audio-choices";
+      element.className = "gsm-hoshidicts-audio-menu gsm-hoshidicts-audio-choices";
       element.setAttribute("role", "dialog");
       element.setAttribute("aria-label", `Pronunciation for ${record.term.expression}`);
       const heading = document.createElement("strong");
+      heading.className = "gsm-hoshidicts-audio-menu-heading";
       heading.textContent = `Pronunciation · ${record.term.expression}`;
       const close = document.createElement("button");
       close.type = "button";
+      close.className = "gsm-hoshidicts-audio-menu-item gsm-hoshidicts-audio-menu-close";
       close.textContent = "Close";
       close.addEventListener("click", () => closeMenu());
       const output = document.createElement("p");
+      output.className = "gsm-hoshidicts-audio-menu-status";
       output.setAttribute("role", "status");
       output.textContent = "Finding choices…";
       element.append(heading, close, output);
@@ -104,6 +107,7 @@
         for (const [sourceIndex, group] of reply.groups.entries()) {
           const section = document.createElement("div");
           const title = document.createElement("h4");
+          title.className = "gsm-hoshidicts-audio-menu-heading";
           title.textContent = `${sourceIndex + 1}. ${window.HDReaderOptions.AUDIO_SOURCE_LABELS[group.type]}`;
           section.append(title);
           if (group.error) {
@@ -114,6 +118,7 @@
           for (const [index, candidate] of (group.candidates || []).entries()) {
             count += 1;
             const button = document.createElement("button");
+            button.className = "gsm-hoshidicts-audio-menu-item";
             button.type = "button";
             button.textContent = candidate.name || `Pronunciation ${index + 1}`;
             button.addEventListener("click", () => {
