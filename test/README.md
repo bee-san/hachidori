@@ -372,6 +372,7 @@ What it proves, in order:
    Compact-summary controls cover strict opt-in/count/source options, remembered
    unavailable sources, disabled-value retention and focused input drafts through
    an external off update. Renderer checks pin ordered bullet/semantic extraction,
+   lazy fragment production and bounded Unicode truncation on long text,
    leading-image dispatch, no default-off summary, unchanged full definitions and
    Note controls, partial presentation no-ops, and independent image ownership.
    A collapsed source image stays expanded only in the compact preview. Combined

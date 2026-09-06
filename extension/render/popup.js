@@ -871,20 +871,28 @@
     );
   }
 
-  function compactDefinitionItemsFromNodes(nodes) {
-    const items = [];
+  function* compactDefinitionItemsFromNodes(nodes) {
+    let found = false;
     let inspected = 0;
     for (const node of nodes) {
       if (inspected >= COMPACT_DEFINITION_MAX_NODES) break;
       inspected += 1;
-      const text = normalizeCompactDefinitionText(
-        collectCompactDefinitionText(node, { nodes: 0 })
-      );
-      for (const item of text.split(/\s*\u2022\s*/u)) {
-        if (item) items.push(item);
+      const text = collectCompactDefinitionText(node, { nodes: 0 });
+      let start = 0;
+      while (start < text.length) {
+        const end = text.indexOf("\u2022", start);
+        const item = normalizeCompactDefinitionText(text.slice(start, end < 0 ? text.length : end));
+        if (item) {
+          found = true;
+          yield item;
+        }
+        if (end < 0) break;
+        start = end + 1;
       }
     }
-    return items;
+    // The first nonempty semantic list owns the preview, even if deduplication
+    // leaves fewer snippets than requested. Empty lists still fall through.
+    return found;
   }
 
   function compactDefinitionItemsFromList(list) {
@@ -903,10 +911,11 @@
     );
   }
 
-  function compactDefinitionItemsFromMarkedNode(node) {
+  function* compactDefinitionItemsFromMarkedNode(node) {
     const tag = String(node.tag || "").toLowerCase();
     if (tag === "ul" || tag === "ol") {
-      return compactDefinitionItemsFromList(node);
+      yield* compactDefinitionItemsFromList(node);
+      return;
     }
     const nestedLists = findCompactDefinitionNodes(
       node.content,
@@ -914,16 +923,17 @@
       { nodes: 0 }
     );
     if (nestedLists.length > 0) {
-      return nestedLists.flatMap(compactDefinitionItemsFromList);
+      for (const list of nestedLists) yield* compactDefinitionItemsFromList(list);
+      return;
     }
     const leafBlocks = findCompactDefinitionLeafBlocks(node.content);
-    return leafBlocks.length > 0
+    yield* leafBlocks.length > 0
       ? compactDefinitionItemsFromNodes(leafBlocks)
       : compactDefinitionItemsFromNodes([node]);
   }
 
-  function extractCompactDefinitionItems(parsed) {
-    if (parsed === null) return [];
+  function* extractCompactDefinitionItems(parsed) {
+    if (parsed === null) return;
 
     const glossaryNodes = findCompactDefinitionNodes(
       parsed,
@@ -931,7 +941,8 @@
       { nodes: 0 }
     );
     if (glossaryNodes.length > 0) {
-      return glossaryNodes.flatMap(compactDefinitionItemsFromMarkedNode);
+      for (const node of glossaryNodes) yield* compactDefinitionItemsFromMarkedNode(node);
+      return;
     }
 
     const semanticLists = findCompactDefinitionNodes(
@@ -940,20 +951,19 @@
       { nodes: 0 }
     );
     for (const list of semanticLists) {
-      const items = compactDefinitionItemsFromList(list);
-      if (items.length > 0) return items;
+      if (yield* compactDefinitionItemsFromList(list)) return;
     }
 
     const leafBlocks = findCompactDefinitionLeafBlocks(parsed);
     if (leafBlocks.length > 0) {
-      return compactDefinitionItemsFromNodes(leafBlocks);
+      yield* compactDefinitionItemsFromNodes(leafBlocks);
+      return;
     }
 
     if (Array.isArray(parsed)) {
-      const items = compactDefinitionItemsFromNodes(parsed);
-      if (items.length > 0) return items;
+      if (yield* compactDefinitionItemsFromNodes(parsed)) return;
     }
-    return compactDefinitionItemsFromNodes([parsed]);
+    yield* compactDefinitionItemsFromNodes([parsed]);
   }
 
   // null means no visible content; false means text or another non-image lead.
@@ -1011,13 +1021,14 @@
       for (const rawGlossary of rawGlossaries) {
         const parsed = parseCompactDefinitionValue(rawGlossary);
         if (leading === null) leading = leadingCompactDefinitionImage(parsed, { nodes: 0 });
-        for (const rawItem of extractCompactDefinitionItems(parsed)) {
-          if (items.length >= itemLimit) break;
-          const item = normalizeCompactDefinitionText(rawItem);
+        for (const item of extractCompactDefinitionItems(parsed)) {
           if (!item || seen.has(item)) continue;
-          const codePoints = Array.from(item);
           const remaining = COMPACT_DEFINITION_MAX_CHARACTERS - characterCount;
-          if (remaining <= 0) break;
+          const codePoints = [];
+          for (const character of item) {
+            codePoints.push(character);
+            if (codePoints.length > remaining) break;
+          }
           const bounded = codePoints.length <= remaining
             ? item
             : remaining === 1
@@ -1025,8 +1036,8 @@
               : `${codePoints.slice(0, remaining - 1).join("")}\u2026`;
           items.push(bounded);
           seen.add(item);
-          characterCount += Array.from(bounded).length;
-          if (bounded !== item) break;
+          characterCount += Math.min(codePoints.length, remaining);
+          if (bounded !== item || items.length >= itemLimit || characterCount >= COMPACT_DEFINITION_MAX_CHARACTERS) break;
         }
         if (
           items.length >= itemLimit ||

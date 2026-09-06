@@ -425,7 +425,10 @@ preference is not pruned by package changes.
 
 The existing semantic extractor skips metadata/examples, retains ordered unique
 snippets and splits nonempty bullet-separated text. Each inspected raw glossary
-is parsed once for text and leading-image selection. Only its first meaningful
+is parsed once for text and leading-image selection. Snippets are yielded lazily
+until the preview is full; Unicode truncation visits only the needed code points,
+without allocating every bullet fragment or character in a large glossary.
+Only its first meaningful
 content can supply the image: text, including zero/false, or an unsupported
 leading image prevents searching for a later image. Text/structured wrappers
 follow the glossary renderer's dispatch order. Existing display/traversal bounds
