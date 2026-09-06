@@ -10232,7 +10232,41 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     const firstGroup = '[role="tab"][data-group-id="first"]';
     const secondGroup = '[role="tab"][data-group-id="second"]';
     current = true;
-    view.renderResults(results, candidate, { ...context, ...presentation, selectedDictionaryTab: { groupId: "first" } });
+    const writes = { selected: [], tabIndex: [], panelLabel: [] };
+    const setAttribute = window.Element.prototype.setAttribute;
+    const tabIndex = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, "tabIndex");
+    window.Element.prototype.setAttribute = function (name, value) {
+      if (name === "aria-selected" && this.getAttribute("role") === "tab") writes.selected.push(this);
+      if (name === "aria-labelledby" && this.classList.contains("gsm-hoshidicts-tab-panel")) writes.panelLabel.push(this);
+      return setAttribute.call(this, name, value);
+    };
+    Object.defineProperty(window.HTMLElement.prototype, "tabIndex", { ...tabIndex,
+      set(value) {
+        if (this.getAttribute("role") === "tab") writes.tabIndex.push(this);
+        tabIndex.set.call(this, value);
+      },
+    });
+    try {
+      view.renderResults(results, candidate, { ...context, ...presentation, selectedDictionaryTab: { groupId: "first" } });
+    } finally {
+      window.Element.prototype.setAttribute = setAttribute;
+      Object.defineProperty(window.HTMLElement.prototype, "tabIndex", tabIndex);
+    }
+    const initialTabs = [...popup.querySelectorAll('[role="tab"]')];
+    const initialPanel = popup.querySelector('[role="tabpanel"]');
+    const tabStateCounts = {
+      tabs: initialTabs.map(button => ({ label: button.textContent,
+        selected: writes.selected.filter(target => target === button).length,
+        tabIndex: writes.tabIndex.filter(target => target === button).length,
+      })),
+      panelLabel: writes.panelLabel.length,
+    };
+    live.push(initialTabs.length === 6 && tabStateCounts.tabs.every(row => row.selected === 1 && row.tabIndex === 1)
+      && tabStateCounts.panelLabel === 1 && writes.panelLabel[0] === initialPanel
+      && initialTabs.every(button => button.getAttribute("aria-controls") === initialPanel.id
+        && button.getAttribute("aria-selected") === String(button.matches(firstGroup))
+        && button.tabIndex === (button.matches(firstGroup) ? 0 : -1))
+      && initialPanel.getAttribute("aria-labelledby") === popup.querySelector(firstGroup).id);
     const groupButton = popup.querySelector(firstGroup);
     groupButton.focus();
     const anchor = popup.querySelector("a[data-hoshidicts-query]");
@@ -10337,7 +10371,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     view.clear();
     observeProjection("clear", 0);
     check("live presentation keeps keyed tabs and protected views coherent until local projection is safe",
-      live.every(Boolean) && observations.every(value => value.valid), JSON.stringify({ live, observations }));
+      live.every(Boolean) && observations.every(value => value.valid), JSON.stringify({ live, observations, tabStateCounts }));
 
     const kanji = { character: "食", entries: ["First", "Second"].map(dictionary => ({
       dictionary, tags: "", onyomi: "ショク", kunyomi: "", definitions: [dictionary], stats: [],
