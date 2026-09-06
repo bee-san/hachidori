@@ -1403,10 +1403,10 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await tab.keyboard.press("Enter");
     await until(childState, value => selectedReady("all")(value) && imageReady(value), "E8 All child before expansion");
     require(await child.click(".gsm-hoshidicts-show-more"), "E8 genuine child Show more");
-    const expanded = await until(childState, value => value?.entries.length === childExpected.length && packed(value, 2), "E8 complete child expansion");
+    const expanded = await until(childState, value => value?.entries.length === childExpected.length && packed(value, 2)
+      && value.entries.flatMap(entry => entry.cards).some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E8 complete child expansion");
     require(equal(expanded.entries.map(entry => ({ expression: entry.expression, aria: entry.aria,
       dictionaries: entry.cards.map(card => card.dictionary) })), childExpected), "E8 expanded native expression/reading/dictionary order");
-    require(expanded.entries.flatMap(entry => entry.cards).some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E8 generic prefix definition was lost");
     await child.dictionaryTabs("remember");
     await child.click(".gsm-hoshidicts-note-button");
     await child.writeNote({ definition: "E8 child holds its anchor through resize" });

@@ -2070,6 +2070,8 @@
           glossaryGrid.appendChild(details);
         }
         entry.appendChild(glossaryGrid);
+        // Fixed-width masonry cards cannot signal a change to their container.
+        masonryObserver?.observe(glossaryGrid);
         for (const card of glossaryGrid.children) {
           masonryObserver?.observe(card);
         }
