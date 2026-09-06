@@ -2861,7 +2861,7 @@ async function checkDesignAppearance(page, frame) {
         stylesheet: host.shadowRoot.querySelector("link").sheet, highlightSheet: document.adoptedStyleSheets[0] };
     });
     const palettes = [];
-    for (const theme of ["miku", "light", "high-contrast"]) {
+    for (const theme of ["miku", "girlypop", "light", "high-contrast"]) {
       await editSettingsControls(page, { "opt-popup-theme": theme });
       palettes.push(await frame.evaluate(() => {
         const host = document.getElementById("preview-host");
@@ -2873,12 +2873,27 @@ async function checkDesignAppearance(page, frame) {
             && window.appearanceProof.highlightSheet === document.adoptedStyleSheets[0],
           pageUntouched: !document.documentElement.hasAttribute("data-hoshidicts-theme") };
       }));
+      if (theme === "miku" || theme === "girlypop") {
+        const stops = async opacity => {
+          await editSettingsControls(page, { "opt-popup-opacity": String(opacity) });
+          return frame.evaluate(() => {
+            const popup = document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+            return [...getComputedStyle(popup).backgroundImage.matchAll(/color\(srgb[^)]* \/ ([\d.]+)\)/g)]
+              .map(match => Number(match[1]));
+          });
+        };
+        palettes.at(-1).zeroStops = await stops(0);
+        palettes.at(-1).fullStops = await stops(100);
+      }
     }
     check("Design exposes 42 grouped themes and applies real palette overrides without rebuilding the preview",
       catalogue.count === 42 && JSON.stringify(catalogue.groups) === "[18,23,1]"
         && palettes.every(value => value.retained && value.pageUntouched)
-        && palettes[0].primary === "#39c5bb" && palettes[1].primary === "oklch(45% 0.24 277.023)"
-        && palettes[2].primary === "#ffe000" && palettes[2].backdrop === "none", JSON.stringify({ catalogue, palettes }));
+        && palettes[0].primary === "#39c5bb" && palettes[2].primary === "oklch(45% 0.24 277.023)"
+        && palettes[3].primary === "#ffe000" && palettes[3].backdrop === "none"
+        && palettes.slice(0, 2).every(value => JSON.stringify(value.zeroStops) === "[0,0]")
+        && JSON.stringify(palettes[0].fullStops) === "[0.18,0.12]"
+        && JSON.stringify(palettes[1].fullStops) === "[0.22,0.12]", JSON.stringify({ catalogue, palettes }));
     await editSettingsControls(page, { "opt-popup-theme": "default" });
     const immediate = await page.evaluate(async () => {
       const revision = (await chrome.storage.local.get("options")).options.revision;
