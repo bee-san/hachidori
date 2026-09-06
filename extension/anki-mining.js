@@ -1,21 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiAvailability } from "./anki.js";
 import { resolveAnkiTemplates } from "./anki-templates.js";
-import { ankiBrowseQuery, ankiNoteOptions, checkAnkiDuplicate, findAnkiOverwriteTarget,
+import { ankiBrowseQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, findAnkiOverwriteTarget,
   isAnkiDuplicateError, overwriteAnkiFields } from "./anki-duplicates.js";
 
 const CONFIG_CHANGED = "Anki configuration changed. Refresh this result before adding a note.";
 
-function fieldsForExistingNote(note, templates, existing) {
-  const names = new Map(Object.keys(existing).map(name => [name.toLowerCase(), name]));
-  const canonicalTemplates = [], incoming = [];
-  for (const [field, template] of Object.entries(templates)) {
-    const name = Object.hasOwn(existing, field) ? field : names.get(field.toLowerCase());
-    if (name === undefined) throw new Error("Anki model fields changed. Refresh before overwriting this note.");
-    canonicalTemplates.push([name, template]);
-    incoming.push([name, note.fields[field]]);
+export async function readAnkiNoteFields(invoke, noteId) {
+  const infos = await invoke("notesInfo", { notes: [noteId] });
+  const info = Array.isArray(infos) ? infos.find(value => value.noteId === noteId) : null;
+  if (!info?.fields || typeof info.fields !== "object" || Array.isArray(info.fields)) throw new Error("Anki did not return the saved note fields.");
+  return Object.fromEntries(Object.entries(info.fields).map(([field, value]) => [field, value?.value]));
+}
+
+export async function verifyAnkiFields(invoke, noteId, expected) {
+  const fields = await readAnkiNoteFields(invoke, noteId);
+  for (const [field, value] of Object.entries(expected)) {
+    if (typeof fields[field] !== "string" || fields[field].normalize("NFC") !== value.normalize("NFC")) {
+      throw new Error("Anki's saved fields differ from the submitted values. Inspect the note in Anki.");
+    }
   }
-  return overwriteAnkiFields(Object.fromEntries(incoming), existing, Object.fromEntries(canonicalTemplates));
 }
 
 export function createAnkiMiningService({ gateway, readConfig, buildFields, enrich, now = Date.now }) {
@@ -48,12 +52,13 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, enri
     const current = await configuration(fresh);
     if (request.configKey !== current.configKey) throw new Error(CONFIG_CHANGED);
     if (current.errors.length) throw new Error(current.errors.join("\n"));
-    const fields = await buildFields(request, current);
+    const resources = await buildFields(request, current);
+    const { fields } = resources;
     const firstField = current.discovery.fields[0];
     if (!fields[firstField]?.trim()) throw new Error(`The first Anki field, “${firstField}”, is empty for this result.`);
     const note = { deckName: current.config.deck, modelName: current.config.model, fields,
       options: ankiNoteOptions(current.config), tags: [...new Set(current.config.tags)] };
-    return { ...current, note, firstField, invoke: invokeFor(current.config) };
+    return { ...current, note, resources, firstField, invoke: invokeFor(current.config) };
   }
 
   async function decision(prepared) {
@@ -73,24 +78,14 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, enri
     return { state: result.state, canAdd: result.canAdd, error: result.error, action: result.action };
   }
 
-  async function verifyFields(invoke, noteId, expected) {
-    const infos = await invoke("notesInfo", { notes: [noteId] });
-    const info = Array.isArray(infos) ? infos.find(value => value.noteId === noteId) : null;
-    for (const [field, value] of Object.entries(expected)) {
-      const actual = info?.fields?.[field]?.value;
-      if (typeof actual !== "string" || actual.normalize("NFC") !== value.normalize("NFC")) {
-        throw new Error("Anki's saved fields differ from the submitted values. Inspect the note in Anki.");
-      }
-    }
-  }
-
   async function write(request) {
     const prepared = await prepare(request, true);
     const checked = await decision(prepared);
     if (!checked.canAdd) return { state: checked.state, error: checked.error };
     const { configKey, note, resolved, invoke } = prepared;
     const target = checked.target;
-    const fields = target ? fieldsForExistingNote(note, resolved.templates, target.fields) : note.fields;
+    const canonical = target ? canonicalAnkiFields(note.fields, resolved.templates, target.fields) : null;
+    const fields = target ? overwriteAnkiFields(canonical.fields, target.fields, canonical.templates) : note.fields;
     if (JSON.stringify(await readConfig()) !== configKey) throw new Error(CONFIG_CHANGED);
     let noteId;
     try {
@@ -110,7 +105,7 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, enri
     }
     const warnings = [];
     try {
-      await verifyFields(invoke, noteId, fields);
+      await verifyAnkiFields(invoke, noteId, fields);
       warnings.push(...await enrich({ request, ...prepared, noteId, existingFields: target?.fields, appliedFields: fields }));
     } catch (error) { warnings.push(error.message); }
     cached = null;

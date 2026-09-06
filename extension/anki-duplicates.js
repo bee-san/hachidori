@@ -29,8 +29,20 @@ function overwriteValue(existing, incoming, mode) {
   return existing || incoming;
 }
 
-export function overwriteAnkiFields(incoming, existing, templates) {
-  return Object.fromEntries(Object.entries(templates).filter(([, template]) => !isAnkiAudioOnlyTemplate(template.value))
+export function canonicalAnkiFields(fields, templates, existing) {
+  const names = new Map(Object.keys(existing).map(name => [name.toLowerCase(), name]));
+  const canonicalTemplates = [], incoming = [];
+  for (const [field, template] of Object.entries(templates)) {
+    const name = Object.hasOwn(existing, field) ? field : names.get(field.toLowerCase());
+    if (name === undefined) throw new Error("Anki model fields changed. Refresh before overwriting this note.");
+    canonicalTemplates.push([name, template]);
+    incoming.push([name, fields[field]]);
+  }
+  return { templates: Object.fromEntries(canonicalTemplates), fields: Object.fromEntries(incoming) };
+}
+
+export function overwriteAnkiFields(incoming, existing, templates, { includeAudio = false } = {}) {
+  return Object.fromEntries(Object.entries(templates).filter(([, template]) => includeAudio || !isAnkiAudioOnlyTemplate(template.value))
     .map(([field, template]) => [field, overwriteValue(existing[field] ?? "", incoming[field] ?? "", template.overwriteMode)]));
 }
 
