@@ -567,11 +567,11 @@
     root.appendChild(layer);
     const owners = new Map();
     let frame = null;
+    let resizeTargets = new Set();
     const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
-    const geometry = new windowRef.MutationObserver(changes => {
-      if (changes.some(change => !layer.contains(change.target)
-          && (change.type === "attributes" || [...change.addedNodes, ...change.removedNodes].some(node => node !== layer)))) schedule();
-    });
+    const needsGeometry = changes => changes.some(change => !layer.contains(change.target)
+      && (change.type === "attributes" || [...change.addedNodes, ...change.removedNodes].some(node => node !== layer)));
+    const geometry = new windowRef.MutationObserver(changes => { if (needsGeometry(changes)) schedule(); });
     windowRef.addEventListener("scroll", schedule, true);
     root.addEventListener("scroll", schedule, true);
     windowRef.addEventListener("resize", schedule);
@@ -648,11 +648,11 @@
     return {
       schedule,
       update(records) {
+        let dirty = needsGeometry(geometry.takeRecords());
         const current = new Set(records);
         for (const [record, owner] of owners) {
           if (!current.has(record)) { owner.group.remove(); owners.delete(record); }
         }
-        resize?.disconnect();
         geometry.disconnect();
         const targets = new Map();
         for (const record of records) {
@@ -665,14 +665,21 @@
           if (owner.match !== record.match) {
             owner.match = record.match;
             owner.fragments = highlightTextFragments(documentRef, record.match);
+            dirty = true;
           }
           for (const [target, subtree] of record.observedTargets) targets.set(target, targets.get(target) || subtree);
         }
+        const nextResizeTargets = new Set();
         for (const [target, subtree] of targets) {
           geometry.observe(target, { attributes: true, childList: true, subtree });
-          if (target instanceof windowRef.Element) resize?.observe(target);
+          if (target instanceof windowRef.Element) {
+            nextResizeTargets.add(target);
+            if (!resizeTargets.has(target)) resize?.observe(target);
+          }
         }
-        schedule();
+        for (const target of resizeTargets) if (!nextResizeTargets.has(target)) resize?.unobserve(target);
+        resizeTargets = nextResizeTargets;
+        if (dirty) schedule();
       },
       destroy() {
         if (frame !== null) windowRef.cancelAnimationFrame(frame);

@@ -826,6 +826,12 @@ async function popupReader(page, depth = 0) {
         const root = this.getRootNode();
         const layer = root.querySelector(".gsm-hoshidicts-source-highlight-layer");
         if (action === "remember") root.__sourcePaintOwner = layer?.firstElementChild;
+        if (action === "cover-parent") {
+          const rect = layer.firstElementChild.firstElementChild.getBoundingClientRect();
+          this.style.left = rect.left + "px";
+          this.style.top = rect.top + "px";
+          root.dispatchEvent(new Event("scroll"));
+        }
         const sameOwner = layer?.firstElementChild === root.__sourcePaintOwner;
         if (action === "forget") delete root.__sourcePaintOwner;
         const ownerRects = [...(layer?.children || [])].map(group => [...group.children].map(mark => ({
@@ -2109,10 +2115,14 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     let fallback;
     try {
       const before = await popup.sourcePaint("remember");
+      await child.sourcePaint("cover-parent");
+      await tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+      const covered = await popup.sourcePaint();
       await child.click(".gsm-hoshidicts-kanji-back");
       await child.waitForHidden();
+      await tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
       const after = await popup.sourcePaint("forget");
-      fallback = { before, after, linkRects };
+      fallback = { before, covered, after, linkRects };
     } finally { await restoreHighlight(); }
     check("nested source highlights retain ancestor ownership when children close in native and fallback modes",
       fullHighlights.rootRetained && fullHighlights.texts.length === 3
@@ -2120,7 +2130,8 @@ async function checkNestedLinks(settings, tab, popup, browser) {
         && fallback.before.groups === 2 && fallback.before.ownerRects[1].length > 0
         && fallback.before.ownerRects[1].every(rect => linkRects.some(source => rect.left >= source.left - 1
           && rect.right <= source.right + 1 && rect.top >= source.top - 1 && rect.bottom <= source.bottom + 1))
-        && fallback.after.groups === 1 && fallback.after.sameOwner,
+        && fallback.covered.ownerRects[0].length === 0
+        && fallback.after.groups === 1 && fallback.after.sameOwner && fallback.after.ownerRects[0].length > 0,
       JSON.stringify({ fullHighlights, ancestorHighlight, fallback }));
     await setDepth(0);
     await popup.nested("focus-link");
