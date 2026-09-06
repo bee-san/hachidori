@@ -50,9 +50,26 @@ export function ankiFieldNames(fields) {
   return new Map(fields.map(field => [field.toLowerCase(), field]));
 }
 
+export function ankiTemplateMarkerNames(template) {
+  return [...template.matchAll(MARKER_PATTERN)].map(match => {
+    const name = match[1].toLowerCase();
+    return MARKER_ALIASES.get(name) ?? name;
+  });
+}
+
 export function ankiTemplateErrors(template) {
   return [...new Set([...template.matchAll(MARKER_PATTERN)].filter(match => !knownMarker(match[1].toLowerCase()))
     .map(match => `Unknown marker: ${match[0]}`))];
+}
+
+export function isAnkiAudioOnlyTemplate(template) {
+  let hasAudio = false;
+  const rest = template.replace(MARKER_PATTERN, (match, name) => {
+    if (name.toLowerCase() !== "audio") return match;
+    hasAudio = true;
+    return "";
+  }).replace(BREAK_PATTERN, "");
+  return hasAudio && !rest.trim();
 }
 
 export function renderAnkiTemplate(template, values) {

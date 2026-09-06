@@ -1008,6 +1008,34 @@ link has focus, only unfocused immediate siblings move around its owner: the
 focused subtree is never detached or refocused, preserving continuous keyboard
 interaction and draft selection. Only existing popup actions are shown.
 
+## Anki submission
+
+![Confirmed Anki submission in the reader](assets/anki-reader.png)
+
+Add and View appear only with a valid configured Anki note type. The content
+controller preflights rendered candidates sequentially, retires detached actions
+after live tab/group projection, and creates no Anki controls or requests while
+unconfigured. Mining uses the selected projected result, current frequency
+units and audio choice, and the raw source span for sentence/cloze boundaries.
+
+Fixed background handlers own a separate Anki mutation queue. Submission freshly
+validates configuration, fields, dictionary generation and duplicate identity;
+it never holds the dictionary storage queue. Native Anki duplicate search selects
+same-model overwrite targets inside the configured deck scope. The six field
+overwrite modes use authoritative field spellings. A lost write acknowledgement
+is not retried; confirmed note IDs stay successful even if readback, enrichment,
+or subsequent reader refresh fails, including across a settings change.
+
+Only requested glossary variants are exported through the shared structured
+renderer into inert HTML. Dictionary CSS remains scoped, and image filenames
+bind to committed generation paths. First-field audio is resolved before the
+duplicate check without playback or uploads. Confirmed text is followed by
+best-effort media uploads and a field readback before pronunciation updates;
+external edits are preserved. AnkiConnect has no cross-client CAS, so its final
+read/write interval is not atomic. Browser TTS cannot be attached to a note;
+downloadable sources are required for audio fields. Sentence-furigana markers
+use the GSM fallback when its optional native tokenizer is unavailable.
+
 ## Managed custom dictionary
 
 `custom-dictionary.js` is a context-independent ES module shared by Settings,

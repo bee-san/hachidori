@@ -2,11 +2,12 @@
 import { resolveAnkiTemplates } from "./anki-templates.js";
 
 // GSM PR #549's API-v6 discovery, adapted to the MV3 worker. No engine or
-// storage queue is involved, and callers cannot select an endpoint or action.
+// storage queue is involved. Runtime messages never select an endpoint/action;
+// the private worker's feature handlers select actions through this gateway.
 export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 1250 } = {}) {
-  async function invoke(action, params, apiKey) {
+  async function invoke(action, params, apiKey, requestTimeoutMs = timeoutMs) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
     const unavailable = () => new Error(controller.signal.aborted ? "AnkiConnect timed out. Open Anki and retry."
       : "Open Anki with the AnkiConnect add-on installed, then retry.");
     try {
@@ -63,7 +64,7 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 1250 }
     const fields = models.includes(model) ? await read("modelFieldNames", { modelName: model }) : [];
     return { connected, model, decks, models, fields, errors };
   }
-  return { discover };
+  return { discover, invoke };
 }
 
 // Shared by Settings and authoritative mining readiness checks. Validation
