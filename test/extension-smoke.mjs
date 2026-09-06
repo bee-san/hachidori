@@ -4562,14 +4562,22 @@ async function main() {
   // A storage failure after the real package has moved aside must restore both
   // the generated files and the live engine before reporting failure.
   const stateBeforeFailedRemove = await storedDictionaryState();
+  const selectedImageOptions = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    baseRevision: (await storage.api().local.get("options")).options.revision,
+    options: { popupImageSource: { kind: "dictionary", title: FIXTURE_TITLE } },
+  });
   storage.failNextSet("injected storage failure");
   const failedRemove = await request("hd_remove", { title: FIXTURE_TITLE });
   const stateAfterFailedRemove = await storedDictionaryState();
+  const optionsAfterFailedRemove = (await storage.api().local.get("options")).options;
   check(
     "a remove whose storage write fails reports the failure",
     failedRemove.ok === false
-      && JSON.stringify(stateAfterFailedRemove) === JSON.stringify(stateBeforeFailedRemove),
-    JSON.stringify({ failedRemove, stateAfterFailedRemove }),
+      && JSON.stringify(stateAfterFailedRemove) === JSON.stringify(stateBeforeFailedRemove)
+      && JSON.stringify(optionsAfterFailedRemove) === JSON.stringify(selectedImageOptions.options),
+    JSON.stringify({ failedRemove, stateAfterFailedRemove, optionsAfterFailedRemove }),
   );
   const afterFailedRemove = await request("hd_status");
   equal(
@@ -4586,7 +4594,9 @@ async function main() {
     [false, 4],
   );
 
+  const writesBeforeRemove = storage.sets.length;
   const removed = await request("hd_remove", { title: FIXTURE_TITLE });
+  const removalWrites = storage.sets.slice(writesBeforeRemove);
   check("hd_remove succeeds", removed.ok === true, JSON.stringify(removed));
   const afterRemove = await request("hd_status");
   equal("nothing is loaded after a remove", [afterRemove.ready, afterRemove.dictionaryCount], [true, 0]);
@@ -4596,6 +4606,22 @@ async function main() {
     ...studyGroup,
     dictionaryIds: [],
   }]);
+  const optionsAfterRemove = (await storage.api().local.get("options")).options;
+  const staleImageWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    baseRevision: selectedImageOptions.options.revision,
+    options: { popupImageSource: selectedImageOptions.options.popupImageSource },
+  });
+  check(
+    "removal atomically clears the selected image package and refuses a stale options write",
+    optionsAfterRemove.popupImageSource === null
+      && optionsAfterRemove.revision === selectedImageOptions.options.revision + 1
+      && staleImageWrite.conflict === true
+      && staleImageWrite.options.popupImageSource === null
+      && JSON.stringify(removalWrites) === JSON.stringify([["dictionaryState", "options"]]),
+    JSON.stringify({ optionsAfterRemove, staleImageWrite, removalWrites }),
+  );
   const generationBefore = afterRemove.generation;
   const noop = await request("hd_remove", { title: "never imported" });
   const afterNoop = await request("hd_status");
