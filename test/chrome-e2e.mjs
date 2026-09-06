@@ -219,6 +219,7 @@ const PLANNED = [
   "nested source highlights retain ancestor ownership when children close in native and fallback modes",
   "fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
   "fallback source paint tracks CSS transitions and animated ancestors",
+  "fallback source paint follows sibling layout changes inside fixed-size ancestors",
   "editable controls preserve normal editing and suppress pointer and selection lookups",
   "Japanese-only preferences change automatic scanning in an already-open tab",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
@@ -3717,6 +3718,16 @@ async function checkSourceFallback(settings, tab, popup) {
       element.innerHTML = '前<b id="e17-source" style="padding:0 4px">食べ</b><i>たかった</i>後';
       element.classList.add("gsm-hoshidicts-source-match");
       element.style.cssText = "width:180px;overflow:hidden;white-space:nowrap;border:3px solid #888;padding:0 8px";
+      const paragraph = element.parentElement;
+      const box = document.createElement("div");
+      box.id = "e17-source-box";
+      box.style.cssText = "height:300px;display:flow-root";
+      const sibling = document.createElement("div");
+      sibling.id = "e17-source-sibling";
+      sibling.style.height = "96px";
+      sibling.textContent = "spacer";
+      paragraph.replaceWith(box);
+      box.append(sibling, paragraph);
     });
     await tab.bringToFront();
     const opened = await hoverForPopup(tab, popup, "#e17-source");
@@ -3779,6 +3790,18 @@ async function checkSourceFallback(settings, tab, popup) {
     }
     check("fallback source paint tracks CSS transitions and animated ancestors",
       motion.every(value => value.exact), JSON.stringify(motion));
+    const fixedBefore = await tab.$eval("#e17-source-box", box => box.getBoundingClientRect().toJSON());
+    await tab.$eval("#e17-source-sibling", sibling => { sibling.style.height = "20px"; });
+    const siblingStyle = await snapshot();
+    await tab.$eval("#e17-source-sibling", sibling => { sibling.style.height = "auto"; });
+    await frame();
+    await tab.$eval("#e17-source-sibling", sibling => { sibling.firstChild.data = ""; });
+    const siblingText = await snapshot();
+    const fixedAfter = await tab.$eval("#e17-source-box", box => box.getBoundingClientRect().toJSON());
+    check("fallback source paint follows sibling layout changes inside fixed-size ancestors",
+      siblingStyle.exact && siblingText.exact && JSON.stringify(fixedBefore) === JSON.stringify(fixedAfter)
+        && siblingStyle.source.expected[0].top !== siblingText.source.expected[0].top,
+      JSON.stringify({ fixedBefore, fixedAfter, siblingStyle, siblingText }));
     await tab.keyboard.press("Escape");
     await frame();
     const closed = await popup.sourcePaint();
@@ -3795,6 +3818,7 @@ async function checkSourceFallback(settings, tab, popup) {
     await tab.$eval("#verb", (element, value) => {
       element.innerHTML = value.html;
       element.className = value.className;
+      document.getElementById("e17-source-box")?.replaceWith(element.parentElement);
       if (value.style === null) element.removeAttribute("style"); else element.setAttribute("style", value.style);
     }, sourceBefore);
     await editSettingsControls(settings, original);
