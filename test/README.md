@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 305 checks, all of
+full request→reply round trip per contract-C message type. 309 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -369,6 +369,13 @@ What it proves, in order:
    preserved manual choices, unavailable selections, and focused native drafts
    across newer options and capability changes. Alias writes retain frequency
    mode metadata.
+   Compact-summary controls cover strict opt-in/count/source options, remembered
+   unavailable sources, disabled-value retention and focused input drafts through
+   an external off update. Renderer checks pin ordered bullet/semantic extraction,
+   leading-image dispatch, no default-off summary, unchanged full definitions and
+   Note controls, partial presentation no-ops, and independent image ownership.
+   The existing detached-child regression also rejects new summary/media work
+   before its obsolete anchor chain can be retired by later positioning.
    The batch assertion pins sequential requests, completed/total progress, one
    retained outcome and revoked object URL per file, a cleared picker, and one
    final dictionary-state/status refresh. The recommendation stage separately
@@ -545,7 +552,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 110 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 111 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -638,6 +645,17 @@ browser restart. `HACHIDORI_TABS_SCREENSHOT` captures the two-column reader;
 `HACHIDORI_OPTIONS_SCREENSHOT` and `HACHIDORI_OPTIONS_DARK_SCREENSHOT` capture
 the Reading controls in light and dark themes.
 
+`compactSummaryFixture()` adds two temporary suppliers through the real WASM
+importer without changing generated fixture counts. Its single predeclared
+Chrome check proves persisted summary controls, one shared cold image request,
+exact PNG bytes and 36px thumbnail geometry, complete unchanged cards and a
+focused Note during live changes. Tab fallback, a child's non-leading image,
+genuine prefix Show more, failed-media text fallback and a held valid lookup
+using newer summary options are included. Focused control drafts survive a real
+external off CAS and then surface their old-revision conflict; only the initial
+input-before-change seed is synthetic. `HACHIDORI_SUMMARY_SETTINGS_SCREENSHOT`
+and `HACHIDORI_SUMMARY_SETTINGS_DARK_SCREENSHOT` capture Reading in both themes.
+
 The real browser also changes hover enablement and activation controls from
 Settings while the reading tab remains open. It proves close/re-enable without
 engine reload, stationary printable-key activation with open delay, delayed hide
@@ -688,7 +706,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 110 assertions, and the summary line
+`PLANNED` at the top of the file names all 111 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

@@ -413,6 +413,42 @@ committed state, but never refreshes a new level at the same depth.
 
 ![Reading controls including maximum child popup depth](assets/nested-lookup-settings.png)
 
+### Compact headword summaries
+
+Reading exposes an opt-in compact summary, a snippet count from one through six
+(default three), and a preferred canonical dictionary title. Automatic uses the
+first eligible dictionary in the current projected result order. The preference
+is soft: disabled or unavailable titles remain remembered and visible in
+Settings, while the current result falls back without enabling a package or
+changing lookup ranking. Unlike frequency and clicked-kanji routing, this
+preference is not pruned by package changes.
+
+The existing semantic extractor skips metadata/examples, retains ordered unique
+snippets and splits nonempty bullet-separated text. Each inspected raw glossary
+is parsed once for text and leading-image selection. Only its first meaningful
+content can supply the image: text, including zero/false, or an unsupported
+leading image prevents searching for a later image. Text/structured wrappers
+follow the glossary renderer's dispatch order. Existing display/traversal bounds
+apply only to this preview; native results and complete glossary bytes remain
+unchanged. Default-off rendering does not run summary extraction.
+
+A 36px thumbnail uses the existing safe image renderer and generation/dictionary
+media resolver. Summary and full-card consumers share one in-flight request and
+cache entry. Failed or unsupported images leave the text summary available.
+Changing enablement, count or source updates only the summary subtree; expression,
+Back, Note controls, full cards, focus and child anchors stay mounted. A focused
+thumbnail defers its own replacement until the existing focusout flush. Deferred
+headers use the latest presentation. Live summary work passes the existing
+connected-request boundary before parsing, without adding that check to ordinary
+media or layout callbacks. A replaced summary retires only its own media/preview
+owner, not another card's current consumer.
+
+The three options use the existing revisioned autosave and highest-revision
+delivery. An external off change does not disable a currently focused count or
+source control until focusout: Chrome would otherwise blur it synchronously and
+discard a pending input-before-change draft. That edit still uses its captured
+revision and surfaces a conflict normally; no second draft state is introduced.
+
 ### Deinflection explanation
 
 Each eligible term header has a native, initially closed `details` disclosure.

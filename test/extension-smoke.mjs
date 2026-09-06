@@ -7506,71 +7506,71 @@ async function contentNoteStage() {
       checks.push(harness.presentations().length === updates && !render.context.isCurrentRequest());
 
       for (const update of ["membership", "summary"]) {
-      const detached = await createHarness();
-      try {
-        const installed = detached.driver.snapshot().dictionaries;
-        const state = { schemaVersion: 1, revision: 2,
-          dictionaries: [...installed, genericPackage({ id: "other-id", title: "Other", path: "/dicts/Other" })],
-          groups: [{ id: "g", name: "Group", dictionaryIds: [installed[0].id] }],
-        };
-        detached.emitState(state);
-        await detached.initialLookup();
-        detached.render().context.onDictionaryTabSelected({ groupId: "g" });
-        const operation = detached.internalLink({ query: "orphan child" });
-        const result = detached.term("orphan child");
-        Object.assign(result.term, { frequencies: [], pitches: [] });
-        if (update === "summary") result.term.glossaries[0].glossary = JSON.stringify([
-          { type: "image", path: "leading.png" }, "child definition",
-        ]);
-        result.term.glossaries.push({ dictionary: "Other", glossary: "other definition" });
-        detached.reply(detached.take("hd_lookup"), { dictionaryCount: 2, results: [result] });
-        await operation;
-        const childRender = detached.render(1);
-        const childPopup = detached.driver.popupAt(1);
-        const callbacks = detached.callbacks(1);
-        const fills = [];
-        let allowed = null;
-        let permissionChecks = 0;
-        let summaryImages = 0;
-        const view = detached.createLayoutView({ ...callbacks,
-          appendTextOnlyGlossary(_document, _container, _glossary, context) { fills.push(context.dictionary); },
-          appendStructuredImage() { summaryImages += 1; },
-          canUpdateCompactSummary() {
-            permissionChecks += 1;
-            allowed = callbacks.canUpdateCompactSummary?.();
-            return allowed;
-          },
-          canProjectDictionaryPresentation() {
-            permissionChecks += 1;
-            allowed = callbacks.canProjectDictionaryPresentation();
-            return allowed;
-          },
-        });
-        view.renderResults(childRender.results, childRender.candidate, childRender.context);
-        const beforeFills = fills.length;
-        detached.anchor.remove();
-        const connectedChildSource = childRender.candidate.anchor.isConnected;
-        if (update === "membership") {
-          detached.emitState({ ...state, revision: 3,
-            groups: [{ id: "g", name: "Group", dictionaryIds: ["other-id"] }],
+        const detached = await createHarness();
+        try {
+          const installed = detached.driver.snapshot().dictionaries;
+          const state = { schemaVersion: 1, revision: 2,
+            dictionaries: [...installed, genericPackage({ id: "other-id", title: "Other", path: "/dicts/Other" })],
+            groups: [{ id: "g", name: "Group", dictionaryIds: [installed[0].id] }],
+          };
+          detached.emitState(state);
+          await detached.initialLookup();
+          detached.render().context.onDictionaryTabSelected({ groupId: "g" });
+          const operation = detached.internalLink({ query: "orphan child" });
+          const result = detached.term("orphan child");
+          Object.assign(result.term, { frequencies: [], pitches: [] });
+          if (update === "summary") result.term.glossaries[0].glossary = JSON.stringify([
+            { type: "image", path: "leading.png" }, "child definition",
+          ]);
+          result.term.glossaries.push({ dictionary: "Other", glossary: "other definition" });
+          detached.reply(detached.take("hd_lookup"), { dictionaryCount: 2, results: [result] });
+          await operation;
+          const childRender = detached.render(1);
+          const childPopup = detached.driver.popupAt(1);
+          const callbacks = detached.callbacks(1);
+          const fills = [];
+          let allowed = null;
+          let permissionChecks = 0;
+          let summaryImages = 0;
+          const view = detached.createLayoutView({ ...callbacks,
+            appendTextOnlyGlossary(_document, _container, _glossary, context) { fills.push(context.dictionary); },
+            appendStructuredImage() { summaryImages += 1; },
+            canUpdateCompactSummary() {
+              permissionChecks += 1;
+              allowed = callbacks.canUpdateCompactSummary?.();
+              return allowed;
+            },
+            canProjectDictionaryPresentation() {
+              permissionChecks += 1;
+              allowed = callbacks.canProjectDictionaryPresentation();
+              return allowed;
+            },
           });
-        } else {
-          detached.emitOptions({ frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
-            kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
-            showCompactDefinitionSummary: true });
-        }
-        // The content harness records this storage delivery; run it through
-        // the attached real renderer and its actual content owner predicate.
-        const delivered = detached.presentations(1).at(-1);
-        view.updateDictionaryPresentation(delivered);
-        checks.push(beforeFills === 1 && connectedChildSource && allowed === false
-          && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1)
-          && childPopup.hidden && fills.length === beforeFills && summaryImages === 0);
-        const checked = permissionChecks;
-        view.flushDictionaryPresentation();
-        view.updateDictionaryPresentation(delivered);
-        checks.push(permissionChecks === checked && fills.length === beforeFills);
-      } finally { detached.driver.teardown(); detached.close(); }
+          view.renderResults(childRender.results, childRender.candidate, childRender.context);
+          const beforeFills = fills.length;
+          detached.anchor.remove();
+          const connectedChildSource = childRender.candidate.anchor.isConnected;
+          if (update === "membership") {
+            detached.emitState({ ...state, revision: 3,
+              groups: [{ id: "g", name: "Group", dictionaryIds: ["other-id"] }],
+            });
+          } else {
+            detached.emitOptions({ frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
+              kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
+              showCompactDefinitionSummary: true });
+          }
+          // The content harness records this storage delivery; run it through
+          // the attached real renderer and its actual content owner predicate.
+          const delivered = detached.presentations(1).at(-1);
+          view.updateDictionaryPresentation(delivered);
+          checks.push(beforeFills === 1 && connectedChildSource && allowed === false
+            && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1)
+            && childPopup.hidden && fills.length === beforeFills && summaryImages === 0);
+          const checked = permissionChecks;
+          view.flushDictionaryPresentation();
+          view.updateDictionaryPresentation(delivered);
+          checks.push(permissionChecks === checked && fills.length === beforeFills);
+        } finally { detached.driver.teardown(); detached.close(); }
       }
 
       const detachedRoot = await createHarness();

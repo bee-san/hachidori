@@ -118,6 +118,11 @@ current definitions until it is safe to apply changed membership. **Reading →
 Definition columns** lays out complete dictionary cards in one to four columns
 without replacing an open Note form.
 
+**Reading → Compact summary** adds up to six brief snippets beside each
+headword, with a small leading image when available. Choose a preferred
+dictionary or let the current tab supply the first available definition.
+Summaries are off by default; full definitions and lookup order are unchanged.
+
 ![Dictionary tabs with complete cards in two columns](docs/assets/dictionary-tabs-columns.png)
 
 [Reading controls, light theme](docs/assets/dictionary-tabs-settings-light.png) ·
