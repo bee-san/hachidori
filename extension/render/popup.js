@@ -569,19 +569,26 @@
     let frame = null;
     let resizeTargets = new Set();
     let geometryTargets = new Map();
+    let layoutRoots = new Set();
+    let pageOccluders = null;
     const motionRoots = new Set();
     const motionEvents = ["animationstart", "transitionrun", "pointerover", "pointerout", "focusin", "focusout"];
     const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
     const needsGeometry = changes => changes.some(change => !layer.contains(change.target)
       && (change.type === "attributes" || change.type === "characterData"
         || [...change.addedNodes, ...change.removedNodes].some(node => node !== layer)));
-    const geometry = new windowRef.MutationObserver(changes => { if (needsGeometry(changes)) schedule(); });
+    const geometry = new windowRef.MutationObserver(changes => { if (needsGeometry(changes)) layoutChanged(); });
     windowRef.addEventListener("scroll", schedule, true);
     root.addEventListener("scroll", schedule, true);
-    windowRef.addEventListener("resize", schedule);
+    windowRef.addEventListener("resize", layoutChanged);
 
     function schedule() {
       if (frame === null) frame = windowRef.requestAnimationFrame(paint);
+    }
+
+    function layoutChanged() {
+      pageOccluders = null;
+      schedule();
     }
 
     function sourceMotion(event) {
@@ -589,7 +596,7 @@
         if (target === event.target || (subtree && target.contains(event.target))
             || (event.relatedTarget !== undefined && target instanceof windowRef.Element
               && target.contains(event.target) !== target.contains(event.relatedTarget))) {
-          schedule();
+          layoutChanged();
           return;
         }
       }
@@ -615,8 +622,12 @@
       // A sibling can move the source inside a fixed-size ancestor without
       // resizing any observed source. Layout notifications therefore span its
       // containing trees; native range observers remain source-scoped.
-      const layoutRoots = new Set(nextMotionRoots);
-      if (root instanceof windowRef.ShadowRoot) layoutRoots.add(root);
+      const nextLayoutRoots = new Set(nextMotionRoots);
+      if (root instanceof windowRef.ShadowRoot) nextLayoutRoots.add(root);
+      if (layoutRoots.size !== nextLayoutRoots.size || [...layoutRoots].some(target => !nextLayoutRoots.has(target))) {
+        pageOccluders = null;
+      }
+      layoutRoots = nextLayoutRoots;
       for (const target of layoutRoots) {
         geometry.observe(target, { attributes: true, characterData: true, childList: true, subtree: true });
       }
@@ -648,20 +659,60 @@
         bounds = { left: clipX ? left : -Infinity, right: clipX ? left + element.clientWidth * sx : Infinity,
           top: clipY ? top : -Infinity, bottom: clipY ? top + element.clientHeight * sy : Infinity };
       }
-      const result = { bounds, invisible: style.opacity === "0" || style.contentVisibility === "hidden",
+      const result = { bounds, style, invisible: style.opacity === "0" || style.contentVisibility === "hidden",
         hiddenText: style.visibility === "hidden" || style.visibility === "collapse" };
       cache.set(element, result);
       return result;
     }
 
-    function fragmentRects(fragment, cache, popups) {
-      const source = fragment.startContainer.parentElement;
+    function visibleClip(source, cache) {
       let clip = { left: 0, top: 0, right: windowRef.innerWidth, bottom: windowRef.innerHeight };
       for (let ancestor = source; ancestor && clip; ancestor = ancestor.parentElement || ancestor.getRootNode().host) {
         const { bounds, invisible, hiddenText } = clipBounds(ancestor, cache);
-        if (invisible || (ancestor === source && hiddenText)) return [];
+        if (invisible || (ancestor === source && hiddenText)) return null;
         if (bounds) clip = intersectHighlightRect(clip, bounds);
       }
+      return clip;
+    }
+
+    function pageCovers(cache) {
+      if (pageOccluders === null) {
+        pageOccluders = [];
+        for (const tree of layoutRoots) {
+          if (tree === root && tree instanceof windowRef.ShadowRoot) continue;
+          for (const element of tree.querySelectorAll("*")) {
+            if (element === root.host || layer.contains(element) || element.closest(".gsm-hoshidicts-popup")) continue;
+            const style = windowRef.getComputedStyle(element);
+            if (style.position === "fixed" || style.position === "sticky"
+                || element.localName === "dialog" || element.hasAttribute("popover")) pageOccluders.push(element);
+          }
+        }
+      }
+      return pageOccluders.flatMap(element => {
+        const clip = visibleClip(element, cache);
+        const rect = clip && intersectHighlightRect(element.getBoundingClientRect(), clip);
+        return rect ? [{ element, rect, tree: element.getRootNode(),
+          pointerEvents: clipBounds(element, cache).style.pointerEvents }] : [];
+      });
+    }
+
+    function coveredByPage(source, rect, cover) {
+      let localSource = source;
+      while (localSource && localSource.getRootNode() !== cover.tree) localSource = localSource.getRootNode().host;
+      if (!localSource || cover.element.contains(localSource)) return false;
+      const overlap = intersectHighlightRect(rect, cover.rect);
+      if (!overlap) return false;
+      const stack = cover.tree.elementsFromPoint((overlap.left + overlap.right) / 2, (overlap.top + overlap.bottom) / 2);
+      const coverIndex = stack.findIndex(element => cover.element.contains(element));
+      const sourceIndex = stack.findIndex(element => element.contains(localSource) || localSource.contains(element));
+      // Hit-testing cannot order pointer-transparent paint. Conservatively omit
+      // that intersection rather than tint an overlay above the page's text.
+      return coverIndex < 0 ? cover.pointerEvents === "none" : sourceIndex < 0 || coverIndex < sourceIndex;
+    }
+
+    function fragmentRects(fragment, cache, popups, page) {
+      const source = fragment.startContainer.parentElement;
+      const clip = visibleClip(source, cache);
       if (!clip) return [];
       let rects;
       try { rects = [...fragment.getClientRects()].map(rect => intersectHighlightRect(rect, clip)).filter(Boolean); }
@@ -672,6 +723,8 @@
       const toolbar = popup?.querySelector(".gsm-hoshidicts-result-chrome");
       if (toolbar && !toolbar.contains(source)) covers.push(toolbar.getBoundingClientRect());
       for (const cover of covers) rects = rects.flatMap(rect => subtractHighlightRect(rect, cover));
+      for (const cover of page) rects = rects.flatMap(rect => coveredByPage(source, rect, cover)
+        ? subtractHighlightRect(rect, cover.rect) : [rect]);
       return rects;
     }
 
@@ -680,9 +733,10 @@
       const cache = new Map();
       const popups = [...root.querySelectorAll(".gsm-hoshidicts-popup")].filter(popup => !popup.hidden)
         .map(popup => ({ popup, rect: popup.getBoundingClientRect() }));
+      const page = pageCovers(cache);
       // Read all owners before writing any paint rectangles.
       const plans = [...owners.values()].map(owner => ({ owner,
-        rects: owner.fragments.flatMap(fragment => fragmentRects(fragment, cache, popups)) }));
+        rects: owner.fragments.flatMap(fragment => fragmentRects(fragment, cache, popups, page)) }));
       const moving = [...geometryTargets].some(([target, subtree]) => target instanceof windowRef.Element
         && target.getAnimations({ subtree }).some(animation => animation.playState === "running"));
       if (root.lastChild !== layer) root.appendChild(layer);
@@ -708,6 +762,7 @@
       schedule,
       update(records) {
         let dirty = needsGeometry(geometry.takeRecords());
+        if (dirty) pageOccluders = null;
         const current = new Set(records);
         for (const [record, owner] of owners) {
           if (!current.has(record)) { owner.group.remove(); owners.delete(record); }
@@ -737,7 +792,7 @@
         for (const target of motionRoots) unwatchMotion(target);
         windowRef.removeEventListener("scroll", schedule, true);
         root.removeEventListener("scroll", schedule, true);
-        windowRef.removeEventListener("resize", schedule);
+        windowRef.removeEventListener("resize", layoutChanged);
         layer.remove();
       },
     };
