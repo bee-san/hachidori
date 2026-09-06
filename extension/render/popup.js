@@ -649,11 +649,7 @@
         highlights && typeof highlights.set === "function" && HighlightImpl
       );
       const ranges = [];
-      for (const { candidate, matchedText } of matches.values()) {
-        const match = createMatchRanges(candidate, matchedText);
-        if (!match) {
-          continue;
-        }
+      for (const { match } of matches.values()) {
         if (canUseRanges && match.ranges.length > 0) {
           ranges.push(...match.ranges);
           applyElementFallback(match, match.rangedSourceElements);
@@ -665,22 +661,65 @@
         try {
           highlights.set(highlightName, new HighlightImpl(...ranges));
         } catch {
-          for (const { candidate, matchedText } of matches.values()) {
-            const match = createMatchRanges(candidate, matchedText);
-            if (match) {
-              applyElementFallback(match);
-            }
-          }
+          for (const { match } of matches.values()) applyElementFallback(match);
         }
       }
     }
 
+    function observeSource(record) {
+      record.observer.disconnect();
+      const targets = new Map();
+      for (const source of record.candidate.sourceElements) {
+        targets.set(source, true);
+        // Direct ancestor child lists detect a removed/moved source without
+        // observing unrelated page subtrees. Cross an owned shadow root too.
+        for (let parent = source.parentNode; parent; parent = parent.parentNode || parent.host) {
+          if (!targets.has(parent)) targets.set(parent, false);
+        }
+      }
+      for (const [target, subtree] of targets) {
+        record.observer.observe(target, { childList: true, characterData: subtree, subtree });
+      }
+    }
+
+    function sourceChanged(record, changes) {
+      return record.candidate.sourceElements.some(source => !source.isConnected
+        || changes.some(change => source.contains(change.target)
+          || [...change.addedNodes, ...change.removedNodes].some(node => node.contains(source))));
+    }
+
+    function refreshSource(key, record) {
+      if (matches.get(key) !== record) return;
+      const match = createMatchRanges(record.candidate, record.matchedText);
+      if (!match) {
+        clearFor(key);
+        return;
+      }
+      record.match = match;
+      observeSource(record);
+      render();
+    }
+
     function applyFor(key, candidate, matchedText) {
-      matches.set(key, { candidate, matchedText });
+      const previous = matches.get(key);
+      if (previous?.candidate === candidate && previous.matchedText === matchedText) return;
+      const match = createMatchRanges(candidate, matchedText);
+      previous?.observer.disconnect();
+      if (!match) {
+        clearFor(key);
+        return;
+      }
+      const record = { candidate, matchedText, match };
+      record.observer = new windowRef.MutationObserver(changes => {
+        if (sourceChanged(record, changes)) refreshSource(key, record);
+      });
+      matches.set(key, record);
+      observeSource(record);
       render();
     }
 
     function clearFor(key) {
+      matches.get(key)?.observer.disconnect();
       if (matches.delete(key)) {
         render();
       }
@@ -704,6 +743,7 @@
         };
       },
       clearAll() {
+        for (const record of matches.values()) record.observer.disconnect();
         matches.clear();
         clearRenderedHighlight();
       },
