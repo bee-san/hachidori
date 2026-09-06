@@ -4498,6 +4498,9 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  for (const [name, passed] of Object.entries(noteContent?.kanjiNavigation ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   check("content routes external links to the worker without retrying or changing the current Note view",
     noteContent?.externalLinks === true, JSON.stringify(noteContent?.externalLinks));
   for (const [name, passed] of Object.entries(noteContent?.scanning ?? {})) {
@@ -7459,6 +7462,60 @@ async function contentNoteStage() {
   probe.close();
   if (!callbacksWired) return { callbacksWired };
 
+  async function kanjiNavigationCase() {
+    const outcomes = {};
+    const harness = await createHarness({ title: "Generic", kind: "kanji" });
+    try {
+      await harness.initialLookup();
+      harness.emitState({ schemaVersion: 1, revision: 2, dictionaries: [
+        genericPackage({ kanjiCount: 1 }),
+        genericPackage({ id: "native-other", title: "Other native", kanjiCount: 1 }),
+      ] });
+      await harness.initialLookup();
+      const other = { dictionary: "Other native", meanings: ["food"] };
+      const selected = { dictionary: "Generic", meanings: ["eat"] };
+      for (const [name, entries, expected] of [
+        ["selected native kanji misses fall back to automatic without another request", [other], [other]],
+        ["selected native kanji hits exclude other native sources", [other, selected], [selected]],
+      ]) {
+        const start = harness.sent.length;
+        const operation = harness.driver.showKanji("食");
+        harness.reply(harness.take("hd_kanji"), { kanji: { character: "食", entries } });
+        await operation;
+        outcomes[name] = harness.render().kind === "kanji"
+          && JSON.stringify(harness.render().value.entries) === JSON.stringify(expected)
+          && harness.sent.slice(start).filter(request => request.type === "hd_kanji").length === 1
+          && typeof harness.render().context.onBack === "function";
+        if (harness.render().kind === "kanji") await harness.render().context.onBack();
+        else await harness.initialLookup();
+      }
+    } finally { harness.close(); }
+    for (const route of [null, { title: "Generic", kind: "term" }]) {
+      const harness = await createHarness(route);
+      try {
+        await harness.initialLookup();
+        const operation = harness.driver.showKanji("食");
+        if (route) {
+          harness.reply(harness.take("hd_lookup_dictionary"), { results: [] });
+          await harness.settle();
+        }
+        harness.reply(harness.take("hd_kanji"), { kanji: { character: "食", entries: [] } });
+        await operation;
+        outcomes[`${route ? "selected term fallback" : "automatic kanji"} terminal miss retires the old popup`] = harness.popup.hidden;
+        await harness.initialLookup();
+        const stale = harness.driver.showKanji("食");
+        const held = harness.take(route ? "hd_lookup_dictionary" : "hd_kanji");
+        await harness.initialLookup();
+        const current = harness.render();
+        harness.reply(held, route ? { results: [] } : { kanji: { character: "食", entries: [] } });
+        await stale;
+        outcomes[`${route ? "selected term fallback" : "automatic kanji"} stale miss cannot retire a newer view`] =
+          !harness.popup.hidden && harness.render() === current && current.context.isCurrentView();
+      } finally { harness.close(); }
+    }
+    return outcomes;
+  }
+
   async function eventFirstCase() {
     const harness = await createHarness();
     await harness.initialLookup();
@@ -10068,6 +10125,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
+    kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),

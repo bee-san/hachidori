@@ -267,6 +267,7 @@ const PLANNED = [
   "the dictionary alias labels its popup tab without replacing the canonical key",
   "selected term dictionary wins even when maximum results is one",
   "Back preserves the complete clicked-kanji drill-down history",
+  "Back restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
   "Back restores the term results after a generic kanji lookup",
   "clicked-kanji navigation moves and restores keyboard focus",
   "Back restores focus to the exact clicked duplicate kanji",
@@ -849,6 +850,7 @@ async function popupReader(page, depth = 0) {
       functionDeclaration: function (action, key) {
         const root = this.getRootNode();
         const tabs = [...this.querySelectorAll('[role="tab"]')];
+        if (action === "scroll") this.scrollTop = key;
         const tabKey = button => button.dataset.dictionary ? `dictionary:${button.dataset.dictionary}`
           : button.dataset.groupId ? `group:${button.dataset.groupId}`
             : button.dataset.favourites === "true" ? "favourites" : "all";
@@ -902,7 +904,9 @@ async function popupReader(page, depth = 0) {
             });
         });
         return {
-          hidden: this.hidden, entries,
+          hidden: this.hidden, entries, scrollTop: this.scrollTop,
+          showMore: Boolean(this.querySelector(".gsm-hoshidicts-show-more")),
+          toolbar: this.dataset.toolbarPosition,
           tabs: tabs.map(button => ({ key: tabKey(button), label: button.textContent, title: button.title,
             selected: button.getAttribute("aria-selected") === "true", focused: root.activeElement === button,
             tabIndex: button.tabIndex, controls: button.getAttribute("aria-controls"), id: button.id,
@@ -1337,14 +1341,35 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
 
     // Internal-link → clicked-kanji → Back preserves semantic Study context.
     await popup.dictionaryTabs("select", studyKey);
+    await tab.setViewport({ width: 1880, height: 520 });
     const inherited = await openChild();
+    require(await child.click(".gsm-hoshidicts-show-more"), "E13 expand linked results before drill-down");
+    await until(childState, value => value?.entries.length === childExpected.length
+      && value.entries.at(-1).cards.some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E13 complete deferred bodies");
+    const beforeBack = await child.dictionaryTabs("scroll", 80);
+    require(beforeBack.scrollTop > 0, "E13 nonzero prior scroll");
+    const highlights = () => tab.evaluate(name => Array.from(CSS.highlights.get(name) ?? [], range => range.toString()), HIGHLIGHT_NAME);
+    const previousHighlights = await highlights();
     require(await child.click(".gsm-hoshidicts-kanji-link"), "E8 clicked-kanji control");
     const kanji = await until(childState, value => selectedReady(studyKey)(value)
       && value.entries[0].cards[0].dictionary === GENERIC_KANJI_TITLE, "E8 clicked-kanji group context");
+    await child.dictionaryTabs("select", "all");
+    const beforeBackRequests = (await requests()).length;
     require(await child.click(".gsm-hoshidicts-kanji-back"), "E8 term Back");
     const back = await until(childState, value => selectedReady(studyKey)(value)
-      && value.entries[0].expression === fixture.child, "E8 linked Back context");
+      && value.entries.length === beforeBack.entries.length && !value.showMore
+      && Math.abs(value.scrollTop - beforeBack.scrollTop) < 1, "E13 expanded linked Back viewport");
+    evidence.back = back.toolbar === beforeBack.toolbar
+      && await child.dictionaryTabs("matches", beforeBack.entries)
+      && equal(await highlights(), previousHighlights)
+      && (await requests()).length === beforeBackRequests;
+    require(evidence.back, "E13 exact Back state and no native lookup");
+    if (process.env.HACHIDORI_KANJI_BACK_SCREENSHOT) {
+      const { x, y, width, height } = back.rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_KANJI_BACK_SCREENSHOT, clip: { x, y, width, height } });
+    }
     require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E8 close child Back");
+    await tab.setViewport({ width: 1880, height: 960 });
     evidence.inheritance = { inherited: inherited.selected, kanji: kanji.selected, back: back.selected,
       parent: (await rootState()).selected };
     require(evidence.inheritance.parent === studyKey, "E8 child navigation changed parent tab");
@@ -1518,6 +1543,8 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     if (errors.length) failure = new AggregateError(failure ? [failure, ...errors] : errors, "E8 scenario/cleanup failure");
   }
   if (failure) throw failure;
+  check("Back restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
+    evidence.back === true, JSON.stringify(evidence.inheritance));
   check("Popup tabs project every contributing dictionary, favourites and ordered groups without another lookup",
     evidence.passed && evidence.projections.length === 8, JSON.stringify({ projections: evidence.projections, inheritance: evidence.inheritance }));
   check("Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
