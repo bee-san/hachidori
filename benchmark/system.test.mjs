@@ -155,7 +155,9 @@ test("file locks fail closed until released", () => {
   }
 });
 
-test("descendant sampler starts before child launch and excludes the harness process", async () => {
+test("descendant sampler starts before child launch and excludes the harness process", {
+  skip: process.platform !== "linux" && "Process RSS and CPU sampling requires Linux /proc",
+}, async () => {
   const sampler = startDescendantProcessSampler(process.pid, 5);
   const child = spawn(process.execPath, ["-e", "const end=Date.now()+120; while(Date.now()<end){}"]);
   await once(child, "exit");
