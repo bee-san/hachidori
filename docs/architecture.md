@@ -863,6 +863,14 @@ block. This is a bounded fallback, not a general CSS paint-order implementation:
 pointer-transparent covers conservatively suppress their intersection, and complex
 shadow-slot clipping or arbitrary positioned page elements are not guaranteed to
 match native highlights. The preferred native path keeps browser paint semantics.
+Late stylesheet load events refresh the fallback. CSSOM edits have no DOM mutation
+event, so while fallback owners exist a 250 ms check snapshots readable page
+stylesheet rules, including declarations, imports, disabled/media state and adopted
+sheets. It excludes Hachidori's own shadow styles. Unchanged ticks serialize CSS
+but do not discover elements, read geometry or paint; changed snapshots refresh on
+the next frame. Cross-origin rules remain unreadable, with load events handling
+their application. The interval is a bounded fallback delay, not native-highlight
+behavior, and stops with the last owner.
 Fallback layout observation spans each containing Document/ShadowRoot once,
 including sibling text and attribute changes: a fixed-size ancestor can hide
 position-only movement from ResizeObserver. Owned paint mutations are ignored,
@@ -875,7 +883,7 @@ page animations do not request paint. Animation queries precede paint writes.
 Unchanged owners retain their paint groups. Removing only an owner does not
 remeasure survivors or re-observe their resize targets; actual pane pruning still
 refreshes paint that may be uncovered. The last owner releases the layer,
-observers, listeners, and pending frame; the native path does not allocate them.
+observers, listeners, stylesheet timer and pending frame; the native path does not allocate them.
 
 ![Exact fallback paint clipped at the source scrollport](assets/source-highlight-fallback.png)
 

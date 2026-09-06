@@ -573,6 +573,8 @@
     let coverTargets = new Set();
     let layoutRoots = new Set();
     let pageOccluders = null;
+    let stylesheetState = null;
+    let stylesheetTimer = null;
     const motionRoots = new Set();
     const motionEvents = ["animationstart", "transitionrun", "pointerover", "pointerout", "focusin", "focusout"];
     const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
@@ -591,6 +593,40 @@
     function layoutChanged() {
       pageOccluders = null;
       schedule();
+    }
+
+    function stylesheetSnapshot() {
+      const seen = new Map();
+      function sheetState(sheet) {
+        if (seen.has(sheet)) return ["ref", seen.get(sheet)];
+        const index = seen.size;
+        seen.set(sheet, index);
+        let rules;
+        try {
+          rules = [...sheet.cssRules].map(rule => [rule.cssText, rule.styleSheet ? sheetState(rule.styleSheet) : null]);
+        } catch (error) {
+          if (error.name !== "SecurityError") throw error;
+          // Cross-origin rules are unreadable and cannot be edited by page
+          // CSSOM either. Their load event still refreshes effective styles.
+          rules = null;
+        }
+        return ["sheet", index, sheet.disabled, sheet.media?.mediaText, rules];
+      }
+      return JSON.stringify([...layoutRoots].filter(tree => tree !== root || !(root instanceof windowRef.ShadowRoot))
+        .map(tree => [...(tree.styleSheets || []), ...(tree.adoptedStyleSheets || [])].map(sheetState)));
+    }
+
+    function checkStyleSheets() {
+      const next = stylesheetSnapshot();
+      if (next !== stylesheetState) {
+        stylesheetState = next;
+        layoutChanged();
+      }
+    }
+
+    function stylesheetLoaded(event) {
+      if (event.target.localName === "style"
+          || (event.target.localName === "link" && event.target.relList.contains("stylesheet"))) layoutChanged();
     }
 
     function changesCoverMembership(change) {
@@ -631,6 +667,7 @@
 
     function unwatchMotion(target) {
       for (const type of motionEvents) target.removeEventListener(type, sourceMotion, true);
+      target.removeEventListener("load", stylesheetLoaded, true);
       motionRoots.delete(target);
     }
 
@@ -669,6 +706,7 @@
       for (const target of nextMotionRoots) {
         if (!motionRoots.has(target)) {
           for (const type of motionEvents) target.addEventListener(type, sourceMotion, true);
+          target.addEventListener("load", stylesheetLoaded, true);
           motionRoots.add(target);
         }
       }
@@ -730,6 +768,12 @@
           }
         }
         reconcileTargets();
+        // CSSOM has no mutation event in the content-script world. A bounded
+        // fallback-only poll reads stylesheet text, never page geometry, and
+        // only a changed snapshot requests discovery/paint. Snapshot before
+        // starting the timer so early CSSOM edits cannot become its baseline.
+        stylesheetState = stylesheetSnapshot();
+        stylesheetTimer ??= windowRef.setInterval(checkStyleSheets, 250);
       }
       return pageOccluders.flatMap(element => {
         const clip = visibleClip(element, cache, true);
@@ -829,6 +873,7 @@
       },
       destroy() {
         if (frame !== null) windowRef.cancelAnimationFrame(frame);
+        if (stylesheetTimer !== null) windowRef.clearInterval(stylesheetTimer);
         resize?.disconnect();
         geometry.disconnect();
         for (const target of motionRoots) unwatchMotion(target);
