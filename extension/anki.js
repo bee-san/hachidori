@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { resolveAnkiTemplates } from "./anki-templates.js";
 
 // GSM PR #549's API-v6 discovery, adapted to the MV3 worker. No engine or
 // storage queue is involved, and callers cannot select an endpoint or action.
@@ -67,10 +68,6 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 1250 }
 
 // Shared by Settings and authoritative mining readiness checks. Validation
 // reports missing choices instead of changing a saved or in-progress mapping.
-export function ankiFieldNames(fields) {
-  return new Map(fields.map(field => [field.toLowerCase(), field]));
-}
-
 export function ankiAvailability(config, discovery) {
   if (!discovery) return ["Refresh Anki to check this configuration."];
   if (!discovery.connected) return discovery.errors;
@@ -78,12 +75,9 @@ export function ankiAvailability(config, discovery) {
   if (!discovery.decks.includes(config.deck)) errors.push("Choose an available deck.");
   if (!discovery.models.includes(config.model)) errors.push("Choose an available note type.");
   if (config.model !== discovery.model) return [...errors, "Refresh fields for the selected note type."];
-  const fields = ankiFieldNames(discovery.fields);
-  const mapped = Object.values(config.fields).filter(Boolean);
-  for (const field of new Set(mapped)) {
-    if (!fields.has(field.toLowerCase())) errors.push(`Mapped field “${field}” is unavailable.`);
-  }
-  if (discovery.fields.length > 0 && !mapped.some(field => field.toLowerCase() === discovery.fields[0].toLowerCase())) {
+  const resolved = resolveAnkiTemplates(config, discovery.fields);
+  errors.push(...resolved.errors);
+  if (discovery.fields.length > 0 && !resolved.templates[discovery.fields[0]].value.trim()) {
     errors.push(`Map the first field, “${discovery.fields[0]}”, before adding notes.`);
   }
   if (config.model && discovery.fields.length === 0 && errors.length === 0) errors.push("The selected note type has no fields.");

@@ -90,3 +90,34 @@ test("case-only Anki field renames stay available without rewriting saved mappin
   assert.match(f.el("anki-status").textContent, /configuration ready/u);
   assert.equal(f.edits.length, 0);
 });
+
+test("presets and advanced templates save one complete snapshot, retain invalid drafts and clear on model change", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fields: { ...f.read().fields, expression: "Front" } });
+  discovery(f.sent[0]);
+  await tick();
+  const rows = () => [...f.el("anki-templates").children];
+  assert.equal(rows().length, 2);
+  assert.equal(rows()[0].querySelector("textarea").value, "{expression}");
+  assert.equal(rows()[0].querySelector("textarea").readOnly, true);
+  f.el("anki-preset").value = "automatic";
+  f.el("anki-apply-preset").click();
+  assert.equal(f.edits.length, 1);
+  assert.equal(f.read().fieldTemplates.Front.value, "{expression}");
+  assert.equal(f.read().fieldTemplates.Back.value, "");
+  const editor = rows()[0].querySelector("textarea");
+  editor.focus();
+  editor.value = "literal {unknown}";
+  editor.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  assert.equal(f.read().fieldTemplates.Front.value, "literal {unknown}");
+  assert.match(f.el("anki-status").textContent, /Unknown marker/u);
+  const mode = rows()[0].querySelector("select");
+  mode.value = "coalesce-new";
+  mode.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.equal(f.read().fieldTemplates.Front.overwriteMode, "coalesce-new");
+  const model = f.el("opt-anki-model");
+  model.value = "B";
+  model.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.equal(f.read().fieldTemplates, null);
+  assert.ok(Object.values(f.read().fields).every(value => value === ""));
+});

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import "./reader-options.js";
-import { ankiFieldNames } from "./anki.js";
 
 const { ANKI_FIELDS } = globalThis.HDReaderOptions;
 const CORE_MARKERS = ["expression", "reading", "furigana", "furigana-plain", "dictionary", "dictionary-alias",
@@ -45,6 +44,10 @@ const SENREN = {
 const fieldKey = value => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 const knownMarker = value => MARKERS.has(value) || DYNAMIC_PREFIXES.some(prefix => value.startsWith(prefix) && value.length > prefix.length);
 const blankTemplate = () => ({ value: "", overwriteMode: "coalesce" });
+
+export function ankiFieldNames(fields) {
+  return new Map(fields.map(field => [field.toLowerCase(), field]));
+}
 
 export function ankiTemplateErrors(template) {
   return [...new Set([...template.matchAll(MARKER_PATTERN)].filter(match => !knownMarker(match[1].toLowerCase()))

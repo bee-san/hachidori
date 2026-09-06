@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { ankiAvailability, ankiFieldNames } from "./anki.js";
+import { ankiAvailability } from "./anki.js";
+import { ankiFieldNames } from "./anki-templates.js";
 
 export function createAnkiSettingsController({ document, readConfig, editConfig, send }) {
   const { ANKI_FIELDS } = document.defaultView.HDReaderOptions;
