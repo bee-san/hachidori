@@ -65,12 +65,22 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     return record;
   }
 
-  function renderTemplates(config) {
-    const resolved = resolveAnkiTemplates(config, currentFields());
+  function updateTemplateRow(row, template, advanced, showMode, unavailable) {
+    if (row.editor !== document.activeElement && row.editor.value !== template.value) row.editor.value = template.value;
+    if (row.mode !== document.activeElement && row.mode.value !== template.overwriteMode) row.mode.value = template.overwriteMode;
+    if (row.editor.readOnly === advanced) row.editor.readOnly = !advanced;
+    if (row.mode.disabled === advanced) row.mode.disabled = !advanced;
+    if (row.modeLabel.hidden === showMode) row.modeLabel.hidden = !showMode;
+    if (row.remove.hidden === unavailable) row.remove.hidden = !unavailable;
+  }
+
+  function renderTemplates(config, resolved) {
     const templates = [...Object.entries(resolved.templates),
       ...resolved.staleFields.map(field => [field, config.fieldTemplates[field]])];
     const retained = new Set(templates.map(([field]) => field));
+    const unavailable = new Set(resolved.staleFields);
     const advanced = config.fieldTemplates !== null;
+    const showMode = advanced && config.duplicateBehavior === "overwrite";
     const renamedRows = new Map([...templateRows].filter(([field]) => !retained.has(field))
       .map(([field, row]) => [field.toLowerCase(), row]));
     const container = element("anki-templates");
@@ -86,15 +96,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
         }
         templateRows.set(field, previous || createTemplateRow(field));
       }
-      const row = templateRows.get(field);
-      if (row.editor !== document.activeElement && row.editor.value !== template.value) row.editor.value = template.value;
-      if (row.mode !== document.activeElement && row.mode.value !== template.overwriteMode) row.mode.value = template.overwriteMode;
-      if (row.editor.readOnly === advanced) row.editor.readOnly = !advanced;
-      if (row.mode.disabled === advanced) row.mode.disabled = !advanced;
-      const showMode = advanced && config.duplicateBehavior === "overwrite";
-      if (row.modeLabel.hidden === showMode) row.modeLabel.hidden = !showMode;
-      const unavailable = resolved.staleFields.includes(field);
-      if (row.remove.hidden === unavailable) row.remove.hidden = !unavailable;
+      updateTemplateRow(templateRows.get(field), template, advanced, showMode, unavailable.has(field));
     }
     for (const [field, row] of templateRows) {
       if (!retained.has(field)) { row.row.remove(); templateRows.delete(field); }
@@ -120,9 +122,9 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     selects.set(select, key);
   }
 
-  function renderStatus(config) {
+  function renderStatus(config, resolved) {
     const status = element("anki-status");
-    const errors = ankiAvailability(config, discovery);
+    const errors = ankiAvailability(config, discovery, resolved);
     let state = "Not connected";
     if (discovery?.connected) state = errors.length ? "Connected · configuration needs attention" : "Connected · configuration ready";
     const message = loading ? "Checking AnkiConnect…" : [state, ...errors].join("\n");
@@ -167,9 +169,11 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     selectChoices("opt-anki-deck", discovery?.decks || [], config.deck, "Choose a deck");
     selectChoices("opt-anki-model", discovery?.models || [], config.model, "Choose a note type");
     const fields = discovery?.model === config.model ? discovery.fields : [];
-    const fieldNames = ankiFieldNames(fields);
-    for (const key of ANKI_FIELDS) selectChoices(`opt-anki-field-${key}`, fields, config.fields[key], "Disabled",
-      fieldNames.get(config.fields[key].toLowerCase()));
+    if (config.fieldTemplates === null) {
+      const fieldNames = ankiFieldNames(fields);
+      for (const key of ANKI_FIELDS) selectChoices(`opt-anki-field-${key}`, fields, config.fields[key], "Disabled",
+        fieldNames.get(config.fields[key].toLowerCase()));
+    }
     for (const [key, id] of controls) {
       const control = element(id);
       if (control === document.activeElement) continue;
@@ -180,8 +184,9 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       const control = element(id);
       if (control.disabled === config.checkForDuplicates) control.disabled = !config.checkForDuplicates;
     }
-    renderStatus(config);
-    renderTemplates(config);
+    const resolved = resolveAnkiTemplates(config, fields);
+    renderStatus(config, resolved);
+    renderTemplates(config, resolved);
     if (connectionKey(config) !== requestedKey) void refresh();
   }
 

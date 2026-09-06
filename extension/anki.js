@@ -68,14 +68,14 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 1250 }
 
 // Shared by Settings and authoritative mining readiness checks. Validation
 // reports missing choices instead of changing a saved or in-progress mapping.
-export function ankiAvailability(config, discovery) {
+export function ankiAvailability(config, discovery, resolvedTemplates) {
   if (!discovery) return ["Refresh Anki to check this configuration."];
   if (!discovery.connected) return discovery.errors;
   const errors = [...discovery.errors];
   if (!discovery.decks.includes(config.deck)) errors.push("Choose an available deck.");
   if (!discovery.models.includes(config.model)) errors.push("Choose an available note type.");
   if (config.model !== discovery.model) return [...errors, "Refresh fields for the selected note type."];
-  const resolved = resolveAnkiTemplates(config, discovery.fields);
+  const resolved = resolvedTemplates ?? resolveAnkiTemplates(config, discovery.fields);
   errors.push(...resolved.errors);
   if (discovery.fields.length > 0 && !resolved.templates[discovery.fields[0]].value.trim()) {
     errors.push(`Map the first field, “${discovery.fields[0]}”, before adding notes.`);
