@@ -4324,6 +4324,8 @@ async function main() {
     frequencySettings?.summary === true, JSON.stringify(frequencySettings));
   check("image-source Settings preserve canonical dictionary and group choices through availability changes and focused conflicts",
     frequencySettings?.imageSources === true, JSON.stringify(frequencySettings));
+  check("metadata Settings save independent fields and preserve a focused preferred-pitch draft",
+    frequencySettings?.metadata === true, JSON.stringify(frequencySettings?.metadataDetails));
   const autosave = await settingsAutosaveStage();
   check(
     "Settings coalesces edited fields and queues only one revisioned save at a time",
@@ -5140,7 +5142,7 @@ async function settingsFrequencyStage() {
       && preferred.value === "" && preferred.disabled;
     async function editControl(control, value) {
       const before = writes.length;
-      if (control === summaryToggle) control.checked = value;
+      if (control.type === "checkbox") control.checked = value;
       else control.value = value;
       control.dispatchEvent(new window.Event("change", { bubbles: true }));
       await until(() => writes.length === before + 1 && status() === "Saved.");
@@ -5241,7 +5243,51 @@ async function settingsFrequencyStage() {
         && groupSaved && missingGroupKept && imageDraftKept && imageConflict
         && imageSource.value === "" && !imageSource.disabled;
     }
-    return { explicit, availability, draft, writes, summary, imageSources,
+    const metadataFields = [
+      ["opt-frequency-names", "showFrequencyDictionaryNames", true],
+      ["opt-average-frequency", "averageFrequency", false],
+      ["opt-pitch-badge", "showPitchAccentBadge", true],
+      ["opt-pitch-furigana", "showPitchAccentFurigana", true],
+      ["opt-grammar-tags", "hidePopupGrammarTags", true],
+    ];
+    const pitch = window.document.getElementById("opt-pitch-dictionary");
+    let metadata = Boolean(pitch) && metadataFields.every(([id, , checked]) =>
+      window.document.getElementById(id)?.checked === checked);
+    const metadataDetails = [];
+    if (metadata) {
+      for (const [id, key, checked] of metadataFields) {
+        await editControl(window.document.getElementById(id), !checked);
+        metadataDetails.push(JSON.stringify(writes.at(-1).options)
+          === JSON.stringify({ [key]: key === "hidePopupGrammarTags" ? checked : !checked }));
+      }
+      metadataDetails.push(pitch.disabled);
+      await editControl(window.document.getElementById("opt-pitch-furigana"), true);
+      emitDictionaries({ pitchCount: 2 });
+      await editControl(pitch, "Rank");
+      metadataDetails.push(writes.at(-1).options.pitchAccentFuriganaDictionary === "Rank");
+      pitch.focus();
+      const focused = pitch.selectedOptions[0];
+      emitDictionaries({ enabled: false, displayName: "Pitch source" });
+      metadataDetails.push(pitch.selectedOptions[0] === focused);
+      pitch.blur();
+      metadataDetails.push(pitch.value === "Rank" && pitch.selectedOptions[0].textContent.includes("Pitch source (disabled)"));
+      pitch.focus();
+      pitch.value = "";
+      pitch.dispatchEvent(new window.Event("input", { bubbles: true }));
+      const revision = storedOptions.revision;
+      emitOptions({ pitchAccentFuriganaDictionary: "Missing pitch", showPitchAccentFurigana: false });
+      metadataDetails.push(!pitch.disabled && pitch.value === "");
+      pitch.dispatchEvent(new window.Event("change", { bubbles: true }));
+      await until(() => status().includes("Could not save"));
+      metadataDetails.push(writes.at(-1).baseRevision === revision
+        && writes.at(-1).options.pitchAccentFuriganaDictionary === "");
+      pitch.blur();
+      window.document.getElementById("options-use-saved").click();
+      metadataDetails.push(pitch.disabled && pitch.value === "Missing pitch"
+        && pitch.selectedOptions[0].textContent.includes("unavailable"));
+      metadata = metadataDetails.every(Boolean);
+    }
+    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {
