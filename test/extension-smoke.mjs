@@ -7705,29 +7705,37 @@ async function contentNoteStage() {
       harness.emitState({ ...presentation, revision: 6, groups: [] }, { revision: 99, maxResults: 99 });
       checks.push(harness.presentations().length === updates && !render.context.isCurrentRequest());
 
-      for (const update of ["contents", "alias", "options"]) {
+      for (const update of ["contents", "alias", "options", "metadata", "mode"]) {
         const combined = await createHarness();
         try {
           await combined.initialLookup();
           const current = combined.render().context;
           const options = { revision: 1, frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
             kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
-            showCompactDefinitionSummary: true };
-          if (update === "options") combined.emitOptions(options);
+            showCompactDefinitionSummary: update !== "metadata", averageFrequency: true,
+            showFrequencyDictionaryNames: false, showPitchAccentFurigana: false,
+            pitchAccentFuriganaDictionary: "Preferred pitch", showPitchAccentBadge: false, hidePopupGrammarTags: true };
+          const before = combined.sent.length;
+          if (update === "options" || update === "metadata") combined.emitOptions(options);
           else combined.emitState({ schemaVersion: 1, revision: 2, groups: [],
             dictionaries: combined.driver.snapshot().dictionaries.map(dictionary => ({ ...dictionary,
               ...(update === "contents" ? { path: "/dicts/replacement/Generic", revision: "replacement" }
-                : { displayName: "Combined alias" }),
+                : update === "mode" ? { frequencyMode: "rank-based" } : { displayName: "Combined alias" }),
             })),
-          }, options);
+          }, update === "mode" ? undefined : options);
           if (update === "contents") {
             checks.push(combined.presentations().length === 0 && !current.isCurrentRequest()
               && combined.driver.snapshot().popupHidden);
           } else {
             const presentations = combined.presentations();
             checks.push(presentations.length === 1 && current.isCurrentRequest() && !combined.driver.snapshot().popupHidden
-              && presentations[0].showCompactDefinitionSummary === true
-              && (update === "options" || presentations[0].dictionaryPresentation[0].displayName === "Combined alias"));
+              && combined.sent.length === before
+              && (update === "mode"
+                ? presentations[0].dictionaryPresentation[0].frequencyMode === "rank-based"
+                : presentations[0].showCompactDefinitionSummary === options.showCompactDefinitionSummary
+                  && Object.entries(combined.popup.ownerDocument.defaultView.HDPopup.metadataOptions(options))
+                    .every(([key, value]) => presentations[0][key] === value))
+              && (update !== "alias" || presentations[0].dictionaryPresentation[0].displayName === "Combined alias"));
           }
         } finally { combined.driver.teardown(); combined.close(); }
       }
@@ -11039,7 +11047,9 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
         && admissions === beforeOrphan.admissions + 1 && requests.length === beforeOrphan.requests,
       JSON.stringify({ protectedRequests: protectedRequests.length, beforeOrphan, requests: requests.length, admissions }));
     canUpdate = true;
-    route(["Pictures"], { dictionaryPresentation: [{ title: "Pictures", displayName: "Latest pictures" }] });
+    route(["Pictures"], { dictionaryPresentation: [{ title: "Pictures", displayName: "Latest pictures" }],
+      showPitchAccentBadge: false, showPitchAccentFurigana: false, hidePopupGrammarTags: true,
+      showFrequencyDictionaryNames: false });
     const beforeTab = requests.length;
     popup.querySelector('[role="tab"][data-dictionary="Illustrated"]').click();
     settle(requests.slice(beforeTab));
@@ -11050,7 +11060,9 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
     const beforeFlush = requests.length;
     view.flushDictionaryPresentation();
     check("local tab projection retains the latest image route and aliases without reloading again on deferred presentation flush",
-      latestLabels && beforeFlush === beforeTab + 2 && requests.length === beforeFlush,
+      latestLabels && beforeFlush === beforeTab + 2 && requests.length === beforeFlush
+        && !popup.querySelector(".gsm-hoshidicts-frequency-source, .gsm-hoshidicts-tag-pitch, .gsm-hoshidicts-pitch-ruby, .gsm-hoshidicts-primary-grammar")
+        && Boolean(popup.querySelector(".gsm-hoshidicts-tag-ipa")),
       JSON.stringify({ latestLabels, beforeTab, beforeFlush, requests: requests.length }));
 
     const replacementProjections = [];
@@ -11147,7 +11159,7 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
     const independent = !popup.querySelector(".gsm-hoshidicts-tag-pitch")
       && !popup.querySelector(".gsm-hoshidicts-primary-grammar")
       && !popup.querySelector(".gsm-hoshidicts-frequency-source")
-      && popup.querySelector(".gsm-hoshidicts-tag-ipa")?.textContent.includes("Phonetics")
+      && popup.querySelector('.gsm-hoshidicts-tag-ipa[data-dictionary="IPA only"]')?.textContent.includes("Phonetics")
       && popup.textContent.includes("ipa-only · second transcription")
       && definitionTag.isConnected;
     const preserved = popup.querySelector("form") === form && document.activeElement === form.elements.definition

@@ -2144,6 +2144,20 @@ html[data-hoshidicts-theme="high-contrast"] .gsm-hoshidicts-audio-menu {
   font-variant-numeric: tabular-nums;
 }
 
+.gsm-hoshidicts-metadata:empty,
+.gsm-hoshidicts-tags:empty {
+  display: none;
+}
+
+.gsm-hoshidicts-tag-ipa {
+  display: inline-flex;
+  gap: 0.4em;
+}
+
+.gsm-hoshidicts-ipa-source {
+  font-weight: 700;
+}
+
 .gsm-hoshidicts-tag-pitch {
   display: inline-flex;
   max-width: 100%;
