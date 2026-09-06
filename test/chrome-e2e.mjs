@@ -1105,7 +1105,24 @@ async function popupReader(page, depth = 0) {
     if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description || reply.exceptionDetails.text);
     return reply.result.value;
   }
-  return { audio, click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview, nested, sourcePaint, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+  async function anki() {
+    const object = await resolvePopupObject();
+    if (!object) return null;
+    const reply = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true,
+      functionDeclaration: function () {
+        return { rect: this.getBoundingClientRect().toJSON(), hidden: this.hidden,
+          controls: [...this.querySelectorAll(".gsm-hoshidicts-anki-control")].map(control => {
+            const add = control.querySelector(".gsm-hoshidicts-mine-button");
+            const view = control.querySelector(".gsm-hoshidicts-anki-view");
+            return { hidden: control.hidden, text: add.textContent, state: add.dataset.state, disabled: add.disabled,
+              output: control.querySelector("output").textContent, viewDisabled: view.disabled, rect: add.getBoundingClientRect().toJSON() };
+          }) };
+      }.toString(),
+    });
+    return reply.result.value;
+  }
+  return { anki, audio, click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview, nested, sourcePaint, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
 }
 
 // Content scripts have their own Highlight constructor; changing the page's
@@ -3307,7 +3324,7 @@ async function checkAudioSettings(page, browser) {
   }
 }
 
-async function checkAnkiSubmission(settings, browser) {
+async function checkAnkiSubmission(settings, browser, tab, popup) {
   const original = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options);
   const notes = new Map(), calls = [], files = new Map();
   const apiRoute = { requests: 0, async respond(request) {
@@ -3326,6 +3343,7 @@ async function checkAnkiSubmission(settings, browser) {
       fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value]) => [field, { value }])) }));
     else if (action === "updateNoteFields") { notes.set(params.note.id, { ...notes.get(params.note.id), ...params.note.fields }); result = null; }
     else if (action === "storeMediaFile") { files.set(params.filename, params.data); result = params.filename; }
+    else if (action === "guiBrowse") result = [...notes.keys()];
     else throw new Error(`Unexpected Anki action ${action}`);
     return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
   } };
@@ -3345,14 +3363,14 @@ async function checkAnkiSubmission(settings, browser) {
   const native = await target.createCDPSession();
   await native.send("Runtime.evaluate", { expression: `globalThis.__ankiNativePlay = Audio.prototype.play; globalThis.__ankiPlayCount = 0;
     Audio.prototype.play = function (...args) { globalThis.__ankiPlayCount++; return __ankiNativePlay.apply(this, args); };` });
-  const configure = audio => settings.evaluate(async ({ audio, source }) => {
+  const configure = (audio, anki = {}) => settings.evaluate(async ({ audio, source, anki }) => {
     const { options } = await chrome.storage.local.get("options");
     const template = value => ({ value, overwriteMode: "overwrite" });
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
       options: { audioSources: [source], audioAutoplay: false, anki: { ...HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
-        fieldTemplates: { Front: template(audio ? "{expression}{audio}" : "{expression}"), Back: template("{glossary}"), Audio: template(audio ? "{audio}" : "") } } } });
+        fieldTemplates: { Front: template(audio ? "{expression}{audio}" : "{expression}"), Back: template("{glossary}"), Audio: template(audio ? "{audio}" : "") }, ...anki } } });
     if (!reply.ok) throw new Error(reply.error);
-  }, { audio, source });
+  }, { audio, source, anki });
   const operation = (type, request) => settings.evaluate(async ({ type, request }) => {
     const reply = await chrome.runtime.sendMessage({ target: "hachidori-anki", type, requestId: "anki-browser-test", request });
     if (!reply.ok) throw new Error(reply.error);
@@ -3400,6 +3418,7 @@ async function checkAnkiSubmission(settings, browser) {
         && files.get(filename) === wav.toString("base64") && routes.get(chosen.url).requests === 1
         && routes.get(other.url).requests === 0 && playCount === 0,
       JSON.stringify({ noUpload, withAudio, checked, filename, playCount, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
+    await checkAnkiReader(tab, popup, configure, calls, notes);
   } finally {
     await settings.evaluate(async original => {
       const { options } = await chrome.storage.local.get("options");
@@ -3411,6 +3430,51 @@ async function checkAnkiSubmission(settings, browser) {
     await native.detach();
     await media.detach();
     await api.detach();
+  }
+}
+
+async function checkAnkiReader(tab, popup, configure, calls, notes) {
+  const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
+  async function settled(predicate) {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const state = await popup.anki();
+      if (predicate(state)) return state;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    throw new Error(`Anki reader did not settle: ${JSON.stringify(await popup.anki())}`);
+  }
+  try {
+    await configure(false, { model: "" });
+    await tab.$eval("#verb", element => { element.innerHTML = "<ruby>食<rt>た</rt></ruby>べる。"; });
+    const before = calls.length;
+    await hoverForPopup(tab, popup, "#verb");
+    const quiet = (await popup.anki()).controls.length === 0 && calls.length === before;
+    const template = value => ({ value, overwriteMode: "overwrite" });
+    await configure(false, { fieldTemplates: { Front: template("{expression}"),
+      Back: template("{cloze-body}|{cloze-suffix}|{sentence}"), Audio: template("") } });
+    const ready = await settled(state => state?.controls.some(control => !control.hidden && !control.disabled));
+    const addCount = calls.filter(call => call.action === "addNote").length;
+    const rect = ready.controls[0].rect;
+    await tab.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2, { clickCount: 2 });
+    const saved = await settled(state => state?.controls.some(control => control.state === "success"));
+    await popup.click(".gsm-hoshidicts-mine-button");
+    const browseCount = calls.filter(call => call.action === "guiBrowse").length;
+    await popup.click(".gsm-hoshidicts-anki-view");
+    await settled(state => calls.filter(call => call.action === "guiBrowse").length > browseCount && !state.controls[0].viewDisabled);
+    const note = [...notes.values()].at(-1);
+    const browse = calls.filter(call => call.action === "guiBrowse").at(-1);
+    check("Anki reader controls stay absent until configured and preserve raw ruby context through one confirmed Add and View",
+      quiet && saved.controls[0].disabled && note.Front === "食べる"
+        && note.Back === "食たべる|。|<b>食たべる</b>。"
+        && calls.filter(call => call.action === "addNote").length === addCount + 1 && browse.params.query === '"食べる"',
+      JSON.stringify({ quiet, saved, note, browse }));
+    if (process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT) {
+      const { x, y, width, height } = (await popup.anki()).rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT, clip: { x, y, width, height } });
+    }
+  } finally {
+    await tab.keyboard.press("Escape");
+    await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
   }
 }
 
@@ -6179,7 +6243,7 @@ async function main() {
   await checkPopupMetadata(browser, page, tab, popup);
   await checkPopupAudio(page, tab, popup, browser);
   await tab.keyboard.press("Escape");
-  await checkAnkiSubmission(page, browser);
+  await checkAnkiSubmission(page, browser, tab, popup);
   await hover("#verb");
 
   const clickedKanji = await popup.click(".gsm-hoshidicts-kanji-link");
