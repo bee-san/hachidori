@@ -8,7 +8,9 @@ const { DEFAULT_OPTIONS, normaliseOptions, validateOptionsPatch } = globalThis.H
 const source = (id, patch = {}) => ({ id, type: "custom", enabled: true, url: "", voice: "", ...patch });
 
 test("audio source options retain ordered enabled and disabled rows without a source-count cap", () => {
-  assert.deepEqual(DEFAULT_OPTIONS.audioSources, []);
+  assert.deepEqual(DEFAULT_OPTIONS.audioSources, [source("default-tts", { type: "text-to-speech-reading" })]);
+  assert.deepEqual(normaliseOptions({}).audioSources, DEFAULT_OPTIONS.audioSources);
+  assert.deepEqual(normaliseOptions({ audioSources: [] }).audioSources, []);
   const sources = Array.from({ length: 33 }, (_, index) => source(String(index), { enabled: index % 2 === 0,
     type: ["custom", "custom-json", "text-to-speech", "text-to-speech-reading"][index % 4] }));
   assert.deepEqual(validateOptionsPatch({ audioSources: sources }), { audioSources: sources });
