@@ -530,6 +530,52 @@ lookup/kanji response adopts the reader's generation; late media or styles
 cannot roll it backward. A restarted engine may legitimately report a lower
 generation number.
 
+Image-source selection is independent of the dictionary supplying the text.
+Automatic retains that dictionary's direct media path; an explicit dictionary or
+named group supplies enabled, installed candidates in its configured order.
+Each requested path falls through independently through the existing shared
+cache/queue. A missing source or exhausted group fails normally; it does not
+silently switch to Automatic. The effective candidate order owns in-flight
+routing, so a changed route cannot publish stale bytes/provenance or start another
+fallback. Alias and group-name changes preserve that identity and cached media.
+Reading's native Image source chooser stores canonical titles and stable group
+IDs, with aliases and group names only as labels. Disabled or already-missing
+selections stay remembered, including deleted groups. Removing the selected
+installed package resets its image selection to Automatic in the same dictionary
+state/options commit, with an options revision that rejects stale writers.
+An ID-preserving title change migrates that selection to the new canonical title
+in the same commit.
+Inventory updates preserve a focused selection until focusout.
+It uses the existing revision-bound autosave and is independent of the hover and
+compact-summary toggles.
+
+Source changes refresh each displayed image in place without reparsing its
+glossary, replacing cards, or disturbing a Note draft. Simultaneous group or summary
+changes adopt the new route before rebuilding without queuing media for discarded owners;
+Note/focus/child deferrals still refresh their retained images. Image-local
+attempts retire old success, failure and decode callbacks; Automatic also captures the
+route identity at the shared resolver boundary. A failed compact thumbnail can
+remount its existing wrapper under a new source while its summary text remains
+mounted. Successful alternate suppliers get a small label beside the image,
+outside the compact thumbnail's clip, using the supplier's alias and retaining
+its canonical title. The image's completion callback positions the new label
+with the image, without a duplicate early layout. Alias-only changes still
+schedule their own layout and do not request media again.
+
+The latest image context stays separate from deferred tab/text presentation
+and survives local tab projection. Route changes enter the connected-request
+boundary even while Note or a child protects that projection. Retained stale
+parents may update existing labels but cannot admit new image work. A focused
+image remains keyboard-focusable while its old URL is removed; preview reloads
+resume only an undismissed owner, never a preview closed by failure or scrolling.
+Once focus leaves, a failed image drops that temporary tab stop.
+
+![Alternate image supplier beside the unchanged definition](assets/popup-image-source.png)
+
+[Image source in light](assets/image-source-settings-light.png) and
+[dark](assets/image-source-settings-dark.png) Settings keeps the native controls
+and the existing restrained palette.
+
 The reader separates reusable image resources from DOM ownership. Pending
 fetches dedupe by generation, canonical title and normalized path; successful
 data URLs stay reusable across hovers, including a fetch completing while the

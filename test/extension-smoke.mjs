@@ -1467,6 +1467,29 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && summaryDefaults.compactDefinitionSummaryDictionary === ""
         && summaryAccepted.every(Boolean) && summaryRejected.every(Boolean),
       JSON.stringify({ summaryDefaults, summaryAccepted, summaryRejected }));
+    const imageSources = [];
+    for (const source of [null, { kind: "dictionary", title: "Images: 日本語" }, { kind: "tabGroup", id: "group:media" }]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupImageSource: source && { ...source, ignored: true } }));
+      const noOp = await send(message({ popupImageSource: source }, { baseRevision: 3 }));
+      imageSources.push(reply.ok === true && reply.options?.revision === 3
+        && JSON.stringify(reply.options?.popupImageSource) === JSON.stringify(source)
+        && noOp.ok === true && noOp.options?.revision === 3);
+    }
+    const invalidImageSources = [];
+    for (const source of ["Images", 0, [], {}, { kind: "dictionary", title: "" },
+      { kind: "dictionary", title: 2 }, { kind: "tabGroup", id: "" },
+      { kind: "tabGroup", title: "group:media" }, { kind: "other", title: "Images" }]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupImageSource: source }));
+      invalidImageSources.push(reply.ok === false && await unchanged(saved));
+    }
+    check("popup images default to Automatic and preserve canonical dictionary or stable group selection through strict idempotent CAS",
+      reader.normaliseOptions({}).popupImageSource === null
+        && !Object.hasOwn(reader.projectStoredOptions({}), "popupImageSource")
+        && reader.normaliseOptions({ popupImageSource: { kind: "other" } }).popupImageSource === null
+        && imageSources.every(Boolean) && invalidImageSources.every(Boolean),
+      JSON.stringify({ imageSources, invalidImageSources }));
     const invalid = [
       { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
       { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { modifier: "meta" },
@@ -3115,11 +3138,18 @@ async function main() {
     downloadUrl: communityDownloadUrl,
     lastUpdateCheck: null,
   });
+  const renamedCommunityTitle = "Renamed Community Dictionary";
+  const selectedCommunityImage = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    baseRevision: (await storage.api().local.get("options")).options?.revision ?? 0,
+    options: { popupImageSource: { kind: "dictionary", title: communityTitle } },
+  });
   remoteJson(communityIndexUrl, { revision: "community-3" });
   remoteArchive(
     communityDownloadUrl,
     buildRecommendedZip({
-      title: communityTitle,
+      title: renamedCommunityTitle,
       revision: "community-3",
       indexUrl: communityIndexUrl,
       downloadUrl: communityDownloadUrl,
@@ -3152,6 +3182,23 @@ async function main() {
       && statusFailureCommunity.lastUpdateCheck.error === null
       && failAfterCommittedRevision === null,
     JSON.stringify({ statusFixtureRestored, statusFailureUpdate, statusFailureState }),
+  );
+  const renamedImageOptions = (await storage.api().local.get("options")).options;
+  const staleImageSelection = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    baseRevision: selectedCommunityImage.options.revision,
+    options: { popupImageSource: selectedCommunityImage.options.popupImageSource },
+  });
+  check(
+    "a managed title change migrates its image selection and rejects the old options revision",
+    statusFailureCommunity.id === community.id
+      && statusFailureCommunity.title === renamedCommunityTitle
+      && renamedImageOptions.popupImageSource?.title === renamedCommunityTitle
+      && renamedImageOptions.revision === selectedCommunityImage.options.revision + 1
+      && staleImageSelection.conflict === true
+      && staleImageSelection.options.popupImageSource?.title === renamedCommunityTitle,
+    JSON.stringify({ statusFailureCommunity, renamedImageOptions, staleImageSelection }),
   );
 
   const injectedBlobRowsBefore = idb.keys("/dicts").sort();
@@ -3189,7 +3236,7 @@ async function main() {
       injectedBlobRowsAfter,
     }),
   );
-  await request("hd_remove", { title: communityTitle });
+  await request("hd_remove", { title: renamedCommunityTitle });
   await request("hd_remove", { title: "Jitendex.org [2026-09-08]" });
   await request("hd_remove", { title: localUpdateTitle });
   await request("hd_remove", { title: updatedTitle });
@@ -4252,6 +4299,8 @@ async function main() {
     JSON.stringify(frequencySettings));
   check("compact-summary Settings preserve count, soft canonical source and focused revision-bound drafts",
     frequencySettings?.summary === true, JSON.stringify(frequencySettings));
+  check("image-source Settings preserve canonical dictionary and group choices through availability changes and focused conflicts",
+    frequencySettings?.imageSources === true, JSON.stringify(frequencySettings));
   const autosave = await settingsAutosaveStage();
   check(
     "Settings coalesces edited fields and queues only one revisioned save at a time",
@@ -4537,14 +4586,22 @@ async function main() {
   // A storage failure after the real package has moved aside must restore both
   // the generated files and the live engine before reporting failure.
   const stateBeforeFailedRemove = await storedDictionaryState();
+  const selectedImageOptions = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    baseRevision: (await storage.api().local.get("options")).options.revision,
+    options: { popupImageSource: { kind: "dictionary", title: FIXTURE_TITLE } },
+  });
   storage.failNextSet("injected storage failure");
   const failedRemove = await request("hd_remove", { title: FIXTURE_TITLE });
   const stateAfterFailedRemove = await storedDictionaryState();
+  const optionsAfterFailedRemove = (await storage.api().local.get("options")).options;
   check(
     "a remove whose storage write fails reports the failure",
     failedRemove.ok === false
-      && JSON.stringify(stateAfterFailedRemove) === JSON.stringify(stateBeforeFailedRemove),
-    JSON.stringify({ failedRemove, stateAfterFailedRemove }),
+      && JSON.stringify(stateAfterFailedRemove) === JSON.stringify(stateBeforeFailedRemove)
+      && JSON.stringify(optionsAfterFailedRemove) === JSON.stringify(selectedImageOptions.options),
+    JSON.stringify({ failedRemove, stateAfterFailedRemove, optionsAfterFailedRemove }),
   );
   const afterFailedRemove = await request("hd_status");
   equal(
@@ -4561,7 +4618,9 @@ async function main() {
     [false, 4],
   );
 
+  const writesBeforeRemove = storage.sets.length;
   const removed = await request("hd_remove", { title: FIXTURE_TITLE });
+  const removalWrites = storage.sets.slice(writesBeforeRemove);
   check("hd_remove succeeds", removed.ok === true, JSON.stringify(removed));
   const afterRemove = await request("hd_status");
   equal("nothing is loaded after a remove", [afterRemove.ready, afterRemove.dictionaryCount], [true, 0]);
@@ -4571,6 +4630,22 @@ async function main() {
     ...studyGroup,
     dictionaryIds: [],
   }]);
+  const optionsAfterRemove = (await storage.api().local.get("options")).options;
+  const staleImageWrite = await pageChrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_options_write",
+    baseRevision: selectedImageOptions.options.revision,
+    options: { popupImageSource: selectedImageOptions.options.popupImageSource },
+  });
+  check(
+    "removal atomically clears the selected image package and refuses a stale options write",
+    optionsAfterRemove.popupImageSource === null
+      && optionsAfterRemove.revision === selectedImageOptions.options.revision + 1
+      && staleImageWrite.conflict === true
+      && staleImageWrite.options.popupImageSource === null
+      && JSON.stringify(removalWrites) === JSON.stringify([["dictionaryState", "options"]]),
+    JSON.stringify({ optionsAfterRemove, staleImageWrite, removalWrites }),
+  );
   const generationBefore = afterRemove.generation;
   const noop = await request("hd_remove", { title: "never imported" });
   const afterNoop = await request("hd_status");
@@ -4973,6 +5048,8 @@ async function settingsFrequencyStage() {
   try {
     loadSettingsScript(window);
     await until(() => window.document.getElementById("engine-status").textContent.startsWith("Ready"));
+    const imageSource = window.document.getElementById("opt-image-source");
+    const imageSourceDefault = imageSource?.value === "" && !imageSource.disabled && writes.length === 0;
     const auto = field("auto");
     if (!auto) return { explicit: false, availability: false, draft: false, error: "Auto direction is missing" };
     const passive = storedOptions.frequencyOrder === "disabled" && field("order").value === "disabled"
@@ -5038,16 +5115,16 @@ async function settingsFrequencyStage() {
     if (!summaryToggle || !snippets || !preferred) return { explicit, availability, draft, writes, summary: false };
     const summaryDefault = !summaryToggle.checked && snippets.value === "3" && snippets.disabled
       && preferred.value === "" && preferred.disabled;
-    async function summaryEdit(control, value) {
+    async function editControl(control, value) {
       const before = writes.length;
       if (control === summaryToggle) control.checked = value;
       else control.value = value;
       control.dispatchEvent(new window.Event("change", { bubbles: true }));
       await until(() => writes.length === before + 1 && status() === "Saved.");
     }
-    await summaryEdit(summaryToggle, true);
-    await summaryEdit(snippets, "6");
-    await summaryEdit(preferred, "Rank");
+    await editControl(summaryToggle, true);
+    await editControl(snippets, "6");
+    await editControl(preferred, "Rank");
     const beforePresentation = writes.length;
     preferred.focus();
     const choice = preferred.selectedOptions[0];
@@ -5059,10 +5136,10 @@ async function settingsFrequencyStage() {
     emitDictionaries({ termCount: 0, frequencyCount: 3 });
     const unavailableKept = preferred.value === "Rank" && preferred.selectedOptions[0].textContent.includes("unavailable")
       && !preferred.selectedOptions[0].disabled && writes.length === beforePresentation;
-    await summaryEdit(summaryToggle, false);
+    await editControl(summaryToggle, false);
     const offKept = snippets.disabled && preferred.disabled && snippets.value === "6" && preferred.value === "Rank"
       && JSON.stringify(writes.at(-1).options) === JSON.stringify({ showCompactDefinitionSummary: false });
-    await summaryEdit(summaryToggle, true);
+    await editControl(summaryToggle, true);
     preferred.focus();
     preferred.value = "Occurrence";
     preferred.dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -5076,7 +5153,7 @@ async function settingsFrequencyStage() {
     preferred.blur();
     window.document.getElementById("options-use-saved").click();
     const disabledAfterBlur = preferred.disabled;
-    await summaryEdit(summaryToggle, true);
+    await editControl(summaryToggle, true);
     snippets.focus();
     snippets.value = "4";
     snippets.dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -5091,7 +5168,57 @@ async function settingsFrequencyStage() {
     const summary = summaryDefault && focusedChoice && disabledKept && unavailableKept && offKept
       && nativeSummaryDraft && summaryConflict && disabledAfterBlur && countDraft && countConflict
       && snippets.disabled && preferred.value === "Unknown mode" && snippets.value === "6";
-    return { explicit, availability, draft, writes, summary,
+    let imageSources = false;
+    if (imageSource) {
+      const supplier = { kind: "dictionary", title: "Pictures:日本語" };
+      const group = { kind: "tabGroup", id: "pictures:stable" };
+      const emitImageState = (patch) => {
+        state = { ...state, ...patch, revision: state.revision + 1 };
+        listener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+      };
+      emitImageState({ dictionaries: [...state.dictionaries,
+        genericPackage({ id: "pictures", title: supplier.title, termCount: 0, kanjiCount: 1, mediaCount: 2 }),
+      ], groups: [{ id: group.id, name: "Picture group", dictionaryIds: ["pictures"] }] });
+      await editControl(imageSource, JSON.stringify(supplier));
+      const dictionarySaved = JSON.stringify(writes.at(-1).options) === JSON.stringify({ popupImageSource: supplier });
+      const beforeNames = writes.length;
+      imageSource.focus();
+      const focusedOption = imageSource.selectedOptions[0];
+      emitImageState({ dictionaries: state.dictionaries.map(dictionary => dictionary.id === "pictures"
+        ? { ...dictionary, displayName: "Picture book", enabled: false } : dictionary),
+        groups: [{ ...state.groups[0], name: "Renamed pictures" }],
+      });
+      const nativeImageDraft = imageSource.selectedOptions[0] === focusedOption
+        && imageSource.value === JSON.stringify(supplier);
+      imageSource.blur();
+      const disabledImageKept = imageSource.value === JSON.stringify(supplier)
+        && imageSource.selectedOptions[0].textContent.includes("Picture book")
+        && imageSource.selectedOptions[0].textContent.includes("disabled") && writes.length === beforeNames;
+      await editControl(imageSource, JSON.stringify(group));
+      const groupSaved = JSON.stringify(writes.at(-1).options) === JSON.stringify({ popupImageSource: group })
+        && imageSource.selectedOptions[0].textContent.includes("Renamed pictures");
+      const beforeRemoval = writes.length;
+      emitImageState({ dictionaries: state.dictionaries.filter(dictionary => dictionary.id !== "pictures"), groups: [] });
+      const missingGroupKept = imageSource.value === JSON.stringify(group)
+        && imageSource.selectedOptions[0].textContent.includes("unavailable") && writes.length === beforeRemoval;
+      imageSource.focus();
+      const desiredSource = { kind: "dictionary", title: "Rank" };
+      imageSource.value = JSON.stringify(desiredSource);
+      imageSource.dispatchEvent(new window.Event("input", { bubbles: true }));
+      const imageRevision = storedOptions.revision;
+      emitOptions({ popupImageSource: null, hoverEnabled: false });
+      const imageDraftKept = imageSource.value === JSON.stringify(desiredSource) && !imageSource.disabled;
+      imageSource.dispatchEvent(new window.Event("change", { bubbles: true }));
+      await until(() => status().includes("Could not save"));
+      const imageConflict = writes.at(-1).baseRevision === imageRevision
+        && JSON.stringify(writes.at(-1).options.popupImageSource) === JSON.stringify(desiredSource);
+      imageSource.blur();
+      window.document.getElementById("options-use-saved").click();
+      imageSources = imageSourceDefault && dictionarySaved && nativeImageDraft && disabledImageKept
+        && groupSaved && missingGroupKept && imageDraftKept && imageConflict
+        && imageSource.value === "" && !imageSource.disabled;
+    }
+    return { explicit, availability, draft, writes, summary, imageSources,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {
@@ -9493,6 +9620,146 @@ async function contentNoteStage() {
     return result;
   }
 
+  async function imageSourceRoutingCase() {
+    const harness = await createHarness();
+    const results = {};
+    const url = "data:image/png;base64,Yg==";
+    const otherUrl = "data:image/png;base64,Yw==";
+    const sourceOptions = {
+      frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
+      kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7,
+      modifier: "none", scanLength: 9,
+    };
+    const select = (popupImageSource) => harness.emitOptions({ ...sourceOptions, popupImageSource });
+    const inventory = {
+      revision: 2,
+      dictionaries: [...harness.driver.snapshot().dictionaries,
+        genericPackage({ id: "image-b", title: "Images:B", path: "/dicts/images-b", termCount: 0 }),
+        genericPackage({ id: "image-c", title: "Images:C", path: "/dicts/images-c", termCount: 0 }),
+        genericPackage({ id: "image-off", title: "Images:Disabled", path: "/dicts/images-off", enabled: false }),
+      ],
+      groups: [{ id: "image-order", name: "Images", dictionaryIds: ["image-b", "image-c"] }],
+    };
+    harness.emitState(inventory);
+    let inventoryRevision = inventory.revision;
+    const changeInventory = (patch) => harness.emitState({ ...inventory, ...patch, revision: ++inventoryRevision });
+    await harness.initialLookup();
+    const context = harness.render().context;
+    const descriptor = harness.driver.viewRequest();
+    const renderCount = harness.renders.length;
+    const sources = [];
+    const load = (path, owns = () => true) => context.resolveMedia({
+      dictionary: "Generic", generation: context.generation, path,
+      isCurrent: () => owns() && context.isCurrentRequest(),
+      onResolvedSource: (title) => sources.push({ path, title }),
+    }).catch(() => null);
+    const finish = (dataUrl = url) => {
+      const request = harness.take("hd_media");
+      if (request) harness.reply(request, { dataUrl });
+      return request?.request;
+    };
+    try {
+      select({ kind: "dictionary", title: "Images:B" });
+      const explicit = load("explicit.png");
+      const explicitRequest = finish();
+      results["explicit image sources resolve another dictionary's path without changing its text or lookup owner"] =
+        await explicit === url && explicitRequest?.dictionary === "Images:B"
+        && sources.at(-1)?.title === "Images:B"
+        && harness.driver.viewRequest() === descriptor && context.isCurrentRequest()
+        && harness.renders.length === renderCount && harness.driver.snapshot().currentGeneration === 2;
+
+      select({ kind: "tabGroup", id: "image-order" });
+      const firstPath = load("group-x.png");
+      const firstCandidate = finish(null);
+      await harness.settle();
+      const fallback = finish(otherUrl);
+      const firstValue = await firstPath;
+      const secondPath = load("group-y.png");
+      const secondCandidate = finish();
+      const secondValue = await secondPath;
+      const exhausted = load("absent.png");
+      finish(null);
+      await harness.settle();
+      finish(null);
+      const exhaustedValue = await exhausted;
+      const beforeUnavailable = harness.sent.length;
+      const unavailableValues = [];
+      for (const source of [{ kind: "tabGroup", id: "removed-group" },
+        { kind: "dictionary", title: "Removed" }, { kind: "dictionary", title: "Images:Disabled" }]) {
+        select(source);
+        const unavailable = load("unavailable.png");
+        finish();
+        unavailableValues.push(await unavailable);
+      }
+      results["image groups fall through separately for each path and unavailable or exhausted sources fail normally"] =
+        firstCandidate?.dictionary === "Images:B" && fallback?.dictionary === "Images:C"
+        && firstValue === otherUrl && secondCandidate?.dictionary === "Images:B" && secondValue === url
+        && exhaustedValue === null && unavailableValues.every(value => value === null) && harness.sent.length === beforeUnavailable;
+
+      select({ kind: "tabGroup", id: "image-order" });
+      let ownsFirst = true;
+      const beforeShared = harness.sent.length;
+      const first = load("shared-route.png", () => ownsFirst);
+      const second = load("shared-route.png");
+      ownsFirst = false;
+      const sharedFirst = finish(null);
+      await harness.settle();
+      const sharedFallback = finish(otherUrl);
+      const sharedValues = await Promise.all([first, second]);
+      results["routed media shares pending candidates without a retired consumer publishing provenance or cancelling its peer"] =
+        sharedFirst?.dictionary === "Images:B" && sharedFallback?.dictionary === "Images:C"
+        && sharedValues[0] === null && sharedValues[1] === otherUrl
+        && harness.sent.length === beforeShared + 2
+        && sources.filter(({ path }) => path === "shared-route.png").length === 1;
+
+      const stale = [];
+      for (const successful of [false, true, "group-reorder", "automatic"]) {
+        select(successful === "automatic" ? null : { kind: "tabGroup", id: "image-order" });
+        const path = `obsolete-${successful}.png`;
+        const operation = load(path);
+        const request = harness.take("hd_media");
+        const beforeChange = harness.sent.length;
+        if (successful === "group-reorder") {
+          changeInventory({ groups: [{ ...inventory.groups[0], dictionaryIds: ["image-c", "image-b"] }] });
+        } else select({ kind: "dictionary", title: "Images:C" });
+        harness.reply(request, { dataUrl: successful ? url : null });
+        await harness.settle();
+        finish();
+        stale.push(await operation === null && harness.sent.length === beforeChange
+          && !sources.some(item => item.path === path));
+      }
+      results["changing the effective image route stops stale success and further fallback without invalidating the lookup"] =
+        stale.every(Boolean) && context.isCurrentRequest() && harness.driver.viewRequest() === descriptor;
+
+      changeInventory({});
+      select({ kind: "tabGroup", id: "image-order" });
+      const pendingAlias = load("alias.png");
+      const aliasRequest = harness.take("hd_media");
+      const beforeAlias = harness.sent.length;
+      changeInventory({ dictionaries: inventory.dictionaries.map(dictionary =>
+        dictionary.id === "image-b" ? { ...dictionary, displayName: "Picture book" } : dictionary),
+        groups: [{ ...inventory.groups[0], name: "Renamed pictures" }],
+      });
+      harness.reply(aliasRequest, { dataUrl: url });
+      const aliasValue = await pendingAlias;
+      const cachedAlias = await load("alias.png");
+      results["image-source aliases retain pending ownership and cached bytes without additional content requests"] =
+        aliasValue === url && cachedAlias === url && sources.at(-1)?.title === "Images:B"
+        && harness.sent.length === beforeAlias && context.isCurrentRequest()
+        && harness.driver.viewRequest() === descriptor && harness.renders.length === renderCount;
+      const callbackFailure = context.resolveMedia({
+        dictionary: "Generic", generation: context.generation, path: "alias.png",
+        isCurrent: context.isCurrentRequest,
+        onResolvedSource() { throw new Error("provenance callback failed"); },
+      }).catch(error => error.message);
+      await harness.settle();
+      finish();
+      results["image provenance callback errors do not trigger another supplier lookup"] =
+        await callbackFailure === "provenance callback failed" && harness.sent.length === beforeAlias;
+      return results;
+    } finally { harness.close(); }
+  }
+
   async function previewInvalidationCase() {
     const cases = [];
     for (const kind of ["term", "clicked-term", "kanji", "options", "dictionary-note"]) {
@@ -9625,9 +9892,8 @@ async function contentNoteStage() {
     const oldValues = await Promise.all(obsolete);
     const startedCache = await fetch(superseded, "old-0.png");
     result["new views reattach matching queued media and prune obsolete work before capacity rejection"] =
-      count(superseded) === 6 && oldValues.slice(0, 5).every((value) => value === url)
-        && oldValues.slice(5).every((value) => value === null)
-        && await reattached === url && await fresh === url && !startedCache.fetched;
+      count(superseded) === 6 && oldValues.every((value) => value === null)
+        && await reattached === url && await fresh === url && !startedCache.fetched && startedCache.value === url;
     superseded.close();
 
     const shared = await createHarness();
@@ -9642,7 +9908,7 @@ async function contentNoteStage() {
     await drain(shared);
     await Promise.all(occupied);
     result["a retired child cannot cancel queued media still owned by its parent"] =
-      await parent === url && await child === url && count(shared) === 5;
+      await parent === url && await child === null && count(shared) === 5;
     shared.close();
 
     const invalidations = [];
@@ -9728,7 +9994,7 @@ async function contentNoteStage() {
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
-    mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
+    mediaOwnership: { ...await mediaOwnershipCase(), ...await imageSourceRoutingCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
       ...await nestedLevelsCase(), ...await livePresentationCase(), ...await inheritedTabsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },
     newestOnlyOptions,
@@ -10392,6 +10658,8 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   await mediaRenderStage({ HDGlossary, document, window });
   await compactSummaryRenderStage({ HDGlossary, HDPopup, document, window, candidate,
     result: lookup.results[0], mediaUrl: media.dataUrl, summaryGlossaries });
+  await imageSourceRenderStage({ HDGlossary, HDPopup, document, window, candidate,
+    result: lookup.results[0], mediaUrl: media.dataUrl, summaryGlossaries });
   dom.window.close();
   return true;
 }
@@ -10503,6 +10771,242 @@ async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window
         mediaRequests: mediaRequests.map(({ isCurrent, ...query }) => query) }));
   } finally {
     finishMedia(mediaUrl);
+    view.destroy();
+    popup.remove();
+  }
+}
+
+async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, candidate, result, mediaUrl, summaryGlossaries }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  const projected = { ...result, term: { ...result.term, glossaries: summaryGlossaries } };
+  const requests = [];
+  let sources = null;
+  let current = true;
+  let canUpdate = true;
+  let admissions = 0;
+  let fills = 0;
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
+    appendStructuredImage: HDGlossary.appendStructuredImage,
+    parseTagList: HDGlossary.parseTagList, positionPopup() {},
+    canUpdateCompactSummary() { admissions += 1; return canUpdate; },
+  });
+  const context = { generation: 23, dictionaryPresentation: [{ title: "Pictures", displayName: "Picture book" }],
+    dictionaryTabGroups: [], isCurrentRequest: () => current, isCurrentView: () => true,
+    showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2,
+    compactDefinitionSummaryDictionary: "Illustrated", popupImageSources: sources,
+    resolveMedia(query) {
+      const supplier = sources?.[0] || query.dictionary;
+      return new Promise((resolve, reject) => requests.push({ query, supplier, resolve, reject }));
+    },
+  };
+  const tick = () => new Promise(done => window.setTimeout(done, 0));
+  const route = (next, extra = {}) => {
+    sources = next;
+    Object.assign(context, { popupImageSources: sources }, extra);
+    view.updateDictionaryPresentation({ ...context });
+  };
+  const settle = (pending, url = mediaUrl) => {
+    for (const request of pending) {
+      request.query.onResolvedSource?.(request.supplier);
+      request.resolve(url);
+    }
+  };
+  try {
+    view.renderResults([projected], candidate, context);
+    const automatic = requests.slice();
+    const summary = popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+    const items = summary.querySelector("ul");
+    const images = [...popup.querySelectorAll("img")];
+    const links = images.map(image => image.closest(".gloss-image-link"));
+    const listeners = [];
+    const addImageListener = images[1].addEventListener;
+    images[1].addEventListener = function (type, listener, options) {
+      listeners.push({ type, listener });
+      return addImageListener.call(this, type, listener, options);
+    };
+    const cards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+    const originalFills = fills;
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const form = popup.querySelector("form");
+    form.elements.definition.value = "keep image-source draft";
+    form.elements.definition.focus();
+    form.elements.definition.setSelectionRange(2, 7);
+    route(["Pictures"]);
+    const replacement = requests.slice(automatic.length);
+    const beforeAlias = requests.length;
+    route(sources, { dictionaryPresentation: [{ title: "Pictures", displayName: "Renamed pictures" }] });
+    settle(replacement);
+    await tick();
+    const suppliers = [...popup.querySelectorAll(".gloss-image-source")];
+    const currentLoaded = replacement.length === 2 && replacement.every(({ query }) => query.isCurrent())
+      && images.every(image => image.src === mediaUrl && !image.hidden)
+      && suppliers.length === 2 && suppliers.every(label => label.textContent === "Image: Renamed pictures"
+        && label.dataset.dictionary === "Pictures" && label.title === "Pictures")
+      && !summary.querySelector(".gsm-hoshidicts-compact-definition-image .gloss-image-source");
+    settle(automatic, "data:image/png;base64,b2xk");
+    await tick();
+    check("live image-source changes retain mounted cards and Note selection while rejecting old Automatic replies and relabelling the actual supplier",
+      currentLoaded && requests.length === beforeAlias && automatic.every(({ query }) => !query.isCurrent())
+        && images.every((image, index) => image.isConnected && image.src === mediaUrl && image.closest("a") === links[index])
+        && cards.every(card => card.isConnected) && fills === originalFills && summary.querySelector("ul") === items
+        && popup.querySelector("form") === form && document.activeElement === form.elements.definition
+        && form.elements.definition.value === "keep image-source draft"
+        && form.elements.definition.selectionStart === 2 && form.elements.definition.selectionEnd === 7,
+      JSON.stringify({ currentLoaded, requests: requests.length, beforeAlias, fills, originalFills,
+        suppliers: suppliers.map(label => label.outerHTML), replacement: replacement.length }));
+
+    const oldListeners = listeners.slice();
+    links[1].focus();
+    const previewOpened = Boolean(popup.parentNode.querySelector(".gsm-hoshidicts-image-hover-preview"));
+    const beforeFocusRoute = requests.length;
+    route(["Focused supplier"]);
+    for (const { listener } of oldListeners) listener();
+    const pendingFocused = document.activeElement === links[1] && links[1].getAttribute("tabindex") === "0"
+      && !links[1].hasAttribute("href") && links[1].dataset.imageLoadState === "not-loaded"
+      && !popup.parentNode.querySelector(".gsm-hoshidicts-image-hover-preview");
+    view.hideImagePreview();
+    settle(requests.slice(beforeFocusRoute));
+    await tick();
+    images[1].dispatchEvent(new window.Event("load"));
+    const dismissedKept = !popup.parentNode.querySelector(".gsm-hoshidicts-image-hover-preview");
+    for (const { listener } of oldListeners) listener();
+    check("image route refresh retains keyboard focus and ignores retired load/error callbacks without reviving a dismissed preview",
+      previewOpened && pendingFocused && dismissedKept && document.activeElement === links[1]
+        && !images[1].hidden && images[1].src === mediaUrl && links[1].dataset.imageLoadState === "loaded",
+      JSON.stringify({ previewOpened, pendingFocused, dismissedKept }));
+    delete images[1].addEventListener;
+    const beforeFocusedFailure = requests.length;
+    route(["Missing focused source"]);
+    settle(requests.slice(beforeFocusedFailure), null);
+    await tick();
+    const failedStillFocused = document.activeElement === links[1] && links[1].dataset.imageLoadState === "load-error";
+    links[1].blur();
+    check("a failed refreshed image drops its temporary tab stop when keyboard focus leaves",
+      failedStillFocused && !links[1].hasAttribute("href") && !links[1].hasAttribute("tabindex"));
+    form.elements.definition.focus();
+
+    const beforeAutomatic = requests.length;
+    route(null);
+    settle(requests.slice(beforeAutomatic), null);
+    await tick();
+    const failed = summary.querySelector(".gsm-hoshidicts-compact-definition-image") === null
+      && !popup.querySelector(".gloss-image-source") && links[1].dataset.imageLoadState === "load-error";
+    const beforeRecovery = requests.length;
+    route(["Pictures"]);
+    settle(requests.slice(beforeRecovery));
+    await tick();
+    check("a failed compact thumbnail recovers under a new image source without reparsing or replacing its summary, full image or Note draft",
+      failed && requests.length === beforeRecovery + 2 && images.every(image => image.isConnected && !image.hidden && image.src === mediaUrl)
+        && summary.querySelectorAll(".gsm-hoshidicts-compact-definition-image").length === 1
+        && summary.querySelector("ul") === items && fills === originalFills
+        && popup.querySelector("form") === form && !form.hidden && document.activeElement === form.elements.definition,
+      JSON.stringify({ failed, beforeRecovery, requests: requests.length, summary: summary.outerHTML }));
+
+    // A retained parent can accept aliases, but cannot restart asynchronous work.
+    current = false;
+    const beforeStale = requests.length;
+    route(sources, { dictionaryPresentation: [{ title: "Pictures", displayName: "Retained alias" }] });
+    const staleLabels = [...popup.querySelectorAll(".gloss-image-source")].every(label => label.textContent === "Image: Retained alias");
+    route(["Other"]);
+    check("retained image labels may refresh without admitting media for an obsolete request",
+      staleLabels && requests.length === beforeStale && images.every(image => image.src === mediaUrl));
+    current = true;
+    const beforeRetry = requests.length;
+    route(["Retry"]);
+    const retired = requests.slice(beforeRetry);
+    view.clear();
+    settle(retired);
+    await tick();
+    check("clearing the projection retires all image refresh handles and their pending completions",
+      retired.length === 2 && retired.every(({ query }) => !query.isCurrent())
+        && !popup.hasChildNodes() && images.every(image => !image.isConnected));
+
+    sources = null;
+    const group = { id: "reading", name: "Reading", dictionaries: ["Illustrated", "Plain"] };
+    Object.assign(context, { popupImageSources: null, dictionaryTabGroups: [group] });
+    view.renderResults([projected], candidate, { ...context, selectedDictionaryTab: { groupId: group.id } });
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const protectedCards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+    const beforeProtected = requests.length;
+    route(["Pictures"], { dictionaryTabGroups: [{ ...group, dictionaries: ["Plain"] }] });
+    const protectedRequests = requests.slice(beforeProtected);
+    settle(protectedRequests);
+    await tick();
+    const beforeOrphan = { requests: requests.length, admissions };
+    canUpdate = false;
+    route(null);
+    check("image-source admission compares the applied route while protected tab membership still awaits projection",
+      protectedRequests.length === 2 && protectedCards.every(card => card.isConnected)
+        && admissions === beforeOrphan.admissions + 1 && requests.length === beforeOrphan.requests,
+      JSON.stringify({ protectedRequests: protectedRequests.length, beforeOrphan, requests: requests.length, admissions }));
+    canUpdate = true;
+    route(["Pictures"], { dictionaryPresentation: [{ title: "Pictures", displayName: "Latest pictures" }] });
+    const beforeTab = requests.length;
+    popup.querySelector('[role="tab"][data-dictionary="Illustrated"]').click();
+    settle(requests.slice(beforeTab));
+    await tick();
+    const projectedLabels = [...popup.querySelectorAll(".gloss-image-source")];
+    const latestLabels = projectedLabels.length === 2
+      && projectedLabels.every(label => label.textContent === "Image: Latest pictures");
+    const beforeFlush = requests.length;
+    view.flushDictionaryPresentation();
+    check("local tab projection retains the latest image route and aliases without reloading again on deferred presentation flush",
+      latestLabels && beforeFlush === beforeTab + 2 && requests.length === beforeFlush,
+      JSON.stringify({ latestLabels, beforeTab, beforeFlush, requests: requests.length }));
+
+    const replacementProjections = [];
+    for (const title of ["Illustrated", "Plain"]) {
+      sources = null;
+      Object.assign(context, { popupImageSources: sources, dictionaryTabGroups: [group] });
+      const beforeInitial = requests.length;
+      view.renderResults([projected], candidate, { ...context, expandAll: true,
+        selectedDictionaryTab: { groupId: group.id } });
+      settle(requests.slice(beforeInitial));
+      await tick();
+      const oldCards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+      const beforeReplacement = requests.length;
+      route(["Pictures"], { dictionaryTabGroups: [{ ...group, dictionaries: [title] }] });
+      const pending = requests.slice(beforeReplacement);
+      const expectedImages = title === "Illustrated" ? 2 : 0;
+      replacementProjections.push(pending.length === expectedImages
+        && pending.every(({ query, supplier }) => query.isCurrent() && supplier === "Pictures")
+        && oldCards.every(card => !card.isConnected));
+      settle(pending);
+      await tick();
+      replacementProjections.push(popup.querySelectorAll("img").length === expectedImages);
+    }
+    check("group membership and image-route changes load only the replacement projection's images",
+      replacementProjections.every(Boolean), JSON.stringify(replacementProjections));
+
+    const replacementSummaries = [];
+    for (const enabled of [true, false]) {
+      sources = null;
+      Object.assign(context, { popupImageSources: sources, dictionaryTabGroups: [],
+        showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2 });
+      const beforeInitial = requests.length;
+      view.renderResults([projected], candidate, context);
+      settle(requests.slice(beforeInitial));
+      await tick();
+      const oldSummary = popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+      const oldCards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+      const beforeReplacement = requests.length;
+      route(["Pictures"], { showCompactDefinitionSummary: enabled, compactDefinitionSummaryCount: 3 });
+      const pending = requests.slice(beforeReplacement);
+      const expectedImages = enabled ? 2 : 1;
+      replacementSummaries.push(pending.length === expectedImages
+        && pending.every(({ query, supplier }) => query.isCurrent() && supplier === "Pictures")
+        && !oldSummary.isConnected && oldCards.every(card => card.isConnected));
+      settle(pending);
+      await tick();
+      replacementSummaries.push(popup.querySelectorAll("img").length === expectedImages);
+    }
+    check("combined summary and image-route changes load only retained or replacement images",
+      replacementSummaries.every(Boolean), JSON.stringify(replacementSummaries));
+  } finally {
+    settle(requests);
     view.destroy();
     popup.remove();
   }
@@ -11289,6 +11793,7 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
     sized.every(({ dimensionsMatch }) => dimensionsMatch), JSON.stringify(sized));
   sizingParent.remove();
   const outcomes = [];
+  let supplierLayout = null;
   for (const replyKind of ["missing", "failure", "valid"]) {
     for (const current of [false, true]) {
       const parent = document.createElement("div");
@@ -11296,6 +11801,8 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
       let settleMedia;
       let layouts = 0;
       let ownerPassed = false;
+      let imageHandle;
+      const imageContext = { popupImageSources: ["Pictures"] };
       const pending = new Promise((resolveMedia, rejectMedia) => {
         settleMedia = () => replyKind === "failure"
           ? rejectMedia(new Error("transient media failure"))
@@ -11306,10 +11813,14 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
           tag: "img", path: "media/owned.png", alt: "descriptive image",
         } },
       ]), {
+        dictionary: "Definitions",
+        imageContext,
+        onImageCreated(handle) { imageHandle = handle; },
         isCurrent: () => ownsView,
         onLayoutChange() { layouts += 1; },
-        resolveMedia({ isCurrent }) {
+        resolveMedia({ isCurrent, onResolvedSource }) {
           ownerPassed = typeof isCurrent === "function" && isCurrent();
+          onResolvedSource("Pictures");
           return pending;
         },
       });
@@ -11332,6 +11843,20 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
           && link.querySelector(".gloss-image-link-text").textContent.includes("Image failed to load")
         : ownerPassed && link.dataset.imageLoadState === "not-loaded" && layouts === 0
           && !image.hasAttribute("src") && !link.hasAttribute("href") && !image.hidden);
+      if (current && replyKind === "valid") {
+        const labelBeforeLoad = parent.querySelector(".gloss-image-source")?.textContent === "Image: Pictures";
+        const beforeLoad = layouts;
+        image.dispatchEvent(new window.Event("load"));
+        const afterLoad = layouts;
+        const aliasChanged = imageHandle.updatePresentation({ ...imageContext,
+          dictionaryPresentation: [{ title: "Pictures", displayName: "Picture book" }] });
+        const aliasNeedsLayout = aliasChanged && layouts === afterLoad
+          && parent.querySelector(".gloss-image-source")?.textContent === "Image: Picture book";
+        image.dispatchEvent(new window.Event("error"));
+        supplierLayout = { labelBeforeLoad, beforeLoad, afterLoad, aliasNeedsLayout,
+          failedLayout: layouts === afterLoad + 1 && !parent.querySelector(".gloss-image-source")
+            && link.dataset.imageLoadState === "load-error" };
+      }
       parent.remove();
     }
   }
@@ -11339,6 +11864,9 @@ async function mediaRenderStage({ HDGlossary, document, window }) {
     outcomes[0] && outcomes[2] && outcomes[4] && outcomes[5], JSON.stringify(outcomes));
   check("missing and failed images expose an accessible failure state without losing glossary text",
     outcomes[1] && outcomes[3], JSON.stringify(outcomes));
+  check("supplier labels share the image completion layout while alias changes and failures retain their layout path",
+    supplierLayout?.labelBeforeLoad && supplierLayout.beforeLoad === 0 && supplierLayout.afterLoad === 1
+      && supplierLayout.aliasNeedsLayout && supplierLayout.failedLayout, JSON.stringify(supplierLayout));
 }
 
 function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {

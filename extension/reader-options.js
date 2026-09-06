@@ -19,6 +19,7 @@
     showCompactDefinitionSummary: false,
     compactDefinitionSummaryCount: 3,
     compactDefinitionSummaryDictionary: "",
+    popupImageSource: null,
     kanjiClickDictionary: "",
     frequencyDictionary: "",
     frequencyOrder: "auto",
@@ -86,7 +87,19 @@
     if (key === "activationKey") return normaliseActivationKey(value);
     if (key === "frequencyOrder") return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;
     if (key === "kanjiClickDictionary") return normaliseKanjiSelection(value);
+    if (key === "popupImageSource") return normalisePopupImageSource(value);
     return typeof value === "string" ? value : "";
+  }
+
+  function normalisePopupImageSource(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    if (value.kind === "dictionary" && typeof value.title === "string" && value.title !== "") {
+      return { kind: "dictionary", title: value.title };
+    }
+    if (value.kind === "tabGroup" && typeof value.id === "string" && value.id !== "") {
+      return { kind: "tabGroup", id: value.id };
+    }
+    return null;
   }
 
   function legacyActivationOptions(source, strict) {
@@ -109,15 +122,18 @@
       if (!Object.hasOwn(source, key)) continue;
       const raw = source[key];
       const normalized = normaliseField(key, raw);
-      if (strict) {
-        const valid = key === "kanjiClickDictionary"
-          ? typeof raw === "string" || typeof normalized === "object"
-          : typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
-        if (!valid) throw new Error("the options write request carried an invalid reader option");
+      if (strict && !isValidOptionField(key, raw, normalized)) {
+        throw new Error("the options write request carried an invalid reader option");
       }
       result[key] = normalized;
     }
     return result;
+  }
+
+  function isValidOptionField(key, raw, normalized) {
+    if (key === "kanjiClickDictionary") return typeof raw === "string" || typeof normalized === "object";
+    if (key === "popupImageSource") return raw === null || normalized !== null;
+    return typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
   }
 
   function projectStoredOptions(value) {

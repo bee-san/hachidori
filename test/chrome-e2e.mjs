@@ -259,6 +259,7 @@ const PLANNED = [
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
   "Saved popup columns reflow complete cards after expansion, media load and resize",
   "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
+  "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
   "external dictionary Enter activation creates one safe browser tab through the extension",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
@@ -685,6 +686,7 @@ async function popupReader(page, depth = 0) {
             const container = link.querySelector(".gloss-image-container");
             const rect = container.getBoundingClientRect();
             return { source: image.src, width: image.naturalWidth, height: image.naturalHeight,
+              tabStop: link.getAttribute("tabindex"), href: link.getAttribute("href"),
               display: { width: rect.width, height: rect.height, inlineWidth: container.style.width,
                 fontSize: Number.parseFloat(view.getComputedStyle(container).fontSize) } };
           }),
@@ -868,6 +870,7 @@ async function popupReader(page, depth = 0) {
         if (action === "remember") this.__dictionaryTabs = {
           panel, selected, tabs: new Map(tabs.map(button => [tabKey(button), button])), cards,
           link: this.querySelector("a[data-hoshidicts-query]"),
+          images: new Map([...this.querySelectorAll("img")].map(image => [image, image.closest(".gloss-image-link")])),
         };
         const saved = this.__dictionaryTabs;
         const entries = [...this.querySelectorAll(".gsm-hoshidicts-entry")].map((entry, index) => ({
@@ -911,7 +914,13 @@ async function popupReader(page, depth = 0) {
           sameCards: cards.length === saved?.cards.length && cards.every((card, index) => card === saved.cards[index]),
           sameAnchor: saved?.link?.isConnected === true && this.contains(saved.link),
           images: [...this.querySelectorAll("img")].map(image => ({ src: image.getAttribute("src") || "",
+            same: saved?.images.has(image) && saved.images.get(image) === image.closest(".gloss-image-link"),
+            path: image.closest(".gloss-image-link")?.dataset.path,
             complete: image.complete, width: image.naturalWidth, height: image.naturalHeight })),
+          imageSources: [...this.querySelectorAll(".gloss-image-source")].map(label => ({
+            text: label.textContent, dictionary: label.dataset.dictionary, title: label.title,
+            outsideThumbnail: !label.closest(".gsm-hoshidicts-compact-definition-image"),
+          })),
           rect: this.getBoundingClientRect().toJSON(), viewport: { width: innerWidth, height: innerHeight },
           grids: [...this.querySelectorAll(".gsm-hoshidicts-glossary-grid")].map(grid => ({
             width: grid.clientWidth, rect: grid.getBoundingClientRect().toJSON(), height: grid.style.height,
@@ -1615,6 +1624,115 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     require(failedCard.imageStates.length === 1 && failedCard.imageStates[0].state === "load-error"
       && failedCard.imageStates[0].errorVisible && failedCard.plain.includes("The text remains available."),
       "E10 missing thumbnail retains the full-card image error and definition");
+
+    await popup.click(".gsm-hoshidicts-note-button");
+    await popup.writeNote({ definition: "Keep the image-source draft" });
+    await popup.retainedControls("remember");
+    await popup.dictionaryTabs("remember");
+    const beforeImageRoute = await worker.evaluate(() => globalThis.__ownedMediaProbe.requests.length);
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = true; });
+    // Exercise the native chooser without blurring the reader: foregrounding
+    // Settings intentionally dismisses the popup via the production blur rule.
+    await editSettingsControls(settings, { "opt-image-source": JSON.stringify({ kind: "dictionary", title: fixture.plain }) });
+    await until(() => worker.evaluate(() => globalThis.__ownedMediaProbe.held.length), count => count === 1, "E11 shared alternate image");
+    require((await summaries())[0]?.thumbnailCount === 1, "E11 failed compact thumbnail did not remount");
+    await worker.evaluate(() => { for (const release of globalThis.__ownedMediaProbe.held.splice(0)) release(); });
+    const alternate = await until(() => popup.dictionaryTabs(), value => value.images.length === 2
+      && value.images.every(image => image.complete && image.width === 16), "E11 alternate bytes decoded");
+    const alternateBytes = Buffer.concat([makePng(), Buffer.from([1])]);
+    const sourceLabels = (value, title, name) => value.imageSources.length === 2 && value.imageSources.every(label =>
+      label.dictionary === title && label.title === title && label.text === `Image: ${name}` && label.outsideThumbnail);
+    const routedControls = await popup.retainedControls();
+    require(alternate.sameCards && alternate.samePanel && alternate.images[1].same
+      && alternate.entries[0].cards.length === 1 && alternate.entries[0].cards[0].dictionary === fixture.illustrated
+      && alternate.entries[0].cards[0].text.some(text => text.includes("The text remains available."))
+      && equal((await summaries())[0]?.items, ["The text remains available."])
+      && alternate.images.every(image => Buffer.from(image.src.split(",")[1], "base64").equals(alternateBytes))
+      && sourceLabels(alternate, fixture.plain, "Brief meanings")
+      && routedControls.sameForm && routedControls.mounted && routedControls.inputFocused
+      && routedControls.draft === "Keep the image-source draft" && equal(routedControls.selection, [2, 7]),
+      "E11 alternate provenance/bytes changed the text or mounted Note/image owners");
+    const imageRouteRequests = await worker.evaluate(start => globalThis.__ownedMediaProbe.requests.slice(start), beforeImageRoute);
+    require(imageRouteRequests.length === 1 && imageRouteRequests[0].type === "hd_media"
+      && imageRouteRequests[0].dictionary === fixture.plain && imageRouteRequests[0].path === "media/missing.png",
+      "E11 alternate thumbnail/full-card request was not shared");
+    await settings.evaluate(async ({ illustrated, plain }) => {
+      const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+        baseRevision: dictionaryState.revision,
+        dictionaries: dictionaryState.dictionaries.map(dictionary => dictionary.title === plain
+          ? { ...dictionary, displayName: "Alternate illustrations" } : dictionary),
+        groups: [...dictionaryState.groups, { id: "e11-images", name: "Illustrations",
+          dictionaryIds: [illustrated, plain].map(title => dictionaryState.dictionaries.find(dictionary => dictionary.title === title).id) }],
+      });
+      if (!reply.ok) throw new Error(reply.error);
+    }, fixture);
+    const aliased = await until(() => popup.dictionaryTabs(), value => sourceLabels(value, fixture.plain, "Alternate illustrations"), "E11 live supplier alias");
+    require(aliased.sameCards && aliased.entries[0].cards[0].text.some(text => text.includes("The text remains available."))
+      && equal((await summaries())[0]?.items, ["The text remains available."]), "E11 alias discarded definition text");
+    require(await worker.evaluate(() => globalThis.__ownedMediaProbe.requests.length) === beforeImageRoute + 1,
+      "E11 alias/group-name presentation refetched content");
+    const beforeGroupRoute = await worker.evaluate(() => globalThis.__ownedMediaProbe.requests.length);
+    await write({ popupImageSource: { kind: "tabGroup", id: "e11-images" } });
+    await until(() => worker.evaluate(start => globalThis.__ownedMediaProbe.requests.slice(start), beforeGroupRoute),
+      requests => requests.some(request => request.type === "hd_media" && request.dictionary === fixture.illustrated
+        && request.path === "media/missing.png"), "E11 group route adopted before output comparison");
+    await until(() => popup.dictionaryTabs(), value => !value.hidden && value.images.length === 2
+      && value.images.every(image => image.complete && image.width === 16)
+      && sourceLabels(value, fixture.plain, "Alternate illustrations"), "E11 group fallback to alternate");
+    const groupRequests = await worker.evaluate(start => globalThis.__ownedMediaProbe.requests.slice(start), beforeGroupRoute);
+    require(groupRequests.length === 1 && groupRequests[0].type === "hd_media"
+      && groupRequests[0].dictionary === fixture.illustrated && groupRequests[0].path === "media/missing.png",
+      "E11 ordered group did not reuse its successful alternate cache entry");
+    if (process.env.HACHIDORI_IMAGE_SOURCE_POPUP_SCREENSHOT) {
+      await tab.keyboard.press("Escape");
+      const { x, y, width, height } = (await popup.dictionaryTabs()).rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_IMAGE_SOURCE_POPUP_SCREENSHOT, clip: { x, y, width, height } });
+    }
+    if (process.env.HACHIDORI_IMAGE_SOURCE_SETTINGS_SCREENSHOT || process.env.HACHIDORI_IMAGE_SOURCE_SETTINGS_DARK_SCREENSHOT) {
+      await settings.bringToFront();
+      await showSettingsSection(settings, "lookup");
+      for (const [scheme, path] of [["light", process.env.HACHIDORI_IMAGE_SOURCE_SETTINGS_SCREENSHOT],
+        ["dark", process.env.HACHIDORI_IMAGE_SOURCE_SETTINGS_DARK_SCREENSHOT]]) {
+        if (!path) continue;
+        await settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+        await (await settings.$("#lookup")).screenshot({ path });
+      }
+    }
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await show(fixture.query);
+    const groupOriginal = await until(() => popup.dictionaryTabs(), value => value.images.length === 2
+      && value.images.every(image => image.complete && image.width === 16), "E11 group first supplier for another path");
+    require(groupOriginal.imageSources.length === 0
+      && groupOriginal.images.every(image => Buffer.from(image.src.split(",")[1], "base64").equals(makePng())),
+      "E11 group incorrectly retained one global supplier across paths");
+    await popup.dictionaryTabs("remember");
+    await popup.imagePreview(1, "focus");
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = true; });
+    await write({ popupImageSource: { kind: "dictionary", title: fixture.plain } });
+    await until(() => worker.evaluate(() => globalThis.__ownedMediaProbe.held.length), count => count === 1, "E11 focused alternate image");
+    const focusedPending = await popup.imagePreview(1);
+    require(focusedPending.focusedImage === 1 && focusedPending.preview === null,
+      "E11 changing the image URL lost keyboard focus or retained stale preview bytes");
+    await worker.evaluate(() => { for (const release of globalThis.__ownedMediaProbe.held.splice(0)) release(); });
+    const focusedLoaded = await until(() => popup.imagePreview(1), value => value.focusedImage === 1
+      && value.preview?.width === 16, "E11 focused alternate preview resumes");
+    require(Buffer.from(focusedLoaded.preview.source.split(",")[1], "base64").equals(alternateBytes)
+      && (await popup.dictionaryTabs()).images.every(image => image.same), "E11 focused source refresh replaced its image owners");
+    await write({ popupImageSource: { kind: "dictionary", title: "Unavailable E11 image source" } });
+    const focusedFailure = await until(() => popup.imagePreview(0), value => value.images.length === 1
+      && value.images[0].href === null && value.preview === null, "E11 focused source failure");
+    require(focusedFailure.focusedImage === 0 && focusedFailure.images[0].tabStop === "0",
+      "E11 pending/failing route discarded deliberate keyboard focus");
+    const blurredFailure = await popup.imagePreview(0, "blur");
+    require(blurredFailure.images[0].tabStop === null, "E11 failed image retained a noninteractive tab stop after blur");
+    await write({ popupImageSource: null });
+    await until(() => popup.dictionaryTabs(), value => !value.hidden && value.images.length === 2 && value.imageSources.length === 0
+      && value.images[1].same
+      && value.images.every(image => image.complete && Buffer.from(image.src.split(",")[1], "base64").equals(makePng())),
+      "E11 Automatic restores original images without alternate provenance");
+    evidence.imageSources = { shared: imageRouteRequests, groupFallback: groupRequests, focused: focusedPending.focusedImage };
     await tab.keyboard.press("Escape");
     await tab.$eval("#verb", (element, text) => { element.textContent = text; }, fixture.query);
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNextLookup = true; });
@@ -1650,9 +1768,17 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     await clean(() => popup.dictionaryTabs("cleanup"));
     await clean(() => child.dictionaryTabs("cleanup"));
     await clean(() => write({ maxResults: original.options.maxResults,
+      popupImageSource: original.options.popupImageSource ?? null,
       showCompactDefinitionSummary: original.options.showCompactDefinitionSummary ?? false,
       compactDefinitionSummaryCount: original.options.compactDefinitionSummaryCount ?? 3,
       compactDefinitionSummaryDictionary: original.options.compactDefinitionSummaryDictionary ?? "" }));
+    await clean(() => settings.evaluate(async () => {
+      const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+        baseRevision: dictionaryState.revision, dictionaries: dictionaryState.dictionaries,
+        groups: dictionaryState.groups.filter(group => group.id !== "e11-images") });
+      if (!reply.ok) throw new Error(reply.error);
+    }));
     for (const title of installed) await clean(async () => {
       const reply = await settings.evaluate(title => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_remove", title }), title);
       if (!reply.ok) throw new Error(reply.error);
@@ -1669,6 +1795,8 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
   if (failure) throw failure;
   check("Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
     evidence.passed && evidence.sharedMedia === 1, JSON.stringify(evidence));
+  check("Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
+    evidence.passed && evidence.imageSources?.focused === 1, JSON.stringify(evidence.imageSources));
 }
 
 async function checkNestedLinks(settings, tab, popup, browser) {

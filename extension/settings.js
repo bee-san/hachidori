@@ -828,6 +828,29 @@ function renderCompactSummaryControls() {
   select.value = preferred;
 }
 
+function renderPopupImageSources() {
+  const select = element("opt-image-source");
+  if (select === document.activeElement) return;
+  const source = options.popupImageSource;
+  const previous = selectionValue(source);
+  select.replaceChildren(new Option("Automatic — current tab", ""));
+  let available = source === null;
+  function addSource(value, label) {
+    const encoded = selectionValue(value);
+    select.add(new Option(label, encoded));
+    available ||= encoded === previous;
+  }
+  for (const dictionary of dictionaries) {
+    addSource({ kind: "dictionary", title: dictionary.title },
+      `Dictionary: ${dictionaryLabel(dictionary)}${dictionary.enabled === false ? " (disabled)" : ""}`);
+  }
+  for (const group of dictionaryState.groups) {
+    addSource({ kind: "tabGroup", id: group.id }, `Group: ${group.name}`);
+  }
+  if (!available) addSource(source, `${source.title || source.id} (unavailable)`);
+  select.value = previous;
+}
+
 function renderFrequencyOrder() {
   const order = element("opt-frequency-order");
   if (order !== document.activeElement) order.value = options.frequencyOrder;
@@ -952,6 +975,7 @@ function renderOptions() {
   renderKanjiChoices();
   renderFrequencyChoices();
   renderCompactSummaryControls();
+  renderPopupImageSources();
 }
 
 function addCountBadge(container, label, count) {
@@ -1920,6 +1944,11 @@ function attachHandlers() {
     options.compactDefinitionSummaryDictionary = event.target.value;
     writeOptions();
   });
+  element("opt-image-source").addEventListener("change", (event) => {
+    // Values come from the canonical descriptors rendered above, not labels.
+    options.popupImageSource = event.target.value ? JSON.parse(event.target.value) : null;
+    writeOptions();
+  });
   element("opt-lookup-mode").addEventListener("change", (event) => {
     options.lookupMode = LOOKUP_MODES.includes(event.target.value) ? event.target.value : "hover";
     element("opt-activation-key").disabled = options.lookupMode !== "activation";
@@ -1961,6 +1990,7 @@ function attachHandlers() {
   element("lookup").addEventListener("focusout", (event) => {
     optionsEditRevision = null;
     if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
+    if (event.target.id === "opt-image-source") renderPopupImageSources();
     if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
     const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
     if (field) event.target.value = String(options[field.key]);

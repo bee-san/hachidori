@@ -137,6 +137,7 @@
   let mediaCacheBytes = 0;
   let activeMediaRequests = 0;
   let mediaQueue = [];
+  let popupImageSources = null;
 
   let lastPointer = null;
   let scanTimer = null;
@@ -991,6 +992,53 @@
     return job.promise;
   }
 
+  function imageSourceContext() {
+    const source = options.popupImageSource;
+    let next = null;
+    if (source?.kind === "dictionary") {
+      next = dictionaries.some(entry => entry.enabled && entry.title === source.title) ? [source.title] : [];
+    } else if (source?.kind === "tabGroup") {
+      const group = dictionaryGroups.find(entry => entry.id === source.id);
+      const titles = new Map(dictionaries.filter(entry => entry.enabled).map(entry => [entry.id, entry.title]));
+      next = (group?.dictionaryIds || []).filter(id => titles.has(id)).map(id => titles.get(id));
+    }
+    // Keep the effective route's identity through alias/name-only changes.
+    // In-flight consumers capture it, independently of broad storage revisions.
+    if (next !== popupImageSources && !sameDictionaries(next, popupImageSources)) popupImageSources = next;
+    return { popupImageSources, resolveMedia: resolvePopupMedia };
+  }
+
+  function resolvePopupMedia(request) {
+    const sources = popupImageSources;
+    const isCurrent = () => sources === popupImageSources && request.generation === currentGeneration && request.isCurrent();
+    const ownedRequest = { ...request, isCurrent };
+    if (sources !== null) return resolveRoutedMedia(ownedRequest, sources);
+    // Automatic retains the direct cache/queue path without candidate scans.
+    return resolveMedia(ownedRequest).then(url => {
+      if (!isCurrent()) throw new Error("obsolete media reply");
+      return url;
+    });
+  }
+
+  async function resolveRoutedMedia(request, sources) {
+    const { isCurrent } = request;
+    for (const dictionary of sources) {
+      if (!isCurrent()) throw new Error("obsolete media request");
+      let url;
+      try {
+        url = await resolveMedia({ ...request, dictionary, isCurrent });
+      } catch (error) {
+        if (!isCurrent()) throw error;
+        // Availability is per requested path, not one global group winner.
+        continue;
+      }
+      if (!isCurrent()) throw new Error("obsolete media reply");
+      request.onResolvedSource?.(dictionary);
+      return url;
+    }
+    throw new Error("dictionary image is unavailable");
+  }
+
   function ensureDictionaryStyles(generation) {
     if (!shadow || generation === styleGeneration) {
       return;
@@ -1498,7 +1546,7 @@
         });
       },
       onInternalLink: (link) => onInternalLink(link, level),
-      resolveMedia,
+      ...imageSourceContext(),
       ...compactSummaryOptions(),
       showFrequencyDictionaryNames: true,
       showPitchAccentBadge: true,
@@ -2335,7 +2383,7 @@
 
   function updateDictionaryPresentation() {
     const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups(),
-      ...compactSummaryOptions() };
+      ...compactSummaryOptions(), ...imageSourceContext() };
     for (const level of levels) {
       if (level.popup && !level.popup.hidden) level.view.updateDictionaryPresentation(context);
     }
@@ -2406,9 +2454,10 @@
     const summaryChanged = next.showCompactDefinitionSummary !== options.showCompactDefinitionSummary
       || next.compactDefinitionSummaryCount !== options.compactDefinitionSummaryCount
       || next.compactDefinitionSummaryDictionary !== options.compactDefinitionSummaryDictionary;
+    const imageSourceChanged = JSON.stringify(next.popupImageSource) !== JSON.stringify(options.popupImageSource);
     // The caller adopts the complete storage delivery before new summary work.
     // A simultaneous dictionary replacement must invalidate the old view first.
-    const adoption = { lookupChanged, presentationChanged: summaryChanged && next.hoverEnabled };
+    const adoption = { lookupChanged, presentationChanged: (summaryChanged || imageSourceChanged) && next.hoverEnabled };
     if (activationChanged) {
       activationPressed = false;
       activationCode = null;
