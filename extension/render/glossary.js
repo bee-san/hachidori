@@ -833,6 +833,9 @@
         state.onImageStart?.();
         image.hidden = true;
         image.removeAttribute("src");
+        // Keep a deliberately focused control keyboard-focusable while its
+        // old URL is unavailable. The successful href restores native focus.
+        if (link.getRootNode().activeElement === link) link.tabIndex = 0;
         link.removeAttribute("href");
         link.removeAttribute("role");
         link.removeAttribute("aria-label");
@@ -858,6 +861,7 @@
         image.hidden = false;
         image.src = url;
         link.href = url;
+        link.removeAttribute("tabindex");
         link.dataset.imageLoadState = "loaded";
         background.style.setProperty("--image", `url("${url}")`);
         supplier = resolvedSupplier;

@@ -544,6 +544,22 @@ stay remembered; inventory updates preserve a focused selection until focusout.
 It uses the existing revision-bound autosave and is independent of the hover and
 compact-summary toggles.
 
+Source changes refresh each displayed image in place without reparsing its
+glossary, replacing cards, or disturbing a Note draft. Image-local attempts
+retire old success, failure and decode callbacks; Automatic also captures the
+route identity at the shared resolver boundary. A failed compact thumbnail can
+remount its existing wrapper under a new source while its summary text remains
+mounted. Successful alternate suppliers get a small label beside the image,
+outside the compact thumbnail's clip, using the supplier's alias and retaining
+its canonical title. Alias-only changes do not request media again.
+
+The latest image context stays separate from deferred tab/text presentation
+and survives local tab projection. Route changes enter the connected-request
+boundary even while Note or a child protects that projection. Retained stale
+parents may update existing labels but cannot admit new image work. A focused
+image remains keyboard-focusable while its old URL is removed; preview reloads
+resume only an undismissed owner, never a preview closed by failure or scrolling.
+
 The reader separates reusable image resources from DOM ownership. Pending
 fetches dedupe by generation, canonical title and normalized path; successful
 data URLs stay reusable across hovers, including a fetch completing while the

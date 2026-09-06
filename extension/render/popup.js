@@ -2036,6 +2036,7 @@
       renderContext,
       {
         dictionaryDisplayNames,
+        imageContext,
         metadataStrip,
         primaryHeader,
         primaryMetadataCapsule,
@@ -2046,8 +2047,6 @@
       const isCurrent = () => revision === renderRevision && ownsResultPanel(panel, renderContext);
       const isCurrentLink = () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext);
       const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
-      const imageContext = { popupImageSources: renderContext.popupImageSources ?? null,
-        dictionaryPresentation: renderContext.dictionaryPresentation, resolveMedia: renderContext.resolveMedia };
       const onImageCreated = handle => renderedImages.add(handle);
       const resolveImage = query => imageContext.resolveMedia(query);
       const summaryMedia = { isCurrent, isCurrentLink, generation: renderContext.generation,
@@ -2509,6 +2508,10 @@
 
     function renderResults(results, candidate, renderContext = {}) {
       renderContext = { ...renderContext };
+      // Source changes are independent of tab/text changes that Note or a
+      // child may defer. Carry the current image context through local tabs.
+      const imageContext = { popupImageSources: renderContext.popupImageSources ?? null,
+        dictionaryPresentation: renderContext.dictionaryPresentation, resolveMedia: renderContext.resolveMedia };
       const focused = retainedFocus(renderContext.preserveViewControls);
       clear(renderContext.preserveViewControls);
       setDefinitionBlurState(renderContext.definitionBlurState);
@@ -2647,6 +2650,7 @@
           },
           {
             dictionaryDisplayNames,
+            imageContext,
             metadataStrip,
             primaryHeader,
             primaryMetadataCapsule,
@@ -2753,7 +2757,7 @@
           // the old tab/text projection mounted. Enter the same connected
           // request boundary before admitting new asynchronous image work.
           const imagesChanged = Object.hasOwn(context, "popupImageSources")
-            && context.popupImageSources !== renderContext.popupImageSources;
+            && context.popupImageSources !== imageContext.popupImageSources;
           if ((imagesChanged || summaryChanged) && ownsView() && options.canUpdateCompactSummary?.() === false) return true;
           if (rendered.updateImages(context)) scheduleMasonry();
           const focused = popup.getRootNode().activeElement;
