@@ -545,7 +545,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 107 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 110 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -620,6 +620,24 @@ focused and reachable, and a still-focused tab survives same-view refresh.
 `HACHIDORI_NESTED_SCREENSHOT` captures the three-pane chain;
 `HACHIDORI_OPTIONS_SCREENSHOT` also includes the saved child-depth setting.
 
+`dictionaryTabsFixture()` extends that linked source with three unequal glossary
+cards, without changing the generated fixture files. Three Chrome checks project
+every contributing dictionary, aggregate favourites and ordered groups from the
+complete native result; warmed tab changes must issue no lookup, media or style
+requests. Linked-child, clicked-kanji and Back retain their semantic selection.
+Live labels and group order preserve keyed focus, and changed membership waits
+for protected Note forms and child anchors to retire before local projection.
+
+The same scenario saves columns one through four through Settings, compares
+actual card rectangles for shortest-column packing and non-overlap, then resets
+all one-column inline styles. Narrow/wide resizing, a held real PNG reply and
+genuine child Show more retain complete results, mounted drafts and anchors.
+Readiness includes the deferred generic-prefix definition before freezing the
+expanded DOM oracle. A nondefault column count also survives the existing full
+browser restart. `HACHIDORI_TABS_SCREENSHOT` captures the two-column reader;
+`HACHIDORI_OPTIONS_SCREENSHOT` and `HACHIDORI_OPTIONS_DARK_SCREENSHOT` capture
+the Reading controls in light and dark themes.
+
 The real browser also changes hover enablement and activation controls from
 Settings while the reading tab remains open. It proves close/re-enable without
 engine reload, stationary printable-key activation with open delay, delayed hide
@@ -670,7 +688,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 107 assertions, and the summary line
+`PLANNED` at the top of the file names all 110 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
