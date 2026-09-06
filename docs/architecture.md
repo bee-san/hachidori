@@ -687,7 +687,8 @@ verify exact bytes, MIME types, decoded dimensions and preview source reuse.
 
 ## Clicked-kanji navigation and Back
 
-An explicit term source is restricted before native ranking and result limits.
+Design's clicked-kanji selector chooses a source and capability. An explicit
+term source is restricted before native ranking and result limits.
 A missing, disabled or empty selected source falls back to native kanji. For an
 enabled native source with no matching entry, the already returned automatic
 entries supply that fallback without another request. A terminal native miss
@@ -780,7 +781,7 @@ trigger a native dictionary reload.
 
 ### Live Design preview
 
-![Appearance controls beside the production popup preview](assets/design-preview.png)
+![Appearance controls beside the production popup preview](assets/live-popup-appearance.png)
 
 Design moves the existing appearance controls out of Reading, without a second
 options store or save queue. Both sections capture the same revision-bound
@@ -803,11 +804,34 @@ An unchanged presentation snapshot does no renderer work. Metadata, summary,
 and image-route changes use the production incremental projection; a changed
 representative source keeps open Note controls. Kanji/Back retains the selected
 tab, disclosure state, scroll, source highlight, and keyboard focus. The shared
-image-source selector and default popup size also serve the real content script.
-Fit/Actual changes transform the fixed-size outer stage, not the popup itself;
-resizing does not rebuild the sample. The current fixed theme/opacity/toolbar
-behavior matches the real popup. Future E15–E18 appearance controls must feed
-this same preview; this phase adds no locale, theme, or custom-CSS preferences.
+image-source and clicked-kanji capability resolvers also serve the real content
+script. The latter projects deterministic native or term sample entries and
+only rebuilds a clicked-kanji view when its effective source/kind changes.
+Fit/Actual transforms the outer stage, whose size follows the configured popup
+with room for the sample sentence; resizing does not rebuild the sample.
+
+`reader-options.js` owns the audited 42-theme grouped catalogue (18 dark, 23
+light, one high-contrast), strict option validation, and the 17 Design reset
+keys. Defaults are the Hachidori palette, 560 × 420 px, 85% background opacity,
+one column, summary off with three snippets and automatic sources, frequency
+names/pitch contour/pitch badge/grammar/source highlighting on, and frequency
+averages off. Reset writes those keys through the existing sparse revision CAS;
+Reading preferences, dictionaries, groups, and update policy are untouched.
+The source-audited bounds are width 280–1,200 px, height 200–900 px, and opacity
+0–100%. Viewport clamping never changes the saved dimensions.
+
+The shared popup appearance helper sets theme and size/opacity variables only
+on the extension host. All palette and theme-specific popup rules match that
+shadow host; page html is never themed. A tiny owned constructed stylesheet
+colours page ranges from the host's computed primary colour, reading it only
+on theme changes (and after the preview's async palette load). It preserves
+unrelated adopted sheets and removes only its own sheet on teardown.
+Colour/opacity changes do not project results or schedule masonry. Size changes
+apply inline geometry before scheduling masonry so cards measure the new width
+on their first layout. Existing Note, tabs, and disclosure state remain mounted.
+Source highlighting can be toggled on current terms, native kanji, and Back
+without a lookup, retaining the exact raw page span rather than engine spelling.
+Toolbar overrides and custom CSS remain separate follow-up work.
 
 ## Managed custom dictionary
 
