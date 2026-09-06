@@ -1278,6 +1278,7 @@
       canProjectDictionaryPresentation: () => !level.retired && !level.noteEditing
         && level.pendingCustomAppends === 0 && levels.length === level.depth + 1
         && requestCanRender(level.lookupToken, level.activeCandidate, level),
+      canUpdateCompactSummary: () => requestCanRender(level.lookupToken, level.activeCandidate, level),
       parseTagList: window.HDGlossary.parseTagList,
       popup,
       positionPopup: () => positionPopup(level),

@@ -2216,9 +2216,8 @@
 
       return { lookupStats,
         isExpanded: () => expanded,
-        updateDictionaryPresentation(context, names) {
-          const summaryChanged = ["showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary"]
-            .some(key => Object.hasOwn(context, key) && context[key] !== renderContext[key]) && isCurrent();
+        updateDictionaryPresentation(context, names, summaryChanged) {
+          summaryChanged &&= isCurrent();
           Object.assign(renderContext, context);
           dictionaryDisplayNames = names;
           let changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);
@@ -2641,6 +2640,12 @@
       activateTab(selectedIndex);
       currentPresentationUpdate = (context) => runRenderAction(
         () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
+          const summaryChanged = ["showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary"]
+            .some(key => Object.hasOwn(context, key) && context[key] !== renderContext[key]);
+          // Unlike local body projection, a summary may update with an open
+          // Note or child. It still needs the connected request boundary before
+          // parsing or admitting media; that boundary may retire this view.
+          if (summaryChanged && ownsView() && options.canUpdateCompactSummary?.() === false) return true;
           const next = createDictionaryTabs(dictionaries, context);
           const previous = tabDescriptors;
           const selectedKey = previous[selectedIndex].key;
@@ -2656,7 +2661,7 @@
           if (selectedKey !== tabDescriptors[index].key) {
             renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
           }
-          if (sameMembers) changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames) || changed;
+          if (sameMembers) changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames, summaryChanged) || changed;
           else {
             const focused = retainedFocus(true);
             renderProjection(rendered.isExpanded());
