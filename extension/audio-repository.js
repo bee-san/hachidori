@@ -33,7 +33,7 @@ export function createAudioRepository({ window, fetch, now = () => performance.n
         else found = parseAudioSourceList(await (await response(url, signal)).json());
       }
       signal.throwIfAborted();
-      candidates.set(key, found, encoder.encode(JSON.stringify(found)).byteLength);
+      candidates.set(key, found, encoder.encode(key).byteLength + encoder.encode(JSON.stringify(found)).byteLength);
       return found;
     },
     async acquire(candidate, signal) {
@@ -44,7 +44,7 @@ export function createAudioRepository({ window, fetch, now = () => performance.n
         const blob = await (await response(candidate.url, signal)).blob();
         signal.throwIfAborted();
         entry = { url: window.URL.createObjectURL(blob), users: 1, retained: false };
-        entry.retained = media.set(candidate.url, entry, blob.size);
+        entry.retained = media.set(candidate.url, entry, blob.size + encoder.encode(candidate.url).byteLength);
       }
       return {
         url: entry.url,
