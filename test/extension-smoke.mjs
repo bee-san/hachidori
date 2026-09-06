@@ -5202,6 +5202,7 @@ async function sourceHighlightStage() {
 async function sourceHighlightFallbackCase(window) {
   const { document } = window;
   window.Highlight = undefined;
+  window.Element.prototype.getAnimations = () => [];
   let geometryReads = 0;
   window.Range.prototype.getClientRects = function () {
     geometryReads += 1;
@@ -5231,6 +5232,8 @@ async function sourceHighlightFallbackCase(window) {
     const both = marks().length === 2 && marks()[0] === mark;
     const beforeClear = geometryReads;
     second.clear();
+    await frame();
+    otherSource.dispatchEvent(new window.Event("animationstart", { bubbles: true }));
     await frame();
     const retained = marks().length === 1 && marks()[0] === mark && geometryReads === beforeClear;
     second.apply({ sourceElements: [otherSource], sentence: otherSource.textContent, matchOffset: 0 }, "Keep");

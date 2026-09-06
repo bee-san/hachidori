@@ -3736,7 +3736,7 @@ async function checkSourceFallback(settings, tab, popup) {
     await tab.$eval("#verb", element => { element.style.opacity = "1"; });
     const visible = await snapshot();
     const motion = [];
-    for (const kind of ["transition", "animation"]) {
+    for (const kind of ["transition", "animation", "resume"]) {
       await tab.$eval("#verb", (element, mode) => {
         if (mode === "transition") {
           element.style.transition = "transform 1s linear";
@@ -3745,14 +3745,23 @@ async function checkSourceFallback(settings, tab, popup) {
         } else {
           const style = document.createElement("style");
           style.id = "e17-animation";
-          style.textContent = "@keyframes e17-move { to { transform: translateX(90px); } }";
+          style.textContent = "@keyframes e17-move { to { transform: translateX(90px); } }"
+            + "#verb:focus { animation-play-state: running !important; }";
           document.head.append(style);
-          element.parentElement.style.animation = "e17-move 1s linear";
+          if (mode === "animation") element.parentElement.style.animation = "e17-move 1s linear";
+          else {
+            element.tabIndex = 0;
+            element.style.animation = "e17-move 1s linear paused";
+          }
         }
       }, kind);
+      if (kind === "resume") {
+        await frame();
+        await tab.$eval("#verb", element => element.focus({ preventScroll: true }));
+      }
       await tab.waitForFunction(mode => {
         const source = document.getElementById("verb");
-        return (mode === "transition" ? source : source.parentElement).getAnimations()
+        return (mode === "animation" ? source.parentElement : source).getAnimations()
           .some(animation => animation.currentTime >= 150 && animation.currentTime < 800);
       }, {}, kind);
       motion.push(await snapshot());
@@ -3760,6 +3769,9 @@ async function checkSourceFallback(settings, tab, popup) {
         await Promise.all([...element.getAnimations(), ...element.parentElement.getAnimations()].map(animation => animation.finished));
         element.style.transition = "none";
         element.style.transform = "none";
+        element.style.removeProperty("animation");
+        element.blur();
+        element.removeAttribute("tabindex");
         element.parentElement.style.removeProperty("animation");
         document.getElementById("e17-animation")?.remove();
       });

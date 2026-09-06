@@ -851,7 +851,13 @@ viewport and ancestor scrollports, excludes hidden/transparent text, and avoids
 covering later popup panes or the source pane's sticky toolbar. One shared
 fallback animation frame reads geometry before writing paint; scroll, resize,
 source layout changes, and existing popup placement callbacks refresh it.
-Unchanged owners retain their paint groups. The last owner releases the layer,
+Active source/ancestor CSS animations and transitions keep that shared frame
+running until motion finishes or pauses. Scoped motion and pointer/focus boundary
+events wake it, including paused animations resumed by hover or focus; unrelated
+page animations do not request paint. Animation queries precede paint writes.
+Unchanged owners retain their paint groups. Removing only an owner does not
+remeasure survivors or re-observe their resize targets; actual pane pruning still
+refreshes paint that may be uncovered. The last owner releases the layer,
 observers, listeners, and pending frame; the native path does not allocate them.
 
 ![Exact fallback paint clipped at the source scrollport](assets/source-highlight-fallback.png)

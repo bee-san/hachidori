@@ -575,7 +575,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 125 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 126 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -734,15 +734,19 @@ The extension suite separately holds replies through selection cancellation,
 retry and storage invalidation; checks exact Note/Back/internal-link descriptors;
 and pins same-candidate pending lookup deduplication.
 
-Three source-highlight assertions cover selected-text DOM replacement/stale
+Four source-highlight assertions cover selected-text DOM replacement/stale
 cleanup without selection changes, native ancestor Range identity and fallback
 owner retention across child closure, and exact cross-inline fallback paint
 through clipping, scrolling, resize, visibility, opacity and final cleanup.
+An overlapping child must uncover the surviving source paint when closed.
+CSS source transitions, animated ancestors and focus-resumed paused motion keep
+exact geometry between DOM notifications.
 The test disables `Highlight` in Hachidori's content-script CDP execution context,
 not the page's main world, and reads the actual closed-shadow paint layer.
 `HACHIDORI_HIGHLIGHT_SCREENSHOT` captures the clipped fallback source and popup.
 Focused extension checks also cover moved shadow sources, view disposal,
-document-root renderer callers, unchanged-owner traversal counts and untouched
+document-root renderer callers, pending geometry delivery, removal-only and
+unrelated-animation no-ops, unchanged-owner traversal counts and untouched
 page classes/selection. Geometry comes from real Chrome, not jsdom's stub rects.
 It also recovers a selection drag when the button is released outside the
 document and no mouseup arrives, without scanning during a still-held drag.
@@ -774,7 +778,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 125 assertions, and the summary line
+`PLANNED` at the top of the file names all 126 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

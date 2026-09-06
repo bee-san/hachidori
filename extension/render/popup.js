@@ -568,6 +568,9 @@
     const owners = new Map();
     let frame = null;
     let resizeTargets = new Set();
+    let geometryTargets = new Map();
+    const motionRoots = new Set();
+    const motionEvents = ["animationstart", "transitionrun", "pointerover", "pointerout", "focusin", "focusout"];
     const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
     const needsGeometry = changes => changes.some(change => !layer.contains(change.target)
       && (change.type === "attributes" || [...change.addedNodes, ...change.removedNodes].some(node => node !== layer)));
@@ -578,6 +581,49 @@
 
     function schedule() {
       if (frame === null) frame = windowRef.requestAnimationFrame(paint);
+    }
+
+    function sourceMotion(event) {
+      for (const [target, subtree] of geometryTargets) {
+        if (target === event.target || (subtree && target.contains(event.target))
+            || (event.relatedTarget !== undefined && target instanceof windowRef.Element
+              && target.contains(event.target) !== target.contains(event.relatedTarget))) {
+          schedule();
+          return;
+        }
+      }
+    }
+
+    function unwatchMotion(target) {
+      for (const type of motionEvents) target.removeEventListener(type, sourceMotion, true);
+      motionRoots.delete(target);
+    }
+
+    function observeGeometry(targets) {
+      geometry.disconnect();
+      const nextResizeTargets = new Set();
+      const nextMotionRoots = new Set();
+      for (const [target, subtree] of targets) {
+        geometry.observe(target, { attributes: true, childList: true, subtree });
+        if (target instanceof windowRef.Element) {
+          nextResizeTargets.add(target);
+          if (!resizeTargets.has(target)) resize?.observe(target);
+        } else if (target === documentRef || target instanceof windowRef.ShadowRoot) {
+          nextMotionRoots.add(target);
+        }
+      }
+      for (const target of resizeTargets) if (!nextResizeTargets.has(target)) resize?.unobserve(target);
+      resizeTargets = nextResizeTargets;
+      for (const target of motionRoots) {
+        if (!nextMotionRoots.has(target)) unwatchMotion(target);
+      }
+      for (const target of nextMotionRoots) {
+        if (!motionRoots.has(target)) {
+          for (const type of motionEvents) target.addEventListener(type, sourceMotion, true);
+          motionRoots.add(target);
+        }
+      }
+      geometryTargets = targets;
     }
 
     function clipBounds(element, cache) {
@@ -629,6 +675,8 @@
       // Read all owners before writing any paint rectangles.
       const plans = [...owners.values()].map(owner => ({ owner,
         rects: owner.fragments.flatMap(fragment => fragmentRects(fragment, cache, popups)) }));
+      const moving = [...geometryTargets].some(([target, subtree]) => target instanceof windowRef.Element
+        && target.getAnimations({ subtree }).some(animation => animation.playState === "running"));
       if (root.lastChild !== layer) root.appendChild(layer);
       for (const { owner, rects } of plans) {
         while (owner.group.children.length > rects.length) owner.group.lastChild.remove();
@@ -643,6 +691,9 @@
             width: `${rect.right - rect.left}px`, height: `${rect.bottom - rect.top}px` });
         });
       }
+      // Transforms do not notify ResizeObserver, and CSS motion has no DOM
+      // mutations between frames. Stay live only while a source is moving.
+      if (moving) schedule();
     }
 
     return {
@@ -653,7 +704,6 @@
         for (const [record, owner] of owners) {
           if (!current.has(record)) { owner.group.remove(); owners.delete(record); }
         }
-        geometry.disconnect();
         const targets = new Map();
         for (const record of records) {
           let owner = owners.get(record);
@@ -669,22 +719,14 @@
           }
           for (const [target, subtree] of record.observedTargets) targets.set(target, targets.get(target) || subtree);
         }
-        const nextResizeTargets = new Set();
-        for (const [target, subtree] of targets) {
-          geometry.observe(target, { attributes: true, childList: true, subtree });
-          if (target instanceof windowRef.Element) {
-            nextResizeTargets.add(target);
-            if (!resizeTargets.has(target)) resize?.observe(target);
-          }
-        }
-        for (const target of resizeTargets) if (!nextResizeTargets.has(target)) resize?.unobserve(target);
-        resizeTargets = nextResizeTargets;
+        observeGeometry(targets);
         if (dirty) schedule();
       },
       destroy() {
         if (frame !== null) windowRef.cancelAnimationFrame(frame);
         resize?.disconnect();
         geometry.disconnect();
+        for (const target of motionRoots) unwatchMotion(target);
         windowRef.removeEventListener("scroll", schedule, true);
         root.removeEventListener("scroll", schedule, true);
         windowRef.removeEventListener("resize", schedule);
