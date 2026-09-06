@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createAudioRepository } from "./audio-repository.js";
 
-// One pronunciation owner; URLs and native speech callbacks never outlive the
-// operation that created them. This runs in the offscreen document, not WASM.
+// One pronunciation owner; playback leases and native speech callbacks belong
+// to that operation. The shared offscreen repository owns warm media, not WASM.
 export function createAudioPlayer({ window, fetch, repository = createAudioRepository({ window, fetch }) }) {
   let current = null;
 
