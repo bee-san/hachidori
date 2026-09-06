@@ -164,16 +164,19 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     ["duplicateScope", "opt-anki-duplicate-scope"], ["duplicateBehavior", "opt-anki-duplicate-behavior"],
     ["checkForDuplicates", "opt-anki-check-duplicates"], ["duplicateScopeCheckAllModels", "opt-anki-check-all-models"],
   ];
+  function renderBasicMappings(config, fields) {
+    if (config.fieldTemplates !== null) return;
+    const fieldNames = ankiFieldNames(fields);
+    for (const key of ANKI_FIELDS) selectChoices(`opt-anki-field-${key}`, fields, config.fields[key], "Disabled",
+      fieldNames.get(config.fields[key].toLowerCase()));
+  }
+
   function render() {
     const config = readConfig();
     selectChoices("opt-anki-deck", discovery?.decks || [], config.deck, "Choose a deck");
     selectChoices("opt-anki-model", discovery?.models || [], config.model, "Choose a note type");
     const fields = discovery?.model === config.model ? discovery.fields : [];
-    if (config.fieldTemplates === null) {
-      const fieldNames = ankiFieldNames(fields);
-      for (const key of ANKI_FIELDS) selectChoices(`opt-anki-field-${key}`, fields, config.fields[key], "Disabled",
-        fieldNames.get(config.fields[key].toLowerCase()));
-    }
+    renderBasicMappings(config, fields);
     for (const [key, id] of controls) {
       const control = element(id);
       if (control === document.activeElement) continue;
