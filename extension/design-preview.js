@@ -27,11 +27,13 @@
   let sampleMedia = null;
   let clickedKanjiIndex = 0;
 
-  function positionPopup() {
+  function positionPopup(resetToolbar = false) {
     const position = HDPopup.calculatePopupPosition(source.getBoundingClientRect(),
       { width: options.popupWidthPx, height: options.popupHeightPx }, { width: innerWidth, height: innerHeight });
     for (const key of ["left", "top", "width", "height"]) popup.style[key] = `${position[key]}px`;
-    view.setToolbarPosition(position.placement === "above" ? "bottom" : "top");
+    const edge = HDPopup.resolveToolbarPosition(options.popupToolbarPosition, position.placement,
+      resetToolbar ? "top" : popup.dataset.toolbarPosition);
+    if (popup.dataset.toolbarPosition !== edge) view.setToolbarPosition(edge);
   }
 
   const view = HDPopup.createPopupView({ document, window, popup,
@@ -137,6 +139,7 @@
   }
 
   window.HDDesignPreview = { update(nextOptions, nextState) {
+    const toolbarChanged = !options || options.popupToolbarPosition !== nextOptions.popupToolbarPosition;
     const geometryChanged = !options || options.popupColumns !== nextOptions.popupColumns
       || options.popupWidthPx !== nextOptions.popupWidthPx || options.popupHeightPx !== nextOptions.popupHeightPx;
     if (!options || options.sourceHighlightEnabled !== nextOptions.sourceHighlightEnabled) {
@@ -144,7 +147,8 @@
     }
     appearance.update(nextOptions);
     options = { ...nextOptions };
-    if (geometryChanged) { positionPopup(); view.scheduleMasonry(); }
+    if (geometryChanged || toolbarChanged) positionPopup(toolbarChanged);
+    if (geometryChanged) view.scheduleMasonry();
     const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
       nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextOptions.kanjiClickDictionary, nextState.revision]);
