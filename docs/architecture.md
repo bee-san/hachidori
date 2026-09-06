@@ -336,6 +336,11 @@ one through four. Each glossary grid packs cards into its shortest column while
 retaining their DOM reading order. Changing columns schedules the existing
 owned layout batch for every visible pane; it does not invalidate lookups,
 replace the result DOM or close a Note draft.
+Cards include padding and borders in their assigned widths. The same resize
+observer watches each grid as well as its cards, so a newly narrowed popup can
+repack fixed-width cards. Local projection disconnects the superseded panel's
+observations before registering its replacements; Show more retains current
+observations while adding the newly displayed entries.
 
 Term views offer All, each contributing dictionary in native result order, one
 aggregate Favourites tab, then nonempty saved groups in their stored order.
@@ -367,6 +372,9 @@ real replacement renders discard it. Safe local projection preserves expansion
 and refreshes Note's projected-primary prefill. Native kanji uses its own
 original entries, never the prior term's Back snapshot. These local updates use
 the existing render-error boundary and owned masonry queue, not a new lookup.
+The content owner's normal request boundary also retires detached ancestors
+before a local projection can fill a child whose source link still exists in
+an obsolete parent popup.
 
 Dictionary revisions, generation, media and style transport remain shared. A
 changed accepted engine generation invalidates other level tokens, including
