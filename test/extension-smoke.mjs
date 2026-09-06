@@ -4734,6 +4734,10 @@ async function main() {
       && managedUpdateSettings.scheduleRequest.schedule === "daily",
     JSON.stringify(managedUpdateSettings),
   );
+  check("managed schedule autosave coalesces edits, serializes requests and ignores an older saved reply",
+    managedUpdateSettings?.newerSchedule === "weekly" && managedUpdateSettings.coalesced === true
+      && managedUpdateSettings.serialized === true && managedUpdateSettings.finalSchedule === "monthly",
+    JSON.stringify(managedUpdateSettings));
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -6632,9 +6636,10 @@ async function settingsManagedUpdatesStage() {
     ],
     groups: [],
   };
-  let updateSettings = { schedule: "weekly", lastCheckedAt: "2026-09-04T10:00:00.000Z" };
+  let updateSettings = { revision: 0, schedule: "weekly", lastCheckedAt: "2026-09-04T10:00:00.000Z" };
   let storageListener = null;
   const updateRequests = [];
+  let heldSchedule = null, activeSchedules = 0;
 
   const publishState = (dictionary) => {
     state = {
@@ -6659,11 +6664,16 @@ async function settingsManagedUpdatesStage() {
         }
         if (message.type === "hd_updates_schedule") {
           updateRequests.push(structuredClone(message));
-          updateSettings = { ...updateSettings, schedule: message.schedule };
+          if (message.baseRevision !== updateSettings.revision) return { ok: false, error: "Schedule changed elsewhere", settings: structuredClone(updateSettings) };
+          activeSchedules++;
+          updateSettings = { ...updateSettings, revision: updateSettings.revision + 1, schedule: message.schedule };
           storageListener?.({
             dictionaryUpdates: { newValue: structuredClone(updateSettings) },
           }, "local");
-          return { ok: true, settings: structuredClone(updateSettings) };
+          const reply = { ok: true, settings: structuredClone(updateSettings) };
+          if (heldSchedule) await heldSchedule.promise;
+          activeSchedules--;
+          return reply;
         }
         if (message.type === "hd_updates_check") {
           updateRequests.push(structuredClone(message));
@@ -6678,7 +6688,7 @@ async function settingsManagedUpdatesStage() {
               error: null,
             },
           });
-          updateSettings = { ...updateSettings, lastCheckedAt: "2026-09-04T11:00:00.000Z" };
+          updateSettings = { ...updateSettings, revision: updateSettings.revision + 1, lastCheckedAt: "2026-09-04T11:00:00.000Z" };
           storageListener?.({
             dictionaryUpdates: { newValue: structuredClone(updateSettings) },
           }, "local");
@@ -6807,6 +6817,43 @@ async function settingsManagedUpdatesStage() {
   }
   await new Promise((done) => window.setTimeout(done, 0));
   result.scheduleRequest = updateRequests.find((request) => request.type === "hd_updates_schedule");
+
+  const chooseSchedule = value => { schedule.value = value; schedule.dispatchEvent(new window.Event("change", { bubbles: true })); };
+  const scheduleRequests = () => updateRequests.filter(request => request.type === "hd_updates_schedule");
+  const pause = ms => new Promise(done => window.setTimeout(done, ms));
+  async function waitSchedule(predicate) {
+    const until = Date.now() + 2000;
+    while (!predicate() && Date.now() < until) await pause(5);
+  }
+  heldSchedule = Promise.withResolvers();
+  chooseSchedule("hourly");
+  await waitSchedule(() => activeSchedules === 1);
+  updateSettings = { ...updateSettings, revision: updateSettings.revision + 1, schedule: "weekly" };
+  storageListener({ dictionaryUpdates: { newValue: structuredClone(updateSettings) } }, "local");
+  heldSchedule.resolve();
+  heldSchedule = null;
+  await waitSchedule(() => activeSchedules === 0);
+  await pause(0);
+  result.newerSchedule = schedule.value;
+
+  const beforeCoalescing = scheduleRequests().length;
+  for (const value of ["off", "hourly", "daily"]) chooseSchedule(value);
+  await pause(250);
+  result.coalesced = scheduleRequests().length === beforeCoalescing + 1 && updateSettings.schedule === "daily";
+
+  const beforeQueued = scheduleRequests().length;
+  heldSchedule = Promise.withResolvers();
+  chooseSchedule("hourly");
+  await waitSchedule(() => activeSchedules === 1);
+  chooseSchedule("weekly");
+  chooseSchedule("monthly");
+  await pause(250);
+  result.serialized = activeSchedules === 1 && scheduleRequests().length === beforeQueued + 1;
+  heldSchedule.resolve();
+  heldSchedule = null;
+  await waitSchedule(() => activeSchedules === 0 && updateSettings.schedule === "monthly");
+  await pause(0);
+  result.finalSchedule = schedule.value;
   dom.window.close();
   return result;
 }
