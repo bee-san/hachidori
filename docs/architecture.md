@@ -833,6 +833,81 @@ Source highlighting can be toggled on current terms, native kanji, and Back
 without a lookup, retaining the exact raw page span rather than engine spelling.
 Custom CSS remains separate follow-up work.
 
+### Exact source highlight ownership
+
+Each live popup owns cached DOM Ranges for its raw source span. Applying the
+same candidate again or closing a child does not walk or replace ancestor
+ranges. Source-scoped mutation observers rebuild an owner's ranges after
+same-text node replacement and retire that owner when its text changes or its
+source disconnects. Direct ancestor child-list observations follow moved
+sources, including shadow hosts, without watching unrelated page subtrees.
+Closing a level or destroying its view disconnects its observers. Page text,
+selection, and unrelated named highlights remain untouched.
+
+The CSS Highlight API is preferred. If unavailable, text-node Range fragments
+supply exact paint rectangles inside the existing extension shadow host, never
+classes on page elements or wrappers around page text. Paint is clipped to the
+viewport and ancestor scrollports, excludes hidden/transparent text, and avoids
+covering later popup panes or the source pane's sticky toolbar. One shared
+fallback animation frame reads geometry before writing paint; scroll, resize,
+source layout changes, and existing popup placement callbacks refresh it.
+The fallback also subtracts page fixed/sticky headers, dialogs and popovers in
+the source's containing trees. Candidate discovery is cached separately from
+geometry: owned-shadow layout and non-empty page-text replacement repaint without
+rescanning the page. Element/attribute changes, stylesheet edits, empty-boundary
+changes and automatic text direction still invalidate membership. Hit-testing
+at each intersecting box orders ordinary covers without
+sampling every pixel. Cover borders are not clipped to their own scrollport, and
+fixed boxes escape intermediate overflow before their browser-reported containing
+block. This is a bounded fallback, not a general CSS paint-order implementation:
+pointer-transparent covers conservatively suppress their intersection, and complex
+shadow-slot clipping or arbitrary positioned page elements are not guaranteed to
+match native highlights. The preferred native path keeps browser paint semantics.
+Late stylesheet load events refresh the fallback. CSSOM edits have no DOM mutation
+event, so while fallback owners exist a 250 ms check snapshots readable page
+stylesheet rules, including declarations, imports, disabled/media state and adopted
+sheets. It excludes Hachidori's own shadow styles. Unchanged ticks serialize CSS
+but do not discover elements, read geometry or paint; changed snapshots refresh on
+the next frame. Cross-origin rules remain unreadable, with load events handling
+their application. The interval is a bounded fallback delay, not native-highlight
+behavior, and stops with the last owner.
+Media-query change listeners cover sheet media and nested queries in readable
+stylesheets without polling their match state. They are reconciled only during
+discovery and released with the fallback. Colour-scheme and reduced-motion
+preferences are also observed for opaque cross-origin sheets; arbitrary nested
+queries in those unreadable sheets cannot be enumerated.
+Fallback layout observation spans each containing Document/ShadowRoot once,
+including sibling text and attribute changes: a fixed-size ancestor can hide
+position-only movement from ResizeObserver. Owned paint mutations are ignored,
+and a burst of layout changes coalesces without rewalking source text. This
+broader geometry observation is never installed on the native Highlight path.
+Active source/cover/ancestor CSS animations and transitions keep that shared frame
+running until motion finishes or pauses. Scoped motion and pointer/focus boundary
+events wake it, including paused animations resumed by hover or focus. An initially
+ordinary page element is also tracked when its animation keyframes can make it
+fixed or sticky; only its currently effective cover position suppresses paint.
+Completion/cancellation reconciles membership, including forwards-filled effects,
+without rescanning the page every animation frame. Discovery also seeds effects
+already in progress with one animation-list query per containing tree. Overlapping
+effects retain tracking until the last position-changing effect retires. Finishing
+or cancelling paused source motion still schedules geometry, while unchanged
+membership keeps the catalogue cached. Other unrelated page animations do not
+request paint. Animation queries precede paint writes.
+The same 250 ms fallback check discovers programmatic Web Animations, which emit
+no CSS DOM start event. It compares relevant effects' target, keyframes, timing,
+play state and paused time; unchanged effects do not repaint. Newly relevant
+effects wake the shared frame, and direct Animation finish/cancel listeners also
+handle paused effects. These listeners and snapshots are owned by the fallback
+and released on teardown. Programmatic discovery/seeking has the same bounded
+polling delay; native highlights still follow browser paint directly. Zero-rate
+effects do not keep the animation frame loop running.
+Unchanged owners retain their paint groups. Removing only an owner does not
+remeasure survivors or re-observe their resize targets; actual pane pruning still
+refreshes paint that may be uncovered. The last owner releases the layer,
+observers, listeners, stylesheet timer and pending frame; the native path does not allocate them.
+
+![Exact fallback paint clipped at the source scrollport](assets/source-highlight-fallback.png)
+
 ### Toolbar placement
 
 `popupToolbarPosition` stores `auto` (default), `top`, or `bottom` through the

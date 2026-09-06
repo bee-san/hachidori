@@ -1125,6 +1125,7 @@
       hide();
       return;
     }
+    highlighter?.refresh();
     if (fromLevel === rootLevel) {
       const position = calculatePopupPosition(
         anchorRectFor(rootLevel.activeCandidate),
@@ -1254,7 +1255,8 @@
     highlighter = window.HDPopup.createSourceHighlighter(
       window,
       document,
-      HIGHLIGHT_NAME
+      HIGHLIGHT_NAME,
+      shadow
     );
     buildLevelUi(rootLevel);
   }
@@ -1368,6 +1370,8 @@
       level.view?.destroy();
       level.popup?.remove();
     }
+    // Removing a pane can uncover surviving fallback source paint.
+    highlighter?.refresh();
     if (restoreFocus && focused && source?.isConnected) source.focus({ preventScroll: true });
     if (levels.length === 1) clearTransferTimer();
   }

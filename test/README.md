@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 362 checks, all of
+full request→reply round trip per contract-C message type. 365 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -575,7 +575,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 122 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 129 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -733,6 +733,47 @@ visibility-restored descendants are treated as visible even inside a hidden edit
 The extension suite separately holds replies through selection cancellation,
 retry and storage invalidation; checks exact Note/Back/internal-link descriptors;
 and pins same-candidate pending lookup deduplication.
+
+Seven source-highlight assertions cover selected-text DOM replacement/stale
+cleanup without selection changes, native ancestor Range identity and fallback
+owner retention across child closure, and exact cross-inline fallback paint
+through clipping, scrolling, resize, visibility, opacity and final cleanup.
+An overlapping child must uncover the surviving source paint when closed.
+CSS source transitions, animated ancestors and focus-resumed paused motion keep
+exact geometry between DOM notifications.
+Sibling style/text mutations move the source inside an unchanged fixed-size
+container; that case parks the pointer away from the source so synthesized
+pointer boundary events cannot mask missing layout observation.
+Page-cover checks compare the remaining paint area and exact bounds under fixed
+and sticky headers, a small centred overlay, pointer-transparent paint, clipped
+header borders, fixed boxes escaping ancestor overflow, and moving overlays.
+Position-keyframe cases begin as ordinary static elements and become fixed
+covers, both after forwards-filled completion and when paused midway.
+They include an effect started before the fallback and overlapping effects whose
+first completion must not retire the remaining position-changing effect. Paused
+source effects also repaint their final/base transform on finish or cancellation.
+Programmatic effects begin after the catalogue settles, without a CSS DOM start
+event: ancestor transforms and new position-changing covers must wake the
+fallback, and direct finish/cancel events repaint paused source effects.
+Removing covers restores the exact source paint; a box behind the source leaves
+it unchanged.
+Style-only checks settle an offscreen cover before CSSOM rule insertion,
+declaration replacement, same-count adopted-sheet replacement, or releasing an
+intercepted late stylesheet response. No DOM notification accompanies those
+edits; bounded fallback refresh must discover the new fixed header and restore
+the source after removal.
+Changing colour-scheme emulation without resizing also activates sheet-level
+and nested media rules; their native change events must refresh cover discovery.
+The test disables `Highlight` in Hachidori's content-script CDP execution context,
+not the page's main world, and reads the actual closed-shadow paint layer.
+`HACHIDORI_HIGHLIGHT_SCREENSHOT` captures the clipped fallback source and popup.
+Focused extension checks also cover moved shadow sources, view disposal,
+document-root renderer callers, pending geometry delivery, removal-only and
+unrelated-animation no-ops, unchanged-owner traversal counts and untouched
+page classes/selection. Discovery counters distinguish ordinary text and owned
+shadow repaint from CSS membership changes, including stylesheets, empty text,
+automatic direction, attributes and element insertion/removal.
+Geometry comes from real Chrome, not jsdom's stub rects.
 It also recovers a selection drag when the button is released outside the
 document and no mouseup arrives, without scanning during a still-held drag.
 
@@ -763,7 +804,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 122 assertions, and the summary line
+`PLANNED` at the top of the file names all 129 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

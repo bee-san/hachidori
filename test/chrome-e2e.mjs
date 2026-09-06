@@ -215,6 +215,13 @@ const PLANNED = [
   "configured activation keys open stationary lookups and release them using the saved delays",
   "Settings persists frequency directions and applies them to real-WASM lookup results",
   "exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
+  "source highlights reconcile selected text mutations without changing selection",
+  "nested source highlights retain ancestor ownership when children close in native and fallback modes",
+  "fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
+  "fallback source paint tracks CSS transitions and animated ancestors",
+  "fallback source paint follows sibling layout changes inside fixed-size ancestors",
+  "fallback source paint stays beneath page headers and overlays",
+  "fallback source paint refreshes after stylesheet loading and CSSOM edits",
   "editable controls preserve normal editing and suppress pointer and selection lookups",
   "Japanese-only preferences change automatic scanning in an already-open tab",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
@@ -814,6 +821,49 @@ async function popupReader(page, depth = 0) {
     return result.value;
   }
 
+  async function sourcePaint(action = "read", sourceSelector = null) {
+    const object = await resolvePopupObject();
+    if (!object) return null;
+    const { result, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true, arguments: [{ value: action }, { value: sourceSelector }],
+      functionDeclaration: `function (action, sourceSelector) {
+        const root = this.getRootNode();
+        const layer = root.querySelector(".gsm-hoshidicts-source-highlight-layer");
+        if (action === "remember") root.__sourcePaintOwner = layer?.firstElementChild;
+        if (action === "cover-parent") {
+          const rect = layer.firstElementChild.firstElementChild.getBoundingClientRect();
+          this.style.left = rect.left + "px";
+          this.style.top = rect.top + "px";
+          root.dispatchEvent(new Event("scroll"));
+        }
+        const sameOwner = layer?.firstElementChild === root.__sourcePaintOwner;
+        if (action === "forget") delete root.__sourcePaintOwner;
+        const ownerRects = [...(layer?.children || [])].map(group => [...group.children].map(mark => ({
+          ...mark.getBoundingClientRect().toJSON(), pointerEvents: getComputedStyle(mark).pointerEvents,
+        })));
+        let source;
+        if (sourceSelector) {
+          const element = document.querySelector(sourceSelector);
+          const clip = element.getBoundingClientRect();
+          const left = clip.left + element.clientLeft, top = clip.top + element.clientTop;
+          const expected = [...element.querySelectorAll("b,i")].flatMap(part => {
+            const range = document.createRange();
+            range.selectNodeContents(part.firstChild);
+            return [...range.getClientRects()].map(rect => ({ left: Math.max(left, rect.left), top: Math.max(top, rect.top),
+              right: Math.min(left + element.clientWidth, rect.right), bottom: Math.min(top + element.clientHeight, rect.bottom) }))
+              .filter(rect => rect.right > rect.left && rect.bottom > rect.top);
+          });
+          source = { expected, html: element.innerHTML, className: element.className, selection: getSelection().toString(),
+            cover: document.querySelector("[data-e17-painted-cover]")?.getBoundingClientRect().toJSON() };
+        }
+        return { groups: layer?.children.length || 0, sameOwner,
+          rects: ownerRects.flat(), ownerRects, source };
+      }`,
+    });
+    if (exceptionDetails) throw new Error(exceptionDetails.text);
+    return result.value;
+  }
+
   async function retainedControls(action = "read") {
     const object = await resolvePopupObject();
     if (!object) return null;
@@ -1006,7 +1056,47 @@ async function popupReader(page, depth = 0) {
     });
     return reply.result.value;
   }
-  return { click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview, nested, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+  return { click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview, nested, sourcePaint, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+}
+
+// Content scripts have their own Highlight constructor; changing the page's
+// main-world global would leave the production path untested.
+async function forceSourceFallback(tab, settings) {
+  const cdp = await tab.createCDPSession();
+  const contexts = [];
+  cdp.on("Runtime.executionContextCreated", ({ context }) => contexts.push(context.id));
+  await cdp.send("Runtime.enable");
+  const extensionId = new URL(settings.url()).host;
+  let contextId;
+  for (const id of contexts) {
+    const { result } = await cdp.send("Runtime.evaluate", { contextId: id,
+      expression: `typeof HDPopup === "object" && globalThis.chrome?.runtime?.id === ${JSON.stringify(extensionId)}` });
+    if (result.value === true) { contextId = id; break; }
+  }
+  if (contextId === undefined) { await cdp.detach(); throw new Error("Hachidori content world not found"); }
+  const evaluate = async expression => {
+    const { exceptionDetails } = await cdp.send("Runtime.evaluate", { contextId, expression });
+    if (exceptionDetails) throw new Error(exceptionDetails.text);
+  };
+  const toggle = async () => {
+    for (const enabled of [false, true]) {
+      await settings.evaluate(async sourceHighlightEnabled => {
+        const { options } = await chrome.storage.local.get("options");
+        const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+          baseRevision: options.revision, options: { sourceHighlightEnabled } });
+        if (!reply.ok) throw new Error(reply.error);
+      }, enabled);
+      await tab.evaluate(() => new Promise(done => setTimeout(done, 100)));
+    }
+  };
+  await evaluate("globalThis.__sourceHighlightConstructor = globalThis.Highlight; globalThis.Highlight = undefined");
+  await toggle();
+  return async () => {
+    try {
+      await evaluate("globalThis.Highlight = globalThis.__sourceHighlightConstructor; delete globalThis.__sourceHighlightConstructor");
+      await toggle();
+    } finally { await cdp.detach(); }
+  };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -1966,6 +2056,9 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.bringToFront();
     await tab.keyboard.press("Escape");
     await hoverForPopup(tab, popup, "#verb");
+    await tab.evaluate(name => {
+      window.__sourceAncestorRanges = [...CSS.highlights.get(name)];
+    }, HIGHLIGHT_NAME);
     await popup.nested("remember");
     const source = await popup.nested("focus-link");
     await tab.mouse.click(source.linkRect.x + source.linkRect.width / 2, source.linkRect.y + source.linkRect.height / 2);
@@ -2001,6 +2094,12 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     const second = await waitForPopupState(grandchild, state => state.plain.includes(fixture.grandchild)
       && state.imageStates.length === 1 && state.imageStates[0].width === 16);
     const fullChain = await grandchild.nested();
+    const fullHighlights = await tab.evaluate(name => {
+      const ranges = [...(CSS.highlights.get(name) || [])];
+      const rootRetained = ranges[0] === window.__sourceAncestorRanges[0];
+      window.__sourceAncestorRanges = ranges;
+      return { rootRetained, texts: ranges.map(range => range.toString()) };
+    }, HIGHLIGHT_NAME);
     await grandchild.nested("focus-link");
     await tab.keyboard.press("Enter");
     const limited = await grandchild.nested();
@@ -2020,6 +2119,39 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await child.click(".gsm-hoshidicts-kanji-back");
     const returned = await child.waitForHidden();
     const retained = await popup.nested();
+    const ancestorHighlight = await tab.evaluate(name => {
+      const ranges = [...(CSS.highlights.get(name) || [])];
+      const same = ranges.length === 1 && ranges[0] === window.__sourceAncestorRanges[0];
+      delete window.__sourceAncestorRanges;
+      return { same, text: ranges[0]?.toString() };
+    }, HIGHLIGHT_NAME);
+    await popup.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    await child.waitForVisible();
+    const linkRects = await tab.evaluate(name => Array.from([...CSS.highlights.get(name)][1]
+      .getClientRects(), rect => rect.toJSON()), HIGHLIGHT_NAME);
+    const restoreHighlight = await forceSourceFallback(tab, settings);
+    let fallback;
+    try {
+      const before = await popup.sourcePaint("remember");
+      await child.sourcePaint("cover-parent");
+      await tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+      const covered = await popup.sourcePaint();
+      await child.click(".gsm-hoshidicts-kanji-back");
+      await child.waitForHidden();
+      await tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+      const after = await popup.sourcePaint("forget");
+      fallback = { before, covered, after, linkRects };
+    } finally { await restoreHighlight(); }
+    check("nested source highlights retain ancestor ownership when children close in native and fallback modes",
+      fullHighlights.rootRetained && fullHighlights.texts.length === 3
+        && fullHighlights.texts.every(Boolean) && ancestorHighlight.same && ancestorHighlight.text === fixture.query
+        && fallback.before.groups === 2 && fallback.before.ownerRects[1].length > 0
+        && fallback.before.ownerRects[1].every(rect => linkRects.some(source => rect.left >= source.left - 1
+          && rect.right <= source.right + 1 && rect.top >= source.top - 1 && rect.bottom <= source.bottom + 1))
+        && fallback.covered.ownerRects[0].length === 0
+        && fallback.after.groups === 1 && fallback.after.sameOwner && fallback.after.ownerRects[0].length > 0,
+      JSON.stringify({ fullHighlights, ancestorHighlight, fallback }));
     await setDepth(0);
     await popup.nested("focus-link");
     await tab.keyboard.press("Enter");
@@ -3422,6 +3554,25 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await pause();
     const glossaryRetained = glossarySelection.includes("to eat") && popup.visible(await popup.state())
       && (await lookups()).length === startCount + 1;
+    const mutationHighlight = await tab.evaluate(async name => {
+      const element = document.getElementById("verb");
+      const first = [...CSS.highlights.get(name)][0];
+      const selected = window.getSelection().toString();
+      const unrelated = new Highlight();
+      CSS.highlights.set("e17-page-owned", unrelated);
+      try {
+        element.innerHTML = element.innerHTML;
+        await new Promise(done => requestAnimationFrame(done));
+        const replacement = [...(CSS.highlights.get(name) || [])][0];
+        const valid = replacement !== first && replacement?.toString() === "食べたかった";
+        element.querySelector("b").firstChild.insertData(1, "別");
+        await new Promise(done => requestAnimationFrame(done));
+        return { valid, cleared: !CSS.highlights.has(name), selection: window.getSelection().toString() === selected,
+          unrelated: CSS.highlights.get("e17-page-owned") === unrelated };
+      } finally { CSS.highlights.delete("e17-page-owned"); }
+    }, HIGHLIGHT_NAME);
+    check("source highlights reconcile selected text mutations without changing selection",
+      Object.values(mutationHighlight).every(Boolean), JSON.stringify(mutationHighlight));
     const hiddenText = await selectVerb('食べ<span style="display:none">隠し</span>たかった');
     const hiddenPopup = await popup.waitForVisible();
     const hiddenHighlight = await tab.evaluate((name) =>
@@ -3543,6 +3694,328 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
     await editSettingsControls(settings, original);
     await restoreMediaReplyProbe(worker);
+  }
+}
+
+async function checkSourceFallback(settings, tab, popup) {
+  const original = await readSettingsControls(settings, ["opt-lookup-mode", "opt-scan-length", "opt-hover-delay"]);
+  const sourceBefore = await tab.$eval("#verb", element => ({ html: element.innerHTML,
+    style: element.getAttribute("style"), className: element.className }));
+  const frame = () => tab.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+  const snapshot = async () => {
+    await frame();
+    const paint = await popup.sourcePaint("read", "#verb");
+    const { source } = paint;
+    const exact = paint.groups === 1 && paint.rects.length === source.expected.length && paint.rects.length > 0
+      && paint.rects.every((rect, index) => rect.pointerEvents === "none"
+        && ["left", "top", "right", "bottom"].every(key => Math.abs(rect[key] - source.expected[index][key]) < 1));
+    return { paint, source, exact };
+  };
+  let restore;
+  let evidence;
+  try {
+    await tab.keyboard.press("Escape");
+    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16", "opt-hover-delay": "0" });
+    await tab.$eval("#verb", element => {
+      getSelection().removeAllRanges();
+      element.innerHTML = '前<b id="e17-source" style="padding:0 4px">食べ</b><i>たかった</i>後';
+      element.classList.add("gsm-hoshidicts-source-match");
+      element.style.cssText = "width:180px;overflow:hidden;white-space:nowrap;border:3px solid #888;padding:0 8px";
+      const paragraph = element.parentElement;
+      const box = document.createElement("div");
+      box.id = "e17-source-box";
+      box.style.cssText = "height:300px;display:flow-root";
+      const sibling = document.createElement("div");
+      sibling.id = "e17-source-sibling";
+      sibling.style.height = "96px";
+      sibling.textContent = "spacer";
+      paragraph.replaceWith(box);
+      box.append(sibling, paragraph);
+    });
+    await tab.bringToFront();
+    const opened = await hoverForPopup(tab, popup, "#e17-source");
+    restore = await forceSourceFallback(tab, settings);
+    const initial = await snapshot();
+    if (process.env.HACHIDORI_HIGHLIGHT_SCREENSHOT) await tab.screenshot({ path: process.env.HACHIDORI_HIGHLIGHT_SCREENSHOT });
+    await tab.$eval("#verb", element => { element.scrollLeft = 45; });
+    const scrolled = await snapshot();
+    await tab.$eval("#verb", element => { element.style.width = "110px"; });
+    const resized = await snapshot();
+    await tab.$eval("#verb", element => { element.style.visibility = "hidden"; });
+    await frame();
+    const hidden = await popup.sourcePaint();
+    await tab.$eval("#verb", element => { element.style.visibility = "visible"; element.style.opacity = "0"; });
+    await frame();
+    const transparent = await popup.sourcePaint();
+    await tab.$eval("#verb", element => { element.style.opacity = "1"; });
+    const visible = await snapshot();
+    const motion = [];
+    for (const kind of ["transition", "animation", "resume", "finish", "cancel", "waapi", "waapi-finish", "waapi-cancel"]) {
+      if (kind.startsWith("waapi")) await new Promise(done => setTimeout(done, 350));
+      await tab.$eval("#verb", (element, mode) => {
+        if (mode.startsWith("waapi")) {
+          const target = mode === "waapi" ? element.parentElement : element;
+          const animation = target.animate([{ transform: "translateX(0)" }, { transform: "translateX(90px)" }],
+            { duration: 1200, fill: "forwards" });
+          if (mode !== "waapi") { animation.pause(); animation.currentTime = 500; }
+          return;
+        }
+        if (mode === "transition") {
+          element.style.transition = "transform 1s linear";
+          element.getBoundingClientRect();
+          element.style.transform = "translateX(90px)";
+        } else {
+          const style = document.createElement("style");
+          style.id = "e17-animation";
+          style.textContent = "@keyframes e17-move { to { transform: translateX(90px); } }"
+            + "#verb:focus { animation-play-state: running !important; }";
+          document.head.append(style);
+          if (mode === "animation") element.parentElement.style.animation = "e17-move 1s linear";
+          else {
+            element.tabIndex = 0;
+            element.style.animation = "e17-move 1s linear forwards paused";
+            if (mode === "finish" || mode === "cancel") element.getAnimations()[0].currentTime = 500;
+          }
+        }
+      }, kind);
+      if (kind === "resume") {
+        await frame();
+        await tab.$eval("#verb", element => element.focus({ preventScroll: true }));
+      }
+      if (kind.startsWith("waapi")) await new Promise(done => setTimeout(done, 350));
+      await tab.waitForFunction(mode => {
+        const source = document.getElementById("verb");
+        return (mode === "animation" || mode === "waapi" ? source.parentElement : source).getAnimations()
+          .some(animation => animation.currentTime >= 150 && animation.currentTime < 800);
+      }, {}, kind);
+      motion.push(await snapshot());
+      if (["finish", "cancel", "waapi-finish", "waapi-cancel"].includes(kind)) {
+        await tab.$eval("#verb", (element, operation) => element.getAnimations().forEach(animation => animation[operation]()),
+          kind.replace("waapi-", ""));
+        motion.push(await snapshot());
+      }
+      await tab.$eval("#verb", async element => {
+        await Promise.all([...element.getAnimations(), ...element.parentElement.getAnimations()].map(animation => animation.finished));
+        [...element.getAnimations(), ...element.parentElement.getAnimations()].forEach(animation => animation.cancel());
+        element.style.transition = "none";
+        element.style.transform = "none";
+        element.style.removeProperty("animation");
+        element.blur();
+        element.removeAttribute("tabindex");
+        element.parentElement.style.removeProperty("animation");
+        document.getElementById("e17-animation")?.remove();
+      });
+      await frame();
+    }
+    check("fallback source paint tracks CSS transitions and animated ancestors",
+      motion.every(value => value.exact), JSON.stringify(motion));
+    await popup.click(".gsm-hoshidicts-note-button");
+    await popup.writeNote({ definition: "Keep the source layout test open" });
+    // Keep the pointer away: a stationary pointer over moving source text can
+    // synthesize pointerout and accidentally hide missing layout observation.
+    await tab.mouse.move(2, 2);
+    await frame();
+    const fixedBefore = await tab.$eval("#e17-source-box", box => box.getBoundingClientRect().toJSON());
+    await tab.$eval("#e17-source-sibling", sibling => { sibling.style.height = "20px"; });
+    const siblingStyle = await snapshot();
+    await tab.$eval("#e17-source-sibling", sibling => { sibling.style.height = "auto"; });
+    await frame();
+    await tab.$eval("#e17-source-sibling", sibling => { sibling.firstChild.data = ""; });
+    const siblingText = await snapshot();
+    const fixedAfter = await tab.$eval("#e17-source-box", box => box.getBoundingClientRect().toJSON());
+    check("fallback source paint follows sibling layout changes inside fixed-size ancestors",
+      siblingStyle.exact && siblingText.exact && JSON.stringify(fixedBefore) === JSON.stringify(fixedAfter)
+        && siblingStyle.source.expected[0].top !== siblingText.source.expected[0].top,
+      JSON.stringify({ fixedBefore, fixedAfter, siblingStyle, siblingText }));
+    const area = rect => Math.max(0, rect.right - rect.left) * Math.max(0, rect.bottom - rect.top);
+    const overlap = (a, b) => area({ left: Math.max(a.left, b.left), right: Math.min(a.right, b.right),
+      top: Math.max(a.top, b.top), bottom: Math.min(a.bottom, b.bottom) });
+    const uncovered = await snapshot();
+    const sourceRect = uncovered.source.expected[0];
+    const covers = [];
+    for (const kind of ["partial", "pointer-none", "modal", "sticky", "border", "fixed-escape", "motion",
+      "membership", "membership-paused", "membership-late", "membership-overlap", "membership-waapi", "behind"]) {
+      if (kind === "membership-late") await editSettingsControls(settings, { "opt-source-highlight": false });
+      await tab.evaluate(({ source, kind }) => {
+        const element = document.createElement("div");
+        element.id = "e17-page-cover";
+        const small = kind === "modal";
+        const left = source.left + (small ? 20 : -10), top = source.top + (small ? 8 : -8);
+        const width = small ? 12 : 220, height = small ? 12 : kind === "partial" ? 18 : 48;
+        element.style.cssText = `position:${kind === "sticky" ? "absolute" : "fixed"};left:${left}px;top:${top}px;`
+          + `width:${width}px;height:${height}px;background:white;z-index:${kind === "behind" ? -1 : 100};`
+          + (kind === "pointer-none" ? "pointer-events:none;" : "");
+        let painted = element;
+        if (kind === "sticky") {
+          element.style.background = "transparent";
+          element.style.overflow = "auto";
+          painted = document.createElement("div");
+          painted.style.cssText = `position:sticky;top:0;height:${height}px;background:white`;
+          element.append(painted);
+        }
+        if (kind === "border") {
+          element.style.height = "8px";
+          element.style.borderBottom = "18px solid white";
+          element.style.overflow = "hidden";
+        }
+        if (kind === "fixed-escape") {
+          painted = element.cloneNode();
+          painted.removeAttribute("id");
+          element.style.cssText = "position:absolute;left:0;top:0;width:1px;height:1px;overflow:hidden";
+          element.append(painted);
+        }
+        document.body.append(element);
+        painted.dataset.e17PaintedCover = "";
+        if (kind === "motion") {
+          element.style.transition = "transform 1s linear";
+          element.getBoundingClientRect();
+          element.style.transform = "translateX(160px)";
+        }
+        if (kind.startsWith("membership")) {
+          const style = document.createElement("style");
+          style.textContent = "@keyframes e17-cover { from { position:static; } to { position:fixed; } }"
+            + "@keyframes e17-other { from { opacity:1; } to { opacity:1; } }";
+          element.append(style);
+          element.style.position = "static";
+          if (kind !== "membership-waapi") element.style.animation = "e17-cover 1s linear forwards";
+          if (kind === "membership-overlap") element.style.animation += ", e17-other 0.2s linear";
+        }
+      }, { source: sourceRect, kind });
+      let initiallyUncovered = true;
+      if (kind.startsWith("membership")) {
+        if (kind === "membership-late") {
+          await tab.waitForFunction(() => document.getElementById("e17-page-cover").getAnimations()
+            .some(animation => animation.currentTime > 0 && animation.currentTime < 400));
+          await tab.$eval("#e17-page-cover", element => element.getAnimations().forEach(animation => animation.pause()));
+          await editSettingsControls(settings, { "opt-source-highlight": true });
+        }
+        initiallyUncovered = (await snapshot()).exact;
+        if (kind === "membership-waapi") {
+          await new Promise(done => setTimeout(done, 350));
+          await tab.$eval("#e17-page-cover", element => {
+            element.animate([{ position: "static" }, { position: "fixed" }], { duration: 1200, fill: "forwards" });
+          });
+        }
+        if (kind === "membership-late") await tab.$eval("#e17-page-cover", element => element.getAnimations().forEach(animation => animation.play()));
+        if (kind !== "membership") {
+          await tab.waitForFunction(() => document.getElementById("e17-page-cover").getAnimations()
+            .some(animation => animation.currentTime >= 650 && animation.currentTime < 950));
+          await tab.$eval("#e17-page-cover", element => element.getAnimations().forEach(animation => animation.pause()));
+        } else await tab.$eval("#e17-page-cover", element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+      }
+      if (kind === "motion") await tab.waitForFunction(() => document.querySelector("[data-e17-painted-cover]").getAnimations()
+        .some(animation => animation.currentTime >= 300 && animation.currentTime < 800));
+      const current = await snapshot();
+      const cover = current.source.cover;
+      const expectedArea = uncovered.source.expected.reduce((total, rect) => total + area(rect)
+        - (kind === "behind" ? 0 : overlap(rect, cover)), 0);
+      const actualArea = current.paint.rects.reduce((total, rect) => total + area(rect), 0);
+      const bounded = current.paint.rects.every(rect => uncovered.source.expected.some(source =>
+        overlap(rect, source) >= area(rect) - 1) && (kind === "behind" || overlap(rect, cover) < 1));
+      await tab.$eval("#e17-page-cover", element => element.remove());
+      const restored = await snapshot();
+      covers.push({ kind, expectedArea, actualArea, bounded, initiallyUncovered, restored: restored.exact });
+    }
+    check("fallback source paint stays beneath page headers and overlays",
+      covers.every(value => value.bounded && value.initiallyUncovered && value.restored && Math.abs(value.expectedArea - value.actualArea) < 2),
+      JSON.stringify(covers));
+    const styleChanges = [];
+    for (const kind of ["insert", "declaration", "adopted", "load", "media-nested", "media-sheet"]) {
+      let stylesSession;
+      let pendingStyle;
+      try {
+        if (kind.startsWith("media-")) await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+        if (kind === "load") {
+          stylesSession = await tab.createCDPSession();
+          pendingStyle = new Promise(done => stylesSession.once("Fetch.requestPaused", done));
+          await stylesSession.send("Fetch.enable", { patterns: [{ urlPattern: "*/e17-late.css" }] });
+        }
+        const css = await tab.evaluate(({ source, kind }) => {
+          const element = document.createElement("div");
+          element.id = "e17-page-cover";
+          element.dataset.e17PaintedCover = "";
+          element.style.cssText = "width:220px;height:48px;background:white;z-index:100";
+          document.body.append(element);
+          const initial = "#e17-page-cover { position:absolute;left:-1000px;top:0; }";
+          const css = `#e17-page-cover { position:fixed;left:${source.left - 10}px;top:${source.top - 8}px; }`;
+          if (kind === "adopted") {
+            window.e17TestSheet = new CSSStyleSheet();
+            window.e17TestSheet.replaceSync(initial);
+            document.adoptedStyleSheets = [...document.adoptedStyleSheets, window.e17TestSheet];
+          } else {
+            const style = document.createElement("style");
+            style.id = "e17-page-style";
+            style.textContent = initial;
+            if (kind === "media-nested") style.textContent += `@supports (display:block) { @media (prefers-color-scheme:dark) { ${css} } }`;
+            document.head.append(style);
+            window.e17TestSheet = style.sheet;
+          }
+          if (kind === "media-sheet") {
+            const style = document.createElement("style");
+            style.id = "e17-media-style";
+            style.media = "(prefers-color-scheme:dark)";
+            style.textContent = css;
+            document.head.append(style);
+          }
+          if (kind === "load") {
+            const link = document.createElement("link");
+            link.id = "e17-late-style";
+            link.rel = "stylesheet";
+            link.href = "/e17-late.css";
+            document.head.append(link);
+          }
+          return css;
+        }, { source: sourceRect, kind });
+        const before = await snapshot();
+        if (stylesSession) {
+          const request = await pendingStyle;
+          await stylesSession.send("Fetch.fulfillRequest", { requestId: request.requestId, responseCode: 200,
+            responseHeaders: [{ name: "Content-Type", value: "text/css" }], body: Buffer.from(css).toString("base64") });
+        } else if (kind.startsWith("media-")) await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+        else await tab.evaluate(({ css, kind }) => {
+          const sheet = window.e17TestSheet;
+          if (kind === "insert") sheet.insertRule(css, sheet.cssRules.length);
+          else if (kind === "adopted") sheet.replaceSync(css);
+          else sheet.cssRules[0].style.cssText = css.slice(css.indexOf("{") + 1, css.lastIndexOf("}"));
+        }, { css, kind });
+        await new Promise(done => setTimeout(done, 350));
+        const changed = await snapshot();
+        styleChanges.push({ kind, before: before.exact, covered: changed.paint.groups === 1 && changed.paint.rects.length === 0 });
+      } finally {
+        await stylesSession?.detach();
+        await tab.evaluate(() => {
+          document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== window.e17TestSheet);
+          delete window.e17TestSheet;
+          for (const id of ["e17-page-cover", "e17-page-style", "e17-late-style", "e17-media-style"]) document.getElementById(id)?.remove();
+        });
+        if (kind.startsWith("media-")) await tab.emulateMediaFeatures([]);
+      }
+      styleChanges.at(-1).restored = (await snapshot()).exact;
+    }
+    check("fallback source paint refreshes after stylesheet loading and CSSOM edits",
+      styleChanges.every(value => value.before && value.covered && value.restored), JSON.stringify(styleChanges));
+    await tab.keyboard.press("Escape"); // Close the unsaved Note draft first.
+    await tab.keyboard.press("Escape");
+    await frame();
+    const closed = await popup.sourcePaint();
+    const snapshots = [initial, scrolled, resized, visible];
+    evidence = { opened: !!opened, initial, scrolled, resized, hidden, transparent, visible, closed };
+    check("fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
+      !!opened && snapshots.every(value => value.exact && value.source.html === initial.source.html
+        && value.source.className === initial.source.className && value.source.selection === initial.source.selection)
+        && initial.paint.rects[0].left !== scrolled.paint.rects[0].left
+        && hidden.rects.length === 0 && transparent.rects.length === 0 && closed.groups === 0,
+      JSON.stringify(evidence));
+  } finally {
+    if (restore) await restore();
+    await tab.$eval("#verb", (element, value) => {
+      element.innerHTML = value.html;
+      element.className = value.className;
+      document.getElementById("e17-source-box")?.replaceWith(element.parentElement);
+      document.getElementById("e17-page-cover")?.remove();
+      if (value.style === null) element.removeAttribute("style"); else element.setAttribute("style", value.style);
+    }, sourceBefore);
+    await editSettingsControls(settings, original);
   }
 }
 
@@ -4973,6 +5446,7 @@ async function main() {
   await checkCompactSummaries(page, tab, popup, browser);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
+  await checkSourceFallback(page, tab, popup);
   await checkFrequencyDirection(browser, page, tab, popup);
   await checkPopupMetadata(browser, page, tab, popup);
   await hover("#verb");

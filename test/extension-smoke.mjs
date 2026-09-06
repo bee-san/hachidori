@@ -4379,6 +4379,13 @@ async function main() {
   check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
     preview?.kanjiSource === true, JSON.stringify(preview));
   const frequencySettings = await settingsFrequencyStage();
+  const sourceHighlight = await sourceHighlightStage();
+  check("source highlighting reuses unchanged scoped ranges without traversing other owners",
+    sourceHighlight?.ownership === true, JSON.stringify(sourceHighlight));
+  check("source mutations rebuild only valid owners and clear stale or detached ranges without changing selection",
+    sourceHighlight?.mutations === true, JSON.stringify(sourceHighlight));
+  check("source fallback paints exact Range bounds in its own layer without editing page text, classes or selection",
+    sourceHighlight?.fallback === true, JSON.stringify(sourceHighlight));
   check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
     frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
   check("Design resets only its shared appearance and content keys through one sparse options write",
@@ -5114,6 +5121,255 @@ async function settingsNavigationStage() {
     return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details, design };
   } finally {
     window.close();
+  }
+}
+
+async function sourceHighlightStage() {
+  const jsdom = await loadJsdom();
+  if (!jsdom) return null;
+  const dom = new jsdom.JSDOM('<p id="a">前<span>食べる</span>後</p><p id="b">読む。</p><p id="selection">Keep selection</p>', {
+    pretendToBeVisual: true, runScripts: "outside-only",
+  });
+  const { window } = dom;
+  const { document } = window;
+  window.CSS = { highlights: new Map() };
+  window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
+  window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
+  const highlighter = window.HDPopup.createSourceHighlighter(window, document, "test-source");
+  const candidate = id => {
+    const element = document.getElementById(id);
+    return { sourceElements: [element], sentence: element.textContent, matchOffset: id === "a" ? 1 : 0 };
+  };
+  const visits = { a: 0, b: 0 };
+  const createWalker = document.createTreeWalker.bind(document);
+  document.createTreeWalker = (root, ...args) => {
+    visits[root.id] += 1;
+    return createWalker(root, ...args);
+  };
+  const ranges = () => [...(window.CSS.highlights.get("test-source") || [])];
+  const texts = () => ranges().map(range => range.toString()).join("|");
+  const settle = () => new Promise(done => window.setTimeout(done, 0));
+  try {
+    const a = highlighter.scope("a"), b = highlighter.scope("b");
+    const ca = candidate("a"), cb = candidate("b");
+    const unrelated = new window.Highlight();
+    window.CSS.highlights.set("page-owned", unrelated);
+    window.getSelection().selectAllChildren(document.getElementById("selection"));
+    a.apply(ca, "食べる");
+    const first = ranges()[0];
+    b.apply(cb, "読む");
+    b.apply(cb, "読む");
+    b.clear();
+    const ownership = ranges()[0] === first && texts() === "食べる" && visits.a === 1 && visits.b === 1;
+    b.apply(cb, "読む");
+    document.querySelector("#a span").replaceChildren(document.createTextNode("食べる"));
+    await settle();
+    const replacement = texts() === "食べる|読む" && ranges()[0] !== first && visits.a === 2 && visits.b === 2;
+    document.querySelector("#a span").firstChild.insertData(1, "別");
+    await settle();
+    const stale = texts() === "読む";
+    document.getElementById("b").remove();
+    await settle();
+    const detached = ranges().length === 0;
+    const left = document.createElement("section"), right = document.createElement("section");
+    const host = document.createElement("div");
+    const shadow = host.attachShadow({ mode: "closed" });
+    const nested = document.createElement("span");
+    nested.textContent = "読む";
+    shadow.append(nested);
+    left.append(host);
+    document.body.append(left, right);
+    a.apply({ sourceElements: [nested], sentence: "読む", matchOffset: 0 }, "読む");
+    right.append(host);
+    await settle();
+    host.remove();
+    await settle();
+    const shadowDetached = ranges().length === 0;
+    a.apply(candidate("selection"), "Keep");
+    const disposableView = window.HDPopup.createPopupView({ document, window, popup: document.createElement("div"),
+      sourceHighlighter: a, positionPopup() {} });
+    disposableView.destroy();
+    const mutations = replacement && stale && detached && shadowDetached && ranges().length === 0
+      && window.CSS.highlights.get("page-owned") === unrelated && window.getSelection().toString() === "Keep selection";
+    const fallback = await sourceHighlightFallbackCase(window);
+    return { ownership, mutations, fallback, visits, replacement, stale };
+  } finally {
+    highlighter.clearAll();
+    window.close();
+  }
+}
+
+async function sourceHighlightFallbackCase(window) {
+  const { document } = window;
+  window.Highlight = undefined;
+  window.Element.prototype.getAnimations = () => [];
+  window.Document.prototype.getAnimations = () => [];
+  window.ShadowRoot.prototype.getAnimations = () => [];
+  let mediaWatches = 0;
+  window.matchMedia = () => ({ addEventListener() { mediaWatches += 1; }, removeEventListener() { mediaWatches -= 1; } });
+  let geometryReads = 0;
+  let siblingOffset = 0;
+  window.Range.prototype.getClientRects = function () {
+    geometryReads += 1;
+    const left = this.toString() === "食べる" ? 100 + siblingOffset : 300;
+    return [{ left, top: 200, right: left + 50, bottom: 216, width: 50, height: 16 }];
+  };
+  const source = document.getElementById("a");
+  source.textContent = "前食べる後";
+  source.classList.add("gsm-hoshidicts-source-match");
+  const before = { text: source.innerHTML, selection: window.getSelection().toString(), className: source.className };
+  const host = document.createElement("div");
+  const sibling = document.createElement("div");
+  sibling.textContent = "spacer";
+  const pageStyle = document.createElement("style");
+  pageStyle.textContent = ".page-cover { position: static; }";
+  document.body.append(host, sibling, pageStyle);
+  const shadow = host.attachShadow({ mode: "open" });
+  const highlighter = window.HDPopup.createSourceHighlighter(window, document, "test-fallback", shadow);
+  const otherSource = document.getElementById("selection");
+  const first = highlighter.scope("first"), second = highlighter.scope("second");
+  const marks = () => [...shadow.querySelectorAll(".gsm-hoshidicts-source-match")];
+  const frame = () => new Promise(done => window.requestAnimationFrame(done));
+  const queryDocument = document.querySelectorAll.bind(document);
+  let coverScans = 0;
+  document.querySelectorAll = (selector, ...args) => {
+    if (selector === "*") coverScans += 1;
+    return queryDocument(selector, ...args);
+  };
+  try {
+    first.apply({ sourceElements: [source], sentence: source.textContent, matchOffset: 1 }, "食べる");
+    await frame();
+    const mark = marks()[0];
+    const exact = marks().length === 1 && mark.style.left === "100px" && mark.style.top === "200px"
+      && mark.style.width === "50px" && mark.style.height === "16px";
+    second.apply({ sourceElements: [otherSource], sentence: otherSource.textContent, matchOffset: 0 }, "Keep");
+    await frame();
+    const both = marks().length === 2 && marks()[0] === mark;
+    const beforeClear = geometryReads;
+    second.clear();
+    await frame();
+    otherSource.dispatchEvent(new window.Event("animationstart", { bubbles: true }));
+    await frame();
+    const retained = marks().length === 1 && marks()[0] === mark && geometryReads === beforeClear;
+    const beforeMotionEnd = coverScans;
+    source.dispatchEvent(new window.Event("animationend", { bubbles: true }));
+    await frame();
+    await frame();
+    const settledMotion = coverScans === beforeMotionEnd;
+    let animations = [Object.assign(new window.EventTarget(), { playState: "paused", playbackRate: 1, currentTime: 0,
+      effect: { target: sibling, getTiming: () => ({ duration: 1000 }),
+        getKeyframes: () => [{ position: "static" }, { position: "fixed" }] } })];
+    sibling.getAnimations = () => animations;
+    document.getAnimations = () => animations;
+    sibling.dispatchEvent(new window.Event("animationstart", { bubbles: true }));
+    await frame();
+    await frame();
+    const beforeOtherEffectEnd = coverScans;
+    sibling.dispatchEvent(new window.Event("animationend", { bubbles: true }));
+    await frame();
+    await frame();
+    const overlappingMotion = coverScans === beforeOtherEffectEnd;
+    animations = [];
+    sibling.dispatchEvent(new window.Event("animationend", { bubbles: true }));
+    await frame();
+    await frame();
+    delete document.getAnimations;
+    delete sibling.getAnimations;
+    second.apply({ sourceElements: [otherSource], sentence: otherSource.textContent, matchOffset: 0 }, "Keep");
+    await frame();
+    source.style.visibility = "hidden";
+    second.clear(); // Preserve pending source geometry before reconnecting observers.
+    await frame();
+    await frame();
+    const hidden = marks().length === 0;
+    source.style.visibility = "visible";
+    await frame();
+    await frame();
+    const restored = marks().length === 1;
+    const beforeSibling = coverScans;
+    siblingOffset = 20;
+    sibling.firstChild.data = "changed sibling layout";
+    await frame();
+    await frame();
+    const siblingMoved = marks()[0]?.style.left === "120px";
+    let discovery = coverScans === beforeSibling;
+    sibling.textContent = "replacement sibling text";
+    const decoration = document.createElement("div");
+    shadow.append(decoration);
+    await frame();
+    await frame();
+    decoration.style.width = "40px";
+    await frame();
+    await frame();
+    discovery &&= coverScans === beforeSibling;
+    decoration.remove();
+    // Empty-boundary changes can alter :empty/:has membership, unlike a clock
+    // changing one non-empty text value to another. New elements can be covers.
+    for (const change of [
+      () => { sibling.firstChild.data = ""; },
+      () => { sibling.firstChild.data = "restored text"; },
+      () => { sibling.className = "new-selector-state"; },
+      () => { sibling.append(document.createElement("div")); },
+      () => { sibling.lastChild.remove(); },
+      () => { pageStyle.firstChild.data = ".page-cover { position: fixed; }"; },
+      () => { pageStyle.textContent = ".page-cover { position: sticky; }"; },
+      () => { sibling.dir = "auto"; },
+      () => { sibling.firstChild.data = "العربية"; },
+    ]) {
+      const beforeChange = coverScans;
+      change();
+      await frame();
+      await frame();
+      discovery &&= coverScans === beforeChange + 1;
+    }
+    const otherHost = document.createElement("div");
+    const otherShadow = otherHost.attachShadow({ mode: "open" });
+    const shadowSource = document.createElement("div");
+    shadowSource.textContent = "Keep";
+    otherShadow.append(shadowSource);
+    const sharedStyle = document.createElement("style");
+    sharedStyle.textContent = ".shared-cover { position: fixed; }";
+    document.body.append(otherHost, sharedStyle);
+    const adoptedBefore = document.adoptedStyleSheets;
+    document.adoptedStyleSheets = [pageStyle.sheet, sharedStyle.sheet];
+    otherShadow.adoptedStyleSheets = [pageStyle.sheet];
+    second.apply({ sourceElements: [shadowSource], sentence: "Keep", matchOffset: 0 }, "Keep");
+    await frame();
+    await frame();
+    const beforeSheetSwitch = coverScans;
+    // Both sheets were already visited in the document. Shared references must
+    // retain identity when an external source root changes its adopted list.
+    otherShadow.adoptedStyleSheets = [sharedStyle.sheet];
+    await new Promise(done => window.setTimeout(done, 350));
+    await frame();
+    discovery &&= coverScans === beforeSheetSwitch + 1;
+    second.clear();
+    document.adoptedStyleSheets = adoptedBefore;
+    otherHost.remove();
+    sharedStyle.remove();
+    source.style.removeProperty("visibility");
+    first.clear();
+    const cleaned = shadow.childNodes.length === 0;
+    const popup = document.createElement("div");
+    document.body.append(popup);
+    const view = window.HDPopup.createPopupView({ document, window, popup, sourceHighlightEnabled: true,
+      positionPopup() {} });
+    let documentRoot;
+    try {
+      view.renderKanji({ character: "食", entries: [] },
+        { sourceElements: [source], sentence: source.textContent, matchOffset: 1 });
+      await frame();
+      documentRoot = document.body.querySelectorAll(":scope > .gsm-hoshidicts-source-highlight-layer").length === 1;
+    } finally { view.destroy(); popup.remove(); }
+    return exact && both && retained && settledMotion && overlappingMotion && hidden && restored && siblingMoved && discovery && cleaned && documentRoot && mediaWatches === 0
+      && !document.querySelector(".gsm-hoshidicts-source-highlight-layer") && source.innerHTML === before.text
+      && source.className === before.className && window.getSelection().toString() === before.selection;
+  } finally {
+    document.querySelectorAll = queryDocument;
+    highlighter.clearAll();
+    host.remove();
+    sibling.remove();
+    pageStyle.remove();
   }
 }
 
@@ -7293,7 +7549,7 @@ async function staleKanjiResponseStage(invalidation) {
       renderResults(value) { renders.push(value); },
       setToolbarPosition() {},
     },
-    { apply() {}, clear() {}, clearAll() {}, scope() { return { apply() {}, clear() {} }; } },
+    { apply() {}, clear() {}, clearAll() {}, refresh() {}, scope() { return { apply() {}, clear() {}, refresh() {} }; } },
   );
   const lookup = window.__hachidoriContentSmoke.showKanji("食");
   if (invalidation === "storage-change") {
@@ -7437,7 +7693,7 @@ async function contentNoteStage() {
       ...window.HDPopup,
       createPopupView: createView,
       createSourceHighlighter() {
-        return { apply() {}, clear() {}, clearAll() {}, scope() { return { apply() {}, clear() {} }; } };
+        return { apply() {}, clear() {}, clearAll() {}, refresh() {}, scope() { return { apply() {}, clear() {}, refresh() {} }; } };
       },
     };
     const initialState = {

@@ -52,13 +52,10 @@
       if (!highlightSheet) {
         highlightSheet = new window.CSSStyleSheet();
         highlightSheet.insertRule(`::highlight(${DEFAULT_HIGHLIGHT_NAME}) {}`, 0);
-        highlightSheet.insertRule(".gsm-hoshidicts-source-match {}", 1);
         document.adoptedStyleSheets = [...document.adoptedStyleSheets, highlightSheet];
       }
       const mix = `color-mix(in srgb, ${primary} ${current.popupTheme === "high-contrast" ? 56 : 34}%, transparent)`;
       highlightSheet.cssRules[0].style.setProperty("background-color", mix);
-      highlightSheet.cssRules[1].style.setProperty("background-color", mix, "important");
-      highlightSheet.cssRules[1].style.setProperty("box-shadow", `0 0 0 1px color-mix(in srgb, ${primary} 50%, transparent)`);
     }
 
     return {
@@ -522,19 +519,549 @@
     return `${label} ${value} ${value === 1 ? "time" : "times"}`;
   }
 
-  function createSourceHighlighter(windowRef, documentRef, highlightName) {
+  function intersectHighlightRect(rect, clip) {
+    const left = Math.max(rect.left, clip.left), right = Math.min(rect.right, clip.right);
+    const top = Math.max(rect.top, clip.top), bottom = Math.min(rect.bottom, clip.bottom);
+    return right > left && bottom > top ? { left, right, top, bottom } : null;
+  }
+
+  function subtractHighlightRect(rect, cover) {
+    const overlap = intersectHighlightRect(rect, cover);
+    if (!overlap) return [rect];
+    return [
+      { ...rect, bottom: overlap.top }, { ...rect, top: overlap.bottom },
+      { left: rect.left, right: overlap.left, top: overlap.top, bottom: overlap.bottom },
+      { left: overlap.right, right: rect.right, top: overlap.top, bottom: overlap.bottom },
+    ].filter(piece => piece.right > piece.left && piece.bottom > piece.top);
+  }
+
+  // Range.getClientRects() also includes fully selected inline element boxes.
+  // Text-node subranges avoid painting their padding or tinting text twice.
+  function highlightTextFragments(documentRef, match) {
+    const fragments = [];
+    for (const range of match.ranges) {
+      const root = range.commonAncestorContainer;
+      const walker = documentRef.createTreeWalker(root, 4);
+      let node = root.nodeType === 3 ? root : walker.nextNode();
+      while (node) {
+        if (range.intersectsNode(node)) {
+          const start = node === range.startContainer ? range.startOffset : 0;
+          const end = node === range.endContainer ? range.endOffset : node.length;
+          if (end > start) {
+            const fragment = documentRef.createRange();
+            fragment.setStart(node, start);
+            fragment.setEnd(node, end);
+            fragments.push(fragment);
+          }
+        }
+        node = walker.nextNode();
+      }
+    }
+    return fragments;
+  }
+
+  function createHighlightFallback(windowRef, documentRef, root) {
+    const layer = documentRef.createElement("div");
+    layer.className = "gsm-hoshidicts-source-highlight-layer";
+    layer.setAttribute("aria-hidden", "true");
+    root.appendChild(layer);
+    const owners = new Map();
+    let frame = null;
+    let resizeTargets = new Set();
+    let geometryTargets = new Map();
+    let motionTargets = new Map();
+    let coverTargets = new Set();
+    let layoutRoots = new Set();
+    let pageOccluders = null;
+    let stylesheetState = null;
+    let stylesheetTimer = null;
+    let polledStyles = false;
+    let watchedSheets = new Set();
+    const styleMedia = new Map();
+    let coverMotion = new WeakSet();
+    const animationWatches = new Map();
+    const motionRoots = new Set();
+    const motionStarts = ["animationstart", "transitionrun"];
+    const motionEnds = ["animationend", "animationcancel", "transitionend", "transitioncancel"];
+    const motionEvents = [...motionStarts, ...motionEnds, "pointerover", "pointerout", "focusin", "focusout"];
+    const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
+    const affectsGeometry = change => !layer.contains(change.target)
+      && (change.type === "attributes" || change.type === "characterData"
+        || [...change.addedNodes, ...change.removedNodes].some(node => node !== layer));
+    const geometry = new windowRef.MutationObserver(changes => { if (layoutMutations(changes)) schedule(); });
+    windowRef.addEventListener("scroll", schedule, true);
+    root.addEventListener("scroll", schedule, true);
+    windowRef.addEventListener("resize", layoutChanged);
+
+    function schedule() {
+      if (frame === null) frame = windowRef.requestAnimationFrame(paint);
+    }
+
+    function layoutChanged() {
+      pageOccluders = null;
+      schedule();
+    }
+
+    function stylesheetRules(sheet) {
+      try { return sheet.cssRules; }
+      catch (error) {
+        if (error.name !== "SecurityError") throw error;
+        // Cross-origin rules are unreadable and cannot be edited by page CSSOM
+        // either. Their load events still refresh effective styles.
+        return [];
+      }
+    }
+
+    function stylesheetSnapshot() {
+      const seen = new Set();
+      const snapshot = [];
+      function sheetState(sheet) {
+        // Object references retain shared-sheet identity without serializing
+        // each rule into a nested array and copying all CSS through JSON.
+        snapshot.push(sheet, sheet.disabled, sheet.media?.mediaText);
+        if (seen.has(sheet)) return;
+        seen.add(sheet);
+        for (const rule of stylesheetRules(sheet)) {
+          snapshot.push(rule.cssText);
+          if (rule.styleSheet) sheetState(rule.styleSheet);
+        }
+        snapshot.push(null);
+      }
+      for (const tree of layoutRoots) {
+        if (tree === root && root instanceof windowRef.ShadowRoot) continue;
+        snapshot.push(tree);
+        for (const sheet of [...(tree.styleSheets || []), ...(tree.adoptedStyleSheets || [])]) sheetState(sheet);
+      }
+      watchedSheets = seen;
+      return snapshot;
+    }
+
+    function refreshStyleMedia() {
+      // These common preference changes also cover unreadable page CSS.
+      const queries = new Set(["(prefers-color-scheme: dark)", "(prefers-reduced-motion: reduce)"]);
+      function collect(rules) {
+        for (const rule of rules) {
+          if (rule.media?.mediaText) queries.add(rule.media.mediaText);
+          const nested = rule.cssRules;
+          if (nested?.length) collect(nested);
+        }
+      }
+      for (const sheet of watchedSheets) {
+        if (sheet.media?.mediaText) queries.add(sheet.media.mediaText);
+        collect(stylesheetRules(sheet));
+      }
+      for (const [query, media] of styleMedia) {
+        if (!queries.has(query)) { media.removeEventListener("change", layoutChanged); styleMedia.delete(query); }
+      }
+      for (const query of queries) {
+        if (styleMedia.has(query)) continue;
+        const media = windowRef.matchMedia(query);
+        media.addEventListener("change", layoutChanged);
+        styleMedia.set(query, media);
+      }
+    }
+
+    function checkLayoutState() {
+      const next = stylesheetSnapshot();
+      if (next.length !== stylesheetState.length || next.some((value, index) => value !== stylesheetState[index])) {
+        stylesheetState = next;
+        polledStyles = true;
+        layoutChanged();
+      }
+      refreshAnimations(readAnimations());
+    }
+
+    function stylesheetLoaded(event) {
+      if (event.target.localName === "style"
+          || (event.target.localName === "link" && event.target.relList.contains("stylesheet"))) layoutChanged();
+    }
+
+    function changesCoverMembership(change) {
+      // Our shadow contents are excluded from the page catalogue. Their layout
+      // still matters, but cannot add a page header or change its selectors.
+      if (root instanceof windowRef.ShadowRoot && change.target.getRootNode() === root) return false;
+      const element = change.target.nodeType === 1 ? change.target : change.target.parentElement;
+      if (change.type === "attributes" || element?.localName === "style") return true;
+      // Text can change :dir() beneath automatic-direction elements even when
+      // both old and new values are non-empty.
+      if (element?.closest('[dir="auto" i], bdi')) return true;
+      if (change.type === "characterData") {
+        return change.target.nodeType === 3 && (change.oldValue === "") !== (change.target.data === "");
+      }
+      const added = [...change.addedNodes], removed = [...change.removedNodes];
+      if ([...added, ...removed].some(node => node.nodeType === 1)) return true;
+      const hasText = nodes => nodes.some(node => node.nodeType === 3 && node.data !== "");
+      // Non-empty text replacement leaves :empty/:has membership unchanged.
+      return hasText(added) !== hasText(removed);
+    }
+
+    function layoutMutations(changes) {
+      const relevant = changes.filter(affectsGeometry);
+      if (relevant.some(changesCoverMembership)) pageOccluders = null;
+      return relevant.length > 0;
+    }
+
+    function isCoverPosition(position) {
+      return position === "fixed" || position === "sticky";
+    }
+
+    function isPageElement(element) {
+      return element !== root.host && !layer.contains(element) && !element.closest(".gsm-hoshidicts-popup");
+    }
+
+    function isPageCover(element, style) {
+      return isCoverPosition(style.position) || element.localName === "dialog" || element.hasAttribute("popover");
+    }
+
+    function isCoverMotion(animation, frames = animation.effect.getKeyframes()) {
+      return (animation.playState === "running" || animation.playState === "paused")
+        && frames.some(keyframe => isCoverPosition(keyframe.position));
+    }
+
+    function isRunningMotion(animation) {
+      return animation.playState === "running" && animation.playbackRate !== 0;
+    }
+
+    function isMotionTarget(target) {
+      for (const [element, subtree] of motionTargets) {
+        if (element === target || (subtree && element.contains(target))) return true;
+      }
+      return false;
+    }
+
+    function readAnimations() {
+      const animations = new Set();
+      for (const tree of motionRoots) for (const animation of tree.getAnimations()) animations.add(animation);
+      return [...animations].filter(animation => motionRoots.has(animation.effect.target.getRootNode()))
+        .map(animation => ({ animation, effect: animation.effect, target: animation.effect.target,
+          frames: animation.effect.getKeyframes() }));
+    }
+
+    function unwatchAnimation(animation, record) {
+      animation.removeEventListener("finish", record.listener);
+      animation.removeEventListener("cancel", record.listener);
+      animationWatches.delete(animation);
+    }
+
+    function refreshAnimations(animations, discovering = false) {
+      const current = new Set();
+      for (const { animation, effect, target, frames } of animations) {
+        const cover = isPageElement(target) && frames.some(keyframe => isCoverPosition(keyframe.position));
+        if (!cover && !isMotionTarget(target)) continue;
+        current.add(animation);
+        let record = animationWatches.get(animation);
+        const structure = JSON.stringify([frames, effect.getTiming()]);
+        // Running frames already follow time. Paused/seeking/zero-rate effects
+        // need a wake when their time, timing or keyframes change without events.
+        const state = JSON.stringify([animation.playState, animation.playbackRate,
+          isRunningMotion(animation) ? null : animation.currentTime]);
+        const changed = !record || record.target !== target || record.effect !== effect
+          || record.structure !== structure || record.state !== state;
+        const membership = (record?.cover ?? false) !== cover || (cover && (!record || record.target !== target
+          || record.effect !== effect || record.structure !== structure));
+        if (!record) {
+          record = { listener() {
+            if (isPageElement(record.target) && coverMotionChanged(record.target, true)) layoutChanged();
+            else schedule();
+          } };
+          animation.addEventListener("finish", record.listener);
+          animation.addEventListener("cancel", record.listener);
+          animationWatches.set(animation, record);
+        }
+        Object.assign(record, { target, effect, cover, structure, state });
+        if (changed && !discovering) {
+          if (membership) layoutChanged();
+          else schedule();
+        }
+      }
+      for (const [animation, record] of animationWatches) {
+        if (current.has(animation)) continue;
+        unwatchAnimation(animation, record);
+        if (!discovering) {
+          if (record.cover && coverMotion.has(record.target)) layoutChanged();
+          else schedule();
+        }
+      }
+    }
+
+    function coverMotionChanged(target, ended) {
+      const tracked = coverMotion.has(target);
+      const active = target.getAnimations().some(animation => isCoverMotion(animation));
+      if (active) {
+        coverMotion.add(target);
+        return !tracked;
+      }
+      if (tracked) {
+        coverMotion.delete(target);
+        return true;
+      }
+      return ended && isPageCover(target, windowRef.getComputedStyle(target)) !== (pageOccluders?.includes(target) ?? false);
+    }
+
+    function sourceMotion(event) {
+      const target = event.target;
+      const ended = motionEnds.includes(event.type);
+      // A currently static element may become a cover halfway through motion.
+      // Track only effects with cover-position keyframes, not every animation
+      // on the page. Keep paused effects until they finish or are cancelled.
+      if ((ended || motionStarts.includes(event.type)) && isPageElement(target) && coverMotionChanged(target, ended)) {
+        layoutChanged();
+        return;
+      }
+      for (const [target, subtree] of motionTargets) {
+        if (target === event.target || (subtree && target.contains(event.target))
+            || (event.relatedTarget !== undefined && target instanceof windowRef.Element
+              && target.contains(event.target) !== target.contains(event.relatedTarget))) {
+          if (ended) schedule();
+          else layoutChanged();
+          return;
+        }
+      }
+    }
+
+    function unwatchMotion(target) {
+      for (const type of motionEvents) target.removeEventListener(type, sourceMotion, true);
+      target.removeEventListener("load", stylesheetLoaded, true);
+      motionRoots.delete(target);
+    }
+
+    function reconcileTargets() {
+      motionTargets = new Map(geometryTargets);
+      for (const target of coverTargets) if (!motionTargets.has(target)) motionTargets.set(target, false);
+      const nextResizeTargets = new Set([...motionTargets.keys()].filter(target => target instanceof windowRef.Element));
+      for (const target of nextResizeTargets) if (!resizeTargets.has(target)) resize?.observe(target);
+      for (const target of resizeTargets) if (!nextResizeTargets.has(target)) resize?.unobserve(target);
+      resizeTargets = nextResizeTargets;
+    }
+
+    function observeGeometry(targets) {
+      geometry.disconnect();
+      const nextMotionRoots = new Set();
+      for (const target of targets.keys()) {
+        if (target === documentRef || target instanceof windowRef.ShadowRoot) {
+          nextMotionRoots.add(target);
+        }
+      }
+      // A sibling can move the source inside a fixed-size ancestor without
+      // resizing any observed source. Layout notifications therefore span its
+      // containing trees; native range observers remain source-scoped.
+      const nextLayoutRoots = new Set(nextMotionRoots);
+      if (root instanceof windowRef.ShadowRoot) nextLayoutRoots.add(root);
+      if (layoutRoots.size !== nextLayoutRoots.size || [...layoutRoots].some(target => !nextLayoutRoots.has(target))) {
+        pageOccluders = null;
+      }
+      layoutRoots = nextLayoutRoots;
+      for (const target of layoutRoots) {
+        geometry.observe(target, { attributes: true, characterData: true, characterDataOldValue: true, childList: true, subtree: true });
+      }
+      for (const target of motionRoots) {
+        if (!nextMotionRoots.has(target)) unwatchMotion(target);
+      }
+      for (const target of nextMotionRoots) {
+        if (!motionRoots.has(target)) {
+          for (const type of motionEvents) target.addEventListener(type, sourceMotion, true);
+          target.addEventListener("load", stylesheetLoaded, true);
+          motionRoots.add(target);
+        }
+      }
+      geometryTargets = targets;
+      reconcileTargets();
+    }
+
+    function clipBounds(element, cache) {
+      if (cache.has(element)) return cache.get(element);
+      const style = windowRef.getComputedStyle(element);
+      const clips = value => value && value !== "visible";
+      const clipX = clips(style.overflowX), clipY = clips(style.overflowY);
+      let bounds = null;
+      if (clipX || clipY) {
+        const rect = element.getBoundingClientRect();
+        const sx = element.offsetWidth ? rect.width / element.offsetWidth : 1;
+        const sy = element.offsetHeight ? rect.height / element.offsetHeight : 1;
+        const left = rect.left + element.clientLeft * sx, top = rect.top + element.clientTop * sy;
+        bounds = { left: clipX ? left : -Infinity, right: clipX ? left + element.clientWidth * sx : Infinity,
+          top: clipY ? top : -Infinity, bottom: clipY ? top + element.clientHeight * sy : Infinity };
+      }
+      const result = { bounds, style, invisible: style.opacity === "0" || style.contentVisibility === "hidden",
+        hiddenText: style.visibility === "hidden" || style.visibility === "collapse" };
+      cache.set(element, result);
+      return result;
+    }
+
+    function visibleClip(source, cache, cover = false) {
+      let clip = { left: 0, top: 0, right: windowRef.innerWidth, bottom: windowRef.innerHeight };
+      // Overflow clips contents, not a cover's own painted border. Fixed boxes
+      // also escape intermediate scrollports before their containing block.
+      let clipping = !cover || clipBounds(source, cache).style.position !== "fixed";
+      const containingBlock = !clipping && source.offsetParent;
+      for (let ancestor = source; ancestor && clip; ancestor = ancestor.parentElement || ancestor.getRootNode().host) {
+        const { bounds, invisible, hiddenText } = clipBounds(ancestor, cache);
+        if (invisible || (ancestor === source && hiddenText)) return null;
+        if (ancestor === containingBlock) clipping = true;
+        if (bounds && clipping && (!cover || ancestor !== source)) clip = intersectHighlightRect(clip, bounds);
+      }
+      return clip;
+    }
+
+    function pageCovers(cache) {
+      if (pageOccluders === null) {
+        pageOccluders = [];
+        coverMotion = new WeakSet();
+        // Reuse one animation-list/keyframe read for discovery and listeners.
+        // Programmatic effects need listeners on Animation itself, not the DOM.
+        const animations = readAnimations();
+        for (const { animation, target, frames } of animations) {
+          if (isPageElement(target) && isCoverMotion(animation, frames)) coverMotion.add(target);
+        }
+        for (const tree of layoutRoots) {
+          if (tree === root && tree instanceof windowRef.ShadowRoot) continue;
+          for (const element of tree.querySelectorAll("*")) {
+            if (!isPageElement(element)) continue;
+            const style = windowRef.getComputedStyle(element);
+            if (isPageCover(element, style) || coverMotion.has(element)) pageOccluders.push(element);
+          }
+        }
+        coverTargets = new Set();
+        for (const element of pageOccluders) {
+          for (let ancestor = element; ancestor; ancestor = ancestor.parentElement || ancestor.getRootNode().host) {
+            coverTargets.add(ancestor);
+          }
+        }
+        reconcileTargets();
+        refreshAnimations(animations, true);
+        // CSSOM has no mutation event in the content-script world. A bounded
+        // fallback-only poll reads stylesheet text, never page geometry, and
+        // only a changed snapshot requests discovery/paint. Snapshot before
+        // starting the timer so early CSSOM edits cannot become its baseline.
+        if (!polledStyles) stylesheetState = stylesheetSnapshot();
+        polledStyles = false;
+        refreshStyleMedia();
+        stylesheetTimer ??= windowRef.setInterval(checkLayoutState, 250);
+      }
+      return pageOccluders.flatMap(element => {
+        if (!isPageCover(element, clipBounds(element, cache).style)) return [];
+        const clip = visibleClip(element, cache, true);
+        const rect = clip && intersectHighlightRect(element.getBoundingClientRect(), clip);
+        return rect ? [{ element, rect, tree: element.getRootNode(),
+          pointerEvents: clipBounds(element, cache).style.pointerEvents }] : [];
+      });
+    }
+
+    function coveredByPage(source, rect, cover) {
+      let localSource = source;
+      while (localSource && localSource.getRootNode() !== cover.tree) localSource = localSource.getRootNode().host;
+      if (!localSource || cover.element.contains(localSource)) return false;
+      const overlap = intersectHighlightRect(rect, cover.rect);
+      if (!overlap) return false;
+      const stack = cover.tree.elementsFromPoint((overlap.left + overlap.right) / 2, (overlap.top + overlap.bottom) / 2);
+      const coverIndex = stack.findIndex(element => cover.element.contains(element));
+      const sourceIndex = stack.findIndex(element => element.contains(localSource) || localSource.contains(element));
+      // Hit-testing cannot order pointer-transparent paint. Conservatively omit
+      // that intersection rather than tint an overlay above the page's text.
+      return coverIndex < 0 ? cover.pointerEvents === "none" : sourceIndex < 0 || coverIndex < sourceIndex;
+    }
+
+    function fragmentRects(fragment, cache, popups, page) {
+      const source = fragment.startContainer.parentElement;
+      const clip = visibleClip(source, cache);
+      if (!clip) return [];
+      let rects;
+      try { rects = [...fragment.getClientRects()].map(rect => intersectHighlightRect(rect, clip)).filter(Boolean); }
+      catch { return []; } // No exact geometry: never substitute a whole paragraph.
+      const popup = source.closest(".gsm-hoshidicts-popup");
+      const ownerIndex = popups.findIndex(entry => entry.popup === popup);
+      const covers = popups.slice(ownerIndex + 1).map(entry => entry.rect);
+      const toolbar = popup?.querySelector(".gsm-hoshidicts-result-chrome");
+      if (toolbar && !toolbar.contains(source)) covers.push(toolbar.getBoundingClientRect());
+      for (const cover of covers) rects = rects.flatMap(rect => subtractHighlightRect(rect, cover));
+      for (const cover of page) rects = rects.flatMap(rect => coveredByPage(source, rect, cover)
+        ? subtractHighlightRect(rect, cover.rect) : [rect]);
+      return rects;
+    }
+
+    function paint() {
+      frame = null;
+      const cache = new Map();
+      const popups = [...root.querySelectorAll(".gsm-hoshidicts-popup")].filter(popup => !popup.hidden)
+        .map(popup => ({ popup, rect: popup.getBoundingClientRect() }));
+      const page = pageCovers(cache);
+      // Read all owners before writing any paint rectangles.
+      const plans = [...owners.values()].map(owner => ({ owner,
+        rects: owner.fragments.flatMap(fragment => fragmentRects(fragment, cache, popups, page)) }));
+      const moving = [...motionTargets].some(([target, subtree]) => target instanceof windowRef.Element
+        && target.getAnimations({ subtree }).some(isRunningMotion));
+      if (root.lastChild !== layer) root.appendChild(layer);
+      for (const { owner, rects } of plans) {
+        while (owner.group.children.length > rects.length) owner.group.lastChild.remove();
+        rects.forEach((rect, index) => {
+          let mark = owner.group.children[index];
+          if (!mark) {
+            mark = documentRef.createElement("span");
+            mark.className = "gsm-hoshidicts-source-match";
+            owner.group.appendChild(mark);
+          }
+          Object.assign(mark.style, { left: `${rect.left}px`, top: `${rect.top}px`,
+            width: `${rect.right - rect.left}px`, height: `${rect.bottom - rect.top}px` });
+        });
+      }
+      // Transforms do not notify ResizeObserver, and CSS motion has no DOM
+      // mutations between frames. Stay live only while a source or cover moves.
+      if (moving) schedule();
+    }
+
+    return {
+      schedule,
+      update(records) {
+        let dirty = layoutMutations(geometry.takeRecords());
+        const current = new Set(records);
+        for (const [record, owner] of owners) {
+          if (!current.has(record)) { owner.group.remove(); owners.delete(record); }
+        }
+        const targets = new Map();
+        for (const record of records) {
+          let owner = owners.get(record);
+          if (!owner) {
+            owner = { group: documentRef.createElement("div") };
+            layer.appendChild(owner.group);
+            owners.set(record, owner);
+          }
+          if (owner.match !== record.match) {
+            owner.match = record.match;
+            owner.fragments = highlightTextFragments(documentRef, record.match);
+            dirty = true;
+          }
+          for (const [target, subtree] of record.observedTargets) targets.set(target, targets.get(target) || subtree);
+        }
+        observeGeometry(targets);
+        if (dirty) schedule();
+      },
+      destroy() {
+        if (frame !== null) windowRef.cancelAnimationFrame(frame);
+        if (stylesheetTimer !== null) windowRef.clearInterval(stylesheetTimer);
+        for (const media of styleMedia.values()) media.removeEventListener("change", layoutChanged);
+        for (const [animation, record] of animationWatches) unwatchAnimation(animation, record);
+        resize?.disconnect();
+        geometry.disconnect();
+        for (const target of motionRoots) unwatchMotion(target);
+        windowRef.removeEventListener("scroll", schedule, true);
+        root.removeEventListener("scroll", schedule, true);
+        windowRef.removeEventListener("resize", layoutChanged);
+        layer.remove();
+      },
+    };
+  }
+
+  function createSourceHighlighter(windowRef, documentRef, highlightName, fallbackRoot = documentRef.body) {
     const matches = new Map();
-    let highlightedSourceElements = new Set();
+    let fallback = null;
+    let publishedHighlight = null;
 
     function clearRenderedHighlight() {
       const highlights = windowRef.CSS && windowRef.CSS.highlights;
-      if (highlights && typeof highlights.delete === "function") {
+      if (publishedHighlight && highlights?.get(highlightName) === publishedHighlight) {
         highlights.delete(highlightName);
       }
-      for (const element of highlightedSourceElements) {
-        element.classList.remove("gsm-hoshidicts-source-match");
-      }
-      highlightedSourceElements = new Set();
+      publishedHighlight = null;
     }
 
     function createMatchRanges(candidate, matchedText) {
@@ -560,7 +1087,6 @@
       }
       const showText = windowRef.NodeFilter ? windowRef.NodeFilter.SHOW_TEXT : 4;
       const ranges = [];
-      const rangedSourceElements = new Set();
       let elementStart = 0;
       for (const element of sourceElements) {
         const elementEnd = elementStart + (element.textContent || "").length;
@@ -609,36 +1135,13 @@
             range.setStart(start.node, start.offset);
             range.setEnd(end.node, end.offset);
             ranges.push(range);
-            rangedSourceElements.add(element);
           } catch {
-            // The class fallback below handles invalid ranges.
+            // Without an exact range this source fragment stays unpainted.
           }
         }
         elementStart = elementEnd;
       }
-      return {
-        ranges,
-        rangedSourceElements,
-        sourceElements,
-        startOffset,
-        endOffset,
-      };
-    }
-
-    function applyElementFallback(match, skippedElements = new Set()) {
-      let elementStart = 0;
-      for (const element of match.sourceElements) {
-        const elementEnd = elementStart + (element.textContent || "").length;
-        if (
-          !skippedElements.has(element) &&
-          elementEnd > match.startOffset &&
-          elementStart < match.endOffset
-        ) {
-          element.classList.add("gsm-hoshidicts-source-match");
-          highlightedSourceElements.add(element);
-        }
-        elementStart = elementEnd;
-      }
+      return { ranges };
     }
 
     function render() {
@@ -649,38 +1152,82 @@
         highlights && typeof highlights.set === "function" && HighlightImpl
       );
       const ranges = [];
-      for (const { candidate, matchedText } of matches.values()) {
-        const match = createMatchRanges(candidate, matchedText);
-        if (!match) {
-          continue;
-        }
-        if (canUseRanges && match.ranges.length > 0) {
-          ranges.push(...match.ranges);
-          applyElementFallback(match, match.rangedSourceElements);
-        } else {
-          applyElementFallback(match);
-        }
+      for (const { match } of matches.values()) {
+        ranges.push(...match.ranges);
       }
       if (canUseRanges && ranges.length > 0) {
         try {
-          highlights.set(highlightName, new HighlightImpl(...ranges));
+          const next = new HighlightImpl(...ranges);
+          highlights.set(highlightName, next);
+          publishedHighlight = next;
         } catch {
-          for (const { candidate, matchedText } of matches.values()) {
-            const match = createMatchRanges(candidate, matchedText);
-            if (match) {
-              applyElementFallback(match);
-            }
-          }
+          // The same exact ranges supply owned fallback paint when unavailable.
         }
+      }
+      if (!publishedHighlight && matches.size > 0) {
+        fallback ??= createHighlightFallback(windowRef, documentRef, fallbackRoot);
+        fallback.update([...matches.values()]);
+      } else {
+        fallback?.destroy();
+        fallback = null;
       }
     }
 
+    function observeSource(record) {
+      record.observer.disconnect();
+      const targets = new Map();
+      for (const source of record.candidate.sourceElements) {
+        targets.set(source, true);
+        // Direct ancestor child lists detect a removed/moved source without
+        // observing unrelated page subtrees. Cross an owned shadow root too.
+        for (let parent = source.parentNode; parent; parent = parent.parentNode || parent.host) {
+          if (!targets.has(parent)) targets.set(parent, false);
+        }
+      }
+      for (const [target, subtree] of targets) {
+        record.observer.observe(target, { childList: true, characterData: subtree, subtree });
+      }
+      record.observedTargets = targets;
+    }
+
+    function sourceChanged(record, changes) {
+      return record.candidate.sourceElements.some(source => !source.isConnected
+        || changes.some(change => source.contains(change.target)
+          || [...change.addedNodes, ...change.removedNodes].some(node => record.observedTargets.has(node))));
+    }
+
+    function refreshSource(key, record) {
+      if (matches.get(key) !== record) return;
+      const match = createMatchRanges(record.candidate, record.matchedText);
+      if (!match) {
+        clearFor(key);
+        return;
+      }
+      record.match = match;
+      observeSource(record);
+      render();
+    }
+
     function applyFor(key, candidate, matchedText) {
-      matches.set(key, { candidate, matchedText });
+      const previous = matches.get(key);
+      if (previous?.candidate === candidate && previous.matchedText === matchedText) return;
+      const match = createMatchRanges(candidate, matchedText);
+      previous?.observer.disconnect();
+      if (!match) {
+        clearFor(key);
+        return;
+      }
+      const record = { candidate, matchedText, match };
+      record.observer = new windowRef.MutationObserver(changes => {
+        if (sourceChanged(record, changes)) refreshSource(key, record);
+      });
+      matches.set(key, record);
+      observeSource(record);
       render();
     }
 
     function clearFor(key) {
+      matches.get(key)?.observer.disconnect();
       if (matches.delete(key)) {
         render();
       }
@@ -693,6 +1240,7 @@
       clear() {
         clearFor("default");
       },
+      refresh() { fallback?.schedule(); },
       scope(key) {
         return {
           apply(candidate, matchedText) {
@@ -701,11 +1249,15 @@
           clear() {
             clearFor(key);
           },
+          refresh() { fallback?.schedule(); },
         };
       },
       clearAll() {
+        for (const record of matches.values()) record.observer.disconnect();
         matches.clear();
         clearRenderedHighlight();
+        fallback?.destroy();
+        fallback = null;
       },
     };
   }
@@ -1211,7 +1763,10 @@
     const appendTextOnlyGlossary = options.appendTextOnlyGlossary;
     const appendStructuredImage = options.appendStructuredImage;
     const parseTagList = options.parseTagList;
-    const positionPopup = options.positionPopup;
+    const positionPopup = () => {
+      options.positionPopup();
+      sourceHighlighter.refresh();
+    };
     // LookupKanji carries onyomi/kunyomi/tags as space-separated strings, but a
     // caller that already normalized them hands over arrays. Accept both.
     const tokenList = (value) =>
@@ -1247,10 +1802,12 @@
     const maxMetadataTags = Number.isInteger(options.maxMetadataTags)
       ? Math.max(1, options.maxMetadataTags)
       : DEFAULT_MAX_METADATA_TAGS;
+    const popupRoot = popup.getRootNode();
     const sourceHighlighter = options.sourceHighlighter || createSourceHighlighter(
       windowRef,
       documentRef,
-      options.highlightName || DEFAULT_HIGHLIGHT_NAME
+      options.highlightName || DEFAULT_HIGHLIGHT_NAME,
+      popupRoot instanceof windowRef.ShadowRoot ? popupRoot : documentRef.body
     );
     let definitionBlurState = "revealed";
     let sourceHighlightEnabled = options.sourceHighlightEnabled === true;
@@ -3044,6 +3601,7 @@
       },
       flushDictionaryPresentation,
       destroy() {
+        sourceHighlighter.clear();
         currentPresentationUpdate = null;
         pendingPresentation = null;
         hideImagePreview();
