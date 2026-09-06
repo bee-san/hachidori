@@ -79,19 +79,19 @@
       text(record.output, "Saving to Anki…");
       try {
         const result = await send("hd_anki_submit", { request });
-        if (!owns()) return;
         if (result.state === "added" || result.state === "updated") {
+          // A configuration epoch can change while Anki commits. The submitted
+          // record still owns its outcome; never turn a known write into a retry.
           record.terminal = true;
           record.add.dataset.state = "success";
           text(record.add, result.state === "added" ? "Added" : "Updated");
           text(record.output, `${result.state === "added" ? "Added" : "Updated"} note ${result.noteId}.${result.warnings.length ? ` ${result.warnings.join(" ")}` : ""}`);
           refreshAll(); // Best-effort checks cannot turn a confirmed write into a retry.
         } else if (result.state === "uncertain") uncertain(record, result.error);
-        else { decision(record, { ...result, canAdd: false }); refreshAll(); }
+        else if (owns()) { decision(record, { ...result, canAdd: false }); refreshAll(); }
       } catch (error) {
-        if (!owns()) return;
-        if (error.responseReceived) text(record.output, `Could not add: ${error.message}`);
-        else uncertain(record, `The write could not be confirmed. Use View in Anki before trying again. ${error.message}`);
+        if (!error.responseReceived) uncertain(record, `The write could not be confirmed. Use View in Anki before trying again. ${error.message}`);
+        else if (owns()) text(record.output, `Could not add: ${error.message}`);
       } finally {
         record.busy = false;
         if (current(record)) { disabled(record); onChange(record.group.owner); refresh(record.group); }
