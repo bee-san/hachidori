@@ -3870,6 +3870,69 @@ async function checkSourceFallback(settings, tab, popup) {
     check("fallback source paint stays beneath page headers and overlays",
       covers.every(value => value.bounded && value.restored && Math.abs(value.expectedArea - value.actualArea) < 2),
       JSON.stringify(covers));
+    const styleChanges = [];
+    for (const kind of ["insert", "declaration", "adopted", "load"]) {
+      let stylesSession;
+      let pendingStyle;
+      try {
+        if (kind === "load") {
+          stylesSession = await tab.createCDPSession();
+          pendingStyle = new Promise(done => stylesSession.once("Fetch.requestPaused", done));
+          await stylesSession.send("Fetch.enable", { patterns: [{ urlPattern: "*/e17-late.css" }] });
+        }
+        const css = await tab.evaluate(({ source, kind }) => {
+          const element = document.createElement("div");
+          element.id = "e17-page-cover";
+          element.dataset.e17PaintedCover = "";
+          element.style.cssText = "width:220px;height:48px;background:white;z-index:100";
+          document.body.append(element);
+          const initial = "#e17-page-cover { position:absolute;left:-1000px;top:0; }";
+          if (kind === "adopted") {
+            window.e17TestSheet = new CSSStyleSheet();
+            window.e17TestSheet.replaceSync(initial);
+            document.adoptedStyleSheets = [...document.adoptedStyleSheets, window.e17TestSheet];
+          } else {
+            const style = document.createElement("style");
+            style.id = "e17-page-style";
+            style.textContent = initial;
+            document.head.append(style);
+            window.e17TestSheet = style.sheet;
+          }
+          if (kind === "load") {
+            const link = document.createElement("link");
+            link.id = "e17-late-style";
+            link.rel = "stylesheet";
+            link.href = "/e17-late.css";
+            document.head.append(link);
+          }
+          return `#e17-page-cover { position:fixed;left:${source.left - 10}px;top:${source.top - 8}px; }`;
+        }, { source: sourceRect, kind });
+        const before = await snapshot();
+        if (stylesSession) {
+          const request = await pendingStyle;
+          await stylesSession.send("Fetch.fulfillRequest", { requestId: request.requestId, responseCode: 200,
+            responseHeaders: [{ name: "Content-Type", value: "text/css" }], body: Buffer.from(css).toString("base64") });
+        } else await tab.evaluate(({ css, kind }) => {
+          const sheet = window.e17TestSheet;
+          if (kind === "insert") sheet.insertRule(css, sheet.cssRules.length);
+          else if (kind === "adopted") sheet.replaceSync(css);
+          else sheet.cssRules[0].style.cssText = css.slice(css.indexOf("{") + 1, css.lastIndexOf("}"));
+        }, { css, kind });
+        await new Promise(done => setTimeout(done, 350));
+        const changed = await snapshot();
+        styleChanges.push({ kind, before: before.exact, covered: changed.paint.groups === 1 && changed.paint.rects.length === 0 });
+      } finally {
+        await stylesSession?.detach();
+        await tab.evaluate(() => {
+          document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== window.e17TestSheet);
+          delete window.e17TestSheet;
+          for (const id of ["e17-page-cover", "e17-page-style", "e17-late-style"]) document.getElementById(id)?.remove();
+        });
+      }
+      styleChanges.at(-1).restored = (await snapshot()).exact;
+    }
+    check("fallback source paint refreshes after stylesheet loading and CSSOM edits",
+      styleChanges.every(value => value.before && value.covered && value.restored), JSON.stringify(styleChanges));
     await tab.keyboard.press("Escape"); // Close the unsaved Note draft first.
     await tab.keyboard.press("Escape");
     await frame();
