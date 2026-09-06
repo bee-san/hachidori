@@ -16,7 +16,8 @@ test("duplicate options distinguish exact deck, root descendants, all models and
   assert.deepEqual(ankiNoteOptions(config({ duplicateScope: "deck-root", duplicateScopeCheckAllModels: true })),
     { allowDuplicate: false, duplicateScope: "deck", duplicateScopeOptions: { deckName: "Japanese", checkChildren: true, checkAllModels: true } });
   assert.equal(ankiNoteOptions(config({ duplicateScope: "deck" })).duplicateScopeOptions.checkChildren, false);
-  for (const patch of [{ duplicateBehavior: "new" }, { duplicateBehavior: "overwrite" }, { checkForDuplicates: false }]) {
+  assert.equal(ankiNoteOptions(config({ duplicateBehavior: "overwrite" })).allowDuplicate, false);
+  for (const patch of [{ duplicateBehavior: "new" }, { checkForDuplicates: false }]) {
     assert.equal(ankiNoteOptions(config(patch)).allowDuplicate, true);
   }
 });

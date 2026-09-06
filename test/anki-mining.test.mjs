@@ -101,3 +101,18 @@ test("an ambiguous mutation failure is not retried or reported as a confirmed fa
   assert.match(result.error, /View in Anki/u);
   assert.equal(writes, 1);
 });
+
+test("overwrite mode still prevents an external duplicate created after preflight found no target", async () => {
+  const f = fixture();
+  f.change({ duplicateBehavior: "overwrite" });
+  const invoke = f.gateway.invoke;
+  f.gateway.invoke = async (action, params) => {
+    if (action === "addNote") {
+      assert.equal(params.note.options.allowDuplicate, false);
+      throw new Error("cannot create note because it is a duplicate");
+    }
+    return invoke(action, params);
+  };
+  const { configKey } = await f.service.status();
+  assert.equal((await f.service.submit({ expression: "猫", configKey })).state, "duplicate");
+});
