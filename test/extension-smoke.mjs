@@ -7944,6 +7944,7 @@ async function contentNoteStage() {
     window.chrome = {
       runtime: {
         id: "hachidoricontnotesmoke",
+        onMessage: { addListener() {}, removeListener() {} },
         lastError: null,
         getURL: (path) => `chrome-extension://hachidoricontnotesmoke/${path}`,
         sendMessage(request, callback) {
@@ -8035,6 +8036,7 @@ async function contentNoteStage() {
     }
     window.eval(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8"));
+    window.eval(readFileSync(resolve(EXTENSION, "audio-content.js"), "utf8"));
     window.eval(instrumented);
     const driver = window.__hachidoriContentNoteSmoke;
     const popup = driver.install();

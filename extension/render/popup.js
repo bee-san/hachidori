@@ -2705,10 +2705,26 @@
       } else {
         header.appendChild(headword);
       }
-      if (primary && noteControls) {
-        header.appendChild(noteControls.actions);
-      }
-      return { element: header,
+      const actions = primary && noteControls ? noteControls.actions : documentRef.createElement("div");
+      actions.className = "gsm-hoshidicts-entry-actions";
+      actions.querySelector(".gsm-hoshidicts-audio-control")?.remove();
+      const audio = documentRef.createElement("div");
+      audio.className = "gsm-hoshidicts-audio-control";
+      const button = documentRef.createElement("button");
+      button.type = "button";
+      button.className = "gsm-hoshidicts-audio-button";
+      button.textContent = "Audio";
+      button.title = "Play pronunciation; Shift-click, right-click or press Down for choices";
+      button.setAttribute("aria-label", `Play pronunciation for ${expressionText}`);
+      button.setAttribute("aria-haspopup", "dialog");
+      button.setAttribute("aria-expanded", "false");
+      const status = documentRef.createElement("output");
+      status.className = "gsm-hoshidicts-audio-status";
+      status.setAttribute("aria-live", "polite");
+      audio.append(button, status);
+      actions.prepend(audio);
+      header.append(actions);
+      return { element: header, audio: { button, status, result },
         updateRuby(context) {
           const enabled = context.showPitchAccentFurigana !== false;
           const dictionary = typeof context.pitchAccentFuriganaDictionary === "string"
@@ -2778,6 +2794,7 @@
       panel.replaceChildren();
       const deferredGlossaryFills = [];
       const entryMetadata = [];
+      const audioButtons = [];
       let appliedMetadata = metadataOptions(imageContext);
       let appliedFrequencyModes = frequencyModes(imageContext);
       let appliedDictionaryPresentation = imageContext.dictionaryPresentation;
@@ -2840,6 +2857,7 @@
           noteControls: resultIndex === 0 ? renderContext.noteControls : null,
           onDeinflectionToggle: positionIfCurrent,
         });
+        audioButtons.push(renderedHeader.audio);
         if (resultIndex !== 0) {
           entry.appendChild(renderedHeader.element);
         }
@@ -3027,7 +3045,7 @@
             appendResult(result, resultIndex + visibleCount);
           });
           flushDeferredGlossaries();
-          onResultsExpanded();
+          onResultsExpanded({ audioButtons });
           positionPopup();
         }));
         panel.appendChild(showMore);
@@ -3056,7 +3074,7 @@
         return changed;
       }
 
-      return { lookupStats,
+      return { lookupStats, audioButtons,
         isExpanded: () => expanded,
         updateMetadata() {
           const nextModes = frequencyModes(imageContext);
@@ -3397,9 +3415,6 @@
         }
         if (hasRendered || !renderContext.preserveViewControls) popup.scrollTop = 0;
         renderProjection(!hasRendered && renderContext.expandAll === true);
-        if (hasRendered) {
-          onResultsRendered(rendered);
-        }
         hasRendered = true;
         positionPopup();
       }
@@ -3441,6 +3456,7 @@
             tabList,
           }
         );
+        onResultsRendered(rendered);
       }
 
       function activateTabFromEvent(index, focusButton = false) {
