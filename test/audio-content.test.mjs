@@ -144,3 +144,25 @@ test("autoplay runs once per logical first result and tab, not expansion, Back o
   await settle();
   assert.equal(v.item.status.textContent, "Stopped.");
 });
+
+test("late initial options play the still-current first result without replaying a manual pronunciation", async t => {
+  for (const manual of [false, true]) {
+    const f = fixture(t), v = f.view();
+    f.controller.update(f.window.HDReaderOptions.DEFAULT_OPTIONS, false);
+    v.bind();
+    assert.equal(f.sent.length, 0);
+    if (manual) {
+      v.item.button.click();
+      f.sent[0].resolveReply({ ok: true, status: "success" });
+      await settle();
+    }
+    f.controller.update({ ...f.window.HDReaderOptions.DEFAULT_OPTIONS, audioAutoplay: true,
+      audioSources: [{ id: "saved", type: "custom", enabled: true, url: "https://example.test/audio", voice: "" }],
+    });
+    v.bind();
+    const plays = f.sent.filter(request => request.type === "hd_audio_play");
+    assert.equal(plays.length, 1, manual ? "late options do not repeat manual playback" : "late options retry the first result");
+    plays[0].resolveReply({ ok: true, status: "success" });
+    await settle();
+  }
+});
