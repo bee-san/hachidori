@@ -589,6 +589,31 @@ export function frequencyRankingFixture() {
   return { query, dictionaries };
 }
 
+export function compactSummaryFixture() {
+  const query = '要約', child = '要約語', broken = '欠損図';
+  const illustrated = 'compact-summary-illustrated', plain = 'compact-summary-text';
+  const image = path => ({ tag: 'img', path, width: 16, height: 16 });
+  const leading = [{ type: 'structured-content', content: { tag: 'div', content: [
+    { tag: 'span', data: { content: 'part-of-speech' }, content: 'noun' },
+    image('media/kanji.png'),
+    { tag: 'ul', data: { content: 'glossary' }, content: [
+      { tag: 'li', content: '短い説明 • • 使い方' }, { tag: 'li', content: '別の意味' },
+    ] },
+    { tag: 'a', href: `?query=${encodeURIComponent(child)}&primary_reading=${encodeURIComponent('ようやくご')}`,
+      content: 'Open the related term' },
+  ] } }];
+  return { query, child, broken, illustrated, plain, leading, dictionaries: [
+    { title: illustrated, archive: buildTitledZip(illustrated, { mediaEntries: [['media/kanji.png', makePng()]], terms: [
+      [query, 'ようやく', '', '', 0, leading, 1, ''],
+      [child, 'ようやくご', '', '', 0, ['Text before the image.', image('media/kanji.png')], 2, ''],
+      [broken, 'けっそんず', '', '', 0, [image('media/missing.png'), 'The text remains available.'], 3, ''],
+    ] }) },
+    { title: plain, archive: buildTitledZip(plain, { terms: [
+      [query, 'ようやく', '', '', 0, ['Alternative first', 'Alternative second'], 1, ''],
+    ] }) },
+  ] };
+}
+
 export function imageSizingFixture() {
   const cases = [
     ['landscape', { width: 200, height: 100 }, 200, 50],
