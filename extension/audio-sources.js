@@ -20,7 +20,8 @@ function encodeValue(value) {
 
 export function audioSourceUrl(template, { expression, reading }) {
   httpUrl(template);
-  const values = { term: encodeValue(expression), expression: encodeValue(expression), reading: encodeValue(reading), language: "ja" };
+  const encodedTerm = encodeValue(expression);
+  const values = { term: encodedTerm, expression: encodedTerm, reading: encodeValue(reading), language: "ja" };
   return httpUrl(template.replace(/\{([^{}]*)\}/gu, (match, key) => Object.hasOwn(values, key) ? values[key] : match));
 }
 
