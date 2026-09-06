@@ -216,6 +216,9 @@ const PLANNED = [
   "Audio Settings preserve ordered source edits and disabled rows through revisioned save and reload",
   "Audio source Tests use encoded URLs and ordered JSON candidates with visible success, no-result and error feedback",
   "Audio Tests cancel stale playback and preserve the dictionary engine after audio becomes idle",
+  "Anki discovery is lazy and refresh recovers an offline connection through the real service worker",
+  "Anki Settings reject stale model replies and preserve unavailable mappings without discovery writes",
+  "Anki configuration persists through reload without reloading the dictionary engine",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
   "Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
   "Popup autoplay is optional and does not replay after presentation updates or Back",
@@ -361,13 +364,14 @@ async function interceptFetches(target, routes, label) {
         return;
       }
       route.requests += 1;
-      const body = Buffer.isBuffer(route.body) ? route.body : Buffer.from(route.body);
+      const response = route.respond ? await route.respond(event.request) : route;
+      const body = Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.body);
       await session.send("Fetch.fulfillRequest", {
         requestId: event.requestId,
-        responseCode: route.status,
+        responseCode: response.status,
         responseHeaders: [
           { name: "Access-Control-Allow-Origin", value: "*" },
-          { name: "Content-Type", value: route.contentType },
+          { name: "Content-Type", value: response.contentType },
           { name: "Cross-Origin-Resource-Policy", value: "cross-origin" },
         ],
         body: body.toString("base64"),
@@ -3297,6 +3301,103 @@ async function checkAudioSettings(page, browser) {
   }
 }
 
+async function checkAnkiSettings(page, browser) {
+  const original = await page.evaluate(async () => ({
+    options: (await chrome.storage.local.get("options")).options,
+    status: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
+  }));
+  let offline = true, holdA = false, missingField = false;
+  let releaseA;
+  const calls = [];
+  const route = { requests: 0, async respond(request) {
+    const { action, params } = JSON.parse(request.postData);
+    calls.push({ action, params });
+    if (offline) return { body: "Unavailable", status: 503, contentType: "text/plain" };
+    if (action === "modelFieldNames" && params.modelName === "Japanese" && holdA) {
+      holdA = false;
+      await new Promise(resolve => { releaseA = resolve; });
+    }
+    const fields = params.modelName === "Basic" ? ["Front", "Back"]
+      : missingField ? ["Changed"] : ["Expression", "Reading", "Meaning", "Sentence", "Frequency", "Pitch", "Audio"];
+    const result = action === "deckNames" ? ["Default", "Japanese"]
+      : action === "modelNames" ? ["Japanese", "Basic"] : fields;
+    return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
+  } };
+  const worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
+  const session = await interceptFetches(worker, new Map([["http://127.0.0.1:8765/", route]]), "anki");
+  const status = () => page.$eval("#anki-status", node => node.textContent);
+  const settled = () => page.waitForFunction(() => !document.getElementById("anki-refresh").disabled);
+  const saved = () => page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
+  const choose = async (id, value) => { await page.select(`#opt-anki-${id}`, value); await saved(); };
+  try {
+    const lazy = route.requests === 0;
+    await showSettingsSection(page, "anki");
+    await page.waitForFunction(() => document.getElementById("anki-status").textContent.includes("HTTP 503"));
+    const failed = await status();
+    offline = false;
+    await page.click("#anki-refresh");
+    await settled();
+    check("Anki discovery is lazy and refresh recovers an offline connection through the real service worker",
+      lazy && failed.includes("Not connected") && (await status()).includes("Connected")
+        && await page.$eval("#opt-anki-model", node => [...node.options].some(option => option.value === "Japanese")),
+      JSON.stringify({ failed, current: await status(), calls }));
+
+    holdA = true;
+    await page.select("#opt-anki-model", "Japanese");
+    const deadline = Date.now() + 1000;
+    while (!releaseA && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+    if (!releaseA) throw new Error("Anki model A did not reach its deferred field response");
+    await page.select("#opt-anki-model", "Basic");
+    await settled();
+    releaseA();
+    await saved();
+    const newest = await page.$eval("#opt-anki-field-expression", node => [...node.options].map(option => option.value));
+    await choose("field-expression", "Front");
+    await choose("model", "Japanese");
+    await settled();
+    await choose("field-expression", "Expression");
+    const revision = await page.evaluate(async () => (await chrome.storage.local.get("options")).options.revision);
+    missingField = true;
+    await page.click("#anki-refresh");
+    await settled();
+    const unavailable = await page.$eval("#opt-anki-field-expression", node => ({ value: node.value, text: node.textContent }));
+    const afterRefresh = await page.evaluate(async () => (await chrome.storage.local.get("options")).options.revision);
+    check("Anki Settings reject stale model replies and preserve unavailable mappings without discovery writes",
+      newest.includes("Front") && !newest.includes("Expression") && unavailable.value === "Expression"
+        && unavailable.text.includes("unavailable") && (await status()).includes("unavailable")
+        && revision === afterRefresh, JSON.stringify({ newest, unavailable, revision, afterRefresh }));
+
+    missingField = false;
+    await page.click("#anki-refresh");
+    await settled();
+    for (const [key, field] of [["reading", "Reading"], ["definition", "Meaning"], ["sentence", "Sentence"],
+      ["frequency", "Frequency"], ["pitch", "Pitch"], ["audio", "Audio"]]) await choose(`field-${key}`, field);
+    await choose("deck", "Japanese");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.getElementById("anki-status").textContent.includes("configuration ready"));
+    const persisted = await page.evaluate(async () => ({
+      anki: (await chrome.storage.local.get("options")).options.anki,
+      status: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
+    }));
+    check("Anki configuration persists through reload without reloading the dictionary engine",
+      persisted.anki.deck === "Japanese" && persisted.anki.model === "Japanese"
+        && persisted.anki.fields.expression === "Expression" && persisted.anki.fields.audio === "Audio"
+        && persisted.status.generation === original.status.generation, JSON.stringify(persisted));
+    if (process.env.HACHIDORI_ANKI_SCREENSHOT) await page.screenshot({ path: process.env.HACHIDORI_ANKI_SCREENSHOT, fullPage: true });
+  } finally {
+    releaseA?.();
+    await showSettingsSection(page, "lookup");
+    await page.evaluate(async anki => {
+      const { options } = await chrome.storage.local.get("options");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+        requestId: "restore-anki", baseRevision: options.revision,
+        options: { anki: anki ?? HDReaderOptions.normaliseOptions({}).anki } });
+      if (!reply.ok) throw new Error(reply.error);
+    }, original.options?.anki);
+    await session.detach();
+  }
+}
+
 async function readSettingsControls(settings, ids) {
   return settings.evaluate((names) => Object.fromEntries(names.map((id) => {
     const input = document.getElementById(id);
@@ -4580,6 +4681,7 @@ async function main() {
   await checkSettingsTransport(page);
   await checkDesignPreview(page);
   await checkAudioSettings(page, browser);
+  await checkAnkiSettings(page, browser);
   await checkDictionaryStyles(page);
   await showSettingsSection(page, "add-dictionaries");
 

@@ -823,6 +823,48 @@ async function externalLinksBackgroundStage() {
     JSON.stringify({ independent, failed, log: bus.log }));
 }
 
+async function ankiBackgroundStage() {
+  const bus = makeBus();
+  const storage = makeStorage();
+  const chrome = makeChrome("anki-worker", bus, storage);
+  const requests = [];
+  const releases = [];
+  const context = loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController,
+    fetch(url, options) {
+      const body = JSON.parse(options.body);
+      requests.push({ url, body });
+      return new Promise(resolve => releases.push(() => resolve({ ok: true,
+        async json() { return { result: body.action === "deckNames" ? ["Default"] : [], error: null }; } })));
+    },
+  });
+  const send = (patch = {}, sender = { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html#anki") }) =>
+    bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_anki_discover",
+      requestId: "anki-discover", model: "", apiKey: "", ...patch }, sender);
+  const rejected = await send({}, { id: chrome.runtime.id, url: "https://example.test" });
+  const invalid = await send({ model: null });
+  const pending = send({ endpoint: "https://untrusted.test", action: "deleteDecks" });
+  const written = await bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_options_write",
+    requestId: "anki-parallel-options", baseRevision: 0, options: { scanLength: 19 } });
+  const read = await bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_state_read" });
+  const independent = releases.length === 2 && written.ok && read.ok;
+  releases.forEach(release => release());
+  const result = await pending;
+  check("Anki discovery uses only fixed read-only calls from Settings and never holds the storage queue",
+    !rejected.ok && !invalid.ok && independent && result.ok && result.connected
+      && requests.every(({ url }) => url === "http://127.0.0.1:8765")
+      && requests.map(({ body }) => body.action).join() === "deckNames,modelNames"
+      && !bus.log.some(message => message.relayed), JSON.stringify({ rejected, invalid, independent, result, requests }));
+  const options = context.HDReaderOptions.normaliseOptions({}).anki;
+  const commit = await bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_options_write",
+    requestId: "anki-config-write", baseRevision: written.options.revision,
+    options: { anki: { ...options, model: "Basic", fields: { ...options.fields, expression: "Front" } } } });
+  const stale = await bus.sendMessage("anki-settings", { target: "hoshidicts-worker", type: "hd_options_write",
+    requestId: "anki-config-stale", baseRevision: written.options.revision, options: { anki: options } });
+  check("Anki model and mappings commit together through the existing options CAS and reject stale edits",
+    commit.ok && commit.options.anki.model === "Basic" && commit.options.anki.fields.expression === "Front"
+      && !stale.ok && stale.options.anki.model === "Basic", JSON.stringify({ commit, stale }));
+}
+
 async function audioRelayStage() {
   const bus = makeBus();
   const storage = makeStorage();
@@ -2011,6 +2053,7 @@ async function main() {
   section("external dictionary links");
   await externalLinksBackgroundStage();
   await audioRelayStage();
+  await ankiBackgroundStage();
 
   section("custom dictionary storage ownership");
   const customBackground = await customBackgroundStage();

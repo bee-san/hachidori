@@ -73,3 +73,15 @@ test("refresh retains unavailable saved choices and focused drafts; explicit mod
   assert.ok(Object.values(f.read().fields).every(value => value === ""));
   assert.equal(f.sent.length, 2);
 });
+
+test("case-only Anki field renames stay available without rewriting saved mappings", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fields: { ...f.read().fields, expression: "Front" } });
+  discovery(f.sent[0], { fields: ["front", "Back"] });
+  await tick();
+  const select = f.el("opt-anki-field-expression");
+  assert.equal(select.value, "Front");
+  assert.equal(select.selectedOptions[0].textContent, "front");
+  assert.match(f.el("anki-status").textContent, /configuration ready/u);
+  assert.equal(f.edits.length, 0);
+});
