@@ -686,6 +686,7 @@ async function popupReader(page, depth = 0) {
             const container = link.querySelector(".gloss-image-container");
             const rect = container.getBoundingClientRect();
             return { source: image.src, width: image.naturalWidth, height: image.naturalHeight,
+              tabStop: link.getAttribute("tabindex"), href: link.getAttribute("href"),
               display: { width: rect.width, height: rect.height, inlineWidth: container.style.width,
                 fontSize: Number.parseFloat(view.getComputedStyle(container).fontSize) } };
           }),
@@ -1719,10 +1720,16 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
       && value.preview?.width === 16, "E11 focused alternate preview resumes");
     require(Buffer.from(focusedLoaded.preview.source.split(",")[1], "base64").equals(alternateBytes)
       && (await popup.dictionaryTabs()).images.every(image => image.same), "E11 focused source refresh replaced its image owners");
-    await popup.imagePreview(1, "blur");
+    await write({ popupImageSource: { kind: "dictionary", title: "Unavailable E11 image source" } });
+    const focusedFailure = await until(() => popup.imagePreview(0), value => value.images.length === 1
+      && value.images[0].href === null && value.preview === null, "E11 focused source failure");
+    require(focusedFailure.focusedImage === 0 && focusedFailure.images[0].tabStop === "0",
+      "E11 pending/failing route discarded deliberate keyboard focus");
+    const blurredFailure = await popup.imagePreview(0, "blur");
+    require(blurredFailure.images[0].tabStop === null, "E11 failed image retained a noninteractive tab stop after blur");
     await write({ popupImageSource: null });
     await until(() => popup.dictionaryTabs(), value => !value.hidden && value.images.length === 2 && value.imageSources.length === 0
-      && value.images.every(image => image.same)
+      && value.images[1].same
       && value.images.every(image => image.complete && Buffer.from(image.src.split(",")[1], "base64").equals(makePng())),
       "E11 Automatic restores original images without alternate provenance");
     evidence.imageSources = { shared: imageRouteRequests, groupFallback: groupRequests, focused: focusedPending.focusedImage };

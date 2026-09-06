@@ -559,6 +559,7 @@ boundary even while Note or a child protects that projection. Retained stale
 parents may update existing labels but cannot admit new image work. A focused
 image remains keyboard-focusable while its old URL is removed; preview reloads
 resume only an undismissed owner, never a preview closed by failure or scrolling.
+Once focus leaves, a failed image drops that temporary tab stop.
 
 ![Alternate image supplier beside the unchanged definition](assets/popup-image-source.png)
 

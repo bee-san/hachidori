@@ -793,6 +793,7 @@
     });
     link.addEventListener("blur", () => {
       previewFocused = false;
+      link.removeAttribute("tabindex");
       hideUnownedPreview();
     });
     const failImage = () => {
