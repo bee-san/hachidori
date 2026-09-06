@@ -1414,6 +1414,19 @@ html,
 .gsm-hoshidicts-audio-control { display: grid; justify-items: end; gap: 4px; }
 .gsm-hoshidicts-audio-status { max-width: 200px; color: var(--text-color-light1); font-size: 11px; overflow-wrap: anywhere; }
 .gsm-hoshidicts-audio-status:empty { display: none; }
+.gsm-hoshidicts-anki-control { display: flex; flex-wrap: wrap; justify-content: end; gap: 4px; max-width: 240px; }
+.gsm-hoshidicts-anki-control[hidden] { display: none; }
+.gsm-hoshidicts-anki-status { flex-basis: 100%; font-size: 11px; color: var(--text-color-light1); overflow-wrap: anywhere; }
+.gsm-hoshidicts-anki-status:empty { display: none; }
+.gsm-hoshidicts-anki-control .gsm-hoshidicts-mine-button,
+.gsm-hoshidicts-anki-view {
+  width: auto; flex-basis: auto; min-height: 36px; padding: 0 8px;
+  border: 1px solid var(--hoshidicts-border-strong); border-radius: 6px;
+  background: transparent; color: var(--text-color); font-family: inherit; font-size: 12px; cursor: pointer;
+}
+.gsm-hoshidicts-anki-control .gsm-hoshidicts-mine-button { font: inherit; font-size: 12px; }
+.gsm-hoshidicts-anki-view:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 1px; }
+.gsm-hoshidicts-anki-view:hover:not(:disabled) { background: var(--hoshidicts-accent-soft); }
 
 .gsm-hoshidicts-note-form[hidden] {
   display: none;

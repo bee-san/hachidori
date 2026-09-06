@@ -6177,6 +6177,7 @@ async function main() {
   await checkFrequencyDirection(browser, page, tab, popup);
   await checkPopupMetadata(browser, page, tab, popup);
   await checkPopupAudio(page, tab, popup, browser);
+  await tab.keyboard.press("Escape");
   await checkAnkiSubmission(page, browser);
   await hover("#verb");
 

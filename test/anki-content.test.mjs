@@ -23,11 +23,11 @@ function fixture(t, send) {
   const context = { owner, popup, request, isCurrent: () => true,
     getRequest: result => ({ term: result.term }) };
   const items = ["猫", "犬", "鳥"].map(expression => {
-    const control = dom.window.document.createElement("div");
-    control.innerHTML = "<button>Add</button><button>View</button><output></output>";
-    popup.append(control);
-    const [add, view] = control.querySelectorAll("button");
-    return { control, add, view, output: control.querySelector("output"), result: { term: { expression, reading: "" } } };
+    const actions = dom.window.document.createElement("div");
+    popup.append(actions);
+    return { actions, get control() { return actions.querySelector("div"); },
+      get add() { return actions.querySelector("button"); }, get view() { return actions.querySelectorAll("button")[1]; },
+      get output() { return actions.querySelector("output"); }, result: { term: { expression, reading: "" } } };
   });
   return { controller, context, items };
 }
@@ -45,12 +45,12 @@ test("Anki stays quiet when unconfigured and preflights all rendered candidates 
   f.controller.bind(f.items, f.context);
   await tick();
   assert.deepEqual(calls, []);
-  assert.ok(f.items.every(item => item.control.hidden));
+  assert.ok(f.items.every(item => item.actions.childNodes.length === 0), "unconfigured mining creates no control DOM");
   f.controller.update(configured);
   await until(() => calls.length === 2);
   assert.deepEqual(calls.map(call => call[1]), [undefined, "猫"]);
   held.resolve();
-  await until(() => !f.items[2].add.disabled);
+  await until(() => f.items[2].add && !f.items[2].add.disabled);
   assert.deepEqual(calls.map(call => call[1]), [undefined, "猫", "犬", "鳥"]);
   const before = calls.length;
   f.controller.update({ ...configured });
@@ -69,7 +69,7 @@ test("successful Add remains successful after a refresh failure and cannot invit
   });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => !f.items[2].add.disabled);
+  await until(() => f.items[2].add && !f.items[2].add.disabled);
   f.items[0].add.click();
   f.items[0].add.click();
   await until(() => f.items[0].add.textContent === "Added");
@@ -94,8 +94,8 @@ test("late preflight cannot expose retired controls and an uncertain write stays
   pending = false;
   f.controller.bind([f.items[1]], f.context);
   held.resolve();
-  await until(() => !f.items[1].add.disabled);
-  assert.equal(f.items[0].control.hidden, true);
+  await until(() => f.items[1].add && !f.items[1].add.disabled);
+  assert.equal(f.items[0].control, null);
   f.items[1].add.click();
   await until(() => f.items[1].add.dataset.state === "uncertain");
   assert.equal(f.items[1].add.disabled, true);
@@ -121,7 +121,7 @@ test("refresh waits for a second pending submission without spinning on its busy
   });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => !f.items[2].add.disabled);
+  await until(() => f.items[2].add && !f.items[2].add.disabled);
   f.items[0].add.click();
   f.items[1].add.click();
   await until(() => f.items[0].add.textContent === "Added");

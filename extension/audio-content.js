@@ -16,7 +16,7 @@
     return candidate?.name ? ` — ${candidate.name}` : "";
   }
 
-  function createAudioController({ window, send, onMenuChange }) {
+  function createAudioController({ window, send, onMenuChange, onSelectionChange = () => {} }) {
     const document = window.document;
     const bound = new WeakMap(), visited = new WeakMap(), feedback = new WeakMap();
     let selections = new WeakMap();
@@ -104,7 +104,10 @@
         accept(reply);
       } catch (error) {
         if (owns(operation)) {
-          if (type === "hd_audio_play" && selections.get(record.result) === fields.selection) selections.delete(record.result);
+          if (type === "hd_audio_play" && selections.get(record.result) === fields.selection) {
+            selections.delete(record.result);
+            onSelectionChange(record.owner);
+          }
           setStatus(record, `Could not play: ${error.message}`);
           if (menu?.record === record) menu.output.textContent = error.message;
         }
@@ -171,6 +174,7 @@
               const selection = { sourceId: group.sourceId, sourceKey: group.sourceKey, ...record.term,
                 index, url: candidate.url ?? null, name: candidate.name };
               selections.set(record.result, selection);
+              onSelectionChange(record.owner);
               void play(record, selection);
             });
             section.append(button);

@@ -101,7 +101,7 @@
   let disposed = false;
   let appearance;
   let customStyle;
-  let audio;
+  let audio, mining;
   let options = { ...DEFAULT_OPTIONS };
   let dictionaries = [];
   let dictionaryGroups = [];
@@ -731,6 +731,7 @@
       return;
     }
     audio?.dispose();
+    mining?.retire();
     disposed = true;
     cancelPopupLayout();
     clearDictionaryResources();
@@ -781,6 +782,7 @@
 
   function discardUi() {
     audio?.retire();
+    mining?.retire();
     cancelPopupLayout();
     clearDictionaryResources();
     try {
@@ -819,6 +821,7 @@
     }
     currentGeneration = generation;
     audio?.retire();
+    mining?.retire();
     clearDictionaryResources();
     // Generation is an engine incarnation, not a monotonic storage revision.
     // Invalidate other in-flight owners even when a restarted engine returns 1.
@@ -859,7 +862,9 @@
             return;
           }
           if (reply.ok !== true) {
-            reject(new Error(reply.error || `${type} failed`));
+            const error = new Error(reply.error || `${type} failed`);
+            error.responseReceived = true;
+            reject(error);
             return;
           }
           resolve(reply);
@@ -1271,9 +1276,15 @@
   }
 
   function buildLevelUi(level) {
+    mining ??= window.HDAnki.createAnkiController({
+      send: (type, fields) => sendRequest(type, fields, "hachidori-anki"),
+      onChange: owner => positionPopup(owner),
+    });
+    mining.update(options, optionsStorageRevision >= 0);
     audio ??= window.HDAudio.createAudioController({ window,
       send: (type, fields) => sendRequest(type, fields, "hachidori-audio"),
       onMenuChange(owner) { cancelCandidateScan(); clearHideTimer(); positionPopup(owner); },
+      onSelectionChange: owner => mining.refresh(owner),
     });
     audio.update(options, optionsStorageRevision >= 0);
     const popup = document.createElement("div");
@@ -1305,10 +1316,11 @@
       onAddCustomEntry: (entry) => appendCustomEntry(entry, level),
       onKanjiClick: (character, result, candidate, link) => showKanji(character, result, candidate, link, level),
       onNoteEditingChange: (editing) => onNoteEditingChange(editing, level),
-      onResultsRendered: rendered => bindAudio(rendered, level),
-      onResultsExpanded: rendered => bindAudio(rendered, level),
+      onResultsRendered: rendered => bindResultActions(rendered, level),
+      onResultsExpanded: rendered => bindResultActions(rendered, level),
       onBeforeResultsRendered: (intent) => {
         audio.retire(level);
+        mining.retire(level);
         pruneLevels(level.depth + 1);
         if (level.retainedView) {
           replayVisibleView(level, intent);
@@ -1331,12 +1343,25 @@
     });
   }
 
-  function bindAudio(rendered, level) {
+  function bindResultActions(rendered, level) {
     const token = level.lookupToken, request = level.currentViewRequest;
-    audio.bind(rendered.audioButtons, { owner: level, popup: level.popup, request,
+    const context = { owner: level, popup: level.popup, request,
       isCurrent: () => level.currentViewRequest === request && !level.retainedView
         && requestCanRender(token, level.activeCandidate, level),
-    });
+    };
+    audio.bind(rendered.audioButtons, context);
+    mining.bind(rendered.miningActions, { ...context, getRequest: result => {
+      const candidate = level.activeCandidate;
+      const selection = shadow.getSelection?.() ?? window.getSelection();
+      return { ...result, generation: level.activeTermRender.generation, sentence: candidate.sentence,
+        matchOffset: candidate.matchOffset, matched: result.matched || result.term.expression,
+        searchQuery: request?.payload?.text ?? request?.termPayload?.text ?? candidate.query,
+        popupSelectionText: selection?.anchorNode && level.popup.contains(selection.anchorNode) ? selection.toString() : "",
+        documentTitle: document.title, audioSelection: audio.selectionFor(result) ?? undefined,
+        dictionaryAliases: Object.fromEntries(dictionaries.filter(item => item.displayName).map(item => [item.title, item.displayName])),
+        frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
+      };
+    } });
   }
 
   function ensureUi() {
@@ -1389,6 +1414,7 @@
     const focused = removed.some((level) => level.popup?.contains(shadow?.activeElement));
     for (const level of removed.reverse()) {
       audio?.retire(level);
+      mining?.retire(level);
       level.retired = true;
       level.lookupToken += 1;
       level.popup.hidden = true;
@@ -1404,6 +1430,7 @@
 
   function hide(level = rootLevel) {
     audio?.retire(level);
+    mining?.retire(level);
     if (level !== rootLevel) {
       if (!level.retired) {
         pruneLevels(level.depth);
@@ -1602,6 +1629,7 @@
 
   async function restoreTermRender(previous, focusTarget, level = rootLevel) {
     audio?.retire(level);
+    mining?.retire(level);
     if (previous.generation !== currentGeneration || !sameDictionaryContents(previous.dictionaries, dictionaries)) {
       const restoring = executeViewRequest(previous.request, level, previous.viewport);
       const token = level.lookupToken;
@@ -1693,6 +1721,7 @@
 
   async function executeTermRequest(request, level = rootLevel, replayOptions = null) {
     audio?.retire(level);
+    mining?.retire(level);
     const token = (level.lookupToken += 1);
     level.retainedView = replayOptions?.preserveViewControls === true;
     level.view?.hideImagePreview();
@@ -1825,6 +1854,7 @@
 
   async function executeKanjiRequest(request, level = rootLevel, replayOptions = null) {
     audio?.retire(level);
+    mining?.retire(level);
     const { candidate, capability, character } = request;
     const useTermDictionary = capability?.kind === "term";
     const token = (level.lookupToken += 1);
@@ -2335,6 +2365,7 @@
     // Navigation can destroy the content owner without blurring the tab.
     // Retire while runtime messaging is alive; a BFCache return can reuse UI.
     audio?.retire();
+    mining?.retire();
   }
 
   function onScroll() {
@@ -2360,6 +2391,7 @@
 
   function invalidateStoredState(dictionaryChanged) {
     audio?.retire();
+    mining?.retire();
     discardPendingCandidate();
     // A completed selection hit or miss also belongs to the old lookup state.
     // Preserve Note's view ownership through its deferred refresh.
@@ -2480,6 +2512,7 @@
     optionsStorageRevision = revision;
     options = next;
     audio?.update(options);
+    mining?.update(options);
     appearance?.update(options);
     const cssChanged = customStyle?.update(options.customPopupCss);
     if (highlightChanged) {

@@ -5,10 +5,11 @@
     const owners = new Map(), bound = new WeakMap();
     let enabled = false, settingsKey = "", checks = Promise.resolve();
     const live = group => enabled && owners.get(group.owner) === group && !group.popup.hidden && group.isCurrent();
-    const current = record => live(record.group) && record.control.isConnected;
+    const current = record => live(record.group) && record.actions.isConnected;
     const needsCheck = record => record.needsCheck && !record.busy && !record.terminal;
     const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
     function disabled(record) {
+      if (!record.add) return;
       record.add.disabled = record.busy || record.terminal || record.group.checking || !record.decision?.canAdd;
     }
     function decision(record, value) {
@@ -36,7 +37,10 @@
           const status = await send("hd_anki_status", {});
           if (!owns()) return;
           group.configKey = status.configKey;
-          for (const record of group.records) record.control.hidden = !status.available;
+          for (const record of group.records) {
+            if (status.available) controls(record);
+            if (record.control) record.control.hidden = !status.available;
+          }
           if (!status.available) { for (const record of group.records) record.needsCheck = false; return; }
           onChange(group.owner);
           for (const record of group.records) {
@@ -49,7 +53,7 @@
             } catch (error) { if (owns()) decision(record, { state: "error", canAdd: false, error: error.message }); }
           }
         } catch {
-          if (owns()) for (const record of group.records) { record.control.hidden = true; record.needsCheck = false; }
+          if (owns()) for (const record of group.records) { if (record.control) record.control.hidden = true; record.needsCheck = false; }
         } finally {
           group.queued = group.checking = false;
           if (live(group)) {
@@ -106,22 +110,39 @@
       catch (error) { if (current(record)) text(record.output, `Could not open Anki: ${error.message}`); }
       finally { if (current(record)) { record.view.disabled = false; onChange(record.group.owner); } }
     }
+    function controls(record) {
+      if (record.control) return;
+      const document = record.actions.ownerDocument;
+      const control = document.createElement("div");
+      control.className = "gsm-hoshidicts-anki-control";
+      const add = document.createElement("button"), view = document.createElement("button");
+      add.type = view.type = "button";
+      add.className = "gsm-hoshidicts-mine-button";
+      view.className = "gsm-hoshidicts-anki-view";
+      add.textContent = "Add to Anki";
+      view.textContent = "View";
+      add.setAttribute("aria-label", `Add ${record.result.term.expression} to Anki`);
+      view.setAttribute("aria-label", `View ${record.result.term.expression} in Anki`);
+      const output = document.createElement("output");
+      output.className = "gsm-hoshidicts-anki-status";
+      output.setAttribute("aria-live", "polite");
+      control.append(add, view, output);
+      record.actions.prepend(control);
+      Object.assign(record, { control, add, view, output });
+      add.addEventListener("mousedown", event => { if (event.button === 0 && current(record)) record.pointerRequest = payload(record); });
+      add.addEventListener("click", event => { void submit(record, event.detail > 0); });
+      view.addEventListener("click", () => { void browse(record); });
+      disabled(record);
+    }
     function bind(items, context) {
       let group = owners.get(context.owner);
       if (!group) { group = { ...context, records: [], epoch: 0, checking: false, queued: false }; owners.set(context.owner, group); }
       for (const item of items) {
-        let record = bound.get(item.add);
+        let record = bound.get(item.actions);
         if (record?.group === group) continue;
-        if (!record) {
-          record = { ...item, busy: false, terminal: false, decision: null };
-          bound.set(item.add, record);
-          item.add.addEventListener("mousedown", event => { if (event.button === 0 && current(record)) record.pointerRequest = payload(record); });
-          item.add.addEventListener("click", event => { void submit(record, event.detail > 0); });
-          item.view.addEventListener("click", () => { void browse(record); });
-        }
-        record.group = group;
-        record.needsCheck = true;
-        record.control.hidden = true;
+        record?.control?.remove();
+        record = { ...item, group, busy: false, terminal: false, decision: null, needsCheck: true };
+        bound.set(item.actions, record);
         group.records.push(record);
         disabled(record);
       }
@@ -131,7 +152,7 @@
       for (const [key, group] of owners) {
         if (owner !== undefined && owner !== key) continue;
         owners.delete(key);
-        for (const record of group.records) record.control.hidden = true;
+        for (const record of group.records) if (record.control) record.control.hidden = true;
       }
     }
     return { bind, retire,
@@ -143,7 +164,7 @@
         enabled = ready && Boolean(options.anki.model);
         for (const group of owners.values()) {
           group.epoch++;
-          for (const record of group.records) record.control.hidden = true;
+          for (const record of group.records) if (record.control) record.control.hidden = true;
           refresh(group, true);
         }
       },

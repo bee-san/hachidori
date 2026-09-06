@@ -2721,7 +2721,7 @@
       audio.append(button);
       actions.prepend(audio);
       header.append(actions);
-      return { element: header, audio: { button, result },
+      return { element: header, audio: { button, result }, mining: { actions, result },
         updateRuby(context) {
           const enabled = context.showPitchAccentFurigana !== false;
           const dictionary = typeof context.pitchAccentFuriganaDictionary === "string"
@@ -2792,6 +2792,7 @@
       const deferredGlossaryFills = [];
       const entryMetadata = [];
       const audioButtons = [];
+      const miningActions = [];
       let appliedMetadata = metadataOptions(imageContext);
       let appliedFrequencyModes = frequencyModes(imageContext);
       let appliedDictionaryPresentation = imageContext.dictionaryPresentation;
@@ -2855,6 +2856,7 @@
           onDeinflectionToggle: positionIfCurrent,
         });
         audioButtons.push(renderedHeader.audio);
+        miningActions.push(renderedHeader.mining);
         if (resultIndex !== 0) {
           entry.appendChild(renderedHeader.element);
         }
@@ -3042,7 +3044,7 @@
             appendResult(result, resultIndex + visibleCount);
           });
           flushDeferredGlossaries();
-          onResultsExpanded({ audioButtons });
+          onResultsExpanded({ audioButtons, miningActions });
           positionPopup();
         }));
         panel.appendChild(showMore);
@@ -3071,7 +3073,7 @@
         return changed;
       }
 
-      return { lookupStats, audioButtons,
+      return { lookupStats, audioButtons, miningActions,
         isExpanded: () => expanded,
         updateMetadata() {
           const nextModes = frequencyModes(imageContext);
