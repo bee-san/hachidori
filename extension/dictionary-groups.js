@@ -1,19 +1,13 @@
 /*
- * Dictionary-group normalization and Settings controls.
+ * Dictionary-group Settings controls.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-function normaliseGroupName(value) {
-  return (typeof value === "string" ? value : "")
-    .normalize("NFKC")
-    .trim()
-    .replace(/\s+/gu, " ");
-}
+import "./dictionary-group-state.js";
 
-function groupNameKey(value) {
-  return normaliseGroupName(value).toLowerCase();
-}
+const { normaliseGroupName, groupNameKey } = globalThis.HDDictionaryGroups;
+export const normaliseDictionaryGroups = globalThis.HDDictionaryGroups.normaliseDictionaryGroups;
 
 const ALL_GROUP_NAME_KEY = groupNameKey("All");
 
@@ -41,25 +35,6 @@ function bindMoveButtons(row, prefix, index, length, label, move) {
   down.setAttribute("aria-label", `Move ${label} down`);
   up.addEventListener("click", () => move(-1));
   down.addEventListener("click", () => move(1));
-}
-
-export function normaliseDictionaryGroups(value, installedDictionaries) {
-  if (!Array.isArray(value)) return [];
-  const installedIds = new Set(installedDictionaries.map((dictionary) => dictionary.id));
-  return value.map((group) => {
-    const id = typeof group?.id === "string" ? group.id : "";
-    const name = normaliseGroupName(group?.name);
-    if (id === "" || name === "") return null;
-    const seen = new Set();
-    const dictionaryIds = Array.isArray(group?.dictionaryIds)
-      ? group.dictionaryIds.filter((dictionaryId) => {
-        if (!installedIds.has(dictionaryId) || seen.has(dictionaryId)) return false;
-        seen.add(dictionaryId);
-        return true;
-      })
-      : [];
-    return { id, name, dictionaryIds };
-  }).filter((group) => group !== null);
 }
 
 export function createDictionaryGroupController({

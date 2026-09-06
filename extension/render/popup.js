@@ -436,6 +436,7 @@
       ...group.transcriptions,
     ].filter(Boolean).join(" · ");
     const tag = createTag(documentRef, "", description, "pitch");
+    tag.dataset.dictionary = group.dictionary;
 
     const source = documentRef.createElement("span");
     source.className = "gsm-hoshidicts-pitch-source";
@@ -660,6 +661,73 @@
       }
     }
     return dictionaries;
+  }
+
+  function normaliseDictionaryTab(value) {
+    if (typeof value?.dictionary === "string") return { dictionary: value.dictionary };
+    if (typeof value?.groupId === "string") return { groupId: value.groupId };
+    return value?.favourites === true ? { favourites: true } : null;
+  }
+
+  function dictionaryTabKey(selection) {
+    if (typeof selection?.dictionary === "string") return `dictionary:${selection.dictionary}`;
+    if (typeof selection?.groupId === "string") return `group:${selection.groupId}`;
+    return selection?.favourites === true ? "favourites" : "all";
+  }
+
+  function sameTabMembers(left, right, dictionaries) {
+    return dictionaries.every(dictionary => (left.size === 0 || left.has(dictionary))
+      === (right.size === 0 || right.has(dictionary)));
+  }
+
+  function updateLabel(element, label) {
+    if (element.textContent === label) return false;
+    element.textContent = label;
+    return true;
+  }
+
+  function createDictionaryTabs(dictionaries, renderContext) {
+    const presentation = Array.isArray(renderContext.dictionaryPresentation)
+      ? renderContext.dictionaryPresentation : [];
+    const groups = Array.isArray(renderContext.dictionaryTabGroups)
+      ? renderContext.dictionaryTabGroups : [];
+    const dictionaryDisplayNames = createDictionaryDisplayNames(dictionaries, presentation);
+    const available = new Set(dictionaries);
+    const favourites = presentation
+      .filter(({ favorite, title }) => favorite === true && available.has(title))
+      .map(({ title }) => title);
+    const usedLabels = new Set();
+    function tab(label, title, selection, members, qualifier) {
+      let uniqueLabel = label;
+      let suffix = 1;
+      while (usedLabels.has(uniqueLabel)) {
+        uniqueLabel = `${label} (${qualifier}${suffix === 1 ? "" : ` ${suffix}`})`;
+        suffix += 1;
+      }
+      usedLabels.add(uniqueLabel);
+      return {
+        key: dictionaryTabKey(selection), label: uniqueLabel, title,
+        ...selection, dictionaries: new Set(members),
+      };
+    }
+    const tabs = [
+      tab("All", "All dictionaries", null, [], "tab"),
+      ...dictionaries.map((dictionary) => tab(
+        dictionaryDisplayNames.get(dictionary) || dictionary,
+        dictionary, { dictionary }, [dictionary], "dictionary",
+      )),
+    ];
+    if (favourites.length > 0) {
+      tabs.push(tab("Favourites", "Favourite dictionaries", { favourites: true }, favourites, "tab"));
+    }
+    for (const group of groups) {
+      const members = Array.isArray(group.dictionaries)
+        ? group.dictionaries.filter((title) => available.has(title)) : [];
+      if (members.length > 0) {
+        tabs.push(tab(group.name, `Tab group: ${group.name}`, { groupId: group.id }, members, "group"));
+      }
+    }
+    return { tabs, dictionaryDisplayNames };
   }
 
   function isRecord(value) {
@@ -1032,6 +1100,8 @@
     let currentNoteControls = null;
     let renderRevision = 0;
     let currentResultPanel = null;
+    let currentPresentationUpdate = null;
+    let pendingPresentation = null;
     let imagePreview = null;
     let masonryFrame = null;
     const masonryObserver = typeof windowRef.ResizeObserver === "function"
@@ -1131,16 +1201,18 @@
         grid.classList.add("gsm-hoshidicts-glossary-grid-masonry");
         const columnWidth =
           (grid.clientWidth - MASONRY_GAP_PX * (columns - 1)) / columns;
+        for (const card of cards) card.style.width = `${columnWidth}px`;
+        // Measure after every width is set, before placement writes begin.
+        const cardHeights = cards.map(card => card.offsetHeight);
         const columnHeights = Array.from({ length: columns }, () => 0);
-        for (const card of cards) {
+        cards.forEach((card, index) => {
           const column = columnHeights.indexOf(Math.min(...columnHeights));
           const x = column * (columnWidth + MASONRY_GAP_PX);
           const y = columnHeights[column];
-          card.style.width = `${columnWidth}px`;
           card.style.transform = `translate(${x}px, ${y}px)`;
           card.style.visibility = "visible";
-          columnHeights[column] += card.offsetHeight + MASONRY_GAP_PX;
-        }
+          columnHeights[column] += cardHeights[index] + MASONRY_GAP_PX;
+        });
         grid.style.height = `${Math.max(...columnHeights) - MASONRY_GAP_PX}px`;
       }
     }
@@ -1225,6 +1297,8 @@
     }
 
     function clear(preserveViewControls = false) {
+      currentPresentationUpdate = null;
+      pendingPresentation = null;
       hideImagePreview();
       renderRevision += 1;
       currentResultPanel = null;
@@ -1282,10 +1356,30 @@
       control.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     }
 
+    function canProjectPresentation() {
+      const form = currentNoteControls?.form;
+      if (form && (!form.hidden || form.getAttribute("aria-busy") === "true")) return false;
+      if (options.canProjectDictionaryPresentation?.() === false) return false;
+      const focused = popup.getRootNode().activeElement;
+      return !popup.contains(focused) || focused.matches('[role="tab"]')
+        || currentNoteControls?.actions.contains(focused);
+    }
+
+    function flushDictionaryPresentation() {
+      if (!pendingPresentation || !currentPresentationUpdate) return;
+      const pending = pendingPresentation;
+      if (currentPresentationUpdate(pending) && pendingPresentation === pending) pendingPresentation = null;
+    }
+
+    function onPresentationFocusOut() {
+      if (pendingPresentation) windowRef.queueMicrotask(flushDictionaryPresentation);
+    }
+    popup.addEventListener("focusout", onPresentationFocusOut);
+
     function runRenderAction(isCurrent, renderContext, action) {
       if (!isCurrent()) return;
       try {
-        action();
+        return action();
       } catch (error) {
         if (!isCurrent()) return;
         clear();
@@ -1415,6 +1509,7 @@
         }
         if (restoreFocus && button.isConnected) button.focus();
         positionPopup();
+        flushDictionaryPresentation();
         return true;
       }
 
@@ -1809,6 +1904,7 @@
       panel.replaceChildren();
       const deferredGlossaryFills = [];
       let lookupStats = null;
+      let expanded = renderContext.expandAll === true;
 
       function appendResult(result, resultIndex) {
         const entry = documentRef.createElement("article");
@@ -1976,6 +2072,8 @@
           glossaryGrid.appendChild(details);
         }
         entry.appendChild(glossaryGrid);
+        // Fixed-width masonry cards cannot signal a change to their container.
+        masonryObserver?.observe(glossaryGrid);
         for (const card of glossaryGrid.children) {
           masonryObserver?.observe(card);
         }
@@ -2020,6 +2118,7 @@
             return;
           }
           showMore.remove();
+          expanded = true;
           results.slice(visibleCount).forEach((result, resultIndex) => {
             appendResult(result, resultIndex + visibleCount);
           });
@@ -2040,24 +2139,54 @@
           currentSourceHighlight.matchedText
         );
       }
-      return { lookupStats };
+      function updateMetadataLabels(container, result) {
+        let changed = false;
+        for (const [kind, groups] of [["frequency", result.term.frequencies], ["pitch", result.term.pitches]]) {
+          if (kind === "frequency" && renderContext.averageFrequency === true) continue;
+          const names = createDictionaryDisplayNames(groups.map(({ dictionary }) => dictionary), renderContext.dictionaryPresentation);
+          for (const source of container.querySelectorAll(`.gsm-hoshidicts-${kind}-source`)) {
+            const dictionary = source.parentNode.dataset.dictionary;
+            changed = updateLabel(source, names.get(dictionary) || dictionary) || changed;
+          }
+        }
+        return changed;
+      }
+
+      return { lookupStats,
+        isExpanded: () => expanded,
+        updateDictionaryPresentation(context, names) {
+          Object.assign(renderContext, context);
+          dictionaryDisplayNames = names;
+          let changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);
+          const entries = panel.querySelectorAll(":scope > .gsm-hoshidicts-entry");
+          entries.forEach((entry, index) => {
+            for (const row of entry.querySelectorAll(":scope > .gsm-hoshidicts-metadata")) {
+              changed = updateMetadataLabels(row, results[index]) || changed;
+            }
+            for (const summary of entry.querySelectorAll(":scope > .gsm-hoshidicts-glossary-grid > details > summary")) {
+              changed = updateLabel(summary, names.get(summary.title) || summary.title) || changed;
+            }
+          });
+          return changed;
+        },
+      };
     }
 
     function renderKanji(kanji, candidate, renderOptions = {}) {
+      renderOptions = { ...renderOptions };
       const focused = retainedFocus(renderOptions.preserveViewControls);
       clear(renderOptions.preserveViewControls);
+      const dictionaries = [...new Set(kanji.entries.map(({ dictionary }) => dictionary))];
+      let { tabs, dictionaryDisplayNames } = createDictionaryTabs(dictionaries, renderOptions);
+      const requestedKey = dictionaryTabKey(renderOptions.selectedDictionaryTab);
+      let selected = tabs.find((tab) => tab.key === requestedKey) || tabs[0];
+      renderOptions.onDictionaryTabSelected?.(normaliseDictionaryTab(selected));
       const noteControls = createNoteControls(() => ({
         term: kanji.character,
         reading: "",
         definition: "",
       }));
       currentNoteControls = noteControls;
-      const dictionaryDisplayNames = createDictionaryDisplayNames(
-        kanji.entries.map(({ dictionary }) => dictionary),
-        Array.isArray(renderOptions.dictionaryPresentation)
-          ? renderOptions.dictionaryPresentation
-          : []
-      );
       const primaryHeader = documentRef.createElement("header");
       primaryHeader.className =
         "gsm-hoshidicts-entry-header gsm-hoshidicts-primary-header";
@@ -2078,86 +2207,115 @@
       navigation.appendChild(glyph);
       primaryHeader.append(navigation, noteControls.actions);
       const toolbar = createResultChrome(primaryHeader);
-      const entries = documentRef.createDocumentFragment();
 
-      for (const kanjiEntry of kanji.entries) {
-        const entry = documentRef.createElement("article");
-        entry.className = "gsm-hoshidicts-kanji-entry";
-        entry.dataset.dictionary = kanjiEntry.dictionary;
+      function renderEntries() {
+        const entries = documentRef.createDocumentFragment();
 
-        const dictionary = documentRef.createElement("h3");
-        dictionary.className = "gsm-hoshidicts-kanji-dictionary";
-        dictionary.textContent = dictionaryDisplayNames.get(
-          kanjiEntry.dictionary
-        ) || kanjiEntry.dictionary;
-        dictionary.title = kanjiEntry.dictionary;
-        dictionary.setAttribute("aria-label", kanjiEntry.dictionary);
-        entry.appendChild(dictionary);
+        for (const kanjiEntry of kanji.entries) {
+          if (selected.dictionaries.size > 0 && !selected.dictionaries.has(kanjiEntry.dictionary)) continue;
+          const entry = documentRef.createElement("article");
+          entry.className = "gsm-hoshidicts-kanji-entry";
+          entry.dataset.dictionary = kanjiEntry.dictionary;
 
-        const kanjiTags = tokenList(kanjiEntry.tags);
-        if (kanjiTags.length > 0) {
-          const tags = documentRef.createElement("div");
-          tags.className = "gsm-hoshidicts-tags";
-          for (const tag of kanjiTags) {
-            tags.appendChild(createTag(documentRef, tag, "", "term"));
+          const dictionary = documentRef.createElement("h3");
+          dictionary.className = "gsm-hoshidicts-kanji-dictionary";
+          dictionary.textContent = dictionaryDisplayNames.get(
+            kanjiEntry.dictionary
+          ) || kanjiEntry.dictionary;
+          dictionary.title = kanjiEntry.dictionary;
+          dictionary.setAttribute("aria-label", kanjiEntry.dictionary);
+          entry.appendChild(dictionary);
+
+          const kanjiTags = tokenList(kanjiEntry.tags);
+          if (kanjiTags.length > 0) {
+            const tags = documentRef.createElement("div");
+            tags.className = "gsm-hoshidicts-tags";
+            for (const tag of kanjiTags) {
+              tags.appendChild(createTag(documentRef, tag, "", "term"));
+            }
+            entry.appendChild(tags);
           }
-          entry.appendChild(tags);
-        }
 
-        const readings = documentRef.createElement("div");
-        readings.className = "gsm-hoshidicts-kanji-readings";
-        for (const [label, values] of [
-          ["On", tokenList(kanjiEntry.onyomi)],
-          ["Kun", tokenList(kanjiEntry.kunyomi)],
-        ]) {
-          if (values.length === 0) continue;
-          const group = documentRef.createElement("div");
-          group.className = "gsm-hoshidicts-kanji-reading-group";
-          const heading = documentRef.createElement("strong");
-          heading.textContent = label;
-          group.appendChild(heading);
-          const value = documentRef.createElement("span");
-          value.textContent = values.join(" · ");
-          group.appendChild(value);
-          readings.appendChild(group);
-        }
-        if (readings.childNodes.length > 0) entry.appendChild(readings);
-
-        if (kanjiEntry.definitions.length > 0) {
-          const meaningsHeading = documentRef.createElement("h4");
-          meaningsHeading.textContent = "Meanings";
-          entry.appendChild(meaningsHeading);
-          const meanings = documentRef.createElement("ol");
-          meanings.className = "gsm-hoshidicts-kanji-meanings";
-          for (const meaning of kanjiEntry.definitions) {
-            const item = documentRef.createElement("li");
-            item.textContent = meaning;
-            meanings.appendChild(item);
+          const readings = documentRef.createElement("div");
+          readings.className = "gsm-hoshidicts-kanji-readings";
+          for (const [label, values] of [
+            ["On", tokenList(kanjiEntry.onyomi)],
+            ["Kun", tokenList(kanjiEntry.kunyomi)],
+          ]) {
+            if (values.length === 0) continue;
+            const group = documentRef.createElement("div");
+            group.className = "gsm-hoshidicts-kanji-reading-group";
+            const heading = documentRef.createElement("strong");
+            heading.textContent = label;
+            group.appendChild(heading);
+            const value = documentRef.createElement("span");
+            value.textContent = values.join(" · ");
+            group.appendChild(value);
+            readings.appendChild(group);
           }
-          entry.appendChild(meanings);
-        }
+          if (readings.childNodes.length > 0) entry.appendChild(readings);
 
-        if (kanjiEntry.stats.length > 0) {
-          const details = documentRef.createElement("details");
-          details.className = "gsm-hoshidicts-kanji-stats";
-          const summary = documentRef.createElement("summary");
-          summary.textContent = "Details";
-          details.appendChild(summary);
-          const list = documentRef.createElement("dl");
-          for (const stat of kanjiEntry.stats) {
-            const name = documentRef.createElement("dt");
-            name.textContent = stat.name;
-            const value = documentRef.createElement("dd");
-            value.textContent = stat.value;
-            list.append(name, value);
+          if (kanjiEntry.definitions.length > 0) {
+            const meaningsHeading = documentRef.createElement("h4");
+            meaningsHeading.textContent = "Meanings";
+            entry.appendChild(meaningsHeading);
+            const meanings = documentRef.createElement("ol");
+            meanings.className = "gsm-hoshidicts-kanji-meanings";
+            for (const meaning of kanjiEntry.definitions) {
+              const item = documentRef.createElement("li");
+              item.textContent = meaning;
+              meanings.appendChild(item);
+            }
+            entry.appendChild(meanings);
           }
-          details.appendChild(list);
-          entry.appendChild(details);
+
+          if (kanjiEntry.stats.length > 0) {
+            const details = documentRef.createElement("details");
+            details.className = "gsm-hoshidicts-kanji-stats";
+            const summary = documentRef.createElement("summary");
+            summary.textContent = "Details";
+            details.appendChild(summary);
+            const list = documentRef.createElement("dl");
+            for (const stat of kanjiEntry.stats) {
+              const name = documentRef.createElement("dt");
+              name.textContent = stat.name;
+              const value = documentRef.createElement("dd");
+              value.textContent = stat.value;
+              list.append(name, value);
+            }
+            details.appendChild(list);
+            entry.appendChild(details);
+          }
+          entries.appendChild(entry);
         }
-        entries.appendChild(entry);
+        return entries;
       }
 
-      mountResultChrome(toolbar, entries);
+      mountResultChrome(toolbar, renderEntries());
+      const ownsKanji = () => currentToolbar === toolbar && renderOptions.isCurrentView?.() !== false;
+      currentPresentationUpdate = (context) => runRenderAction(ownsKanji, renderOptions, () => {
+        const next = createDictionaryTabs(dictionaries, context);
+        const nextSelected = next.tabs.find(tab => tab.key === selected.key) || next.tabs[0];
+        const sameMembers = sameTabMembers(selected.dictionaries, nextSelected.dictionaries, dictionaries);
+        if (!sameMembers && (renderOptions.isCurrentRequest?.() === false || !canProjectPresentation())) return false;
+        Object.assign(renderOptions, context);
+        dictionaryDisplayNames = next.dictionaryDisplayNames;
+        if (selected.key !== nextSelected.key) renderOptions.onDictionaryTabSelected?.(normaliseDictionaryTab(nextSelected));
+        selected = nextSelected;
+        let changed = false;
+        if (sameMembers) {
+          for (const heading of popup.querySelectorAll(":scope > .gsm-hoshidicts-kanji-entry > h3")) {
+            changed = updateLabel(heading, dictionaryDisplayNames.get(heading.title) || heading.title) || changed;
+          }
+        } else {
+          for (const entry of popup.querySelectorAll(":scope > .gsm-hoshidicts-kanji-entry")) entry.remove();
+          if (toolbarPosition === "bottom") popup.prepend(renderEntries());
+          else popup.append(renderEntries());
+          changed = true;
+        }
+        if (changed) scheduleMasonry();
+        return true;
+      });
 
       if (sourceHighlightEnabled) {
         sourceHighlighter.apply(
@@ -2172,77 +2330,12 @@
     }
 
     function renderResults(results, candidate, renderContext = {}) {
+      renderContext = { ...renderContext };
       const focused = retainedFocus(renderContext.preserveViewControls);
       clear(renderContext.preserveViewControls);
       setDefinitionBlurState(renderContext.definitionBlurState);
       const dictionaries = collectGlossaryDictionaries(results);
-      const dictionaryPresentation = Array.isArray(
-        renderContext.dictionaryPresentation
-      ) ? renderContext.dictionaryPresentation : [];
-      const dictionaryTabGroups = Array.isArray(
-        renderContext.dictionaryTabGroups
-      ) ? renderContext.dictionaryTabGroups : [];
-      const dictionaryDisplayNames = createDictionaryDisplayNames(
-        dictionaries,
-        dictionaryPresentation
-      );
-      const availableDictionaries = new Set(dictionaries);
-      const groupedDictionaries = new Set(
-        dictionaryTabGroups.flatMap(({ dictionaries: groupDictionaries }) =>
-          Array.isArray(groupDictionaries) ? groupDictionaries : []
-        )
-      );
-      const availableGroups = dictionaryTabGroups.flatMap((group) => {
-        const groupDictionaries = Array.isArray(group.dictionaries)
-          ? group.dictionaries.filter((title) => availableDictionaries.has(title))
-          : [];
-        return groupDictionaries.length > 0
-          ? [{ ...group, dictionaries: groupDictionaries }]
-          : [];
-      });
-      const favoriteDictionaries = dictionaryPresentation
-        .filter(({ favorite, title }) =>
-          favorite === true &&
-          availableDictionaries.has(title) &&
-          !groupedDictionaries.has(title)
-        )
-        .map(({ title }) => title);
-      const usedTabLabels = new Set();
-      function uniqueTabLabel(label, qualifier) {
-        let candidate = label;
-        let suffix = 1;
-        while (usedTabLabels.has(candidate)) {
-          const qualifiedSuffix = suffix === 1
-            ? qualifier
-            : `${qualifier} ${suffix}`;
-          candidate = `${label} (${qualifiedSuffix})`;
-          suffix += 1;
-        }
-        usedTabLabels.add(candidate);
-        return candidate;
-      }
-      const tabDescriptors = [
-        {
-          label: uniqueTabLabel("All", "tab"),
-          title: "All dictionaries",
-          dictionaries: new Set(),
-        },
-        ...availableGroups.map((group) => ({
-          label: uniqueTabLabel(group.name, "group"),
-          title: `Tab group: ${group.name}`,
-          groupId: group.id,
-          dictionaries: new Set(group.dictionaries),
-        })),
-        ...favoriteDictionaries.map((dictionary) => ({
-          label: uniqueTabLabel(
-            dictionaryDisplayNames.get(dictionary) || dictionary,
-            "dictionary"
-          ),
-          title: dictionary,
-          dictionary,
-          dictionaries: new Set([dictionary]),
-        })),
-      ];
+      let { tabs: tabDescriptors, dictionaryDisplayNames } = createDictionaryTabs(dictionaries, renderContext);
       const tabList = tabDescriptors.length > 1
         ? documentRef.createElement("div")
         : null;
@@ -2287,19 +2380,10 @@
       const toolbar = createResultChrome(primaryHeader, metadataStrip);
       mountResultChrome(toolbar, panel);
 
-      const tabButtons = [];
-      const requestedTab = isRecord(renderContext.selectedDictionaryTab)
-        ? renderContext.selectedDictionaryTab
-        : null;
-      const requestedTabIndex = requestedTab
-        ? tabDescriptors.findIndex((descriptor) =>
-            typeof requestedTab.dictionary === "string"
-              ? descriptor.dictionary === requestedTab.dictionary
-              : typeof requestedTab.groupId === "string"
-                ? descriptor.groupId === requestedTab.groupId
-                : false
-          )
-        : -1;
+      let tabButtons = [];
+      let nextTabId = 0;
+      const requestedKey = dictionaryTabKey(renderContext.selectedDictionaryTab);
+      const requestedTabIndex = tabDescriptors.findIndex((descriptor) => descriptor.key === requestedKey);
       let focusedIndex = Math.max(0, requestedTabIndex);
       let selectedIndex = focusedIndex;
       let hasRendered = false;
@@ -2336,13 +2420,7 @@
         if ((!hasRendered || selectionChanged)
             && typeof renderContext.onDictionaryTabSelected === "function") {
           const descriptor = tabDescriptors[selectedIndex];
-          renderContext.onDictionaryTabSelected(
-            typeof descriptor.dictionary === "string"
-              ? { dictionary: descriptor.dictionary }
-              : typeof descriptor.groupId === "string"
-                ? { groupId: descriptor.groupId }
-                : null
-          );
+          renderContext.onDictionaryTabSelected(normaliseDictionaryTab(descriptor));
         }
         if (hasRendered && !selectionChanged) {
           if (!ownsView()) {
@@ -2361,6 +2439,16 @@
           if (onBeforeResultsRendered() === false) return;
         }
         if (hasRendered || !renderContext.preserveViewControls) popup.scrollTop = 0;
+        renderProjection(!hasRendered && renderContext.expandAll === true);
+        if (hasRendered) {
+          onResultsRendered(rendered);
+        }
+        hasRendered = true;
+        positionPopup();
+      }
+
+      function renderProjection(expandAll) {
+        if (hasRendered) masonryObserver?.disconnect();
         const selectedDictionaries = tabDescriptors[selectedIndex].dictionaries;
         const projectedResults = projectResults(results, selectedDictionaries);
         projectedPrimary = projectedResults[0] || null;
@@ -2371,7 +2459,7 @@
           {
             ...renderContext,
             noteControls,
-            expandAll: !hasRendered && renderContext.expandAll === true,
+            expandAll,
             // Lookup statistics describe the first unfiltered result. Keep the
             // line on the All tab so a dictionary projection cannot attach the
             // original term's count to a different expression.
@@ -2387,38 +2475,28 @@
             tabList,
           }
         );
-        if (hasRendered) {
-          onResultsRendered(rendered);
-        }
-        hasRendered = true;
-        positionPopup();
       }
 
       function activateTabFromEvent(index, focusButton = false) {
         runRenderAction(() => ownsDisplayedPanel(panel, renderContext), renderContext, () => activateTab(index, focusButton));
       }
 
-      tabDescriptors.forEach((descriptor, index) => {
-        if (!tabList) {
-          return;
-        }
+      function createTabButton(descriptor) {
         const button = documentRef.createElement("button");
         button.type = "button";
-        button.id = `${idPrefix}-tab-${index}`;
+        button.id = `${idPrefix}-tab-${nextTabId++}`;
         button.className = "gsm-hoshidicts-tab";
         button.setAttribute("role", "tab");
         button.setAttribute("aria-controls", panel.id);
-        button.setAttribute("aria-selected", "false");
-        button.tabIndex = -1;
-        button.textContent = descriptor.label;
-        button.title = descriptor.title;
-        button.setAttribute("aria-label", descriptor.title);
         if (descriptor.groupId) button.dataset.groupId = descriptor.groupId;
         if (descriptor.dictionary) {
           button.dataset.dictionary = descriptor.dictionary;
         }
-        button.addEventListener("click", () => activateTabFromEvent(index));
+        if (descriptor.favourites) button.dataset.favourites = "true";
+        button.addEventListener("click", () => activateTabFromEvent(tabButtons.indexOf(button)));
         button.addEventListener("keydown", (event) => {
+          const index = tabButtons.indexOf(button);
+          if (index < 0) return;
           let nextIndex = null;
           if (event.key === "ArrowRight") {
             nextIndex = (index + 1) % tabButtons.length;
@@ -2435,9 +2513,41 @@
             activateTabFromEvent(nextIndex, true);
           }
         });
-        tabButtons.push(button);
-        tabList.appendChild(button);
-      });
+        return button;
+      }
+
+      function syncTabButtons(previousDescriptors = []) {
+        if (!tabList) return false;
+        const previous = new Map(previousDescriptors.map((descriptor, index) => [descriptor.key, tabButtons[index]]));
+        const focused = popup.getRootNode().activeElement;
+        const focusedKey = previousDescriptors[tabButtons.indexOf(focused)]?.key;
+        let changed = false;
+        tabButtons = tabDescriptors.map(descriptor => {
+          const button = previous.get(descriptor.key) || createTabButton(descriptor);
+          changed = updateLabel(button, descriptor.label) || changed;
+          button.title = descriptor.title;
+          button.setAttribute("aria-label", descriptor.title);
+          previous.delete(descriptor.key);
+          return button;
+        });
+        for (const button of previous.values()) { button.remove(); changed = true; }
+        // Move the other buttons around the focused one, never detach it.
+        let next = null;
+        for (let index = tabButtons.length - 1; index >= 0; index -= 1) {
+          const button = tabButtons[index];
+          if (button !== focused && (button.parentNode !== tabList || button.nextSibling !== next)) {
+            tabList.insertBefore(button, next);
+            changed = true;
+          }
+          next = button;
+        }
+        focusedIndex = focusedKey ? tabDescriptors.findIndex(tab => tab.key === focusedKey) : selectedIndex;
+        if (focusedIndex < 0) focusedIndex = selectedIndex;
+        if (hasRendered) updateTabState();
+        if (focusedKey && !tabButtons.includes(focused)) tabButtons[focusedIndex]?.focus();
+        return changed;
+      }
+      syncTabButtons();
 
       tabList?.addEventListener("wheel", (event) => {
         if (
@@ -2457,6 +2567,36 @@
       }, { passive: false });
 
       activateTab(selectedIndex);
+      currentPresentationUpdate = (context) => runRenderAction(
+        () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
+          const next = createDictionaryTabs(dictionaries, context);
+          const previous = tabDescriptors;
+          const selectedKey = previous[selectedIndex].key;
+          let index = next.tabs.findIndex(tab => tab.key === selectedKey);
+          if (index < 0) index = 0;
+          const sameMembers = sameTabMembers(previous[selectedIndex].dictionaries, next.tabs[index].dictionaries, dictionaries);
+          if (!sameMembers && (!ownsView() || !canProjectPresentation())) return false;
+          Object.assign(renderContext, context);
+          tabDescriptors = next.tabs;
+          dictionaryDisplayNames = next.dictionaryDisplayNames;
+          selectedIndex = index;
+          let changed = syncTabButtons(previous);
+          if (selectedKey !== tabDescriptors[index].key) {
+            renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
+          }
+          if (sameMembers) changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames) || changed;
+          else {
+            const focused = retainedFocus(true);
+            renderProjection(rendered.isExpanded());
+            if (focused && typeof focused !== "string") {
+              positionPopup();
+              restoreRetainedFocus(focused);
+            }
+            changed = true;
+          }
+          if (changed) scheduleMasonry();
+          return true;
+        });
       restoreRetainedFocus(focused);
       return rendered;
     }
@@ -2475,7 +2615,15 @@
       setSourceHighlightEnabled,
       setToolbarPosition,
       scheduleMasonry,
+      updateDictionaryPresentation(context) {
+        if (!currentPresentationUpdate) return;
+        pendingPresentation = context;
+        flushDictionaryPresentation();
+      },
+      flushDictionaryPresentation,
       destroy() {
+        currentPresentationUpdate = null;
+        pendingPresentation = null;
         hideImagePreview();
         renderRevision += 1;
         currentResultPanel = null;
@@ -2487,6 +2635,7 @@
         masonryObserver?.disconnect();
         windowRef.removeEventListener("resize", onWindowResize);
         popup.removeEventListener("scroll", onPopupScroll, true);
+        popup.removeEventListener("focusout", onPresentationFocusOut);
       },
     };
   }
@@ -2499,6 +2648,7 @@
     createPopupView,
     createSourceHighlighter,
     createTag,
+    normaliseDictionaryTab,
     extractCompactDefinitionSummary,
     formatCompactFrequencyNumber,
     formatFrequencyValue,

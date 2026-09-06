@@ -331,6 +331,53 @@ or adding a separate placement frame. A single pane also lays out and positions
 in one frame. Direct Note, image and navigation positioning remains synchronous;
 renderer destruction, retirement and teardown cancel their queued work.
 
+The live **Definition columns** preference defaults to one and supports integers
+one through four. Each glossary grid packs cards into its shortest column while
+retaining their DOM reading order. Changing columns schedules the existing
+owned layout batch for every visible pane; it does not invalidate lookups,
+replace the result DOM or close a Note draft.
+Cards include padding and borders in their assigned widths. The same resize
+observer watches each grid as well as its cards, so a newly narrowed popup can
+repack fixed-width cards. Each grid assigns all widths, measures the ordered
+card heights, then applies placement, avoiding a forced layout per card.
+Local projection disconnects the superseded panel's
+observations before registering its replacements; Show more retains current
+observations while adding the newly displayed entries.
+
+Term views offer All, each contributing dictionary in native result order, one
+aggregate Favourites tab, then nonempty saved groups in their stored order.
+Favourites still contribute when they also belong to a group. Tabs project the
+already-returned results without changing their order or sending a lookup;
+aliases label tabs while canonical dictionary titles and stable group IDs own
+their selections. Colliding labels are qualified without changing membership.
+Linked and clicked-kanji requests copy that selection from their source view.
+The destination retains it only when it contributes results, otherwise adopting
+All; a child's fallback or later selection never rewrites its parent or Back
+snapshot. Native kanji entries use the same membership resolver as term tabs.
+Content resolves saved group member IDs through the enabled package inventory
+using the shared D7 normalizer, including while a lookup reply is pending.
+
+Newer group, alias and favourite changes update the displayed view without
+invalidating its lookup token, media or styles. Keyed tab buttons keep their DOM
+identity and deliberate focus across renames and reordering. When the selected
+membership is unchanged, only labels change: glossary cards, expanded Details,
+metadata values, source highlights and Note controls remain mounted. Frequency
+and pitch aliases use their original per-result canonical title sets, including
+for results subsequently revealed by Show more.
+
+A changed or removed selection reprojects the same native results only while
+that request is still current and its content is unprotected. Open Note forms,
+pending appends, focused content and children (including their initial pending
+lookup) defer the latest presentation as one coherent tab row and projection.
+Child retirement, settled focus departure and Note close retry that update;
+real replacement renders discard it. Safe local projection preserves expansion
+and refreshes Note's projected-primary prefill. Native kanji uses its own
+original entries, never the prior term's Back snapshot. These local updates use
+the existing render-error boundary and owned masonry queue, not a new lookup.
+The content owner's normal request boundary also retires detached ancestors
+before a local projection can fill a child whose source link still exists in
+an obsolete parent popup.
+
 Dictionary revisions, generation, media and style transport remain shared. A
 changed accepted engine generation invalidates other level tokens, including
 when a restarted engine reports a lower number. A same-generation child leaves
@@ -632,10 +679,12 @@ scalar and retained only when the error frame fits. Dictionary state, groups,
 custom source, archives, and update messages are outside this options-only bound;
 canonical dictionary titles have no separate length cap.
 
-Dictionary-group normalization and controls live in `dictionary-groups.js`; the
-Settings entrypoint owns imports, package management, and the shared commit
-queue. Groups remain in `dictionaryState` so package removal and membership
-pruning are one compare-and-set transaction rather than two coordinated writes.
+`dictionary-group-state.js` shares pure name and membership rules. Settings
+projects normalized group names and known fields through `dictionary-groups.js`;
+worker commits prune members while preserving other group metadata. The Settings
+entrypoint owns imports, package management, and the shared commit queue. Groups
+remain in `dictionaryState` so package removal and membership pruning are one
+compare-and-set transaction rather than two coordinated writes.
 
 ## Runtime messages
 

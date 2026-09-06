@@ -20,6 +20,8 @@
   const HOST_TAG = "hachidori-host";
 
   const { DEFAULT_OPTIONS, clampOption, normaliseActivationKey, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
+  const { normaliseDictionaryGroups } = globalThis.HDDictionaryGroups;
+  const { normaliseDictionaryTab: normalizedDictionaryTab } = globalThis.HDPopup;
   const MODIFIER_PROPERTIES = new Map([
     ["Shift", "shiftKey"],
     ["Control", "ctrlKey"],
@@ -101,6 +103,7 @@
   let disposed = false;
   let options = { ...DEFAULT_OPTIONS };
   let dictionaries = [];
+  let dictionaryGroups = [];
   let nextRequestId = 0;
   let currentGeneration = -1;
 
@@ -191,6 +194,7 @@
     return {
       revision: Number.isInteger(state.revision) && state.revision >= 0 ? state.revision : 0,
       dictionaries: normalized,
+      groups: normaliseDictionaryGroups(state.groups, normalized),
     };
   }
 
@@ -219,6 +223,16 @@
         favorite: entry.favorite,
         ...(entry.displayName ? { displayName: entry.displayName } : {}),
       }));
+  }
+
+  function dictionaryTabGroups() {
+    const titles = new Map(dictionaries.filter((entry) => entry.enabled)
+      .map((entry) => [entry.id, entry.title]));
+    return dictionaryGroups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      dictionaries: group.dictionaryIds.filter((id) => titles.has(id)).map((id) => titles.get(id)),
+    }));
   }
 
   function selectedKanjiDictionaryCapability() {
@@ -1108,6 +1122,8 @@
     if (levels.length === 1) return;
     if (window.innerWidth <= POPUP_PADDING_PX * 2 || window.innerHeight <= POPUP_PADDING_PX * 2) {
       pruneLevels(1);
+      // Finish this placement before a newly unprotected view can reproject.
+      window.queueMicrotask(flushDictionaryPresentation);
       return;
     }
     const startDepth = Math.max(1, fromLevel.depth);
@@ -1245,7 +1261,7 @@
       appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
       appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
       document,
-      getPopupColumns: () => 1,
+      getPopupColumns: () => options.popupColumns,
       highlightName: HIGHLIGHT_NAME,
       idPrefix: level === rootLevel ? "hoshidicts" : `hoshidicts-${nextLevelId += 1}`,
       onAddCustomEntry: (entry) => appendCustomEntry(entry, level),
@@ -1258,6 +1274,9 @@
           return false;
         }
       },
+      canProjectDictionaryPresentation: () => !level.retired && !level.noteEditing
+        && level.pendingCustomAppends === 0 && levels.length === level.depth + 1
+        && requestCanRender(level.lookupToken, level.activeCandidate, level),
       parseTagList: window.HDGlossary.parseTagList,
       popup,
       positionPopup: () => positionPopup(level),
@@ -1335,6 +1354,7 @@
       if (!level.retired) {
         pruneLevels(level.depth);
         flushDeferredNotes();
+        flushDictionaryPresentation();
       }
       return;
     }
@@ -1407,7 +1427,11 @@
     const prune = () => {
       descendantTimer = null;
       if (!hasProtectedNote(depth) && (!pointerLevel || pointerLevel.depth < depth)
-          && !levels.slice(depth).some((child) => child.popup.contains(shadow.activeElement))) pruneLevels(depth);
+          && !levels.slice(depth).some((child) => child.popup.contains(shadow.activeElement))) {
+        pruneLevels(depth);
+        flushDeferredNotes();
+        flushDictionaryPresentation();
+      }
     };
     if (options.popupHideDelayMs === 0) prune();
     else descendantTimer = window.setTimeout(prune, options.popupHideDelayMs);
@@ -1430,6 +1454,7 @@
       // A redraw can remove the focused Note form. That is not departure
       // from the refreshed popup; wait until removal/focus transfer settles.
       if (target.isConnected && levels.some((level) => level.popup?.contains(target))) scheduleHide();
+      flushDictionaryPresentation();
     });
   }
 
@@ -1455,7 +1480,7 @@
       averageFrequency: false,
       definitionBlurState: "revealed",
       dictionaryPresentation: dictionaryPresentation(),
-      dictionaryTabGroups: [],
+      dictionaryTabGroups: dictionaryTabGroups(),
       generation: currentGeneration,
       hidePopupGrammarTags: false,
       onExternalLink({ url, active }) {
@@ -1540,14 +1565,13 @@
     focusKanjiLink(focusTarget, level);
   }
 
-  function normalizedDictionaryTab(value) {
-    if (typeof value?.dictionary === "string") {
-      return { dictionary: value.dictionary };
-    }
-    if (typeof value?.groupId === "string") {
-      return { groupId: value.groupId };
-    }
-    return null;
+  function dictionarySelectionContext(request) {
+    return {
+      selectedDictionaryTab: request?.selectedDictionaryTab ?? null,
+      onDictionaryTabSelected(selection) {
+        if (request) request.selectedDictionaryTab = normalizedDictionaryTab(selection);
+      },
+    };
   }
 
   function backRenderOptions(request, level = rootLevel) {
@@ -1591,10 +1615,7 @@
         isCurrentView: () => !disposed && !level.retired && level.currentViewRequest === request
           && (token === level.lookupToken || level.retainedView),
         onRenderError(error) { handleLookupFailure(token, error, level); },
-        selectedDictionaryTab: level.currentViewRequest?.selectedDictionaryTab ?? null,
-        onDictionaryTabSelected(selection) {
-          if (request) request.selectedDictionaryTab = normalizedDictionaryTab(selection);
-        },
+        ...dictionarySelectionContext(request),
       });
     } catch (error) {
       // A malformed result must cost one hover, not the whole content script.
@@ -1703,7 +1724,7 @@
       },
       previous: overrides.previous ?? null,
       returnFocus: overrides.returnFocus ?? null,
-      selectedDictionaryTab: null,
+      selectedDictionaryTab: normalizedDictionaryTab(overrides.selectedDictionaryTab),
     }, level);
   }
 
@@ -1739,7 +1760,10 @@
       sentence: anchor.textContent || "", sourceElements: [anchor], sourceDepth: level.depth,
       vertical: false,
     };
-    const promise = runLookup(child.activeCandidate, { primaryReading }, child);
+    const promise = runLookup(child.activeCandidate, {
+      primaryReading,
+      selectedDictionaryTab: level.currentViewRequest?.selectedDictionaryTab,
+    }, child);
     child.pendingLink = { promise, token: child.lookupToken };
     void promise.finally(() => { child.pendingLink = null; });
     return promise;
@@ -1811,7 +1835,12 @@
     pruneLevels(level.depth + 1);
     try {
       level.view.renderKanji({ ...kanji, entries }, candidate, {
-        dictionaryPresentation: dictionaryPresentation(),
+        ...renderContextFor(level),
+        isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken,
+        isCurrentView: () => !disposed && !level.retired && level.currentViewRequest === request
+          && (token === level.lookupToken || level.retainedView),
+        onRenderError(error) { handleLookupFailure(token, error, level); },
+        ...dictionarySelectionContext(request),
         highlightText: request.highlightText,
         ...backRenderOptions(request, level),
         ...replayOptions,
@@ -1841,7 +1870,7 @@
       kind: "kanji",
       previous: level.activeTermRender,
       returnFocus: kanjiLinkFocusTarget(sourceLink, character, level),
-      selectedDictionaryTab: null,
+      selectedDictionaryTab: normalizedDictionaryTab(level.currentViewRequest?.selectedDictionaryTab),
       termPayload: capability?.kind === "term"
         ? {
             dictionary: capability.title,
@@ -1887,6 +1916,7 @@
       const reply = await sendRequest("hd_custom_append", { entry });
       const adoption = adoptDictionaryState(reply.state);
       if (adoption.dictionaryChanged) invalidateStoredState(true);
+      else if (adoption.presentationChanged) updateDictionaryPresentation();
       if (
         expectedView !== null
         && !level.retired
@@ -1900,6 +1930,7 @@
     } finally {
       level.pendingCustomAppends -= 1;
       flushDeferredNotes();
+      flushDictionaryPresentation();
     }
   }
 
@@ -2288,19 +2319,38 @@
     if (level.noteEditing) {
       cancelCandidateScan();
       clearHideTimer();
-    } else flushDeferredNotes();
+    } else {
+      flushDeferredNotes();
+      flushDictionaryPresentation();
+    }
+  }
+
+  function updateDictionaryPresentation() {
+    const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups() };
+    for (const level of levels) {
+      if (level.popup && !level.popup.hidden) level.view.updateDictionaryPresentation(context);
+    }
+  }
+
+  function flushDictionaryPresentation() {
+    for (const level of levels) {
+      if (level.popup && !level.popup.hidden) level.view.flushDictionaryPresentation();
+    }
   }
 
   function adoptDictionaryState(stored) {
     const next = normalizeDictionaryState(stored);
     if (next.revision <= dictionaryStateRevision) {
-      return { adopted: false, dictionaryChanged: false };
+      return { adopted: false, dictionaryChanged: false, presentationChanged: false };
     }
-    const dictionaryChanged = !sameDictionaries(next.dictionaries, dictionaries);
-    if (dictionaryChanged && !sameDictionaryContents(next.dictionaries, dictionaries)) clearDictionaryResources();
+    const dictionaryChanged = !sameDictionaryContents(next.dictionaries, dictionaries);
+    const presentationChanged = !sameDictionaries(next.dictionaries, dictionaries)
+      || !sameDictionaries(next.groups, dictionaryGroups);
+    if (dictionaryChanged) clearDictionaryResources();
     dictionaryStateRevision = next.revision;
     dictionaries = next.dictionaries;
-    return { adopted: true, dictionaryChanged };
+    dictionaryGroups = next.groups;
+    return { adopted: true, dictionaryChanged, presentationChanged };
   }
 
   function onStorageChanged(changes, area) {
@@ -2310,18 +2360,23 @@
     let changed = false;
     const previousLevelCount = levels.length;
     let dictionaryChanged = false;
+    let presentationChanged = false;
     if (changes.options) {
       changed = adoptOptions(changes.options.newValue);
     }
     if (changes.dictionaryState) {
       const adoption = adoptDictionaryState(changes.dictionaryState.newValue);
       dictionaryChanged = adoption.dictionaryChanged;
+      presentationChanged = adoption.presentationChanged;
       changed ||= dictionaryChanged;
     }
     if (changed) {
       invalidateStoredState(dictionaryChanged);
+    } else if (presentationChanged) updateDictionaryPresentation();
+    if (levels.length < previousLevelCount) {
+      flushDeferredNotes();
+      flushDictionaryPresentation();
     }
-    if (levels.length < previousLevelCount) flushDeferredNotes();
   }
 
   function adoptOptions(stored) {
@@ -2336,6 +2391,7 @@
       || next.onlyScanJapaneseText !== options.onlyScanJapaneseText;
     const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
+    const columnsChanged = next.popupColumns !== options.popupColumns;
     if (activationChanged) {
       activationPressed = false;
       activationCode = null;
@@ -2343,6 +2399,11 @@
     optionsStorageRevision = revision;
     options = next;
     if (levels.length > options.popupNestingMaxDepth + 1) pruneLevels(options.popupNestingMaxDepth + 1);
+    if (columnsChanged && options.hoverEnabled) {
+      for (const level of levels) {
+        if (!level.popup?.hidden) level.view?.scheduleMasonry();
+      }
+    }
     if (!options.hoverEnabled) {
       selectionDragActive = false;
       lastPointer = null;
@@ -2383,7 +2444,7 @@
         changed ||= dictionaryChanged;
         if (changed) {
           invalidateStoredState(dictionaryChanged);
-        }
+        } else if (adoption.presentationChanged) updateDictionaryPresentation();
       });
     } catch {
       // Without storage access the defaults are still usable.

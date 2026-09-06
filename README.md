@@ -111,6 +111,18 @@ Selected dictionaries import one at a time, with an outcome retained for every a
 
 The kanji dictionary chooser accepts both traditional Yomitan kanji dictionaries and term dictionaries with single-kanji entries.
 
+Popup tabs show All, each contributing dictionary, Favourites, and your saved
+groups. They filter the returned definitions without another lookup. Renaming or
+reordering groups updates open readers; a Note draft or linked child keeps its
+current definitions until it is safe to apply changed membership. **Reading →
+Definition columns** lays out complete dictionary cards in one to four columns
+without replacing an open Note form.
+
+![Dictionary tabs with complete cards in two columns](docs/assets/dictionary-tabs-columns.png)
+
+[Reading controls, light theme](docs/assets/dictionary-tabs-settings-light.png) ·
+[Reading controls, dark theme](docs/assets/dictionary-tabs-settings-dark.png)
+
 Dictionary cross-reference links open beside their parent definition. Follow a
 chain without losing earlier entries; **Back** returns from kanji within the
 same pane, then closes that child. Each pane keeps its own Note draft. In

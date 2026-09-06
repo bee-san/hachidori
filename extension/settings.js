@@ -39,6 +39,7 @@ const NUMBER_FIELDS = [
   { key: "hoverDelayMs", id: "opt-hover-delay" },
   { key: "popupHideDelayMs", id: "opt-hide-delay" },
   { key: "popupNestingMaxDepth", id: "opt-popup-nesting-depth" },
+  { key: "popupColumns", id: "opt-popup-columns" },
 ];
 
 const numberFormat = new Intl.NumberFormat();

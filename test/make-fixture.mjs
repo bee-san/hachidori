@@ -546,6 +546,29 @@ export function nestedLinksFixture() {
   return { title, query, child, reading, grandchild, archive };
 }
 
+export function dictionaryTabsFixture() {
+  const nested = nestedLinksFixture();
+  const rootReading = 'れんさご';
+  const companions = [
+    ['dictionary-tabs-usage', [
+      { tag: 'p', content: 'Usage: a linked expression in running text.' },
+      { tag: 'p', content: '用例を読み、前後の文脈から言葉の意味を確かめる。' },
+    ]],
+    ['dictionary-tabs-examples', [
+      { tag: 'p', content: 'Examples in source order:' },
+      { tag: 'ol', content: [
+        '一つ目の例。', '二つ目の例は少し長く、使われる場面も示す。', '三つ目の例。',
+      ].map(content => ({ tag: 'li', content })) },
+    ]],
+    ['dictionary-tabs-reference', [
+      { tag: 'p', content: 'Reference: related meanings and usage.' },
+    ]],
+  ].map(([title, content]) => ({ title, archive: buildTitledZip(title, { terms: [
+    [nested.query, rootReading, '', '', 0, [{ type: 'structured-content', content: { tag: 'div', content } }], 1, ''],
+  ] }) }));
+  return { ...nested, rootReading, dictionaries: [{ title: nested.title, archive: nested.archive }, ...companions] };
+}
+
 export function frequencyRankingFixture() {
   const query = '頻度語';
   const readings = ['あ', 'い', 'う'];
