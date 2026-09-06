@@ -730,8 +730,8 @@
     if (disposed) {
       return;
     }
-    disposed = true;
     audio?.dispose();
+    disposed = true;
     cancelPopupLayout();
     clearDictionaryResources();
     window.clearTimeout(scanTimer);
@@ -750,6 +750,7 @@
     document.removeEventListener("mouseout", onMouseOut, true);
     window.removeEventListener("scroll", onScroll, true);
     window.removeEventListener("blur", onWindowBlur);
+    window.removeEventListener("pagehide", onPageHide);
     try {
       chrome.storage.onChanged.removeListener(onStorageChanged);
     } catch {
@@ -2330,6 +2331,12 @@
     }
   }
 
+  function onPageHide() {
+    // Navigation can destroy the content owner without blurring the tab.
+    // Retire while runtime messaging is alive; a BFCache return can reuse UI.
+    audio?.retire();
+  }
+
   function onScroll() {
     cancelCandidateScan();
     rootLevel.view?.hideImagePreview();
@@ -2550,6 +2557,7 @@
     document.addEventListener("keyup", onKeyUp, true);
     window.addEventListener("scroll", onScroll, observe);
     window.addEventListener("blur", onWindowBlur);
+    window.addEventListener("pagehide", onPageHide);
   }
 
   start();

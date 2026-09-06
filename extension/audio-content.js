@@ -59,6 +59,7 @@
         accept(reply);
       } catch (error) {
         if (active === operation && current(record)) {
+          if (type === "hd_audio_play" && selections.get(record.result) === fields.selection) selections.delete(record.result);
           record.status.textContent = `Could not play: ${error.message}`;
           if (menu?.record === record) menu.output.textContent = error.message;
         }
@@ -68,7 +69,7 @@
     }
 
     function play(record, selection = selections.get(record.result)) {
-      closeMenu(false);
+      closeMenu();
       return request(record, "hd_audio_play", selection ? { selection } : {}, reply => {
         record.status.textContent = reply.status === "success"
           ? `Played${reply.candidate?.name ? ` — ${reply.candidate.name}` : ""}.`
