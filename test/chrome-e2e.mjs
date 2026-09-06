@@ -1534,7 +1534,7 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
       && evidence.native.results[0].term.glossaries[0].glossary === JSON.stringify(fixture.leading), "E10 real native leading glossary");
     await settings.bringToFront();
     await editSettingsControls(settings, { "opt-compact-summary": true, "opt-summary-count": "2",
-      "opt-summary-dictionary": fixture.illustrated });
+      "opt-summary-dictionary": fixture.illustrated, "opt-max-results": "32" });
     for (const [id, value] of [["opt-summary-dictionary", ""], ["opt-summary-count", "4"]]) {
       // Hold the established input-before-change draft seam. The input seed is
       // synthetic; external CAS and Chrome's disable/blur behavior are native.
@@ -1631,7 +1631,8 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     if (worker) await clean(() => restoreMediaReplyProbe(worker));
     await clean(() => popup.dictionaryTabs("cleanup"));
     await clean(() => child.dictionaryTabs("cleanup"));
-    await clean(() => write({ showCompactDefinitionSummary: original.options.showCompactDefinitionSummary ?? false,
+    await clean(() => write({ maxResults: original.options.maxResults,
+      showCompactDefinitionSummary: original.options.showCompactDefinitionSummary ?? false,
       compactDefinitionSummaryCount: original.options.compactDefinitionSummaryCount ?? 3,
       compactDefinitionSummaryDictionary: original.options.compactDefinitionSummaryDictionary ?? "" }));
     for (const title of installed) await clean(async () => {
