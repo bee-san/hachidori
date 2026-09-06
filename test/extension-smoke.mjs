@@ -9794,8 +9794,6 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   const lateImage = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Late", glossary: JSON.stringify([
     "text before image", { type: "image", path: "media/kanji.png" },
   ]) }]);
-  const bulletSummary = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Bullets",
-    glossary: JSON.stringify([" • ".repeat(150000) + "first • second"]) }]);
   const nonImageLeads = [0, false, { type: "text", content: "prefix" },
     { type: "text", tag: "img", text: "prefix", path: "wrong.png" },
     { type: "structured-content", tag: "img", content: "prefix", path: "wrong.png" },
@@ -9804,15 +9802,20 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   ]) }]));
   const bulletText = ("first • first • second • " + "unused • ".repeat(50000)).trim();
   const longText = "長😀".repeat(50000);
-  sandbox.__summaryWork = { bulletText, longText, splitFragments: 0, codePoints: 0 };
+  sandbox.__summaryWork = { bulletText, longText, splitFragments: 0, codePoints: 0, emptyNormalizations: 0 };
   runInContext(`
     (() => {
       const split = String.prototype.split;
+      const replace = String.prototype.replace;
       const iterator = String.prototype[Symbol.iterator];
       String.prototype.split = function (...args) {
         const result = split.apply(this, args);
         if (String(this) === __summaryWork.bulletText) __summaryWork.splitFragments += result.length;
         return result;
+      };
+      String.prototype.replace = function (...args) {
+        if (String(this).trim() === "") __summaryWork.emptyNormalizations += 1;
+        return replace.apply(this, args);
       };
       String.prototype[Symbol.iterator] = function* () {
         const observed = String(this) === __summaryWork.longText;
@@ -9823,19 +9826,24 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       };
       globalThis.__restoreSummaryWork = () => {
         String.prototype.split = split;
+        String.prototype.replace = replace;
         String.prototype[Symbol.iterator] = iterator;
       };
     })();
   `, sandbox);
-  let boundedSummaryWork;
+  let boundedSummaryWork, bulletSummary;
   try {
+    bulletSummary = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Bullets",
+      glossary: JSON.stringify([" • ".repeat(150000) + "first • second"]) }]);
     const bullets = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Bullets", glossary: JSON.stringify([bulletText]) }], null, 2);
     const long = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Long", glossary: JSON.stringify([longText]) }], null, 1);
     boundedSummaryWork = JSON.stringify(bullets?.items) === JSON.stringify(["first", "second"])
       && long?.items[0] === "長😀".repeat(119) + "長…"
-      && sandbox.__summaryWork.splitFragments === 0 && sandbox.__summaryWork.codePoints <= 241;
+      && sandbox.__summaryWork.splitFragments === 0 && sandbox.__summaryWork.codePoints <= 241
+      && sandbox.__summaryWork.emptyNormalizations === 0;
   } finally { sandbox.__restoreSummaryWork(); }
-  const summaryWork = { splitFragments: sandbox.__summaryWork.splitFragments, codePoints: sandbox.__summaryWork.codePoints };
+  const summaryWork = { splitFragments: sandbox.__summaryWork.splitFragments, codePoints: sandbox.__summaryWork.codePoints,
+    emptyNormalizations: sandbox.__summaryWork.emptyNormalizations };
   delete sandbox.__summaryWork;
   delete sandbox.__restoreSummaryWork;
   check("compact summaries preserve ordered text, split nonempty bullets and select only a leading image without changing full glossaries",
