@@ -1073,6 +1073,7 @@ function renderOptions() {
   element("opt-hover-enabled").checked = options.hoverEnabled;
   element("opt-japanese-only").checked = options.onlyScanJapaneseText;
   element("opt-source-highlight").checked = options.sourceHighlightEnabled;
+  element("opt-audio-autoplay").checked = options.audioAutoplay;
   renderThemeChoices();
   renderCustomCss();
   const toolbar = element("opt-popup-toolbar");
@@ -2089,6 +2090,10 @@ function attachHandlers() {
   });
   element("opt-japanese-only").addEventListener("change", (event) => {
     options.onlyScanJapaneseText = event.target.checked;
+    writeOptions();
+  });
+  element("opt-audio-autoplay").addEventListener("change", (event) => {
+    options.audioAutoplay = event.target.checked;
     writeOptions();
   });
   element("opt-compact-summary").addEventListener("change", (event) => {
