@@ -180,9 +180,18 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     values.set(name, value);
     return value;
   }
-  return Object.fromEntries(await Promise.all(Object.entries(templates).map(async ([field, template]) => {
-    const markers = Object.fromEntries(await Promise.all([...new Set(ankiTemplateMarkerNames(template.value))]
-      .map(async name => [name, await valueFor(name)])));
-    return [field, renderAnkiTemplate(template.value, markers)];
-  })));
+  const pending = [];
+  const planned = Object.entries(templates).map(([field, template]) => {
+    const markers = {};
+    for (const name of new Set(ankiTemplateMarkerNames(template.value))) {
+      const value = valueFor(name);
+      if (value && typeof value.then === "function") pending.push(value.then(resolved => { markers[name] = resolved; }));
+      else markers[name] = value;
+    }
+    return { field, template, markers };
+  });
+  // Only glossary/resource values need asynchronous settlement. Ordinary text
+  // and frequency templates should not create a promise per field and marker.
+  if (pending.length) await Promise.all(pending);
+  return Object.fromEntries(planned.map(({ field, template, markers }) => [field, renderAnkiTemplate(template.value, markers)]));
 }
