@@ -934,6 +934,15 @@ async function popupReader(page, depth = 0) {
             pitch: this.querySelectorAll(".gsm-hoshidicts-tag-pitch").length,
             ruby: [...this.querySelectorAll(".gsm-hoshidicts-pitch-reading")].map(node => node.dataset.pitchDictionary),
             ipa: [...this.querySelectorAll(".gsm-hoshidicts-ipa-body")].map(node => node.textContent),
+            ipaFits: [...this.querySelectorAll(".gsm-hoshidicts-ipa-body")].every(node => {
+              const body = node.getBoundingClientRect();
+              const tag = node.parentNode.getBoundingClientRect();
+              const bounds = this.getBoundingClientRect();
+              return body.left >= tag.left - 1 && body.right <= tag.right + 1
+                && tag.left >= bounds.left - 1 && tag.right <= bounds.right + 1;
+            }),
+            ipaSourceEllipsized: [...this.querySelectorAll(".gsm-hoshidicts-ipa-source")]
+              .some(node => node.scrollWidth > node.clientWidth),
             grammar: this.querySelectorAll(".gsm-hoshidicts-primary-grammar-tag").length,
             definitionTags: this.querySelectorAll(".gsm-hoshidicts-definition-tags").length,
           },
@@ -2847,6 +2856,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
   const controls = ["opt-frequency-names", "opt-average-frequency", "opt-pitch-furigana",
     "opt-pitch-dictionary", "opt-pitch-badge", "opt-grammar-tags"];
   const original = await readSettingsControls(settings, controls);
+  const originalAlias = await settings.evaluate(async () => (await chrome.storage.local.get("dictionaryState"))
+    .dictionaryState.dictionaries.find(dictionary => dictionary.title === "hachidori-fixture").displayName || "");
   const originalViewport = settings.viewport();
   let worker;
   const evidence = [];
@@ -2906,16 +2917,25 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       await settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
       await (await settings.$("#lookup")).screenshot({ path: process.env.HACHIDORI_METADATA_SETTINGS_SCREENSHOT });
     }
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await tab.keyboard.press("Escape");
+    await setDictionaryAliasInSettings(settings, "hachidori-fixture", "PhoneticsWithoutSpaces".repeat(6));
+    await tab.bringToFront();
+    await hoverForPopup(tab, popup, "#verb");
+    const longSource = await expectMetadata(value => value.ipa.includes("tabeɾɯ") && value.ipaSourceEllipsized);
+    evidence.push(longSource.metadata.ipaFits);
   } finally {
     if (worker) await restoreMediaReplyProbe(worker);
     await editSettingsControls(settings, original);
+    await setDictionaryAliasInSettings(settings, "hachidori-fixture", originalAlias);
     await settings.setViewport(originalViewport);
     await tab.bringToFront();
     await tab.keyboard.press("Escape");
     await tab.keyboard.press("Escape");
   }
   check("Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
-    evidence.length === 3 && evidence.every(Boolean), JSON.stringify(evidence));
+    evidence.length === 4 && evidence.every(Boolean), JSON.stringify(evidence));
 }
 
 async function checkReaderActivation(settings, tab, popup) {

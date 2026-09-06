@@ -2135,18 +2135,29 @@ html[data-hoshidicts-theme="high-contrast"] .gsm-hoshidicts-audio-menu {
   padding: 3px 5px;
 }
 
-.gsm-hoshidicts-frequency-source {
+.gsm-hoshidicts-frequency-source,
+.gsm-hoshidicts-pitch-source,
+.gsm-hoshidicts-ipa-source {
+  min-width: 0;
   max-width: min(18ch, 42vw);
   overflow: hidden;
-  background: var(--hoshidicts-frequency);
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.gsm-hoshidicts-frequency-body {
+.gsm-hoshidicts-frequency-source {
+  background: var(--hoshidicts-frequency);
+}
+
+.gsm-hoshidicts-frequency-body,
+.gsm-hoshidicts-pitch-body,
+.gsm-hoshidicts-ipa-body {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.gsm-hoshidicts-frequency-body {
   background: color-mix(in srgb, var(--hoshidicts-frequency) 74%, transparent);
 }
 
@@ -2161,11 +2172,9 @@ html[data-hoshidicts-theme="high-contrast"] .gsm-hoshidicts-audio-menu {
 
 .gsm-hoshidicts-tag-ipa {
   display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
   gap: 0.4em;
-}
-
-.gsm-hoshidicts-ipa-source {
-  font-weight: 700;
 }
 
 .gsm-hoshidicts-ipa-overflow {
@@ -2194,17 +2203,10 @@ html[data-hoshidicts-theme="high-contrast"] .gsm-hoshidicts-audio-menu {
 }
 
 .gsm-hoshidicts-pitch-source {
-  max-width: min(18ch, 42vw);
-  overflow: hidden;
   background: var(--hoshidicts-pitch);
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .gsm-hoshidicts-pitch-body {
-  min-width: 0;
-  overflow-wrap: anywhere;
   background: color-mix(in srgb, var(--hoshidicts-pitch) 74%, transparent);
 }
 
