@@ -5230,8 +5230,30 @@ async function sourceHighlightFallbackCase(window) {
     second.clear();
     await frame();
     const retained = marks().length === 1 && marks()[0] === mark;
+    source.style.visibility = "hidden";
+    await frame();
+    await frame();
+    const hidden = marks().length === 0;
+    source.style.visibility = "visible";
+    await frame();
+    await frame();
+    const restored = marks().length === 1;
+    source.style.removeProperty("visibility");
     first.clear();
-    return exact && both && retained && shadow.childNodes.length === 0 && source.innerHTML === before.text
+    const cleaned = shadow.childNodes.length === 0;
+    const popup = document.createElement("div");
+    document.body.append(popup);
+    const view = window.HDPopup.createPopupView({ document, window, popup, sourceHighlightEnabled: true,
+      positionPopup() {} });
+    let documentRoot;
+    try {
+      view.renderKanji({ character: "食", entries: [] },
+        { sourceElements: [source], sentence: source.textContent, matchOffset: 1 });
+      await frame();
+      documentRoot = document.body.querySelectorAll(":scope > .gsm-hoshidicts-source-highlight-layer").length === 1;
+    } finally { view.destroy(); popup.remove(); }
+    return exact && both && retained && hidden && restored && cleaned && documentRoot
+      && !document.querySelector(".gsm-hoshidicts-source-highlight-layer") && source.innerHTML === before.text
       && source.className === before.className && window.getSelection().toString() === before.selection;
   } finally {
     highlighter.clearAll();

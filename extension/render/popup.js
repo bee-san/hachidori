@@ -594,15 +594,18 @@
         bounds = { left: clipX ? left : -Infinity, right: clipX ? left + element.clientWidth * sx : Infinity,
           top: clipY ? top : -Infinity, bottom: clipY ? top + element.clientHeight * sy : Infinity };
       }
-      cache.set(element, bounds);
-      return bounds;
+      const result = { bounds, invisible: style.opacity === "0" || style.contentVisibility === "hidden",
+        hiddenText: style.visibility === "hidden" || style.visibility === "collapse" };
+      cache.set(element, result);
+      return result;
     }
 
     function fragmentRects(fragment, cache, popups) {
       const source = fragment.startContainer.parentElement;
       let clip = { left: 0, top: 0, right: windowRef.innerWidth, bottom: windowRef.innerHeight };
       for (let ancestor = source; ancestor && clip; ancestor = ancestor.parentElement || ancestor.getRootNode().host) {
-        const bounds = clipBounds(ancestor, cache);
+        const { bounds, invisible, hiddenText } = clipBounds(ancestor, cache);
+        if (invisible || (ancestor === source && hiddenText)) return [];
         if (bounds) clip = intersectHighlightRect(clip, bounds);
       }
       if (!clip) return [];
@@ -1434,11 +1437,12 @@
     const maxMetadataTags = Number.isInteger(options.maxMetadataTags)
       ? Math.max(1, options.maxMetadataTags)
       : DEFAULT_MAX_METADATA_TAGS;
+    const popupRoot = popup.getRootNode();
     const sourceHighlighter = options.sourceHighlighter || createSourceHighlighter(
       windowRef,
       documentRef,
       options.highlightName || DEFAULT_HIGHLIGHT_NAME,
-      popup.getRootNode()
+      popupRoot instanceof windowRef.ShadowRoot ? popupRoot : documentRef.body
     );
     let definitionBlurState = "revealed";
     let sourceHighlightEnabled = options.sourceHighlightEnabled === true;
