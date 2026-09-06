@@ -4379,6 +4379,11 @@ async function main() {
   check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
     preview?.kanjiSource === true, JSON.stringify(preview));
   const frequencySettings = await settingsFrequencyStage();
+  const sourceHighlight = await sourceHighlightStage();
+  check("source highlighting reuses unchanged scoped ranges without traversing other owners",
+    sourceHighlight?.ownership === true, JSON.stringify(sourceHighlight));
+  check("source mutations rebuild only valid owners and clear stale or detached ranges without changing selection",
+    sourceHighlight?.mutations === true, JSON.stringify(sourceHighlight));
   check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
     frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
   check("Design resets only its shared appearance and content keys through one sparse options write",
@@ -5113,6 +5118,61 @@ async function settingsNavigationStage() {
     }
     return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details, design };
   } finally {
+    window.close();
+  }
+}
+
+async function sourceHighlightStage() {
+  const jsdom = await loadJsdom();
+  if (!jsdom) return null;
+  const dom = new jsdom.JSDOM('<p id="a">前<span>食べる</span>後</p><p id="b">読む。</p><p id="selection">Keep selection</p>', {
+    pretendToBeVisual: true, runScripts: "outside-only",
+  });
+  const { window } = dom;
+  const { document } = window;
+  window.CSS = { highlights: new Map() };
+  window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
+  window.eval(readFileSync(resolve(EXTENSION, "render/popup.js"), "utf8"));
+  const highlighter = window.HDPopup.createSourceHighlighter(window, document, "test-source");
+  const candidate = id => {
+    const element = document.getElementById(id);
+    return { sourceElements: [element], sentence: element.textContent, matchOffset: id === "a" ? 1 : 0 };
+  };
+  const visits = { a: 0, b: 0 };
+  const createWalker = document.createTreeWalker.bind(document);
+  document.createTreeWalker = (root, ...args) => {
+    visits[root.id] += 1;
+    return createWalker(root, ...args);
+  };
+  const ranges = () => [...(window.CSS.highlights.get("test-source") || [])];
+  const texts = () => ranges().map(range => range.toString()).join("|");
+  const settle = () => new Promise(done => window.setTimeout(done, 0));
+  try {
+    const a = highlighter.scope("a"), b = highlighter.scope("b");
+    const ca = candidate("a"), cb = candidate("b");
+    const unrelated = new window.Highlight();
+    window.CSS.highlights.set("page-owned", unrelated);
+    window.getSelection().selectAllChildren(document.getElementById("selection"));
+    a.apply(ca, "食べる");
+    const first = ranges()[0];
+    b.apply(cb, "読む");
+    b.apply(cb, "読む");
+    b.clear();
+    const ownership = ranges()[0] === first && texts() === "食べる" && visits.a === 1 && visits.b === 1;
+    b.apply(cb, "読む");
+    document.querySelector("#a span").replaceChildren(document.createTextNode("食べる"));
+    await settle();
+    const replacement = texts() === "食べる|読む" && ranges()[0] !== first && visits.a === 2 && visits.b === 2;
+    document.querySelector("#a span").firstChild.insertData(1, "別");
+    await settle();
+    const stale = texts() === "読む";
+    document.getElementById("b").remove();
+    await settle();
+    const mutations = replacement && stale && ranges().length === 0
+      && window.CSS.highlights.get("page-owned") === unrelated && window.getSelection().toString() === "Keep selection";
+    return { ownership, mutations, visits, replacement, stale };
+  } finally {
+    highlighter.clearAll();
     window.close();
   }
 }
