@@ -3360,10 +3360,10 @@ async function checkAnkiSubmission(settings, browser) {
   try {
     await configure(false);
     const request = await settings.evaluate(async () => {
-      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "食べる", maxResults: 4 });
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "漢字", maxResults: 4 });
       if (!reply.ok || !reply.results.length) throw new Error(reply.error || "No Anki fixture result");
-      return { ...reply.results[0], generation: reply.generation, sentence: "食べる。", matched: "食べる", matchOffset: 0,
-        popupSelectionText: "", searchQuery: "食べる", documentTitle: "Anki browser test", dictionaryAliases: {}, frequencyDictionaries: [] };
+      return { ...reply.results[0], generation: reply.generation, sentence: "漢字。", matched: "漢字", matchOffset: 0,
+        popupSelectionText: "", searchQuery: "漢字", documentTitle: "Anki browser test", dictionaryAliases: {}, frequencyDictionaries: [] };
     });
     request.configKey = (await operation("hd_anki_status")).configKey;
     const before = await operation("hd_anki_preflight", request);
@@ -3380,7 +3380,12 @@ async function checkAnkiSubmission(settings, browser) {
 
     await configure(true);
     request.configKey = (await operation("hd_anki_status")).configKey;
-    request.audioSelection = { sourceId: source.id, sourceKey: JSON.stringify(source), expression: request.term.expression,
+    const choices = await settings.evaluate(async term => {
+      const reply = await chrome.runtime.sendMessage({ target: "hachidori-audio", type: "hd_audio_candidates", term });
+      if (!reply.ok) throw new Error(reply.error);
+      return reply.groups;
+    }, { expression: request.term.expression, reading: request.term.reading });
+    request.audioSelection = { sourceId: source.id, sourceKey: choices[0].sourceKey, expression: request.term.expression,
       reading: request.term.reading, index: 1, ...chosen };
     const uploadsBefore = calls.filter(call => call.action === "storeMediaFile").length;
     await operation("hd_anki_preflight", request);
