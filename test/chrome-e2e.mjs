@@ -1535,6 +1535,23 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     await settings.bringToFront();
     await editSettingsControls(settings, { "opt-compact-summary": true, "opt-summary-count": "2",
       "opt-summary-dictionary": fixture.illustrated });
+    for (const [id, value] of [["opt-summary-dictionary", ""], ["opt-summary-count", "4"]]) {
+      // Hold the established input-before-change draft seam. The input seed is
+      // synthetic; external CAS and Chrome's disable/blur behavior are native.
+      await settings.$eval(`#${id}`, (control, value) => {
+        control.focus(); control.value = value; control.dispatchEvent(new Event("input", { bubbles: true }));
+      }, value);
+      await write({ showCompactDefinitionSummary: false });
+      await settings.waitForFunction(() => !document.getElementById("opt-compact-summary").checked);
+      require(await settings.$eval(`#${id}`, (control, value) => document.activeElement === control
+        && !control.disabled && control.value === value, value), `E10 external off discarded ${id} draft`);
+      await settings.$eval(`#${id}`, control => control.dispatchEvent(new Event("change", { bubbles: true })));
+      await settings.waitForFunction(() => document.getElementById("options-status").textContent.includes("Could not save"));
+      await settings.$eval(`#${id}`, control => control.blur());
+      await settings.click("#options-use-saved");
+      require(await settings.$eval(`#${id}`, control => control.disabled), `E10 ${id} did not disable after blur`);
+      await editSettingsControls(settings, { "opt-compact-summary": true });
+    }
     worker = await installMediaReplyProbe(browser);
     await show(fixture.query);
     await until(() => worker.evaluate(() => globalThis.__ownedMediaProbe.held.length), count => count === 1, "E10 shared held image");

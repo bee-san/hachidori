@@ -5067,18 +5067,33 @@ async function settingsFrequencyStage() {
     preferred.value = "Occurrence";
     preferred.dispatchEvent(new window.Event("input", { bubbles: true }));
     const summaryRevision = storedOptions.revision;
-    emitOptions({ compactDefinitionSummaryDictionary: "Unknown mode" });
-    const nativeSummaryDraft = preferred.value === "Occurrence";
+    emitOptions({ compactDefinitionSummaryDictionary: "Unknown mode", showCompactDefinitionSummary: false });
+    const nativeSummaryDraft = preferred.value === "Occurrence" && !preferred.disabled;
     preferred.dispatchEvent(new window.Event("change", { bubbles: true }));
     await until(() => status().includes("Could not save"));
     const summaryConflict = writes.at(-1).baseRevision === summaryRevision
       && writes.at(-1).options.compactDefinitionSummaryDictionary === "Occurrence";
     preferred.blur();
     window.document.getElementById("options-use-saved").click();
+    const disabledAfterBlur = preferred.disabled;
+    await summaryEdit(summaryToggle, true);
+    snippets.focus();
+    snippets.value = "4";
+    snippets.dispatchEvent(new window.Event("input", { bubbles: true }));
+    const countRevision = storedOptions.revision;
+    emitOptions({ showCompactDefinitionSummary: false });
+    const countDraft = snippets.value === "4" && !snippets.disabled;
+    snippets.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => status().includes("Could not save"));
+    const countConflict = writes.at(-1).baseRevision === countRevision && writes.at(-1).options.compactDefinitionSummaryCount === 4;
+    snippets.blur();
+    window.document.getElementById("options-use-saved").click();
     const summary = summaryDefault && focusedChoice && disabledKept && unavailableKept && offKept
-      && nativeSummaryDraft && summaryConflict && preferred.value === "Unknown mode" && snippets.value === "6";
+      && nativeSummaryDraft && summaryConflict && disabledAfterBlur && countDraft && countConflict
+      && snippets.disabled && preferred.value === "Unknown mode" && snippets.value === "6";
     return { explicit, availability, draft, writes, summary,
-      summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft, summaryConflict } };
+      summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
+        summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {
     window.close();
   }
