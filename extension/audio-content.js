@@ -9,6 +9,7 @@
   function setBusy(record, busy) {
     record.button.textContent = busy ? "Stop" : "Audio";
     record.button.setAttribute("aria-busy", String(busy));
+    record.button.setAttribute("aria-label", `${busy ? "Stop" : "Play"} pronunciation for ${record.term.expression}`);
   }
 
   function candidateLabel(candidate) {
