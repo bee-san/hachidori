@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createAudioPlayer } from "./audio-player.js";
-import { createAudioRepository } from "./audio-repository.js";
+import { createAudioRepository, selectedAudioPlan } from "./audio-repository.js";
 
 const TEST_TERM = { expression: "聞く", reading: "きく" };
 // Matches the reference Settings Test deadline; ordinary dictionary work never
@@ -8,8 +8,7 @@ const TEST_TERM = { expression: "聞く", reading: "きく" };
 const TEST_TIMEOUT_MS = 15_000;
 const FALLBACK_TIMEOUT_MS = 12_000;
 
-export function createAudioService(window) {
-  const repository = createAudioRepository({ window, fetch: window.fetch.bind(window), now: () => window.performance.now() });
+export function createAudioService(window, repository = createAudioRepository({ window, fetch: window.fetch.bind(window), now: () => window.performance.now() })) {
   const player = createAudioPlayer({ window, repository });
   let active = null;
   let watchingVoices = false;
@@ -48,20 +47,6 @@ export function createAudioService(window) {
     return { groups };
   }
 
-  async function selectedPlan(message, signal) {
-    const selection = message.selection;
-    const source = message.sources.find(source => source.id === selection.sourceId && JSON.stringify(source) === selection.sourceKey);
-    if (!source || selection.expression !== message.term.expression || selection.reading !== message.term.reading) {
-      throw new Error("This pronunciation selection is no longer current. Choose it again.");
-    }
-    const candidates = await repository.candidates(source, message.term, signal);
-    const candidate = candidates[selection.index];
-    if (!candidate || (candidate.url ?? null) !== selection.url || candidate.name !== selection.name) {
-      throw new Error("The provider's pronunciation choices changed. Choose again.");
-    }
-    return { sources: [source], candidate: { ...candidate, index: selection.index } };
-  }
-
   return async message => {
     if (message.type === "hd_audio_voices") return { voices: voices() };
     if (message.type === "hd_audio_stop") {
@@ -93,7 +78,8 @@ export function createAudioService(window) {
       if (isTest) return await player.play(message.source, TEST_TERM);
       const { signal } = operation.controller;
       if (message.type === "hd_audio_candidates") return await candidateGroups(message.sources, message.term, signal);
-      const plan = message.selection ? await selectedPlan(message, signal) : { sources: message.sources };
+      const plan = message.selection
+        ? await selectedAudioPlan(repository, message.sources, message.term, message.selection, signal) : { sources: message.sources };
       signal.throwIfAborted();
       return await player.playSources(plan.sources, message.term, { candidate: plan.candidate,
         onResolving: resumeDeadline,

@@ -2,6 +2,19 @@
 import { createAudioCache } from "./audio-cache.js";
 import { audioSourceUrl, parseAudioSourceList } from "./audio-sources.js";
 
+export async function selectedAudioPlan(repository, sources, term, selection, signal) {
+  const source = sources.find(source => source.id === selection.sourceId && JSON.stringify(source) === selection.sourceKey);
+  if (!source || selection.expression !== term.expression || selection.reading !== term.reading) {
+    throw new Error("This pronunciation selection is no longer current. Choose it again.");
+  }
+  const candidates = await repository.candidates(source, term, signal);
+  const candidate = candidates[selection.index];
+  if (!candidate || (candidate.url ?? null) !== selection.url || candidate.name !== selection.name) {
+    throw new Error("The provider's pronunciation choices changed. Choose again.");
+  }
+  return { sources: [source], candidate: { ...candidate, index: selection.index } };
+}
+
 export function createAudioRepository({ window, fetch, now = () => performance.now() }) {
   // GSM PR #549's retention budgets, not input or playback size limits.
   const candidates = createAudioCache({ maxEntries: 256, maxBytes: 2 * 1024 * 1024, ttlMs: 5 * 60_000, now });
@@ -43,11 +56,12 @@ export function createAudioRepository({ window, fetch, now = () => performance.n
       else {
         const blob = await (await response(candidate.url, signal)).blob();
         signal.throwIfAborted();
-        entry = { url: window.URL.createObjectURL(blob), users: 1, retained: false };
+        entry = { blob, url: window.URL.createObjectURL(blob), users: 1, retained: false };
         entry.retained = media.set(candidate.url, entry, blob.size + encoder.encode(candidate.url).byteLength);
       }
       return {
         url: entry.url,
+        blob: entry.blob,
         release() { entry.users -= 1; releaseUnused(entry); },
         invalidate() { if (media.get(candidate.url) === entry) media.delete(candidate.url); },
       };
