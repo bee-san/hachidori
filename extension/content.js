@@ -1353,7 +1353,10 @@
     mining.bind(rendered.miningActions, { ...context, getRequest: result => {
       const candidate = level.activeCandidate;
       const selection = shadow.getSelection?.() ?? window.getSelection();
-      return { ...result, generation: level.activeTermRender.generation, sentence: candidate.sentence,
+      const frequencyModes = new Map(dictionaries.map(item => [item.title, item.frequencyMode]));
+      const term = { ...result.term, frequencies: result.term.frequencies.map(group =>
+        ({ ...group, frequencyMode: frequencyModes.get(group.dictionary) })) };
+      return { ...result, term, generation: level.activeTermRender.generation, sentence: candidate.sentence,
         matchOffset: candidate.matchOffset, matched: result.matched || result.term.expression,
         searchQuery: request?.payload?.text ?? request?.termPayload?.text ?? candidate.query,
         popupSelectionText: selection?.anchorNode && level.popup.contains(selection.anchorNode) ? selection.toString() : "",
