@@ -38,22 +38,23 @@ test("all overwrite modes preserve empty values and defer audio-only fields unti
   assert.equal(overwriteAnkiFields({}, existing, templates)["coalesce-new"], "old");
 });
 
-test("preflight checks only the actual first field, distinguishes duplicates from invalid notes and bypasses disabled checks", async () => {
+test("preflight retains cloze fields while distinguishing duplicates from invalid notes and bypassing disabled checks", async () => {
   const calls = [];
   let result = [{ canAdd: false, error: "cannot create note because it is a duplicate" }];
   const invoke = async (action, params) => { calls.push({ action, params }); return result; };
-  const value = note();
-  const duplicate = await checkAnkiDuplicate(invoke, value, "Back", config());
+  const value = note({ fields: { Front: "猫", Back: "{{c1::cat}}" }, audio: [{ url: "https://example.com/audio" }] });
+  const duplicate = await checkAnkiDuplicate(invoke, value, config());
   assert.deepEqual(duplicate, { duplicate: true, addable: false, error: result[0].error });
   assert.equal(calls[0].action, "canAddNotesWithErrorDetail");
-  assert.deepEqual(calls[0].params.notes[0].fields, { Back: "cat" });
+  assert.deepEqual(calls[0].params.notes[0].fields, value.fields);
+  assert.equal(Object.hasOwn(calls[0].params.notes[0], "audio"), false);
   assert.equal(calls[0].params.notes[0].options.allowDuplicate, false);
   result = [{ canAdd: false, error: "cannot create note because it is empty" }];
-  assert.equal((await checkAnkiDuplicate(invoke, value, "Front", config())).duplicate, false);
+  assert.equal((await checkAnkiDuplicate(invoke, value, config())).duplicate, false);
   result = [];
-  await assert.rejects(checkAnkiDuplicate(invoke, value, "Front", config()), /invalid duplicate/u);
+  await assert.rejects(checkAnkiDuplicate(invoke, value, config()), /invalid duplicate/u);
   const before = calls.length;
-  assert.deepEqual(await checkAnkiDuplicate(invoke, value, "Front", config({ checkForDuplicates: false })),
+  assert.deepEqual(await checkAnkiDuplicate(invoke, value, config({ checkForDuplicates: false })),
     { duplicate: false, addable: true, error: null });
   assert.equal(calls.length, before);
 });
@@ -65,15 +66,16 @@ test("legacy duplicate checks fall back only for the documented unsupported acti
     if (action === "canAddNotesWithErrorDetail") throw new Error("unsupported action");
     return [params.notes[0].options.allowDuplicate];
   };
-  assert.equal((await checkAnkiDuplicate(invoke, note(), "Front", config())).duplicate, true);
+  assert.equal((await checkAnkiDuplicate(invoke, note(), config())).duplicate, true);
   assert.deepEqual(calls, ["canAddNotesWithErrorDetail", "canAddNotes", "canAddNotes"]);
-  await assert.rejects(checkAnkiDuplicate(async () => { throw new Error("offline"); }, note(), "Front", config()), /offline/u);
+  await assert.rejects(checkAnkiDuplicate(async () => { throw new Error("offline"); }, note(), config()), /offline/u);
 });
 
 test("overwrite target retains Anki order but requires the same model and authoritative card deck scope", async () => {
   const calls = [];
   const invoke = async (action, params) => {
     calls.push({ action, params });
+    if (action === "modelNamesAndIds") return { Basic: 123 };
     if (action === "findNotes") return [9, 8, 7, 6];
     if (action === "notesInfo") return [
       { noteId: 6, modelName: "Basic", fields: { Front: { value: "猫" } }, cards: [60] },
@@ -86,8 +88,25 @@ test("overwrite target retains Anki order but requires the same model and author
   };
   const exact = await findAnkiOverwriteTarget(invoke, note(), "Front", config({ duplicateScope: "deck", duplicateScopeCheckAllModels: true }));
   assert.deepEqual(exact, { noteId: 6, fields: { Front: "猫" } });
-  assert.deepEqual(calls.map(call => call.action), ["findNotes", "notesInfo", "cardsInfo"]);
-  assert.match(calls[0].params.query, /deck:Japanese\\:\\:Words/u);
+  assert.deepEqual(calls.map(call => call.action), ["modelNamesAndIds", "findNotes", "notesInfo", "cardsInfo"]);
+  assert.equal(calls[1].params.query, '"dupe:123,猫"');
   assert.equal((await findAnkiOverwriteTarget(invoke, note(), "Front", config({ duplicateScope: "deck-root" }))).noteId, 7);
   assert.equal((await findAnkiOverwriteTarget(invoke, note(), "Front", config())).noteId, 8);
+});
+
+test("overwrite queries use Anki's exact stripped-HTML duplicate identity, not case-insensitive field search", async () => {
+  for (const text of ["dog", "犬", 'literal *_,:"\\']) {
+    const query = `"dupe:123,${text.replace(/[\\"]/gu, "\\$&")}"`;
+    const invoke = async (action, params) => {
+      if (action === "modelNamesAndIds") return { Basic: 123 };
+      if (action === "findNotes") {
+        assert.equal(params.query, query);
+        return [2];
+      }
+      return [{ noteId: 2, modelName: "Basic", fields: { Front: { value: `<b>${text}</b>` } } }];
+    };
+    const target = await findAnkiOverwriteTarget(invoke, note({ fields: { Front: text } }), "Front", config());
+    assert.equal(target.noteId, 2);
+    assert.equal(target.fields.Front, `<b>${text}</b>`);
+  }
 });
