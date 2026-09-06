@@ -2454,7 +2454,7 @@
     if (levels.length > options.popupNestingMaxDepth + 1) pruneLevels(options.popupNestingMaxDepth + 1);
     // Masonry must measure the new inline width, not lay out the old width and
     // wait for ResizeObserver to correct every card in a second frame.
-    if ((sizeChanged || toolbarChanged || cssChanged) && options.hoverEnabled && rootLevel.popup && !rootLevel.popup.hidden) {
+    if ((sizeChanged || toolbarChanged) && options.hoverEnabled && rootLevel.popup && !rootLevel.popup.hidden) {
       positionPopup(rootLevel, toolbarChanged);
     }
     if ((columnsChanged || sizeChanged || cssChanged) && options.hoverEnabled) {

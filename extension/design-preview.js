@@ -149,7 +149,7 @@
     appearance.update(nextOptions);
     const cssChanged = customStyle.update(nextOptions.customPopupCss);
     options = { ...nextOptions };
-    if (geometryChanged || toolbarChanged || cssChanged) positionPopup(toolbarChanged);
+    if (geometryChanged || toolbarChanged) positionPopup(toolbarChanged);
     if (geometryChanged || cssChanged) view.scheduleMasonry();
     const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
