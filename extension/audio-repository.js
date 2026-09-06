@@ -21,6 +21,7 @@ export function createAudioRepository({ window, fetch, now = () => performance.n
 
   return {
     async candidates(source, term, signal) {
+      signal.throwIfAborted();
       const key = JSON.stringify([source, term.expression, term.reading]);
       const cached = candidates.get(key);
       if (cached) return cached;
@@ -36,6 +37,7 @@ export function createAudioRepository({ window, fetch, now = () => performance.n
       return found;
     },
     async acquire(candidate, signal) {
+      signal.throwIfAborted();
       let entry = media.get(candidate.url);
       if (entry) entry.users += 1;
       else {

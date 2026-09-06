@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Shared retention policy for candidate metadata and offscreen-owned media.
 // A value too large to retain is still usable by its caller, uncached.
-export function createAudioCache({ maxEntries, maxBytes, ttlMs, onEvict, now = Date.now }) {
+export function createAudioCache({ maxEntries, maxBytes, ttlMs, onEvict, now = () => performance.now() }) {
   const entries = new Map();
   let retainedBytes = 0;
 
