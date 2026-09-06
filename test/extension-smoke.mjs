@@ -11125,10 +11125,12 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
   document.body.appendChild(popup);
   let fills = 0;
   let rubyFills = 0;
+  let layouts = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby(...args) { rubyFills += 1; return HDGlossary.appendExpressionRuby(...args); },
     appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
+    queueMasonry() { layouts += 1; },
   });
   const results = [{ ...result, term: { ...result.term, pitches: [
     ...result.term.pitches, { dictionary: "IPA only", pitches: [], transcriptions: ["ipa-only", "second transcription"] },
@@ -11198,12 +11200,16 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
     overflow.open = true;
     await new Promise(resolve => setTimeout(resolve, 0));
     const tags = [...popup.querySelectorAll(".gsm-hoshidicts-tag-ipa")];
+    const beforeClose = layouts;
     overflow.open = false;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const afterClose = layouts;
     overflow.open = true;
     await new Promise(resolve => setTimeout(resolve, 0));
     check("IPA overflow is lazy and reveals every ordered transcription with current aliases only once",
       lazy && tags.length === 13 && tags.every((tag, index) => tag.textContent.includes(`transcription ${index} · second ${index}`))
         && tags[12].textContent.startsWith("Latest alias")
+        && afterClose > beforeClose && layouts > afterClose
         && tags.every((tag, index) => popup.querySelectorAll(".gsm-hoshidicts-tag-ipa")[index] === tag));
   } finally { view.destroy(); popup.remove(); }
 }

@@ -1839,8 +1839,8 @@
         body.className = "gsm-hoshidicts-metadata";
         overflow.append(summary, body);
         overflow.addEventListener("toggle", () => {
-          if (!overflow.open || body.hasChildNodes() || !isCurrent()) return;
-          appendTranscriptions(body);
+          if (!isCurrent()) return;
+          if (overflow.open && !body.hasChildNodes()) appendTranscriptions(body);
           onLayoutChange();
         });
         ipaRow.appendChild(overflow);
