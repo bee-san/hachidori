@@ -1801,7 +1801,8 @@
     function updateCompactSummary(headword, result, context, media) {
       const previous = headword.querySelector(".gsm-hoshidicts-compact-definition-summary");
       if (previous) {
-        hideImagePreview(previous.querySelector(".gloss-image-link"));
+        const imageLink = previous.querySelector(".gloss-image-link");
+        if (imageLink) hideImagePreview(imageLink);
         previous.remove();
       }
       if (context.showCompactDefinitionSummary !== true) return Boolean(previous);
@@ -2216,19 +2217,18 @@
       return { lookupStats,
         isExpanded: () => expanded,
         updateDictionaryPresentation(context, names) {
-          const summaryChanged = context.showCompactDefinitionSummary !== renderContext.showCompactDefinitionSummary
-            || context.compactDefinitionSummaryCount !== renderContext.compactDefinitionSummaryCount
-            || context.compactDefinitionSummaryDictionary !== renderContext.compactDefinitionSummaryDictionary;
+          const summaryChanged = ["showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary"]
+            .some(key => Object.hasOwn(context, key) && context[key] !== renderContext[key]) && isCurrent();
           Object.assign(renderContext, context);
           dictionaryDisplayNames = names;
           let changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);
-          if (summaryChanged && isCurrent()) {
+          if (summaryChanged) {
             changed = updateCompactSummary(primaryHeader.querySelector(".gsm-hoshidicts-headword"),
               results[0], renderContext, summaryMedia) || changed;
           }
           const entries = panel.querySelectorAll(":scope > .gsm-hoshidicts-entry");
           entries.forEach((entry, index) => {
-            if (index > 0 && summaryChanged && isCurrent()) {
+            if (index > 0 && summaryChanged) {
               changed = updateCompactSummary(entry.querySelector(".gsm-hoshidicts-headword"),
                 results[index], renderContext, summaryMedia) || changed;
             }
