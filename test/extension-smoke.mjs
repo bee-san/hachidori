@@ -5217,7 +5217,9 @@ async function sourceHighlightFallbackCase(window) {
   const host = document.createElement("div");
   const sibling = document.createElement("div");
   sibling.textContent = "spacer";
-  document.body.append(host, sibling);
+  const pageStyle = document.createElement("style");
+  pageStyle.textContent = ".page-cover { position: static; }";
+  document.body.append(host, sibling, pageStyle);
   const shadow = host.attachShadow({ mode: "open" });
   const highlighter = window.HDPopup.createSourceHighlighter(window, document, "test-fallback", shadow);
   const otherSource = document.getElementById("selection");
@@ -5281,6 +5283,10 @@ async function sourceHighlightFallbackCase(window) {
       () => { sibling.className = "new-selector-state"; },
       () => { sibling.append(document.createElement("div")); },
       () => { sibling.lastChild.remove(); },
+      () => { pageStyle.firstChild.data = ".page-cover { position: fixed; }"; },
+      () => { pageStyle.textContent = ".page-cover { position: sticky; }"; },
+      () => { sibling.dir = "auto"; },
+      () => { sibling.firstChild.data = "العربية"; },
     ]) {
       const beforeChange = coverScans;
       change();
@@ -5310,6 +5316,7 @@ async function sourceHighlightFallbackCase(window) {
     highlighter.clearAll();
     host.remove();
     sibling.remove();
+    pageStyle.remove();
   }
 }
 

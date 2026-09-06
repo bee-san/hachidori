@@ -755,7 +755,10 @@ not the page's main world, and reads the actual closed-shadow paint layer.
 Focused extension checks also cover moved shadow sources, view disposal,
 document-root renderer callers, pending geometry delivery, removal-only and
 unrelated-animation no-ops, unchanged-owner traversal counts and untouched
-page classes/selection. Geometry comes from real Chrome, not jsdom's stub rects.
+page classes/selection. Discovery counters distinguish ordinary text and owned
+shadow repaint from CSS membership changes, including stylesheets, empty text,
+automatic direction, attributes and element insertion/removal.
+Geometry comes from real Chrome, not jsdom's stub rects.
 It also recovers a selection drag when the button is released outside the
 document and no mouseup arrives, without scanning during a still-held drag.
 

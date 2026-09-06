@@ -852,8 +852,11 @@ covering later popup panes or the source pane's sticky toolbar. One shared
 fallback animation frame reads geometry before writing paint; scroll, resize,
 source layout changes, and existing popup placement callbacks refresh it.
 The fallback also subtracts page fixed/sticky headers, dialogs and popovers in
-the source's containing trees. Candidate discovery is cached until a layout
-invalidation; hit-testing at each intersecting box orders ordinary covers without
+the source's containing trees. Candidate discovery is cached separately from
+geometry: owned-shadow layout and non-empty page-text replacement repaint without
+rescanning the page. Element/attribute changes, stylesheet edits, empty-boundary
+changes and automatic text direction still invalidate membership. Hit-testing
+at each intersecting box orders ordinary covers without
 sampling every pixel. Cover borders are not clipped to their own scrollport, and
 fixed boxes escape intermediate overflow before their browser-reported containing
 block. This is a bounded fallback, not a general CSS paint-order implementation:

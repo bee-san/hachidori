@@ -576,10 +576,10 @@
     const motionRoots = new Set();
     const motionEvents = ["animationstart", "transitionrun", "pointerover", "pointerout", "focusin", "focusout"];
     const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
-    const needsGeometry = changes => changes.some(change => !layer.contains(change.target)
+    const affectsGeometry = change => !layer.contains(change.target)
       && (change.type === "attributes" || change.type === "characterData"
-        || [...change.addedNodes, ...change.removedNodes].some(node => node !== layer)));
-    const geometry = new windowRef.MutationObserver(changes => { if (needsGeometry(changes)) layoutChanged(); });
+        || [...change.addedNodes, ...change.removedNodes].some(node => node !== layer));
+    const geometry = new windowRef.MutationObserver(changes => { if (layoutMutations(changes)) schedule(); });
     windowRef.addEventListener("scroll", schedule, true);
     root.addEventListener("scroll", schedule, true);
     windowRef.addEventListener("resize", layoutChanged);
@@ -591,6 +591,31 @@
     function layoutChanged() {
       pageOccluders = null;
       schedule();
+    }
+
+    function changesCoverMembership(change) {
+      // Our shadow contents are excluded from the page catalogue. Their layout
+      // still matters, but cannot add a page header or change its selectors.
+      if (root instanceof windowRef.ShadowRoot && change.target.getRootNode() === root) return false;
+      const element = change.target.nodeType === 1 ? change.target : change.target.parentElement;
+      if (change.type === "attributes" || element?.localName === "style") return true;
+      // Text can change :dir() beneath automatic-direction elements even when
+      // both old and new values are non-empty.
+      if (element?.closest('[dir="auto" i], bdi')) return true;
+      if (change.type === "characterData") {
+        return change.target.nodeType === 3 && (change.oldValue === "") !== (change.target.data === "");
+      }
+      const added = [...change.addedNodes], removed = [...change.removedNodes];
+      if ([...added, ...removed].some(node => node.nodeType === 1)) return true;
+      const hasText = nodes => nodes.some(node => node.nodeType === 3 && node.data !== "");
+      // Non-empty text replacement leaves :empty/:has membership unchanged.
+      return hasText(added) !== hasText(removed);
+    }
+
+    function layoutMutations(changes) {
+      const relevant = changes.filter(affectsGeometry);
+      if (relevant.some(changesCoverMembership)) pageOccluders = null;
+      return relevant.length > 0;
     }
 
     function sourceMotion(event) {
@@ -636,7 +661,7 @@
       }
       layoutRoots = nextLayoutRoots;
       for (const target of layoutRoots) {
-        geometry.observe(target, { attributes: true, characterData: true, childList: true, subtree: true });
+        geometry.observe(target, { attributes: true, characterData: true, characterDataOldValue: true, childList: true, subtree: true });
       }
       for (const target of motionRoots) {
         if (!nextMotionRoots.has(target)) unwatchMotion(target);
@@ -779,8 +804,7 @@
     return {
       schedule,
       update(records) {
-        let dirty = needsGeometry(geometry.takeRecords());
-        if (dirty) pageOccluders = null;
+        let dirty = layoutMutations(geometry.takeRecords());
         const current = new Set(records);
         for (const [record, owner] of owners) {
           if (!current.has(record)) { owner.group.remove(); owners.delete(record); }
