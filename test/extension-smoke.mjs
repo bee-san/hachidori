@@ -3166,7 +3166,8 @@ async function main() {
     target: "hoshidicts-worker",
     type: "hd_options_write",
     baseRevision: (await storage.api().local.get("options")).options?.revision ?? 0,
-    options: { popupImageSource: { kind: "dictionary", title: communityTitle } },
+    options: { popupImageSource: { kind: "dictionary", title: communityTitle },
+      pitchAccentFuriganaDictionary: communityTitle },
   });
   remoteJson(communityIndexUrl, { revision: "community-3" });
   remoteArchive(
@@ -3218,6 +3219,7 @@ async function main() {
     statusFailureCommunity.id === community.id
       && statusFailureCommunity.title === renamedCommunityTitle
       && renamedImageOptions.popupImageSource?.title === renamedCommunityTitle
+      && renamedImageOptions.pitchAccentFuriganaDictionary === renamedCommunityTitle
       && renamedImageOptions.revision === selectedCommunityImage.options.revision + 1
       && staleImageSelection.conflict === true
       && staleImageSelection.options.popupImageSource?.title === renamedCommunityTitle,
@@ -4615,7 +4617,8 @@ async function main() {
     target: "hoshidicts-worker",
     type: "hd_options_write",
     baseRevision: (await storage.api().local.get("options")).options.revision,
-    options: { popupImageSource: { kind: "dictionary", title: FIXTURE_TITLE } },
+    options: { popupImageSource: { kind: "dictionary", title: FIXTURE_TITLE },
+      pitchAccentFuriganaDictionary: FIXTURE_TITLE },
   });
   storage.failNextSet("injected storage failure");
   const failedRemove = await request("hd_remove", { title: FIXTURE_TITLE });
@@ -4665,6 +4668,7 @@ async function main() {
   check(
     "removal atomically clears the selected image package and refuses a stale options write",
     optionsAfterRemove.popupImageSource === null
+      && optionsAfterRemove.pitchAccentFuriganaDictionary === ""
       && optionsAfterRemove.revision === selectedImageOptions.options.revision + 1
       && staleImageWrite.conflict === true
       && staleImageWrite.options.popupImageSource === null
