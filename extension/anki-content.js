@@ -159,7 +159,7 @@
       let group = owners.get(context.owner);
       if (group && group.request !== context.request) { retire(context.owner); group = null; }
       if (!group) { group = { ...context, records: [], epoch: 0, checking: false, queued: false }; owners.set(context.owner, group); }
-      Object.assign(group, context);
+      else Object.assign(group, context);
       const records = [...group.records];
       for (const item of items) {
         let record = bound.get(item.actions);
