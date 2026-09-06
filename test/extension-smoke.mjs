@@ -10280,12 +10280,24 @@ async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window
     view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true,
       compactDefinitionSummaryDictionary: "Absent", compactDefinitionSummaryCount: 2 });
     const previewKept = fullPreview?.isConnected === true;
+    view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true });
+    await new Promise(done => window.setTimeout(done, 0));
+    const focusedThumbnail = popup.querySelector(".gsm-hoshidicts-compact-definition-summary .gloss-image-link");
+    focusedThumbnail.focus();
+    view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3 });
+    const summaryFocusKept = document.activeElement === focusedThumbnail && focusedThumbnail.isConnected
+      && popup.querySelectorAll(".gsm-hoshidicts-compact-definition-summary li").length === 2;
+    focusedThumbnail.blur();
+    await new Promise(done => window.setTimeout(done, 0));
+    const summaryFlushed = popup.querySelectorAll(".gsm-hoshidicts-compact-definition-summary li").length === 3;
     check("live compact summaries preserve Note and cards while retiring only their own media and falling back within projected results",
       absent && live && retained && unchangedSummary && obsolete && oldImageUntouched && noLatePosition
         && fallbackText === "plain first" && fallback.dataset.hoshidictsDictionary === "Plain" && previewKept
+        && summaryFocusKept && summaryFlushed
         && JSON.stringify(projected) === original,
       JSON.stringify({ absent, live: Boolean(live), retained, unchangedSummary, obsolete, oldImageUntouched, noLatePosition,
-        fallback: fallback?.outerHTML, previewKept, mediaRequests: mediaRequests.map(({ isCurrent, ...query }) => query) }));
+        fallback: fallback?.outerHTML, previewKept, summaryFocusKept, summaryFlushed,
+        mediaRequests: mediaRequests.map(({ isCurrent, ...query }) => query) }));
   } finally {
     finishMedia(mediaUrl);
     view.destroy();
