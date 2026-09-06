@@ -968,12 +968,16 @@
       }
       return null;
     }
-    if (!isRecord(value)) return normalizeCompactDefinitionText(value) ? false : null;
+    if (!isRecord(value)) return value != null && String(value).trim() ? false : null;
     if (isIgnoredCompactDefinitionSection(value)) return null;
+    if (value.type === "structured-content" || value.type === "text") {
+      const content = value.type === "text" && Object.hasOwn(value, "text") ? value.text : value.content;
+      return leadingCompactDefinitionImage(content, state, depth + 1);
+    }
     const tag = String(value.tag || "").toLowerCase();
     if (value.type === "image" || tag === "img") return value;
     if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) return null;
-    return leadingCompactDefinitionImage(value.type === "text" ? value.text : value.content, state, depth + 1);
+    return leadingCompactDefinitionImage(value.content, state, depth + 1);
   }
 
   function extractCompactDefinitionSummary(
