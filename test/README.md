@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 334 checks, all of
+full request→reply round trip per contract-C message type. 335 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -373,6 +373,8 @@ What it proves, in order:
    stable-ID source rename/removal, numeric unit-separated harmonic averages,
    independent IPA and grammar, metadata-only storage updates, and focused ruby
    deferral without replacing Note, cards, definitions or unchanged metadata.
+   IPA overflow builds tags only on first expansion, preserves every ordered
+   transcription and uses the current source aliases.
    Compact-summary controls cover strict opt-in/count/source options, remembered
    unavailable sources, disabled-value retention and focused input drafts through
    an external off update. Renderer checks pin ordered bullet/semantic extraction,

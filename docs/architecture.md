@@ -242,6 +242,9 @@ Reading has independent controls for frequency source names and averages, pitch
 contour and its preferred dictionary, pitch badges, and grammar tags. Existing
 defaults keep source names, contour, badges and grammar visible; averages remain
 off. IPA transcriptions and definition tags remain visible independently.
+When IPA sources exceed the existing metadata display budget, a collapsed
+disclosure builds their tags on first expansion. Every ordered transcription
+remains available; this is lazy presentation, not a source or data limit.
 
 Averages retain GSM PR #549's floored harmonic mean, with two corrections for
 the standalone contract: arithmetic uses the native positive numeric value, not

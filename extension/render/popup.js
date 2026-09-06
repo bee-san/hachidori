@@ -1759,6 +1759,9 @@
         includePitch = true,
         averageFrequency = false,
         showFrequencyDictionaryNames = true,
+        imageContext,
+        isCurrent,
+        onLayoutChange,
       } = {}
     ) {
       const frequencyRow = documentRef.createElement("div");
@@ -1770,10 +1773,6 @@
       const ipaRow = documentRef.createElement("div");
       ipaRow.className = "gsm-hoshidicts-metadata gsm-hoshidicts-ipa-metadata";
       let frequencyCount = 0;
-      const pitchDictionaryDisplayNames = createDictionaryDisplayNames(
-        result.term.pitches.map(({ dictionary }) => dictionary),
-        dictionaryPresentation
-      );
       function updateFrequency(context) {
         const frequencyTags = includeFrequency ? createFrequencyTags(
           documentRef,
@@ -1820,14 +1819,32 @@
           }
         }
       }
-      for (const group of result.term.pitches) {
-        if (group.transcriptions.length > 0) {
+      const ipaGroups = result.term.pitches.filter(group => group.transcriptions.length > 0);
+      function appendTranscriptions(target) {
+        const names = createDictionaryDisplayNames(ipaGroups.map(({ dictionary }) => dictionary), imageContext.dictionaryPresentation);
+        for (const group of ipaGroups) {
           const body = group.transcriptions.join(" · ");
-          ipaRow.appendChild(createPronunciationTag(documentRef, group,
-            pitchDictionaryDisplayNames.get(group.dictionary) || group.dictionary,
+          target.appendChild(createPronunciationTag(documentRef, group, names.get(group.dictionary) || group.dictionary,
             body, `${group.dictionary}: ${body}`, "ipa"));
         }
       }
+      if (ipaGroups.length > maxMetadataTags) {
+        // Reuse the existing metadata display budget as a lazy threshold, not
+        // a data limit. Opening the disclosure still renders every source.
+        const overflow = documentRef.createElement("details");
+        overflow.className = "gsm-hoshidicts-ipa-overflow";
+        const summary = documentRef.createElement("summary");
+        summary.textContent = `Phonetic transcriptions (${ipaGroups.length})`;
+        const body = documentRef.createElement("div");
+        body.className = "gsm-hoshidicts-metadata";
+        overflow.append(summary, body);
+        overflow.addEventListener("toggle", () => {
+          if (!overflow.open || body.hasChildNodes() || !isCurrent()) return;
+          appendTranscriptions(body);
+          onLayoutChange();
+        });
+        ipaRow.appendChild(overflow);
+      } else appendTranscriptions(ipaRow);
       const context = { dictionaryPresentation, averageFrequency, showFrequencyDictionaryNames,
         showPitchAccentBadge: includePitch };
       updateFrequency(context);
@@ -2199,6 +2216,9 @@
             : [],
           {
             includeFrequency: resultIndex !== 0,
+            imageContext,
+            isCurrent: isCurrentLink,
+            onLayoutChange: scheduleMasonry,
             includePitch: renderContext.showPitchAccentBadge === true,
             averageFrequency: renderContext.averageFrequency === true,
             showFrequencyDictionaryNames:

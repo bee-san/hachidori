@@ -2168,6 +2168,16 @@ html[data-hoshidicts-theme="high-contrast"] .gsm-hoshidicts-audio-menu {
   font-weight: 700;
 }
 
+.gsm-hoshidicts-ipa-overflow {
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.gsm-hoshidicts-ipa-overflow > summary {
+  cursor: pointer;
+}
+
 .gsm-hoshidicts-tag-pitch {
   display: inline-flex;
   max-width: 100%;

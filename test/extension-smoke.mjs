@@ -11188,6 +11188,23 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
         && JSON.stringify(results) === original,
       JSON.stringify({ initialIpa: initialIpa.map(tag => tag.textContent), independent, preserved, noop,
         deferred, applied, fills, initialFills, rubyFills, appliedRuby }));
+    const many = { ...result, term: { ...result.term, pitches: Array.from({ length: 13 }, (_, index) => ({
+      dictionary: `Phonetic ${index}`, pitches: [], transcriptions: [`transcription ${index}`, `second ${index}`],
+    })) } };
+    view.renderResults([many], candidate, context);
+    const overflow = popup.querySelector(".gsm-hoshidicts-ipa-overflow");
+    const lazy = overflow && !overflow.open && !popup.querySelector(".gsm-hoshidicts-tag-ipa");
+    view.updateDictionaryPresentation({ ...context, dictionaryPresentation: [{ title: "Phonetic 12", displayName: "Latest alias" }] });
+    overflow.open = true;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const tags = [...popup.querySelectorAll(".gsm-hoshidicts-tag-ipa")];
+    overflow.open = false;
+    overflow.open = true;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    check("IPA overflow is lazy and reveals every ordered transcription with current aliases only once",
+      lazy && tags.length === 13 && tags.every((tag, index) => tag.textContent.includes(`transcription ${index} · second ${index}`))
+        && tags[12].textContent.startsWith("Latest alias")
+        && tags.every((tag, index) => popup.querySelectorAll(".gsm-hoshidicts-tag-ipa")[index] === tag));
   } finally { view.destroy(); popup.remove(); }
 }
 
