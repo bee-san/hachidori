@@ -5968,6 +5968,13 @@ async function settingsFrequencyStage() {
     await until(() => status() === "Saved.");
     audio &&= storedOptions.audioSources[0].url === urlText && !storedOptions.audioSources[0].enabled
       && storedOptions.audioSources[1].type === "text-to-speech-reading";
+    const audioObserver = new window.MutationObserver(() => {});
+    audioObserver.observe(window.document.getElementById("audio-source-list"), {
+      attributes: true, childList: true, characterData: true, subtree: true,
+    });
+    emitOptions({ popupTheme: "dark" });
+    audio &&= audioObserver.takeRecords().length === 0;
+    audioObserver.disconnect();
     url.focus();
     url.value += "&draft=1";
     url.dispatchEvent(new window.Event("input", { bubbles: true }));
