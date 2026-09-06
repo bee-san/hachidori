@@ -1,20 +1,95 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiAvailability } from "./anki.js";
-import { ankiFieldNames } from "./anki-templates.js";
+import { ankiFieldNames, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
 
 export function createAnkiSettingsController({ document, readConfig, editConfig, send }) {
-  const { ANKI_FIELDS } = document.defaultView.HDReaderOptions;
+  const { ANKI_FIELDS, ANKI_OVERWRITE_MODES } = document.defaultView.HDReaderOptions;
   const element = id => document.getElementById(id);
   const selects = new WeakMap();
   let discovery = null;
   let requestSequence = 0;
   let requestedKey = null;
   let loading = false;
+  const templateRows = new Map();
+  let nextTemplateId = 0;
   const connectionKey = config => JSON.stringify([config.model, config.apiKey]);
 
   function change(patch) {
     editConfig({ ...readConfig(), ...patch });
     render();
+  }
+
+  function currentFields() {
+    return discovery?.model === readConfig().model ? discovery.fields : [];
+  }
+
+  function materializeTemplates() {
+    const config = readConfig();
+    const resolved = resolveAnkiTemplates(config, currentFields());
+    return Object.fromEntries([...Object.entries(resolved.templates),
+      ...resolved.staleFields.map(field => [field, { ...config.fieldTemplates[field] }])]);
+  }
+
+  function editTemplate(field, patch) {
+    const templates = materializeTemplates();
+    templates[field] = { ...templates[field], ...patch };
+    change({ fieldTemplates: templates });
+  }
+
+  function createTemplateRow(field) {
+    const row = document.createElement("div");
+    row.className = "anki-template-row";
+    row.innerHTML = `<div class="anki-template-heading"><label class="field-label"></label><button type="button" class="ghost">Remove unavailable field</button></div>
+      <textarea rows="2" spellcheck="false" placeholder="Blank disables this field"></textarea>
+      <label class="anki-template-mode"><span>On overwrite</span><select></select></label>`;
+    const label = row.querySelector(".field-label"), editor = row.querySelector("textarea"), mode = row.querySelector("select");
+    editor.id = `opt-anki-template-${++nextTemplateId}`;
+    label.htmlFor = editor.id;
+    label.textContent = field;
+    mode.id = `${editor.id}-mode`;
+    mode.setAttribute("aria-label", `On overwrite: ${field}`);
+    const names = { coalesce: "Keep existing, fill empty", "coalesce-new": "Use new, keep if empty", skip: "Keep existing",
+      append: "Append", prepend: "Prepend", overwrite: "Replace" };
+    for (const value of ANKI_OVERWRITE_MODES) mode.add(new document.defaultView.Option(names[value], value));
+    editor.addEventListener("input", () => editTemplate(field, { value: editor.value }));
+    mode.addEventListener("change", () => editTemplate(field, { overwriteMode: mode.value }));
+    const remove = row.querySelector("button");
+    remove.addEventListener("click", () => {
+      const templates = materializeTemplates();
+      delete templates[field];
+      change({ fieldTemplates: templates });
+      element("opt-anki-advanced").focus();
+    });
+    return { row, label, editor, mode, remove };
+  }
+
+  function renderTemplates(config) {
+    const resolved = resolveAnkiTemplates(config, currentFields());
+    const templates = [...Object.entries(resolved.templates),
+      ...resolved.staleFields.map(field => [field, config.fieldTemplates[field]])];
+    const retained = new Set(templates.map(([field]) => field));
+    const advanced = config.fieldTemplates !== null;
+    for (const [field, row] of templateRows) {
+      if (!retained.has(field)) { row.row.remove(); templateRows.delete(field); }
+    }
+    const container = element("anki-templates");
+    let index = 0;
+    for (const [field, template] of templates) {
+      if (!templateRows.has(field)) templateRows.set(field, createTemplateRow(field));
+      const row = templateRows.get(field);
+      if (row.editor !== document.activeElement && row.editor.value !== template.value) row.editor.value = template.value;
+      if (row.mode !== document.activeElement && row.mode.value !== template.overwriteMode) row.mode.value = template.overwriteMode;
+      if (row.editor.readOnly === advanced) row.editor.readOnly = !advanced;
+      if (row.mode.disabled === advanced) row.mode.disabled = !advanced;
+      const unavailable = resolved.staleFields.includes(field);
+      if (row.remove.hidden === unavailable) row.remove.hidden = !unavailable;
+      if (container.children[index] !== row.row) container.insertBefore(row.row, container.children[index] || null);
+      index += 1;
+    }
+    if (element("anki-fields").hidden !== advanced) element("anki-fields").hidden = advanced;
+    element("opt-anki-advanced").checked = advanced;
+    const canApply = !loading && currentFields().length > 0;
+    if (element("anki-apply-preset").disabled === canApply) element("anki-apply-preset").disabled = !canApply;
   }
 
   function selectChoices(id, names, value, placeholder, canonical = "") {
@@ -48,6 +123,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     const sequence = ++requestSequence;
     loading = true;
     renderStatus(config);
+    element("anki-apply-preset").disabled = true;
     try {
       const reply = await send("hd_anki_discover", { model: config.model, apiKey: config.apiKey });
       if (sequence !== requestSequence || key !== connectionKey(readConfig())) return;
@@ -88,6 +164,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       if (control.disabled === config.checkForDuplicates) control.disabled = !config.checkForDuplicates;
     }
     renderStatus(config);
+    renderTemplates(config);
     if (connectionKey(config) !== requestedKey) void refresh();
   }
 
@@ -106,7 +183,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
   element("opt-anki-deck").addEventListener("change", event => change({ deck: event.target.value }));
   element("opt-anki-model").addEventListener("change", event => {
     if (event.target.value !== readConfig().model) change({ model: event.target.value,
-      fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])) });
+      fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])), fieldTemplates: null });
   });
   for (const [key, id] of controls) {
     element(id).addEventListener("change", event => {
@@ -116,5 +193,12 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
   }
   element("anki").addEventListener("focusout", () => queueMicrotask(render));
   element("anki-refresh").addEventListener("click", () => { void refresh(); });
+  element("anki-apply-preset").addEventListener("click", () => {
+    editConfig(applyAnkiPreset(readConfig(), currentFields(), element("anki-preset").value));
+    render();
+  });
+  element("opt-anki-advanced").addEventListener("change", event => {
+    change({ fieldTemplates: event.target.checked ? materializeTemplates() : null });
+  });
   return { render, refresh };
 }
