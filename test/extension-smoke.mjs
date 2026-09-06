@@ -1398,6 +1398,40 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const readerContext = createContext({});
     runInContext(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"), readerContext);
     const reader = readerContext.HDReaderOptions;
+    const appearanceDefaults = { popupTheme: "default", popupWidthPx: 560, popupHeightPx: 420,
+      popupOpacityPercent: 85, sourceHighlightEnabled: true };
+    const appearanceAccepted = [];
+    for (const [key, value] of Object.entries({ popupTheme: "miku", popupWidthPx: 1200, popupHeightPx: 200,
+      popupOpacityPercent: 0, sourceHighlightEnabled: false })) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ [key]: value }));
+      const repeated = await send(message({ [key]: value }, { baseRevision: 3 }));
+      appearanceAccepted.push(reply.ok === true && reply.options?.[key] === value
+        && reply.options.revision === 3 && repeated.options?.revision === 3);
+    }
+    const appearanceRejected = [];
+    for (const patch of [{ popupTheme: "unknown" }, { popupTheme: null }, { popupWidthPx: 279 },
+      { popupWidthPx: 1201 }, { popupHeightPx: 199 }, { popupHeightPx: 901 },
+      { popupOpacityPercent: -1 }, { popupOpacityPercent: 101 }, { popupOpacityPercent: 50.5 },
+      { popupWidthPx: "560" }, { sourceHighlightEnabled: "true" }]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message(patch));
+      appearanceRejected.push(reply.ok === false && await unchanged(saved));
+    }
+    const themes = reader.POPUP_THEME_GROUPS?.flatMap(group => group.themes) || [];
+    const cssThemes = new Set(["default", ...[...readFileSync(resolve(EXTENSION, "render/reader.css"), "utf8")
+      .matchAll(/data-hoshidicts-theme="([^"]+)"/gu)].map(match => match[1])]);
+    check("appearance preferences preserve audited defaults, ranges and strict idempotent CAS",
+      Object.entries(appearanceDefaults).every(([key, value]) => reader.normaliseOptions({})[key] === value)
+        && appearanceAccepted.every(Boolean) && appearanceRejected.every(Boolean),
+      JSON.stringify({ appearanceAccepted, appearanceRejected }));
+    check("the grouped 42-theme catalogue matches the production palettes and validates every ID",
+      themes.length === 42 && new Set(themes.map(theme => theme.id)).size === 42
+        && JSON.stringify(reader.POPUP_THEME_GROUPS?.map(group => group.themes.length)) === "[18,23,1]"
+        && themes.every(theme => cssThemes.has(theme.id) && typeof theme.label === "string"
+          && reader.validateOptionsPatch({ popupTheme: theme.id }).popupTheme === theme.id)
+        && reader.normaliseOptions({ popupTheme: "unknown" }).popupTheme === "default",
+      JSON.stringify({ themes, cssThemes: [...cssThemes] }));
     const metadataDefaults = {
       averageFrequency: false, showFrequencyDictionaryNames: true,
       showPitchAccentFurigana: true, pitchAccentFuriganaDictionary: "",
