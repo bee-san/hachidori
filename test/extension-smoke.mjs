@@ -9927,10 +9927,21 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   ].map(senses => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Mixed", glossary: JSON.stringify(senses) }])?.items);
   const brokenLines = [
     { tag: "p", content: ["first", { tag: "br" }, "second"] },
+    { tag: "p", content: ["first", { tag: "br", content: "not rendered" }, "second"] },
     { tag: "p", data: { content: "glossary" }, content: ["first", { tag: "br" }, "second"] },
     { tag: "ul", content: { tag: "li", content: ["first", { tag: "br" }, "second"] } },
   ].map(content => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Line breaks",
     glossary: JSON.stringify([{ type: "structured-content", content }]) }])?.items);
+  const phantomList = { tag: "ul", content: { tag: "li", content: "not rendered" } };
+  const renderedDispatch = [
+    ...["br", "img", "script", "button", "input", "source"].map(tag => [{ tag, content: phantomList }, "visible"]),
+    [{ type: "text", tag: "img", text: "visible", content: phantomList }],
+    [{ type: "text", tag: "br", text: "visible", content: phantomList }],
+    [{ type: "structured-content", tag: "img", content: "visible" }],
+  ].map(content => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Dispatch", glossary: JSON.stringify(content) }])?.items);
+  const imageAfterBreak = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Break image", glossary: JSON.stringify([
+    { tag: "br", content: "not rendered" }, { tag: "img", path: "leading.png" }, "visible",
+  ]) }]);
   check("compact summaries preserve ordered text, split nonempty bullets and select only a leading image without changing full glossaries",
     JSON.stringify(compact?.items) === JSON.stringify(["first", "second"])
       && compact?.dictionary === "Illustrated" && compact?.image?.path === "media/kanji.png"
@@ -9939,8 +9950,10 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       && nonImageLeads.every(summary => !summary?.image)
       && JSON.stringify(summaryGlossaries) === summaryBefore && boundedSummaryWork && streamedText
       && mixedSenses.every(items => JSON.stringify(items) === JSON.stringify(["first sense", "second sense"]))
-      && brokenLines.every(items => JSON.stringify(items) === JSON.stringify(["first second"])),
-    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText, mixedSenses, brokenLines }));
+      && brokenLines.every(items => JSON.stringify(items) === JSON.stringify(["first second"]))
+      && renderedDispatch.every(items => JSON.stringify(items) === JSON.stringify(["visible"]))
+      && imageAfterBreak?.image?.path === "leading.png",
+    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText, mixedSenses, brokenLines, renderedDispatch, imageAfterBreak }));
 
   const host = document.createElement("div");
   document.body.appendChild(host);
