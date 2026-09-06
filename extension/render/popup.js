@@ -1820,7 +1820,7 @@
         thumbnail.className = "gsm-hoshidicts-compact-definition-image";
         summary.appendChild(thumbnail);
         appendStructuredImage(documentRef, thumbnail, { ...compact.image,
-          preferredWidth: 36, preferredHeight: 36, sizeUnits: "px" }, {
+          preferredWidth: 36, preferredHeight: 36, sizeUnits: "px", collapsed: false }, {
           isCurrent: () => headword.contains(summary) && media.isCurrent(),
           onLayoutChange: media.onLayoutChange,
           requestImagePreview, refreshImagePreview, hideImagePreview,
