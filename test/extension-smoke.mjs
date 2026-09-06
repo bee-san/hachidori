@@ -1467,6 +1467,29 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && summaryDefaults.compactDefinitionSummaryDictionary === ""
         && summaryAccepted.every(Boolean) && summaryRejected.every(Boolean),
       JSON.stringify({ summaryDefaults, summaryAccepted, summaryRejected }));
+    const imageSources = [];
+    for (const source of [null, { kind: "dictionary", title: "Images: 日本語" }, { kind: "tabGroup", id: "group:media" }]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupImageSource: source && { ...source, ignored: true } }));
+      const noOp = await send(message({ popupImageSource: source }, { baseRevision: 3 }));
+      imageSources.push(reply.ok === true && reply.options?.revision === 3
+        && JSON.stringify(reply.options?.popupImageSource) === JSON.stringify(source)
+        && noOp.ok === true && noOp.options?.revision === 3);
+    }
+    const invalidImageSources = [];
+    for (const source of ["Images", 0, [], {}, { kind: "dictionary", title: "" },
+      { kind: "dictionary", title: 2 }, { kind: "tabGroup", id: "" },
+      { kind: "tabGroup", title: "group:media" }, { kind: "other", title: "Images" }]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupImageSource: source }));
+      invalidImageSources.push(reply.ok === false && await unchanged(saved));
+    }
+    check("popup images default to Automatic and preserve canonical dictionary or stable group selection through strict idempotent CAS",
+      reader.normaliseOptions({}).popupImageSource === null
+        && !Object.hasOwn(reader.projectStoredOptions({}), "popupImageSource")
+        && reader.normaliseOptions({ popupImageSource: { kind: "other" } }).popupImageSource === null
+        && imageSources.every(Boolean) && invalidImageSources.every(Boolean),
+      JSON.stringify({ imageSources, invalidImageSources }));
     const invalid = [
       { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
       { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { modifier: "meta" },
