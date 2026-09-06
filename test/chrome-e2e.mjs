@@ -3072,11 +3072,12 @@ async function checkAudioSettings(page, browser) {
     }
     const success = await testRow();
     await input(`${customRow} .audio-url`, "https://audio.example.test/empty");
+    const obsoleteCleared = await page.$eval(`${customRow} .audio-test-status`, output => output.textContent === "");
     const empty = await testRow();
     await input(`${customRow} .audio-url`, "https://audio.example.test/failure");
     const failure = await testRow();
     check("Audio source Tests use encoded URLs and ordered JSON candidates with visible success, no-result and error feedback",
-      success === "Played 聞く / きく — Playable." && empty === "No pronunciation was returned."
+      obsoleteCleared && success === "Played 聞く / きく — Playable." && empty === "No pronunciation was returned."
         && failure.includes("503") && [...routes.values()].every(route => route.requests === 1),
       JSON.stringify({ success, empty, failure, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
     await input(`${customRow} .audio-url`, template);
@@ -4913,7 +4914,7 @@ async function main() {
     const links = [...document.querySelectorAll(".settings-nav a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 7
+      && links.length === 8
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION");
   });
   const selectionActions = await page.evaluate(() => {
@@ -4979,7 +4980,7 @@ async function main() {
     await page.setViewport({ width, height: 900 });
     for (const theme of ["light", "dark"]) {
       await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
-      for (const section of ["dictionaries", "lookup", "design", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups"]) {
+      for (const section of ["dictionaries", "lookup", "design", "audio", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups"]) {
         await showSettingsSection(page, section);
         themeLayouts.push(await page.evaluate(({ theme, section }) => {
           const root = getComputedStyle(document.documentElement);
@@ -4996,7 +4997,7 @@ async function main() {
           };
           const panel = document.getElementById(section);
           const primary = {
-            dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns", "custom-dictionary": "custom-dictionary-open",
+            dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns", audio: "audio-source-add", "custom-dictionary": "custom-dictionary-open",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]

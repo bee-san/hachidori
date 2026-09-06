@@ -9,9 +9,14 @@ export function createAudioSettingsController({ document, readSources, editSourc
   let voiceVersion = 0;
   let active = null;
 
+  function labelControl(control, label) {
+    if (control.getAttribute("aria-label") !== label) control.setAttribute("aria-label", label);
+  }
+
   function setTesting(row, testing) {
-    row.test.textContent = testing ? "Stop" : "Test";
-    row.test.setAttribute("aria-label", `${testing ? "Stop Test" : "Test 聞く / きく"}: ${row.number.textContent.toLowerCase()}`);
+    const text = testing ? "Stop" : "Test";
+    if (row.test.textContent !== text) row.test.textContent = text;
+    labelControl(row.test, `${testing ? "Stop Test" : "Test 聞く / きく"}: ${row.number.textContent.toLowerCase()}`);
   }
 
   function stop() {
@@ -76,6 +81,8 @@ export function createAudioSettingsController({ document, readSources, editSourc
       row[name] = element.querySelector(`.audio-${name}`);
     }
     row.status = element.querySelector(".audio-test-status");
+    row.urlField = element.querySelector(".audio-url-field");
+    row.voiceField = element.querySelector(".audio-voice-field");
     for (const type of window.HDReaderOptions.AUDIO_SOURCE_TYPES) row.type.add(new window.Option(labels[type], type));
     for (const name of ["enabled", "type", "url", "voice"]) row[name].id = `opt-audio-${name}-${source.id}`;
     row.enabled.addEventListener("change", () => change(source.id, { enabled: row.enabled.checked }));
@@ -122,19 +129,20 @@ export function createAudioSettingsController({ document, readSources, editSourc
         row.status.textContent = "";
         row.testedSource = null;
       }
-      row.enabled.checked = source.enabled;
-      row.number.textContent = `Source ${index + 1}`;
+      if (row.enabled.checked !== source.enabled) row.enabled.checked = source.enabled;
+      const number = `Source ${index + 1}`;
+      if (row.number.textContent !== number) row.number.textContent = number;
       for (const key of ["type", "url"]) {
         if (row[key] !== document.activeElement && row[key].value !== source[key]) row[key].value = source[key];
       }
       const speech = source.type.startsWith("text-to-speech");
-      row.element.querySelector(".audio-url-field").hidden = speech;
-      row.element.querySelector(".audio-voice-field").hidden = !speech;
+      if (row.urlField.hidden !== speech) row.urlField.hidden = speech;
+      if (row.voiceField.hidden === speech) row.voiceField.hidden = !speech;
       if (speech) renderVoice(row, source);
-      row.up.disabled = index === 0;
-      row.down.disabled = index === sources.length - 1;
+      if (row.up.disabled !== (index === 0)) row.up.disabled = index === 0;
+      if (row.down.disabled !== (index === sources.length - 1)) row.down.disabled = index === sources.length - 1;
       for (const [key, label] of [["up", "Move up"], ["down", "Move down"], ["remove", "Remove"]]) {
-        row[key].setAttribute("aria-label", `${label}: source ${index + 1}`);
+        labelControl(row[key], `${label}: source ${index + 1}`);
       }
       setTesting(row, active?.id === source.id);
       return row.element;
@@ -147,7 +155,8 @@ export function createAudioSettingsController({ document, readSources, editSourc
         else if (row !== focused) list.append(row);
       });
     }
-    document.getElementById("audio-source-empty").hidden = sources.length > 0;
+    const empty = document.getElementById("audio-source-empty");
+    if (empty.hidden !== (sources.length > 0)) empty.hidden = sources.length > 0;
   }
 
   function adoptVoices(value) {
