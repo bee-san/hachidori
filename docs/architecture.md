@@ -638,10 +638,12 @@ scalar and retained only when the error frame fits. Dictionary state, groups,
 custom source, archives, and update messages are outside this options-only bound;
 canonical dictionary titles have no separate length cap.
 
-Dictionary-group normalization and controls live in `dictionary-groups.js`; the
-Settings entrypoint owns imports, package management, and the shared commit
-queue. Groups remain in `dictionaryState` so package removal and membership
-pruning are one compare-and-set transaction rather than two coordinated writes.
+`dictionary-group-state.js` shares pure name and membership rules. Settings
+projects normalized group names and known fields through `dictionary-groups.js`;
+worker commits prune members while preserving other group metadata. The Settings
+entrypoint owns imports, package management, and the shared commit queue. Groups
+remain in `dictionaryState` so package removal and membership pruning are one
+compare-and-set transaction rather than two coordinated writes.
 
 ## Runtime messages
 

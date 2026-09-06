@@ -361,8 +361,10 @@ What it proves, in order:
    selection, bulk state changes, every reorder path, queued moves, external
    selection pruning, alias-edit preservation, conflict rollback, the removal
    control barrier, global group naming and ordering, stable ordered memberships
-   and removal pruning, and a three-archive batch whose middle import fails
-   without stopping the last one.
+   and removal pruning. The shared group-state contract preserves normalized
+   names, disabled installed members, ordered deduplication, and worker metadata
+   without mutating its input. A three-archive batch verifies that a failed
+   middle import does not stop the last one.
    Frequency controls cover paired source/direction patches, explicit Auto,
    preserved manual choices, unavailable selections, and focused native drafts
    across newer options and capability changes. Alias writes retain frequency

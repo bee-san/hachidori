@@ -1,5 +1,6 @@
 import "./reader-options.js";
 import "./external-links.js";
+import "./dictionary-group-state.js";
 import {
   httpsUrl,
   MANAGED_DICTIONARY_CHANGED,
@@ -26,6 +27,7 @@ import {
 
 const { projectStoredOptions, validateOptionsPatch } = globalThis.HDReaderOptions;
 const { normaliseExternalUrl } = globalThis.HDExternalLinks;
+const { pruneGroupMemberships } = globalThis.HDDictionaryGroups;
 
 /*
  * Service worker for Hachidori.
@@ -217,24 +219,6 @@ function normaliseDictionarySelections(value, dictionaries) {
     }
   }
   return options;
-}
-
-function pruneGroupMemberships(value, dictionaries) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const installedIds = new Set(dictionaries.map((dictionary) => dictionary.id));
-  return value.map((group) => {
-    const seen = new Set();
-    const dictionaryIds = Array.isArray(group.dictionaryIds)
-      ? group.dictionaryIds.filter((id) => {
-        if (!installedIds.has(id) || seen.has(id)) return false;
-        seen.add(id);
-        return true;
-      })
-      : [];
-    return { ...group, dictionaryIds };
-  });
 }
 
 function assertDictionaryState(state) {
