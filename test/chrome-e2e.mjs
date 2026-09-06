@@ -224,6 +224,7 @@ const PLANNED = [
   "Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
   "Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
   "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
+  "Anki reader controls stay absent until configured and preserve raw ruby context through one confirmed Add and View",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
   "Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
   "Popup autoplay is optional and does not replay after presentation updates or Back",
