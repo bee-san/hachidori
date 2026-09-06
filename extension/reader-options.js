@@ -5,6 +5,12 @@
 (function () {
   "use strict";
 
+  const ANKI_FIELDS = ["expression", "reading", "definition", "sentence", "frequency", "pitch", "audio"];
+  const ANKI_DUPLICATE_SCOPES = ["collection", "deck", "deck-root"];
+  const ANKI_DUPLICATE_BEHAVIORS = ["prevent", "new", "overwrite"];
+  const DEFAULT_ANKI = { deck: "Default", model: "", apiKey: "", tags: ["hachidori"],
+    fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])), checkForDuplicates: true,
+    duplicateScope: "collection", duplicateScopeCheckAllModels: false, duplicateBehavior: "prevent" };
   const DEFAULT_OPTIONS = {
     scanLength: 16,
     maxResults: 32,
@@ -20,6 +26,7 @@
     customPopupCss: "",
     audioSources: [{ id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" }],
     audioAutoplay: false,
+    anki: DEFAULT_ANKI,
     popupWidthPx: 560,
     popupHeightPx: 420,
     popupOpacityPercent: 85,
@@ -100,6 +107,31 @@
     });
   }
 
+  function normaliseAnki(value) {
+    const source = value && typeof value === "object" ? value : {};
+    const result = { ...DEFAULT_ANKI };
+    for (const key of ["deck", "model", "apiKey", "checkForDuplicates", "duplicateScopeCheckAllModels"]) {
+      if (typeof source[key] === typeof DEFAULT_ANKI[key]) result[key] = source[key];
+    }
+    result.tags = Array.isArray(source.tags) ? source.tags.filter(tag => typeof tag === "string") : [...DEFAULT_ANKI.tags];
+    result.fields = Object.fromEntries(ANKI_FIELDS.map(key => [key,
+      typeof source.fields?.[key] === "string" ? source.fields[key] : ""]));
+    if (ANKI_DUPLICATE_SCOPES.includes(source.duplicateScope)) result.duplicateScope = source.duplicateScope;
+    if (ANKI_DUPLICATE_BEHAVIORS.includes(source.duplicateBehavior)) result.duplicateBehavior = source.duplicateBehavior;
+    return result;
+  }
+
+  function validAnki(value, normalized) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    return Object.entries(normalized).every(([key, expected]) => {
+      if (key === "fields") return value.fields && !Array.isArray(value.fields)
+        && ANKI_FIELDS.every(field => value.fields[field] === expected[field]);
+      if (key === "tags") return Array.isArray(value.tags) && value.tags.length === expected.length
+        && expected.every((tag, index) => value.tags[index] === tag);
+      return value[key] === expected;
+    });
+  }
+
   function normaliseActivationKey(value, fallback = DEFAULT_OPTIONS.activationKey) {
     if (value === " ") return "Space";
     return typeof value === "string" ? ACTIVATION_NAMES.get(value.toLowerCase()) ?? fallback : fallback;
@@ -145,6 +177,7 @@
       case "kanjiClickDictionary": return normaliseKanjiSelection(value);
       case "popupImageSource": return normalisePopupImageSource(value);
       case "audioSources": return normaliseAudioSources(value);
+      case "anki": return normaliseAnki(value);
       default: return typeof value === "string" ? value : "";
     }
   }
@@ -214,6 +247,7 @@
   }
 
   function isValidOptionField(key, raw, normalized) {
+    if (key === "anki") return validAnki(raw, normalized);
     if (key === "kanjiClickDictionary") return typeof raw === "string" || typeof normalized === "object";
     if (key === "popupImageSource") return raw === null || normalized !== null;
     if (key === "audioSources") return Array.isArray(raw) && raw.length === normalized.length
@@ -237,6 +271,7 @@
   }
 
   globalThis.HDReaderOptions = {
+    ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS,
     DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
