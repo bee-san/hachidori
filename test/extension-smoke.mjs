@@ -5294,6 +5294,31 @@ async function sourceHighlightFallbackCase(window) {
       await frame();
       discovery &&= coverScans === beforeChange + 1;
     }
+    const otherHost = document.createElement("div");
+    const otherShadow = otherHost.attachShadow({ mode: "open" });
+    const shadowSource = document.createElement("div");
+    shadowSource.textContent = "Keep";
+    otherShadow.append(shadowSource);
+    const sharedStyle = document.createElement("style");
+    sharedStyle.textContent = ".shared-cover { position: fixed; }";
+    document.body.append(otherHost, sharedStyle);
+    const adoptedBefore = document.adoptedStyleSheets;
+    document.adoptedStyleSheets = [pageStyle.sheet, sharedStyle.sheet];
+    otherShadow.adoptedStyleSheets = [pageStyle.sheet];
+    second.apply({ sourceElements: [shadowSource], sentence: "Keep", matchOffset: 0 }, "Keep");
+    await frame();
+    await frame();
+    const beforeSheetSwitch = coverScans;
+    // Both sheets were already visited in the document. Shared references must
+    // retain identity when an external source root changes its adopted list.
+    otherShadow.adoptedStyleSheets = [sharedStyle.sheet];
+    await new Promise(done => window.setTimeout(done, 350));
+    await frame();
+    discovery &&= coverScans === beforeSheetSwitch + 1;
+    second.clear();
+    document.adoptedStyleSheets = adoptedBefore;
+    otherHost.remove();
+    sharedStyle.remove();
     source.style.removeProperty("visibility");
     first.clear();
     const cleaned = shadow.childNodes.length === 0;
