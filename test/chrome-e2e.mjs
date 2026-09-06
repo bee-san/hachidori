@@ -221,6 +221,7 @@ const PLANNED = [
   "fallback source paint tracks CSS transitions and animated ancestors",
   "fallback source paint follows sibling layout changes inside fixed-size ancestors",
   "fallback source paint stays beneath page headers and overlays",
+  "fallback source paint refreshes after stylesheet loading and CSSOM edits",
   "editable controls preserve normal editing and suppress pointer and selection lookups",
   "Japanese-only preferences change automatic scanning in an already-open tab",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
