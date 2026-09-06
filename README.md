@@ -123,6 +123,11 @@ headword, with a small leading image when available. Choose a preferred
 dictionary or let the current tab supply the first available definition.
 Summaries are off by default; full definitions and lookup order are unchanged.
 
+![Compact snippets and a leading thumbnail above complete definitions](docs/assets/compact-definition-summary.png)
+
+[Compact summary controls, light theme](docs/assets/compact-summary-settings-light.png) ·
+[Compact summary controls, dark theme](docs/assets/compact-summary-settings-dark.png)
+
 ![Dictionary tabs with complete cards in two columns](docs/assets/dictionary-tabs-columns.png)
 
 [Reading controls, light theme](docs/assets/dictionary-tabs-settings-light.png) ·

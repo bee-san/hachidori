@@ -449,6 +449,12 @@ source control until focusout: Chrome would otherwise blur it synchronously and
 discard a pending input-before-change draft. That edit still uses its captured
 revision and surfaces a conflict normally; no second draft state is introduced.
 
+![Compact summary with its complete source definitions](assets/compact-definition-summary.png)
+
+[Reading controls in light](assets/compact-summary-settings-light.png) and
+[dark](assets/compact-summary-settings-dark.png) themes retain the native Settings
+layout and palette.
+
 ### Deinflection explanation
 
 Each eligible term header has a native, initially closed `details` disclosure.

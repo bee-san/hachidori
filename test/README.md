@@ -655,6 +655,8 @@ using newer summary options are included. Focused control drafts survive a real
 external off CAS and then surface their old-revision conflict; only the initial
 input-before-change seed is synthetic. `HACHIDORI_SUMMARY_SETTINGS_SCREENSHOT`
 and `HACHIDORI_SUMMARY_SETTINGS_DARK_SCREENSHOT` capture Reading in both themes.
+`HACHIDORI_SUMMARY_POPUP_SCREENSHOT` captures the summary beside the complete
+definitions after the shared leading image has loaded.
 
 The real browser also changes hover enablement and activation controls from
 Settings while the reading tab remains open. It proves close/re-enable without
