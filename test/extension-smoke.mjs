@@ -5063,10 +5063,12 @@ async function settingsNavigationStage() {
     const unseenCompletion = mirror.textContent === "Reading: Saved.";
     await navigate("lookup");
     await navigate("dictionaries");
-    let design = document.getElementById("design-preview") === null;
+    let design = document.getElementById("design-preview") === null
+      && document.getElementById("opt-popup-theme").options.length === 0;
     if (document.getElementById("design")) {
       await navigate("design");
       const preview = document.getElementById("design-preview");
+      design &&= document.getElementById("opt-popup-theme").options.length === 42;
       const updates = [];
       preview.contentWindow.HDDesignPreview = { update(value) { updates.push(structuredClone(value)); } };
       preview.dispatchEvent(new window.Event("load"));
@@ -5489,6 +5491,8 @@ async function settingsFrequencyStage() {
       metadata = metadataDetails.every(Boolean);
     }
     const theme = window.document.getElementById("opt-popup-theme");
+    window.location.hash = "#design";
+    await until(() => theme.options.length === 42);
     theme.focus();
     const previousTheme = theme.value;
     emitOptions({ popupTheme: "miku", popupWidthPx: 900, popupHeightPx: 700, popupOpacityPercent: 0,

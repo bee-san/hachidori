@@ -159,6 +159,7 @@ function showSettingsSection(focus = false) {
     if (element("options-feedback").parentElement !== slot) slot.append(element("options-feedback"));
   }
   for (const id of Object.keys(SECTION_STATUSES)) syncNavigationStatus(id);
+  renderThemeChoices();
   updateDesignPreview();
   if (fragment === "settings-content") element("settings-content").focus();
   else if (focus) element(activeSection).querySelector("h1").focus();
@@ -1017,16 +1018,8 @@ function renderKanjiChoices() {
   select.value = selectedValue;
 }
 
-function renderOptions() {
-  for (const field of NUMBER_FIELDS) {
-    const input = element(field.id);
-    if (input !== document.activeElement) {
-      input.value = String(options[field.key]);
-    }
-  }
-  element("opt-hover-enabled").checked = options.hoverEnabled;
-  element("opt-japanese-only").checked = options.onlyScanJapaneseText;
-  element("opt-source-highlight").checked = options.sourceHighlightEnabled;
+function renderThemeChoices() {
+  if (activeSection !== "design") return;
   const theme = element("opt-popup-theme");
   if (theme.options.length === 0) {
     for (const group of POPUP_THEME_GROUPS) {
@@ -1037,6 +1030,19 @@ function renderOptions() {
     }
   }
   if (theme !== document.activeElement) theme.value = options.popupTheme;
+}
+
+function renderOptions() {
+  for (const field of NUMBER_FIELDS) {
+    const input = element(field.id);
+    if (input !== document.activeElement) {
+      input.value = String(options[field.key]);
+    }
+  }
+  element("opt-hover-enabled").checked = options.hoverEnabled;
+  element("opt-japanese-only").checked = options.onlyScanJapaneseText;
+  element("opt-source-highlight").checked = options.sourceHighlightEnabled;
+  renderThemeChoices();
   const mode = element("opt-lookup-mode");
   if (mode !== document.activeElement) mode.value = options.lookupMode;
   const activation = element("opt-activation-key");
