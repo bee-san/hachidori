@@ -31,11 +31,13 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
   function renderStatus(config) {
     const status = element("anki-status");
     const errors = ankiAvailability(config, discovery);
-    status.textContent = loading ? "Checking AnkiConnect…" : [discovery?.connected
+    const message = loading ? "Checking AnkiConnect…" : [discovery?.connected
       ? errors.length ? "Connected · configuration needs attention" : "Connected · configuration ready"
       : "Not connected", ...errors].join("\n");
-    status.classList.toggle("is-error", !loading && errors.length > 0);
-    element("anki-refresh").disabled = loading;
+    if (status.textContent !== message) status.textContent = message;
+    const invalid = !loading && errors.length > 0;
+    if (status.classList.contains("is-error") !== invalid) status.classList.toggle("is-error", invalid);
+    if (element("anki-refresh").disabled !== loading) element("anki-refresh").disabled = loading;
   }
 
   async function refresh() {
@@ -81,7 +83,8 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       else control.value = key === "tags" ? config.tags.join(" ") : config[key];
     }
     for (const id of ["opt-anki-duplicate-scope", "opt-anki-duplicate-behavior", "opt-anki-check-all-models"]) {
-      element(id).disabled = !config.checkForDuplicates;
+      const control = element(id);
+      if (control.disabled === config.checkForDuplicates) control.disabled = !config.checkForDuplicates;
     }
     renderStatus(config);
     if (connectionKey(config) !== requestedKey) void refresh();

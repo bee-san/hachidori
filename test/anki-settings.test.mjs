@@ -49,6 +49,11 @@ test("lazy Anki Settings ignores A→B→A stale successes/errors and never writ
   assert.equal(f.sent.length, 3);
   assert.equal(f.edits.length, 0);
   assert.equal(f.el("anki-refresh").disabled, false);
+  const observer = new f.window.MutationObserver(() => {});
+  observer.observe(f.el("anki"), { subtree: true, childList: true, characterData: true, attributes: true });
+  f.controller.render();
+  assert.equal(observer.takeRecords().length, 0, "unchanged config must not repaint or repeat live status");
+  observer.disconnect();
 });
 
 test("refresh retains unavailable saved choices and focused drafts; explicit model edits reset mappings atomically", async t => {
