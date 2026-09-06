@@ -752,6 +752,9 @@ covers, both after forwards-filled completion and when paused midway.
 They include an effect started before the fallback and overlapping effects whose
 first completion must not retire the remaining position-changing effect. Paused
 source effects also repaint their final/base transform on finish or cancellation.
+Programmatic effects begin after the catalogue settles, without a CSS DOM start
+event: ancestor transforms and new position-changing covers must wake the
+fallback, and direct finish/cancel events repaint paused source effects.
 Removing covers restores the exact source paint; a box behind the source leaves
 it unchanged.
 Style-only checks settle an offscreen cover before CSSOM rule insertion,

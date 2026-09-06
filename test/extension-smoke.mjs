@@ -5256,8 +5256,9 @@ async function sourceHighlightFallbackCase(window) {
     await frame();
     await frame();
     const settledMotion = coverScans === beforeMotionEnd;
-    let animations = [{ playState: "paused", effect: { target: sibling,
-      getKeyframes: () => [{ position: "static" }, { position: "fixed" }] } }];
+    let animations = [Object.assign(new window.EventTarget(), { playState: "paused", playbackRate: 1, currentTime: 0,
+      effect: { target: sibling, getTiming: () => ({ duration: 1000 }),
+        getKeyframes: () => [{ position: "static" }, { position: "fixed" }] } })];
     sibling.getAnimations = () => animations;
     document.getAnimations = () => animations;
     sibling.dispatchEvent(new window.Event("animationstart", { bubbles: true }));

@@ -893,6 +893,14 @@ effects retain tracking until the last position-changing effect retires. Finishi
 or cancelling paused source motion still schedules geometry, while unchanged
 membership keeps the catalogue cached. Other unrelated page animations do not
 request paint. Animation queries precede paint writes.
+The same 250 ms fallback check discovers programmatic Web Animations, which emit
+no CSS DOM start event. It compares relevant effects' target, keyframes, timing,
+play state and paused time; unchanged effects do not repaint. Newly relevant
+effects wake the shared frame, and direct Animation finish/cancel listeners also
+handle paused effects. These listeners and snapshots are owned by the fallback
+and released on teardown. Programmatic discovery/seeking has the same bounded
+polling delay; native highlights still follow browser paint directly. Zero-rate
+effects do not keep the animation frame loop running.
 Unchanged owners retain their paint groups. Removing only an owner does not
 remeasure survivors or re-observe their resize targets; actual pane pruning still
 refreshes paint that may be uncovered. The last owner releases the layer,

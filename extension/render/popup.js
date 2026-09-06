@@ -579,6 +579,7 @@
     let watchedSheets = new Set();
     const styleMedia = new Map();
     let coverMotion = new WeakSet();
+    const animationWatches = new Map();
     const motionRoots = new Set();
     const motionStarts = ["animationstart", "transitionrun"];
     const motionEnds = ["animationend", "animationcancel", "transitionend", "transitioncancel"];
@@ -660,13 +661,14 @@
       }
     }
 
-    function checkStyleSheets() {
+    function checkLayoutState() {
       const next = stylesheetSnapshot();
       if (next.length !== stylesheetState.length || next.some((value, index) => value !== stylesheetState[index])) {
         stylesheetState = next;
         polledStyles = true;
         layoutChanged();
       }
+      refreshAnimations(readAnimations());
     }
 
     function stylesheetLoaded(event) {
@@ -711,14 +713,80 @@
       return isCoverPosition(style.position) || element.localName === "dialog" || element.hasAttribute("popover");
     }
 
-    function isCoverMotion(animation) {
+    function isCoverMotion(animation, frames = animation.effect.getKeyframes()) {
       return (animation.playState === "running" || animation.playState === "paused")
-        && animation.effect.getKeyframes().some(keyframe => isCoverPosition(keyframe.position));
+        && frames.some(keyframe => isCoverPosition(keyframe.position));
+    }
+
+    function isRunningMotion(animation) {
+      return animation.playState === "running" && animation.playbackRate !== 0;
+    }
+
+    function isMotionTarget(target) {
+      for (const [element, subtree] of motionTargets) {
+        if (element === target || (subtree && element.contains(target))) return true;
+      }
+      return false;
+    }
+
+    function readAnimations() {
+      const animations = new Set();
+      for (const tree of motionRoots) for (const animation of tree.getAnimations()) animations.add(animation);
+      return [...animations].filter(animation => motionRoots.has(animation.effect.target.getRootNode()))
+        .map(animation => ({ animation, effect: animation.effect, target: animation.effect.target,
+          frames: animation.effect.getKeyframes() }));
+    }
+
+    function unwatchAnimation(animation, record) {
+      animation.removeEventListener("finish", record.listener);
+      animation.removeEventListener("cancel", record.listener);
+      animationWatches.delete(animation);
+    }
+
+    function refreshAnimations(animations, discovering = false) {
+      const current = new Set();
+      for (const { animation, effect, target, frames } of animations) {
+        const cover = isPageElement(target) && frames.some(keyframe => isCoverPosition(keyframe.position));
+        if (!cover && !isMotionTarget(target)) continue;
+        current.add(animation);
+        let record = animationWatches.get(animation);
+        const structure = JSON.stringify([frames, effect.getTiming()]);
+        // Running frames already follow time. Paused/seeking/zero-rate effects
+        // need a wake when their time, timing or keyframes change without events.
+        const state = JSON.stringify([animation.playState, animation.playbackRate,
+          isRunningMotion(animation) ? null : animation.currentTime]);
+        const changed = !record || record.target !== target || record.effect !== effect
+          || record.structure !== structure || record.state !== state;
+        const membership = record?.cover !== cover || (cover && (!record || record.target !== target
+          || record.effect !== effect || record.structure !== structure));
+        if (!record) {
+          record = { listener() {
+            if (isPageElement(record.target) && coverMotionChanged(record.target, true)) layoutChanged();
+            else schedule();
+          } };
+          animation.addEventListener("finish", record.listener);
+          animation.addEventListener("cancel", record.listener);
+          animationWatches.set(animation, record);
+        }
+        Object.assign(record, { target, effect, cover, structure, state });
+        if (changed && !discovering) {
+          if (membership) layoutChanged();
+          else schedule();
+        }
+      }
+      for (const [animation, record] of animationWatches) {
+        if (current.has(animation)) continue;
+        unwatchAnimation(animation, record);
+        if (!discovering) {
+          if (record.cover && coverMotion.has(record.target)) layoutChanged();
+          else schedule();
+        }
+      }
     }
 
     function coverMotionChanged(target, ended) {
       const tracked = coverMotion.has(target);
-      const active = target.getAnimations().some(isCoverMotion);
+      const active = target.getAnimations().some(animation => isCoverMotion(animation));
       if (active) {
         coverMotion.add(target);
         return !tracked;
@@ -839,14 +907,14 @@
       if (pageOccluders === null) {
         pageOccluders = [];
         coverMotion = new WeakSet();
+        // Reuse one animation-list/keyframe read for discovery and listeners.
+        // Programmatic effects need listeners on Animation itself, not the DOM.
+        const animations = readAnimations();
+        for (const { animation, target, frames } of animations) {
+          if (isPageElement(target) && isCoverMotion(animation, frames)) coverMotion.add(target);
+        }
         for (const tree of layoutRoots) {
           if (tree === root && tree instanceof windowRef.ShadowRoot) continue;
-          // An animation may predate this fallback or its containing-tree
-          // observer. Query each tree once, not every element in its catalogue.
-          for (const animation of tree.getAnimations()) {
-            const target = animation.effect.target;
-            if (target.getRootNode() === tree && isPageElement(target) && isCoverMotion(animation)) coverMotion.add(target);
-          }
           for (const element of tree.querySelectorAll("*")) {
             if (!isPageElement(element)) continue;
             const style = windowRef.getComputedStyle(element);
@@ -860,6 +928,7 @@
           }
         }
         reconcileTargets();
+        refreshAnimations(animations, true);
         // CSSOM has no mutation event in the content-script world. A bounded
         // fallback-only poll reads stylesheet text, never page geometry, and
         // only a changed snapshot requests discovery/paint. Snapshot before
@@ -867,7 +936,7 @@
         if (!polledStyles) stylesheetState = stylesheetSnapshot();
         polledStyles = false;
         refreshStyleMedia();
-        stylesheetTimer ??= windowRef.setInterval(checkStyleSheets, 250);
+        stylesheetTimer ??= windowRef.setInterval(checkLayoutState, 250);
       }
       return pageOccluders.flatMap(element => {
         if (!isPageCover(element, clipBounds(element, cache).style)) return [];
@@ -920,7 +989,7 @@
       const plans = [...owners.values()].map(owner => ({ owner,
         rects: owner.fragments.flatMap(fragment => fragmentRects(fragment, cache, popups, page)) }));
       const moving = [...motionTargets].some(([target, subtree]) => target instanceof windowRef.Element
-        && target.getAnimations({ subtree }).some(animation => animation.playState === "running"));
+        && target.getAnimations({ subtree }).some(isRunningMotion));
       if (root.lastChild !== layer) root.appendChild(layer);
       for (const { owner, rects } of plans) {
         while (owner.group.children.length > rects.length) owner.group.lastChild.remove();
@@ -970,6 +1039,7 @@
         if (frame !== null) windowRef.cancelAnimationFrame(frame);
         if (stylesheetTimer !== null) windowRef.clearInterval(stylesheetTimer);
         for (const media of styleMedia.values()) media.removeEventListener("change", layoutChanged);
+        for (const [animation, record] of animationWatches) unwatchAnimation(animation, record);
         resize?.disconnect();
         geometry.disconnect();
         for (const target of motionRoots) unwatchMotion(target);
