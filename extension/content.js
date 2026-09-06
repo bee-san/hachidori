@@ -1110,7 +1110,13 @@
     return true;
   }
 
-  function positionPopup(fromLevel = rootLevel) {
+  function positionToolbar(level, placement, reset = false) {
+    const desired = window.HDPopup.resolveToolbarPosition(options.popupToolbarPosition, placement,
+      reset ? "top" : level.popup.dataset.toolbarPosition);
+    if (level.popup.dataset.toolbarPosition !== desired) level.view.setToolbarPosition(desired);
+  }
+
+  function positionPopup(fromLevel = rootLevel, resetToolbar = false) {
     if (fromLevel.retired || !rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
       return;
     }
@@ -1125,13 +1131,7 @@
         { height: window.innerHeight, width: window.innerWidth },
         rootLevel.activeCandidate.vertical
       );
-      // The toolbar sits on the edge nearest the word being read.
-      if (position.placement !== "beside") {
-        const desired = position.placement === "above" ? "bottom" : "top";
-        if (rootLevel.popup.dataset.toolbarPosition !== desired) {
-          rootLevel.view.setToolbarPosition(desired);
-        }
-      }
+      positionToolbar(rootLevel, position.placement, resetToolbar);
       rootLevel.popup.style.left = `${position.left}px`;
       rootLevel.popup.style.top = `${position.top}px`;
       rootLevel.popup.style.width = `${position.width}px`;
@@ -1152,6 +1152,7 @@
         hide(level);
         break;
       }
+      positionToolbar(level, "beside", resetToolbar);
       const anchorRect = anchorRectFor(level.activeCandidate);
       const width = Math.min(options.popupWidthPx, window.innerWidth - POPUP_PADDING_PX * 2);
       const height = Math.min(options.popupHeightPx, window.innerHeight - POPUP_PADDING_PX * 2);
@@ -1306,7 +1307,7 @@
       cancelMasonry: (layout) => cancelMasonry(level, layout),
       sourceHighlighter: level.highlighter,
       sourceHighlightEnabled: options.sourceHighlightEnabled,
-      toolbarPosition: "top",
+      toolbarPosition: window.HDPopup.resolveToolbarPosition(options.popupToolbarPosition),
       window,
     });
   }
@@ -2416,6 +2417,7 @@
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
     const columnsChanged = next.popupColumns !== options.popupColumns;
     const sizeChanged = next.popupWidthPx !== options.popupWidthPx || next.popupHeightPx !== options.popupHeightPx;
+    const toolbarChanged = next.popupToolbarPosition !== options.popupToolbarPosition;
     const highlightChanged = next.sourceHighlightEnabled !== options.sourceHighlightEnabled;
     const summaryChanged = next.showCompactDefinitionSummary !== options.showCompactDefinitionSummary
       || next.compactDefinitionSummaryCount !== options.compactDefinitionSummaryCount
@@ -2435,10 +2437,17 @@
     if (highlightChanged) {
       for (const level of levels) level.view?.setSourceHighlightEnabled(options.sourceHighlightEnabled);
     }
+    if (toolbarChanged) {
+      for (const level of levels) {
+        if (level.popup && (!options.hoverEnabled || level.popup.hidden)) positionToolbar(level, null, true);
+      }
+    }
     if (levels.length > options.popupNestingMaxDepth + 1) pruneLevels(options.popupNestingMaxDepth + 1);
     // Masonry must measure the new inline width, not lay out the old width and
     // wait for ResizeObserver to correct every card in a second frame.
-    if (sizeChanged && options.hoverEnabled && rootLevel.popup && !rootLevel.popup.hidden) positionPopup(rootLevel);
+    if ((sizeChanged || toolbarChanged) && options.hoverEnabled && rootLevel.popup && !rootLevel.popup.hidden) {
+      positionPopup(rootLevel, toolbarChanged);
+    }
     if ((columnsChanged || sizeChanged) && options.hoverEnabled) {
       for (const level of levels) {
         if (!level.popup?.hidden) level.view?.scheduleMasonry();

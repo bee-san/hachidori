@@ -53,6 +53,10 @@ const METADATA_FIELDS = [
   { key: "showPitchAccentBadge", id: "opt-pitch-badge" },
   { key: "hidePopupGrammarTags", id: "opt-grammar-tags", inverted: true },
 ];
+const APPEARANCE_CHOICES = [
+  { key: "popupTheme", id: "opt-popup-theme" },
+  { key: "popupToolbarPosition", id: "opt-popup-toolbar" },
+];
 
 const numberFormat = new Intl.NumberFormat();
 
@@ -1043,6 +1047,8 @@ function renderOptions() {
   element("opt-japanese-only").checked = options.onlyScanJapaneseText;
   element("opt-source-highlight").checked = options.sourceHighlightEnabled;
   renderThemeChoices();
+  const toolbar = element("opt-popup-toolbar");
+  if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
   const mode = element("opt-lookup-mode");
   if (mode !== document.activeElement) mode.value = options.lookupMode;
   const activation = element("opt-activation-key");
@@ -2013,10 +2019,12 @@ function attachHandlers() {
     options.hoverEnabled = event.target.checked;
     writeOptions();
   });
-  element("opt-popup-theme").addEventListener("change", (event) => {
-    options.popupTheme = event.target.value;
-    writeOptions();
-  });
+  for (const field of APPEARANCE_CHOICES) {
+    element(field.id).addEventListener("change", (event) => {
+      options[field.key] = event.target.value;
+      writeOptions();
+    });
+  }
   element("opt-source-highlight").addEventListener("change", (event) => {
     options.sourceHighlightEnabled = event.target.checked;
     writeOptions();
@@ -2107,7 +2115,8 @@ function attachHandlers() {
       if (event.target.id === "opt-image-source") renderPopupImageSources();
       if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
       if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
-      if (event.target.id === "opt-popup-theme") event.target.value = options.popupTheme;
+      const choice = APPEARANCE_CHOICES.find(({ id }) => id === event.target.id);
+      if (choice) event.target.value = options[choice.key];
       const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
       if (field) event.target.value = String(options[field.key]);
     });

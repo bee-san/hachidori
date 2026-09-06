@@ -101,15 +101,17 @@ discard it. Already-open readers accept only newer committed settings, without
 reloading dictionaries. [Lookup settings screenshot](docs/assets/lookup-settings.png).
 
 **Design** puts appearance controls beside a live sample of the real popup.
-Choose from 42 grouped themes, adjust opacity and popup size, and try columns,
+Choose from 42 grouped themes, adjust opacity, popup size and toolbar position, and try columns,
 compact summaries, clicked-kanji and image sources, frequency labels, pitch, tags,
 and source highlighting without importing a dictionary. **Scale to fit** keeps the sample in view;
 **Actual size** shows the popup at its normal size with scrolling when needed.
 The sample supports kanji/Back navigation, but its Note form never saves entries.
 The defaults are Hachidori's dark palette, 560 × 420 px, 85% background opacity,
-one column, and source highlighting on. **Reset Design to defaults** restores
+one column, Automatic toolbar placement, and source highlighting on. The toolbar
+normally stays near the word being read; choose **Top** or **Bottom** to keep a
+fixed edge, including in nested popups. **Reset Design to defaults** restores
 all Design controls without changing Reading preferences or your library.
-[Design preview screenshot](docs/assets/live-popup-appearance.png).
+[Design preview screenshot](docs/assets/popup-toolbar-settings.png).
 
 <p align="center">
   <picture>

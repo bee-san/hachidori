@@ -1398,6 +1398,23 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const readerContext = createContext({});
     runInContext(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"), readerContext);
     const reader = readerContext.HDReaderOptions;
+    const toolbarCases = [];
+    for (const value of ["auto", "top", "bottom"]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupToolbarPosition: value }));
+      const repeated = await send(message({ popupToolbarPosition: value }, { baseRevision: reply.options?.revision }));
+      toolbarCases.push(reply.ok === true && reply.options?.popupToolbarPosition === value
+        && repeated.options?.revision === reply.options.revision);
+    }
+    for (const value of ["left", "", null, 1]) {
+      await local.set({ options: saved.options });
+      toolbarCases.push((await send(message({ popupToolbarPosition: value }))).ok === false && await unchanged(saved));
+    }
+    check("toolbar preferences default to Automatic and accept only the three persisted idempotent choices",
+      reader.normaliseOptions({}).popupToolbarPosition === "auto"
+        && reader.normaliseOptions({ popupToolbarPosition: "left" }).popupToolbarPosition === "auto"
+        && reader.DESIGN_OPTION_KEYS.includes("popupToolbarPosition") && toolbarCases.every(Boolean),
+      JSON.stringify(toolbarCases));
     const appearanceDefaults = { popupTheme: "default", popupWidthPx: 560, popupHeightPx: 420,
       popupOpacityPercent: 85, sourceHighlightEnabled: true };
     const appearanceAccepted = [];
@@ -4362,6 +4379,8 @@ async function main() {
   check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
     preview?.kanjiSource === true, JSON.stringify(preview));
   const frequencySettings = await settingsFrequencyStage();
+  check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
+    frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
   check("Design resets only its shared appearance and content keys through one sparse options write",
     frequencySettings?.designReset === true, JSON.stringify(frequencySettings));
   check("Settings derives frequency direction only on dictionary selection or explicit Auto",
@@ -5493,6 +5512,24 @@ async function settingsFrequencyStage() {
     const theme = window.document.getElementById("opt-popup-theme");
     window.location.hash = "#design";
     await until(() => theme.options.length === 42);
+    const toolbarSelect = window.document.getElementById("opt-popup-toolbar");
+    await editControl(toolbarSelect, "bottom");
+    let toolbar = JSON.stringify(writes.at(-1).options) === JSON.stringify({ popupToolbarPosition: "bottom" });
+    emitOptions({ popupToolbarPosition: "top" });
+    toolbar &&= toolbarSelect.value === "top";
+    toolbarSelect.focus();
+    toolbarSelect.value = "bottom";
+    toolbarSelect.dispatchEvent(new window.Event("input", { bubbles: true }));
+    const toolbarRevision = storedOptions.revision;
+    emitOptions({ popupToolbarPosition: "auto" });
+    toolbar &&= toolbarSelect.value === "bottom";
+    toolbarSelect.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => status().includes("Could not save"));
+    toolbar &&= writes.at(-1).baseRevision === toolbarRevision && writes.at(-1).options.popupToolbarPosition === "bottom";
+    toolbarSelect.blur();
+    window.document.getElementById("options-use-saved").click();
+    toolbar &&= toolbarSelect.value === "auto";
+    emitOptions({ popupToolbarPosition: "bottom" });
     theme.focus();
     const previousTheme = theme.value;
     emitOptions({ popupTheme: "miku", popupWidthPx: 900, popupHeightPx: 700, popupOpacityPercent: 0,
@@ -5511,7 +5548,8 @@ async function settingsFrequencyStage() {
       && Object.keys(beforeReset).filter(key => key !== "revision" && !DESIGN_OPTION_KEYS.includes(key))
         .every(key => JSON.stringify(storedOptions[key]) === JSON.stringify(beforeReset[key]))
       && Object.keys(writes.at(-1).options).every(key => DESIGN_OPTION_KEYS.includes(key));
-    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset,
+    toolbar &&= toolbarSelect.value === "auto";
+    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset, toolbar,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {
@@ -7329,6 +7367,7 @@ async function contentNoteStage() {
     const renders = [];
 
     function createView(callbacks) {
+      callbacks.popup.dataset.toolbarPosition = callbacks.toolbarPosition;
       const record = {
         callbacks, editing: false, closeNext: false, closeCalls: 0,
         clearCount: 0, previewDismissals: 0, layoutSchedules: 0, renders: [],
@@ -7378,7 +7417,7 @@ async function contentNoteStage() {
         renderResults(results, candidate, context) {
           recordRender({ kind: "terms", results, candidate, context });
         },
-        setToolbarPosition() {},
+        setToolbarPosition(value) { callbacks.popup.dataset.toolbarPosition = value; },
       };
       popupRecords.set(callbacks.popup, record);
       return view;
@@ -8329,10 +8368,18 @@ async function contentNoteStage() {
       const resized = panes.every(({ popup }, depth) => popup.style.width === "640px"
         && popup.style.height === "500px" && harness.stats(depth).layoutWidth === "640px"
         && harness.stats(depth).layoutSchedules === 2);
+      let toolbar = true;
+      for (const edge of ["bottom", "top", "auto"]) {
+        harness.emitOptions({ popupColumns: 4, popupWidthPx: 640, popupHeightPx: 500, popupToolbarPosition: edge });
+        toolbar &&= panes.every(({ popup }, depth) => popup.dataset.toolbarPosition === (edge === "auto" ? "top" : edge)
+          && harness.stats(depth).layoutSchedules === 2);
+      }
       harness.emitOptions({ popupColumns: 4, popupWidthPx: 640, popupHeightPx: 500,
         popupTheme: "miku", popupOpacityPercent: 0, sourceHighlightEnabled: false });
       const host = panes[0].popup.getRootNode().host;
-      return { "live column preferences relayout each visible owner without lookup, retirement or Note loss": columns,
+      const results = { "live column preferences relayout each visible owner without lookup, retirement or Note loss": columns,
+        "live toolbar overrides update root and child without lookup, masonry or Note loss": toolbar
+          && harness.sent.length === sentBefore && harness.driver.snapshot(1).noteEditing,
         "live geometry precedes masonry while colour and highlight edits preserve every request and Note":
           resized && host.dataset.hoshidictsTheme === "miku"
           && host.style.getPropertyValue("--gsm-hoshidicts-popup-opacity") === "0%"
@@ -8340,6 +8387,11 @@ async function contentNoteStage() {
           && panes.every(({ request, context }, depth) => harness.stats(depth).layoutSchedules === 2
             && harness.stats(depth).highlightEnabled === false && harness.driver.viewRequest(depth) === request
             && context.isCurrentRequest()) };
+      harness.emitOptions({ popupToolbarPosition: "bottom" });
+      harness.emitOptions({ popupToolbarPosition: "auto", hoverEnabled: false });
+      results["live toolbar overrides update root and child without lookup, masonry or Note loss"] &&=
+        panes[0].popup.hidden && panes[0].popup.dataset.toolbarPosition === "top";
+      return results;
     } finally { harness.close(); }
   }
 
@@ -10434,6 +10486,12 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   }
   const HDGlossary = sandbox.HDGlossary ?? window.HDGlossary;
   const HDPopup = sandbox.HDPopup ?? window.HDPopup;
+  check("Automatic toolbar placement follows above/below while explicit edges win and side panes stay stable",
+    [
+      ["auto", "above", "top", "bottom"], ["auto", "below", "bottom", "top"],
+      ["auto", "beside", "bottom", "bottom"], ["auto", null, undefined, "top"],
+      ["top", "above", "bottom", "top"], ["bottom", "below", "top", "bottom"],
+    ].every(([preference, placement, current, expected]) => HDPopup.resolveToolbarPosition(preference, placement, current) === expected));
   check("render/glossary.js publishes HDGlossary", Boolean(HDGlossary), "HDGlossary was undefined");
   check("render/popup.js publishes HDPopup", Boolean(HDPopup), "HDPopup was undefined");
   if (!HDGlossary || !HDPopup) {
@@ -10901,14 +10959,30 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   focusedDefinition.value = "Keep this draft";
   focusedDefinition.focus();
   focusedDefinition.setSelectionRange(2, 6);
+  const focusRemovals = [];
+  let edgeBlurs = 0;
+  focusedDefinition.addEventListener("blur", () => { edgeBlurs += 1; });
+  const edgeObserver = new window.MutationObserver(() => {});
+  edgeObserver.observe(popup, { childList: true });
   view.setToolbarPosition("bottom");
+  focusRemovals.push(...edgeObserver.takeRecords().flatMap(record => [...record.removedNodes])
+    .filter(node => node.contains(focusedDefinition)));
   const retainedNoteFocus = shadow.activeElement === focusedDefinition
     && focusedDefinition.selectionStart === 2 && focusedDefinition.selectionEnd === 6;
   const focusedTab = popup.querySelector('[role="tab"][aria-selected="true"]');
   focusedTab.focus();
+  edgeBlurs = 0;
+  focusedTab.addEventListener("blur", () => { edgeBlurs += 1; });
   view.setToolbarPosition("top");
+  focusRemovals.push(...edgeObserver.takeRecords().flatMap(record => [...record.removedNodes])
+    .filter(node => node.contains(focusedTab)));
+  view.setToolbarPosition("top");
+  const sameEdgeUntouched = edgeObserver.takeRecords().length === 0;
+  edgeObserver.disconnect();
   check("toolbar edge changes preserve deliberate tab and Note focus with draft selection",
-    retainedNoteFocus && shadow.activeElement === focusedTab && focusedDefinition.value === "Keep this draft");
+    retainedNoteFocus && shadow.activeElement === focusedTab && focusedDefinition.value === "Keep this draft"
+      && focusRemovals.length === 0 && edgeBlurs === 0 && sameEdgeUntouched,
+    JSON.stringify({ removals: focusRemovals.length, edgeBlurs, sameEdgeUntouched }));
   focusedDefinition.value = "";
   const termInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-term");
   const readingInput = termNoteForm?.querySelector(".gsm-hoshidicts-note-reading");

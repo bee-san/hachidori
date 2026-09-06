@@ -1410,34 +1410,33 @@
     windowRef.addEventListener("resize", onWindowResize);
 
     function applyToolbarLayout() {
-      if (!currentToolbar) {
-        return;
-      }
+      if (!currentToolbar) return;
       const noteForm = currentNoteControls?.form ?? null;
+      const bottom = toolbarPosition === "bottom";
+      const atEdge = bottom ? popup.lastElementChild === currentToolbar
+        && (!noteForm || currentToolbar.previousElementSibling === noteForm)
+        : popup.firstElementChild === currentToolbar && (!noteForm || currentToolbar.nextElementSibling === noteForm);
+      if (atEdge) return;
       const focused = popup.getRootNode().activeElement;
-      // Only touch the DOM when the toolbar is not already in the desired
-      // place. A no-op reposition must never detach a focused control, which
-      // throws in jsdom and reorders under focus.
-      if (toolbarPosition === "bottom") {
-        if (
-          popup.lastElementChild !== currentToolbar
-          || (noteForm && currentToolbar.previousElementSibling !== noteForm)
-        ) {
-          if (noteForm) popup.append(noteForm, currentToolbar);
-          else popup.append(currentToolbar);
-        }
-      } else if (
-        popup.firstElementChild !== currentToolbar
-        || (noteForm && currentToolbar.nextElementSibling !== noteForm)
-      ) {
+      const children = [...popup.children];
+      const focusedOwner = children.find(child => child.contains(focused));
+      if (focusedOwner) {
+        // Move siblings around the focused subtree: removing and refocusing
+        // a tab, Note field or glossary link interrupts keyboard interaction.
+        const content = children.filter(child => child !== currentToolbar && child !== noteForm);
+        const controls = noteForm ? [currentToolbar, noteForm] : [currentToolbar];
+        const ordered = bottom ? [...content, ...controls.reverse()] : [...controls, ...content];
+        const focusIndex = ordered.indexOf(focusedOwner);
+        ordered.forEach((child, index) => {
+          if (index < focusIndex) popup.insertBefore(child, focusedOwner);
+          else if (index > focusIndex) popup.append(child);
+        });
+      } else if (bottom) {
+        if (noteForm) popup.append(noteForm, currentToolbar);
+        else popup.append(currentToolbar);
+      } else {
         if (noteForm) popup.prepend(currentToolbar, noteForm);
         else popup.prepend(currentToolbar);
-      }
-      // Moving the toolbar between edges can blur its descendants in Chrome.
-      // Keep deliberate tab/Note focus when resize changes the placement.
-      if (focused && popup.getRootNode().activeElement !== focused
-          && (currentToolbar.contains(focused) || noteForm?.contains(focused))) {
-        focused.focus({ preventScroll: true });
       }
     }
 
@@ -3066,8 +3065,17 @@
     };
   }
 
+  // Automatic follows horizontal root placement; side panes retain their edge.
+  function resolveToolbarPosition(preference, placement, current = "top") {
+    if (preference === "top" || preference === "bottom") return preference;
+    if (placement === "above") return "bottom";
+    if (placement === "below") return "top";
+    return current;
+  }
+
   return {
     createPopupAppearance,
+    resolveToolbarPosition,
     calculatePopupPosition,
     createDictionaryDisplayNames,
     createFrequencyTags,
