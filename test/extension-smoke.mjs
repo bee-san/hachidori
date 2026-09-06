@@ -9912,6 +9912,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     { content: ["pre", { tag: "div", content: " \r\n" }, "fix"], items: ["pre fix"] },
     { content: ["a".repeat(238), "\ud83d", "\ude00", "z"], items: ["a".repeat(238) + "😀z"] },
     { content: ["a".repeat(238), "\ud83d", "\ude00", "zq"], items: ["a".repeat(238) + "😀…"] },
+    { content: ["a".repeat(239) + "\ud83d", "\ude00z"], items: ["a".repeat(239) + "…"] },
     { content: ["a".repeat(240), " \r\n"], items: ["a".repeat(240)] },
     { content: [duplicate, " • ", duplicate, " • tail"], items: [duplicate, "tail"] },
   ].every(({ content, items }) => JSON.stringify(HDPopup.extractCompactDefinitionSummary([{ dictionary: "Stream",

@@ -375,7 +375,8 @@ What it proves, in order:
    lazy fragment production without per-empty-bullet normalization and bounded
    matching/normalization on long text, split Unicode pairs and raw block boundaries,
    duplicate skipping with a partially filled preview without per-character matcher
-   calls or per-point boundary checks, trailing-whitespace trimming, mixed
+   calls, per-point boundary checks or unnecessary point arrays,
+   trailing-whitespace trimming, mixed
    plain/structured top-level senses, shared fallback discovery and no empty-child
    block checks without losing a later useful sense,
    leading-image dispatch, no default-off summary, unchanged full definitions and

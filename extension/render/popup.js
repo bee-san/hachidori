@@ -764,64 +764,60 @@
     );
   }
 
-  function appendCompactDefinitionCharacter(characters, character) {
-    // Adjacent inline chunks can split one Unicode surrogate pair.
-    const previous = characters.at(-1);
-    if (previous?.length === 1 && previous.charCodeAt(0) >= 0xd800 && previous.charCodeAt(0) <= 0xdbff
-      && character.charCodeAt(0) >= 0xdc00 && character.charCodeAt(0) <= 0xdfff) {
-      characters[characters.length - 1] += character;
-    } else {
-      characters.push(character);
-    }
-  }
-
   function* compactDefinitionItemsFromText(parts) {
     const textRun = `[^\\s\\u2022]{1,${COMPACT_DEFINITION_MAX_CHARACTERS + 1}}`;
     const firstText = new RegExp(textRun, "gu");
     const nextText = new RegExp(`\\u2022|${textRun}`, "gu");
-    let characters = [];
+    const buffer = { text: "", characters: 0 };
     let pendingSpace = false;
     for (const text of parts) {
       let index = 0;
       while (index < text.length) {
-        const matcher = characters.length > 0 ? nextText : firstText;
+        const matcher = buffer.characters > 0 ? nextText : firstText;
         matcher.lastIndex = index;
         const match = matcher.exec(text);
         if (!match) {
-          pendingSpace = characters.length > 0;
+          pendingSpace = buffer.characters > 0;
           break;
         }
-        pendingSpace ||= characters.length > 0 && match.index > index;
+        pendingSpace ||= buffer.characters > 0 && match.index > index;
         index = matcher.lastIndex;
         if (match[0] === "\u2022") {
-          yield characters.join("");
-          characters = [];
+          yield buffer.text;
+          buffer.text = "";
+          buffer.characters = 0;
           pendingSpace = false;
           continue;
         }
-        if (pendingSpace) characters.push(" ");
+        if (pendingSpace) {
+          buffer.text += " ";
+          buffer.characters += 1;
+        }
         pendingSpace = false;
-        if (characters.length <= COMPACT_DEFINITION_MAX_CHARACTERS) {
-          appendCompactDefinitionText(characters, match[0]);
+        if (buffer.characters <= COMPACT_DEFINITION_MAX_CHARACTERS) {
+          appendCompactDefinitionText(buffer, match[0]);
         }
         // One extra normalized point proves truncation. Earlier accepted items
         // are at most 240 points, so this cannot falsely match a seen duplicate.
-        if (characters.length > COMPACT_DEFINITION_MAX_CHARACTERS) {
-          yield characters.join("");
+        if (buffer.characters > COMPACT_DEFINITION_MAX_CHARACTERS) {
+          yield buffer.text;
           return;
         }
       }
     }
-    if (characters.length > 0) yield characters.join("");
+    if (buffer.characters > 0) yield buffer.text;
   }
 
-  function appendCompactDefinitionText(characters, text) {
-    // The matcher returns at most 241 points. Only its first point can join a
-    // surrogate retained from the previous part; the rest can append together.
-    const points = Array.from(text);
-    appendCompactDefinitionCharacter(characters, points[0]);
-    const available = COMPACT_DEFINITION_MAX_CHARACTERS + 1 - characters.length;
-    characters.push(...points.slice(1, 1 + available));
+  function appendCompactDefinitionText(buffer, text) {
+    // The native matcher already bounds this run to 241 points. Count internal
+    // surrogate pairs without building a point array unless truncation needs it.
+    const characters = text.length - (text.match(/[\ud800-\udbff][\udc00-\udfff]/g)?.length || 0);
+    const previous = buffer.text.charCodeAt(buffer.text.length - 1);
+    const first = text.charCodeAt(0);
+    const joined = previous >= 0xd800 && previous <= 0xdbff && first >= 0xdc00 && first <= 0xdfff ? 1 : 0;
+    const available = COMPACT_DEFINITION_MAX_CHARACTERS + 1 - buffer.characters + joined;
+    buffer.text += characters > available ? Array.from(text).slice(0, available).join("") : text;
+    buffer.characters += Math.min(characters, available) - joined;
   }
 
   function isCompactDefinitionBlock(value) {
