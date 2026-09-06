@@ -3084,6 +3084,7 @@ async function main() {
   const scheduleOff = await pageChrome.runtime.sendMessage({
     target: updateTarget,
     type: "hd_updates_schedule",
+    baseRevision: (await storage.api().local.get("dictionaryUpdates")).dictionaryUpdates.revision,
     schedule: "off",
   });
   check(

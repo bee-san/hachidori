@@ -13,7 +13,7 @@ import {
 } from "./dictionary-groups.js";
 import {
   managedDictionarySource,
-  managedUpdateSchedule,
+  normaliseUpdateSettings,
 } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 import {
@@ -341,13 +341,6 @@ function normaliseDictionaryState(value) {
     revision,
     dictionaries,
     groups: normaliseDictionaryGroups(value?.groups, dictionaries),
-  };
-}
-
-function normaliseUpdateSettings(value) {
-  return {
-    schedule: managedUpdateSchedule(value?.schedule) ?? "off",
-    lastCheckedAt: typeof value?.lastCheckedAt === "string" ? value.lastCheckedAt : null,
   };
 }
 
@@ -1928,7 +1921,7 @@ async function runManagedUpdate(type, dictionaryIds = null) {
 
 async function writeUpdateSchedule(schedule) {
   try {
-    const reply = await send("hd_updates_schedule", { schedule }, UPDATE_TARGET);
+    const reply = await send("hd_updates_schedule", { schedule, baseRevision: updateSettings.revision }, UPDATE_TARGET);
     if (!reply.ok) {
       throw new Error(reply.error || "the dictionary update schedule could not be saved");
     }
