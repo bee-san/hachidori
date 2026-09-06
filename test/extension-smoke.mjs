@@ -10355,13 +10355,34 @@ async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window
     focusedThumbnail.blur();
     await new Promise(done => window.setTimeout(done, 0));
     const summaryFlushed = popup.querySelectorAll(".gsm-hoshidicts-compact-definition-summary li").length === 3;
+    const failedThumbnails = [];
+    for (const failure of ["missing", "rejected", "decode"]) {
+      view.renderResults([projected], candidate, { ...context, showCompactDefinitionSummary: true,
+        resolveMedia() {
+          if (failure === "rejected") return Promise.reject(new Error("missing dictionary image"));
+          return failure === "missing" ? null : mediaUrl;
+        },
+      });
+      await new Promise(done => window.setTimeout(done, 0));
+      if (failure === "decode") {
+        for (const failedImage of popup.querySelectorAll("img")) {
+          failedImage.dispatchEvent(new window.Event("error"));
+        }
+      }
+      const textSummary = popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+      const fullCardError = popup.querySelector(".gsm-hoshidicts-glossary-content .gloss-image-link");
+      failedThumbnails.push(textSummary?.querySelector(".gsm-hoshidicts-compact-definition-image") === null
+        && JSON.stringify([...textSummary.querySelectorAll("li")].map(node => node.textContent)) === JSON.stringify(["first", "second"])
+        && fullCardError?.dataset.imageLoadState === "load-error"
+        && fullCardError.textContent.includes("Image failed to load"));
+    }
     check("live compact summaries preserve Note and cards while retiring only their own media and falling back within projected results",
       absent && live && retained && unchangedSummary && obsolete && oldImageUntouched && noLatePosition
         && fallbackText === "plain first" && fallback.dataset.hoshidictsDictionary === "Plain" && previewKept
-        && summaryFocusKept && summaryFlushed
+        && summaryFocusKept && summaryFlushed && failedThumbnails.every(Boolean)
         && JSON.stringify(projected) === original,
       JSON.stringify({ absent, live: Boolean(live), retained, unchangedSummary, obsolete, oldImageUntouched, noLatePosition,
-        fallback: fallback?.outerHTML, previewKept, summaryFocusKept, summaryFlushed,
+        fallback: fallback?.outerHTML, previewKept, summaryFocusKept, summaryFlushed, failedThumbnails,
         mediaRequests: mediaRequests.map(({ isCurrent, ...query }) => query) }));
   } finally {
     finishMedia(mediaUrl);

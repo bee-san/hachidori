@@ -937,6 +937,7 @@ async function popupReader(page, depth = 0) {
         return [...this.querySelectorAll(".gsm-hoshidicts-compact-definition-summary")].map(summary => ({
           dictionary: summary.dataset.hoshidictsDictionary,
           items: [...summary.querySelectorAll("li")].map(item => item.textContent),
+          thumbnailCount: summary.querySelectorAll(".gsm-hoshidicts-compact-definition-image").length,
           image: [...summary.querySelectorAll("img")].map(image => ({
             src: image.getAttribute("src"), complete: image.complete,
             width: image.naturalWidth, height: image.naturalHeight, hidden: image.hidden,
@@ -1608,8 +1609,12 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E10 child Back");
 
     await show(fixture.broken);
-    await until(summaries, value => value[0]?.items[0] === "The text remains available."
-      && value[0].image[0]?.state === "load-error" && value[0].image[0].hidden, "E10 failed leading image text fallback");
+    await until(summaries, value => equal(value[0]?.items, ["The text remains available."])
+      && value[0].image.length === 0 && value[0].thumbnailCount === 0, "E10 failed leading image text-only fallback");
+    const failedCard = await popup.state();
+    require(failedCard.imageStates.length === 1 && failedCard.imageStates[0].state === "load-error"
+      && failedCard.imageStates[0].errorVisible && failedCard.plain.includes("The text remains available."),
+      "E10 missing thumbnail retains the full-card image error and definition");
     await tab.keyboard.press("Escape");
     await tab.$eval("#verb", (element, text) => { element.textContent = text; }, fixture.query);
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNextLookup = true; });
