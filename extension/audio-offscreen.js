@@ -73,9 +73,22 @@ export function createAudioService(window) {
     const operation = { owner: message.owner, requestId: message.requestId, controller: new AbortController() };
     active = operation;
     const isTest = message.type === "hd_audio_test";
-    const timer = window.setTimeout(() => {
-      if (active === operation) stop(new Error(isTest ? "Audio Test timed out after 15 seconds." : "Pronunciation discovery timed out after 12 seconds."));
-    }, isTest ? TEST_TIMEOUT_MS : FALLBACK_TIMEOUT_MS);
+    let remaining = isTest ? TEST_TIMEOUT_MS : FALLBACK_TIMEOUT_MS;
+    let timer = null, armedAt;
+    function resumeDeadline() {
+      if (timer !== null) return;
+      armedAt = window.performance.now();
+      timer = window.setTimeout(() => {
+        if (active === operation) stop(new Error(isTest ? "Audio Test timed out after 15 seconds." : "Pronunciation discovery timed out after 12 seconds."));
+      }, remaining);
+    }
+    function pauseDeadline() {
+      if (timer === null) return;
+      window.clearTimeout(timer);
+      timer = null;
+      remaining = Math.max(0, remaining - (window.performance.now() - armedAt));
+    }
+    resumeDeadline();
     try {
       if (isTest) return await player.play(message.source, TEST_TERM);
       const { signal } = operation.controller;
@@ -83,10 +96,11 @@ export function createAudioService(window) {
       const plan = message.selection ? await selectedPlan(message, signal) : { sources: message.sources };
       signal.throwIfAborted();
       return await player.playSources(plan.sources, message.term, { candidate: plan.candidate,
+        onResolving: resumeDeadline,
         onPlaying(value) {
           if (active !== operation) return;
           // This bounds discovery/fallback, not the duration of a playable file.
-          window.clearTimeout(timer);
+          pauseDeadline();
           window.chrome.runtime.sendMessage({ target: "hachidori-audio-events", type: "hd_audio_playing",
             owner: operation.owner, requestId: operation.requestId, ...value }).catch(() => {});
         },

@@ -75,10 +75,11 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     }
   }
 
-  async function firstPlayable(found, signal, onPlaying) {
+  async function firstPlayable(found, signal, onPlaying, onResolving) {
     let failure;
     for (const [index, entry] of found.entries()) {
       try {
+        onResolving?.();
         const candidate = { ...entry, index: entry.index ?? index };
         await playUrl(candidate, signal, onPlaying);
         return candidate;
@@ -90,7 +91,7 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     throw failure;
   }
 
-  async function playSources(sources, term, { onPlaying, candidate: selectedCandidate } = {}) {
+  async function playSources(sources, term, { onPlaying, onResolving, candidate: selectedCandidate } = {}) {
     stop();
     const controller = new AbortController();
     current = controller;
@@ -99,8 +100,9 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
       let failure;
       for (const source of sources) {
         try {
+          onResolving?.();
           const playing = candidate => onPlaying?.({ sourceId: source.id, candidate });
-          const candidate = await playSource(source, term, signal, playing, selectedCandidate);
+          const candidate = await playSource(source, term, signal, playing, onResolving, selectedCandidate);
           signal.throwIfAborted();
           if (candidate) return { status: "success", sourceId: source.id, candidate };
         } catch (error) {
@@ -118,11 +120,11 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
     }
   }
 
-  async function playSource(source, term, signal, onPlaying, selectedCandidate) {
+  async function playSource(source, term, signal, onPlaying, onResolving, selectedCandidate) {
     if (source.type.startsWith("text-to-speech")) return playSpeech(source, term, signal, onPlaying);
     const found = selectedCandidate ? [selectedCandidate] : await repository.candidates(source, term, signal);
     signal.throwIfAborted();
-    return found.length ? firstPlayable(found, signal, onPlaying) : null;
+    return found.length ? firstPlayable(found, signal, onPlaying, onResolving) : null;
   }
 
   return {
