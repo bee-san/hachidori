@@ -9663,8 +9663,8 @@ async function contentNoteStage() {
         && sources.filter(({ path }) => path === "shared-route.png").length === 1;
 
       const stale = [];
-      for (const successful of [false, true, "group-reorder"]) {
-        select({ kind: "tabGroup", id: "image-order" });
+      for (const successful of [false, true, "group-reorder", "automatic"]) {
+        select(successful === "automatic" ? null : { kind: "tabGroup", id: "image-order" });
         const path = `obsolete-${successful}.png`;
         const operation = load(path);
         const request = harness.take("hd_media");
@@ -10609,6 +10609,8 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   await mediaRenderStage({ HDGlossary, document, window });
   await compactSummaryRenderStage({ HDGlossary, HDPopup, document, window, candidate,
     result: lookup.results[0], mediaUrl: media.dataUrl, summaryGlossaries });
+  await imageSourceRenderStage({ HDGlossary, HDPopup, document, window, candidate,
+    result: lookup.results[0], mediaUrl: media.dataUrl, summaryGlossaries });
   dom.window.close();
   return true;
 }
@@ -10720,6 +10722,121 @@ async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window
         mediaRequests: mediaRequests.map(({ isCurrent, ...query }) => query) }));
   } finally {
     finishMedia(mediaUrl);
+    view.destroy();
+    popup.remove();
+  }
+}
+
+async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, candidate, result, mediaUrl, summaryGlossaries }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  const projected = { ...result, term: { ...result.term, glossaries: summaryGlossaries } };
+  const requests = [];
+  let sources = null;
+  let current = true;
+  let fills = 0;
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
+    appendStructuredImage: HDGlossary.appendStructuredImage,
+    parseTagList: HDGlossary.parseTagList, positionPopup() {},
+  });
+  const context = { generation: 23, dictionaryPresentation: [{ title: "Pictures", displayName: "Picture book" }],
+    dictionaryTabGroups: [], isCurrentRequest: () => current, isCurrentView: () => true,
+    showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2,
+    compactDefinitionSummaryDictionary: "Illustrated", popupImageSources: sources,
+    resolveMedia(query) {
+      const supplier = sources?.[0] || query.dictionary;
+      return new Promise((resolve, reject) => requests.push({ query, supplier, resolve, reject }));
+    },
+  };
+  const tick = () => new Promise(done => window.setTimeout(done, 0));
+  const route = (next, extra = {}) => {
+    sources = next;
+    Object.assign(context, { popupImageSources: sources }, extra);
+    view.updateDictionaryPresentation({ ...context });
+  };
+  const settle = (pending, url = mediaUrl) => {
+    for (const request of pending) {
+      request.query.onResolvedSource?.(request.supplier);
+      request.resolve(url);
+    }
+  };
+  try {
+    view.renderResults([projected], candidate, context);
+    const automatic = requests.slice();
+    const summary = popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+    const items = summary.querySelector("ul");
+    const images = [...popup.querySelectorAll("img")];
+    const links = images.map(image => image.closest(".gloss-image-link"));
+    const cards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+    const originalFills = fills;
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const form = popup.querySelector("form");
+    form.elements.definition.value = "keep image-source draft";
+    form.elements.definition.focus();
+    form.elements.definition.setSelectionRange(2, 7);
+    route(["Pictures"]);
+    const replacement = requests.slice(automatic.length);
+    const beforeAlias = requests.length;
+    route(sources, { dictionaryPresentation: [{ title: "Pictures", displayName: "Renamed pictures" }] });
+    settle(replacement);
+    await tick();
+    const suppliers = [...popup.querySelectorAll(".gloss-image-source")];
+    const currentLoaded = replacement.length === 2 && replacement.every(({ query }) => query.isCurrent())
+      && images.every(image => image.src === mediaUrl && !image.hidden)
+      && suppliers.length === 2 && suppliers.every(label => label.textContent === "Image: Renamed pictures"
+        && label.dataset.dictionary === "Pictures" && label.title === "Pictures")
+      && !summary.querySelector(".gsm-hoshidicts-compact-definition-image .gloss-image-source");
+    settle(automatic, "data:image/png;base64,b2xk");
+    await tick();
+    check("live image-source changes retain mounted cards and Note selection while rejecting old Automatic replies and relabelling the actual supplier",
+      currentLoaded && requests.length === beforeAlias && automatic.every(({ query }) => !query.isCurrent())
+        && images.every((image, index) => image.isConnected && image.src === mediaUrl && image.closest("a") === links[index])
+        && cards.every(card => card.isConnected) && fills === originalFills && summary.querySelector("ul") === items
+        && popup.querySelector("form") === form && document.activeElement === form.elements.definition
+        && form.elements.definition.value === "keep image-source draft"
+        && form.elements.definition.selectionStart === 2 && form.elements.definition.selectionEnd === 7,
+      JSON.stringify({ currentLoaded, requests: requests.length, beforeAlias, fills, originalFills,
+        suppliers: suppliers.map(label => label.outerHTML), replacement: replacement.length }));
+
+    const beforeAutomatic = requests.length;
+    route(null);
+    settle(requests.slice(beforeAutomatic), null);
+    await tick();
+    const failed = summary.querySelector(".gsm-hoshidicts-compact-definition-image") === null
+      && !popup.querySelector(".gloss-image-source") && links[1].dataset.imageLoadState === "load-error";
+    const beforeRecovery = requests.length;
+    route(["Pictures"]);
+    settle(requests.slice(beforeRecovery));
+    await tick();
+    check("a failed compact thumbnail recovers under a new image source without reparsing or replacing its summary, full image or Note draft",
+      failed && requests.length === beforeRecovery + 2 && images.every(image => image.isConnected && !image.hidden && image.src === mediaUrl)
+        && summary.querySelectorAll(".gsm-hoshidicts-compact-definition-image").length === 1
+        && summary.querySelector("ul") === items && fills === originalFills
+        && popup.querySelector("form") === form && !form.hidden && document.activeElement === form.elements.definition,
+      JSON.stringify({ failed, beforeRecovery, requests: requests.length, summary: summary.outerHTML }));
+
+    // A retained parent can accept aliases, but cannot restart asynchronous work.
+    current = false;
+    const beforeStale = requests.length;
+    route(sources, { dictionaryPresentation: [{ title: "Pictures", displayName: "Retained alias" }] });
+    const staleLabels = [...popup.querySelectorAll(".gloss-image-source")].every(label => label.textContent === "Image: Retained alias");
+    route(["Other"]);
+    check("retained image labels may refresh without admitting media for an obsolete request",
+      staleLabels && requests.length === beforeStale && images.every(image => image.src === mediaUrl));
+    current = true;
+    const beforeRetry = requests.length;
+    route(["Retry"]);
+    const retired = requests.slice(beforeRetry);
+    view.clear();
+    settle(retired);
+    await tick();
+    check("clearing the projection retires all image refresh handles and their pending completions",
+      retired.length === 2 && retired.every(({ query }) => !query.isCurrent())
+        && !popup.hasChildNodes() && images.every(image => !image.isConnected));
+  } finally {
+    settle(requests);
     view.destroy();
     popup.remove();
   }
