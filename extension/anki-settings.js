@@ -104,6 +104,8 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     element("opt-anki-advanced").checked = advanced;
     const canApply = !loading && currentFields().length > 0;
     if (element("anki-apply-preset").disabled === canApply) element("anki-apply-preset").disabled = !canApply;
+    const canEnter = advanced || canApply;
+    if (element("opt-anki-advanced").disabled === canEnter) element("opt-anki-advanced").disabled = !canEnter;
   }
 
   function selectChoices(id, names, value, placeholder, canonical = "") {
@@ -138,6 +140,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     loading = true;
     renderStatus(config);
     element("anki-apply-preset").disabled = true;
+    if (config.fieldTemplates === null) element("opt-anki-advanced").disabled = true;
     try {
       const reply = await send("hd_anki_discover", { model: config.model, apiKey: config.apiKey });
       if (sequence !== requestSequence || key !== connectionKey(readConfig())) return;

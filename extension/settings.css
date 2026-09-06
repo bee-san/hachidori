@@ -869,9 +869,11 @@ textarea {
 .anki-preset-tools {
   align-items: end;
 }
-.anki-preset-tools > .field {
+.anki-preset {
   display: flex;
-  border: 0;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 100%;
 }
 .anki-template-row {
   border-top: 1px solid var(--border);
