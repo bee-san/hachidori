@@ -34,8 +34,9 @@
     const owners = new Map(), bound = new WeakMap();
     let enabled = false, settingsKey = "", checks = Promise.resolve();
     const live = group => enabled && owners.get(group.owner) === group && !group.popup.hidden && group.isCurrent();
-    const current = record => live(record.group) && record.actions.isConnected;
-    const needsCheck = record => record.actions.isConnected && record.needsCheck && !record.busy && !record.terminal;
+    const boundHere = record => bound.get(record.actions) === record && record.actions.isConnected;
+    const current = record => live(record.group) && boundHere(record);
+    const needsCheck = record => boundHere(record) && record.needsCheck && !record.busy && !record.terminal;
     function available(group, value) {
       for (const record of group.records) {
         if (value && record.actions.isConnected) controls(record);
@@ -50,9 +51,9 @@
         record.needsCheck = false;
         try {
           const result = await send("hd_anki_preflight", { request: payload(record) });
-          if (owns() && record.actions.isConnected) decision(record, result);
+          if (owns() && boundHere(record)) decision(record, result);
         } catch (error) {
-          if (owns() && record.actions.isConnected) decision(record, { state: "error", canAdd: false, error: error.message });
+          if (owns() && boundHere(record)) decision(record, { state: "error", canAdd: false, error: error.message });
         }
       }
     }
@@ -156,17 +157,20 @@
     }
     function bind(items, context) {
       let group = owners.get(context.owner);
+      if (group && group.request !== context.request) { retire(context.owner); group = null; }
       if (!group) { group = { ...context, records: [], epoch: 0, checking: false, queued: false }; owners.set(context.owner, group); }
-      group.records = group.records.filter(record => record.actions.isConnected);
+      Object.assign(group, context);
+      const records = [...group.records];
       for (const item of items) {
         let record = bound.get(item.actions);
-        if (record?.group === group) continue;
+        if (record?.group === group && record.result === item.result) continue;
         record?.control?.remove();
         record = { ...item, group, busy: false, terminal: false, decision: null, needsCheck: true };
         bound.set(item.actions, record);
-        group.records.push(record);
+        records.push(record);
         disabled(record);
       }
+      group.records = records.filter(boundHere);
       refresh(group);
     }
     function retire(owner) {
