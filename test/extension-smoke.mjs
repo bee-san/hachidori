@@ -1455,6 +1455,9 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8").replace(/^export\s+/gmu, "");
+  const ankiSettings = readFileSync(resolve(EXTENSION, "anki-settings.js"), "utf8")
+    .replace(/import \{ ankiAvailability \} from "\.\/anki\.js";\s*/u, "").replace(/^export\s+/gmu, "");
   const audioSettings = readFileSync(resolve(EXTENSION, "audio-settings.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
@@ -1469,6 +1472,7 @@ function loadSettingsScript(window) {
     .replace(/import "\.\/dictionary-group-state\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/import \{ createAnkiSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{ createAudioSettingsController \}\s*from\s*"\.\/audio-settings\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
@@ -1477,7 +1481,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${readerOptions}\n${audioSettings}\n${settings}`,
+    `${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${readerOptions}\n${audioSettings}\n${anki}\n${ankiSettings}\n${settings}`,
   );
 }
 
