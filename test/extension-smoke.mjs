@@ -1426,6 +1426,21 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     check("nested lookup depth defaults to ten children and accepts zero through the safe-integer range via options CAS",
       reader.normaliseOptions({}).popupNestingMaxDepth === 10
         && depths.every(Boolean) && badDepths.every(Boolean), JSON.stringify({ depths, badDepths }));
+    const columns = [];
+    for (const count of [1, 2, 3, 4]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupColumns: count }));
+      columns.push(reply.ok === true && reply.options?.popupColumns === count);
+    }
+    const badColumns = [];
+    for (const count of [0, 5, 1.5, "2", null]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ popupColumns: count }));
+      badColumns.push(reply.ok === false && await unchanged(saved));
+    }
+    check("definition columns default to one and accept only integers one through four via options CAS",
+      reader.normaliseOptions({}).popupColumns === 1
+        && columns.every(Boolean) && badColumns.every(Boolean), JSON.stringify({ columns, badColumns }));
     const invalid = [
       { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
       { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { modifier: "meta" },
@@ -6780,7 +6795,7 @@ async function contentNoteStage() {
     function createView(callbacks) {
       const record = {
         callbacks, editing: false, closeNext: false, closeCalls: 0,
-        clearCount: 0, previewDismissals: 0, renders: [],
+        clearCount: 0, previewDismissals: 0, layoutSchedules: 0, renders: [],
       };
       function stopEditing() {
         if (!record.editing) return;
@@ -6808,6 +6823,10 @@ async function contentNoteStage() {
           return true;
         },
         destroy() { record.layoutView?.destroy(); },
+        scheduleMasonry() {
+          record.layoutSchedules += 1;
+          record.layoutView?.scheduleMasonry();
+        },
         renderKanji(value, candidate, context) {
           recordRender({ kind: "kanji", value, candidate, context });
         },
@@ -7070,8 +7089,8 @@ async function contentNoteStage() {
       settle,
       state,
       stats(depth = 0) {
-        const { clearCount, closeCalls, previewDismissals } = popupRecord(depth);
-        return { clearCount, closeCalls, previewDismissals };
+        const { clearCount, closeCalls, previewDismissals, layoutSchedules } = popupRecord(depth);
+        return { clearCount, closeCalls, previewDismissals, layoutSchedules };
       },
       take,
       term,
@@ -7422,6 +7441,31 @@ async function contentNoteStage() {
       views.forEach(view => view.destroy());
       harness.close();
     }
+  }
+
+  async function columnPreferenceCase() {
+    const harness = await createHarness();
+    try {
+      await harness.initialLookup();
+      const linked = harness.internalLink({ query: "columns child" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("columns child")] });
+      await linked;
+      harness.edit(true, 1);
+      const panes = [0, 1].map(depth => ({
+        popup: harness.driver.popupAt(depth), request: harness.driver.viewRequest(depth),
+        context: harness.render(depth).context,
+      }));
+      const defaultColumns = [0, 1].every(depth => harness.callbacks(depth).getPopupColumns() === 1);
+      const sentBefore = harness.sent.length;
+      harness.emitOptions({ popupColumns: 4 });
+      harness.emitOptions({ popupColumns: 4 });
+      return { "live column preferences relayout each visible owner without lookup, retirement or Note loss":
+        defaultColumns && harness.sent.length === sentBefore && harness.driver.snapshot(1).noteEditing
+        && panes.every(({ popup, request, context }, depth) =>
+          harness.callbacks(depth).getPopupColumns() === 4 && harness.stats(depth).layoutSchedules === 1
+          && harness.driver.popupAt(depth) === popup && !popup.hidden
+          && harness.driver.viewRequest(depth) === request && context.isCurrentRequest()) };
+    } finally { harness.close(); }
   }
 
   async function nestedPointerCase() {
@@ -9334,7 +9378,7 @@ async function contentNoteStage() {
       ...await selectionEditingCase(), ...await popupSelectionCase() },
     activation: await activationCase(),
     mediaOwnership: { ...await mediaOwnershipCase(), ...await boundedMediaCase(), ...await previewInvalidationCase(),
-      ...await nestedLevelsCase(), ...await nestedResizeCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
+      ...await nestedLevelsCase(), ...await nestedResizeCase(), ...await columnPreferenceCase(), ...await nestedNotesCase(), ...await nestedPointerCase(), ...await nestedReplyRaceCase(),
       ...await retainedParentNavigationCase() },
     newestOnlyOptions,
     renderFailure: await renderFailureCase(),
