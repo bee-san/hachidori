@@ -337,6 +337,13 @@ retaining their DOM reading order. Changing columns schedules the existing
 owned layout batch for every visible pane; it does not invalidate lookups,
 replace the result DOM or close a Note draft.
 
+Term views offer All, each contributing dictionary in native result order, one
+aggregate Favourites tab, then nonempty saved groups in their stored order.
+Favourites still contribute when they also belong to a group. Tabs project the
+already-returned results without changing their order or sending a lookup;
+aliases label tabs while canonical dictionary titles and stable group IDs own
+their selections. Colliding labels are qualified without changing membership.
+
 Dictionary revisions, generation, media and style transport remain shared. A
 changed accepted engine generation invalidates other level tokens, including
 when a restarted engine reports a lower number. A same-generation child leaves

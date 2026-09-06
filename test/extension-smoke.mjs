@@ -9619,6 +9619,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   ]) {
     const tab = popup.querySelector(`[role="tab"]${selector}`);
     tab?.click();
+    popup.querySelector(".gsm-hoshidicts-show-more")?.click();
     tabProjections.push([...popup.querySelectorAll(".gsm-hoshidicts-glossary-card > summary")]
       .map((summary) => summary.title));
   }
@@ -10374,7 +10375,7 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
     links = await render();
     event(links[0], "mouseenter");
     const beforeTab = Boolean(preview());
-    popup.querySelectorAll('[role="tab"]')[1].click();
+    popup.querySelector('[role="tab"][data-dictionary="A"]').click();
     const tabClosed = !preview();
     const current = popup.querySelector(".gloss-image-link");
     await new Promise((done) => setTimeout(done, 0));

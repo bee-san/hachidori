@@ -662,6 +662,62 @@
     return dictionaries;
   }
 
+  function normaliseDictionaryTab(value) {
+    if (typeof value?.dictionary === "string") return { dictionary: value.dictionary };
+    if (typeof value?.groupId === "string") return { groupId: value.groupId };
+    return value?.favourites === true ? { favourites: true } : null;
+  }
+
+  function dictionaryTabKey(selection) {
+    if (typeof selection?.dictionary === "string") return `dictionary:${selection.dictionary}`;
+    if (typeof selection?.groupId === "string") return `group:${selection.groupId}`;
+    return selection?.favourites === true ? "favourites" : "all";
+  }
+
+  function createDictionaryTabs(dictionaries, renderContext) {
+    const presentation = Array.isArray(renderContext.dictionaryPresentation)
+      ? renderContext.dictionaryPresentation : [];
+    const groups = Array.isArray(renderContext.dictionaryTabGroups)
+      ? renderContext.dictionaryTabGroups : [];
+    const dictionaryDisplayNames = createDictionaryDisplayNames(dictionaries, presentation);
+    const available = new Set(dictionaries);
+    const favourites = presentation
+      .filter(({ favorite, title }) => favorite === true && available.has(title))
+      .map(({ title }) => title);
+    const usedLabels = new Set();
+    function tab(label, title, selection, members, qualifier) {
+      let uniqueLabel = label;
+      let suffix = 1;
+      while (usedLabels.has(uniqueLabel)) {
+        uniqueLabel = `${label} (${qualifier}${suffix === 1 ? "" : ` ${suffix}`})`;
+        suffix += 1;
+      }
+      usedLabels.add(uniqueLabel);
+      return {
+        key: dictionaryTabKey(selection), label: uniqueLabel, title,
+        ...selection, dictionaries: new Set(members),
+      };
+    }
+    const tabs = [
+      tab("All", "All dictionaries", null, [], "tab"),
+      ...dictionaries.map((dictionary) => tab(
+        dictionaryDisplayNames.get(dictionary) || dictionary,
+        dictionary, { dictionary }, [dictionary], "dictionary",
+      )),
+    ];
+    if (favourites.length > 0) {
+      tabs.push(tab("Favourites", "Favourite dictionaries", { favourites: true }, favourites, "tab"));
+    }
+    for (const group of groups) {
+      const members = Array.isArray(group.dictionaries)
+        ? group.dictionaries.filter((title) => available.has(title)) : [];
+      if (members.length > 0) {
+        tabs.push(tab(group.name, `Tab group: ${group.name}`, { groupId: group.id }, members, "group"));
+      }
+    }
+    return { tabs, dictionaryDisplayNames };
+  }
+
   function isRecord(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
   }
@@ -2176,73 +2232,7 @@
       clear(renderContext.preserveViewControls);
       setDefinitionBlurState(renderContext.definitionBlurState);
       const dictionaries = collectGlossaryDictionaries(results);
-      const dictionaryPresentation = Array.isArray(
-        renderContext.dictionaryPresentation
-      ) ? renderContext.dictionaryPresentation : [];
-      const dictionaryTabGroups = Array.isArray(
-        renderContext.dictionaryTabGroups
-      ) ? renderContext.dictionaryTabGroups : [];
-      const dictionaryDisplayNames = createDictionaryDisplayNames(
-        dictionaries,
-        dictionaryPresentation
-      );
-      const availableDictionaries = new Set(dictionaries);
-      const groupedDictionaries = new Set(
-        dictionaryTabGroups.flatMap(({ dictionaries: groupDictionaries }) =>
-          Array.isArray(groupDictionaries) ? groupDictionaries : []
-        )
-      );
-      const availableGroups = dictionaryTabGroups.flatMap((group) => {
-        const groupDictionaries = Array.isArray(group.dictionaries)
-          ? group.dictionaries.filter((title) => availableDictionaries.has(title))
-          : [];
-        return groupDictionaries.length > 0
-          ? [{ ...group, dictionaries: groupDictionaries }]
-          : [];
-      });
-      const favoriteDictionaries = dictionaryPresentation
-        .filter(({ favorite, title }) =>
-          favorite === true &&
-          availableDictionaries.has(title) &&
-          !groupedDictionaries.has(title)
-        )
-        .map(({ title }) => title);
-      const usedTabLabels = new Set();
-      function uniqueTabLabel(label, qualifier) {
-        let candidate = label;
-        let suffix = 1;
-        while (usedTabLabels.has(candidate)) {
-          const qualifiedSuffix = suffix === 1
-            ? qualifier
-            : `${qualifier} ${suffix}`;
-          candidate = `${label} (${qualifiedSuffix})`;
-          suffix += 1;
-        }
-        usedTabLabels.add(candidate);
-        return candidate;
-      }
-      const tabDescriptors = [
-        {
-          label: uniqueTabLabel("All", "tab"),
-          title: "All dictionaries",
-          dictionaries: new Set(),
-        },
-        ...availableGroups.map((group) => ({
-          label: uniqueTabLabel(group.name, "group"),
-          title: `Tab group: ${group.name}`,
-          groupId: group.id,
-          dictionaries: new Set(group.dictionaries),
-        })),
-        ...favoriteDictionaries.map((dictionary) => ({
-          label: uniqueTabLabel(
-            dictionaryDisplayNames.get(dictionary) || dictionary,
-            "dictionary"
-          ),
-          title: dictionary,
-          dictionary,
-          dictionaries: new Set([dictionary]),
-        })),
-      ];
+      const { tabs: tabDescriptors, dictionaryDisplayNames } = createDictionaryTabs(dictionaries, renderContext);
       const tabList = tabDescriptors.length > 1
         ? documentRef.createElement("div")
         : null;
@@ -2288,18 +2278,8 @@
       mountResultChrome(toolbar, panel);
 
       const tabButtons = [];
-      const requestedTab = isRecord(renderContext.selectedDictionaryTab)
-        ? renderContext.selectedDictionaryTab
-        : null;
-      const requestedTabIndex = requestedTab
-        ? tabDescriptors.findIndex((descriptor) =>
-            typeof requestedTab.dictionary === "string"
-              ? descriptor.dictionary === requestedTab.dictionary
-              : typeof requestedTab.groupId === "string"
-                ? descriptor.groupId === requestedTab.groupId
-                : false
-          )
-        : -1;
+      const requestedKey = dictionaryTabKey(renderContext.selectedDictionaryTab);
+      const requestedTabIndex = tabDescriptors.findIndex((descriptor) => descriptor.key === requestedKey);
       let focusedIndex = Math.max(0, requestedTabIndex);
       let selectedIndex = focusedIndex;
       let hasRendered = false;
@@ -2336,13 +2316,7 @@
         if ((!hasRendered || selectionChanged)
             && typeof renderContext.onDictionaryTabSelected === "function") {
           const descriptor = tabDescriptors[selectedIndex];
-          renderContext.onDictionaryTabSelected(
-            typeof descriptor.dictionary === "string"
-              ? { dictionary: descriptor.dictionary }
-              : typeof descriptor.groupId === "string"
-                ? { groupId: descriptor.groupId }
-                : null
-          );
+          renderContext.onDictionaryTabSelected(normaliseDictionaryTab(descriptor));
         }
         if (hasRendered && !selectionChanged) {
           if (!ownsView()) {
@@ -2417,6 +2391,7 @@
         if (descriptor.dictionary) {
           button.dataset.dictionary = descriptor.dictionary;
         }
+        if (descriptor.favourites) button.dataset.favourites = "true";
         button.addEventListener("click", () => activateTabFromEvent(index));
         button.addEventListener("keydown", (event) => {
           let nextIndex = null;
@@ -2499,6 +2474,7 @@
     createPopupView,
     createSourceHighlighter,
     createTag,
+    normaliseDictionaryTab,
     extractCompactDefinitionSummary,
     formatCompactFrequencyNumber,
     formatFrequencyValue,
