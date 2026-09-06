@@ -2642,6 +2642,9 @@
         () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
           const summaryChanged = ["showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary"]
             .some(key => Object.hasOwn(context, key) && context[key] !== renderContext[key]);
+          const focused = popup.getRootNode().activeElement;
+          if (summaryChanged && popup.contains(focused)
+              && focused.closest(".gsm-hoshidicts-compact-definition-summary")) return false;
           // Unlike local body projection, a summary may update with an open
           // Note or child. It still needs the connected request boundary before
           // parsing or admitting media; that boundary may retire this view.
