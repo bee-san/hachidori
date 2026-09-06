@@ -1217,6 +1217,8 @@
     let currentNoteControls = null;
     let renderRevision = 0;
     let currentResultPanel = null;
+    let captureTermView = null;
+    let pendingScrollRestoration = null;
     let currentPresentationUpdate = null;
     let pendingPresentation = null;
     let imagePreview = null;
@@ -1338,6 +1340,9 @@
         });
         grid.style.height = `${Math.max(...columnHeights) - MASONRY_GAP_PX}px`;
       }
+      const restoreScroll = pendingScrollRestoration;
+      pendingScrollRestoration = null;
+      restoreScroll?.();
     }
 
     function scheduleMasonry() {
@@ -1426,6 +1431,8 @@
       renderedImages.clear();
       renderRevision += 1;
       currentResultPanel = null;
+      captureTermView = null;
+      pendingScrollRestoration = null;
       if (!preserveViewControls) {
         currentNoteControls?.close(false);
         currentNoteControls = null;
@@ -2146,6 +2153,21 @@
       let appliedDictionaryPresentation = imageContext.dictionaryPresentation;
       let lookupStats = null;
       let expanded = renderContext.expandAll === true;
+      let restoreScrollTop = renderContext.restoreScrollTop;
+      const initialScrollTop = popup.scrollTop;
+
+      function restoreViewportAfterFill() {
+        if (restoreScrollTop === undefined) return;
+        const savedScrollTop = restoreScrollTop;
+        restoreScrollTop = undefined;
+        // Back's scroll height is meaningful only after the deferred bodies
+        // and masonry are laid out. A newer projection or deliberate scroll
+        // takes precedence over this one-shot restoration.
+        pendingScrollRestoration = () => {
+          if (isCurrent() && popup.scrollTop === initialScrollTop) popup.scrollTop = savedScrollTop;
+        };
+        scheduleMasonry();
+      }
 
       function appendResult(result, resultIndex) {
         Object.assign(renderContext, metadataOptions(imageContext));
@@ -2322,6 +2344,7 @@
       // had a chance to paint. Fills inline without a timer available.
       function flushDeferredGlossaries() {
         if (deferredGlossaryFills.length === 0) {
+          restoreViewportAfterFill();
           return;
         }
         const fills = deferredGlossaryFills.splice(0);
@@ -2331,6 +2354,7 @@
             fill();
           }
           positionIfCurrent();
+          restoreViewportAfterFill();
         };
         if (typeof windowRef.setTimeout === "function") {
           windowRef.setTimeout(() => runRenderAction(isCurrent, renderContext, run), 0);
@@ -2756,6 +2780,7 @@
             dictionaryPresentation: imageContext.dictionaryPresentation,
             noteControls,
             expandAll,
+            restoreScrollTop: !hasRendered ? renderContext.restoreScrollTop : undefined,
             // Lookup statistics describe the first unfiltered result. Keep the
             // line on the All tab so a dictionary projection cannot attach the
             // original term's count to a different expression.
@@ -2922,6 +2947,7 @@
           return !metadataDeferred;
         });
       restoreRetainedFocus(focused);
+      captureTermView = () => ({ expandAll: rendered.isExpanded(), restoreScrollTop: popup.scrollTop });
       return rendered;
     }
 
@@ -2934,6 +2960,7 @@
       renderNotice,
       renderResults,
       renderKanji,
+      captureTermView: () => captureTermView?.(),
       setDefinitionBlurState,
       setLookupStats,
       setSourceHighlightEnabled,
@@ -2952,6 +2979,8 @@
         renderedImages.clear();
         renderRevision += 1;
         currentResultPanel = null;
+        captureTermView = null;
+        pendingScrollRestoration = null;
         options.cancelMasonry?.(layoutMasonry);
         if (masonryFrame !== null) {
           windowRef.cancelAnimationFrame(masonryFrame);

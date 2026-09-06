@@ -833,6 +833,8 @@ async function popupReader(page, depth = 0) {
           draft: input?.value, selection: [input?.selectionStart, input?.selectionEnd],
           inputFocused: root.activeElement === input,
           inputReachable: rect && root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === input,
+          inputRect: rect?.toJSON(), popupRect: this.getBoundingClientRect().toJSON(), scrollTop: this.scrollTop,
+          centerOwner: rect && root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.className,
           tabFocused: root.activeElement === this.querySelector('[role="tab"][aria-selected="true"]'),
           replaced: this.querySelector('.gsm-hoshidicts-tab-panel') !== saved?.panel,
         };
@@ -1341,10 +1343,11 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
 
     // Internal-link → clicked-kanji → Back preserves semantic Study context.
     await popup.dictionaryTabs("select", studyKey);
-    await tab.setViewport({ width: 1880, height: 520 });
+    await tab.setViewport({ width: 1880, height: 400 });
     const inherited = await openChild();
     require(await child.click(".gsm-hoshidicts-show-more"), "E13 expand linked results before drill-down");
-    await until(childState, value => value?.entries.length === childExpected.length
+    const studyResultCount = childExpected.filter(entry => entry.dictionaries.some(title => [links, usage, GENERIC_KANJI_TITLE].includes(title))).length;
+    await until(childState, value => value?.entries.length === studyResultCount
       && value.entries.at(-1).cards.some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E13 complete deferred bodies");
     const beforeBack = await child.dictionaryTabs("scroll", 80);
     require(beforeBack.scrollTop > 0, "E13 nonzero prior scroll");
@@ -1976,7 +1979,7 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       && evidence.lowered && evidence.kanji && evidence.back && evidence.returned
       && evidence.retained.sameParent && evidence.retained.sameAnchor && evidence.retained.imagesReady
       && JSON.stringify(evidence.disabled.depths) === "[0]"
-      && evidence.refreshedControls.every(Boolean), JSON.stringify(evidence));
+      && evidence.refreshedControls.every(value => value === true), JSON.stringify(evidence));
 }
 
 async function checkRetainedLinkControls(browser, settings, tab, popup, child, fixture, setDepth) {
@@ -2043,7 +2046,7 @@ async function checkRetainedLinkControls(browser, settings, tab, popup, child, f
       const after = await refreshed();
       evidence.push(after?.toolbar === position && after.sameForm && after.mounted
         && after.inputFocused && after.inputReachable && after.draft === before.draft
-        && JSON.stringify(after.selection) === "[2,7]");
+        && JSON.stringify(after.selection) === "[2,7]" || { position, before, after });
       await installMediaArchive(settings, fixture.archive);
       await hold();
       await popup.retainedControls("remember-panel");

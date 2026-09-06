@@ -10816,6 +10816,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   externalLinksRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   internalLinksRenderStage({ HDGlossary, document, window });
   await retainedNavigationRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+  await backViewportRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await mediaRenderStage({ HDGlossary, document, window });
   await compactSummaryRenderStage({ HDGlossary, HDPopup, document, window, candidate,
@@ -10824,6 +10825,56 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     result: lookup.results[0], mediaUrl: media.dataUrl, summaryGlossaries });
   dom.window.close();
   return true;
+}
+
+async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
+  const popup = document.createElement("div");
+  document.body.append(popup);
+  const layouts = new Set();
+  const layout = () => { for (const callback of layouts) callback(); layouts.clear(); };
+  const settle = () => new Promise(resolve => window.setTimeout(resolve, 0));
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    parseTagList: HDGlossary.parseTagList,
+    queueMasonry: callback => layouts.add(callback),
+    positionPopup() {},
+  });
+  const results = [result, result];
+  const tab = () => popup.querySelectorAll('[role="tab"]')[1].click();
+  try {
+    view.renderResults(results, candidate, { expandAll: true });
+    tab();
+    const collapsed = view.captureTermView().expandAll === false;
+    popup.querySelector(".gsm-hoshidicts-show-more").click();
+    popup.scrollTop = 80;
+    const snapshot = view.captureTermView();
+    check("Back captures the current projected tab's expansion and scroll, not the initial panel",
+      collapsed && snapshot.expandAll && snapshot.restoreScrollTop === 80);
+    view.renderResults(results, candidate, snapshot);
+    layout();
+    const beforeFill = popup.scrollTop === 0;
+    await settle();
+    layout();
+    const restored = popup.scrollTop === 80 && !popup.querySelector(".gsm-hoshidicts-show-more");
+    tab();
+    popup.querySelector(".gsm-hoshidicts-show-more").click();
+    await settle();
+    layout();
+    check("Back restores scroll after deferred bodies and masonry only once",
+      beforeFill && restored && popup.scrollTop === 0);
+    view.renderResults(results, candidate, snapshot);
+    tab();
+    await settle();
+    layout();
+    const newerTab = popup.scrollTop === 0;
+    view.renderResults(results, candidate, snapshot);
+    await settle();
+    popup.scrollTop = 23;
+    layout();
+    check("a newer tab or deliberate scroll cancels deferred Back viewport restoration",
+      newerTab && popup.scrollTop === 23);
+  } finally { view.destroy(); popup.remove(); }
 }
 
 async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window, candidate, result, mediaUrl, summaryGlossaries }) {
