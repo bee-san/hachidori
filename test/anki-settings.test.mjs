@@ -122,6 +122,25 @@ test("presets and advanced templates save one complete snapshot, retain invalid 
   assert.ok(Object.values(f.read().fields).every(value => value === ""));
 });
 
+test("entering template mode waits for discovered fields instead of replacing basic mappings with an empty snapshot", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "A", fields: { ...f.read().fields, expression: "Front" } });
+  const advanced = f.el("opt-anki-advanced");
+  assert.equal(advanced.disabled, true);
+  advanced.click();
+  assert.equal(f.edits.length, 0);
+  f.sent[0].resolve({ ok: false, error: "Offline" });
+  await tick();
+  assert.equal(advanced.disabled, true);
+  const pending = f.controller.refresh();
+  discovery(f.sent[1]);
+  await pending;
+  assert.equal(advanced.disabled, false);
+  advanced.click();
+  assert.equal(f.edits.length, 1);
+  assert.equal(f.read().fieldTemplates.Front.value, "{expression}");
+});
+
 test("case-only field refresh preserves the focused template row and subsequent edits target its current name", async t => {
   const f = fixture(t);
   f.adopt({ model: "A", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" } } });
