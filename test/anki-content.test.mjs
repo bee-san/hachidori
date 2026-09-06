@@ -152,3 +152,28 @@ test("settings changes during submission preserve confirmed and uncertain outcom
     assert.equal(writes, 1);
   }
 });
+
+test("presentation reprojection drops detached actions before queued checks and later refreshes", async t => {
+  const held = Promise.withResolvers(), terms = [];
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    terms.push(request.term.expression);
+    if (terms.length === 1) await held.promise;
+    return { state: "invalid", canAdd: false, error: "This result cannot be added." };
+  });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => terms.length === 1);
+  f.items[0].actions.remove();
+  f.items[2].actions.remove();
+  f.controller.bind([f.items[1]], f.context);
+  held.resolve();
+  await until(() => terms.includes("犬"));
+  await tick();
+  assert.deepEqual(terms, ["猫", "犬"]);
+  f.controller.refresh(f.context.owner);
+  await until(() => terms.length >= 3);
+  await tick();
+  assert.deepEqual(terms, ["猫", "犬", "犬"]);
+  assert.equal(f.items[1].add.textContent, "Cannot add");
+});
