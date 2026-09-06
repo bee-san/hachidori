@@ -9688,13 +9688,20 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   ]) }]);
   const bulletSummary = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Bullets",
     glossary: JSON.stringify([" • ".repeat(150000) + "first • second"]) }]);
+  const nonImageLeads = [0, false, { type: "text", content: "prefix" },
+    { type: "text", tag: "img", text: "prefix", path: "wrong.png" },
+    { type: "structured-content", tag: "img", content: "prefix", path: "wrong.png" },
+  ].map(lead => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Leading text", glossary: JSON.stringify([
+    lead, { type: "image", path: "late.png" }, "definition",
+  ]) }]));
   check("compact summaries preserve ordered text, split nonempty bullets and select only a leading image without changing full glossaries",
     JSON.stringify(compact?.items) === JSON.stringify(["first", "second"])
       && compact?.dictionary === "Illustrated" && compact?.image?.path === "media/kanji.png"
       && JSON.stringify(fallback?.items) === JSON.stringify(["plain first"])
       && !lateImage?.image && JSON.stringify(bulletSummary?.items) === JSON.stringify(["first", "second"])
+      && nonImageLeads.every(summary => !summary?.image)
       && JSON.stringify(summaryGlossaries) === summaryBefore,
-    JSON.stringify({ compact, fallback, lateImage, bulletSummary }));
+    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads }));
 
   const host = document.createElement("div");
   document.body.appendChild(host);
