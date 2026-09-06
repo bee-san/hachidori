@@ -7415,7 +7415,7 @@ async function staleKanjiResponseStage(invalidation) {
       renderResults(value) { renders.push(value); },
       setToolbarPosition() {},
     },
-    { apply() {}, clear() {}, clearAll() {}, scope() { return { apply() {}, clear() {} }; } },
+    { apply() {}, clear() {}, clearAll() {}, refresh() {}, scope() { return { apply() {}, clear() {}, refresh() {} }; } },
   );
   const lookup = window.__hachidoriContentSmoke.showKanji("食");
   if (invalidation === "storage-change") {
@@ -7559,7 +7559,7 @@ async function contentNoteStage() {
       ...window.HDPopup,
       createPopupView: createView,
       createSourceHighlighter() {
-        return { apply() {}, clear() {}, clearAll() {}, scope() { return { apply() {}, clear() {} }; } };
+        return { apply() {}, clear() {}, clearAll() {}, refresh() {}, scope() { return { apply() {}, clear() {}, refresh() {} }; } };
       },
     };
     const initialState = {

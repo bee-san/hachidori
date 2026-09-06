@@ -1125,6 +1125,7 @@
       hide();
       return;
     }
+    highlighter?.refresh();
     if (fromLevel === rootLevel) {
       const position = calculatePopupPosition(
         anchorRectFor(rootLevel.activeCandidate),
@@ -1254,7 +1255,8 @@
     highlighter = window.HDPopup.createSourceHighlighter(
       window,
       document,
-      HIGHLIGHT_NAME
+      HIGHLIGHT_NAME,
+      shadow
     );
     buildLevelUi(rootLevel);
   }

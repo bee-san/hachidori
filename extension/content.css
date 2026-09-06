@@ -2,12 +2,11 @@
  * Page-document styles for Hachidori's hover highlight.
  *
  * Everything else the extension draws lives in the popup's shadow root and is
- * styled by render/reader.css. These two rules cannot: `::highlight()` resolves
+ * styled by render/reader.css. This rule cannot: `::highlight()` resolves
  * only against the ranges' own tree, and the ranges CSS.highlights receives
  * point at the page's text nodes -- a `::highlight()` rule inside the shadow
- * root would never match them. `.gsm-hoshidicts-source-match` is the fallback
- * class createSourceHighlighter puts on page elements when the Custom Highlight
- * API is unavailable or a range could not be built, so it has to live here too.
+ * root would never match them. Fallback paint is extension-owned, inside the
+ * popup host's shadow root; it never adds classes to page elements.
  *
  * Colours here are the initial default. The shared popup appearance helper
  * updates an owned CSSOM sheet from the shadow host's selected palette without
@@ -22,22 +21,6 @@
   background-color: color-mix(
     in srgb,
     var(--hoshidicts-palette-primary, #7aa2ff) 34%,
-    transparent
-  );
-}
-
-.gsm-hoshidicts-source-match {
-  border-radius: 2px;
-  /* The class lands on arbitrary page elements, so it has to outrank whatever
-     background the page already set on them. */
-  background-color: color-mix(
-    in srgb,
-    var(--hoshidicts-palette-primary, #7aa2ff) 34%,
-    transparent
-  ) !important;
-  box-shadow: 0 0 0 1px color-mix(
-    in srgb,
-    var(--hoshidicts-palette-primary, #7aa2ff) 50%,
     transparent
   );
 }

@@ -52,13 +52,10 @@
       if (!highlightSheet) {
         highlightSheet = new window.CSSStyleSheet();
         highlightSheet.insertRule(`::highlight(${DEFAULT_HIGHLIGHT_NAME}) {}`, 0);
-        highlightSheet.insertRule(".gsm-hoshidicts-source-match {}", 1);
         document.adoptedStyleSheets = [...document.adoptedStyleSheets, highlightSheet];
       }
       const mix = `color-mix(in srgb, ${primary} ${current.popupTheme === "high-contrast" ? 56 : 34}%, transparent)`;
       highlightSheet.cssRules[0].style.setProperty("background-color", mix);
-      highlightSheet.cssRules[1].style.setProperty("background-color", mix, "important");
-      highlightSheet.cssRules[1].style.setProperty("box-shadow", `0 0 0 1px color-mix(in srgb, ${primary} 50%, transparent)`);
     }
 
     return {
@@ -522,19 +519,181 @@
     return `${label} ${value} ${value === 1 ? "time" : "times"}`;
   }
 
-  function createSourceHighlighter(windowRef, documentRef, highlightName) {
+  function intersectHighlightRect(rect, clip) {
+    const left = Math.max(rect.left, clip.left), right = Math.min(rect.right, clip.right);
+    const top = Math.max(rect.top, clip.top), bottom = Math.min(rect.bottom, clip.bottom);
+    return right > left && bottom > top ? { left, right, top, bottom } : null;
+  }
+
+  function subtractHighlightRect(rect, cover) {
+    const overlap = intersectHighlightRect(rect, cover);
+    if (!overlap) return [rect];
+    return [
+      { ...rect, bottom: overlap.top }, { ...rect, top: overlap.bottom },
+      { left: rect.left, right: overlap.left, top: overlap.top, bottom: overlap.bottom },
+      { left: overlap.right, right: rect.right, top: overlap.top, bottom: overlap.bottom },
+    ].filter(piece => piece.right > piece.left && piece.bottom > piece.top);
+  }
+
+  // Range.getClientRects() also includes fully selected inline element boxes.
+  // Text-node subranges avoid painting their padding or tinting text twice.
+  function highlightTextFragments(documentRef, match) {
+    const fragments = [];
+    for (const range of match.ranges) {
+      const root = range.commonAncestorContainer;
+      const walker = documentRef.createTreeWalker(root, 4);
+      let node = root.nodeType === 3 ? root : walker.nextNode();
+      while (node) {
+        if (range.intersectsNode(node)) {
+          const start = node === range.startContainer ? range.startOffset : 0;
+          const end = node === range.endContainer ? range.endOffset : node.length;
+          if (end > start) {
+            const fragment = documentRef.createRange();
+            fragment.setStart(node, start);
+            fragment.setEnd(node, end);
+            fragments.push(fragment);
+          }
+        }
+        node = walker.nextNode();
+      }
+    }
+    return fragments;
+  }
+
+  function createHighlightFallback(windowRef, documentRef, root) {
+    const layer = documentRef.createElement("div");
+    layer.className = "gsm-hoshidicts-source-highlight-layer";
+    layer.setAttribute("aria-hidden", "true");
+    root.appendChild(layer);
+    const owners = new Map();
+    let frame = null;
+    const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
+    const geometry = new windowRef.MutationObserver(changes => {
+      if (changes.some(change => !layer.contains(change.target)
+          && (change.type === "attributes" || [...change.addedNodes, ...change.removedNodes].some(node => node !== layer)))) schedule();
+    });
+    windowRef.addEventListener("scroll", schedule, true);
+    root.addEventListener("scroll", schedule, true);
+    windowRef.addEventListener("resize", schedule);
+
+    function schedule() {
+      if (frame === null) frame = windowRef.requestAnimationFrame(paint);
+    }
+
+    function clipBounds(element, cache) {
+      if (cache.has(element)) return cache.get(element);
+      const style = windowRef.getComputedStyle(element);
+      const clips = value => value && value !== "visible";
+      const clipX = clips(style.overflowX), clipY = clips(style.overflowY);
+      let bounds = null;
+      if (clipX || clipY) {
+        const rect = element.getBoundingClientRect();
+        const sx = element.offsetWidth ? rect.width / element.offsetWidth : 1;
+        const sy = element.offsetHeight ? rect.height / element.offsetHeight : 1;
+        const left = rect.left + element.clientLeft * sx, top = rect.top + element.clientTop * sy;
+        bounds = { left: clipX ? left : -Infinity, right: clipX ? left + element.clientWidth * sx : Infinity,
+          top: clipY ? top : -Infinity, bottom: clipY ? top + element.clientHeight * sy : Infinity };
+      }
+      cache.set(element, bounds);
+      return bounds;
+    }
+
+    function fragmentRects(fragment, cache, popups) {
+      const source = fragment.startContainer.parentElement;
+      let clip = { left: 0, top: 0, right: windowRef.innerWidth, bottom: windowRef.innerHeight };
+      for (let ancestor = source; ancestor && clip; ancestor = ancestor.parentElement || ancestor.getRootNode().host) {
+        const bounds = clipBounds(ancestor, cache);
+        if (bounds) clip = intersectHighlightRect(clip, bounds);
+      }
+      if (!clip) return [];
+      let rects;
+      try { rects = [...fragment.getClientRects()].map(rect => intersectHighlightRect(rect, clip)).filter(Boolean); }
+      catch { return []; } // No exact geometry: never substitute a whole paragraph.
+      const popup = source.closest(".gsm-hoshidicts-popup");
+      const ownerIndex = popups.findIndex(entry => entry.popup === popup);
+      const covers = popups.slice(ownerIndex + 1).map(entry => entry.rect);
+      const toolbar = popup?.querySelector(".gsm-hoshidicts-result-chrome");
+      if (toolbar && !toolbar.contains(source)) covers.push(toolbar.getBoundingClientRect());
+      for (const cover of covers) rects = rects.flatMap(rect => subtractHighlightRect(rect, cover));
+      return rects;
+    }
+
+    function paint() {
+      frame = null;
+      const cache = new Map();
+      const popups = [...root.querySelectorAll(".gsm-hoshidicts-popup")].filter(popup => !popup.hidden)
+        .map(popup => ({ popup, rect: popup.getBoundingClientRect() }));
+      // Read all owners before writing any paint rectangles.
+      const plans = [...owners.values()].map(owner => ({ owner,
+        rects: owner.fragments.flatMap(fragment => fragmentRects(fragment, cache, popups)) }));
+      if (root.lastChild !== layer) root.appendChild(layer);
+      for (const { owner, rects } of plans) {
+        while (owner.group.children.length > rects.length) owner.group.lastChild.remove();
+        rects.forEach((rect, index) => {
+          let mark = owner.group.children[index];
+          if (!mark) {
+            mark = documentRef.createElement("span");
+            mark.className = "gsm-hoshidicts-source-match";
+            owner.group.appendChild(mark);
+          }
+          Object.assign(mark.style, { left: `${rect.left}px`, top: `${rect.top}px`,
+            width: `${rect.right - rect.left}px`, height: `${rect.bottom - rect.top}px` });
+        });
+      }
+    }
+
+    return {
+      schedule,
+      update(records) {
+        const current = new Set(records);
+        for (const [record, owner] of owners) {
+          if (!current.has(record)) { owner.group.remove(); owners.delete(record); }
+        }
+        resize?.disconnect();
+        geometry.disconnect();
+        const targets = new Map();
+        for (const record of records) {
+          let owner = owners.get(record);
+          if (!owner) {
+            owner = { group: documentRef.createElement("div") };
+            layer.appendChild(owner.group);
+            owners.set(record, owner);
+          }
+          if (owner.match !== record.match) {
+            owner.match = record.match;
+            owner.fragments = highlightTextFragments(documentRef, record.match);
+          }
+          for (const [target, subtree] of record.observedTargets) targets.set(target, targets.get(target) || subtree);
+        }
+        for (const [target, subtree] of targets) {
+          geometry.observe(target, { attributes: true, childList: true, subtree });
+          if (target instanceof windowRef.Element) resize?.observe(target);
+        }
+        schedule();
+      },
+      destroy() {
+        if (frame !== null) windowRef.cancelAnimationFrame(frame);
+        resize?.disconnect();
+        geometry.disconnect();
+        windowRef.removeEventListener("scroll", schedule, true);
+        root.removeEventListener("scroll", schedule, true);
+        windowRef.removeEventListener("resize", schedule);
+        layer.remove();
+      },
+    };
+  }
+
+  function createSourceHighlighter(windowRef, documentRef, highlightName, fallbackRoot = documentRef.body) {
     const matches = new Map();
-    let highlightedSourceElements = new Set();
+    let fallback = null;
+    let publishedHighlight = null;
 
     function clearRenderedHighlight() {
       const highlights = windowRef.CSS && windowRef.CSS.highlights;
-      if (highlights && typeof highlights.delete === "function") {
+      if (publishedHighlight && highlights?.get(highlightName) === publishedHighlight) {
         highlights.delete(highlightName);
       }
-      for (const element of highlightedSourceElements) {
-        element.classList.remove("gsm-hoshidicts-source-match");
-      }
-      highlightedSourceElements = new Set();
+      publishedHighlight = null;
     }
 
     function createMatchRanges(candidate, matchedText) {
@@ -560,7 +719,6 @@
       }
       const showText = windowRef.NodeFilter ? windowRef.NodeFilter.SHOW_TEXT : 4;
       const ranges = [];
-      const rangedSourceElements = new Set();
       let elementStart = 0;
       for (const element of sourceElements) {
         const elementEnd = elementStart + (element.textContent || "").length;
@@ -609,36 +767,13 @@
             range.setStart(start.node, start.offset);
             range.setEnd(end.node, end.offset);
             ranges.push(range);
-            rangedSourceElements.add(element);
           } catch {
-            // The class fallback below handles invalid ranges.
+            // Without an exact range this source fragment stays unpainted.
           }
         }
         elementStart = elementEnd;
       }
-      return {
-        ranges,
-        rangedSourceElements,
-        sourceElements,
-        startOffset,
-        endOffset,
-      };
-    }
-
-    function applyElementFallback(match, skippedElements = new Set()) {
-      let elementStart = 0;
-      for (const element of match.sourceElements) {
-        const elementEnd = elementStart + (element.textContent || "").length;
-        if (
-          !skippedElements.has(element) &&
-          elementEnd > match.startOffset &&
-          elementStart < match.endOffset
-        ) {
-          element.classList.add("gsm-hoshidicts-source-match");
-          highlightedSourceElements.add(element);
-        }
-        elementStart = elementEnd;
-      }
+      return { ranges };
     }
 
     function render() {
@@ -650,19 +785,23 @@
       );
       const ranges = [];
       for (const { match } of matches.values()) {
-        if (canUseRanges && match.ranges.length > 0) {
-          ranges.push(...match.ranges);
-          applyElementFallback(match, match.rangedSourceElements);
-        } else {
-          applyElementFallback(match);
-        }
+        ranges.push(...match.ranges);
       }
       if (canUseRanges && ranges.length > 0) {
         try {
-          highlights.set(highlightName, new HighlightImpl(...ranges));
+          const next = new HighlightImpl(...ranges);
+          highlights.set(highlightName, next);
+          publishedHighlight = next;
         } catch {
-          for (const { match } of matches.values()) applyElementFallback(match);
+          // The same exact ranges supply owned fallback paint when unavailable.
         }
+      }
+      if (!publishedHighlight && matches.size > 0) {
+        fallback ??= createHighlightFallback(windowRef, documentRef, fallbackRoot);
+        fallback.update([...matches.values()]);
+      } else {
+        fallback?.destroy();
+        fallback = null;
       }
     }
 
@@ -733,6 +872,7 @@
       clear() {
         clearFor("default");
       },
+      refresh() { fallback?.schedule(); },
       scope(key) {
         return {
           apply(candidate, matchedText) {
@@ -741,12 +881,15 @@
           clear() {
             clearFor(key);
           },
+          refresh() { fallback?.schedule(); },
         };
       },
       clearAll() {
         for (const record of matches.values()) record.observer.disconnect();
         matches.clear();
         clearRenderedHighlight();
+        fallback?.destroy();
+        fallback = null;
       },
     };
   }
@@ -1252,7 +1395,10 @@
     const appendTextOnlyGlossary = options.appendTextOnlyGlossary;
     const appendStructuredImage = options.appendStructuredImage;
     const parseTagList = options.parseTagList;
-    const positionPopup = options.positionPopup;
+    const positionPopup = () => {
+      options.positionPopup();
+      sourceHighlighter.refresh();
+    };
     // LookupKanji carries onyomi/kunyomi/tags as space-separated strings, but a
     // caller that already normalized them hands over arrays. Accept both.
     const tokenList = (value) =>
@@ -1291,7 +1437,8 @@
     const sourceHighlighter = options.sourceHighlighter || createSourceHighlighter(
       windowRef,
       documentRef,
-      options.highlightName || DEFAULT_HIGHLIGHT_NAME
+      options.highlightName || DEFAULT_HIGHLIGHT_NAME,
+      popup.getRootNode()
     );
     let definitionBlurState = "revealed";
     let sourceHighlightEnabled = options.sourceHighlightEnabled === true;

@@ -924,22 +924,26 @@ html,
   );
 }
 
-.gsm-hoshidicts-source-match {
+.gsm-hoshidicts-source-highlight-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483646;
+}
+
+.gsm-hoshidicts-source-highlight-layer .gsm-hoshidicts-source-match {
+  position: fixed;
+  pointer-events: none;
   border-radius: 2px;
   background-color: color-mix(
     in srgb,
     var(--hoshidicts-palette-primary) 34%,
     transparent
   ) !important;
-  box-shadow: 0 0 0 1px color-mix(
-    in srgb,
-    var(--hoshidicts-palette-primary) 50%,
-    transparent
-  );
 }
 
 :host([data-hoshidicts-theme="high-contrast"]) ::highlight(gsm-hoshidicts-match),
-:host([data-hoshidicts-theme="high-contrast"]) .gsm-hoshidicts-source-match {
+:host([data-hoshidicts-theme="high-contrast"]) .gsm-hoshidicts-source-highlight-layer .gsm-hoshidicts-source-match {
   background-color: color-mix(
     in srgb,
     var(--hoshidicts-palette-primary) 56%,
