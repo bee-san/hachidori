@@ -15,21 +15,27 @@
     if (value.state === "invalid" || value.state === "error") return "Cannot add";
     return "Add to Anki";
   }
+  function decision(record, value) {
+    record.decision = value;
+    if (!record.terminal && !record.busy) {
+      record.add.dataset.state = value.state;
+      text(record.add, decisionLabel(value));
+      text(record.output, value.error || "");
+    }
+    disabled(record);
+  }
+  function uncertain(record, error) {
+    record.terminal = true;
+    record.add.dataset.state = "uncertain";
+    text(record.add, "Check Anki");
+    text(record.output, error);
+  }
   function createAnkiController({ send, onChange }) {
     const owners = new Map(), bound = new WeakMap();
     let enabled = false, settingsKey = "", checks = Promise.resolve();
     const live = group => enabled && owners.get(group.owner) === group && !group.popup.hidden && group.isCurrent();
     const current = record => live(record.group) && record.actions.isConnected;
     const needsCheck = record => record.actions.isConnected && record.needsCheck && !record.busy && !record.terminal;
-    function decision(record, value) {
-      record.decision = value;
-      if (!record.terminal && !record.busy) {
-        record.add.dataset.state = value.state;
-        text(record.add, decisionLabel(value));
-        text(record.output, value.error || "");
-      }
-      disabled(record);
-    }
     function available(group, value) {
       for (const record of group.records) {
         if (value && record.actions.isConnected) controls(record);
@@ -116,12 +122,6 @@
         record.busy = false;
         if (current(record)) { disabled(record); onChange(record.group.owner); refresh(record.group); }
       }
-    }
-    function uncertain(record, error) {
-      record.terminal = true;
-      record.add.dataset.state = "uncertain";
-      text(record.add, "Check Anki");
-      text(record.output, error);
     }
     async function browse(record) {
       if (!current(record) || record.view.disabled) return;

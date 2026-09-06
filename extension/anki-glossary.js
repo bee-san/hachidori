@@ -10,10 +10,11 @@ function plainText(node) {
 }
 
 function imageSize(image, value) {
+  const units = value.sizeUnits === "em" ? "em" : "px";
   for (const dimension of ["width", "height"]) {
     if (Number.isFinite(value[dimension]) && value[dimension] > 0) image.setAttribute(dimension, String(value[dimension]));
     const preferred = value[dimension === "width" ? "preferredWidth" : "preferredHeight"];
-    if (Number.isFinite(preferred) && preferred > 0) image.style[dimension] = `${preferred}${value.sizeUnits === "em" ? "em" : "px"}`;
+    if (Number.isFinite(preferred) && preferred > 0) image.style[dimension] = `${preferred}${units}`;
   }
   if (image.style.width && !image.style.height) image.style.height = "auto";
   else if (image.style.height && !image.style.width) image.style.width = "auto";
