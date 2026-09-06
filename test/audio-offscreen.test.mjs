@@ -72,3 +72,48 @@ test("a selected pronunciation binds its exact source, term and candidate even a
     type: "hd_audio_play", selection }), /no longer current/u);
   assert.equal(downloads.length, 1);
 });
+
+test("fallback resumes the remaining discovery deadline after a playing recording fails", async () => {
+  let now = 0, timerId = 0;
+  const timers = new Map();
+  let playing, stalled;
+  const started = Promise.withResolvers(), requested = Promise.withResolvers();
+  const service = createAudioService({
+    performance: { now: () => now }, addEventListener() {},
+    setTimeout(callback, delay) { timers.set(++timerId, { callback, delay }); return timerId; },
+    clearTimeout(id) { timers.delete(id); },
+    URL: { createObjectURL: () => "blob:audio", revokeObjectURL() {} },
+    Audio: class {
+      play() { playing = this; now = 2000; this.onplaying(); started.resolve(); return Promise.resolve(); }
+      pause() {} removeAttribute() {} load() {}
+    },
+    chrome: { runtime: { async sendMessage() {} } },
+    fetch: async (url, { signal }) => {
+      if (url.endsWith("list")) return { ok: true, json: async () => ({ type: "audioSourceList", audioSources: [
+        { url: "https://example.test/one.wav", name: "One" }, { url: "https://example.test/two.wav", name: "Two" },
+      ] }) };
+      if (url.endsWith("one.wav")) return { ok: true, blob: async () => new Blob(["audio"]) };
+      stalled = signal;
+      requested.resolve();
+      return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    },
+  });
+  const pending = service({ type: "hd_audio_play", owner: "reader", requestId: "fallback",
+    term: { expression: "聞く", reading: "きく" },
+    sources: [{ id: "json", type: "custom-json", url: "https://example.test/list", voice: "", enabled: true }],
+  });
+  const rejected = assert.rejects(pending, /discovery timed out after 12 seconds/u);
+  await started.promise;
+  assert.equal(timers.size, 0, "playable media has no duration limit");
+  now = 62_000;
+  playing.onerror();
+  await requested.promise;
+  const resumed = [...timers.values()][0];
+  // Always settle the pending request, including when this regression fails.
+  if (!resumed) await service({ type: "hd_audio_stop", owner: "reader", playRequestId: "fallback" });
+  else resumed.callback();
+  await rejected;
+  assert.equal(resumed.delay, 10_000, "one minute playing does not consume the remaining discovery budget");
+  assert.equal(stalled.aborted, true);
+  assert.equal(timers.size, 0);
+});
