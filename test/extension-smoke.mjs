@@ -10225,6 +10225,9 @@ async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window
       && popup.querySelector(".gsm-hoshidicts-note-form") === note && document.activeElement === input
       && input.value === "retained draft" && input.selectionStart === 2 && input.selectionEnd === 6
       && cards.every((card, index) => card.isConnected && card.textContent === bodies[index]);
+    view.updateDictionaryPresentation({ dictionaryPresentation: [], dictionaryTabGroups: [] });
+    const unchangedSummary = popup.querySelector(".gsm-hoshidicts-compact-definition-summary") === summary
+      && mediaRequests.length === 2;
     view.updateDictionaryPresentation(context);
     const obsolete = image && !image.isConnected && mediaRequests[1].isCurrent() === false;
     await new Promise(done => window.setTimeout(done, 40));
@@ -10237,12 +10240,19 @@ async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window
     view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true,
       compactDefinitionSummaryDictionary: "Absent", compactDefinitionSummaryCount: 1 });
     const fallback = popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+    const fallbackText = fallback?.textContent;
+    const fullImageLink = popup.querySelector(".gsm-hoshidicts-glossary-content .gloss-image-link");
+    fullImageLink.dispatchEvent(new window.Event("mouseenter"));
+    const fullPreview = popup.parentNode.querySelector(".gsm-hoshidicts-image-hover-preview");
+    view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true,
+      compactDefinitionSummaryDictionary: "Absent", compactDefinitionSummaryCount: 2 });
+    const previewKept = fullPreview?.isConnected === true;
     check("live compact summaries preserve Note and cards while retiring only their own media and falling back within projected results",
-      absent && live && retained && obsolete && oldImageUntouched && noLatePosition
-        && fallback?.textContent === "plain first" && fallback.dataset.hoshidictsDictionary === "Plain"
+      absent && live && retained && unchangedSummary && obsolete && oldImageUntouched && noLatePosition
+        && fallbackText === "plain first" && fallback.dataset.hoshidictsDictionary === "Plain" && previewKept
         && JSON.stringify(projected) === original,
-      JSON.stringify({ absent, live: Boolean(live), retained, obsolete, oldImageUntouched, noLatePosition,
-        fallback: fallback?.outerHTML, mediaRequests: mediaRequests.map(({ isCurrent, ...query }) => query) }));
+      JSON.stringify({ absent, live: Boolean(live), retained, unchangedSummary, obsolete, oldImageUntouched, noLatePosition,
+        fallback: fallback?.outerHTML, previewKept, mediaRequests: mediaRequests.map(({ isCurrent, ...query }) => query) }));
   } finally {
     finishMedia(mediaUrl);
     view.destroy();

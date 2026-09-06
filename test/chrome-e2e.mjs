@@ -257,6 +257,7 @@ const PLANNED = [
   "Popup tabs project every contributing dictionary, favourites and ordered groups without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
   "Saved popup columns reflow complete cards after expansion, media load and resize",
+  "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
   "external dictionary Enter activation creates one safe browser tab through the extension",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
