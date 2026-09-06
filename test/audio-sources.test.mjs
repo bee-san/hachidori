@@ -25,7 +25,7 @@ test("audio source options reject invalid types and duplicate row identities", (
 test("audio URL templates encode term, expression, reading and language without changing stored text", () => {
   const url = "https://example.test/audio/{expression}?term={term}&reading={reading}&lang={language}&unknown={unknown}";
   assert.equal(audioSourceUrl(url, { expression: "聞く &!'", reading: "きく/" }),
-    "https://example.test/audio/%E8%81%9E%E3%81%8F%20%26%21%27?term=%E8%81%9E%E3%81%8F%20%26%21%27&reading=%E3%81%8D%E3%81%8F%2F&lang=ja&unknown=%7Bunknown%7D");
+    "https://example.test/audio/%E8%81%9E%E3%81%8F%20%26%21%27?term=%E8%81%9E%E3%81%8F%20%26%21%27&reading=%E3%81%8D%E3%81%8F%2F&lang=ja&unknown={unknown}");
   assert.equal(audioSourceUrl("http://localhost:5050/?term={term}", { expression: "食", reading: "" }),
     "http://localhost:5050/?term=%E9%A3%9F");
   for (const value of ["file:///tmp/audio.wav", "javascript:alert(1)", "https://user:secret@example.test/",
