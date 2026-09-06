@@ -350,6 +350,24 @@ snapshot. Native kanji entries use the same membership resolver as term tabs.
 Content resolves saved group member IDs through the enabled package inventory
 using the shared D7 normalizer, including while a lookup reply is pending.
 
+Newer group, alias and favourite changes update the displayed view without
+invalidating its lookup token, media or styles. Keyed tab buttons keep their DOM
+identity and deliberate focus across renames and reordering. When the selected
+membership is unchanged, only labels change: glossary cards, expanded Details,
+metadata values, source highlights and Note controls remain mounted. Frequency
+and pitch aliases use their original per-result canonical title sets, including
+for results subsequently revealed by Show more.
+
+A changed or removed selection reprojects the same native results only while
+that request is still current and its content is unprotected. Open Note forms,
+pending appends, focused content and children (including their initial pending
+lookup) defer the latest presentation as one coherent tab row and projection.
+Child retirement, settled focus departure and Note close retry that update;
+real replacement renders discard it. Safe local projection preserves expansion
+and refreshes Note's projected-primary prefill. Native kanji uses its own
+original entries, never the prior term's Back snapshot. These local updates use
+the existing render-error boundary and owned masonry queue, not a new lookup.
+
 Dictionary revisions, generation, media and style transport remain shared. A
 changed accepted engine generation invalidates other level tokens, including
 when a restarted engine reports a lower number. A same-generation child leaves

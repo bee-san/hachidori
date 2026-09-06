@@ -2566,26 +2566,26 @@
       activateTab(selectedIndex);
       currentPresentationUpdate = (context) => runRenderAction(
         () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
-        const next = createDictionaryTabs(dictionaries, context);
-        const previous = tabDescriptors;
-        const selectedKey = previous[selectedIndex].key;
-        let index = next.tabs.findIndex(tab => tab.key === selectedKey);
-        if (index < 0) index = 0;
-        const sameMembers = sameTabMembers(previous[selectedIndex].dictionaries, next.tabs[index].dictionaries, dictionaries);
-        if (!sameMembers && (!ownsView() || !canProjectPresentation())) return false;
-        Object.assign(renderContext, context);
-        tabDescriptors = next.tabs;
-        dictionaryDisplayNames = next.dictionaryDisplayNames;
-        selectedIndex = index;
-        let changed = syncTabButtons(previous);
-        if (selectedKey !== tabDescriptors[index].key) {
-          renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
-        }
-        if (sameMembers) changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames) || changed;
-        else {
-          const focused = retainedFocus(true);
-          renderProjection(rendered.isExpanded());
-          if (focused && typeof focused !== "string") {
+          const next = createDictionaryTabs(dictionaries, context);
+          const previous = tabDescriptors;
+          const selectedKey = previous[selectedIndex].key;
+          let index = next.tabs.findIndex(tab => tab.key === selectedKey);
+          if (index < 0) index = 0;
+          const sameMembers = sameTabMembers(previous[selectedIndex].dictionaries, next.tabs[index].dictionaries, dictionaries);
+          if (!sameMembers && (!ownsView() || !canProjectPresentation())) return false;
+          Object.assign(renderContext, context);
+          tabDescriptors = next.tabs;
+          dictionaryDisplayNames = next.dictionaryDisplayNames;
+          selectedIndex = index;
+          let changed = syncTabButtons(previous);
+          if (selectedKey !== tabDescriptors[index].key) {
+            renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
+          }
+          if (sameMembers) changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames) || changed;
+          else {
+            const focused = retainedFocus(true);
+            renderProjection(rendered.isExpanded());
+            if (focused && typeof focused !== "string") {
             positionPopup();
             restoreRetainedFocus(focused);
           }

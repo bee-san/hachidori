@@ -1122,6 +1122,8 @@
     if (levels.length === 1) return;
     if (window.innerWidth <= POPUP_PADDING_PX * 2 || window.innerHeight <= POPUP_PADDING_PX * 2) {
       pruneLevels(1);
+      // Finish this placement before a newly unprotected view can reproject.
+      window.queueMicrotask(flushDictionaryPresentation);
       return;
     }
     const startDepth = Math.max(1, fromLevel.depth);
