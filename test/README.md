@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 365 checks, all of
+full request→reply round trip per contract-C message type. 369 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -575,7 +575,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 129 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 132 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -640,6 +640,17 @@ restoration and retained Note/cards/resources. Unit coverage checks strict
 option ranges and no-op CAS, first-layout width ordering, and native/term
 clicked-kanji preview switching without losing Note or Back state. Unrelated
 dictionary changes retain the current clicked-kanji cards and disclosures.
+
+Three custom-CSS assertions check immediate unsaved preview, character count,
+persisted source and scoped reset; real CSS cascade after built-in and late
+dictionary styles, invalid-rule handling and page isolation; and live parent/
+child styling with retained Notes, Back context and zero extra engine requests.
+`HACHIDORI_CUSTOM_CSS_SCREENSHOT` captures the editor beside the live sample.
+Focused extension checks cover exact-string options CAS (including source over
+32 KiB), malformed types, sheet ownership/no-op work, a stylesheet load before
+the first preview update, one queued CSS placement and revision-bound editor
+conflicts. jsdom's constructed-sheet double proves ownership only; real Chrome
+proves parsing and cascade.
 
 Two toolbar assertions check Automatic/Top/Bottom persistence and live preview
 updates with mounted Note/cards, plus root/child overrides and fixed-edge resize
@@ -804,7 +815,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 129 assertions, and the summary line
+`PLANNED` at the top of the file names all 132 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
