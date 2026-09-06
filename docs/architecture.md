@@ -539,8 +539,11 @@ silently switch to Automatic. The effective candidate order owns in-flight
 routing, so a changed route cannot publish stale bytes/provenance or start another
 fallback. Alias and group-name changes preserve that identity and cached media.
 Reading's native Image source chooser stores canonical titles and stable group
-IDs, with aliases and group names only as labels. Disabled and missing selections
-stay remembered; inventory updates preserve a focused selection until focusout.
+IDs, with aliases and group names only as labels. Disabled or already-missing
+selections stay remembered, including deleted groups. Removing the selected
+installed package resets its image selection to Automatic in the same dictionary
+state/options commit, with an options revision that rejects stale writers.
+Inventory updates preserve a focused selection until focusout.
 It uses the existing revision-bound autosave and is independent of the hover and
 compact-summary toggles.
 

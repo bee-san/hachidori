@@ -330,6 +330,13 @@ function dictionaryCommit(current, currentOptions, dictionaries, groups) {
     const nextOptions = normaliseDictionarySelections(
       { ...projectStoredOptions(currentOptions), revision }, state.dictionaries,
     );
+    if (nextOptions.popupImageSource?.kind === "dictionary") {
+      const selected = current?.dictionaries.find((entry) =>
+        entry.title === nextOptions.popupImageSource.title);
+      if (selected && !dictionaries.some((entry) => entry.id === selected.id)) {
+        nextOptions.popupImageSource = null;
+      }
+    }
     if (!sameJsonValue(nextOptions, { ...currentOptions, revision })) {
       values[OPTIONS_KEY] = { ...nextOptions, revision: revision + 1 };
     }
