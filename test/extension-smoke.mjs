@@ -9933,6 +9933,10 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     { tag: "ul", content: { tag: "li", content: ["first", { tag: "br" }, "second"] } },
   ].map(content => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Line breaks",
     glossary: JSON.stringify([{ type: "structured-content", content }]) }])?.items);
+  const ruby = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Ruby", glossary: JSON.stringify([
+    { tag: "ruby", content: ["食", { tag: "rp", content: "(" },
+      { tag: "rt", content: "た" }, { tag: "rp", content: ")" }] },
+  ]) }]);
   const phantomList = { tag: "ul", content: { tag: "li", content: "not rendered" } };
   const renderedDispatch = [
     ...["br", "img", "script", "button", "input", "source"].map(tag => [{ tag, content: phantomList }, "visible"]),
@@ -9952,9 +9956,10 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       && JSON.stringify(summaryGlossaries) === summaryBefore && boundedSummaryWork && streamedText
       && mixedSenses.every(items => JSON.stringify(items) === JSON.stringify(["first sense", "second sense"]))
       && brokenLines.every(items => JSON.stringify(items) === JSON.stringify(["first second"]))
+      && JSON.stringify(ruby?.items) === JSON.stringify(["食"])
       && renderedDispatch.every(items => JSON.stringify(items) === JSON.stringify(["visible"]))
       && imageAfterBreak?.image?.path === "leading.png",
-    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText, mixedSenses, brokenLines, renderedDispatch, imageAfterBreak }));
+    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText, mixedSenses, brokenLines, ruby, renderedDispatch, imageAfterBreak }));
 
   const host = document.createElement("div");
   document.body.appendChild(host);
