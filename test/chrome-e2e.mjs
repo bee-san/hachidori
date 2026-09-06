@@ -220,6 +220,7 @@ const PLANNED = [
   "fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
   "fallback source paint tracks CSS transitions and animated ancestors",
   "fallback source paint follows sibling layout changes inside fixed-size ancestors",
+  "fallback source paint stays beneath page headers and overlays",
   "editable controls preserve normal editing and suppress pointer and selection lookups",
   "Japanese-only preferences change automatic scanning in an already-open tab",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
@@ -3808,6 +3809,46 @@ async function checkSourceFallback(settings, tab, popup) {
       siblingStyle.exact && siblingText.exact && JSON.stringify(fixedBefore) === JSON.stringify(fixedAfter)
         && siblingStyle.source.expected[0].top !== siblingText.source.expected[0].top,
       JSON.stringify({ fixedBefore, fixedAfter, siblingStyle, siblingText }));
+    const area = rect => Math.max(0, rect.right - rect.left) * Math.max(0, rect.bottom - rect.top);
+    const overlap = (a, b) => area({ left: Math.max(a.left, b.left), right: Math.min(a.right, b.right),
+      top: Math.max(a.top, b.top), bottom: Math.min(a.bottom, b.bottom) });
+    const uncovered = await snapshot();
+    const sourceRect = uncovered.source.expected[0];
+    const covers = [];
+    for (const kind of ["partial", "pointer-none", "modal", "sticky", "behind"]) {
+      const cover = await tab.evaluate(({ source, kind }) => {
+        const element = document.createElement("div");
+        element.id = "e17-page-cover";
+        const small = kind === "modal";
+        const left = source.left + (small ? 20 : -10), top = source.top + (small ? 8 : -8);
+        const width = small ? 12 : 220, height = small ? 12 : kind === "partial" ? 18 : 48;
+        element.style.cssText = `position:${kind === "sticky" ? "absolute" : "fixed"};left:${left}px;top:${top}px;`
+          + `width:${width}px;height:${height}px;background:white;z-index:${kind === "behind" ? -1 : 100};`
+          + (kind === "pointer-none" ? "pointer-events:none;" : "");
+        let painted = element;
+        if (kind === "sticky") {
+          element.style.background = "transparent";
+          element.style.overflow = "auto";
+          painted = document.createElement("div");
+          painted.style.cssText = `position:sticky;top:0;height:${height}px;background:white`;
+          element.append(painted);
+        }
+        document.body.append(element);
+        return painted.getBoundingClientRect().toJSON();
+      }, { source: sourceRect, kind });
+      const current = await snapshot();
+      const expectedArea = uncovered.source.expected.reduce((total, rect) => total + area(rect)
+        - (kind === "behind" ? 0 : overlap(rect, cover)), 0);
+      const actualArea = current.paint.rects.reduce((total, rect) => total + area(rect), 0);
+      const bounded = current.paint.rects.every(rect => uncovered.source.expected.some(source =>
+        overlap(rect, source) >= area(rect) - 1) && (kind === "behind" || overlap(rect, cover) < 1));
+      await tab.$eval("#e17-page-cover", element => element.remove());
+      const restored = await snapshot();
+      covers.push({ kind, expectedArea, actualArea, bounded, restored: restored.exact });
+    }
+    check("fallback source paint stays beneath page headers and overlays",
+      covers.every(value => value.bounded && value.restored && Math.abs(value.expectedArea - value.actualArea) < 2),
+      JSON.stringify(covers));
     await tab.keyboard.press("Escape"); // Close the unsaved Note draft first.
     await tab.keyboard.press("Escape");
     await frame();
@@ -3826,6 +3867,7 @@ async function checkSourceFallback(settings, tab, popup) {
       element.innerHTML = value.html;
       element.className = value.className;
       document.getElementById("e17-source-box")?.replaceWith(element.parentElement);
+      document.getElementById("e17-page-cover")?.remove();
       if (value.style === null) element.removeAttribute("style"); else element.setAttribute("style", value.style);
     }, sourceBefore);
     await editSettingsControls(settings, original);
