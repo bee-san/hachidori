@@ -5203,6 +5203,8 @@ async function sourceHighlightFallbackCase(window) {
   const { document } = window;
   window.Highlight = undefined;
   window.Element.prototype.getAnimations = () => [];
+  let mediaWatches = 0;
+  window.matchMedia = () => ({ addEventListener() { mediaWatches += 1; }, removeEventListener() { mediaWatches -= 1; } });
   let geometryReads = 0;
   let siblingOffset = 0;
   window.Range.prototype.getClientRects = function () {
@@ -5333,7 +5335,7 @@ async function sourceHighlightFallbackCase(window) {
       await frame();
       documentRoot = document.body.querySelectorAll(":scope > .gsm-hoshidicts-source-highlight-layer").length === 1;
     } finally { view.destroy(); popup.remove(); }
-    return exact && both && retained && hidden && restored && siblingMoved && discovery && cleaned && documentRoot
+    return exact && both && retained && hidden && restored && siblingMoved && discovery && cleaned && documentRoot && mediaWatches === 0
       && !document.querySelector(".gsm-hoshidicts-source-highlight-layer") && source.innerHTML === before.text
       && source.className === before.className && window.getSelection().toString() === before.selection;
   } finally {

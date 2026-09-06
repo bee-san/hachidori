@@ -754,6 +754,8 @@ declaration replacement, same-count adopted-sheet replacement, or releasing an
 intercepted late stylesheet response. No DOM notification accompanies those
 edits; bounded fallback refresh must discover the new fixed header and restore
 the source after removal.
+Changing colour-scheme emulation without resizing also activates sheet-level
+and nested media rules; their native change events must refresh cover discovery.
 The test disables `Highlight` in Hachidori's content-script CDP execution context,
 not the page's main world, and reads the actual closed-shadow paint layer.
 `HACHIDORI_HIGHLIGHT_SCREENSHOT` captures the clipped fallback source and popup.

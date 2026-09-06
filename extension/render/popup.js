@@ -576,6 +576,8 @@
     let stylesheetState = null;
     let stylesheetTimer = null;
     let polledStyles = false;
+    let watchedSheets = new Set();
+    const styleMedia = new Map();
     const motionRoots = new Set();
     const motionEvents = ["animationstart", "transitionrun", "pointerover", "pointerout", "focusin", "focusout"];
     const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
@@ -596,6 +598,16 @@
       schedule();
     }
 
+    function stylesheetRules(sheet) {
+      try { return sheet.cssRules; }
+      catch (error) {
+        if (error.name !== "SecurityError") throw error;
+        // Cross-origin rules are unreadable and cannot be edited by page CSSOM
+        // either. Their load events still refresh effective styles.
+        return [];
+      }
+    }
+
     function stylesheetSnapshot() {
       const seen = new Set();
       const snapshot = [];
@@ -605,15 +617,9 @@
         snapshot.push(sheet, sheet.disabled, sheet.media?.mediaText);
         if (seen.has(sheet)) return;
         seen.add(sheet);
-        try {
-          for (const rule of sheet.cssRules) {
-            snapshot.push(rule.cssText);
-            if (rule.styleSheet) sheetState(rule.styleSheet);
-          }
-        } catch (error) {
-          if (error.name !== "SecurityError") throw error;
-          // Cross-origin rules are unreadable and cannot be edited by page
-          // CSSOM either. Their load event still refreshes effective styles.
+        for (const rule of stylesheetRules(sheet)) {
+          snapshot.push(rule.cssText);
+          if (rule.styleSheet) sheetState(rule.styleSheet);
         }
         snapshot.push(null);
       }
@@ -622,7 +628,33 @@
         snapshot.push(tree);
         for (const sheet of [...(tree.styleSheets || []), ...(tree.adoptedStyleSheets || [])]) sheetState(sheet);
       }
+      watchedSheets = seen;
       return snapshot;
+    }
+
+    function refreshStyleMedia() {
+      // These common preference changes also cover unreadable page CSS.
+      const queries = new Set(["(prefers-color-scheme: dark)", "(prefers-reduced-motion: reduce)"]);
+      function collect(rules) {
+        for (const rule of rules) {
+          if (rule.media?.mediaText) queries.add(rule.media.mediaText);
+          const nested = rule.cssRules;
+          if (nested?.length) collect(nested);
+        }
+      }
+      for (const sheet of watchedSheets) {
+        if (sheet.media?.mediaText) queries.add(sheet.media.mediaText);
+        collect(stylesheetRules(sheet));
+      }
+      for (const [query, media] of styleMedia) {
+        if (!queries.has(query)) { media.removeEventListener("change", layoutChanged); styleMedia.delete(query); }
+      }
+      for (const query of queries) {
+        if (styleMedia.has(query)) continue;
+        const media = windowRef.matchMedia(query);
+        media.addEventListener("change", layoutChanged);
+        styleMedia.set(query, media);
+      }
     }
 
     function checkStyleSheets() {
@@ -784,6 +816,7 @@
         // starting the timer so early CSSOM edits cannot become its baseline.
         if (!polledStyles) stylesheetState = stylesheetSnapshot();
         polledStyles = false;
+        refreshStyleMedia();
         stylesheetTimer ??= windowRef.setInterval(checkStyleSheets, 250);
       }
       return pageOccluders.flatMap(element => {
@@ -885,6 +918,7 @@
       destroy() {
         if (frame !== null) windowRef.cancelAnimationFrame(frame);
         if (stylesheetTimer !== null) windowRef.clearInterval(stylesheetTimer);
+        for (const media of styleMedia.values()) media.removeEventListener("change", layoutChanged);
         resize?.disconnect();
         geometry.disconnect();
         for (const target of motionRoots) unwatchMotion(target);

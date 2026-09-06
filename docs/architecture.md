@@ -871,6 +871,11 @@ but do not discover elements, read geometry or paint; changed snapshots refresh 
 the next frame. Cross-origin rules remain unreadable, with load events handling
 their application. The interval is a bounded fallback delay, not native-highlight
 behavior, and stops with the last owner.
+Media-query change listeners cover sheet media and nested queries in readable
+stylesheets without polling their match state. They are reconciled only during
+discovery and released with the fallback. Colour-scheme and reduced-motion
+preferences are also observed for opaque cross-origin sheets; arbitrary nested
+queries in those unreadable sheets cannot be enumerated.
 Fallback layout observation spans each containing Document/ShadowRoot once,
 including sibling text and attribute changes: a fixed-size ancestor can hide
 position-only movement from ResizeObserver. Owned paint mutations are ignored,
