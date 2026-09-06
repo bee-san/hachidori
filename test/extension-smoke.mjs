@@ -9532,10 +9532,13 @@ async function contentNoteStage() {
       dictionaries: [...harness.driver.snapshot().dictionaries,
         genericPackage({ id: "image-b", title: "Images:B", path: "/dicts/images-b", termCount: 0 }),
         genericPackage({ id: "image-c", title: "Images:C", path: "/dicts/images-c", termCount: 0 }),
+        genericPackage({ id: "image-off", title: "Images:Disabled", path: "/dicts/images-off", enabled: false }),
       ],
       groups: [{ id: "image-order", name: "Images", dictionaryIds: ["image-b", "image-c"] }],
     };
     harness.emitState(inventory);
+    let inventoryRevision = inventory.revision;
+    const changeInventory = (patch) => harness.emitState({ ...inventory, ...patch, revision: ++inventoryRevision });
     await harness.initialLookup();
     const context = harness.render().context;
     const descriptor = harness.driver.viewRequest();
@@ -9576,14 +9579,18 @@ async function contentNoteStage() {
       finish(null);
       const exhaustedValue = await exhausted;
       const beforeUnavailable = harness.sent.length;
-      select({ kind: "tabGroup", id: "removed-group" });
-      const unavailable = load("unavailable.png");
-      finish();
-      const unavailableValue = await unavailable;
+      const unavailableValues = [];
+      for (const source of [{ kind: "tabGroup", id: "removed-group" },
+        { kind: "dictionary", title: "Removed" }, { kind: "dictionary", title: "Images:Disabled" }]) {
+        select(source);
+        const unavailable = load("unavailable.png");
+        finish();
+        unavailableValues.push(await unavailable);
+      }
       results["image groups fall through separately for each path and unavailable or exhausted sources fail normally"] =
         firstCandidate?.dictionary === "Images:B" && fallback?.dictionary === "Images:C"
         && firstValue === otherUrl && secondCandidate?.dictionary === "Images:B" && secondValue === url
-        && exhaustedValue === null && unavailableValue === null && harness.sent.length === beforeUnavailable;
+        && exhaustedValue === null && unavailableValues.every(value => value === null) && harness.sent.length === beforeUnavailable;
 
       select({ kind: "tabGroup", id: "image-order" });
       let ownsFirst = true;
@@ -9602,13 +9609,15 @@ async function contentNoteStage() {
         && sources.filter(({ path }) => path === "shared-route.png").length === 1;
 
       const stale = [];
-      for (const successful of [false, true]) {
+      for (const successful of [false, true, "group-reorder"]) {
         select({ kind: "tabGroup", id: "image-order" });
         const path = `obsolete-${successful}.png`;
         const operation = load(path);
         const request = harness.take("hd_media");
         const beforeChange = harness.sent.length;
-        select({ kind: "dictionary", title: "Images:C" });
+        if (successful === "group-reorder") {
+          changeInventory({ groups: [{ ...inventory.groups[0], dictionaryIds: ["image-c", "image-b"] }] });
+        } else select({ kind: "dictionary", title: "Images:C" });
         harness.reply(request, { dataUrl: successful ? url : null });
         await harness.settle();
         finish();
@@ -9618,12 +9627,14 @@ async function contentNoteStage() {
       results["changing the effective image route stops stale success and further fallback without invalidating the lookup"] =
         stale.every(Boolean) && context.isCurrentRequest() && harness.driver.viewRequest() === descriptor;
 
+      changeInventory({});
       select({ kind: "tabGroup", id: "image-order" });
       const pendingAlias = load("alias.png");
       const aliasRequest = harness.take("hd_media");
       const beforeAlias = harness.sent.length;
-      harness.emitState({ ...inventory, revision: 3, dictionaries: inventory.dictionaries.map(dictionary =>
+      changeInventory({ dictionaries: inventory.dictionaries.map(dictionary =>
         dictionary.id === "image-b" ? { ...dictionary, displayName: "Picture book" } : dictionary),
+        groups: [{ ...inventory.groups[0], name: "Renamed pictures" }],
       });
       harness.reply(aliasRequest, { dataUrl: url });
       const aliasValue = await pendingAlias;
@@ -9632,6 +9643,15 @@ async function contentNoteStage() {
         aliasValue === url && cachedAlias === url && sources.at(-1)?.title === "Images:B"
         && harness.sent.length === beforeAlias && context.isCurrentRequest()
         && harness.driver.viewRequest() === descriptor && harness.renders.length === renderCount;
+      const callbackFailure = context.resolveMedia({
+        dictionary: "Generic", generation: context.generation, path: "alias.png",
+        isCurrent: context.isCurrentRequest,
+        onResolvedSource() { throw new Error("provenance callback failed"); },
+      }).catch(error => error.message);
+      await harness.settle();
+      finish();
+      results["image provenance callback errors do not trigger another supplier lookup"] =
+        await callbackFailure === "provenance callback failed" && harness.sent.length === beforeAlias;
       return results;
     } finally { harness.close(); }
   }

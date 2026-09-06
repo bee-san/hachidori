@@ -530,6 +530,15 @@ lookup/kanji response adopts the reader's generation; late media or styles
 cannot roll it backward. A restarted engine may legitimately report a lower
 generation number.
 
+Image-source selection is independent of the dictionary supplying the text.
+Automatic retains that dictionary's direct media path; an explicit dictionary or
+named group supplies enabled, installed candidates in its configured order.
+Each requested path falls through independently through the existing shared
+cache/queue. A missing source or exhausted group fails normally; it does not
+silently switch to Automatic. The effective candidate order owns in-flight
+routing, so a changed route cannot publish stale bytes/provenance or start another
+fallback. Alias and group-name changes preserve that identity and cached media.
+
 The reader separates reusable image resources from DOM ownership. Pending
 fetches dedupe by generation, canonical title and normalized path; successful
 data URLs stay reusable across hovers, including a fetch completing while the
