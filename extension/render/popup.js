@@ -1899,7 +1899,6 @@
       const isCurrentLink = () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext);
       const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
       hideImagePreview();
-      masonryObserver?.disconnect();
       panel.replaceChildren();
       const deferredGlossaryFills = [];
       let lookupStats = null;
@@ -2447,6 +2446,7 @@
       }
 
       function renderProjection(expandAll) {
+        if (hasRendered) masonryObserver?.disconnect();
         const selectedDictionaries = tabDescriptors[selectedIndex].dictionaries;
         const projectedResults = projectResults(results, selectedDictionaries);
         projectedPrimary = projectedResults[0] || null;
