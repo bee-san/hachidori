@@ -9885,14 +9885,23 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     { content: [duplicate, " • ", duplicate, " • tail"], items: [duplicate, "tail"] },
   ].every(({ content, items }) => JSON.stringify(HDPopup.extractCompactDefinitionSummary([{ dictionary: "Stream",
     glossary: JSON.stringify({ tag: "ul", content: { tag: "li", content } }) }])?.items) === JSON.stringify(items));
+  const mixedSenses = [
+    ["first sense", { tag: "p", content: "second sense" }],
+    [{ tag: "p", content: "first sense" }, "second sense"],
+    [{ type: "text", text: "first sense" }, { tag: "p", content: "second sense" }],
+    [{ type: "structured-content", content: { tag: "div", content: [
+      { tag: "p", content: "first sense" }, { tag: "p", content: "second sense" },
+    ] } }],
+  ].map(senses => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Mixed", glossary: JSON.stringify(senses) }])?.items);
   check("compact summaries preserve ordered text, split nonempty bullets and select only a leading image without changing full glossaries",
     JSON.stringify(compact?.items) === JSON.stringify(["first", "second"])
       && compact?.dictionary === "Illustrated" && compact?.image?.path === "media/kanji.png"
       && JSON.stringify(fallback?.items) === JSON.stringify(["plain first"])
       && !lateImage?.image && JSON.stringify(bulletSummary?.items) === JSON.stringify(["first", "second"])
       && nonImageLeads.every(summary => !summary?.image)
-      && JSON.stringify(summaryGlossaries) === summaryBefore && boundedSummaryWork && streamedText,
-    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText }));
+      && JSON.stringify(summaryGlossaries) === summaryBefore && boundedSummaryWork && streamedText
+      && mixedSenses.every(items => JSON.stringify(items) === JSON.stringify(["first sense", "second sense"])),
+    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText, mixedSenses }));
 
   const host = document.createElement("div");
   document.body.appendChild(host);
