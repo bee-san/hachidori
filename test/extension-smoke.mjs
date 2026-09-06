@@ -9802,8 +9802,9 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   ]) }]));
   const bulletText = ("first • first • second • " + "unused • ".repeat(50000)).trim();
   const longText = "長😀".repeat(50000);
+  const duplicateText = "a".repeat(200) + " • " + "a".repeat(200) + " • tail";
   sandbox.__summaryWork = { bulletText, longText, splitFragments: 0, codePoints: 0, emptyNormalizations: 0,
-    largeNormalizations: 0, largeTrims: 0, matchedCodeUnits: 0 };
+    largeNormalizations: 0, largeTrims: 0, matchedCodeUnits: 0, duplicateText, duplicateMatches: 0 };
   runInContext(`
     (() => {
       const split = String.prototype.split;
@@ -9833,6 +9834,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       RegExp.prototype.exec = function (...args) {
         const result = exec.apply(this, args);
         __summaryWork.matchedCodeUnits = Math.max(__summaryWork.matchedCodeUnits, result?.[0].length || 0);
+        if (args[0] === __summaryWork.duplicateText) __summaryWork.duplicateMatches += 1;
         return result;
       };
       String.prototype[Symbol.iterator] = function* () {
@@ -9858,15 +9860,19 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       glossary: JSON.stringify([" • ".repeat(150000) + "first • second"]) }]);
     const bullets = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Bullets", glossary: JSON.stringify([bulletText]) }], null, 2);
     const long = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Long", glossary: JSON.stringify([longText]) }], null, 1);
+    const repeated = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Repeated", glossary: JSON.stringify([duplicateText]) }]);
     boundedSummaryWork = JSON.stringify(bullets?.items) === JSON.stringify(["first", "second"])
       && long?.items[0] === "長😀".repeat(119) + "長…"
       && sandbox.__summaryWork.splitFragments === 0 && sandbox.__summaryWork.codePoints <= 241
       && sandbox.__summaryWork.emptyNormalizations === 0 && sandbox.__summaryWork.largeNormalizations === 0
-      && sandbox.__summaryWork.largeTrims === 0 && sandbox.__summaryWork.matchedCodeUnits <= 482;
+      && sandbox.__summaryWork.largeTrims === 0 && sandbox.__summaryWork.matchedCodeUnits <= 482
+      && JSON.stringify(repeated?.items) === JSON.stringify(["a".repeat(200), "tail"])
+      && sandbox.__summaryWork.duplicateMatches <= 6;
   } finally { sandbox.__restoreSummaryWork(); }
   const summaryWork = { splitFragments: sandbox.__summaryWork.splitFragments, codePoints: sandbox.__summaryWork.codePoints,
     emptyNormalizations: sandbox.__summaryWork.emptyNormalizations, largeNormalizations: sandbox.__summaryWork.largeNormalizations,
-    largeTrims: sandbox.__summaryWork.largeTrims, matchedCodeUnits: sandbox.__summaryWork.matchedCodeUnits };
+    largeTrims: sandbox.__summaryWork.largeTrims, matchedCodeUnits: sandbox.__summaryWork.matchedCodeUnits,
+    duplicateMatches: sandbox.__summaryWork.duplicateMatches };
   delete sandbox.__summaryWork;
   delete sandbox.__restoreSummaryWork;
   const duplicate = "a".repeat(200);
