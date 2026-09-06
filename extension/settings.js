@@ -7,6 +7,7 @@
 import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
+import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
 import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
@@ -76,6 +77,10 @@ let optionsTimer = null;
 let optionsSaveFailed = false;
 let optionsEditRevision = null;
 const OPTIONS_SAVE_DELAY_MS = 150;
+const nameDrafts = createDictionaryNameDrafts({
+  delayMs: OPTIONS_SAVE_DELAY_MS,
+  afterSave: () => renderChangedDictionaryState(),
+});
 let updateSettings = { revision: -1, schedule: "off", lastCheckedAt: null };
 let pendingSchedule = null, savingSchedule = null, scheduleTimer = null;
 let scheduleSaveFailed = false;
@@ -1347,15 +1352,10 @@ function renderDeferredAfterBlur(control) {
 
 function bindDictionaryAlias(row, entry) {
   const input = row.querySelector(".dict-display-name");
-  input.value = entry.displayName || "";
   input.placeholder = entry.title;
   input.setAttribute("aria-label", `Display name for ${entry.title}`);
   input.title = `Display name for ${entry.title}`;
-  input.addEventListener("change", () => {
-    const value = input.value.trim() || null;
-    void commitDictionaries(updateDictionary(entry.id, (dictionary) =>
-      dictionary.displayName === value ? dictionary : { ...dictionary, displayName: value }), false);
-  });
+  bindNameDraft(input, "dictionaries", entry.id, "displayName", entry.displayName ?? "", value => value.trim());
   renderDeferredAfterBlur(input);
 }
 
@@ -1610,6 +1610,10 @@ function renderDictionaryState() {
     ?? (document.activeElement === document.body ? pendingManagementFocus : null);
   pendingManagementFocus = null;
   dictionaries = dictionaryState.dictionaries;
+  nameDrafts.retain(new Set([
+    ...dictionaries.map(entry => `dictionaries:${entry.id}`),
+    ...dictionaryState.groups.map(group => `groups:${group.id}`),
+  ]));
   dictionaryRenderDeferred = false;
   renderDictionaries();
   dictionaryGroupController.render();
@@ -1623,7 +1627,7 @@ function renderDictionaryState() {
 async function commitDictionaryStateChange(update, reloadEngine) {
   const next = update(dictionaryState);
   if (next === null) {
-    return;
+    return { ok: true, state: dictionaryState };
   }
   const baseRevision = dictionaryState.revision;
   try {
@@ -1641,9 +1645,10 @@ async function commitDictionaryStateChange(update, reloadEngine) {
       await restoreAuthoritativeState(reply);
       dictionaryCommitFailed = true;
       setStatus(`Dictionary change was not saved: ${reply.error ?? "the state changed elsewhere"}`, "error");
-      return;
+      return reply;
     }
     adoptDictionaryState(reply.state);
+    return reply;
   } catch (error) {
     try {
       await restoreAuthoritativeState();
@@ -1653,6 +1658,7 @@ async function commitDictionaryStateChange(update, reloadEngine) {
     }
     dictionaryCommitFailed = true;
     setStatus(`Dictionary change was not saved: ${describe(error)}`, "error");
+    return { ok: false, error: describe(error) };
   }
 }
 
@@ -1701,6 +1707,24 @@ function commitGroups(update) {
   }, false);
 }
 
+function bindNameDraft(input, collection, id, field, value, normalise, validate) {
+  nameDrafts.bind(`${collection}:${id}`, input, {
+    value, normalise,
+    readName: () => {
+      const entry = dictionaryState[collection].find(item => item.id === id);
+      return entry ? entry[field] ?? "" : undefined;
+    },
+    async save(baseName, name) {
+      let renamed;
+      const reply = await queueDictionaryStateChange(current => {
+        renamed = renameWithBaseline(current[collection], id, field, baseName, name, validate);
+        return renamed.error || renamed.items === current[collection] ? null : { ...current, [collection]: renamed.items };
+      }, false);
+      return renamed?.error ? { ok: false, ...renamed } : reply;
+    },
+  });
+}
+
 const dictionaryGroupController = createDictionaryGroupController({
   setError: (message) => setSectionStatus("dict-group-error", message, "error"),
   readState: () => dictionaryState,
@@ -1710,6 +1734,7 @@ const dictionaryGroupController = createDictionaryGroupController({
   moveListItem,
   updateItemById,
   renderDeferredAfterBlur,
+  bindNameDraft,
 });
 
 async function removeDictionary(id, title) {
@@ -2243,7 +2268,8 @@ function attachHandlers() {
 
   window.addEventListener("beforeunload", (event) => {
     if (!importing && savingOptions === null && optionsEditRevision === null
-        && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null) {
+        && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null
+        && !nameDrafts.hasPendingChanges()) {
       return;
     }
     // Leaving can revoke an import's blob URL or discard a queued settings draft.
@@ -2261,7 +2287,7 @@ function dictionaryNameIsBeingEdited() {
 }
 
 function renderChangedDictionaryState() {
-  if (committing || managementPointerDown || dictionaryNameIsBeingEdited()) {
+  if (committing || nameDrafts.hasInFlightSave() || managementPointerDown || dictionaryNameIsBeingEdited()) {
     dictionaryRenderDeferred = true;
     return;
   }

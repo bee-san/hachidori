@@ -1524,7 +1524,10 @@ function loadSettingsScript(window) {
   const groups = readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8")
     .replace(/import "\.\/dictionary-group-state\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
+  const nameDrafts = readFileSync(resolve(EXTENSION, "dictionary-name-drafts.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{ createAudioSettingsController \}\s*from\s*"\.\/audio-settings\.js";\s*/u, "")
@@ -1534,7 +1537,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${settings}`,
+    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${settings}`,
   );
 }
 
@@ -4466,19 +4469,18 @@ async function main() {
   );
   const settingsConflict = await settingsConflictStage();
   check(
-    "settings preserve a concurrent alias draft, queue its next action, and restore a rejected edit",
+    "settings refuse a conflicting alias draft, queue its next action, and restore a rejected edit",
     settingsConflict?.draftSurvived === true
       && settingsConflict.secondActionTargetSurvived === true
-      && settingsConflict.casRequests?.length === 2
-      && settingsConflict.casRequests[0].type === "hd_state_cas"
+      && settingsConflict.casRequests?.length === 1
+      && settingsConflict.casRequests[0].type === "hd_apply_state"
       && settingsConflict.casRequests[0].baseRevision === 8
-      && settingsConflict.casRequests[0].dictionaries[0].displayName === "My draft"
+      && settingsConflict.casRequests[0].dictionaries[0].displayName === "Other writer"
       && settingsConflict.casRequests[0].dictionaries[0].favorite === true
       && settingsConflict.casRequests[0].dictionaries[0].frequencyMode === "rank-based"
-      && settingsConflict.casRequests[1].type === "hd_apply_state"
-      && settingsConflict.casRequests[1].baseRevision === 9
-      && settingsConflict.casRequests[1].dictionaries[0].displayName === "My draft"
-      && settingsConflict.casRequests[1].dictionaries[0].enabled === false
+      && settingsConflict.casRequests[0].dictionaries[0].enabled === false
+      && settingsConflict.aliasConflict.includes("changed elsewhere")
+      && settingsConflict.retainedAlias === "My draft"
       && settingsConflict.directDictionaryWrites === 0
       && settingsConflict.enabled === true
       && settingsConflict.kanjiChoice === true
@@ -7408,7 +7410,7 @@ async function settingsConflictStage() {
   checkbox.checked = false;
   checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
   const selectedValue = JSON.stringify({ title: "Generic", kind: "term" });
-  while (casRequests.length < 2 && Date.now() < deadline) {
+  while (casRequests.length < 1 && Date.now() < deadline) {
     await new Promise((done) => window.setTimeout(done, 5));
   }
   await new Promise((done) => window.setTimeout(done, 0));
@@ -7433,6 +7435,8 @@ async function settingsConflictStage() {
 
   const result = {
     draftSurvived,
+    aliasConflict: window.document.querySelector(".name-draft-feedback")?.textContent ?? "",
+    retainedAlias: window.document.querySelector(".dict-display-name")?.value,
     secondActionTargetSurvived,
     casRequests: structuredClone(casRequests),
     directDictionaryWrites,

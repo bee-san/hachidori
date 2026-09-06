@@ -12,7 +12,7 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
 const tick = () => new Promise(done => setImmediate(done));
 const pause = ms => new Promise(done => setTimeout(done, ms));
 
-function fixture(t) {
+function fixture(t, validate) {
   const dom = new JSDOM("<body><label><input></label></body>");
   const { window } = dom;
   let items = [{ id: "one", name: "Study", dictionaryIds: [] }], release = null;
@@ -25,8 +25,8 @@ function fixture(t) {
       readName: () => items[0]?.name,
       async save(baseName, name) {
         sent.push({ baseName, name });
-        const result = renameWithBaseline(items, "one", "name", baseName, name);
-        if (result.error) return { ok: false, error: result.error };
+        const result = renameWithBaseline(items, "one", "name", baseName, name, validate);
+        if (result.error) return { ok: false, ...result };
         items = result.items;
         if (release) await new Promise(done => { release = done; });
         return { ok: true };
@@ -101,4 +101,22 @@ test("rename baseline supports alias no-op readback and never resurrects a remov
   assert.equal(renameWithBaseline(items, "one", "displayName", "Old", "Mine").items, items);
   assert.match(renameWithBaseline([], "one", "displayName", "Old", "Mine").error, /removed/u);
   assert.match(renameWithBaseline(items, "one", "displayName", "Old", "New").error, /changed elsewhere/u);
+});
+
+test("correcting a locally invalid name resumes autosave without rebasing an external conflict", async t => {
+  const f = fixture(t, (_items, name) => name === "All" ? "All is reserved." : "");
+  f.edit("All");
+  await pause(30);
+  assert.match(f.window.document.body.textContent, /reserved/u);
+  f.edit("All terms");
+  await pause(30);
+  assert.equal(f.read()[0].name, "All terms");
+  assert.equal(f.drafts.hasPendingChanges(), false);
+  f.edit("Mine"); f.external("Shared");
+  await pause(30);
+  const before = f.sent.length;
+  f.edit("My corrected draft");
+  await pause(30);
+  assert.equal(f.sent.length, before);
+  assert.equal(f.read()[0].name, "Shared");
 });

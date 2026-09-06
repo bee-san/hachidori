@@ -736,6 +736,15 @@ textarea {
   color: var(--error);
   font-size: 12px;
 }
+.name-draft-feedback {
+  flex-basis: 100%;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: grid;
+  gap: 8px;
+  color: var(--error);
+  font-size: 12px;
+}
 .dict-group-list {
   display: grid;
   gap: 24px;

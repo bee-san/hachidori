@@ -46,6 +46,7 @@ export function createDictionaryGroupController({
   moveListItem,
   updateItemById,
   renderDeferredAfterBlur,
+  bindNameDraft,
 }) {
   function changeNamedGroup(name, excludedId, update) {
     void commitGroups((current) => {
@@ -109,20 +110,8 @@ export function createDictionaryGroupController({
 
   function bindName(row, group) {
     const input = row.querySelector(".dict-group-name");
-    input.value = group.name;
     input.setAttribute("aria-label", `Name for ${group.name}`);
-    input.addEventListener("change", () => {
-      const name = normaliseGroupName(input.value);
-      const error = groupNameError(readState().groups, name, group.id);
-      if (error) {
-        input.value = group.name;
-        setError(error);
-        return;
-      }
-      setError("");
-      changeNamedGroup(name, group.id, (current) => updateItemById(current, group.id, (entry) =>
-        entry.name === name ? entry : { ...entry, name }));
-    });
+    bindNameDraft(input, "groups", group.id, "name", group.name, normaliseGroupName, groupNameError);
     renderDeferredAfterBlur(input);
   }
 
