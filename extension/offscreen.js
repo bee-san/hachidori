@@ -10,6 +10,8 @@
 import { boundResponseFailure } from "./response-limits.js";
 
 const TARGET = "hoshidicts-offscreen";
+const AUDIO_TARGET = "hachidori-audio";
+let audioService;
 const MAX_PENDING_REQUESTS = 128;
 const PROBE_TIMEOUT_MS = 10_000;
 const MUTATION_TYPES = new Set([
@@ -191,6 +193,16 @@ const engineSelection = shouldUseThreadedEngine().then((threaded) => {
   lastEngineStatus.threaded = threaded;
   return threaded ? startWorkerEngine() : startLocalEngine();
 }).catch(failEngine);
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== AUDIO_TARGET || message.relayed !== true) return false;
+  audioService ??= import("./audio-offscreen.js").then(module => module.createAudioService(globalThis));
+  audioService.then(handle => handle(message)).then(
+    result => sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true, ...result }),
+    error => sendResponse(failedResponse(message, describe(error))),
+  );
+  return true;
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.target !== TARGET || message.relayed !== true) {

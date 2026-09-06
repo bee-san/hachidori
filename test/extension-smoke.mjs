@@ -821,6 +821,48 @@ async function externalLinksBackgroundStage() {
     JSON.stringify({ independent, failed, log: bus.log }));
 }
 
+async function audioRelayStage() {
+  const bus = makeBus();
+  const chrome = makeChrome("audio-worker", bus, makeStorage());
+  chrome.runtime.getContexts = async () => [{}];
+  const sent = [];
+  const backoffs = [];
+  let failNext = true;
+  chrome.runtime.sendMessage = async message => {
+    if (message.type === "hd_audio_test" && failNext) {
+      failNext = false;
+      throw new Error("Receiving end does not exist");
+    }
+    sent.push(message);
+    return { ok: true, status: message.type === "hd_audio_stop" ? "cancelled" : "success" };
+  };
+  loadBackgroundScript({ chrome, console, URL, clearTimeout, Promise, Error,
+    setTimeout: resolve => { backoffs.push(resolve); } });
+  const send = (type, requestId, extra = {}, documentId = "settings-a") => bus.sendMessage("audio-settings", {
+    target: "hachidori-audio", type, requestId, ...extra,
+  }, { id: chrome.runtime.id, documentId });
+  const source = { id: "tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" };
+  async function reachBackoff() {
+    for (let i = 0; i < 20 && backoffs.length === 0; i++) await Promise.resolve();
+    if (!backoffs.length) throw new Error("Audio relay never reached the startup retry");
+  }
+  const stopped = send("hd_audio_test", "stopped", { source });
+  await reachBackoff();
+  await send("hd_audio_stop", "stop", { playRequestId: "stopped" });
+  backoffs.shift()();
+  const stoppedReply = await stopped;
+  failNext = true;
+  const old = send("hd_audio_test", "old", { source });
+  await reachBackoff();
+  const current = await send("hd_audio_test", "current", { source, owner: "spoofed" }, "settings-b");
+  backoffs.shift()();
+  const oldReply = await old;
+  check("Audio Stop and newer Tests retire startup retries before stale playback can begin",
+    stoppedReply.status === "cancelled" && oldReply.status === "cancelled" && current.status === "success"
+      && sent.filter(message => message.type === "hd_audio_test").length === 1
+      && sent.at(-1).requestId === "current" && sent.at(-1).owner === "settings-b", JSON.stringify(sent));
+}
+
 async function customBackgroundStage() {
   const bus = makeBus();
   const storage = makeStorage();
@@ -1910,6 +1952,7 @@ async function main() {
 
   section("external dictionary links");
   await externalLinksBackgroundStage();
+  await audioRelayStage();
 
   section("custom dictionary storage ownership");
   const customBackground = await customBackgroundStage();
