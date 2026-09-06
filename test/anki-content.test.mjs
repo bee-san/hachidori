@@ -104,3 +104,29 @@ test("late preflight cannot expose retired controls and an uncertain write stays
   f.items[1].add.click();
   assert.equal(writes, 1);
 });
+
+test("refresh waits for a second pending submission without spinning on its busy record", async t => {
+  const held = Promise.withResolvers();
+  let writes = 0, statuses = 0;
+  const f = fixture(t, async type => {
+    if (type === "hd_anki_status") {
+      if (++statuses > 10) throw new Error("unexpected refresh loop");
+      return { available: true, configKey: "current" };
+    }
+    if (type === "hd_anki_submit") {
+      if (++writes === 2) await held.promise;
+      return { state: "added", noteId: writes, warnings: [] };
+    }
+    return { state: "addable", canAdd: true };
+  });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => !f.items[2].add.disabled);
+  f.items[0].add.click();
+  f.items[1].add.click();
+  await until(() => f.items[0].add.textContent === "Added");
+  const before = statuses;
+  held.resolve();
+  await until(() => f.items[1].add.textContent === "Added");
+  assert.ok(before <= 2, `pending write caused ${before} status requests`);
+});
