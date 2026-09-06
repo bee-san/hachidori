@@ -593,11 +593,12 @@ Without it, this headless macOS host accepts playback but stalls its audio clock
 at 64 ms. Audible hardware output and installed speech voices are not proved.
 
 `node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs`
-runs 24 focused tests for strict source options, defaults versus explicit empty
+runs 25 focused tests for strict source options, defaults versus explicit empty
 lists, template encoding, candidate order, native callback ownership, cleanup,
 TTS supersession and unavailable selected voices, document-scoped cancellation,
 Test and fallback deadlines, LRU/TTL/byte accounting, leased URL cleanup, exact
-candidate identity, stale controls, chooser focus/failure recovery and autoplay. Extension
+candidate identity, stale controls, chooser focus/failure recovery and autoplay,
+including delayed initial options without repeating a manual play. Extension
 checks exercise the actual worker's cancelled startup retries and Settings draft
 conflicts rather than duplicating their storage machinery.
 

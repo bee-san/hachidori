@@ -1275,7 +1275,7 @@
       send: (type, fields) => sendRequest(type, fields, "hachidori-audio"),
       onMenuChange(owner) { cancelCandidateScan(); clearHideTimer(); positionPopup(owner); },
     });
-    audio.update(options);
+    audio.update(options, optionsStorageRevision >= 0);
     const popup = document.createElement("div");
     popup.className = "gsm-hoshidicts-popup";
     popup.dataset.hoshidictsDepth = String(level.depth);

@@ -23,6 +23,27 @@
     let options = window.HDReaderOptions.DEFAULT_OPTIONS;
     let sourceKey = JSON.stringify(options.audioSources);
     let active = null, menu = null;
+    let optionsReady = false, pendingAutoplay = null;
+
+    function firstVisit(record) {
+      if (!record.request) return false;
+      let keys = visited.get(record.request);
+      if (!keys) { keys = new Set(); visited.set(record.request, keys); }
+      if (keys.has(record.autoplayKey)) return false;
+      keys.add(record.autoplayKey);
+      return true;
+    }
+
+    function cancelAutoplay() {
+      if (pendingAutoplay) firstVisit(pendingAutoplay);
+      pendingAutoplay = null;
+    }
+
+    function autoplay(record) {
+      if (!current(record)) return;
+      if (!optionsReady) { pendingAutoplay = record; return; }
+      if (firstVisit(record) && options.audioAutoplay) void play(record);
+    }
 
     function owns(operation) {
       return active === operation && current(operation.record);
@@ -62,11 +83,14 @@
     }
 
     function retire(owner) {
+      if (pendingAutoplay && (owner === undefined || pendingAutoplay.owner === owner)) cancelAutoplay();
       if (menu && (owner === undefined || menu.record.owner === owner)) closeMenu(false);
       if (active && (owner === undefined || active.record.owner === owner)) stop();
     }
 
     async function request(record, type, fields, accept) {
+      cancelAutoplay();
+      firstVisit(record);
       stop();
       if (!current(record)) return;
       const operation = { record, type, requestId: window.crypto.randomUUID() };
@@ -162,9 +186,12 @@
     function bind(items, context) {
       if (active?.record.owner === context.owner && !current(active.record)) stop();
       if (menu?.record.owner === context.owner && !current(menu.record)) closeMenu(false);
+      const first = items[0];
+      if (!first) return;
+      const autoplayKey = JSON.stringify([context.request?.selectedDictionaryTab, first.result.term.expression, first.result.term.reading]);
       for (const item of items) {
-        if (bound.has(item.button)) continue;
-        const record = { ...item, ...context,
+        if (bound.has(item.button)) { bound.get(item.button).autoplayKey = autoplayKey; continue; }
+        const record = { ...item, ...context, autoplayKey,
           term: { expression: item.result.term.expression, reading: item.result.term.reading || "" } };
         bound.set(item.button, record);
         item.button.addEventListener("click", event => {
@@ -177,16 +204,7 @@
           if (event.key === "ArrowDown") { event.preventDefault(); choices(record); }
         });
       }
-      const first = items[0];
-      if (!first || !context.request) return;
-      let keys = visited.get(context.request);
-      if (!keys) { keys = new Set(); visited.set(context.request, keys); }
-      const key = JSON.stringify([context.request.selectedDictionaryTab, first.result.term.expression, first.result.term.reading]);
-      if (keys.has(key)) return;
-      keys.add(key);
-      if (options.audioAutoplay && current({ ...first, ...context })) {
-        void play(bound.get(first.button));
-      }
+      autoplay(bound.get(first.button));
     }
 
     const listener = message => {
@@ -199,12 +217,25 @@
       bind, retire, closeMenu,
       hasMenu: owner => Boolean(menu && (owner === undefined || menu.record.owner === owner)),
       selectionFor: result => selections.get(result) ?? null,
-      update(next) {
+      update(next, ready = true) {
+        const waiting = !optionsReady && ready ? pendingAutoplay : null;
+        if (waiting) pendingAutoplay = null;
         const nextKey = JSON.stringify(next.audioSources);
         if (nextKey !== sourceKey) { retire(); selections = new WeakMap(); }
         else if (options.audioAutoplay && !next.audioAutoplay) retire();
         sourceKey = nextKey;
         options = next;
+        optionsReady = ready;
+        if (waiting) {
+          pendingAutoplay = waiting;
+          // Adopt the complete storage event, including lookup invalidation,
+          // before retrying a first result that rendered with unknown options.
+          window.queueMicrotask(() => {
+            if (pendingAutoplay !== waiting) return;
+            pendingAutoplay = null;
+            autoplay(waiting);
+          });
+        }
       },
       dispose() { retire(); window.chrome.runtime.onMessage.removeListener(listener); },
     };

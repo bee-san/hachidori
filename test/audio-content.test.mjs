@@ -159,6 +159,8 @@ test("late initial options play the still-current first result without replaying
     f.controller.update({ ...f.window.HDReaderOptions.DEFAULT_OPTIONS, audioAutoplay: true,
       audioSources: [{ id: "saved", type: "custom", enabled: true, url: "https://example.test/audio", voice: "" }],
     });
+    await settle();
+    assert.equal(f.sent.filter(request => request.type === "hd_audio_play").length, 1);
     v.bind();
     const plays = f.sent.filter(request => request.type === "hd_audio_play");
     assert.equal(plays.length, 1, manual ? "late options do not repeat manual playback" : "late options retry the first result");
