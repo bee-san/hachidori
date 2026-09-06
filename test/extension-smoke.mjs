@@ -9805,11 +9805,12 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   const duplicateText = "a".repeat(200) + " • " + "a".repeat(200) + " • tail";
   sandbox.__summaryWork = { bulletText, longText, splitFragments: 0, codePoints: 0, emptyNormalizations: 0,
     largeNormalizations: 0, largeTrims: 0, matchedCodeUnits: 0, duplicateText, duplicateMatches: 0,
-    countDuplicateBoundaries: false, duplicateBoundaries: 0, spanNormalizations: 0 };
+    countDuplicateBoundaries: false, duplicateBoundaries: 0, duplicatePointArrays: 0, spanNormalizations: 0 };
   runInContext(`
     (() => {
       const split = String.prototype.split;
       const at = Array.prototype.at;
+      const from = Array.from;
       const replace = String.prototype.replace;
       const trim = String.prototype.trim;
       const toLowerCase = String.prototype.toLowerCase;
@@ -9819,6 +9820,10 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       Array.prototype.at = function (...args) {
         if (__summaryWork.countDuplicateBoundaries) __summaryWork.duplicateBoundaries += 1;
         return at.apply(this, args);
+      };
+      Array.from = function (value, ...args) {
+        if (__summaryWork.countDuplicateBoundaries && typeof value === "string") __summaryWork.duplicatePointArrays += 1;
+        return from.call(this, value, ...args);
       };
       String.prototype.toLowerCase = function () {
         if (String(this) === "span") __summaryWork.spanNormalizations += 1;
@@ -9857,6 +9862,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       };
       globalThis.__restoreSummaryWork = () => {
         Array.prototype.at = at;
+        Array.from = from;
         String.prototype.split = split;
         String.prototype.replace = replace;
         String.prototype.trim = trim;
@@ -9888,6 +9894,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       && sandbox.__summaryWork.largeTrims === 0 && sandbox.__summaryWork.matchedCodeUnits <= 482
       && JSON.stringify(repeated?.items) === JSON.stringify(["a".repeat(200), "tail"])
       && sandbox.__summaryWork.duplicateMatches <= 6 && sandbox.__summaryWork.duplicateBoundaries <= 3
+      && sandbox.__summaryWork.duplicatePointArrays === 0
       && JSON.stringify(afterEmptySenses?.items) === JSON.stringify(["useful final sense"])
       // Observed tag work before streaming/per-sense fallback, not an input cap.
       && sandbox.__summaryWork.spanNormalizations <= 2832;
@@ -9896,7 +9903,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     emptyNormalizations: sandbox.__summaryWork.emptyNormalizations, largeNormalizations: sandbox.__summaryWork.largeNormalizations,
     largeTrims: sandbox.__summaryWork.largeTrims, matchedCodeUnits: sandbox.__summaryWork.matchedCodeUnits,
     duplicateMatches: sandbox.__summaryWork.duplicateMatches, duplicateBoundaries: sandbox.__summaryWork.duplicateBoundaries,
-    spanNormalizations: sandbox.__summaryWork.spanNormalizations };
+    duplicatePointArrays: sandbox.__summaryWork.duplicatePointArrays, spanNormalizations: sandbox.__summaryWork.spanNormalizations };
   delete sandbox.__summaryWork;
   delete sandbox.__restoreSummaryWork;
   const duplicate = "a".repeat(200);
