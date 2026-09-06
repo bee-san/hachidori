@@ -3875,7 +3875,7 @@ async function checkSourceFallback(settings, tab, popup) {
         }
         initiallyUncovered = (await snapshot()).exact;
         if (kind === "membership-late") await tab.$eval("#e17-page-cover", element => element.getAnimations().forEach(animation => animation.play()));
-        if (kind === "membership-paused" || kind === "membership-late") {
+        if (kind !== "membership") {
           await tab.waitForFunction(() => document.getElementById("e17-page-cover").getAnimations()
             .some(animation => animation.currentTime >= 650 && animation.currentTime < 950));
           await tab.$eval("#e17-page-cover", element => element.getAnimations().forEach(animation => animation.pause()));

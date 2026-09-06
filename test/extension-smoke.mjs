@@ -5254,6 +5254,24 @@ async function sourceHighlightFallbackCase(window) {
     await frame();
     await frame();
     const settledMotion = coverScans === beforeMotionEnd;
+    let animations = [{ playState: "paused", effect: { target: sibling,
+      getKeyframes: () => [{ position: "static" }, { position: "fixed" }] } }];
+    sibling.getAnimations = () => animations;
+    document.getAnimations = () => animations;
+    sibling.dispatchEvent(new window.Event("animationstart", { bubbles: true }));
+    await frame();
+    await frame();
+    const beforeOtherEffectEnd = coverScans;
+    sibling.dispatchEvent(new window.Event("animationend", { bubbles: true }));
+    await frame();
+    await frame();
+    const overlappingMotion = coverScans === beforeOtherEffectEnd;
+    animations = [];
+    sibling.dispatchEvent(new window.Event("animationend", { bubbles: true }));
+    await frame();
+    await frame();
+    delete document.getAnimations;
+    delete sibling.getAnimations;
     second.apply({ sourceElements: [otherSource], sentence: otherSource.textContent, matchOffset: 0 }, "Keep");
     await frame();
     source.style.visibility = "hidden";
@@ -5340,7 +5358,7 @@ async function sourceHighlightFallbackCase(window) {
       await frame();
       documentRoot = document.body.querySelectorAll(":scope > .gsm-hoshidicts-source-highlight-layer").length === 1;
     } finally { view.destroy(); popup.remove(); }
-    return exact && both && retained && settledMotion && hidden && restored && siblingMoved && discovery && cleaned && documentRoot && mediaWatches === 0
+    return exact && both && retained && settledMotion && overlappingMotion && hidden && restored && siblingMoved && discovery && cleaned && documentRoot && mediaWatches === 0
       && !document.querySelector(".gsm-hoshidicts-source-highlight-layer") && source.innerHTML === before.text
       && source.className === before.className && window.getSelection().toString() === before.selection;
   } finally {
