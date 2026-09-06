@@ -22,10 +22,11 @@
   let termView;
   let selectedDictionaryTab = null;
   let sampleMedia = null;
+  let clickedKanjiIndex = 0;
 
   function positionPopup() {
     const position = HDPopup.calculatePopupPosition(source.getBoundingClientRect(),
-      { width: 560, height: 420 }, { width: innerWidth, height: innerHeight });
+      HDPopup.DEFAULT_POPUP_SIZE, { width: innerWidth, height: innerHeight });
     for (const key of ["left", "top", "width", "height"]) popup.style[key] = `${position[key]}px`;
     view.setToolbarPosition(position.placement === "above" ? "bottom" : "top");
   }
@@ -37,10 +38,12 @@
     parseTagList: HDGlossary.parseTagList,
     getPopupColumns: () => options.popupColumns,
     positionPopup, sourceHighlightEnabled: true,
-    onKanjiClick(character) {
+    onKanjiClick(character, result, anchor, link) {
+      clickedKanjiIndex = [...popup.querySelectorAll(".gsm-hoshidicts-kanji-link")].indexOf(link);
       termView = { ...view.captureTermView(), selectedDictionaryTab };
       kanjiCharacter = character;
       renderSample();
+      popup.querySelector(".gsm-hoshidicts-kanji-back").focus({ preventScroll: true });
     },
     onAddCustomEntry() { throw new Error("This is a preview. Notes are not saved."); },
   });
@@ -64,6 +67,8 @@
             { tag: "details", content: [{ tag: "summary", content: "Usage note" },
               { tag: "p", content: "食べる is an ichidan verb. Its polite form is 食べます。" }] },
           ] }]),
+          glossary("Sample collocations", ["ご飯を食べる — to eat a meal", "外で食べる — to eat out"]),
+          glossary("Sample expressions", ["食べてみる — to try a food", "食べ終わる — to finish eating"]),
         ],
         frequencies: [
           { dictionary: "Sample ranks", frequencies: [{ value: 120, displayValue: "120" }, { value: 240, displayValue: "240" }] },
@@ -96,20 +101,21 @@
     };
   }
 
-  function renderSample() {
+  function renderSample(preserveViewControls = false) {
     if (kanjiCharacter) {
       view.renderKanji({ character: kanjiCharacter, entries: [{ dictionary: "Sample kanji",
         onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用", definitions: ["eat", "food"],
         stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }],
-      }] }, candidate, { ...context(), onBack() {
+      }] }, candidate, { ...context(), preserveViewControls, highlightText: candidate.query, onBack() {
         kanjiCharacter = null;
         renderSample();
+        popup.querySelectorAll(".gsm-hoshidicts-kanji-link")[clickedKanjiIndex]?.focus({ preventScroll: true });
       } });
     } else {
-      view.renderResults(sample.results, candidate, { ...context(),
+      view.renderResults(sample.results, candidate, { ...context(), preserveViewControls,
         onDictionaryTabSelected(selection) { selectedDictionaryTab = selection; },
         selectedDictionaryTab: termView?.selectedDictionaryTab, expandAll: termView?.expandAll,
-        restoreScrollTop: termView?.restoreScrollTop, restoreDisclosures: termView?.disclosures?.states,
+        restoreScrollTop: termView?.restoreScrollTop, disclosures: termView?.disclosures,
       });
       termView = null;
     }
@@ -129,8 +135,9 @@
     const nextSampleKey = JSON.stringify(nextSample.results);
     sample = nextSample;
     if (sampleKey !== nextSampleKey) {
+      if (!kanjiCharacter) termView = { ...view.captureTermView(), selectedDictionaryTab };
       sampleKey = nextSampleKey;
-      renderSample();
+      renderSample(true);
     } else view.updateDictionaryPresentation(context());
     view.scheduleMasonry();
   } };

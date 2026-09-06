@@ -29,8 +29,7 @@
     ["Meta", "metaKey"],
   ]);
 
-  const POPUP_WIDTH_PX = 560;
-  const POPUP_HEIGHT_PX = 420;
+  const { width: POPUP_WIDTH_PX, height: POPUP_HEIGHT_PX } = window.HDPopup.DEFAULT_POPUP_SIZE;
   const POPUP_GAP_PX = 4;
   const POPUP_PADDING_PX = 6;
   const MAX_MEDIA_CACHE_BYTES = 16 * 1024 * 1024;

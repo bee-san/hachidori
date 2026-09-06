@@ -5069,7 +5069,7 @@ async function designPreviewStage() {
     for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "design-preview.js"]) {
       window.eval(readFileSync(resolve(EXTENSION, file), "utf8"));
     }
-    const state = { revision: 0, dictionaries: [], groups: [] };
+    let state = { revision: 0, dictionaries: [], groups: [] };
     let options = { ...window.HDReaderOptions.DEFAULT_OPTIONS };
     const update = () => window.HDDesignPreview.update(options, state);
     const settle = () => new Promise(done => window.setTimeout(done, 60));
@@ -5101,15 +5101,25 @@ async function designPreviewStage() {
     await settle();
     const note = popup.textContent.includes("This is a preview. Notes are not saved.")
       && form.elements.definition.value === "A preview draft";
+    state = { revision: 1, dictionaries: [
+      { id: "first", title: "First", termCount: 1, pitchCount: 1, enabled: true },
+      { id: "second", title: "Second", termCount: 1, pitchCount: 1, enabled: true },
+    ], groups: [] };
+    options = { ...options, pitchAccentFuriganaDictionary: "Second", compactDefinitionSummaryDictionary: "Second" };
+    update();
+    await settle();
+    incremental &&= query("form") === form && form.elements.definition.value === "A preview draft";
     form.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     const tab = popup.querySelectorAll('[role="tab"]')[1];
     tab.click();
+    query(".gsm-hoshidicts-glossary-card").open = false;
     query(".gsm-hoshidicts-kanji-link").click();
     const kanji = query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
       && popup.textContent.includes("ショク");
     query(".gsm-hoshidicts-kanji-back").click();
     await settle();
-    const back = kanji && query('[role="tab"][aria-selected="true"]')?.textContent === tab.textContent;
+    const back = kanji && query('[role="tab"][aria-selected="true"]')?.textContent === tab.textContent
+      && query(".gsm-hoshidicts-glossary-card").open === false;
     popup.querySelectorAll('[role="tab"]')[0].click();
     options = { ...options, popupImageSource: { kind: "tabGroup", id: "missing" } };
     update();

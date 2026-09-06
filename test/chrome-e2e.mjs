@@ -2822,13 +2822,22 @@ async function checkDesignPreview(page) {
       window.previewCard = popup.querySelector(".gsm-hoshidicts-glossary-card");
       const initial = popup.textContent.includes("食べる") && !!popup.querySelector(".gsm-hoshidicts-tag-frequency")
         && !!popup.querySelector(".gsm-hoshidicts-tag-pitch") && CSS.highlights.has("gsm-hoshidicts-match");
-      popup.querySelector(".gsm-hoshidicts-kanji-link").click();
-      const kanji = popup.querySelector(".gsm-hoshidicts-kanji-glyph")?.textContent === "食";
-      popup.querySelector(".gsm-hoshidicts-kanji-back").click();
-      return initial && kanji && popup.textContent.includes("食べる")
+      popup.querySelector(".gsm-hoshidicts-kanji-link").focus();
+      return initial && popup.querySelectorAll(".gsm-hoshidicts-glossary-card").length === 4
         && root.querySelector('link[href="render/reader.css"]') !== null;
     });
-    check("Design lazily renders local sample terms, kanji and images through the production popup", before.lazy && sample);
+    await page.keyboard.press("Enter");
+    const kanji = await frame.evaluate(() => {
+      const root = document.getElementById("preview-host").shadowRoot;
+      return root.querySelector(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
+        && root.activeElement?.classList.contains("gsm-hoshidicts-kanji-back")
+        && [...CSS.highlights.get("gsm-hoshidicts-match")].map(range => range.toString()).join("") === "食べる";
+    });
+    await page.keyboard.press("Enter");
+    const back = await frame.evaluate(() => document.getElementById("preview-host").shadowRoot
+      .activeElement?.classList.contains("gsm-hoshidicts-kanji-link"));
+    check("Design lazily renders local sample terms, kanji and images through the production popup", before.lazy && sample && kanji && back,
+      JSON.stringify({ lazy: before.lazy, sample, kanji, back }));
     await frame.evaluate(() => {
       const popup = document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
       window.previewCard = popup.querySelector(".gsm-hoshidicts-glossary-card");
