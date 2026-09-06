@@ -177,3 +177,31 @@ test("presentation reprojection drops detached actions before queued checks and 
   assert.deepEqual(terms, ["猫", "犬", "犬"]);
   assert.equal(f.items[1].add.textContent, "Cannot add");
 });
+
+test("a reused primary action anchor binds the newly projected result and ignores its old preflight", async t => {
+  for (const expression of ["犬", "猫"]) {
+    const held = Promise.withResolvers(), checked = [], submitted = [];
+    const f = fixture(t, async (type, { request } = {}) => {
+      if (type === "hd_anki_status") return { available: true, configKey: "current" };
+      if (type === "hd_anki_submit") { submitted.push(request.term); return { state: "added", noteId: 42, warnings: [] }; }
+      checked.push(request.term);
+      if (checked.length === 1) { await held.promise; return { state: "duplicate", canAdd: false }; }
+      return { state: "addable", canAdd: true };
+    });
+    f.controller.update(configured);
+    f.controller.bind([f.items[0]], f.context);
+    await until(() => checked.length === 1);
+    const previousButton = f.items[0].add;
+    const term = { expression, reading: "", glossaries: [{ dictionary: "New projection" }] };
+    f.controller.bind([{ actions: f.items[0].actions, result: { term } }], f.context);
+    held.resolve();
+    await until(() => f.items[0].add && !f.items[0].add.disabled);
+    assert.equal(previousButton.isConnected, false);
+    assert.equal(f.items[0].actions.querySelectorAll(".gsm-hoshidicts-anki-control").length, 1);
+    assert.equal(f.items[0].add.getAttribute("aria-label"), `Add ${expression} to Anki`);
+    assert.deepEqual(checked, [f.items[0].result.term, term]);
+    f.items[0].add.click();
+    await until(() => f.items[0].add.textContent === "Added");
+    assert.deepEqual(submitted, [term]);
+  }
+});
