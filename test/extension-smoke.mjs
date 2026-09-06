@@ -7492,6 +7492,8 @@ async function contentNoteStage() {
     let popupReads = 0;
     let rootReads = 0;
     let queueDuringLayout = false;
+    const initialMasonryReads = [];
+    let recordMasonryReads = true;
     const frame = () => {
       for (const [id, callback] of [...frames]) {
         if (!frames.delete(id)) continue;
@@ -7529,6 +7531,15 @@ async function contentNoteStage() {
         const grid = window.document.createElement("div");
         grid.className = "gsm-hoshidicts-glossary-grid";
         grid.append(window.document.createElement("div"), window.document.createElement("div"));
+        for (const card of grid.children) {
+          Object.defineProperty(card, "offsetHeight", { get() {
+            if (recordMasonryReads) initialMasonryReads.push({
+              widths: [...grid.children].map(child => child.style.width),
+              transforms: [...grid.children].map(child => child.style.transform),
+            });
+            return 0;
+          } });
+        }
         Object.defineProperty(grid, "clientWidth", { get: () => Number.parseFloat(popup.style.width) });
         popup.append(grid);
         // Real per-view resize/masonry callbacks, bound to the real content
@@ -7546,7 +7557,11 @@ async function contentNoteStage() {
       window.dispatchEvent(new window.Event("resize"));
       const oneBatch = frames.size === 1 && layouts === 0;
       frame();
+      recordMasonryReads = false;
       const resize = layouts === 4 && rootReads === 1 && popupReads === 4 && frames.size === 0
+        && initialMasonryReads.length === 8 && initialMasonryReads.every(read =>
+          read.widths.every(width => width !== "" && width === read.widths[0])
+          && read.transforms.every(transform => transform === ""))
         && [0, 1, 2, 3].every(depth => {
           const popup = harness.driver.popupAt(depth);
           return Number.parseFloat(popup.style.left) >= 6
