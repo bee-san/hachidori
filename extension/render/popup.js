@@ -757,7 +757,7 @@
           isRunningMotion(animation) ? null : animation.currentTime]);
         const changed = !record || record.target !== target || record.effect !== effect
           || record.structure !== structure || record.state !== state;
-        const membership = record?.cover !== cover || (cover && (!record || record.target !== target
+        const membership = (record?.cover ?? false) !== cover || (cover && (!record || record.target !== target
           || record.effect !== effect || record.structure !== structure));
         if (!record) {
           record = { listener() {
