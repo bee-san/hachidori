@@ -608,7 +608,10 @@ export function compactSummaryFixture() {
       [child, 'ようやくご', '', '', 0, ['Text before the image.', image('media/kanji.png')], 2, ''],
       [broken, 'けっそんず', '', '', 0, [image('media/missing.png'), 'The text remains available.'], 3, ''],
     ] }) },
-    { title: plain, archive: buildTitledZip(plain, { terms: [
+    { title: plain, archive: buildTitledZip(plain, { mediaEntries: [
+      ['media/missing.png', Buffer.concat([makePng(), Buffer.from([1])])],
+      ['media/kanji.png', Buffer.concat([makePng(), Buffer.from([1])])],
+    ], terms: [
       [query, 'ようやく', '', '', 0, ['Alternative first', 'Alternative second'], 1, ''],
     ] }) },
   ] };

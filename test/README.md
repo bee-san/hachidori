@@ -569,7 +569,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 111 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 112 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -727,7 +727,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 111 assertions, and the summary line
+`PLANNED` at the top of the file names all 112 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

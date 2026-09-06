@@ -560,6 +560,12 @@ parents may update existing labels but cannot admit new image work. A focused
 image remains keyboard-focusable while its old URL is removed; preview reloads
 resume only an undismissed owner, never a preview closed by failure or scrolling.
 
+![Alternate image supplier beside the unchanged definition](assets/popup-image-source.png)
+
+[Image source in light](assets/image-source-settings-light.png) and
+[dark](assets/image-source-settings-dark.png) Settings keeps the native controls
+and the existing restrained palette.
+
 The reader separates reusable image resources from DOM ownership. Pending
 fetches dedupe by generation, canonical title and normalized path; successful
 data URLs stay reusable across hovers, including a fetch completing while the
