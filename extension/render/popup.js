@@ -982,6 +982,16 @@
       : compactDefinitionItemsFromNodes([node]);
   }
 
+  function* compactDefinitionFallbackNodes(parsed) {
+    // Top-level glossary-array entries are separate senses, unlike inline
+    // content arrays. Expand blocks within each sense without dropping siblings.
+    for (const sense of Array.isArray(parsed) ? parsed : [parsed]) {
+      const leafBlocks = findCompactDefinitionLeafBlocks(sense);
+      if (leafBlocks.length > 0) yield* leafBlocks;
+      else yield sense;
+    }
+  }
+
   function* extractCompactDefinitionItems(parsed) {
     if (parsed === null) return;
 
@@ -1004,16 +1014,7 @@
       if (yield* compactDefinitionItemsFromList(list)) return;
     }
 
-    const leafBlocks = findCompactDefinitionLeafBlocks(parsed);
-    if (leafBlocks.length > 0) {
-      yield* compactDefinitionItemsFromNodes(leafBlocks);
-      return;
-    }
-
-    if (Array.isArray(parsed)) {
-      if (yield* compactDefinitionItemsFromNodes(parsed)) return;
-    }
-    yield* compactDefinitionItemsFromNodes([parsed]);
+    yield* compactDefinitionItemsFromNodes(compactDefinitionFallbackNodes(parsed));
   }
 
   // null means no visible content; false means text or another non-image lead.

@@ -425,6 +425,9 @@ preference is not pruned by package changes.
 
 The existing semantic extractor skips metadata/examples, retains ordered unique
 snippets and splits nonempty bullet-separated text. Each inspected raw glossary
+retains mixed plain and structured top-level senses in fallback order, expanding
+leaf blocks within each sense without discarding its siblings. Semantic marked
+glossary sections and the first nonempty list retain precedence. Each glossary
 is parsed once for text and leading-image selection. Inline text parts stream
 without concatenating unused text or matching/normalizing whole fragments.
 One extra normalized code point beyond the 240-point display budget proves
