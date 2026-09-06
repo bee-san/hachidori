@@ -27,6 +27,7 @@ import {
   GENERIC_KANJI_TITLE,
   buildRecommendedZip,
   buildTitledZip,
+  dictionaryTabsFixture,
   externalLinksFixture,
   frequencyRankingFixture,
   imagePreviewFixture,
@@ -834,7 +835,98 @@ async function popupReader(page, depth = 0) {
     return result.value;
   }
 
-  return { click, deinflection, externalLink, imagePreview, nested, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+  async function dictionaryTabs(action = "read", key = null) {
+    const object = await resolvePopupObject();
+    if (!object) return null;
+    const reply = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true,
+      arguments: [{ value: action }, { value: key }],
+      functionDeclaration: function (action, key) {
+        const root = this.getRootNode();
+        const tabs = [...this.querySelectorAll('[role="tab"]')];
+        const tabKey = button => button.dataset.dictionary ? `dictionary:${button.dataset.dictionary}`
+          : button.dataset.groupId ? `group:${button.dataset.groupId}`
+            : button.dataset.favourites === "true" ? "favourites" : "all";
+        if (action === "select" || action === "focus") {
+          const button = tabs.find(button => tabKey(button) === key);
+          if (!button) throw new Error(`Missing dictionary tab: ${key}`);
+          if (action === "select") button.click(); else button.focus();
+        }
+        if (action === "cleanup") {
+          root.__retainedControls?.observer.disconnect();
+          delete root.__retainedControls;
+          delete root.__nestedParent;
+          delete root.__nestedAnchor;
+          delete this.__dictionaryTabs;
+          return true;
+        }
+        const panel = this.querySelector(".gsm-hoshidicts-tab-panel");
+        const selected = tabs.find(button => button.getAttribute("aria-selected") === "true");
+        const cards = [...this.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+        if (action === "remember") this.__dictionaryTabs = {
+          panel, selected, tabs: new Map(tabs.map(button => [tabKey(button), button])), cards,
+          link: this.querySelector("a[data-hoshidicts-query]"),
+        };
+        const saved = this.__dictionaryTabs;
+        const entries = [...this.querySelectorAll(".gsm-hoshidicts-entry")].map((entry, index) => ({
+          expression: entry.dataset.expression,
+          aria: (index === 0 ? this.querySelector(".gsm-hoshidicts-primary-header") : entry)
+            ?.querySelector(".gsm-hoshidicts-expression")?.getAttribute("aria-label"),
+          cards: [...entry.querySelectorAll(".gsm-hoshidicts-glossary-card")].map(card => ({
+            dictionary: card.querySelector("summary").title,
+            label: card.querySelector("summary").textContent,
+            bodies: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body => body.innerHTML),
+            text: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body => body.textContent),
+          })),
+        }));
+        // Attribute insertion order is not DOM meaning. Compare the complete
+        // ordered body DOM, retaining every node and attribute name/value.
+        if (action === "matches") return entries.length === key.length && entries.every((entry, index) => {
+          const expected = key[index];
+          return entry.expression === expected.expression && entry.aria === expected.aria
+            && entry.cards.length === expected.cards.length && entry.cards.every((card, cardIndex) => {
+              const other = expected.cards[cardIndex];
+              return card.dictionary === other.dictionary && card.bodies.length === other.bodies.length
+                && card.bodies.every((html, bodyIndex) => {
+                  const left = this.ownerDocument.createElement("template");
+                  const right = this.ownerDocument.createElement("template");
+                  left.innerHTML = html; right.innerHTML = other.bodies[bodyIndex];
+                  return left.content.isEqualNode(right.content);
+                });
+            });
+        });
+        return {
+          hidden: this.hidden, entries,
+          tabs: tabs.map(button => ({ key: tabKey(button), label: button.textContent, title: button.title,
+            selected: button.getAttribute("aria-selected") === "true", focused: root.activeElement === button,
+            tabIndex: button.tabIndex, controls: button.getAttribute("aria-controls"), id: button.id,
+            aria: button.getAttribute("aria-label"),
+            same: saved?.tabs.get(tabKey(button)) === button,
+          })),
+          selected: selected ? tabKey(selected) : null,
+          panelId: panel?.id, labelledBy: panel?.getAttribute("aria-labelledby"),
+          samePanel: panel === saved?.panel, sameSelected: selected === saved?.selected,
+          sameCards: cards.length === saved?.cards.length && cards.every((card, index) => card === saved.cards[index]),
+          sameAnchor: saved?.link?.isConnected === true && this.contains(saved.link),
+          images: [...this.querySelectorAll("img")].map(image => ({ src: image.getAttribute("src") || "",
+            complete: image.complete, width: image.naturalWidth, height: image.naturalHeight })),
+          rect: this.getBoundingClientRect().toJSON(), viewport: { width: innerWidth, height: innerHeight },
+          grids: [...this.querySelectorAll(".gsm-hoshidicts-glossary-grid")].map(grid => ({
+            width: grid.clientWidth, rect: grid.getBoundingClientRect().toJSON(), height: grid.style.height,
+            masonry: grid.classList.contains("gsm-hoshidicts-glossary-grid-masonry"),
+            cards: [...grid.children].map(card => ({ rect: card.getBoundingClientRect().toJSON(),
+              offsetHeight: card.offsetHeight, width: card.style.width, transform: card.style.transform,
+              visibility: card.style.visibility, open: card.open,
+            })),
+          })),
+        };
+      }.toString(),
+    });
+    if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description || reply.exceptionDetails.text);
+    return reply.result.value;
+  }
+
+  return { click, dictionaryTabs, deinflection, externalLink, imagePreview, nested, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -1037,6 +1129,340 @@ async function installMediaArchive(page, archive) {
       URL.revokeObjectURL(blobUrl);
     }
   }, archive.toString("base64"));
+}
+
+async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
+  const fixture = dictionaryTabsFixture();
+  const titles = fixture.dictionaries.map(item => item.title);
+  const [links, usage, examples, reference] = titles;
+  const studyId = "e2e-tabs-study", examplesId = "e2e-tabs-examples", emptyId = "e2e-tabs-empty";
+  const studyKey = `group:${studyId}`;
+  const installed = [];
+  const original = await settings.evaluate(() => chrome.storage.local.get(["options", "dictionaryState"]));
+  const originalVerb = await tab.$eval("#verb", element => ({ html: element.innerHTML, style: element.getAttribute("style") }));
+  const viewport = tab.viewport(), settingsViewport = settings.viewport();
+  const child = await popupReader(tab, 1);
+  const evidence = { projections: [], columns: [] };
+  let worker, failure;
+  const require = (condition, message) => { if (!condition) throw new Error(message); };
+  const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  async function until(read, predicate, description) {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const value = await read();
+      if (predicate(value)) return value;
+      if (Date.now() >= deadline) throw new Error(`${description}: ${JSON.stringify(value)}`);
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+  }
+  const status = () => settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
+  const ready = () => until(status, value => value.ok && value.ready && !value.loading, "E8 native readiness");
+  const optionsWrite = options => settings.evaluate(async patch => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options?.revision ?? 0, options: patch });
+    if (!reply.ok) throw new Error(reply.error);
+  }, options);
+  const presentation = (patches, groups) => settings.evaluate(async ({ patches, groups }) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+      baseRevision: dictionaryState.revision,
+      dictionaries: dictionaryState.dictionaries.map(dictionary => ({ ...dictionary, ...patches[dictionary.title] })), groups });
+    if (!reply.ok) throw new Error(reply.error);
+    return reply.state;
+  }, { patches, groups });
+  const requests = () => worker.evaluate(() => globalThis.__ownedMediaProbe.requests);
+  const rootState = () => popup.dictionaryTabs();
+  const childState = () => child.dictionaryTabs();
+  const imageReady = value => value?.images.length === 1 && value.images[0].complete
+    && value.images[0].width === 16 && value.images[0].height === 16;
+  const visible = value => value && !value.hidden && value.entries.length > 0;
+  const selectedReady = key => value => visible(value) && value.selected === key;
+  const bounded = value => value.rect.left >= 5 && value.rect.top >= 5
+    && value.rect.right <= value.viewport.width - 5 && value.rect.bottom <= value.viewport.height - 5;
+  async function setColumns(value) {
+    await editSettingsControls(settings, { "opt-popup-columns": String(value) });
+    await settings.waitForFunction(async value => (await chrome.storage.local.get("options")).options.popupColumns === value,
+      { polling: 50, timeout: 10_000 }, value);
+  }
+  function packed(value, requested) {
+    if (!visible(value) || !bounded(value) || !value.grids.length) return false;
+    const near = (a, b) => Math.abs(a - b) <= 1;
+    return value.grids.every(grid => {
+      const columns = Math.min(requested, grid.cards.length), heights = Array(columns).fill(0);
+      const width = (grid.width - 8 * (columns - 1)) / columns;
+      if (grid.width <= 0 || grid.masonry !== (columns > 1)) return false;
+      for (const [index, card] of grid.cards.entries()) {
+        const column = heights.indexOf(Math.min(...heights));
+        const x = column * (width + 8), y = heights[column];
+        if (!card.open || !near(card.rect.width, width) || !near(card.rect.left - grid.rect.left, x)
+            || !near(card.rect.top - grid.rect.top, y) || card.rect.right > grid.rect.right + 1) return false;
+        if (columns === 1 && (card.width !== "" || card.transform !== "" || card.visibility !== "")) return false;
+        if (columns > 1 && (card.visibility !== "visible" || !near(Number.parseFloat(card.width), width))) return false;
+        for (const other of grid.cards.slice(0, index)) {
+          if (Math.min(card.rect.right, other.rect.right) - Math.max(card.rect.left, other.rect.left) > 1
+              && Math.min(card.rect.bottom, other.rect.bottom) - Math.max(card.rect.top, other.rect.top) > 1) return false;
+        }
+        heights[column] += (columns === 1 ? card.rect.height : card.offsetHeight) + 8;
+      }
+      return columns === 1 ? grid.height === ""
+        : near(Number.parseFloat(grid.height), Math.max(...heights) - 8);
+    });
+  }
+  async function openChild() {
+    require((await popup.nested("focus-link"))?.linkFocused, "E8 parent source link focus");
+    await tab.keyboard.press("Enter");
+    return until(childState, value => selectedReady(studyKey)(value) && imageReady(value), "E8 linked Study view");
+  }
+  try {
+    for (const dictionary of fixture.dictionaries) {
+      await installMediaArchive(settings, dictionary.archive);
+      installed.push(dictionary.title);
+    }
+    const initialStatus = await ready();
+    await optionsWrite({ popupColumns: 1, popupNestingMaxDepth: 2, maxResults: 32, kanjiClickDictionary: GENERIC_KANJI_SELECTION });
+    const packages = await settings.evaluate(async () => (await chrome.storage.local.get("dictionaryState")).dictionaryState.dictionaries);
+    const id = title => packages.find(dictionary => dictionary.title === title)?.id;
+    require([...titles, GENERIC_KANJI_TITLE].every(title => id(title)), "E8 exact package identities");
+    let groups = [
+      { id: studyId, name: "Study", dictionaryIds: [id(links), id(usage), id(GENERIC_KANJI_TITLE)] },
+      { id: examplesId, name: "Examples", dictionaryIds: [id(links), id(examples)] },
+      { id: emptyId, name: "Empty", dictionaryIds: [id(GENERIC_KANJI_TITLE)] },
+    ];
+    await presentation(Object.fromEntries(titles.map((title, index) => [title,
+      { displayName: ["Links", "Usage", "Examples", "Reference"][index], favorite: index === 0 || index === 3 }])), groups);
+    // Current E2E also retains the generic 食/しょく package. Preserve its genuine
+    // extra prefix result instead of copying the five-package preflight oracle.
+    evidence.native = await settings.evaluate(async ({ root, child, reading }) => {
+      const { options } = await chrome.storage.local.get("options");
+      const lookup = (text, primaryReading) => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup",
+        text, maxResults: options.maxResults, scanLength: options.scanLength,
+        options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder, primaryReading } });
+      return { root: await lookup(root, ""), child: await lookup(child, reading) };
+    }, { root: fixture.query, child: fixture.child, reading: fixture.reading });
+    require(evidence.native.root.ok && evidence.native.child.ok
+      && evidence.native.root.results.length === 1
+      && equal(evidence.native.root.results[0].term.glossaries.map(glossary => glossary.dictionary), titles), "E8 native four-card root");
+    const childExpected = evidence.native.child.results.map(({ term }) => ({
+      expression: term.expression, aria: term.reading && term.reading !== term.expression ? `${term.expression}, ${term.reading}` : term.expression,
+      dictionaries: [...new Set(term.glossaries.map(glossary => glossary.dictionary))],
+    }));
+    require(childExpected.length > 1 && childExpected[0].expression === fixture.child
+      && childExpected.some(entry => entry.dictionaries.includes(GENERIC_KANJI_TITLE)), "E8 genuine child prefix input");
+    worker = await installMediaReplyProbe(browser);
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
+    await tab.setViewport({ width: 1880, height: 960 });
+    await tab.$eval("#verb", (element, query) => { element.textContent = query; }, fixture.query);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await hoverForPopup(tab, popup, "#verb");
+    const all = await until(rootState, value => selectedReady("all")(value) && imageReady(value), "E8 complete root");
+    const expectedKeys = ["all", ...titles.map(title => `dictionary:${title}`), "favourites", studyKey, `group:${examplesId}`];
+    require(equal(all.tabs.map(tab => tab.key), expectedKeys)
+      && equal(all.tabs.map(tab => tab.label), ["All", "Links", "Usage", "Examples", "Reference", "Favourites", "Study", "Examples (group)"])
+      && all.tabs.every(tab => tab.controls === all.panelId && tab.aria === tab.title)
+      && all.labelledBy === all.tabs[0].id, "E8 semantic tabs and accessible panel linkage");
+    const projectionStart = (await requests()).length;
+    for (const [key, members] of [
+      ...titles.map(title => [`dictionary:${title}`, [title]]),
+      ["favourites", [links, reference]], [studyKey, [links, usage]], [`group:${examplesId}`, [links, examples]], ["all", titles],
+    ]) {
+      await popup.dictionaryTabs("select", key);
+      await until(rootState, selectedReady(key), `E8 projection ${key}`);
+      const expected = all.entries.map(entry => ({ ...entry, cards: entry.cards.filter(card => members.includes(card.dictionary)) }));
+      await until(() => popup.dictionaryTabs("matches", expected), Boolean, `E8 complete dictionary projection ${key}`);
+      evidence.projections.push(key);
+    }
+    await popup.dictionaryTabs("remember");
+    await popup.dictionaryTabs("select", "all");
+    const noOp = await rootState();
+    require(noOp.sameCards && noOp.samePanel && (await requests()).length === projectionStart, "E8 warmed tabs must stay local and same-tab must retain cards");
+
+    // Internal-link → clicked-kanji → Back preserves semantic Study context.
+    await popup.dictionaryTabs("select", studyKey);
+    const inherited = await openChild();
+    require(await child.click(".gsm-hoshidicts-kanji-link"), "E8 clicked-kanji control");
+    const kanji = await until(childState, value => selectedReady(studyKey)(value)
+      && value.entries[0].cards[0].dictionary === GENERIC_KANJI_TITLE, "E8 clicked-kanji group context");
+    require(await child.click(".gsm-hoshidicts-kanji-back"), "E8 term Back");
+    const back = await until(childState, value => selectedReady(studyKey)(value)
+      && value.entries[0].expression === fixture.child, "E8 linked Back context");
+    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E8 close child Back");
+    evidence.inheritance = { inherited: inherited.selected, kanji: kanji.selected, back: back.selected,
+      parent: (await rootState()).selected };
+    require(evidence.inheritance.parent === studyKey, "E8 child navigation changed parent tab");
+    require((await status()).generation === initialStatus.generation, "E8 presentation or tabs reloaded native dictionaries");
+
+    const liveStart = (await requests()).length;
+    await popup.dictionaryTabs("focus", studyKey);
+    await popup.dictionaryTabs("remember");
+    groups = [groups[1], { ...groups[0], name: "Reading list" }, groups[2]];
+    await presentation({ [usage]: { displayName: "Usage notes" } }, groups);
+    const renamed = await until(rootState, value => value?.tabs.some(tab => tab.key === studyKey && tab.label === "Reading list"), "E8 focused live labels");
+    require(renamed.sameCards && renamed.samePanel && renamed.sameSelected && renamed.sameAnchor
+      && renamed.tabs.filter(tab => tab.key.startsWith("group:")).map(tab => tab.key).join() === `group:${examplesId},${studyKey}`
+      && renamed.tabs.every(tab => tab.same)
+      && renamed.tabs.find(tab => tab.key === studyKey).focused
+      && renamed.entries[0].cards.find(card => card.dictionary === usage).label === "Usage notes", "E8 labels/order preserve focused keyed controls and bodies");
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNextLookup = true; });
+    await popup.nested("remember");
+    await popup.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    await until(() => worker.evaluate(() => globalThis.__ownedMediaProbe.heldLookups.length), count => count === 1, "E8 held child reply");
+    groups = groups.map(group => group.id === studyId ? { ...group, name: "Learning" } : group);
+    await presentation({}, groups);
+    require((await popup.nested()).sameAnchor, "E8 pending child lost its parent anchor");
+    await worker.evaluate(() => { for (const release of globalThis.__ownedMediaProbe.heldLookups.splice(0)) release(); });
+    const newest = await until(childState, value => selectedReady(studyKey)(value)
+      && value.tabs.find(tab => tab.key === studyKey)?.label === "Learning" && imageReady(value), "E8 pending child uses newest presentation");
+    require(await popup.click(".gsm-hoshidicts-note-button"), "E8 parent Note");
+    await popup.writeNote({ definition: "E8 protected presentation draft" });
+    const draft = await popup.retainedControls("remember");
+    await popup.dictionaryTabs("remember");
+    groups = groups.map(group => group.id === studyId ? { ...group, dictionaryIds: [id(links), id(GENERIC_KANJI_TITLE)] } : group);
+    await presentation({}, groups);
+    // The real state event must have arrived: the child's same-membership label
+    // changes too, while the protected parent still cannot replace its cards.
+    groups = groups.map(group => group.id === studyId ? { ...group, name: "Focused learning" } : group);
+    await presentation({}, groups);
+    await until(childState, value => value?.tabs.find(tab => tab.key === studyKey)?.label === "Focused learning", "E8 protected state event delivered");
+    const protectedView = await rootState(), protectedDraft = await popup.retainedControls();
+    require(protectedView.sameCards && protectedView.samePanel && protectedView.sameAnchor
+      && protectedView.entries[0].cards.length === 2 && protectedDraft.sameForm && protectedDraft.mounted
+      && protectedDraft.inputFocused && protectedDraft.draft === draft.draft && equal(protectedDraft.selection, [2, 7]), "E8 live Note and child protect their original projection");
+    await tab.keyboard.press("Escape");
+    require((await popup.state()).noteOpen === false, "E8 Note must close before child retirement");
+    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E8 protected child retirement");
+    await popup.dictionaryTabs("focus", studyKey);
+    const flushed = await until(rootState, value => selectedReady(studyKey)(value)
+      && equal(value.entries[0].cards.map(card => card.dictionary), [links]), "E8 safe presentation flush");
+    require(flushed.tabs.find(tab => tab.key === studyKey).focused, "E8 safe flush stole selected-tab focus");
+    groups = groups.filter(group => group.id !== studyId);
+    await presentation({}, groups);
+    const fallback = await until(rootState, value => selectedReady("all")(value) && value.entries[0].cards.length === 4, "E8 removed selected group fallback");
+    require(fallback.tabs.find(tab => tab.key === "all").focused, "E8 removed-group fallback focus");
+    const liveRequests = (await requests()).slice(liveStart);
+    require(liveRequests.length === 1 && liveRequests[0].type === "hd_lookup"
+      && liveRequests[0].text === fixture.child && newest.selected === studyKey, "E8 live presentation duplicated lookup/media/style work");
+    evidence.live = { renamed, newest, protectedView, protectedDraft, flushed, fallback, liveRequests };
+
+    // Columns must preserve mounted controls/cards; actual rects expose the
+    // content-box width bug instead of accepting overlapping width styles.
+    await popup.click(".gsm-hoshidicts-note-button");
+    await popup.writeNote({ definition: "E8 columns keep this exact draft" });
+    const columnDraft = await popup.retainedControls("remember");
+    await popup.dictionaryTabs("remember");
+    const columnsStart = (await requests()).length;
+    for (const columns of [1, 2, 3, 4, 1]) {
+      await setColumns(columns);
+      const geometry = await until(rootState, value => packed(value, columns), `E8 ${columns}-column geometry`);
+      const controls = await popup.retainedControls();
+      require(geometry.sameCards && geometry.samePanel && controls.sameForm && controls.mounted && controls.inputFocused
+        && controls.draft === columnDraft.draft && equal(controls.selection, [2, 7]), "E8 column update replaced a mounted draft or card");
+      evidence.columns.push({ columns, geometry, controls });
+    }
+    await setColumns(3);
+    for (const size of [{ width: 520, height: 740 }, { width: 1880, height: 960 }]) {
+      await tab.setViewport(size);
+      const geometry = await until(rootState, value => value.viewport.width === size.width && packed(value, 3), "E8 focused resize geometry");
+      require(geometry.sameCards && (await popup.retainedControls()).inputFocused, "E8 resize changed focused Note ownership");
+    }
+    require((await requests()).length === columnsStart, "E8 columns or resize issued dictionary resource work");
+    await setColumns(2);
+    if (process.env.HACHIDORI_TABS_SCREENSHOT) {
+      await tab.screenshot({ path: process.env.HACHIDORI_TABS_SCREENSHOT });
+    }
+    if (process.env.HACHIDORI_OPTIONS_SCREENSHOT || process.env.HACHIDORI_OPTIONS_DARK_SCREENSHOT) {
+      await settings.setViewport({ width: 1280, height: 1000 });
+      await showSettingsSection(settings, "lookup");
+      for (const [scheme, path] of [["light", process.env.HACHIDORI_OPTIONS_SCREENSHOT], ["dark", process.env.HACHIDORI_OPTIONS_DARK_SCREENSHOT]]) {
+        if (!path) continue;
+        await settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+        await (await settings.$("#lookup")).screenshot({ path });
+      }
+    }
+    // A protected old Note deliberately prevents rehover. Close it before
+    // importing a cold generation and arming the real media reply hold.
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    require(!(await popup.state()).noteOpen, "E8 cold media setup retained Note");
+    await tab.keyboard.press("Escape");
+    require(await popup.waitForHidden(), "E8 cold media setup retained popup");
+    await installMediaArchive(settings, fixture.archive);
+    await ready();
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = true; });
+    await hoverForPopup(tab, popup, "#verb");
+    await until(() => worker.evaluate(() => globalThis.__ownedMediaProbe.held.length), count => count === 1, "E8 held real media");
+    const loading = await until(rootState, value => packed(value, 2) && value.images.length === 1 && value.images[0].src === "", "E8 reserved pending-image geometry");
+    await popup.dictionaryTabs("remember");
+    await worker.evaluate(() => { for (const release of globalThis.__ownedMediaProbe.held.splice(0)) release(); });
+    const loaded = await until(rootState, value => packed(value, 2) && imageReady(value), "E8 decoded media reflow");
+    require(loaded.sameCards && loaded.images[0].src === `data:image/png;base64,${makePng().toString("base64")}`, "E8 media reflow changed card or bytes");
+    await popup.nested("remember");
+    await popup.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    await until(childState, value => selectedReady("all")(value) && imageReady(value), "E8 All child before expansion");
+    require(await child.click(".gsm-hoshidicts-show-more"), "E8 genuine child Show more");
+    const expanded = await until(childState, value => value?.entries.length === childExpected.length && packed(value, 2), "E8 complete child expansion");
+    require(equal(expanded.entries.map(entry => ({ expression: entry.expression, aria: entry.aria,
+      dictionaries: entry.cards.map(card => card.dictionary) })), childExpected), "E8 expanded native expression/reading/dictionary order");
+    require(expanded.entries.flatMap(entry => entry.cards).some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E8 generic prefix definition was lost");
+    await child.dictionaryTabs("remember");
+    await child.click(".gsm-hoshidicts-note-button");
+    await child.writeNote({ definition: "E8 child holds its anchor through resize" });
+    const childDraft = await child.retainedControls("remember");
+    const nestedResizeStart = (await requests()).length;
+    for (const size of [{ width: 520, height: 740 }, { width: 1880, height: 960 }]) {
+      await tab.setViewport(size);
+      const resized = await until(childState, value => value?.viewport.width === size.width && packed(value, 2), "E8 expanded child resize");
+      const controls = await child.retainedControls();
+      require(resized.sameCards && await child.dictionaryTabs("matches", expanded.entries)
+        && (await popup.nested()).sameAnchor && controls.sameForm && controls.mounted
+        && controls.inputFocused && controls.draft === childDraft.draft, "E8 child resize replaced complete results, Note or parent anchor");
+    }
+    require((await requests()).length === nestedResizeStart, "E8 child resize issued extra resource work");
+    evidence.media = { loading, loaded, expanded };
+    evidence.passed = true;
+  } catch (error) {
+    failure = error;
+  } finally {
+    // Complete every owned cleanup even if setup failed halfway, while retaining
+    // both the original error and any cleanup error rather than swallowing either.
+    const errors = [];
+    const clean = async operation => { try { await operation(); } catch (error) { errors.push(error); } };
+    if (worker) await clean(() => restoreMediaReplyProbe(worker));
+    await clean(() => child.dictionaryTabs("cleanup"));
+    await clean(() => popup.dictionaryTabs("cleanup"));
+    await clean(() => optionsWrite({ popupColumns: original.options.popupColumns ?? 1,
+      popupNestingMaxDepth: original.options.popupNestingMaxDepth ?? 10, maxResults: original.options.maxResults,
+      kanjiClickDictionary: original.options.kanjiClickDictionary }));
+    for (const title of installed) await clean(async () => {
+      const reply = await settings.evaluate(title => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_remove", title }), title);
+      if (!reply.ok) throw new Error(reply.error);
+    });
+    await clean(() => presentation({}, original.dictionaryState.groups ?? []));
+    await clean(() => tab.$eval("#verb", (element, original) => {
+      element.innerHTML = original.html;
+      if (original.style === null) element.removeAttribute("style"); else element.setAttribute("style", original.style);
+    }, originalVerb));
+    await clean(() => tab.setViewport(viewport));
+    await clean(() => settings.setViewport(settingsViewport));
+    await clean(() => settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]));
+    await clean(async () => {
+      await tab.bringToFront();
+      // At most the two deliberate Note forms and two live levels remain.
+      for (let index = 0; index < 4 && !(await popup.waitForHidden(1)); index++) await tab.keyboard.press("Escape");
+      require(await popup.waitForHidden(), "E8 cleanup retained its popup");
+    });
+    if (errors.length) failure = new AggregateError(failure ? [failure, ...errors] : errors, "E8 scenario/cleanup failure");
+  }
+  if (failure) throw failure;
+  check("Popup tabs project every contributing dictionary, favourites and ordered groups without another lookup",
+    evidence.passed && evidence.projections.length === 8, JSON.stringify({ projections: evidence.projections, inheritance: evidence.inheritance }));
+  check("Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
+    evidence.passed && evidence.live.liveRequests.length === 1, JSON.stringify(evidence.live));
+  check("Saved popup columns reflow complete cards after expansion, media load and resize",
+    evidence.passed && evidence.columns.length === 5, JSON.stringify({ columns: evidence.columns, media: evidence.media }));
 }
 
 async function checkNestedLinks(settings, tab, popup, browser) {
@@ -1258,13 +1684,16 @@ async function installMediaReplyProbe(browser) {
   // its reply. Other messages and the mutation queue remain production paths.
   await worker.evaluate(() => {
     const original = chrome.runtime.sendMessage;
-    const probe = { original, held: [], heldLookups: [], lookups: [], holdNextLookup: false,
+    const probe = { original, held: [], heldLookups: [], lookups: [], requests: [], holdNextLookup: false,
       holdNext: true, holdAll: false, failNext: false,
       count: 0, active: 0, maxActive: 0 };
     globalThis.__ownedMediaProbe = probe;
     chrome.runtime.sendMessage = function (message, ...args) {
       const response = original.call(this, message, ...args);
       if (message.relayed && message.type === "hd_lookup") probe.lookups.push(message);
+      if (message.relayed && ["hd_lookup", "hd_lookup_dictionary", "hd_kanji", "hd_media", "hd_styles"].includes(message.type)) {
+        probe.requests.push(message);
+      }
       if (message.relayed && ["hd_lookup", "hd_lookup_dictionary", "hd_kanji"].includes(message.type) && probe.holdNextLookup) {
         probe.holdNextLookup = false;
         return response.then(reply => new Promise(resolveReply => {
@@ -3734,6 +4163,7 @@ async function main() {
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
+  await checkDictionaryTabsColumns(page, tab, popup, browser);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
   await checkFrequencyDirection(browser, page, tab, popup);
@@ -4712,7 +5142,8 @@ async function main() {
     }),
   );
 
-  await editSettingsControls(page, { "opt-frequency-dictionary": "hachidori-fixture", "opt-frequency-order": "ascending" });
+  await editSettingsControls(page, { "opt-frequency-dictionary": "hachidori-fixture", "opt-frequency-order": "ascending",
+    "opt-popup-columns": "2" });
   const optionsBeforeRestart = await page.evaluate(async () =>
     (await chrome.storage.local.get("options")).options);
   const chromeProcess = browser.process();
@@ -4744,6 +5175,7 @@ async function main() {
       && document.getElementById("opt-lookup-mode").value === expected.lookupMode
       && document.getElementById("opt-activation-key").value === expected.activationKey
       && document.getElementById("opt-hide-delay").value === String(expected.popupHideDelayMs)
+      && document.getElementById("opt-popup-columns").value === String(expected.popupColumns)
       && document.getElementById("opt-frequency-dictionary").value === expected.frequencyDictionary
       && document.getElementById("opt-frequency-order").value === expected.frequencyOrder
       ? options : false;
