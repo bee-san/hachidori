@@ -575,7 +575,7 @@ for.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 127 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 128 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -734,7 +734,7 @@ The extension suite separately holds replies through selection cancellation,
 retry and storage invalidation; checks exact Note/Back/internal-link descriptors;
 and pins same-candidate pending lookup deduplication.
 
-Five source-highlight assertions cover selected-text DOM replacement/stale
+Six source-highlight assertions cover selected-text DOM replacement/stale
 cleanup without selection changes, native ancestor Range identity and fallback
 owner retention across child closure, and exact cross-inline fallback paint
 through clipping, scrolling, resize, visibility, opacity and final cleanup.
@@ -744,6 +744,11 @@ exact geometry between DOM notifications.
 Sibling style/text mutations move the source inside an unchanged fixed-size
 container; that case parks the pointer away from the source so synthesized
 pointer boundary events cannot mask missing layout observation.
+Page-cover checks compare the remaining paint area and exact bounds under fixed
+and sticky headers, a small centred overlay, pointer-transparent paint, clipped
+header borders, fixed boxes escaping ancestor overflow, and moving overlays.
+Removing covers restores the exact source paint; a box behind the source leaves
+it unchanged.
 The test disables `Highlight` in Hachidori's content-script CDP execution context,
 not the page's main world, and reads the actual closed-shadow paint layer.
 `HACHIDORI_HIGHLIGHT_SCREENSHOT` captures the clipped fallback source and popup.
@@ -781,7 +786,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 127 assertions, and the summary line
+`PLANNED` at the top of the file names all 128 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

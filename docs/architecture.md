@@ -851,12 +851,21 @@ viewport and ancestor scrollports, excludes hidden/transparent text, and avoids
 covering later popup panes or the source pane's sticky toolbar. One shared
 fallback animation frame reads geometry before writing paint; scroll, resize,
 source layout changes, and existing popup placement callbacks refresh it.
+The fallback also subtracts page fixed/sticky headers, dialogs and popovers in
+the source's containing trees. Candidate discovery is cached until a layout
+invalidation; hit-testing at each intersecting box orders ordinary covers without
+sampling every pixel. Cover borders are not clipped to their own scrollport, and
+fixed boxes escape intermediate overflow before their browser-reported containing
+block. This is a bounded fallback, not a general CSS paint-order implementation:
+pointer-transparent covers conservatively suppress their intersection, and complex
+shadow-slot clipping or arbitrary positioned page elements are not guaranteed to
+match native highlights. The preferred native path keeps browser paint semantics.
 Fallback layout observation spans each containing Document/ShadowRoot once,
 including sibling text and attribute changes: a fixed-size ancestor can hide
 position-only movement from ResizeObserver. Owned paint mutations are ignored,
 and a burst of layout changes coalesces without rewalking source text. This
 broader geometry observation is never installed on the native Highlight path.
-Active source/ancestor CSS animations and transitions keep that shared frame
+Active source/cover/ancestor CSS animations and transitions keep that shared frame
 running until motion finishes or pauses. Scoped motion and pointer/focus boundary
 events wake it, including paused animations resumed by hover or focus; unrelated
 page animations do not request paint. Animation queries precede paint writes.

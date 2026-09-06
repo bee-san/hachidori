@@ -569,6 +569,8 @@
     let frame = null;
     let resizeTargets = new Set();
     let geometryTargets = new Map();
+    let motionTargets = new Map();
+    let coverTargets = new Set();
     let layoutRoots = new Set();
     let pageOccluders = null;
     const motionRoots = new Set();
@@ -592,7 +594,7 @@
     }
 
     function sourceMotion(event) {
-      for (const [target, subtree] of geometryTargets) {
+      for (const [target, subtree] of motionTargets) {
         if (target === event.target || (subtree && target.contains(event.target))
             || (event.relatedTarget !== undefined && target instanceof windowRef.Element
               && target.contains(event.target) !== target.contains(event.relatedTarget))) {
@@ -607,15 +609,20 @@
       motionRoots.delete(target);
     }
 
+    function reconcileTargets() {
+      motionTargets = new Map(geometryTargets);
+      for (const target of coverTargets) if (!motionTargets.has(target)) motionTargets.set(target, false);
+      const nextResizeTargets = new Set([...motionTargets.keys()].filter(target => target instanceof windowRef.Element));
+      for (const target of nextResizeTargets) if (!resizeTargets.has(target)) resize?.observe(target);
+      for (const target of resizeTargets) if (!nextResizeTargets.has(target)) resize?.unobserve(target);
+      resizeTargets = nextResizeTargets;
+    }
+
     function observeGeometry(targets) {
       geometry.disconnect();
-      const nextResizeTargets = new Set();
       const nextMotionRoots = new Set();
       for (const target of targets.keys()) {
-        if (target instanceof windowRef.Element) {
-          nextResizeTargets.add(target);
-          if (!resizeTargets.has(target)) resize?.observe(target);
-        } else if (target === documentRef || target instanceof windowRef.ShadowRoot) {
+        if (target === documentRef || target instanceof windowRef.ShadowRoot) {
           nextMotionRoots.add(target);
         }
       }
@@ -631,8 +638,6 @@
       for (const target of layoutRoots) {
         geometry.observe(target, { attributes: true, characterData: true, childList: true, subtree: true });
       }
-      for (const target of resizeTargets) if (!nextResizeTargets.has(target)) resize?.unobserve(target);
-      resizeTargets = nextResizeTargets;
       for (const target of motionRoots) {
         if (!nextMotionRoots.has(target)) unwatchMotion(target);
       }
@@ -643,6 +648,7 @@
         }
       }
       geometryTargets = targets;
+      reconcileTargets();
     }
 
     function clipBounds(element, cache) {
@@ -665,12 +671,17 @@
       return result;
     }
 
-    function visibleClip(source, cache) {
+    function visibleClip(source, cache, cover = false) {
       let clip = { left: 0, top: 0, right: windowRef.innerWidth, bottom: windowRef.innerHeight };
+      // Overflow clips contents, not a cover's own painted border. Fixed boxes
+      // also escape intermediate scrollports before their containing block.
+      let clipping = !cover || clipBounds(source, cache).style.position !== "fixed";
+      const containingBlock = !clipping && source.offsetParent;
       for (let ancestor = source; ancestor && clip; ancestor = ancestor.parentElement || ancestor.getRootNode().host) {
         const { bounds, invisible, hiddenText } = clipBounds(ancestor, cache);
         if (invisible || (ancestor === source && hiddenText)) return null;
-        if (bounds) clip = intersectHighlightRect(clip, bounds);
+        if (ancestor === containingBlock) clipping = true;
+        if (bounds && clipping && (!cover || ancestor !== source)) clip = intersectHighlightRect(clip, bounds);
       }
       return clip;
     }
@@ -687,9 +698,16 @@
                 || element.localName === "dialog" || element.hasAttribute("popover")) pageOccluders.push(element);
           }
         }
+        coverTargets = new Set();
+        for (const element of pageOccluders) {
+          for (let ancestor = element; ancestor; ancestor = ancestor.parentElement || ancestor.getRootNode().host) {
+            coverTargets.add(ancestor);
+          }
+        }
+        reconcileTargets();
       }
       return pageOccluders.flatMap(element => {
-        const clip = visibleClip(element, cache);
+        const clip = visibleClip(element, cache, true);
         const rect = clip && intersectHighlightRect(element.getBoundingClientRect(), clip);
         return rect ? [{ element, rect, tree: element.getRootNode(),
           pointerEvents: clipBounds(element, cache).style.pointerEvents }] : [];
@@ -737,7 +755,7 @@
       // Read all owners before writing any paint rectangles.
       const plans = [...owners.values()].map(owner => ({ owner,
         rects: owner.fragments.flatMap(fragment => fragmentRects(fragment, cache, popups, page)) }));
-      const moving = [...geometryTargets].some(([target, subtree]) => target instanceof windowRef.Element
+      const moving = [...motionTargets].some(([target, subtree]) => target instanceof windowRef.Element
         && target.getAnimations({ subtree }).some(animation => animation.playState === "running"));
       if (root.lastChild !== layer) root.appendChild(layer);
       for (const { owner, rects } of plans) {
@@ -754,7 +772,7 @@
         });
       }
       // Transforms do not notify ResizeObserver, and CSS motion has no DOM
-      // mutations between frames. Stay live only while a source is moving.
+      // mutations between frames. Stay live only while a source or cover moves.
       if (moving) schedule();
     }
 
