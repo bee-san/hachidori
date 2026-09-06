@@ -4740,6 +4740,10 @@ async function main() {
     managedUpdateSettings?.newerSchedule === "weekly" && managedUpdateSettings.coalesced === true
       && managedUpdateSettings.serialized === true && managedUpdateSettings.finalSchedule === "monthly",
     JSON.stringify(managedUpdateSettings));
+  check("managed schedule conflicts retain drafts, retry a lost reply without another write, and discard explicitly",
+    managedUpdateSettings?.lostReplyRetained === true && managedUpdateSettings.retryNoWrite === true
+      && managedUpdateSettings.discarded === true,
+    JSON.stringify(managedUpdateSettings));
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -6638,10 +6642,11 @@ async function settingsManagedUpdatesStage() {
     ],
     groups: [],
   };
-  let updateSettings = { revision: 0, schedule: "weekly", lastCheckedAt: "2026-09-04T10:00:00.000Z" };
+  let updateSettings = { revision: 0, schedule: "off", lastCheckedAt: "2026-09-04T10:00:00.000Z" };
   let storageListener = null;
   const updateRequests = [];
   let heldSchedule = null, activeSchedules = 0;
+  let loseScheduleReply = false, firstRead = true;
 
   const publishState = (dictionary) => {
     state = {
@@ -6668,13 +6673,19 @@ async function settingsManagedUpdatesStage() {
           updateRequests.push(structuredClone(message));
           if (message.baseRevision !== updateSettings.revision) return { ok: false, error: "Schedule changed elsewhere", settings: structuredClone(updateSettings) };
           activeSchedules++;
-          updateSettings = { ...updateSettings, revision: updateSettings.revision + 1, schedule: message.schedule };
+          if (updateSettings.schedule !== message.schedule) {
+            updateSettings = { ...updateSettings, revision: updateSettings.revision + 1, schedule: message.schedule };
+          }
           storageListener?.({
             dictionaryUpdates: { newValue: structuredClone(updateSettings) },
           }, "local");
           const reply = { ok: true, settings: structuredClone(updateSettings) };
           if (heldSchedule) await heldSchedule.promise;
           activeSchedules--;
+          if (loseScheduleReply) {
+            loseScheduleReply = false;
+            throw new Error("simulated lost schedule reply");
+          }
           return reply;
         }
         if (message.type === "hd_updates_check") {
@@ -6726,9 +6737,16 @@ async function settingsManagedUpdatesStage() {
     storage: {
       local: {
         async get() {
+          const captured = structuredClone(updateSettings);
+          if (firstRead) {
+            firstRead = false;
+            updateSettings = { ...updateSettings, revision: 1, schedule: "weekly" };
+            storageListener({ dictionaryUpdates: { newValue: structuredClone(updateSettings) } }, "local");
+            await new Promise(done => window.setTimeout(done, 0));
+          }
           return {
             options: { kanjiClickDictionary: "" },
-            dictionaryUpdates: structuredClone(updateSettings),
+            dictionaryUpdates: captured,
           };
         },
       },
@@ -6856,6 +6874,27 @@ async function settingsManagedUpdatesStage() {
   await waitSchedule(() => activeSchedules === 0 && updateSettings.schedule === "monthly");
   await pause(0);
   result.finalSchedule = schedule.value;
+
+  const conflictActions = window.document.getElementById("update-schedule-conflict-actions");
+  loseScheduleReply = true;
+  chooseSchedule("off");
+  await waitSchedule(() => !conflictActions.hidden);
+  const lostRevision = updateSettings.revision;
+  result.lostReplyRetained = schedule.value === "off" && !conflictActions.hidden;
+  window.document.getElementById("update-schedule-retry").click();
+  await waitSchedule(() => conflictActions.hidden && activeSchedules === 0);
+  await pause(0);
+  result.retryNoWrite = updateSettings.revision === lostRevision && updateSettings.schedule === "off";
+
+  chooseSchedule("hourly");
+  updateSettings = { ...updateSettings, revision: updateSettings.revision + 1, schedule: "daily" };
+  storageListener({ dictionaryUpdates: { newValue: structuredClone(updateSettings) } }, "local");
+  await waitSchedule(() => !conflictActions.hidden);
+  const beforeDiscard = scheduleRequests().length;
+  window.document.getElementById("update-schedule-discard").click();
+  await pause(200);
+  result.discarded = schedule.value === "daily" && conflictActions.hidden
+    && scheduleRequests().length === beforeDiscard && updateSettings.schedule === "daily";
   dom.window.close();
   return result;
 }

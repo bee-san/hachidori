@@ -267,6 +267,8 @@ const PLANNED = [
   "managed update controls render persisted availability and last-checked state",
   "Update all atomically replaces a managed generation and preserves presentation",
   "one global update interval creates one periodic browser alarm",
+  "Settings schedule drafts preserve newer commits and retry lost replies without duplicate writes or alarms",
+  "Settings name autosave merges unrelated edits, rejects external renames and paints one completion",
   "a real browser alarm installs updates for disabled managed dictionaries",
   "a failed scheduled update preserves the working generation without OPFS debris",
   "worker restart recreates the configured managed-update alarm",
