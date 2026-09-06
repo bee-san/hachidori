@@ -2205,86 +2205,86 @@
       const toolbar = createResultChrome(primaryHeader);
 
       function renderEntries() {
-      const entries = documentRef.createDocumentFragment();
+        const entries = documentRef.createDocumentFragment();
 
-      for (const kanjiEntry of kanji.entries) {
-        if (selected.dictionaries.size > 0 && !selected.dictionaries.has(kanjiEntry.dictionary)) continue;
-        const entry = documentRef.createElement("article");
-        entry.className = "gsm-hoshidicts-kanji-entry";
-        entry.dataset.dictionary = kanjiEntry.dictionary;
+        for (const kanjiEntry of kanji.entries) {
+          if (selected.dictionaries.size > 0 && !selected.dictionaries.has(kanjiEntry.dictionary)) continue;
+          const entry = documentRef.createElement("article");
+          entry.className = "gsm-hoshidicts-kanji-entry";
+          entry.dataset.dictionary = kanjiEntry.dictionary;
 
-        const dictionary = documentRef.createElement("h3");
-        dictionary.className = "gsm-hoshidicts-kanji-dictionary";
-        dictionary.textContent = dictionaryDisplayNames.get(
-          kanjiEntry.dictionary
-        ) || kanjiEntry.dictionary;
-        dictionary.title = kanjiEntry.dictionary;
-        dictionary.setAttribute("aria-label", kanjiEntry.dictionary);
-        entry.appendChild(dictionary);
+          const dictionary = documentRef.createElement("h3");
+          dictionary.className = "gsm-hoshidicts-kanji-dictionary";
+          dictionary.textContent = dictionaryDisplayNames.get(
+            kanjiEntry.dictionary
+          ) || kanjiEntry.dictionary;
+          dictionary.title = kanjiEntry.dictionary;
+          dictionary.setAttribute("aria-label", kanjiEntry.dictionary);
+          entry.appendChild(dictionary);
 
-        const kanjiTags = tokenList(kanjiEntry.tags);
-        if (kanjiTags.length > 0) {
-          const tags = documentRef.createElement("div");
-          tags.className = "gsm-hoshidicts-tags";
-          for (const tag of kanjiTags) {
-            tags.appendChild(createTag(documentRef, tag, "", "term"));
+          const kanjiTags = tokenList(kanjiEntry.tags);
+          if (kanjiTags.length > 0) {
+            const tags = documentRef.createElement("div");
+            tags.className = "gsm-hoshidicts-tags";
+            for (const tag of kanjiTags) {
+              tags.appendChild(createTag(documentRef, tag, "", "term"));
+            }
+            entry.appendChild(tags);
           }
-          entry.appendChild(tags);
-        }
 
-        const readings = documentRef.createElement("div");
-        readings.className = "gsm-hoshidicts-kanji-readings";
-        for (const [label, values] of [
-          ["On", tokenList(kanjiEntry.onyomi)],
-          ["Kun", tokenList(kanjiEntry.kunyomi)],
-        ]) {
-          if (values.length === 0) continue;
-          const group = documentRef.createElement("div");
-          group.className = "gsm-hoshidicts-kanji-reading-group";
-          const heading = documentRef.createElement("strong");
-          heading.textContent = label;
-          group.appendChild(heading);
-          const value = documentRef.createElement("span");
-          value.textContent = values.join(" · ");
-          group.appendChild(value);
-          readings.appendChild(group);
-        }
-        if (readings.childNodes.length > 0) entry.appendChild(readings);
-
-        if (kanjiEntry.definitions.length > 0) {
-          const meaningsHeading = documentRef.createElement("h4");
-          meaningsHeading.textContent = "Meanings";
-          entry.appendChild(meaningsHeading);
-          const meanings = documentRef.createElement("ol");
-          meanings.className = "gsm-hoshidicts-kanji-meanings";
-          for (const meaning of kanjiEntry.definitions) {
-            const item = documentRef.createElement("li");
-            item.textContent = meaning;
-            meanings.appendChild(item);
+          const readings = documentRef.createElement("div");
+          readings.className = "gsm-hoshidicts-kanji-readings";
+          for (const [label, values] of [
+            ["On", tokenList(kanjiEntry.onyomi)],
+            ["Kun", tokenList(kanjiEntry.kunyomi)],
+          ]) {
+            if (values.length === 0) continue;
+            const group = documentRef.createElement("div");
+            group.className = "gsm-hoshidicts-kanji-reading-group";
+            const heading = documentRef.createElement("strong");
+            heading.textContent = label;
+            group.appendChild(heading);
+            const value = documentRef.createElement("span");
+            value.textContent = values.join(" · ");
+            group.appendChild(value);
+            readings.appendChild(group);
           }
-          entry.appendChild(meanings);
-        }
+          if (readings.childNodes.length > 0) entry.appendChild(readings);
 
-        if (kanjiEntry.stats.length > 0) {
-          const details = documentRef.createElement("details");
-          details.className = "gsm-hoshidicts-kanji-stats";
-          const summary = documentRef.createElement("summary");
-          summary.textContent = "Details";
-          details.appendChild(summary);
-          const list = documentRef.createElement("dl");
-          for (const stat of kanjiEntry.stats) {
-            const name = documentRef.createElement("dt");
-            name.textContent = stat.name;
-            const value = documentRef.createElement("dd");
-            value.textContent = stat.value;
-            list.append(name, value);
+          if (kanjiEntry.definitions.length > 0) {
+            const meaningsHeading = documentRef.createElement("h4");
+            meaningsHeading.textContent = "Meanings";
+            entry.appendChild(meaningsHeading);
+            const meanings = documentRef.createElement("ol");
+            meanings.className = "gsm-hoshidicts-kanji-meanings";
+            for (const meaning of kanjiEntry.definitions) {
+              const item = documentRef.createElement("li");
+              item.textContent = meaning;
+              meanings.appendChild(item);
+            }
+            entry.appendChild(meanings);
           }
-          details.appendChild(list);
-          entry.appendChild(details);
+
+          if (kanjiEntry.stats.length > 0) {
+            const details = documentRef.createElement("details");
+            details.className = "gsm-hoshidicts-kanji-stats";
+            const summary = documentRef.createElement("summary");
+            summary.textContent = "Details";
+            details.appendChild(summary);
+            const list = documentRef.createElement("dl");
+            for (const stat of kanjiEntry.stats) {
+              const name = documentRef.createElement("dt");
+              name.textContent = stat.name;
+              const value = documentRef.createElement("dd");
+              value.textContent = stat.value;
+              list.append(name, value);
+            }
+            details.appendChild(list);
+            entry.appendChild(details);
+          }
+          entries.appendChild(entry);
         }
-        entries.appendChild(entry);
-      }
-      return entries;
+        return entries;
       }
 
       mountResultChrome(toolbar, renderEntries());

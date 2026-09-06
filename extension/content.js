@@ -1272,6 +1272,9 @@
           return false;
         }
       },
+      canProjectDictionaryPresentation: () => !level.retired && !level.noteEditing
+        && level.pendingCustomAppends === 0 && levels.length === level.depth + 1
+        && anchorConnected(level.activeCandidate),
       parseTagList: window.HDGlossary.parseTagList,
       popup,
       positionPopup: () => positionPopup(level),
@@ -1349,6 +1352,7 @@
       if (!level.retired) {
         pruneLevels(level.depth);
         flushDeferredNotes();
+        flushDictionaryPresentation();
       }
       return;
     }
@@ -1421,7 +1425,11 @@
     const prune = () => {
       descendantTimer = null;
       if (!hasProtectedNote(depth) && (!pointerLevel || pointerLevel.depth < depth)
-          && !levels.slice(depth).some((child) => child.popup.contains(shadow.activeElement))) pruneLevels(depth);
+          && !levels.slice(depth).some((child) => child.popup.contains(shadow.activeElement))) {
+        pruneLevels(depth);
+        flushDeferredNotes();
+        flushDictionaryPresentation();
+      }
     };
     if (options.popupHideDelayMs === 0) prune();
     else descendantTimer = window.setTimeout(prune, options.popupHideDelayMs);
@@ -1444,6 +1452,7 @@
       // A redraw can remove the focused Note form. That is not departure
       // from the refreshed popup; wait until removal/focus transfer settles.
       if (target.isConnected && levels.some((level) => level.popup?.contains(target))) scheduleHide();
+      flushDictionaryPresentation();
     });
   }
 
@@ -1825,6 +1834,10 @@
     try {
       level.view.renderKanji({ ...kanji, entries }, candidate, {
         ...renderContextFor(level),
+        isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken,
+        isCurrentView: () => !disposed && !level.retired && level.currentViewRequest === request
+          && (token === level.lookupToken || level.retainedView),
+        onRenderError(error) { handleLookupFailure(token, error, level); },
         ...dictionarySelectionContext(request),
         highlightText: request.highlightText,
         ...backRenderOptions(request, level),
@@ -1901,6 +1914,7 @@
       const reply = await sendRequest("hd_custom_append", { entry });
       const adoption = adoptDictionaryState(reply.state);
       if (adoption.dictionaryChanged) invalidateStoredState(true);
+      else if (adoption.presentationChanged) updateDictionaryPresentation();
       if (
         expectedView !== null
         && !level.retired
@@ -1914,6 +1928,7 @@
     } finally {
       level.pendingCustomAppends -= 1;
       flushDeferredNotes();
+      flushDictionaryPresentation();
     }
   }
 
@@ -2302,20 +2317,38 @@
     if (level.noteEditing) {
       cancelCandidateScan();
       clearHideTimer();
-    } else flushDeferredNotes();
+    } else {
+      flushDeferredNotes();
+      flushDictionaryPresentation();
+    }
+  }
+
+  function updateDictionaryPresentation() {
+    const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups() };
+    for (const level of levels) {
+      if (level.popup && !level.popup.hidden) level.view.updateDictionaryPresentation(context);
+    }
+  }
+
+  function flushDictionaryPresentation() {
+    for (const level of levels) {
+      if (level.popup && !level.popup.hidden) level.view.flushDictionaryPresentation();
+    }
   }
 
   function adoptDictionaryState(stored) {
     const next = normalizeDictionaryState(stored);
     if (next.revision <= dictionaryStateRevision) {
-      return { adopted: false, dictionaryChanged: false };
+      return { adopted: false, dictionaryChanged: false, presentationChanged: false };
     }
-    const dictionaryChanged = !sameDictionaries(next.dictionaries, dictionaries);
-    if (dictionaryChanged && !sameDictionaryContents(next.dictionaries, dictionaries)) clearDictionaryResources();
+    const dictionaryChanged = !sameDictionaryContents(next.dictionaries, dictionaries);
+    const presentationChanged = !sameDictionaries(next.dictionaries, dictionaries)
+      || !sameDictionaries(next.groups, dictionaryGroups);
+    if (dictionaryChanged) clearDictionaryResources();
     dictionaryStateRevision = next.revision;
     dictionaries = next.dictionaries;
     dictionaryGroups = next.groups;
-    return { adopted: true, dictionaryChanged };
+    return { adopted: true, dictionaryChanged, presentationChanged };
   }
 
   function onStorageChanged(changes, area) {
@@ -2325,18 +2358,23 @@
     let changed = false;
     const previousLevelCount = levels.length;
     let dictionaryChanged = false;
+    let presentationChanged = false;
     if (changes.options) {
       changed = adoptOptions(changes.options.newValue);
     }
     if (changes.dictionaryState) {
       const adoption = adoptDictionaryState(changes.dictionaryState.newValue);
       dictionaryChanged = adoption.dictionaryChanged;
+      presentationChanged = adoption.presentationChanged;
       changed ||= dictionaryChanged;
     }
     if (changed) {
       invalidateStoredState(dictionaryChanged);
+    } else if (presentationChanged) updateDictionaryPresentation();
+    if (levels.length < previousLevelCount) {
+      flushDeferredNotes();
+      flushDictionaryPresentation();
     }
-    if (levels.length < previousLevelCount) flushDeferredNotes();
   }
 
   function adoptOptions(stored) {
@@ -2404,7 +2442,7 @@
         changed ||= dictionaryChanged;
         if (changed) {
           invalidateStoredState(dictionaryChanged);
-        }
+        } else if (adoption.presentationChanged) updateDictionaryPresentation();
       });
     } catch {
       // Without storage access the defaults are still usable.
