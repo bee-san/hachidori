@@ -9584,6 +9584,59 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       },
     },
   ];
+  const tabResults = structuredClone(noteResults);
+  tabResults[0].term.glossaries.push({ ...glossary, dictionary: "Dictionary C" });
+  const originalTabResults = JSON.stringify(tabResults);
+  const tabSelections = [];
+  view.renderResults(tabResults, candidate, {
+    dictionaryPresentation: [
+      { title: "Dictionary A", displayName: "All", favorite: true },
+      { title: "Dictionary B", displayName: "Favourite B", favorite: true },
+      { title: "Missing", favorite: true },
+    ],
+    dictionaryTabGroups: [
+      { id: "bc", name: "Favourite B", dictionaries: ["Dictionary B", "Dictionary C"] },
+      { id: "a", name: "Favourites", dictionaries: ["Dictionary A"] },
+      { id: "empty", name: "Empty", dictionaries: ["Missing"] },
+    ],
+    onDictionaryTabSelected(selection) { tabSelections.push(selection); },
+  });
+  const allTabs = [...popup.querySelectorAll('[role="tab"]')];
+  check("dictionary tabs include every contributor, aggregate favourites and ordered nonempty groups",
+    JSON.stringify(allTabs.map((tab) => [tab.textContent, { ...tab.dataset }])) === JSON.stringify([
+      ["All", {}],
+      ["All (dictionary)", { dictionary: "Dictionary A" }],
+      ["Dictionary C", { dictionary: "Dictionary C" }],
+      ["Favourite B", { dictionary: "Dictionary B" }],
+      ["Favourites", { favourites: "true" }],
+      ["Favourite B (group)", { groupId: "bc" }],
+      ["Favourites (group)", { groupId: "a" }],
+    ]), JSON.stringify(allTabs.map((tab) => [tab.textContent, { ...tab.dataset }])));
+  const tabProjections = [];
+  for (const selector of [
+    '[data-dictionary="Dictionary B"]', '[data-favourites="true"]',
+    '[data-group-id="bc"]', '[data-group-id="a"]',
+  ]) {
+    const tab = popup.querySelector(`[role="tab"]${selector}`);
+    tab?.click();
+    tabProjections.push([...popup.querySelectorAll(".gsm-hoshidicts-glossary-card > summary")]
+      .map((summary) => summary.title));
+  }
+  const sameTabPanel = popup.querySelector(".gsm-hoshidicts-tab-panel").firstElementChild;
+  const beforeSameTab = positioned;
+  popup.querySelector('[role="tab"][data-group-id="a"]')?.click();
+  check("dictionary, favourites and group tabs project locally in native order without mutating results",
+    JSON.stringify(tabProjections) === JSON.stringify([
+      ["Dictionary B"], ["Dictionary A", "Dictionary B"],
+      ["Dictionary C", "Dictionary B"], ["Dictionary A"],
+    ])
+      && JSON.stringify(tabSelections) === JSON.stringify([
+        null, { dictionary: "Dictionary B" }, { favourites: true }, { groupId: "bc" }, { groupId: "a" },
+      ])
+      && JSON.stringify(tabResults) === originalTabResults
+      && sameTabPanel === popup.querySelector(".gsm-hoshidicts-tab-panel").firstElementChild
+      && positioned === beforeSameTab,
+    JSON.stringify({ tabProjections, tabSelections, positioned, beforeSameTab }));
   const selectedTabs = [];
   view.renderResults(noteResults, candidate, {
     dictionaryPresentation: [{ title: "Dictionary B", displayName: "Favourite B", favorite: true }],
