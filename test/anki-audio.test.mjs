@@ -59,3 +59,22 @@ test("selected TTS warns without inventing audio or substituting a different pro
   assert.deepEqual(f.downloads, []);
   assert.deepEqual(f.probes, []);
 });
+
+test("cancelling Anki media encoding aborts its reader and releases the playback-independent lease", { timeout: 1000 }, async () => {
+  const f = fixture();
+  const started = Promise.withResolvers();
+  let aborted = false;
+  f.window.FileReader = class {
+    readAsDataURL() { started.resolve(); }
+    abort() { aborted = true; }
+  };
+  const controller = new AbortController();
+  const pending = exportAnkiAudio(f.window, f.repository, { sources: [source], term }, controller.signal);
+  await started.promise;
+  controller.abort();
+  await assert.rejects(pending, error => error.name === "AbortError");
+  assert.equal(aborted, true);
+  assert.ok(f.probes.every(probe => probe.paused && probe.src === ""));
+  f.repository.clear();
+  assert.deepEqual(f.revoked, ["blob:3", "blob:10"]);
+});
