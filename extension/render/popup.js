@@ -878,16 +878,11 @@
       if (inspected >= COMPACT_DEFINITION_MAX_NODES) break;
       inspected += 1;
       const text = collectCompactDefinitionText(node, { nodes: 0 });
-      let start = 0;
-      while (start < text.length) {
-        const end = text.indexOf("\u2022", start);
-        const item = normalizeCompactDefinitionText(text.slice(start, end < 0 ? text.length : end));
-        if (item) {
-          found = true;
-          yield item;
-        }
-        if (end < 0) break;
-        start = end + 1;
+      // Skip empty bullet runs without a JS normalization for each fragment.
+      const fragments = /[^\s\u2022][^\u2022]*/gu;
+      for (let match = fragments.exec(text); match; match = fragments.exec(text)) {
+        found = true;
+        yield normalizeCompactDefinitionText(match[0]);
       }
     }
     // The first nonempty semantic list owns the preview, even if deduplication
