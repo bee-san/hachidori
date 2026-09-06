@@ -50,6 +50,13 @@ export function ankiFieldNames(fields) {
   return new Map(fields.map(field => [field.toLowerCase(), field]));
 }
 
+export function ankiTemplateMarkerNames(template) {
+  return [...template.matchAll(MARKER_PATTERN)].map(match => {
+    const name = match[1].toLowerCase();
+    return MARKER_ALIASES.get(name) ?? name;
+  });
+}
+
 export function ankiTemplateErrors(template) {
   return [...new Set([...template.matchAll(MARKER_PATTERN)].filter(match => !knownMarker(match[1].toLowerCase()))
     .map(match => `Unknown marker: ${match[0]}`))];
