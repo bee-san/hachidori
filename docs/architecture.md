@@ -338,7 +338,9 @@ owned layout batch for every visible pane; it does not invalidate lookups,
 replace the result DOM or close a Note draft.
 Cards include padding and borders in their assigned widths. The same resize
 observer watches each grid as well as its cards, so a newly narrowed popup can
-repack fixed-width cards. Local projection disconnects the superseded panel's
+repack fixed-width cards. Each grid assigns all widths, measures the ordered
+card heights, then applies placement, avoiding a forced layout per card.
+Local projection disconnects the superseded panel's
 observations before registering its replacements; Show more retains current
 observations while adding the newly displayed entries.
 
