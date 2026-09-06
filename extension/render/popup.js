@@ -1899,6 +1899,7 @@
       const isCurrentLink = () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext);
       const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
       hideImagePreview();
+      masonryObserver?.disconnect();
       panel.replaceChildren();
       const deferredGlossaryFills = [];
       let lookupStats = null;
