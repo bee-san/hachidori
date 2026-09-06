@@ -3067,7 +3067,6 @@
   }
 
   return {
-    DEFAULT_POPUP_SIZE: Object.freeze({ width: 560, height: 420 }),
     createPopupAppearance,
     calculatePopupPosition,
     createDictionaryDisplayNames,
