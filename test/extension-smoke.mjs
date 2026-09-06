@@ -9802,11 +9802,15 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   ]) }]));
   const bulletText = ("first • first • second • " + "unused • ".repeat(50000)).trim();
   const longText = "長😀".repeat(50000);
-  sandbox.__summaryWork = { bulletText, longText, splitFragments: 0, codePoints: 0, emptyNormalizations: 0 };
+  sandbox.__summaryWork = { bulletText, longText, splitFragments: 0, codePoints: 0, emptyNormalizations: 0,
+    largeNormalizations: 0, largeTrims: 0, matchedCodeUnits: 0 };
   runInContext(`
     (() => {
       const split = String.prototype.split;
       const replace = String.prototype.replace;
+      const trim = String.prototype.trim;
+      const codePointAt = String.prototype.codePointAt;
+      const exec = RegExp.prototype.exec;
       const iterator = String.prototype[Symbol.iterator];
       String.prototype.split = function (...args) {
         const result = split.apply(this, args);
@@ -9815,7 +9819,21 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       };
       String.prototype.replace = function (...args) {
         if (String(this).trim() === "") __summaryWork.emptyNormalizations += 1;
+        if (String(this).length > 482) __summaryWork.largeNormalizations += 1;
         return replace.apply(this, args);
+      };
+      String.prototype.trim = function () {
+        if (String(this).length > 482) __summaryWork.largeTrims += 1;
+        return trim.call(this);
+      };
+      String.prototype.codePointAt = function (...args) {
+        if (String(this) === __summaryWork.longText) __summaryWork.codePoints += 1;
+        return codePointAt.apply(this, args);
+      };
+      RegExp.prototype.exec = function (...args) {
+        const result = exec.apply(this, args);
+        __summaryWork.matchedCodeUnits = Math.max(__summaryWork.matchedCodeUnits, result?.[0].length || 0);
+        return result;
       };
       String.prototype[Symbol.iterator] = function* () {
         const observed = String(this) === __summaryWork.longText;
@@ -9827,6 +9845,9 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       globalThis.__restoreSummaryWork = () => {
         String.prototype.split = split;
         String.prototype.replace = replace;
+        String.prototype.trim = trim;
+        String.prototype.codePointAt = codePointAt;
+        RegExp.prototype.exec = exec;
         String.prototype[Symbol.iterator] = iterator;
       };
     })();
@@ -9840,20 +9861,32 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     boundedSummaryWork = JSON.stringify(bullets?.items) === JSON.stringify(["first", "second"])
       && long?.items[0] === "長😀".repeat(119) + "長…"
       && sandbox.__summaryWork.splitFragments === 0 && sandbox.__summaryWork.codePoints <= 241
-      && sandbox.__summaryWork.emptyNormalizations === 0;
+      && sandbox.__summaryWork.emptyNormalizations === 0 && sandbox.__summaryWork.largeNormalizations === 0
+      && sandbox.__summaryWork.largeTrims === 0 && sandbox.__summaryWork.matchedCodeUnits <= 482;
   } finally { sandbox.__restoreSummaryWork(); }
   const summaryWork = { splitFragments: sandbox.__summaryWork.splitFragments, codePoints: sandbox.__summaryWork.codePoints,
-    emptyNormalizations: sandbox.__summaryWork.emptyNormalizations };
+    emptyNormalizations: sandbox.__summaryWork.emptyNormalizations, largeNormalizations: sandbox.__summaryWork.largeNormalizations,
+    largeTrims: sandbox.__summaryWork.largeTrims, matchedCodeUnits: sandbox.__summaryWork.matchedCodeUnits };
   delete sandbox.__summaryWork;
   delete sandbox.__restoreSummaryWork;
+  const duplicate = "a".repeat(200);
+  const streamedText = [
+    { content: ["pre", { tag: "div", content: "" }, "fix"], items: ["prefix"] },
+    { content: ["pre", { tag: "div", content: " \r\n" }, "fix"], items: ["pre fix"] },
+    { content: ["a".repeat(238), "\ud83d", "\ude00", "z"], items: ["a".repeat(238) + "😀z"] },
+    { content: ["a".repeat(238), "\ud83d", "\ude00", "zq"], items: ["a".repeat(238) + "😀…"] },
+    { content: ["a".repeat(240), " \r\n"], items: ["a".repeat(240)] },
+    { content: [duplicate, " • ", duplicate, " • tail"], items: [duplicate, "tail"] },
+  ].every(({ content, items }) => JSON.stringify(HDPopup.extractCompactDefinitionSummary([{ dictionary: "Stream",
+    glossary: JSON.stringify({ tag: "ul", content: { tag: "li", content } }) }])?.items) === JSON.stringify(items));
   check("compact summaries preserve ordered text, split nonempty bullets and select only a leading image without changing full glossaries",
     JSON.stringify(compact?.items) === JSON.stringify(["first", "second"])
       && compact?.dictionary === "Illustrated" && compact?.image?.path === "media/kanji.png"
       && JSON.stringify(fallback?.items) === JSON.stringify(["plain first"])
       && !lateImage?.image && JSON.stringify(bulletSummary?.items) === JSON.stringify(["first", "second"])
       && nonImageLeads.every(summary => !summary?.image)
-      && JSON.stringify(summaryGlossaries) === summaryBefore && boundedSummaryWork,
-    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork }));
+      && JSON.stringify(summaryGlossaries) === summaryBefore && boundedSummaryWork && streamedText,
+    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText }));
 
   const host = document.createElement("div");
   document.body.appendChild(host);
