@@ -48,6 +48,7 @@ const { pruneGroupMemberships } = globalThis.HDDictionaryGroups;
 const OFFSCREEN_DOCUMENT = "offscreen.html";
 const TARGET = "hoshidicts-offscreen";
 const UPDATE_TARGET = "hachidori-updates";
+const AUDIO_TARGET = "hachidori-audio";
 
 // Requests the worker answers itself. A second target is what keeps them out of
 // the relay below: a message from the offscreen document carrying TARGET is
@@ -70,6 +71,7 @@ const RELAY_BACKOFF_MS = 40;
 const NOT_LISTENING = /Receiving end does not exist|Could not establish connection/i;
 
 let creating = null;
+let latestAudioTest = null;
 
 function describe(error) {
   if (error instanceof Error) {
@@ -96,9 +98,9 @@ async function createOffscreen() {
   try {
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_DOCUMENT,
-      reasons: ["DOM_SCRAPING"],
+      reasons: ["DOM_SCRAPING", "AUDIO_PLAYBACK"],
       justification:
-        "Runs the WebAssembly dictionary engine and parses imported Yomitan archives in a DOM context that outlives the service worker.",
+        "Runs the WebAssembly dictionary engine, parses Yomitan archives, and plays configured pronunciation audio outside page content policies.",
     });
   } catch (error) {
     // Another extension context may have won the race; only a genuine absence
@@ -123,10 +125,13 @@ async function ensureOffscreen() {
   await creating;
 }
 
-async function relay(message) {
+async function relay(message, stillCurrent = null) {
   let failure = null;
   for (let attempt = 0; attempt < RELAY_ATTEMPTS; attempt += 1) {
     await ensureOffscreen();
+    if (stillCurrent && !stillCurrent()) {
+      return { type: `${message.type}_result`, requestId: message.requestId, ok: true, status: "cancelled" };
+    }
     try {
       // `relayed` is what lets offscreen.js ignore the copy of this message that
       // chrome.runtime.sendMessage also delivers to it directly, so a request
@@ -855,10 +860,34 @@ function failureReply(message, error) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || message.target !== TARGET || message.relayed === true) {
+  if (!message || (message.target !== TARGET && message.target !== AUDIO_TARGET) || message.relayed === true) {
     return false;
   }
-  relay(message).then(sendResponse, (error) => {
+  let stillCurrent = null;
+  if (message.target === AUDIO_TARGET) {
+    try {
+      if (!["hd_audio_test", "hd_audio_stop", "hd_audio_voices"].includes(message.type)) throw new Error("Unknown audio request.");
+      if (message.type === "hd_audio_test") {
+        globalThis.HDReaderOptions.validateOptionsPatch({ audioSources: [message.source] });
+      }
+      // Chrome supplies the document ID, so an old Settings tab cannot stop a
+      // pronunciation subsequently started by a different document.
+      message = { ...message, owner: sender.documentId };
+      if (message.type === "hd_audio_test") {
+        latestAudioTest = message;
+        stillCurrent = () => latestAudioTest === message;
+      } else if (message.type === "hd_audio_stop"
+          && latestAudioTest?.owner === message.owner && latestAudioTest?.requestId === message.playRequestId) {
+        // Retire it before awaiting offscreen startup. Otherwise its relay
+        // retry could start playback after this Stop has already completed.
+        latestAudioTest = null;
+      }
+    } catch (error) {
+      sendResponse(failureReply(message, error));
+      return false;
+    }
+  }
+  relay(message, stillCurrent).then(sendResponse, (error) => {
     sendResponse(failureReply(message, error));
   });
   return true;

@@ -18,6 +18,7 @@
     popupTheme: "default",
     popupToolbarPosition: "auto",
     customPopupCss: "",
+    audioSources: [{ id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" }],
     popupWidthPx: 560,
     popupHeightPx: 420,
     popupOpacityPercent: 85,
@@ -82,6 +83,19 @@
   const ACTIVATION_NAMES = new Map(ACTIVATION_KEYS.map((key) => [key.toLowerCase(), key]));
   const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
   const OPTION_KEYS = Object.keys(DEFAULT_OPTIONS);
+  const AUDIO_SOURCE_TYPES = ["custom", "custom-json", "text-to-speech", "text-to-speech-reading"];
+
+  function normaliseAudioSources(value) {
+    if (!Array.isArray(value)) return [];
+    const ids = new Set();
+    return value.flatMap(source => {
+      if (!source || typeof source.id !== "string" || source.id === "" || ids.has(source.id)
+          || !AUDIO_SOURCE_TYPES.includes(source.type)) return [];
+      ids.add(source.id);
+      return [{ id: source.id, type: source.type, enabled: typeof source.enabled === "boolean" ? source.enabled : true,
+        url: typeof source.url === "string" ? source.url : "", voice: typeof source.voice === "string" ? source.voice : "" }];
+    });
+  }
 
   function normaliseActivationKey(value, fallback = DEFAULT_OPTIONS.activationKey) {
     if (value === " ") return "Space";
@@ -127,6 +141,7 @@
       case "frequencyOrder": return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;
       case "kanjiClickDictionary": return normaliseKanjiSelection(value);
       case "popupImageSource": return normalisePopupImageSource(value);
+      case "audioSources": return normaliseAudioSources(value);
       default: return typeof value === "string" ? value : "";
     }
   }
@@ -198,6 +213,8 @@
   function isValidOptionField(key, raw, normalized) {
     if (key === "kanjiClickDictionary") return typeof raw === "string" || typeof normalized === "object";
     if (key === "popupImageSource") return raw === null || normalized !== null;
+    if (key === "audioSources") return Array.isArray(raw) && raw.length === normalized.length
+      && normalized.every((source, index) => Object.entries(source).every(([field, value]) => raw[index][field] === value));
     return typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
   }
 
@@ -219,6 +236,7 @@
   globalThis.HDReaderOptions = {
     DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
+    AUDIO_SOURCE_TYPES,
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     projectStoredOptions, validateOptionsPatch,
     resolvePopupImageSources,

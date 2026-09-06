@@ -821,6 +821,48 @@ async function externalLinksBackgroundStage() {
     JSON.stringify({ independent, failed, log: bus.log }));
 }
 
+async function audioRelayStage() {
+  const bus = makeBus();
+  const chrome = makeChrome("audio-worker", bus, makeStorage());
+  chrome.runtime.getContexts = async () => [{}];
+  const sent = [];
+  const backoffs = [];
+  let failNext = true;
+  chrome.runtime.sendMessage = async message => {
+    if (message.type === "hd_audio_test" && failNext) {
+      failNext = false;
+      throw new Error("Receiving end does not exist");
+    }
+    sent.push(message);
+    return { ok: true, status: message.type === "hd_audio_stop" ? "cancelled" : "success" };
+  };
+  loadBackgroundScript({ chrome, console, URL, clearTimeout, Promise, Error,
+    setTimeout: resolve => { backoffs.push(resolve); } });
+  const send = (type, requestId, extra = {}, documentId = "settings-a") => bus.sendMessage("audio-settings", {
+    target: "hachidori-audio", type, requestId, ...extra,
+  }, { id: chrome.runtime.id, documentId });
+  const source = { id: "tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" };
+  async function reachBackoff() {
+    for (let i = 0; i < 20 && backoffs.length === 0; i++) await Promise.resolve();
+    if (!backoffs.length) throw new Error("Audio relay never reached the startup retry");
+  }
+  const stopped = send("hd_audio_test", "stopped", { source });
+  await reachBackoff();
+  await send("hd_audio_stop", "stop", { playRequestId: "stopped" });
+  backoffs.shift()();
+  const stoppedReply = await stopped;
+  failNext = true;
+  const old = send("hd_audio_test", "old", { source });
+  await reachBackoff();
+  const current = await send("hd_audio_test", "current", { source, owner: "spoofed" }, "settings-b");
+  backoffs.shift()();
+  const oldReply = await old;
+  check("Audio Stop and newer Tests retire startup retries before stale playback can begin",
+    stoppedReply.status === "cancelled" && oldReply.status === "cancelled" && current.status === "success"
+      && sent.filter(message => message.type === "hd_audio_test").length === 1
+      && sent.at(-1).requestId === "current" && sent.at(-1).owner === "settings-b", JSON.stringify(sent));
+}
+
 async function customBackgroundStage() {
   const bus = makeBus();
   const storage = makeStorage();
@@ -1359,6 +1401,8 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  const audioSettings = readFileSync(resolve(EXTENSION, "audio-settings.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
@@ -1372,13 +1416,14 @@ function loadSettingsScript(window) {
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
+    .replace(/import\s*\{ createAudioSettingsController \}\s*from\s*"\.\/audio-settings\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${readerOptions}\n${settings}`,
+    `${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${readerOptions}\n${audioSettings}\n${settings}`,
   );
 }
 
@@ -1907,6 +1952,7 @@ async function main() {
 
   section("external dictionary links");
   await externalLinksBackgroundStage();
+  await audioRelayStage();
 
   section("custom dictionary storage ownership");
   const customBackground = await customBackgroundStage();
@@ -4398,6 +4444,8 @@ async function main() {
   check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
     preview?.kanjiSource === true, JSON.stringify(preview));
   const frequencySettings = await settingsFrequencyStage();
+  check("Audio Settings start with reading TTS, add ordered custom URLs and retain revision-bound drafts and explicit removal",
+    frequencySettings?.audio === true, JSON.stringify(frequencySettings?.audio));
   check("the CSS editor counts unsaved text, preserves revision-bound drafts and resets only custom CSS",
     frequencySettings?.css === true, JSON.stringify(frequencySettings?.css));
   const sourceHighlight = await sourceHighlightStage();
@@ -5581,7 +5629,8 @@ async function settingsFrequencyStage() {
     listener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
   };
   window.chrome = {
-    runtime: { async sendMessage(message) {
+    runtime: { onMessage: { addListener() {}, removeListener() {} }, async sendMessage(message) {
+      if (message.type === "hd_audio_voices") return { ok: true, voices: [] };
       if (message.type === "hd_state_read") return { ok: true, state: structuredClone(state) };
       if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 3 };
       if (message.type !== "hd_options_write") throw new Error(`Unexpected frequency Settings request ${message.type}`);
@@ -5898,7 +5947,50 @@ async function settingsFrequencyStage() {
       css &&= editor.value === "" && storedOptions.customPopupCss === "" && storedOptions.popupTheme === "light"
         && Object.keys(writes.at(-1).options).join() === "customPopupCss";
     }
-    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset, toolbar, css,
+    window.location.hash = "#audio";
+    const audioRows = () => [...window.document.querySelectorAll(".audio-source-row")];
+    await until(() => audioRows().length === 1);
+    let audio = audioRows()[0].querySelector(".audio-type").value === "text-to-speech-reading"
+      && audioRows()[0].querySelector(".audio-enabled").checked;
+    window.document.getElementById("audio-source-add").click();
+    const url = audioRows()[1].querySelector(".audio-url");
+    const urlText = "http://localhost:5050/?term={term}&reading={reading}";
+    url.value = urlText;
+    url.dispatchEvent(new window.Event("input", { bubbles: true }));
+    await until(() => status() === "Saved.");
+    audio &&= storedOptions.audioSources[1].url === urlText && window.document.activeElement === url;
+    url.blur();
+    audioRows()[1].querySelector(".audio-up").click();
+    await until(() => status() === "Saved.");
+    const enabled = audioRows()[0].querySelector(".audio-enabled");
+    enabled.checked = false;
+    enabled.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => status() === "Saved.");
+    audio &&= storedOptions.audioSources[0].url === urlText && !storedOptions.audioSources[0].enabled
+      && storedOptions.audioSources[1].type === "text-to-speech-reading";
+    const audioObserver = new window.MutationObserver(() => {});
+    audioObserver.observe(window.document.getElementById("audio-source-list"), {
+      attributes: true, childList: true, characterData: true, subtree: true,
+    });
+    emitOptions({ popupTheme: "dark" });
+    audio &&= audioObserver.takeRecords().length === 0;
+    audioObserver.disconnect();
+    url.focus();
+    url.value += "&draft=1";
+    url.dispatchEvent(new window.Event("input", { bubbles: true }));
+    const audioRevision = storedOptions.revision;
+    emitOptions({ popupTheme: "dark" });
+    await until(() => status().includes("Could not save"));
+    audio &&= writes.at(-1).baseRevision === audioRevision && url.value.endsWith("&draft=1");
+    url.blur();
+    window.document.getElementById("options-use-saved").click();
+    audio &&= url.value === urlText;
+    while (audioRows().length) audioRows()[0].querySelector(".audio-remove").click();
+    await until(() => status() === "Saved.");
+    emitOptions({ popupTheme: "light" });
+    audio &&= storedOptions.audioSources.length === 0 && audioRows().length === 0
+      && !window.document.getElementById("audio-source-empty").hidden;
+    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset, toolbar, css, audio,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {

@@ -5,6 +5,7 @@
  */
 
 import "./reader-options.js";
+import { createAudioSettingsController } from "./audio-settings.js";
 import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
@@ -24,6 +25,8 @@ import {
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
 const UPDATE_TARGET = "hachidori-updates";
+const AUDIO_TARGET = "hachidori-audio";
+const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio" };
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
@@ -98,6 +101,7 @@ const expandedDictionaryIds = new Set();
 let draggedDictionaryId = null;
 let statusTimer = null;
 let requestCounter = 0;
+let audioController;
 
 const SECTION_STATUSES = {
   "import-state": { section: "add-dictionaries", label: "Import" },
@@ -156,17 +160,32 @@ function showSettingsSection(focus = false) {
     if (link.hash === `#${activeSection}`) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
-  if (activeSection === "lookup" || activeSection === "design") {
+  if (Object.hasOwn(OPTION_SECTIONS, activeSection)) {
     element(`nav-status-${SECTION_STATUSES["options-status"].section}`).textContent = "";
-    SECTION_STATUSES["options-status"] = { section: activeSection, label: activeSection === "design" ? "Design" : "Reading" };
+    SECTION_STATUSES["options-status"] = { section: activeSection, label: OPTION_SECTIONS[activeSection] };
     const slot = element(activeSection).querySelector(".options-feedback-slot");
     if (element("options-feedback").parentElement !== slot) slot.append(element("options-feedback"));
   }
   for (const id of Object.keys(SECTION_STATUSES)) syncNavigationStatus(id);
   renderThemeChoices();
   updateDesignPreview();
+  updateAudioSettings();
   if (fragment === "settings-content") element("settings-content").focus();
   else if (focus) element(activeSection).querySelector("h1").focus();
+}
+
+function updateAudioSettings() {
+  if (activeSection !== "audio") { audioController?.stop(); return; }
+  audioController ??= createAudioSettingsController({
+    document,
+    readSources: () => options.audioSources,
+    editSources: sources => {
+      options.audioSources = sources;
+      writeOptions();
+    },
+    send: (type, fields) => send(type, fields, AUDIO_TARGET),
+  });
+  audioController.render();
 }
 
 function updateDesignPreview() {
@@ -1073,6 +1092,7 @@ function renderOptions() {
   renderPopupImageSources();
   renderMetadataControls();
   updateDesignPreview();
+  updateAudioSettings();
 }
 
 function addCountBadge(container, label, count) {
@@ -2117,7 +2137,7 @@ function attachHandlers() {
     options.kanjiClickDictionary = selectionFromValue(event.target.value);
     writeOptions();
   });
-  const optionSections = document.querySelectorAll("#lookup, #design");
+  const optionSections = Object.keys(OPTION_SECTIONS).map(element);
   for (const section of optionSections) {
     section.addEventListener("input", (event) => {
       if (!event.target.id.startsWith("opt-")) return;

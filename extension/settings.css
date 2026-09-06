@@ -1000,6 +1000,38 @@ textarea {
   }
 }
 
+.audio-source-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.audio-source-row {
+  display: grid;
+  gap: 16px;
+  padding: 20px 0;
+  border-block: 1px solid var(--border);
+}
+.audio-source-row + .audio-source-row { border-top: 0; }
+.audio-source-heading,
+.audio-source-enabled,
+.audio-source-actions,
+.audio-test-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.audio-source-heading { justify-content: space-between; flex-wrap: wrap; }
+.audio-source-enabled { font-weight: 600; }
+.audio-source-actions { gap: 6px; }
+.audio-source-row .field { display: grid; gap: 6px; }
+.audio-source-row .field[hidden] { display: none; }
+.audio-source-row select { width: min(100%, 360px); }
+.audio-url { width: 100%; }
+.audio-test-status { color: var(--text-dim); overflow-wrap: anywhere; }
+.audio-test-line { align-items: baseline; }
+#audio > p { margin: 0; }
+#audio-source-add { align-self: flex-start; }
+
 @media (prefers-reduced-motion: reduce) {
   .track-fill {
     width: 100%;

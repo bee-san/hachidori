@@ -213,6 +213,9 @@ const PLANNED = [
   "custom CSS editor previews unsaved text, persists its count and resets only its stylesheet",
   "custom CSS overrides built-in and late dictionary styles only inside the popup shadow tree and tolerates invalid CSS",
   "live custom CSS updates root and child without losing Notes, Back or making engine requests",
+  "Audio Settings preserve ordered source edits and disabled rows through revisioned save and reload",
+  "Audio source Tests use encoded URLs and ordered JSON candidates with visible success, no-result and error feedback",
+  "Audio Tests cancel stale playback and preserve the dictionary engine after audio becomes idle",
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
@@ -3000,6 +3003,124 @@ async function checkSettingsTransport(page) {
     JSON.stringify({ evidence, saved }));
 }
 
+async function checkAudioSettings(page, browser) {
+  await showSettingsSection(page, "audio");
+  const original = await page.evaluate(async () => ({
+    options: (await chrome.storage.local.get("options")).options,
+    status: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
+    context: (await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] }))[0].documentId,
+  }));
+  const saved = () => page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
+  const input = async (selector, value, event = "input") => {
+    await page.$eval(selector, (field, next, kind) => {
+      field.focus();
+      if (field.type === "checkbox") field.checked = next;
+      else field.value = next;
+      field.dispatchEvent(new Event(kind, { bubbles: true }));
+      field.blur();
+    }, value, event);
+    await saved();
+  };
+  const customRow = ".audio-source-row:first-child";
+  const click = async selector => { await page.$eval(selector, button => button.click()); await saved(); };
+  const routes = new Map();
+  const route = (path, body, contentType = "application/json", status = 200) => {
+    routes.set(`https://audio.example.test/${path}`, { body, contentType, status, requests: 0 });
+  };
+  // A small genuine PCM clip: Chrome must decode it and emit native `ended`.
+  const samples = 8000;
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write("RIFF"); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write("data", 36); wav.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i++) wav.writeInt16LE(i % 2 ? 100 : -100, 44 + i * 2);
+  route("valid.wav", wav, "audio/wav");
+  route("invalid.wav", "not audio", "audio/wav");
+  route("list?term=%E8%81%9E%E3%81%8F&reading=%E3%81%8D%E3%81%8F&lang=ja", JSON.stringify({
+    type: "audioSourceList", audioSources: [
+      { url: "https://audio.example.test/invalid.wav", name: "Unplayable" },
+      { url: "https://audio.example.test/valid.wav", name: "Playable" },
+    ],
+  }));
+  route("empty", JSON.stringify({ type: "audioSourceList", audioSources: [] }));
+  route("failure", "Unavailable", "text/plain", 503);
+  const target = await browser.waitForTarget(target => target.url().endsWith("/offscreen.html"));
+  const session = await interceptFetches(target, routes, "audio");
+  try {
+    const defaults = await page.$eval(".audio-source-row", row =>
+      row.querySelector(".audio-type").value === "text-to-speech-reading" && row.querySelector(".audio-enabled").checked);
+    await click("#audio-source-add");
+    await click(".audio-source-row:last-child .audio-up");
+    await input(`${customRow} .audio-type`, "custom-json", "change");
+    const template = "https://audio.example.test/list?term={term}&reading={reading}&lang={language}";
+    await input(`${customRow} .audio-url`, template);
+    await input(`${customRow} .audio-enabled`, false, "change");
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll(".audio-source-row").length === 2);
+    const retained = await page.evaluate(() => [...document.querySelectorAll(".audio-source-row")].map(row => ({
+      type: row.querySelector(".audio-type").value, enabled: row.querySelector(".audio-enabled").checked,
+      url: row.querySelector(".audio-url").value,
+    })));
+    check("Audio Settings preserve ordered source edits and disabled rows through revisioned save and reload",
+      defaults && retained[0].url === template && !retained[0].enabled && retained[1].enabled
+        && retained[1].type === "text-to-speech-reading", JSON.stringify(retained));
+    async function testRow() {
+      await page.$eval(`${customRow} .audio-test`, button => button.click());
+      await page.waitForFunction(() => document.querySelector(".audio-test").textContent === "Test", { timeout: 20_000 });
+      return page.$eval(`${customRow} .audio-test-status`, output => output.textContent);
+    }
+    const success = await testRow();
+    await input(`${customRow} .audio-url`, "https://audio.example.test/empty");
+    const obsoleteCleared = await page.$eval(`${customRow} .audio-test-status`, output => output.textContent === "");
+    const empty = await testRow();
+    await input(`${customRow} .audio-url`, "https://audio.example.test/failure");
+    const failure = await testRow();
+    check("Audio source Tests use encoded URLs and ordered JSON candidates with visible success, no-result and error feedback",
+      obsoleteCleared && success === "Played 聞く / きく — Playable." && empty === "No pronunciation was returned."
+        && failure.includes("503") && [...routes.values()].every(route => route.requests === 1),
+      JSON.stringify({ success, empty, failure, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
+    await input(`${customRow} .audio-url`, template);
+    if (process.env.HACHIDORI_AUDIO_SCREENSHOT) {
+      await page.setViewport({ width: 1200, height: 1100 });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: process.env.HACHIDORI_AUDIO_SCREENSHOT, fullPage: true });
+    }
+    // Hold a real request at the offscreen target, then stop and release it.
+    let held;
+    const hold = await target.createCDPSession();
+    hold.on("Fetch.requestPaused", event => { held = event.requestId; });
+    await hold.send("Fetch.enable", { patterns: [{ urlPattern: "https://audio.example.test/pending", requestStage: "Request" }] });
+    await input(`${customRow} .audio-url`, "https://audio.example.test/pending");
+    await page.$eval(`${customRow} .audio-test`, button => button.click());
+    const deadline = Date.now() + 5000;
+    while (!held && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+    if (!held) throw new Error("Audio Test did not reach the offscreen fetch");
+    await page.$eval(`${customRow} .audio-test`, button => button.click());
+    await hold.send("Fetch.failRequest", { requestId: held, errorReason: "Aborted" }).catch(() => {});
+    await hold.detach();
+    const stopped = await page.$eval(`${customRow} .audio-test-status`, output => output.textContent);
+    const idleSince = Date.now();
+    await page.waitForFunction(start => Date.now() - start > 31_000, { polling: 1000, timeout: 35_000 }, idleSince);
+    const after = await page.evaluate(async () => ({
+      status: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
+      context: (await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] }))[0].documentId,
+      feedback: document.querySelector(".audio-test-status").textContent,
+    }));
+    check("Audio Tests cancel stale playback and preserve the dictionary engine after audio becomes idle",
+      stopped === "Stopped." && after.feedback === stopped && after.status.ready
+        && after.status.generation === original.status.generation && after.context === original.context, JSON.stringify(after));
+  } finally {
+    await session.detach();
+    await page.evaluate(async sources => {
+      const { options } = await chrome.storage.local.get("options");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+        requestId: "restore-audio", baseRevision: options.revision, options: { audioSources: sources } });
+      if (!reply.ok) throw new Error(reply.error);
+    }, original.options?.audioSources ?? [{ id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" }]);
+  }
+}
+
 async function readSettingsControls(settings, ids) {
   return settings.evaluate((names) => Object.fromEntries(names.map((id) => {
     const input = document.getElementById(id);
@@ -4179,6 +4300,9 @@ async function main() {
       "--no-sandbox",
       "--disable-gpu",
       "--disable-dev-shm-usage",
+      // Chromium's clocked fake output device: native decode/play/ended still
+      // run when the host has no audio device. This does not bypass autoplay.
+      "--disable-audio-output",
       `--disable-extensions-except=${EXTENSION}`,
       `--load-extension=${EXTENSION}`,
     ],
@@ -4279,6 +4403,7 @@ async function main() {
   await checkSettingsAutosave(page, browser, settingsUrl);
   await checkSettingsTransport(page);
   await checkDesignPreview(page);
+  await checkAudioSettings(page, browser);
   await checkDictionaryStyles(page);
   await showSettingsSection(page, "add-dictionaries");
 
@@ -4789,7 +4914,7 @@ async function main() {
     const links = [...document.querySelectorAll(".settings-nav a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 7
+      && links.length === 8
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION");
   });
   const selectionActions = await page.evaluate(() => {
@@ -4855,7 +4980,7 @@ async function main() {
     await page.setViewport({ width, height: 900 });
     for (const theme of ["light", "dark"]) {
       await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
-      for (const section of ["dictionaries", "lookup", "design", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups"]) {
+      for (const section of ["dictionaries", "lookup", "design", "audio", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups"]) {
         await showSettingsSection(page, section);
         themeLayouts.push(await page.evaluate(({ theme, section }) => {
           const root = getComputedStyle(document.documentElement);
@@ -4872,7 +4997,7 @@ async function main() {
           };
           const panel = document.getElementById(section);
           const primary = {
-            dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns", "custom-dictionary": "custom-dictionary-open",
+            dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns", audio: "audio-source-add", "custom-dictionary": "custom-dictionary-open",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
