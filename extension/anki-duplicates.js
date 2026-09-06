@@ -42,9 +42,11 @@ function checkResult(result, detailed) {
   return result[0];
 }
 
-export async function checkAnkiDuplicate(invoke, note, firstField, config) {
+export async function checkAnkiDuplicate(invoke, note, config) {
   if (!config.checkForDuplicates) return { duplicate: false, addable: true, error: null };
-  const checkNote = allowDuplicate => ({ ...note, fields: { [firstField]: note.fields[firstField] ?? "" },
+  // Anki also validates clozes in non-first fields. Keep all rendered fields,
+  // but omit media-upload objects: preflight must not write collection media.
+  const checkNote = allowDuplicate => ({ deckName: note.deckName, modelName: note.modelName, fields: note.fields, tags: note.tags,
     options: { ...note.options, allowDuplicate } });
   let result;
   try {
@@ -59,14 +61,12 @@ export async function checkAnkiDuplicate(invoke, note, firstField, config) {
   return { duplicate: isDuplicate(error), addable: result.canAdd && !error, error };
 }
 
-function duplicateQuery(note, firstField, config) {
-  const parts = [];
-  if (config.duplicateScope !== "collection") {
-    const deck = config.duplicateScope === "deck-root" ? rootDeck(config.deck) : config.deck;
-    parts.push(`"deck:${escapeQuery(deck)}"`);
-  }
-  parts.push(`"${escapeQuery(firstField.toLowerCase())}:${escapeQuery(note.fields[firstField] ?? "")}"`);
-  return parts.join(" ");
+function duplicateQuery(note, firstField, modelId) {
+  // Native Anki dupe search uses the same case-sensitive, HTML-stripped
+  // comparison as duplicate validation. Ordinary field search does not.
+  // Unlike ordinary search, dupe text treats wildcard/colon/comma literally.
+  const text = (note.fields[firstField] ?? "").replace(/[\\"]/gu, "\\$&");
+  return `"dupe:${modelId},${text}"`;
 }
 
 async function scopedNoteIds(invoke, infos, config) {
@@ -84,7 +84,10 @@ async function scopedNoteIds(invoke, infos, config) {
 }
 
 export async function findAnkiOverwriteTarget(invoke, note, firstField, config) {
-  const ids = await invoke("findNotes", { query: duplicateQuery(note, firstField, config) });
+  const models = await invoke("modelNamesAndIds");
+  const modelId = models?.[config.model];
+  if (Array.isArray(models) || !positiveId(modelId)) throw new Error("AnkiConnect returned no valid ID for the selected note type.");
+  const ids = await invoke("findNotes", { query: duplicateQuery(note, firstField, modelId) });
   if (!Array.isArray(ids) || !ids.every(positiveId)) throw new Error("AnkiConnect returned invalid duplicate note IDs.");
   if (!ids.length) return null;
   const infos = await invoke("notesInfo", { notes: ids });
