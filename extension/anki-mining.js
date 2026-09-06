@@ -88,7 +88,7 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, enri
     const prepared = await prepare(request, true);
     const checked = await decision(prepared);
     if (!checked.canAdd) return { state: checked.state, error: checked.error };
-    const { config, configKey, note, resolved, invoke } = prepared;
+    const { configKey, note, resolved, invoke } = prepared;
     const target = checked.target;
     const fields = target ? fieldsForExistingNote(note, resolved.templates, target.fields) : note.fields;
     if (JSON.stringify(await readConfig()) !== configKey) throw new Error(CONFIG_CHANGED);
@@ -109,8 +109,8 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, enri
       return { state: "uncertain", error: `The write could not be confirmed. Use View in Anki before trying again. ${error.message}` };
     }
     const warnings = [];
-    try { await verifyFields(invoke, noteId, fields); } catch (error) { warnings.push(error.message); }
     try {
+      await verifyFields(invoke, noteId, fields);
       warnings.push(...await enrich({ request, ...prepared, noteId, existingFields: target?.fields, appliedFields: fields }));
     } catch (error) { warnings.push(error.message); }
     cached = null;
