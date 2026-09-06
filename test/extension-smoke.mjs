@@ -10947,9 +10947,13 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
       get() { scrollReads++; return retainedScroll; },
       set(value) { retainedScroll = value; },
     });
+    view.renderResults(results, candidate, snapshot);
+    const backAvoidsEarlyLayout = scrollReads === 0 && retainedScroll === 0;
+    retainedScroll = 85;
+    scrollReads = 0;
     view.renderResults(results, candidate, { preserveViewControls: true });
-    check("ordinary retained renders do not force scroll layout while their replacement panel is empty",
-      scrollReads === 0 && retainedScroll === 85);
+    check("Back and ordinary retained renders do not force scroll layout while their replacement panel is empty",
+      backAvoidsEarlyLayout && scrollReads === 0 && retainedScroll === 85);
     delete popup.scrollTop;
   } finally { view.destroy(); popup.remove(); }
 }

@@ -2166,9 +2166,6 @@
       let expanded = renderContext.expandAll === true;
       let restoreScrollTop = renderContext.restoreScrollTop;
       let restoreDisclosures = renderContext.restoreDisclosures;
-      // Reading scrollTop flushes layout. Ordinary retained renders must not
-      // clamp their Note form's scroll while this replacement panel is empty.
-      const initialScrollTop = restoreScrollTop === undefined ? undefined : popup.scrollTop;
 
       function restoreViewportAfterFill() {
         if (restoreDisclosures) {
@@ -2189,7 +2186,9 @@
         // and masonry are laid out. A newer projection or deliberate scroll
         // takes precedence over this one-shot restoration.
         pendingScrollRestoration = () => {
-          if (isCurrent() && popup.scrollTop === initialScrollTop) popup.scrollTop = savedScrollTop;
+          // Back's fresh render reset scroll to zero. Reading it earlier,
+          // while the panel is empty, would force an unnecessary layout.
+          if (isCurrent() && popup.scrollTop === 0) popup.scrollTop = savedScrollTop;
         };
         scheduleMasonry();
       }
