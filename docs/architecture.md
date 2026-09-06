@@ -543,6 +543,8 @@ IDs, with aliases and group names only as labels. Disabled or already-missing
 selections stay remembered, including deleted groups. Removing the selected
 installed package resets its image selection to Automatic in the same dictionary
 state/options commit, with an options revision that rejects stale writers.
+An ID-preserving title change migrates that selection to the new canonical title
+in the same commit.
 Inventory updates preserve a focused selection until focusout.
 It uses the existing revision-bound autosave and is independent of the hover and
 compact-summary toggles.

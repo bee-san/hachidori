@@ -333,8 +333,11 @@ function dictionaryCommit(current, currentOptions, dictionaries, groups) {
     if (nextOptions.popupImageSource?.kind === "dictionary") {
       const selected = current?.dictionaries.find((entry) =>
         entry.title === nextOptions.popupImageSource.title);
-      if (selected && !dictionaries.some((entry) => entry.id === selected.id)) {
-        nextOptions.popupImageSource = null;
+      if (selected) {
+        const replacement = dictionaries.find((entry) => entry.id === selected.id);
+        nextOptions.popupImageSource = replacement
+          ? { kind: "dictionary", title: replacement.title }
+          : null;
       }
     }
     if (!sameJsonValue(nextOptions, { ...currentOptions, revision })) {
