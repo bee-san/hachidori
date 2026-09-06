@@ -40,6 +40,7 @@ const NUMBER_FIELDS = [
   { key: "popupHideDelayMs", id: "opt-hide-delay" },
   { key: "popupNestingMaxDepth", id: "opt-popup-nesting-depth" },
   { key: "popupColumns", id: "opt-popup-columns" },
+  { key: "compactDefinitionSummaryCount", id: "opt-summary-count" },
 ];
 
 const numberFormat = new Intl.NumberFormat();
@@ -802,6 +803,31 @@ function renderFrequencyChoices() {
   select.value = previous;
 }
 
+function renderCompactSummaryControls() {
+  const enabled = options.showCompactDefinitionSummary;
+  element("opt-compact-summary").checked = enabled;
+  const count = element("opt-summary-count");
+  // Disabling Chrome's focused select emits blur before its pending change.
+  // Keep that draft's captured revision until the existing focusout boundary.
+  if (count !== document.activeElement) count.disabled = !enabled;
+  const select = element("opt-summary-dictionary");
+  if (select === document.activeElement) return;
+  select.disabled = !enabled;
+  const preferred = options.compactDefinitionSummaryDictionary;
+  select.replaceChildren(new Option("Automatic — first available definition", ""));
+  let available = preferred === "";
+  for (const dictionary of dictionaries) {
+    if (!hasCapability(dictionary, "term")) continue;
+    const label = dictionaryLabel(dictionary) + (dictionary.enabled === false ? " (disabled)" : "");
+    select.add(new Option(label, dictionary.title));
+    available ||= dictionary.title === preferred;
+  }
+  // This is a soft preference, not a lookup filter. Keep missing sources so
+  // temporarily disabling/removing one cannot silently erase the preference.
+  if (!available) select.add(new Option(`${preferred} (unavailable)`, preferred));
+  select.value = preferred;
+}
+
 function renderFrequencyOrder() {
   const order = element("opt-frequency-order");
   if (order !== document.activeElement) order.value = options.frequencyOrder;
@@ -925,6 +951,7 @@ function renderOptions() {
   renderFrequencyOrder();
   renderKanjiChoices();
   renderFrequencyChoices();
+  renderCompactSummaryControls();
 }
 
 function addCountBadge(container, label, count) {
@@ -1884,6 +1911,15 @@ function attachHandlers() {
     options.onlyScanJapaneseText = event.target.checked;
     writeOptions();
   });
+  element("opt-compact-summary").addEventListener("change", (event) => {
+    options.showCompactDefinitionSummary = event.target.checked;
+    renderCompactSummaryControls();
+    writeOptions();
+  });
+  element("opt-summary-dictionary").addEventListener("change", (event) => {
+    options.compactDefinitionSummaryDictionary = event.target.value;
+    writeOptions();
+  });
   element("opt-lookup-mode").addEventListener("change", (event) => {
     options.lookupMode = LOOKUP_MODES.includes(event.target.value) ? event.target.value : "hover";
     element("opt-activation-key").disabled = options.lookupMode !== "activation";
@@ -1925,6 +1961,7 @@ function attachHandlers() {
   element("lookup").addEventListener("focusout", (event) => {
     optionsEditRevision = null;
     if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
+    if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
     const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
     if (field) event.target.value = String(options[field.key]);
   });

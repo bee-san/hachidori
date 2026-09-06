@@ -777,6 +777,7 @@
       link.setAttribute("role", "img");
       linkText.textContent = image.alt ? `${image.alt}: Image failed to load` : "Image failed to load";
       link.setAttribute("aria-label", linkText.textContent);
+      state.onImageError?.();
       onLayoutChange();
     };
     image.addEventListener("load", () => {

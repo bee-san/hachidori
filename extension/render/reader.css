@@ -1626,25 +1626,58 @@ html[data-hoshidicts-theme="miku"] .gsm-hoshidicts-popup {
 .gsm-hoshidicts-compact-definition-summary {
   min-width: min(180px, 100%);
   max-width: 100%;
-  max-height: 2.7em;
+  min-height: 36px;
   margin: 2px 0 0;
   padding: 0;
   overflow: hidden;
+  display: flex;
   flex: 1 1 180px;
   align-self: center;
+  align-items: center;
+  gap: 6px;
   color: var(--text-color-light1);
   font-size: 13px;
   line-height: 1.35;
-  list-style: none;
   overflow-wrap: anywhere;
-  transition: filter 120ms ease-out;
 }
 
-.gsm-hoshidicts-compact-definition-summary > li {
+.gsm-hoshidicts-compact-definition-image {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.gsm-hoshidicts-compact-definition-image .gloss-image-link,
+.gsm-hoshidicts-compact-definition-image .gloss-image-container {
+  width: 36px;
+  height: 36px;
+  margin: 0;
+}
+
+.gsm-hoshidicts-compact-definition-image .gloss-image {
+  object-fit: contain;
+}
+
+.gsm-hoshidicts-compact-definition-image .gloss-image-link-text {
+  display: none;
+}
+
+.gsm-hoshidicts-compact-definition-items {
+  min-width: 0;
+  max-height: 2.7em;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+}
+
+.gsm-hoshidicts-compact-definition-items > li {
   display: inline;
 }
 
-.gsm-hoshidicts-compact-definition-summary > li + li::before {
+.gsm-hoshidicts-compact-definition-items > li + li::before {
   content: " · ";
   opacity: 0.6;
 }

@@ -1260,6 +1260,7 @@
     level.view = window.HDPopup.createPopupView({
       appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
       appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
+      appendStructuredImage: window.HDGlossary.appendStructuredImage,
       document,
       getPopupColumns: () => options.popupColumns,
       highlightName: HIGHLIGHT_NAME,
@@ -1277,6 +1278,7 @@
       canProjectDictionaryPresentation: () => !level.retired && !level.noteEditing
         && level.pendingCustomAppends === 0 && levels.length === level.depth + 1
         && requestCanRender(level.lookupToken, level.activeCandidate, level),
+      canUpdateCompactSummary: () => requestCanRender(level.lookupToken, level.activeCandidate, level),
       parseTagList: window.HDGlossary.parseTagList,
       popup,
       positionPopup: () => positionPopup(level),
@@ -1475,6 +1477,12 @@
     else hideTimer = window.setTimeout(dismiss, options.popupHideDelayMs);
   }
 
+  function compactSummaryOptions() {
+    return { showCompactDefinitionSummary: options.showCompactDefinitionSummary,
+      compactDefinitionSummaryCount: options.compactDefinitionSummaryCount,
+      compactDefinitionSummaryDictionary: options.compactDefinitionSummaryDictionary };
+  }
+
   function renderContextFor(level = rootLevel) {
     return {
       averageFrequency: false,
@@ -1491,7 +1499,7 @@
       },
       onInternalLink: (link) => onInternalLink(link, level),
       resolveMedia,
-      showCompactDefinitionSummary: false,
+      ...compactSummaryOptions(),
       showFrequencyDictionaryNames: true,
       showPitchAccentBadge: true,
       showPitchAccentFurigana: true,
@@ -2326,7 +2334,8 @@
   }
 
   function updateDictionaryPresentation() {
-    const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups() };
+    const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups(),
+      ...compactSummaryOptions() };
     for (const level of levels) {
       if (level.popup && !level.popup.hidden) level.view.updateDictionaryPresentation(context);
     }
@@ -2362,12 +2371,14 @@
     let dictionaryChanged = false;
     let presentationChanged = false;
     if (changes.options) {
-      changed = adoptOptions(changes.options.newValue);
+      const adoption = adoptOptions(changes.options.newValue);
+      changed = adoption.lookupChanged;
+      presentationChanged = adoption.presentationChanged;
     }
     if (changes.dictionaryState) {
       const adoption = adoptDictionaryState(changes.dictionaryState.newValue);
       dictionaryChanged = adoption.dictionaryChanged;
-      presentationChanged = adoption.presentationChanged;
+      presentationChanged ||= adoption.presentationChanged;
       changed ||= dictionaryChanged;
     }
     if (changed) {
@@ -2381,7 +2392,7 @@
 
   function adoptOptions(stored) {
     const revision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
-    if (revision <= optionsStorageRevision) return false;
+    if (revision <= optionsStorageRevision) return { lookupChanged: false, presentationChanged: false };
     const next = normalizeOptions(stored);
     const lookupChanged = next.scanLength !== options.scanLength || next.maxResults !== options.maxResults
       || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
@@ -2392,6 +2403,12 @@
     const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
     const columnsChanged = next.popupColumns !== options.popupColumns;
+    const summaryChanged = next.showCompactDefinitionSummary !== options.showCompactDefinitionSummary
+      || next.compactDefinitionSummaryCount !== options.compactDefinitionSummaryCount
+      || next.compactDefinitionSummaryDictionary !== options.compactDefinitionSummaryDictionary;
+    // The caller adopts the complete storage delivery before new summary work.
+    // A simultaneous dictionary replacement must invalidate the old view first.
+    const adoption = { lookupChanged, presentationChanged: summaryChanged && next.hoverEnabled };
     if (activationChanged) {
       activationPressed = false;
       activationCode = null;
@@ -2415,7 +2432,7 @@
       if (selectionIsUnchanged()) {
         clearScanTimer();
         clearHideTimer();
-        return lookupChanged;
+        return adoption;
       }
       cancelCandidateScan();
       clearHideTimer();
@@ -2427,7 +2444,7 @@
       clearHideTimer();
       scheduleHide();
     }
-    return lookupChanged;
+    return adoption;
   }
 
   function start() {
@@ -2437,14 +2454,11 @@
         if (disposed || chrome.runtime.lastError) {
           return;
         }
-        let changed = adoptOptions(stored && stored.options);
-        let dictionaryChanged = false;
+        const optionsAdoption = adoptOptions(stored && stored.options);
         const adoption = adoptDictionaryState(stored && stored.dictionaryState);
-        dictionaryChanged = adoption.dictionaryChanged;
-        changed ||= dictionaryChanged;
-        if (changed) {
-          invalidateStoredState(dictionaryChanged);
-        } else if (adoption.presentationChanged) updateDictionaryPresentation();
+        if (optionsAdoption.lookupChanged || adoption.dictionaryChanged) {
+          invalidateStoredState(adoption.dictionaryChanged);
+        } else if (optionsAdoption.presentationChanged || adoption.presentationChanged) updateDictionaryPresentation();
       });
     } catch {
       // Without storage access the defaults are still usable.

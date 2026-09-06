@@ -413,6 +413,76 @@ committed state, but never refreshes a new level at the same depth.
 
 ![Reading controls including maximum child popup depth](assets/nested-lookup-settings.png)
 
+### Compact headword summaries
+
+Reading exposes an opt-in compact summary, a snippet count from one through six
+(default three), and a preferred canonical dictionary title. Automatic uses the
+first eligible dictionary in the current projected result order. The preference
+is soft: disabled or unavailable titles remain remembered and visible in
+Settings, while the current result falls back without enabling a package or
+changing lookup ranking. Unlike frequency and clicked-kanji routing, this
+preference is not pruned by package changes.
+
+The existing semantic extractor skips metadata/examples, retains ordered unique
+snippets and splits nonempty bullet-separated text. Fallback extraction retains
+mixed plain and structured top-level senses in order, expanding
+leaf blocks within each sense without discarding its siblings. Semantic marked
+glossary sections and the first nonempty list retain precedence. Fallback
+leaf discovery shares its budget across senses; exhausted discovery
+still allows ordinary text fallback. Empty inline children need no block check.
+Each inspected raw glossary is parsed once for text and leading-image selection.
+Inline text parts stream
+without concatenating unused text or matching/normalizing whole fragments.
+One extra normalized code point beyond the 240-point display budget proves
+truncation without mistaking a long candidate for a previously seen duplicate.
+Adjacent inline parts retain split surrogate pairs and block separators. Native
+bounded text-run searches skip empty bullet and whitespace runs without a
+matcher call per character. Only each run's boundary needs a surrogate join
+check; native pair counting keeps whole bounded runs as strings, building a
+point array only when a run needs truncation. Full JSON parsing and necessary
+whitespace-prefix scans remain. Only the first meaningful content can
+supply the image: text, including zero/false, or an unsupported leading image
+prevents searching for a later image. Text/structured wrappers
+follow the glossary renderer's dispatch order through shared tag/payload helpers
+used by discovery, text collection and leading-image selection. A real line break
+separates text rather than becoming a sense leaf. Void/ignored elements cannot
+expose hidden child lists or suppress a following leading image; wrapper-selected
+text takes precedence over an incidental tag or unused content field.
+Ruby annotations and their fallback delimiters are omitted from the plain summary;
+the complete definition retains its native ruby markup.
+Existing display/traversal bounds
+apply only to this preview; native results and complete glossary bytes remain
+unchanged. Default-off rendering does not run summary extraction.
+
+A 36px thumbnail uses the existing safe image renderer and generation/dictionary
+media resolver. Summary and full-card consumers share one in-flight request and
+cache entry. Failed or unsupported images remove the thumbnail wrapper, leaving
+a text-only summary; the full card retains its readable image error.
+The tiny preview is always expanded; a dictionary's collapsed-image setting
+still applies to its unchanged full definition.
+Changing enablement, count or source updates only the summary subtree; expression,
+Back, Note controls, full cards, focus and child anchors stay mounted. A focused
+thumbnail defers its own replacement until the existing focusout flush. Deferred
+headers use the latest presentation. Live summary work passes the existing
+connected-request boundary before parsing, without adding that check to ordinary
+media or layout callbacks. A replaced summary retires only its own media/preview
+owner, not another card's current consumer.
+
+The three options use the existing revisioned autosave and highest-revision
+delivery. An external off change does not disable a currently focused count or
+source control until focusout: Chrome would otherwise blur it synchronously and
+discard a pending input-before-change draft. That edit still uses its captured
+revision and surfaces a conflict normally; no second draft state is introduced.
+Options and dictionary state in one delivery are adopted before summary work:
+content invalidation takes precedence, while combined presentation changes apply
+once against the new state. Startup uses the same ordering.
+
+![Compact summary with its complete source definitions](assets/compact-definition-summary.png)
+
+[Reading controls in light](assets/compact-summary-settings-light.png) and
+[dark](assets/compact-summary-settings-dark.png) themes retain the native Settings
+layout and palette.
+
 ### Deinflection explanation
 
 Each eligible term header has a native, initially closed `details` disclosure.

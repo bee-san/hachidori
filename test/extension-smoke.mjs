@@ -1445,6 +1445,28 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     check("definition columns default to one and accept only integers one through four via options CAS",
       reader.normaliseOptions({}).popupColumns === 1
         && columns.every(Boolean) && badColumns.every(Boolean), JSON.stringify({ columns, badColumns }));
+    const summaryDefaults = reader.normaliseOptions({});
+    const summaryAccepted = [];
+    for (const count of [1, 3, 6]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ showCompactDefinitionSummary: true,
+        compactDefinitionSummaryCount: count, compactDefinitionSummaryDictionary: "Personal source" }));
+      summaryAccepted.push(reply.ok === true && reply.options?.showCompactDefinitionSummary === true
+        && reply.options?.compactDefinitionSummaryCount === count
+        && reply.options?.compactDefinitionSummaryDictionary === "Personal source");
+    }
+    const summaryRejected = [];
+    for (const patch of [{ showCompactDefinitionSummary: 1 }, { compactDefinitionSummaryDictionary: null },
+      ...[0, 7, 1.5, "3"].map(count => ({ compactDefinitionSummaryCount: count }))]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message(patch));
+      summaryRejected.push(reply.ok === false && await unchanged(saved));
+    }
+    check("compact summaries default off with three snippets and preserve a soft source preference through strict options CAS",
+      summaryDefaults.showCompactDefinitionSummary === false && summaryDefaults.compactDefinitionSummaryCount === 3
+        && summaryDefaults.compactDefinitionSummaryDictionary === ""
+        && summaryAccepted.every(Boolean) && summaryRejected.every(Boolean),
+      JSON.stringify({ summaryDefaults, summaryAccepted, summaryRejected }));
     const invalid = [
       { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
       { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { modifier: "meta" },
@@ -4228,6 +4250,8 @@ async function main() {
   check("frequency controls preserve unavailable selections and revision-bound native drafts",
     frequencySettings?.availability === true && frequencySettings.draft === true,
     JSON.stringify(frequencySettings));
+  check("compact-summary Settings preserve count, soft canonical source and focused revision-bound drafts",
+    frequencySettings?.summary === true, JSON.stringify(frequencySettings));
   const autosave = await settingsAutosaveStage();
   check(
     "Settings coalesces edited fields and queues only one revisioned save at a time",
@@ -5008,7 +5032,68 @@ async function settingsFrequencyStage() {
     const draft = nativeDraftKept && conflict.baseRevision === baseRevision
       && conflict.options.frequencyDictionary === "Occurrence" && conflict.options.frequencyOrder === "descending"
       && field("dictionary").value === "Unknown mode" && field("order").value === "ascending";
-    return { explicit, availability, draft, writes };
+    const summaryToggle = window.document.getElementById("opt-compact-summary");
+    const snippets = window.document.getElementById("opt-summary-count");
+    const preferred = window.document.getElementById("opt-summary-dictionary");
+    if (!summaryToggle || !snippets || !preferred) return { explicit, availability, draft, writes, summary: false };
+    const summaryDefault = !summaryToggle.checked && snippets.value === "3" && snippets.disabled
+      && preferred.value === "" && preferred.disabled;
+    async function summaryEdit(control, value) {
+      const before = writes.length;
+      if (control === summaryToggle) control.checked = value;
+      else control.value = value;
+      control.dispatchEvent(new window.Event("change", { bubbles: true }));
+      await until(() => writes.length === before + 1 && status() === "Saved.");
+    }
+    await summaryEdit(summaryToggle, true);
+    await summaryEdit(snippets, "6");
+    await summaryEdit(preferred, "Rank");
+    const beforePresentation = writes.length;
+    preferred.focus();
+    const choice = preferred.selectedOptions[0];
+    emitDictionaries({ enabled: false, displayName: "Dormant source" });
+    const focusedChoice = preferred.selectedOptions[0] === choice && preferred.value === "Rank";
+    preferred.blur();
+    const disabledKept = preferred.value === "Rank" && preferred.selectedOptions[0].textContent.includes("Dormant source")
+      && !preferred.selectedOptions[0].disabled && writes.length === beforePresentation;
+    emitDictionaries({ termCount: 0, frequencyCount: 3 });
+    const unavailableKept = preferred.value === "Rank" && preferred.selectedOptions[0].textContent.includes("unavailable")
+      && !preferred.selectedOptions[0].disabled && writes.length === beforePresentation;
+    await summaryEdit(summaryToggle, false);
+    const offKept = snippets.disabled && preferred.disabled && snippets.value === "6" && preferred.value === "Rank"
+      && JSON.stringify(writes.at(-1).options) === JSON.stringify({ showCompactDefinitionSummary: false });
+    await summaryEdit(summaryToggle, true);
+    preferred.focus();
+    preferred.value = "Occurrence";
+    preferred.dispatchEvent(new window.Event("input", { bubbles: true }));
+    const summaryRevision = storedOptions.revision;
+    emitOptions({ compactDefinitionSummaryDictionary: "Unknown mode", showCompactDefinitionSummary: false });
+    const nativeSummaryDraft = preferred.value === "Occurrence" && !preferred.disabled;
+    preferred.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => status().includes("Could not save"));
+    const summaryConflict = writes.at(-1).baseRevision === summaryRevision
+      && writes.at(-1).options.compactDefinitionSummaryDictionary === "Occurrence";
+    preferred.blur();
+    window.document.getElementById("options-use-saved").click();
+    const disabledAfterBlur = preferred.disabled;
+    await summaryEdit(summaryToggle, true);
+    snippets.focus();
+    snippets.value = "4";
+    snippets.dispatchEvent(new window.Event("input", { bubbles: true }));
+    const countRevision = storedOptions.revision;
+    emitOptions({ showCompactDefinitionSummary: false });
+    const countDraft = snippets.value === "4" && !snippets.disabled;
+    snippets.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => status().includes("Could not save"));
+    const countConflict = writes.at(-1).baseRevision === countRevision && writes.at(-1).options.compactDefinitionSummaryCount === 4;
+    snippets.blur();
+    window.document.getElementById("options-use-saved").click();
+    const summary = summaryDefault && focusedChoice && disabledKept && unavailableKept && offKept
+      && nativeSummaryDraft && summaryConflict && disabledAfterBlur && countDraft && countConflict
+      && snippets.disabled && preferred.value === "Unknown mode" && snippets.value === "6";
+    return { explicit, availability, draft, writes, summary,
+      summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
+        summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {
     window.close();
   }
@@ -7420,55 +7505,100 @@ async function contentNoteStage() {
       harness.emitState({ ...presentation, revision: 6, groups: [] }, { revision: 99, maxResults: 99 });
       checks.push(harness.presentations().length === updates && !render.context.isCurrentRequest());
 
-      const detached = await createHarness();
-      try {
-        const installed = detached.driver.snapshot().dictionaries;
-        const state = { schemaVersion: 1, revision: 2,
-          dictionaries: [...installed, genericPackage({ id: "other-id", title: "Other", path: "/dicts/Other" })],
-          groups: [{ id: "g", name: "Group", dictionaryIds: [installed[0].id] }],
-        };
-        detached.emitState(state);
-        await detached.initialLookup();
-        detached.render().context.onDictionaryTabSelected({ groupId: "g" });
-        const operation = detached.internalLink({ query: "orphan child" });
-        const result = detached.term("orphan child");
-        Object.assign(result.term, { frequencies: [], pitches: [] });
-        result.term.glossaries.push({ dictionary: "Other", glossary: "other definition" });
-        detached.reply(detached.take("hd_lookup"), { dictionaryCount: 2, results: [result] });
-        await operation;
-        const childRender = detached.render(1);
-        const childPopup = detached.driver.popupAt(1);
-        const callbacks = detached.callbacks(1);
-        const fills = [];
-        let allowed = null;
-        let permissionChecks = 0;
-        const view = detached.createLayoutView({ ...callbacks,
-          appendTextOnlyGlossary(_document, _container, _glossary, context) { fills.push(context.dictionary); },
-          canProjectDictionaryPresentation() {
-            permissionChecks += 1;
-            allowed = callbacks.canProjectDictionaryPresentation();
-            return allowed;
-          },
-        });
-        view.renderResults(childRender.results, childRender.candidate, childRender.context);
-        const beforeFills = fills.length;
-        detached.anchor.remove();
-        const connectedChildSource = childRender.candidate.anchor.isConnected;
-        detached.emitState({ ...state, revision: 3,
-          groups: [{ id: "g", name: "Group", dictionaryIds: ["other-id"] }],
-        });
-        // The content harness records this storage delivery; run it through
-        // the attached real renderer and its actual content owner predicate.
-        const delivered = detached.presentations(1).at(-1);
-        view.updateDictionaryPresentation(delivered);
-        checks.push(beforeFills === 1 && connectedChildSource && allowed === false
-          && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1)
-          && childPopup.hidden && fills.length === beforeFills);
-        const checked = permissionChecks;
-        view.flushDictionaryPresentation();
-        view.updateDictionaryPresentation(delivered);
-        checks.push(permissionChecks === checked && fills.length === beforeFills);
-      } finally { detached.driver.teardown(); detached.close(); }
+      for (const update of ["contents", "alias", "options"]) {
+        const combined = await createHarness();
+        try {
+          await combined.initialLookup();
+          const current = combined.render().context;
+          const options = { revision: 1, frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
+            kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
+            showCompactDefinitionSummary: true };
+          if (update === "options") combined.emitOptions(options);
+          else combined.emitState({ schemaVersion: 1, revision: 2, groups: [],
+            dictionaries: combined.driver.snapshot().dictionaries.map(dictionary => ({ ...dictionary,
+              ...(update === "contents" ? { path: "/dicts/replacement/Generic", revision: "replacement" }
+                : { displayName: "Combined alias" }),
+            })),
+          }, options);
+          if (update === "contents") {
+            checks.push(combined.presentations().length === 0 && !current.isCurrentRequest()
+              && combined.driver.snapshot().popupHidden);
+          } else {
+            const presentations = combined.presentations();
+            checks.push(presentations.length === 1 && current.isCurrentRequest() && !combined.driver.snapshot().popupHidden
+              && presentations[0].showCompactDefinitionSummary === true
+              && (update === "options" || presentations[0].dictionaryPresentation[0].displayName === "Combined alias"));
+          }
+        } finally { combined.driver.teardown(); combined.close(); }
+      }
+
+      for (const update of ["membership", "summary"]) {
+        const detached = await createHarness();
+        try {
+          const installed = detached.driver.snapshot().dictionaries;
+          const state = { schemaVersion: 1, revision: 2,
+            dictionaries: [...installed, genericPackage({ id: "other-id", title: "Other", path: "/dicts/Other" })],
+            groups: [{ id: "g", name: "Group", dictionaryIds: [installed[0].id] }],
+          };
+          detached.emitState(state);
+          await detached.initialLookup();
+          detached.render().context.onDictionaryTabSelected({ groupId: "g" });
+          const operation = detached.internalLink({ query: "orphan child" });
+          const result = detached.term("orphan child");
+          Object.assign(result.term, { frequencies: [], pitches: [] });
+          if (update === "summary") result.term.glossaries[0].glossary = JSON.stringify([
+            { type: "image", path: "leading.png" }, "child definition",
+          ]);
+          result.term.glossaries.push({ dictionary: "Other", glossary: "other definition" });
+          detached.reply(detached.take("hd_lookup"), { dictionaryCount: 2, results: [result] });
+          await operation;
+          const childRender = detached.render(1);
+          const childPopup = detached.driver.popupAt(1);
+          const callbacks = detached.callbacks(1);
+          const fills = [];
+          let allowed = null;
+          let permissionChecks = 0;
+          let summaryImages = 0;
+          const view = detached.createLayoutView({ ...callbacks,
+            appendTextOnlyGlossary(_document, _container, _glossary, context) { fills.push(context.dictionary); },
+            appendStructuredImage() { summaryImages += 1; },
+            canUpdateCompactSummary() {
+              permissionChecks += 1;
+              allowed = callbacks.canUpdateCompactSummary?.();
+              return allowed;
+            },
+            canProjectDictionaryPresentation() {
+              permissionChecks += 1;
+              allowed = callbacks.canProjectDictionaryPresentation();
+              return allowed;
+            },
+          });
+          view.renderResults(childRender.results, childRender.candidate, childRender.context);
+          const beforeFills = fills.length;
+          detached.anchor.remove();
+          const connectedChildSource = childRender.candidate.anchor.isConnected;
+          if (update === "membership") {
+            detached.emitState({ ...state, revision: 3,
+              groups: [{ id: "g", name: "Group", dictionaryIds: ["other-id"] }],
+            });
+          } else {
+            detached.emitOptions({ frequencyDictionary: "Frequency A", frequencyOrder: "descending", hoverDelayMs: 0,
+              kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
+              showCompactDefinitionSummary: true });
+          }
+          // The content harness records this storage delivery; run it through
+          // the attached real renderer and its actual content owner predicate.
+          const delivered = detached.presentations(1).at(-1);
+          view.updateDictionaryPresentation(delivered);
+          checks.push(beforeFills === 1 && connectedChildSource && allowed === false
+            && detached.driver.snapshot().popupHidden && !detached.driver.popupAt(1)
+            && childPopup.hidden && fills.length === beforeFills && summaryImages === 0);
+          const checked = permissionChecks;
+          view.flushDictionaryPresentation();
+          view.updateDictionaryPresentation(delivered);
+          checks.push(permissionChecks === checked && fills.length === beforeFills);
+        } finally { detached.driver.teardown(); detached.close(); }
+      }
 
       const detachedRoot = await createHarness();
       try {
@@ -9646,6 +9776,194 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     return false;
   }
 
+  const summaryRaw = JSON.stringify([{ type: "structured-content", content: [
+    { tag: "span", data: { content: "part-of-speech" }, content: "noun" },
+    { tag: "img", path: "media/kanji.png", width: 16, height: 16, collapsed: true },
+    { tag: "ul", data: { content: "glossary" }, content: [
+      { tag: "li", content: "first • • second" }, { tag: "li", content: "third" },
+    ] },
+    { tag: "div", data: { content: "example" }, content: "not a definition" },
+  ] }]);
+  const summaryGlossaries = [
+    { dictionary: "Plain", glossary: JSON.stringify(["plain first", "plain second"]) },
+    { dictionary: "Illustrated", glossary: summaryRaw },
+  ];
+  const summaryBefore = JSON.stringify(summaryGlossaries);
+  const compact = HDPopup.extractCompactDefinitionSummary(summaryGlossaries, "Illustrated", 2);
+  const fallback = HDPopup.extractCompactDefinitionSummary(summaryGlossaries, "Absent", 1);
+  const lateImage = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Late", glossary: JSON.stringify([
+    "text before image", { type: "image", path: "media/kanji.png" },
+  ]) }]);
+  const nonImageLeads = [0, false, { type: "text", content: "prefix" },
+    { type: "text", tag: "img", text: "prefix", path: "wrong.png" },
+    { type: "structured-content", tag: "img", content: "prefix", path: "wrong.png" },
+  ].map(lead => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Leading text", glossary: JSON.stringify([
+    lead, { type: "image", path: "late.png" }, "definition",
+  ]) }]));
+  const bulletText = ("first • first • second • " + "unused • ".repeat(50000)).trim();
+  const longText = "長😀".repeat(50000);
+  const duplicateText = "a".repeat(200) + " • " + "a".repeat(200) + " • tail";
+  sandbox.__summaryWork = { bulletText, longText, splitFragments: 0, codePoints: 0, emptyNormalizations: 0,
+    largeNormalizations: 0, largeTrims: 0, matchedCodeUnits: 0, duplicateText, duplicateMatches: 0,
+    countDuplicateBoundaries: false, duplicateBoundaries: 0, duplicatePointArrays: 0, spanNormalizations: 0 };
+  runInContext(`
+    (() => {
+      const split = String.prototype.split;
+      const at = Array.prototype.at;
+      const from = Array.from;
+      const replace = String.prototype.replace;
+      const trim = String.prototype.trim;
+      const toLowerCase = String.prototype.toLowerCase;
+      const codePointAt = String.prototype.codePointAt;
+      const exec = RegExp.prototype.exec;
+      const iterator = String.prototype[Symbol.iterator];
+      Array.prototype.at = function (...args) {
+        if (__summaryWork.countDuplicateBoundaries) __summaryWork.duplicateBoundaries += 1;
+        return at.apply(this, args);
+      };
+      Array.from = function (value, ...args) {
+        if (__summaryWork.countDuplicateBoundaries && typeof value === "string") __summaryWork.duplicatePointArrays += 1;
+        return from.call(this, value, ...args);
+      };
+      String.prototype.toLowerCase = function () {
+        if (String(this) === "span") __summaryWork.spanNormalizations += 1;
+        return toLowerCase.call(this);
+      };
+      String.prototype.split = function (...args) {
+        const result = split.apply(this, args);
+        if (String(this) === __summaryWork.bulletText) __summaryWork.splitFragments += result.length;
+        return result;
+      };
+      String.prototype.replace = function (...args) {
+        if (String(this).trim() === "") __summaryWork.emptyNormalizations += 1;
+        if (String(this).length > 482) __summaryWork.largeNormalizations += 1;
+        return replace.apply(this, args);
+      };
+      String.prototype.trim = function () {
+        if (String(this).length > 482) __summaryWork.largeTrims += 1;
+        return trim.call(this);
+      };
+      String.prototype.codePointAt = function (...args) {
+        if (String(this) === __summaryWork.longText) __summaryWork.codePoints += 1;
+        return codePointAt.apply(this, args);
+      };
+      RegExp.prototype.exec = function (...args) {
+        const result = exec.apply(this, args);
+        __summaryWork.matchedCodeUnits = Math.max(__summaryWork.matchedCodeUnits, result?.[0].length || 0);
+        if (args[0] === __summaryWork.duplicateText) __summaryWork.duplicateMatches += 1;
+        return result;
+      };
+      String.prototype[Symbol.iterator] = function* () {
+        const observed = String(this) === __summaryWork.longText;
+        for (const character of { [Symbol.iterator]: () => iterator.call(this) }) {
+          if (observed) __summaryWork.codePoints += 1;
+          yield character;
+        }
+      };
+      globalThis.__restoreSummaryWork = () => {
+        Array.prototype.at = at;
+        Array.from = from;
+        String.prototype.split = split;
+        String.prototype.replace = replace;
+        String.prototype.trim = trim;
+        String.prototype.toLowerCase = toLowerCase;
+        String.prototype.codePointAt = codePointAt;
+        RegExp.prototype.exec = exec;
+        String.prototype[Symbol.iterator] = iterator;
+      };
+    })();
+  `, sandbox);
+  let boundedSummaryWork, bulletSummary;
+  try {
+    bulletSummary = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Bullets",
+      glossary: JSON.stringify([" • ".repeat(150000) + "first • second"]) }]);
+    const bullets = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Bullets", glossary: JSON.stringify([bulletText]) }], null, 2);
+    const long = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Long", glossary: JSON.stringify([longText]) }], null, 1);
+    sandbox.__summaryWork.countDuplicateBoundaries = true;
+    const repeated = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Repeated", glossary: JSON.stringify([duplicateText]) }]);
+    sandbox.__summaryWork.countDuplicateBoundaries = false;
+    sandbox.__summaryWork.spanNormalizations = 0;
+    const afterEmptySenses = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Empty senses", glossary: JSON.stringify([
+      ...Array.from({ length: 16 }, () => ({ tag: "span", content: Array.from({ length: 128 }, () => ({ tag: "span", content: "" })) })),
+      "useful final sense",
+    ]) }], null, 1);
+    boundedSummaryWork = JSON.stringify(bullets?.items) === JSON.stringify(["first", "second"])
+      && long?.items[0] === "長😀".repeat(119) + "長…"
+      && sandbox.__summaryWork.splitFragments === 0 && sandbox.__summaryWork.codePoints <= 241
+      && sandbox.__summaryWork.emptyNormalizations === 0 && sandbox.__summaryWork.largeNormalizations === 0
+      && sandbox.__summaryWork.largeTrims === 0 && sandbox.__summaryWork.matchedCodeUnits <= 482
+      && JSON.stringify(repeated?.items) === JSON.stringify(["a".repeat(200), "tail"])
+      && sandbox.__summaryWork.duplicateMatches <= 6 && sandbox.__summaryWork.duplicateBoundaries <= 3
+      && sandbox.__summaryWork.duplicatePointArrays === 0
+      && JSON.stringify(afterEmptySenses?.items) === JSON.stringify(["useful final sense"])
+      // Original tag work plus 256 records classified by the marked-section
+      // visibility pass; neither number is a product input cap.
+      && sandbox.__summaryWork.spanNormalizations <= 2832 + 256;
+  } finally { sandbox.__restoreSummaryWork(); }
+  const summaryWork = { splitFragments: sandbox.__summaryWork.splitFragments, codePoints: sandbox.__summaryWork.codePoints,
+    emptyNormalizations: sandbox.__summaryWork.emptyNormalizations, largeNormalizations: sandbox.__summaryWork.largeNormalizations,
+    largeTrims: sandbox.__summaryWork.largeTrims, matchedCodeUnits: sandbox.__summaryWork.matchedCodeUnits,
+    duplicateMatches: sandbox.__summaryWork.duplicateMatches, duplicateBoundaries: sandbox.__summaryWork.duplicateBoundaries,
+    duplicatePointArrays: sandbox.__summaryWork.duplicatePointArrays, spanNormalizations: sandbox.__summaryWork.spanNormalizations };
+  delete sandbox.__summaryWork;
+  delete sandbox.__restoreSummaryWork;
+  const duplicate = "a".repeat(200);
+  const streamedText = [
+    { content: ["pre", { tag: "div", content: "" }, "fix"], items: ["prefix"] },
+    { content: ["pre", { tag: "div", content: " \r\n" }, "fix"], items: ["pre fix"] },
+    { content: ["a".repeat(238), "\ud83d", "\ude00", "z"], items: ["a".repeat(238) + "😀z"] },
+    { content: ["a".repeat(238), "\ud83d", "\ude00", "zq"], items: ["a".repeat(238) + "😀…"] },
+    { content: ["a".repeat(239) + "\ud83d", "\ude00z"], items: ["a".repeat(239) + "…"] },
+    { content: ["a".repeat(240), " \r\n"], items: ["a".repeat(240)] },
+    { content: [duplicate, " • ", duplicate, " • tail"], items: [duplicate, "tail"] },
+  ].every(({ content, items }) => JSON.stringify(HDPopup.extractCompactDefinitionSummary([{ dictionary: "Stream",
+    glossary: JSON.stringify({ tag: "ul", content: { tag: "li", content } }) }])?.items) === JSON.stringify(items));
+  const mixedSenses = [
+    ["first sense", { tag: "p", content: "second sense" }],
+    [{ tag: "p", content: "first sense" }, "second sense"],
+    [{ type: "text", text: "first sense" }, { tag: "p", content: "second sense" }],
+    [{ type: "structured-content", content: { tag: "div", content: [
+      { tag: "p", content: "first sense" }, { tag: "p", content: "second sense" },
+    ] } }],
+  ].map(senses => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Mixed", glossary: JSON.stringify(senses) }])?.items);
+  const brokenLines = [
+    { tag: "p", content: ["first", { tag: "br" }, "second"] },
+    { tag: "p", content: ["first", { tag: "br", content: "not rendered" }, "second"] },
+    { tag: "p", data: { content: "glossary" }, content: ["first", { tag: "br" }, "second"] },
+    { tag: "ul", content: { tag: "li", content: ["first", { tag: "br" }, "second"] } },
+  ].map(content => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Line breaks",
+    glossary: JSON.stringify([{ type: "structured-content", content }]) }])?.items);
+  const ruby = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Ruby", glossary: JSON.stringify([
+    { tag: "p", content: [
+      { tag: "ruby", content: ["食", { tag: "rp", content: "(" },
+        { tag: "rt", content: "た" }, { tag: "rp", content: ")" }] }, "べる (literal)",
+    ] },
+  ]) }]);
+  const phantomList = { tag: "ul", content: { tag: "li", content: "not rendered" } };
+  const renderedDispatch = [
+    ...["br", "img", "script", "button", "input", "source"].map(tag => [{ tag, content: phantomList }, "visible"]),
+    [{ type: "text", tag: "img", text: "visible", content: phantomList }],
+    [{ type: "text", tag: "br", text: "visible", content: phantomList }],
+    [{ type: "text", tag: "rp", text: "visible", content: phantomList }],
+    [{ type: "structured-content", tag: "img", content: "visible" }],
+  ].map(content => HDPopup.extractCompactDefinitionSummary([{ dictionary: "Dispatch", glossary: JSON.stringify(content) }])?.items);
+  const imageAfterBreak = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Break image", glossary: JSON.stringify([
+    { tag: "br", content: "not rendered" }, { tag: "img", path: "leading.png" }, "visible",
+  ]) }]);
+  check("compact summaries preserve ordered text, split nonempty bullets and select only a leading image without changing full glossaries",
+    JSON.stringify(compact?.items) === JSON.stringify(["first", "second"])
+      && compact?.dictionary === "Illustrated" && compact?.image?.path === "media/kanji.png"
+      && JSON.stringify(fallback?.items) === JSON.stringify(["plain first"])
+      && !lateImage?.image && JSON.stringify(bulletSummary?.items) === JSON.stringify(["first", "second"])
+      && nonImageLeads.every(summary => !summary?.image)
+      && JSON.stringify(summaryGlossaries) === summaryBefore && boundedSummaryWork && streamedText
+      && mixedSenses.every(items => JSON.stringify(items) === JSON.stringify(["first sense", "second sense"]))
+      && brokenLines.every(items => JSON.stringify(items) === JSON.stringify(["first second"]))
+      && JSON.stringify(ruby?.items) === JSON.stringify(["食べる (literal)"])
+      && renderedDispatch.every(items => JSON.stringify(items) === JSON.stringify(["visible"]))
+      && imageAfterBreak?.image?.path === "leading.png",
+    JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText, mixedSenses, brokenLines, ruby, renderedDispatch, imageAfterBreak }));
+
   const host = document.createElement("div");
   document.body.appendChild(host);
   const shadow = host.attachShadow({ mode: "closed" });
@@ -10072,8 +10390,122 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   await retainedNavigationRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await deinflectionRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   await mediaRenderStage({ HDGlossary, document, window });
+  await compactSummaryRenderStage({ HDGlossary, HDPopup, document, window, candidate,
+    result: lookup.results[0], mediaUrl: media.dataUrl, summaryGlossaries });
   dom.window.close();
   return true;
+}
+
+async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window, candidate, result, mediaUrl, summaryGlossaries }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  const projected = { ...result, term: { ...result.term, glossaries: summaryGlossaries } };
+  const original = JSON.stringify(projected);
+  const mediaRequests = [];
+  let finishMedia;
+  const pendingMedia = new Promise(resolve => { finishMedia = resolve; });
+  let positions = 0;
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    appendStructuredImage: HDGlossary.appendStructuredImage,
+    parseTagList: HDGlossary.parseTagList, positionPopup() { positions += 1; },
+  });
+  const context = { generation: 23, dictionaryPresentation: [], dictionaryTabGroups: [],
+    resolveMedia(query) { mediaRequests.push(query); return pendingMedia; },
+    showCompactDefinitionSummary: false, compactDefinitionSummaryCount: 2,
+    compactDefinitionSummaryDictionary: "Illustrated" };
+  try {
+    view.renderResults([projected], candidate, context);
+    const absent = popup.querySelector(".gsm-hoshidicts-compact-definition-summary") === null && mediaRequests.length === 1;
+    const cards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+    const bodies = cards.map(card => card.textContent);
+    const expression = popup.querySelector(".gsm-hoshidicts-expression");
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const note = popup.querySelector(".gsm-hoshidicts-note-form");
+    const input = note.querySelector(".gsm-hoshidicts-note-definition");
+    input.value = "retained draft";
+    input.focus();
+    input.setSelectionRange(2, 6);
+    view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true });
+    const summary = popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+    const image = summary?.querySelector("img");
+    const live = summary?.dataset.hoshidictsDictionary === "Illustrated"
+      && JSON.stringify([...summary.querySelectorAll("li")].map(node => node.textContent)) === JSON.stringify(["first", "second"])
+      && image && mediaRequests.length === 2 && mediaRequests[1].generation === 23
+      && mediaRequests[1].dictionary === "Illustrated" && mediaRequests[1].isCurrent()
+      && image.closest(".gloss-image-link").dataset.collapsed === "false"
+      && popup.querySelector(".gsm-hoshidicts-glossary-content .gloss-image-link").dataset.collapsed === "true";
+    const retained = popup.querySelector(".gsm-hoshidicts-expression") === expression
+      && popup.querySelector(".gsm-hoshidicts-note-form") === note && document.activeElement === input
+      && input.value === "retained draft" && input.selectionStart === 2 && input.selectionEnd === 6
+      && cards.every((card, index) => card.isConnected && card.textContent === bodies[index]);
+    view.updateDictionaryPresentation({ dictionaryPresentation: [], dictionaryTabGroups: [] });
+    const unchangedSummary = popup.querySelector(".gsm-hoshidicts-compact-definition-summary") === summary
+      && mediaRequests.length === 2;
+    view.updateDictionaryPresentation(context);
+    const obsolete = image && !image.isConnected && mediaRequests[1].isCurrent() === false;
+    await new Promise(done => window.setTimeout(done, 40));
+    const beforeReply = positions;
+    finishMedia(mediaUrl);
+    await new Promise(done => window.setTimeout(done, 0));
+    const oldImageUntouched = !image?.getAttribute("src");
+    // The full-card consumer remains current; only its actual load can position.
+    const noLatePosition = positions === beforeReply;
+    view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true,
+      compactDefinitionSummaryDictionary: "Absent", compactDefinitionSummaryCount: 1 });
+    const fallback = popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+    const fallbackText = fallback?.textContent;
+    const fullImageLink = popup.querySelector(".gsm-hoshidicts-glossary-content .gloss-image-link");
+    fullImageLink.dispatchEvent(new window.Event("mouseenter"));
+    const fullPreview = popup.parentNode.querySelector(".gsm-hoshidicts-image-hover-preview");
+    view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true,
+      compactDefinitionSummaryDictionary: "Absent", compactDefinitionSummaryCount: 2 });
+    const previewKept = fullPreview?.isConnected === true;
+    view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true });
+    await new Promise(done => window.setTimeout(done, 0));
+    const focusedThumbnail = popup.querySelector(".gsm-hoshidicts-compact-definition-summary .gloss-image-link");
+    focusedThumbnail.focus();
+    view.updateDictionaryPresentation({ ...context, showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3 });
+    const summaryFocusKept = document.activeElement === focusedThumbnail && focusedThumbnail.isConnected
+      && popup.querySelectorAll(".gsm-hoshidicts-compact-definition-summary li").length === 2;
+    focusedThumbnail.blur();
+    await new Promise(done => window.setTimeout(done, 0));
+    const summaryFlushed = popup.querySelectorAll(".gsm-hoshidicts-compact-definition-summary li").length === 3;
+    const failedThumbnails = [];
+    for (const failure of ["missing", "rejected", "decode"]) {
+      view.renderResults([projected], candidate, { ...context, showCompactDefinitionSummary: true,
+        resolveMedia() {
+          if (failure === "rejected") return Promise.reject(new Error("missing dictionary image"));
+          return failure === "missing" ? null : mediaUrl;
+        },
+      });
+      await new Promise(done => window.setTimeout(done, 0));
+      if (failure === "decode") {
+        for (const failedImage of popup.querySelectorAll("img")) {
+          failedImage.dispatchEvent(new window.Event("error"));
+        }
+      }
+      const textSummary = popup.querySelector(".gsm-hoshidicts-compact-definition-summary");
+      const fullCardError = popup.querySelector(".gsm-hoshidicts-glossary-content .gloss-image-link");
+      failedThumbnails.push(textSummary?.querySelector(".gsm-hoshidicts-compact-definition-image") === null
+        && JSON.stringify([...textSummary.querySelectorAll("li")].map(node => node.textContent)) === JSON.stringify(["first", "second"])
+        && fullCardError?.dataset.imageLoadState === "load-error"
+        && fullCardError.textContent.includes("Image failed to load"));
+    }
+    check("live compact summaries preserve Note and cards while retiring only their own media and falling back within projected results",
+      absent && live && retained && unchangedSummary && obsolete && oldImageUntouched && noLatePosition
+        && fallbackText === "plain first" && fallback.dataset.hoshidictsDictionary === "Plain" && previewKept
+        && summaryFocusKept && summaryFlushed && failedThumbnails.every(Boolean)
+        && JSON.stringify(projected) === original,
+      JSON.stringify({ absent, live: Boolean(live), retained, unchangedSummary, obsolete, oldImageUntouched, noLatePosition,
+        fallback: fallback?.outerHTML, previewKept, summaryFocusKept, summaryFlushed, failedThumbnails,
+        mediaRequests: mediaRequests.map(({ isCurrent, ...query }) => query) }));
+  } finally {
+    finishMedia(mediaUrl);
+    view.destroy();
+    popup.remove();
+  }
 }
 
 async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {

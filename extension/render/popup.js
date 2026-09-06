@@ -36,7 +36,6 @@
   const COMPACT_DEFINITION_BLOCK_TAGS = new Set([
     "article",
     "blockquote",
-    "br",
     "dd",
     "div",
     "dt",
@@ -55,11 +54,15 @@
   ]);
   const COMPACT_DEFINITION_IGNORED_TAGS = new Set([
     "audio",
+    "button",
     "canvas",
     "iframe",
     "img",
+    "input",
+    "rp",
     "rt",
     "script",
+    "source",
     "style",
     "svg",
     "video",
@@ -764,57 +767,127 @@
     );
   }
 
-  function normalizeCompactDefinitionText(value) {
-    return String(value || "").replace(/\s+/gu, " ").trim();
+  function* compactDefinitionItemsFromText(parts) {
+    const textRun = `[^\\s\\u2022]{1,${COMPACT_DEFINITION_MAX_CHARACTERS + 1}}`;
+    const firstText = new RegExp(textRun, "gu");
+    const nextText = new RegExp(`\\u2022|${textRun}`, "gu");
+    const buffer = { text: "", characters: 0 };
+    let pendingSpace = false;
+    for (const text of parts) {
+      let index = 0;
+      while (index < text.length) {
+        const matcher = buffer.characters > 0 ? nextText : firstText;
+        matcher.lastIndex = index;
+        const match = matcher.exec(text);
+        if (!match) {
+          pendingSpace = buffer.characters > 0;
+          break;
+        }
+        pendingSpace ||= buffer.characters > 0 && match.index > index;
+        index = matcher.lastIndex;
+        if (match[0] === "\u2022") {
+          yield buffer.text;
+          buffer.text = "";
+          buffer.characters = 0;
+          pendingSpace = false;
+          continue;
+        }
+        if (pendingSpace) {
+          buffer.text += " ";
+          buffer.characters += 1;
+        }
+        pendingSpace = false;
+        if (buffer.characters <= COMPACT_DEFINITION_MAX_CHARACTERS) {
+          appendCompactDefinitionText(buffer, match[0]);
+        }
+        // One extra normalized point proves truncation. Earlier accepted items
+        // are at most 240 points, so this cannot falsely match a seen duplicate.
+        if (buffer.characters > COMPACT_DEFINITION_MAX_CHARACTERS) {
+          yield buffer.text;
+          return;
+        }
+      }
+    }
+    if (buffer.characters > 0) yield buffer.text;
+  }
+
+  function appendCompactDefinitionText(buffer, text) {
+    // The native matcher already bounds this run to 241 points. Count internal
+    // surrogate pairs without building a point array unless truncation needs it.
+    const characters = text.length - (text.match(/[\ud800-\udbff][\udc00-\udfff]/g)?.length || 0);
+    const previous = buffer.text.charCodeAt(buffer.text.length - 1);
+    const first = text.charCodeAt(0);
+    const joined = previous >= 0xd800 && previous <= 0xdbff && first >= 0xdc00 && first <= 0xdfff ? 1 : 0;
+    const available = COMPACT_DEFINITION_MAX_CHARACTERS + 1 - buffer.characters + joined;
+    buffer.text += characters > available ? Array.from(text).slice(0, available).join("") : text;
+    buffer.characters += Math.min(characters, available) - joined;
+  }
+
+  // Typed wrappers select their payload before incidental tags, as in the full
+  // renderer. Discovery, collection and leading-image selection share this rule.
+  function compactDefinitionTag(value) {
+    if (value.type === "text" || value.type === "structured-content") return "";
+    if (value.type === "image") return "img";
+    return typeof value.tag === "string" ? value.tag.toLowerCase() : "";
+  }
+
+  function compactDefinitionContent(value) {
+    return value.type === "text" && Object.hasOwn(value, "text") ? value.text : value.content;
   }
 
   function isCompactDefinitionBlock(value) {
-    return isRecord(value) && COMPACT_DEFINITION_BLOCK_TAGS.has(
-      String(value.tag || "").toLowerCase()
-    );
+    return isRecord(value) && COMPACT_DEFINITION_BLOCK_TAGS.has(compactDefinitionTag(value));
   }
 
-  function collectCompactDefinitionText(value, state, depth = 0) {
+  function* collectCompactDefinitionText(value, state, depth = 0) {
     if (
       state.nodes >= COMPACT_DEFINITION_MAX_NODES ||
       depth > COMPACT_DEFINITION_MAX_DEPTH
     ) {
-      return "";
+      return;
     }
     state.nodes += 1;
     if (typeof value === "string" || typeof value === "number" ||
         typeof value === "boolean") {
-      return String(value);
+      const text = String(value);
+      if (text) yield text;
+      return;
     }
     if (Array.isArray(value)) {
-      let text = "";
+      let hasText = false;
       let previousWasBlock = false;
       for (const child of value) {
         if (state.nodes >= COMPACT_DEFINITION_MAX_NODES) break;
-        const childText = collectCompactDefinitionText(child, state, depth + 1);
-        if (!childText) continue;
-        const childIsBlock = isCompactDefinitionBlock(child);
-        if (text && (previousWasBlock || childIsBlock)) {
-          text += " ";
+        let childIsBlock = false;
+        let childHasText = false;
+        for (const text of collectCompactDefinitionText(child, state, depth + 1)) {
+          if (!childHasText) {
+            childIsBlock = isCompactDefinitionBlock(child);
+            if (hasText && (previousWasBlock || childIsBlock)) yield " ";
+          }
+          childHasText = true;
+          yield text;
         }
-        text += childText;
-        previousWasBlock = childIsBlock;
+        if (childHasText) {
+          hasText = true;
+          previousWasBlock = childIsBlock;
+        }
       }
-      return text;
+      return;
     }
     if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) {
-      return "";
+      return;
     }
-    const tag = typeof value.tag === "string" ? value.tag.toLowerCase() : "";
-    if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag) || value.type === "image") {
-      return "";
+    const tag = compactDefinitionTag(value);
+    if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) {
+      return;
     }
-    if (value.type === "text" && Object.prototype.hasOwnProperty.call(value, "text")) {
-      return collectCompactDefinitionText(value.text, state, depth + 1);
+    if (tag === "br") {
+      yield " ";
+      return;
     }
-    return Object.prototype.hasOwnProperty.call(value, "content")
-      ? collectCompactDefinitionText(value.content, state, depth + 1)
-      : "";
+    const content = compactDefinitionContent(value);
+    if (content !== undefined) yield* collectCompactDefinitionText(content, state, depth + 1);
   }
 
   function findCompactDefinitionNodes(value, predicate, state, depth = 0) {
@@ -841,48 +914,48 @@
     if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) {
       return [];
     }
-    if (predicate(value)) {
+    const tag = compactDefinitionTag(value);
+    if (tag === "br" || COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) return [];
+    if (predicate(value, tag)) {
       return [value];
     }
-    return Object.prototype.hasOwnProperty.call(value, "content")
-      ? findCompactDefinitionNodes(value.content, predicate, state, depth + 1)
+    const content = compactDefinitionContent(value);
+    return content !== undefined
+      ? findCompactDefinitionNodes(content, predicate, state, depth + 1)
       : [];
   }
 
-  function isCompactDefinitionList(value) {
-    const tag = String(value.tag || "").toLowerCase();
+  function isCompactDefinitionList(_value, tag) {
     return tag === "ul" || tag === "ol";
   }
 
   /** Block nodes with no block descendants: the smallest sense-sized chunks. */
-  function findCompactDefinitionLeafBlocks(root) {
+  function findCompactDefinitionLeafBlocks(root, state = { nodes: 0 }) {
     return findCompactDefinitionNodes(
       root,
-      (value) => COMPACT_DEFINITION_BLOCK_TAGS.has(
-        String(value.tag || "").toLowerCase()
-      ) && findCompactDefinitionNodes(
+      (value, tag) => COMPACT_DEFINITION_BLOCK_TAGS.has(tag) && findCompactDefinitionNodes(
         value.content,
-        (child) => COMPACT_DEFINITION_BLOCK_TAGS.has(
-          String(child.tag || "").toLowerCase()
-        ),
+        (_child, childTag) => COMPACT_DEFINITION_BLOCK_TAGS.has(childTag),
         { nodes: 0 }
       ).length === 0,
-      { nodes: 0 }
+      state
     );
   }
 
-  function compactDefinitionItemsFromNodes(nodes) {
-    const items = [];
+  function* compactDefinitionItemsFromNodes(nodes) {
+    let found = false;
     let inspected = 0;
     for (const node of nodes) {
       if (inspected >= COMPACT_DEFINITION_MAX_NODES) break;
       inspected += 1;
-      const text = normalizeCompactDefinitionText(
-        collectCompactDefinitionText(node, { nodes: 0 })
-      );
-      if (text) items.push(text);
+      for (const item of compactDefinitionItemsFromText(collectCompactDefinitionText(node, { nodes: 0 }))) {
+        found = true;
+        yield item;
+      }
     }
-    return items;
+    // The first nonempty semantic list owns the preview, even if deduplication
+    // leaves fewer snippets than requested. Empty lists still fall through.
+    return found;
   }
 
   function compactDefinitionItemsFromList(list) {
@@ -892,7 +965,7 @@
     const children = rawChildren.slice(0, COMPACT_DEFINITION_MAX_NODES);
     const listItems = [];
     for (const child of children) {
-      if (isRecord(child) && String(child.tag || "").toLowerCase() === "li") {
+      if (isRecord(child) && compactDefinitionTag(child) === "li") {
         listItems.push(child);
       }
     }
@@ -901,28 +974,41 @@
     );
   }
 
-  function compactDefinitionItemsFromMarkedNode(node) {
-    const tag = String(node.tag || "").toLowerCase();
+  function* compactDefinitionItemsFromMarkedNode(node) {
+    const tag = compactDefinitionTag(node);
     if (tag === "ul" || tag === "ol") {
-      return compactDefinitionItemsFromList(node);
+      yield* compactDefinitionItemsFromList(node);
+      return;
     }
+    const content = compactDefinitionContent(node);
     const nestedLists = findCompactDefinitionNodes(
-      node.content,
+      content,
       isCompactDefinitionList,
       { nodes: 0 }
     );
     if (nestedLists.length > 0) {
-      return nestedLists.flatMap(compactDefinitionItemsFromList);
+      for (const list of nestedLists) yield* compactDefinitionItemsFromList(list);
+      return;
     }
-    const leafBlocks = findCompactDefinitionLeafBlocks(node.content);
-    return leafBlocks.length > 0
+    const leafBlocks = findCompactDefinitionLeafBlocks(content);
+    yield* leafBlocks.length > 0
       ? compactDefinitionItemsFromNodes(leafBlocks)
       : compactDefinitionItemsFromNodes([node]);
   }
 
-  function extractCompactDefinitionItems(rawGlossary) {
-    const parsed = parseCompactDefinitionValue(rawGlossary);
-    if (parsed === null) return [];
+  function* compactDefinitionFallbackNodes(parsed) {
+    // Top-level glossary-array entries are separate senses, unlike inline
+    // content arrays. Expand blocks within each sense without dropping siblings.
+    const discovery = { nodes: 0 };
+    for (const sense of Array.isArray(parsed) ? parsed : [parsed]) {
+      const leafBlocks = findCompactDefinitionLeafBlocks(sense, discovery);
+      if (leafBlocks.length > 0) yield* leafBlocks;
+      else yield sense;
+    }
+  }
+
+  function* extractCompactDefinitionItems(parsed) {
+    if (parsed === null) return;
 
     const glossaryNodes = findCompactDefinitionNodes(
       parsed,
@@ -930,7 +1016,8 @@
       { nodes: 0 }
     );
     if (glossaryNodes.length > 0) {
-      return glossaryNodes.flatMap(compactDefinitionItemsFromMarkedNode);
+      for (const node of glossaryNodes) yield* compactDefinitionItemsFromMarkedNode(node);
+      return;
     }
 
     const semanticLists = findCompactDefinitionNodes(
@@ -939,20 +1026,30 @@
       { nodes: 0 }
     );
     for (const list of semanticLists) {
-      const items = compactDefinitionItemsFromList(list);
-      if (items.length > 0) return items;
+      if (yield* compactDefinitionItemsFromList(list)) return;
     }
 
-    const leafBlocks = findCompactDefinitionLeafBlocks(parsed);
-    if (leafBlocks.length > 0) {
-      return compactDefinitionItemsFromNodes(leafBlocks);
-    }
+    yield* compactDefinitionItemsFromNodes(compactDefinitionFallbackNodes(parsed));
+  }
 
-    if (Array.isArray(parsed)) {
-      const items = compactDefinitionItemsFromNodes(parsed);
-      if (items.length > 0) return items;
+  // null means no visible content; false means text or another non-image lead.
+  // Stop at that first meaningful token, not at an image later in a definition.
+  function leadingCompactDefinitionImage(value, state, depth = 0) {
+    if (state.nodes >= COMPACT_DEFINITION_MAX_NODES || depth > COMPACT_DEFINITION_MAX_DEPTH) return false;
+    state.nodes += 1;
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        const leading = leadingCompactDefinitionImage(child, state, depth + 1);
+        if (leading !== null) return leading;
+      }
+      return null;
     }
-    return compactDefinitionItemsFromNodes([parsed]);
+    if (!isRecord(value)) return value != null && /\S/u.test(String(value)) ? false : null;
+    if (isIgnoredCompactDefinitionSection(value)) return null;
+    const tag = compactDefinitionTag(value);
+    if (tag === "img") return value;
+    if (tag === "br" || COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) return null;
+    return leadingCompactDefinitionImage(compactDefinitionContent(value), state, depth + 1);
   }
 
   function extractCompactDefinitionSummary(
@@ -982,14 +1079,18 @@
       const items = [];
       const seen = new Set();
       let characterCount = 0;
+      let leading = null;
       for (const rawGlossary of rawGlossaries) {
-        for (const rawItem of extractCompactDefinitionItems(rawGlossary)) {
-          if (items.length >= itemLimit) break;
-          const item = normalizeCompactDefinitionText(rawItem);
+        const parsed = parseCompactDefinitionValue(rawGlossary);
+        if (leading === null) leading = leadingCompactDefinitionImage(parsed, { nodes: 0 });
+        for (const item of extractCompactDefinitionItems(parsed)) {
           if (!item || seen.has(item)) continue;
-          const codePoints = Array.from(item);
           const remaining = COMPACT_DEFINITION_MAX_CHARACTERS - characterCount;
-          if (remaining <= 0) break;
+          const codePoints = [];
+          for (const character of item) {
+            codePoints.push(character);
+            if (codePoints.length > remaining) break;
+          }
           const bounded = codePoints.length <= remaining
             ? item
             : remaining === 1
@@ -997,8 +1098,8 @@
               : `${codePoints.slice(0, remaining - 1).join("")}\u2026`;
           items.push(bounded);
           seen.add(item);
-          characterCount += Array.from(bounded).length;
-          if (bounded !== item) break;
+          characterCount += Math.min(codePoints.length, remaining);
+          if (bounded !== item || items.length >= itemLimit || characterCount >= COMPACT_DEFINITION_MAX_CHARACTERS) break;
         }
         if (
           items.length >= itemLimit ||
@@ -1007,7 +1108,7 @@
           break;
         }
       }
-      if (items.length > 0) return { dictionary, items };
+      if (items.length > 0) return { dictionary, items, image: leading || null };
     }
     return null;
   }
@@ -1050,6 +1151,7 @@
     const popup = options.popup;
     const appendExpressionRuby = options.appendExpressionRuby;
     const appendTextOnlyGlossary = options.appendTextOnlyGlossary;
+    const appendStructuredImage = options.appendStructuredImage;
     const parseTagList = options.parseTagList;
     const positionPopup = options.positionPopup;
     // LookupKanji carries onyomi/kunyomi/tags as space-separated strings, but a
@@ -1769,6 +1871,50 @@
       strip.hidden = !tabList && capsule.hidden;
     }
 
+    function updateCompactSummary(headword, result, context, media) {
+      const previous = headword.querySelector(".gsm-hoshidicts-compact-definition-summary");
+      if (previous) {
+        const imageLink = previous.querySelector(".gloss-image-link");
+        if (imageLink) hideImagePreview(imageLink);
+        previous.remove();
+      }
+      if (context.showCompactDefinitionSummary !== true) return Boolean(previous);
+      const compact = extractCompactDefinitionSummary(result.term.glossaries,
+        context.compactDefinitionSummaryDictionary, context.compactDefinitionSummaryCount);
+      if (!compact) return Boolean(previous);
+      const summary = documentRef.createElement("div");
+      summary.className = "gsm-hoshidicts-compact-definition-summary";
+      summary.dataset.hoshidictsDictionary = compact.dictionary;
+      // Establish ownership before synchronous media admission. Replacing this
+      // summary retires its consumer without retiring the complete card's one.
+      headword.querySelector(".gsm-hoshidicts-expression").after(summary);
+      if (compact.image) {
+        const thumbnail = documentRef.createElement("span");
+        thumbnail.className = "gsm-hoshidicts-compact-definition-image";
+        summary.appendChild(thumbnail);
+        appendStructuredImage(documentRef, thumbnail, { ...compact.image,
+          preferredWidth: 36, preferredHeight: 36, sizeUnits: "px", collapsed: false }, {
+          isCurrent: () => headword.contains(summary) && media.isCurrent(),
+          onLayoutChange: media.onLayoutChange,
+          onImageError: () => thumbnail.remove(),
+          requestImagePreview, refreshImagePreview, hideImagePreview,
+          resolveMedia: typeof media.resolveMedia === "function"
+            ? query => media.resolveMedia({ ...query, dictionary: compact.dictionary, generation: media.generation })
+            : null,
+        });
+        if (!thumbnail.hasChildNodes()) thumbnail.remove();
+      }
+      const items = documentRef.createElement("ul");
+      items.className = "gsm-hoshidicts-compact-definition-items";
+      for (const item of compact.items) {
+        const li = documentRef.createElement("li");
+        li.textContent = item;
+        items.appendChild(li);
+      }
+      summary.appendChild(items);
+      return true;
+    }
+
     function createEntryHeader(
       result,
       candidate,
@@ -1779,6 +1925,7 @@
         compactDefinitionSummaryCount =
           DEFAULT_COMPACT_DEFINITION_SUMMARY_COUNT,
         compactDefinitionSummaryDictionary = null,
+        summaryMedia = null,
         showPitchAccentFurigana = true,
         pitchAccentFuriganaDictionary = null,
         onBack = null,
@@ -1818,22 +1965,8 @@
       );
       headword.appendChild(expression);
       if (showCompactDefinitionSummary === true) {
-        const compactSummary = extractCompactDefinitionSummary(
-          result.term.glossaries,
-          compactDefinitionSummaryDictionary,
-          compactDefinitionSummaryCount
-        );
-        if (compactSummary) {
-          const summary = documentRef.createElement("ul");
-          summary.className = "gsm-hoshidicts-compact-definition-summary";
-          summary.dataset.hoshidictsDictionary = compactSummary.dictionary;
-          for (const item of compactSummary.items) {
-            const listItem = documentRef.createElement("li");
-            listItem.textContent = item;
-            summary.appendChild(listItem);
-          }
-          headword.appendChild(summary);
-        }
+        updateCompactSummary(headword, result, { showCompactDefinitionSummary,
+          compactDefinitionSummaryCount, compactDefinitionSummaryDictionary }, summaryMedia);
       }
       const deinflection = buildDeinflectionDisclosure(documentRef, result, windowRef.navigator.language);
       if (deinflection) {
@@ -1900,6 +2033,8 @@
       const isCurrent = () => revision === renderRevision && ownsResultPanel(panel, renderContext);
       const isCurrentLink = () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext);
       const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
+      const summaryMedia = { isCurrent, generation: renderContext.generation,
+        resolveMedia: renderContext.resolveMedia, onLayoutChange: positionIfCurrent };
       hideImagePreview();
       panel.replaceChildren();
       const deferredGlossaryFills = [];
@@ -1922,6 +2057,7 @@
             typeof renderContext.compactDefinitionSummaryDictionary === "string"
               ? renderContext.compactDefinitionSummaryDictionary
               : null,
+          summaryMedia,
           showPitchAccentFurigana:
             renderContext.showPitchAccentFurigana !== false,
           pitchAccentFuriganaDictionary:
@@ -2154,12 +2290,21 @@
 
       return { lookupStats,
         isExpanded: () => expanded,
-        updateDictionaryPresentation(context, names) {
+        updateDictionaryPresentation(context, names, summaryChanged) {
+          summaryChanged &&= isCurrent();
           Object.assign(renderContext, context);
           dictionaryDisplayNames = names;
           let changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);
+          if (summaryChanged) {
+            changed = updateCompactSummary(primaryHeader.querySelector(".gsm-hoshidicts-headword"),
+              results[0], renderContext, summaryMedia) || changed;
+          }
           const entries = panel.querySelectorAll(":scope > .gsm-hoshidicts-entry");
           entries.forEach((entry, index) => {
+            if (index > 0 && summaryChanged) {
+              changed = updateCompactSummary(entry.querySelector(".gsm-hoshidicts-headword"),
+                results[index], renderContext, summaryMedia) || changed;
+            }
             for (const row of entry.querySelectorAll(":scope > .gsm-hoshidicts-metadata")) {
               changed = updateMetadataLabels(row, results[index]) || changed;
             }
@@ -2569,6 +2714,15 @@
       activateTab(selectedIndex);
       currentPresentationUpdate = (context) => runRenderAction(
         () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
+          const summaryChanged = ["showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary"]
+            .some(key => Object.hasOwn(context, key) && context[key] !== renderContext[key]);
+          const focused = popup.getRootNode().activeElement;
+          if (summaryChanged && popup.contains(focused)
+              && focused.closest(".gsm-hoshidicts-compact-definition-summary")) return false;
+          // Unlike local body projection, a summary may update with an open
+          // Note or child. It still needs the connected request boundary before
+          // parsing or admitting media; that boundary may retire this view.
+          if (summaryChanged && ownsView() && options.canUpdateCompactSummary?.() === false) return true;
           const next = createDictionaryTabs(dictionaries, context);
           const previous = tabDescriptors;
           const selectedKey = previous[selectedIndex].key;
@@ -2584,7 +2738,7 @@
           if (selectedKey !== tabDescriptors[index].key) {
             renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
           }
-          if (sameMembers) changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames) || changed;
+          if (sameMembers) changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames, summaryChanged) || changed;
           else {
             const focused = retainedFocus(true);
             renderProjection(rendered.isExpanded());

@@ -27,6 +27,7 @@ import {
   GENERIC_KANJI_TITLE,
   buildRecommendedZip,
   buildTitledZip,
+  compactSummaryFixture,
   dictionaryTabsFixture,
   externalLinksFixture,
   frequencyRankingFixture,
@@ -257,6 +258,7 @@ const PLANNED = [
   "Popup tabs project every contributing dictionary, favourites and ordered groups without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
   "Saved popup columns reflow complete cards after expansion, media load and resize",
+  "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
   "external dictionary Enter activation creates one safe browser tab through the extension",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
@@ -926,7 +928,28 @@ async function popupReader(page, depth = 0) {
     return reply.result.value;
   }
 
-  return { click, dictionaryTabs, deinflection, externalLink, imagePreview, nested, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+  async function compactSummaries() {
+    const object = await resolvePopupObject();
+    if (!object) return [];
+    const reply = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true,
+      functionDeclaration: function () {
+        return [...this.querySelectorAll(".gsm-hoshidicts-compact-definition-summary")].map(summary => ({
+          dictionary: summary.dataset.hoshidictsDictionary,
+          items: [...summary.querySelectorAll("li")].map(item => item.textContent),
+          thumbnailCount: summary.querySelectorAll(".gsm-hoshidicts-compact-definition-image").length,
+          image: [...summary.querySelectorAll("img")].map(image => ({
+            src: image.getAttribute("src"), complete: image.complete,
+            width: image.naturalWidth, height: image.naturalHeight, hidden: image.hidden,
+            rect: image.getBoundingClientRect().toJSON(),
+            state: image.closest(".gloss-image-link").dataset.imageLoadState,
+          })),
+        }));
+      }.toString(),
+    });
+    return reply.result.value;
+  }
+  return { click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview, nested, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
 }
 
 // The content script runs at document_idle and builds its host lazily, on the
@@ -1467,6 +1490,185 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     evidence.passed && evidence.live.liveRequests.length === 1, JSON.stringify(evidence.live));
   check("Saved popup columns reflow complete cards after expansion, media load and resize",
     evidence.passed && evidence.columns.length === 5, JSON.stringify({ columns: evidence.columns, media: evidence.media }));
+}
+
+async function checkCompactSummaries(settings, tab, popup, browser) {
+  const fixture = compactSummaryFixture();
+  const original = await settings.evaluate(() => chrome.storage.local.get("options"));
+  const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
+  const child = await popupReader(tab, 1);
+  const installed = [], evidence = {};
+  let worker, failure;
+  const require = (condition, message) => { if (!condition) throw new Error(message); };
+  const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  async function until(read, predicate, label) {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const value = await read();
+      if (predicate(value)) return value;
+      if (Date.now() >= deadline) throw new Error(`${label}: ${JSON.stringify(value)}`);
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+  }
+  const write = patch => settings.evaluate(async patch => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options?.revision ?? 0, options: patch });
+    if (!reply.ok) throw new Error(reply.error);
+  }, patch);
+  const summaries = () => popup.compactSummaries();
+  const show = async query => {
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await tab.$eval("#verb", (element, text) => { element.textContent = text; }, query);
+    await hoverForPopup(tab, popup, "#verb");
+  };
+  try {
+    for (const dictionary of fixture.dictionaries) {
+      await installMediaArchive(settings, dictionary.archive);
+      installed.push(dictionary.title);
+    }
+    evidence.native = await settings.evaluate(async text => chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen", type: "hd_lookup", text, maxResults: 32, scanLength: 16,
+    }), fixture.query);
+    require(evidence.native.ok && evidence.native.results.length === 1
+      && evidence.native.results[0].term.glossaries[0].glossary === JSON.stringify(fixture.leading), "E10 real native leading glossary");
+    await settings.evaluate(async names => {
+      const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+        baseRevision: dictionaryState.revision,
+        dictionaries: dictionaryState.dictionaries.map(dictionary => ({ ...dictionary,
+          displayName: names[dictionary.title] ?? dictionary.displayName })), groups: dictionaryState.groups });
+      if (!reply.ok) throw new Error(reply.error);
+    }, { [fixture.illustrated]: "Illustrated definitions", [fixture.plain]: "Brief meanings" });
+    await settings.bringToFront();
+    await editSettingsControls(settings, { "opt-compact-summary": true, "opt-summary-count": "2",
+      "opt-summary-dictionary": fixture.illustrated, "opt-max-results": "32" });
+    for (const [id, value] of [["opt-summary-dictionary", ""], ["opt-summary-count", "4"]]) {
+      // Hold the established input-before-change draft seam. The input seed is
+      // synthetic; external CAS and Chrome's disable/blur behavior are native.
+      await settings.$eval(`#${id}`, (control, value) => {
+        control.focus(); control.value = value; control.dispatchEvent(new Event("input", { bubbles: true }));
+      }, value);
+      await write({ showCompactDefinitionSummary: false });
+      await settings.waitForFunction(() => !document.getElementById("opt-compact-summary").checked);
+      require(await settings.$eval(`#${id}`, (control, value) => document.activeElement === control
+        && !control.disabled && control.value === value, value), `E10 external off discarded ${id} draft`);
+      await settings.$eval(`#${id}`, control => control.dispatchEvent(new Event("change", { bubbles: true })));
+      await settings.waitForFunction(() => document.getElementById("options-status").textContent.includes("Could not save"));
+      await settings.$eval(`#${id}`, control => control.blur());
+      await settings.click("#options-use-saved");
+      require(await settings.$eval(`#${id}`, control => control.disabled), `E10 ${id} did not disable after blur`);
+      await editSettingsControls(settings, { "opt-compact-summary": true });
+    }
+    worker = await installMediaReplyProbe(browser);
+    await show(fixture.query);
+    await until(() => worker.evaluate(() => globalThis.__ownedMediaProbe.held.length), count => count === 1, "E10 shared held image");
+    const initial = await summaries();
+    require(equal(initial[0]?.items, ["短い説明", "使い方"]) && initial[0].image.length === 1
+      && !initial[0].image[0].src, "E10 text is usable while leading image waits");
+    await popup.click(".gsm-hoshidicts-note-button");
+    await popup.writeNote({ definition: "E10 keeps this exact draft" });
+    const draft = await popup.retainedControls("remember");
+    await popup.dictionaryTabs("remember");
+    await write({ compactDefinitionSummaryDictionary: fixture.plain });
+    await until(summaries, value => value[0]?.items[0] === "Alternative first", "E10 live source");
+    const controls = await popup.retainedControls(), cards = await popup.dictionaryTabs();
+    require(controls.sameForm && controls.mounted && controls.inputFocused && controls.draft === draft.draft
+      && equal(controls.selection, [2, 7]) && cards.sameCards && cards.samePanel && cards.sameAnchor, "E10 live source preserves owners");
+    await worker.evaluate(() => { for (const release of globalThis.__ownedMediaProbe.held.splice(0)) release(); });
+    const loadedCards = await until(() => popup.dictionaryTabs(), value => value.images.length === 1
+      && value.images[0].complete && value.images[0].width === 16, "E10 remaining full-card media consumer");
+    await write({ compactDefinitionSummaryDictionary: fixture.illustrated, compactDefinitionSummaryCount: 3 });
+    const loaded = await until(summaries, value => value[0]?.items.length === 3 && value[0].image[0]?.complete
+      && value[0].image[0].width === 16, "E10 cached compact image");
+    require(equal(loaded[0].items, ["短い説明", "使い方", "別の意味"])
+      && loaded[0].image[0].rect.width === 36 && loaded[0].image[0].rect.height === 36
+      && await popup.dictionaryTabs("matches", loadedCards.entries), "E10 compact geometry and unchanged complete definitions");
+    const media = await worker.evaluate(() => globalThis.__ownedMediaProbe.requests.filter(request => request.type === "hd_media"));
+    const encoded = loaded[0].image[0].src.split(",")[1];
+    require(media.length === 1 && media[0].dictionary === fixture.illustrated
+      && Buffer.from(encoded, "base64").equals(makePng()), "E10 one shared native media request and exact PNG bytes");
+    evidence.sharedMedia = media.length;
+    await tab.keyboard.press("Escape");
+    if (process.env.HACHIDORI_SUMMARY_POPUP_SCREENSHOT) {
+      const { x, y, width, height } = (await popup.dictionaryTabs()).rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_SUMMARY_POPUP_SCREENSHOT, clip: { x, y, width, height } });
+    }
+    await popup.dictionaryTabs("select", `dictionary:${fixture.plain}`);
+    await until(summaries, value => equal(value[0]?.items, ["Alternative first", "Alternative second"])
+      && value[0].image.length === 0, "E10 tab-local soft fallback");
+    await popup.dictionaryTabs("select", "all");
+    await popup.nested("focus-link");
+    await tab.keyboard.press("Enter");
+    await until(() => child.compactSummaries(), value => value[0]?.items[0] === "Text before the image."
+      && value[0].image.length === 0, "E10 child late-image negative");
+    require(await child.click(".gsm-hoshidicts-show-more"), "E10 genuine prefix Show more");
+    await until(() => child.compactSummaries(), value => value.length === 2
+      && value[1].items.length === 3, "E10 deferred headers use current preferences");
+    require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E10 child Back");
+
+    await show(fixture.broken);
+    await until(summaries, value => equal(value[0]?.items, ["The text remains available."])
+      && value[0].image.length === 0 && value[0].thumbnailCount === 0, "E10 failed leading image text-only fallback");
+    const failedCard = await popup.state();
+    require(failedCard.imageStates.length === 1 && failedCard.imageStates[0].state === "load-error"
+      && failedCard.imageStates[0].errorVisible && failedCard.plain.includes("The text remains available."),
+      "E10 missing thumbnail retains the full-card image error and definition");
+    await tab.keyboard.press("Escape");
+    await tab.$eval("#verb", (element, text) => { element.textContent = text; }, fixture.query);
+    await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNextLookup = true; });
+    const pendingHover = hoverForPopup(tab, popup, "#verb");
+    try {
+      await until(() => worker.evaluate(() => globalThis.__ownedMediaProbe.heldLookups.length), count => count === 1, "E10 held valid lookup");
+      await write({ compactDefinitionSummaryDictionary: fixture.plain, compactDefinitionSummaryCount: 1 });
+    } finally {
+      await worker.evaluate(() => { for (const release of globalThis.__ownedMediaProbe.heldLookups.splice(0)) release(); });
+      await pendingHover;
+    }
+    await until(summaries, value => equal(value[0]?.items, ["Alternative first"]), "E10 pending lookup adopts latest summary options");
+    const status = await settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
+    require(status.generation === evidence.native.generation, "E10 presentation reloaded the engine");
+    if (process.env.HACHIDORI_SUMMARY_SETTINGS_SCREENSHOT || process.env.HACHIDORI_SUMMARY_SETTINGS_DARK_SCREENSHOT) {
+      await settings.bringToFront();
+      await showSettingsSection(settings, "lookup");
+      await editSettingsControls(settings, { "opt-summary-count": "3", "opt-summary-dictionary": fixture.illustrated });
+      for (const [scheme, path] of [["light", process.env.HACHIDORI_SUMMARY_SETTINGS_SCREENSHOT],
+        ["dark", process.env.HACHIDORI_SUMMARY_SETTINGS_DARK_SCREENSHOT]]) {
+        if (!path) continue;
+        await settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+        await (await settings.$("#lookup")).screenshot({ path });
+      }
+    }
+    evidence.passed = true;
+  } catch (error) {
+    failure = error;
+  } finally {
+    const errors = [];
+    const clean = async operation => { try { await operation(); } catch (error) { errors.push(error); } };
+    if (worker) await clean(() => restoreMediaReplyProbe(worker));
+    await clean(() => popup.dictionaryTabs("cleanup"));
+    await clean(() => child.dictionaryTabs("cleanup"));
+    await clean(() => write({ maxResults: original.options.maxResults,
+      showCompactDefinitionSummary: original.options.showCompactDefinitionSummary ?? false,
+      compactDefinitionSummaryCount: original.options.compactDefinitionSummaryCount ?? 3,
+      compactDefinitionSummaryDictionary: original.options.compactDefinitionSummaryDictionary ?? "" }));
+    for (const title of installed) await clean(async () => {
+      const reply = await settings.evaluate(title => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_remove", title }), title);
+      if (!reply.ok) throw new Error(reply.error);
+    });
+    await clean(() => tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb));
+    await clean(() => settings.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]));
+    await clean(async () => {
+      await tab.bringToFront();
+      for (let index = 0; index < 4 && !(await popup.waitForHidden(1)); index++) await tab.keyboard.press("Escape");
+      require(await popup.waitForHidden(), "E10 cleanup retained a popup");
+    });
+    if (errors.length) failure = new AggregateError(failure ? [failure, ...errors] : errors, "E10 scenario/cleanup failure");
+  }
+  if (failure) throw failure;
+  check("Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
+    evidence.passed && evidence.sharedMedia === 1, JSON.stringify(evidence));
 }
 
 async function checkNestedLinks(settings, tab, popup, browser) {
@@ -4168,6 +4370,7 @@ async function main() {
   await checkExternalLinks(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
   await checkDictionaryTabsColumns(page, tab, popup, browser);
+  await checkCompactSummaries(page, tab, popup, browser);
   await checkReaderActivation(page, tab, popup);
   await checkReaderSelection(browser, page, tab, popup);
   await checkFrequencyDirection(browser, page, tab, popup);
