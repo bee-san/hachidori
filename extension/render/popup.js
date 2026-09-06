@@ -816,10 +816,12 @@
   }
 
   function appendCompactDefinitionText(characters, text) {
-    for (const character of text) {
-      appendCompactDefinitionCharacter(characters, character);
-      if (characters.length > COMPACT_DEFINITION_MAX_CHARACTERS) break;
-    }
+    // The matcher returns at most 241 points. Only its first point can join a
+    // surrogate retained from the previous part; the rest can append together.
+    const points = Array.from(text);
+    appendCompactDefinitionCharacter(characters, points[0]);
+    const available = COMPACT_DEFINITION_MAX_CHARACTERS + 1 - characters.length;
+    characters.push(...points.slice(1, 1 + available));
   }
 
   function isCompactDefinitionBlock(value) {
