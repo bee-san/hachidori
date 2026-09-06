@@ -2586,14 +2586,14 @@
             const focused = retainedFocus(true);
             renderProjection(rendered.isExpanded());
             if (focused && typeof focused !== "string") {
-            positionPopup();
-            restoreRetainedFocus(focused);
+              positionPopup();
+              restoreRetainedFocus(focused);
+            }
+            changed = true;
           }
-          changed = true;
-        }
-        if (changed) scheduleMasonry();
-        return true;
-      });
+          if (changed) scheduleMasonry();
+          return true;
+        });
       restoreRetainedFocus(focused);
       return rendered;
     }
