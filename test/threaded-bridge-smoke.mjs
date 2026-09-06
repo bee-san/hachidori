@@ -74,9 +74,9 @@ globalThis.chrome = {
 await import(`../extension/offscreen.js?threaded-bridge-smoke=${Date.now()}`);
 await tick();
 
-assert.equal(runtimeListeners.length, 1);
+assert.equal(runtimeListeners.length, 2);
 assert.equal(engineWorkers.length, 0);
-let relay = runtimeListeners[0];
+let relay = (...args) => runtimeListeners.some(listener => listener(...args) === true);
 
 function request(type, requestId) {
   const responses = [];

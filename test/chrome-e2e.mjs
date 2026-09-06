@@ -3013,9 +3013,11 @@ async function checkAudioSettings(page, browser) {
   const saved = () => page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
   const input = async (selector, value, event = "input") => {
     await page.$eval(selector, (field, next, kind) => {
+      field.focus();
       if (field.type === "checkbox") field.checked = next;
       else field.value = next;
       field.dispatchEvent(new Event(kind, { bubbles: true }));
+      field.blur();
     }, value, event);
     await saved();
   };

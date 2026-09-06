@@ -180,8 +180,6 @@ function updateAudioSettings() {
     document,
     readSources: () => options.audioSources,
     editSources: sources => {
-      // Capture the draft's base before the section's bubbling input listener.
-      optionsEditRevision ??= Math.max(0, optionsRevision);
       options.audioSources = sources;
       writeOptions();
     },
