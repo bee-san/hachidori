@@ -22,6 +22,10 @@
             <output class="nav-status" id="nav-status-lookup" aria-live="polite"></output>
           </div>
           <div class="nav-item">
+            <a href="#design" aria-describedby="nav-status-design">Design</a>
+            <output class="nav-status" id="nav-status-design" aria-live="polite"></output>
+          </div>
+          <div class="nav-item">
             <a href="#custom-dictionary" aria-describedby="nav-status-custom-dictionary">Personal dictionary</a>
             <output class="nav-status" id="nav-status-custom-dictionary" aria-live="polite"></output>
           </div>
@@ -417,17 +421,6 @@
               </label>
 
               <label class="field">
-                <span class="field-label">Definition columns</span>
-                <select id="opt-popup-columns">
-                  <option value="1">1 column</option>
-                  <option value="2">2 columns</option>
-                  <option value="3">3 columns</option>
-                  <option value="4">4 columns</option>
-                </select>
-                <span class="field-hint">Arrange definition cards side by side.</span>
-              </label>
-
-              <label class="field">
                 <span class="field-label">Maximum child popups</span>
                 <input id="opt-popup-nesting-depth" type="number" min="0" max="9007199254740991" step="1" />
                 <span class="field-hint">Keep definitions open while following links. 0 disables child popups.</span>
@@ -442,11 +435,6 @@
                 </span>
               </label>
 
-              <label class="field">
-                <span class="field-label">Image source</span>
-                <select id="opt-image-source"></select>
-                <span class="field-hint">Automatic uses the definition's dictionary. A group tries its enabled dictionaries in order for each image.</span>
-              </label>
 
             </div>
           </fieldset>
@@ -477,6 +465,50 @@
                 <span class="field-hint" id="frequency-order-hint"></span>
               </div>
             </div>
+          </fieldset>
+          <div class="options-feedback-slot">
+            <div id="options-feedback">
+          <output id="options-status" class="custom-dictionary-status" aria-live="polite"></output>
+          <div id="options-conflict-actions" class="options-actions" hidden>
+            <button id="options-retry" class="primary-button" type="button">Save my changes</button>
+            <button id="options-use-saved" class="ghost" type="button">Use saved settings</button>
+          </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="design" aria-labelledby="design-heading" hidden>
+          <div class="card-head">
+            <h1 id="design-heading" tabindex="-1">Design</h1>
+            <p class="hint">Adjust your popup. Changes save automatically.</p>
+          </div>
+          <div class="options-feedback-slot"></div>
+          <div class="design-layout">
+            <div class="design-controls">
+              <fieldset class="lookup-group">
+                <legend>Definitions</legend>
+                <div class="fields">
+              <label class="field">
+                <span class="field-label">Definition columns</span>
+                <select id="opt-popup-columns">
+                  <option value="1">1 column</option>
+                  <option value="2">2 columns</option>
+                  <option value="3">3 columns</option>
+                  <option value="4">4 columns</option>
+                </select>
+                <span class="field-hint">Arrange definition cards side by side.</span>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Image source</span>
+                <select id="opt-image-source"></select>
+                <span class="field-hint">Automatic uses the definition's dictionary. A group tries its enabled dictionaries in order for each image.</span>
+              </label>
+
+                </div>
+              </fieldset>
+              <fieldset class="lookup-group">
+                <legend>Frequency labels</legend>
             <label class="lookup-enable">
               <span>Show dictionary names</span>
               <input id="opt-frequency-names" type="checkbox" />
@@ -486,7 +518,7 @@
               <input id="opt-average-frequency" type="checkbox" />
             </label>
             <p class="field-hint">Harmonic mean within each frequency type. Ranks and occurrence counts stay separate.</p>
-          </fieldset>
+              </fieldset>
           <fieldset class="lookup-group">
             <legend>Pitch accent</legend>
             <label class="lookup-enable">
@@ -539,10 +571,24 @@
               </label>
             </div>
           </fieldset>
-          <output id="options-status" class="custom-dictionary-status" aria-live="polite"></output>
-          <div id="options-conflict-actions" class="options-actions" hidden>
-            <button id="options-retry" class="primary-button" type="button">Save my changes</button>
-            <button id="options-use-saved" class="ghost" type="button">Use saved settings</button>
+            </div>
+            <div class="design-sample">
+              <div class="preview-heading">
+                <h2>Live preview</h2>
+                <label class="preview-size-label">View
+                  <select id="preview-size">
+                    <option value="fit">Scale to fit</option>
+                    <option value="actual">Actual size</option>
+                  </select>
+                </label>
+              </div>
+              <p class="field-hint">Sample entries, not a lookup. Click a kanji to try its view. Notes are not saved.</p>
+              <div class="preview-viewport" id="preview-viewport">
+                <div id="preview-canvas">
+                  <iframe id="design-preview" title="Live dictionary popup preview"></iframe>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </main>

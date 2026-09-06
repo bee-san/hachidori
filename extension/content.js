@@ -995,15 +995,7 @@
   }
 
   function imageSourceContext() {
-    const source = options.popupImageSource;
-    let next = null;
-    if (source?.kind === "dictionary") {
-      next = dictionaries.some(entry => entry.enabled && entry.title === source.title) ? [source.title] : [];
-    } else if (source?.kind === "tabGroup") {
-      const group = dictionaryGroups.find(entry => entry.id === source.id);
-      const titles = new Map(dictionaries.filter(entry => entry.enabled).map(entry => [entry.id, entry.title]));
-      next = (group?.dictionaryIds || []).filter(id => titles.has(id)).map(id => titles.get(id));
-    }
+    const next = window.HDReaderOptions.resolvePopupImageSources(options.popupImageSource, dictionaries, dictionaryGroups);
     // Keep the effective route's identity through alias/name-only changes.
     // In-flight consumers capture it, independently of broad storage revisions.
     if (next !== popupImageSources && !sameDictionaries(next, popupImageSources)) popupImageSources = next;

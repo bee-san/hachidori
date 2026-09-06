@@ -184,6 +184,53 @@ button,
   border-inline: 1px solid var(--border);
   background: var(--surface);
 }
+.design-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.85fr) minmax(0, 1.4fr);
+  gap: 32px;
+  align-items: start;
+}
+.design-controls {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+.design-controls .fields { grid-template-columns: minmax(0, 1fr); }
+.design-sample {
+  position: sticky;
+  top: 24px;
+  min-width: 0;
+}
+.preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.preview-size-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.preview-viewport {
+  overflow: auto;
+  border: 1px solid var(--border);
+  background: #f6f5f1;
+}
+#preview-canvas { position: relative; }
+#design-preview {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  transform-origin: top left;
+}
+.options-feedback-slot:empty,
+#options-feedback:has(#options-status:empty) { display: none; }
+@media (max-width: 1000px) {
+  .design-layout { grid-template-columns: minmax(0, 1fr); }
+  .design-sample { position: static; grid-row: 1; }
+}
 h1 {
   margin: 0;
   font-size: 26px;

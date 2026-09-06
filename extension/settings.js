@@ -148,9 +148,36 @@ function showSettingsSection(focus = false) {
     if (link.hash === `#${activeSection}`) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
+  if (activeSection === "lookup" || activeSection === "design") {
+    element(`nav-status-${SECTION_STATUSES["options-status"].section}`).textContent = "";
+    SECTION_STATUSES["options-status"] = { section: activeSection, label: activeSection === "design" ? "Design" : "Reading" };
+    const slot = element(activeSection).querySelector(".options-feedback-slot");
+    if (element("options-feedback").parentElement !== slot) slot.append(element("options-feedback"));
+  }
   for (const id of Object.keys(SECTION_STATUSES)) syncNavigationStatus(id);
+  updateDesignPreview();
   if (fragment === "settings-content") element("settings-content").focus();
   else if (focus) element(activeSection).querySelector("h1").focus();
+}
+
+function updateDesignPreview() {
+  if (activeSection !== "design") return;
+  const frame = element("design-preview");
+  if (!frame.hasAttribute("src")) frame.src = "design-preview.html";
+  frame.contentWindow.HDDesignPreview?.update(options, dictionaryState);
+}
+
+function resizeDesignPreview() {
+  const viewport = element("preview-viewport");
+  const frame = element("design-preview");
+  const width = 656;
+  const height = 556;
+  const scale = element("preview-size").value === "actual" ? 1 : Math.min(1, viewport.clientWidth / width);
+  frame.style.width = `${width}px`;
+  frame.style.height = `${height}px`;
+  frame.style.transform = `scale(${scale})`;
+  element("preview-canvas").style.width = `${width * scale}px`;
+  element("preview-canvas").style.height = `${height * scale}px`;
 }
 
 function attachSettingsNavigation() {
@@ -995,6 +1022,7 @@ function renderOptions() {
   renderCompactSummaryControls();
   renderPopupImageSources();
   renderMetadataControls();
+  updateDesignPreview();
 }
 
 function addCountBadge(container, label, count) {
@@ -2011,21 +2039,30 @@ function attachHandlers() {
     options.kanjiClickDictionary = selectionFromValue(event.target.value);
     writeOptions();
   });
-  element("lookup").addEventListener("input", () => {
-    optionsEditRevision ??= Math.max(0, optionsRevision);
-  });
-  element("lookup").addEventListener("change", () => {
-    optionsEditRevision = null;
-  });
-  element("lookup").addEventListener("focusout", (event) => {
-    optionsEditRevision = null;
-    if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
-    if (event.target.id === "opt-image-source") renderPopupImageSources();
-    if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
-    if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
-    const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
-    if (field) event.target.value = String(options[field.key]);
-  });
+  element("design-preview").addEventListener("load", updateDesignPreview);
+  element("preview-size").addEventListener("change", resizeDesignPreview);
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(resizeDesignPreview).observe(element("preview-viewport"));
+  }
+  const optionSections = document.querySelectorAll("#lookup, #design");
+  for (const section of optionSections) {
+    section.addEventListener("input", (event) => {
+      if (!event.target.id.startsWith("opt-")) return;
+      optionsEditRevision ??= Math.max(0, optionsRevision);
+    });
+    section.addEventListener("change", () => {
+      optionsEditRevision = null;
+    });
+    section.addEventListener("focusout", (event) => {
+      optionsEditRevision = null;
+      if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
+      if (event.target.id === "opt-image-source") renderPopupImageSources();
+      if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
+      if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
+      const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
+      if (field) event.target.value = String(options[field.key]);
+    });
+  }
   element("options-retry").addEventListener("click", () => {
     optionsSaveFailed = false;
     pendingOptionsRevision = optionsRevision;
@@ -2135,6 +2172,7 @@ function setOptionsStatus(message, completed = false) {
 // Keep only edited fields. A storage event can update the committed snapshot,
 // but cannot replace a local draft or authorize a stale draft's write.
 function writeOptions() {
+  updateDesignPreview();
   const previous = { ...savedOptions, ...savingOptions?.patch };
   const changes = Object.fromEntries(Object.entries(options).filter(([key, value]) =>
     JSON.stringify(value) !== JSON.stringify(previous[key])));
