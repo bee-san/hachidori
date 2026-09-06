@@ -806,10 +806,13 @@ function renderFrequencyChoices() {
 function renderCompactSummaryControls() {
   const enabled = options.showCompactDefinitionSummary;
   element("opt-compact-summary").checked = enabled;
-  element("opt-summary-count").disabled = !enabled;
+  const count = element("opt-summary-count");
+  // Disabling Chrome's focused select emits blur before its pending change.
+  // Keep that draft's captured revision until the existing focusout boundary.
+  if (count !== document.activeElement) count.disabled = !enabled;
   const select = element("opt-summary-dictionary");
-  select.disabled = !enabled;
   if (select === document.activeElement) return;
+  select.disabled = !enabled;
   const preferred = options.compactDefinitionSummaryDictionary;
   select.replaceChildren(new Option("Automatic — first available definition", ""));
   let available = preferred === "";
@@ -1958,7 +1961,7 @@ function attachHandlers() {
   element("lookup").addEventListener("focusout", (event) => {
     optionsEditRevision = null;
     if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
-    if (event.target.id === "opt-summary-dictionary") renderCompactSummaryControls();
+    if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
     const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
     if (field) event.target.value = String(options[field.key]);
   });
