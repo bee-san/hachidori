@@ -10077,11 +10077,12 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
   const originalResizeObserver = window.ResizeObserver;
   const observedTargets = new Set();
   const observations = [];
+  let observerDisconnects = 0;
   // Track the renderer's observation ownership, not native layout or heap size.
   window.ResizeObserver = class {
     observe(target) { observedTargets.add(target); }
     unobserve(target) { observedTargets.delete(target); }
-    disconnect() { observedTargets.clear(); }
+    disconnect() { observerDisconnects += 1; observedTargets.clear(); }
   };
   function observeProjection(stage, expectedCount) {
     const currentTargets = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-grid, .gsm-hoshidicts-glossary-card")];
@@ -10246,6 +10247,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
         tabIndex.set.call(this, value);
       },
     });
+    const beforeInitialDisconnects = observerDisconnects;
     try {
       view.renderResults(results, candidate, { ...context, ...presentation, selectedDictionaryTab: { groupId: "first" } });
     } finally {
@@ -10260,8 +10262,10 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
         tabIndex: writes.tabIndex.filter(target => target === button).length,
       })),
       panelLabel: writes.panelLabel.length,
+      observerDisconnects: observerDisconnects - beforeInitialDisconnects,
     };
     live.push(initialTabs.length === 6 && tabStateCounts.tabs.every(row => row.selected === 1 && row.tabIndex === 1)
+      && tabStateCounts.observerDisconnects === 1
       && tabStateCounts.panelLabel === 1 && writes.panelLabel[0] === initialPanel
       && initialTabs.every(button => button.getAttribute("aria-controls") === initialPanel.id
         && button.getAttribute("aria-selected") === String(button.matches(firstGroup))
