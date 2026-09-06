@@ -10932,6 +10932,30 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
     check("local tab projection retains the latest image route and aliases without reloading again on deferred presentation flush",
       latestLabels && beforeFlush === beforeTab + 2 && requests.length === beforeFlush,
       JSON.stringify({ latestLabels, beforeTab, beforeFlush, requests: requests.length }));
+
+    const replacementProjections = [];
+    for (const title of ["Illustrated", "Plain"]) {
+      sources = null;
+      Object.assign(context, { popupImageSources: sources, dictionaryTabGroups: [group] });
+      const beforeInitial = requests.length;
+      view.renderResults([projected], candidate, { ...context, expandAll: true,
+        selectedDictionaryTab: { groupId: group.id } });
+      settle(requests.slice(beforeInitial));
+      await tick();
+      const oldCards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+      const beforeReplacement = requests.length;
+      route(["Pictures"], { dictionaryTabGroups: [{ ...group, dictionaries: [title] }] });
+      const pending = requests.slice(beforeReplacement);
+      const expectedImages = title === "Illustrated" ? 2 : 0;
+      replacementProjections.push(pending.length === expectedImages
+        && pending.every(({ query, supplier }) => query.isCurrent() && supplier === "Pictures")
+        && oldCards.every(card => !card.isConnected));
+      settle(pending);
+      await tick();
+      replacementProjections.push(popup.querySelectorAll("img").length === expectedImages);
+    }
+    check("group membership and image-route changes load only the replacement projection's images",
+      replacementProjections.every(Boolean), JSON.stringify(replacementProjections));
   } finally {
     settle(requests);
     view.destroy();
