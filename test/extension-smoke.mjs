@@ -1445,6 +1445,28 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     check("definition columns default to one and accept only integers one through four via options CAS",
       reader.normaliseOptions({}).popupColumns === 1
         && columns.every(Boolean) && badColumns.every(Boolean), JSON.stringify({ columns, badColumns }));
+    const summaryDefaults = reader.normaliseOptions({});
+    const summaryAccepted = [];
+    for (const count of [1, 3, 6]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ showCompactDefinitionSummary: true,
+        compactDefinitionSummaryCount: count, compactDefinitionSummaryDictionary: "Personal source" }));
+      summaryAccepted.push(reply.ok === true && reply.options?.showCompactDefinitionSummary === true
+        && reply.options?.compactDefinitionSummaryCount === count
+        && reply.options?.compactDefinitionSummaryDictionary === "Personal source");
+    }
+    const summaryRejected = [];
+    for (const patch of [{ showCompactDefinitionSummary: 1 }, { compactDefinitionSummaryDictionary: null },
+      ...[0, 7, 1.5, "3"].map(count => ({ compactDefinitionSummaryCount: count }))]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message(patch));
+      summaryRejected.push(reply.ok === false && await unchanged(saved));
+    }
+    check("compact summaries default off with three snippets and preserve a soft source preference through strict options CAS",
+      summaryDefaults.showCompactDefinitionSummary === false && summaryDefaults.compactDefinitionSummaryCount === 3
+        && summaryDefaults.compactDefinitionSummaryDictionary === ""
+        && summaryAccepted.every(Boolean) && summaryRejected.every(Boolean),
+      JSON.stringify({ summaryDefaults, summaryAccepted, summaryRejected }));
     const invalid = [
       { scanLength: "18" }, { scanLength: 0 }, { maxResults: 257 },
       { hoverDelayMs: -1 }, { hoverDelayMs: 1.5 }, { modifier: "meta" },
@@ -9645,6 +9667,34 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   if (!HDGlossary || !HDPopup) {
     return false;
   }
+
+  const summaryRaw = JSON.stringify([{ type: "structured-content", content: [
+    { tag: "span", data: { content: "part-of-speech" }, content: "noun" },
+    { tag: "img", path: "media/kanji.png", width: 16, height: 16 },
+    { tag: "ul", data: { content: "glossary" }, content: [
+      { tag: "li", content: "first • • second" }, { tag: "li", content: "third" },
+    ] },
+    { tag: "div", data: { content: "example" }, content: "not a definition" },
+  ] }]);
+  const summaryGlossaries = [
+    { dictionary: "Plain", glossary: JSON.stringify(["plain first", "plain second"]) },
+    { dictionary: "Illustrated", glossary: summaryRaw },
+  ];
+  const summaryBefore = JSON.stringify(summaryGlossaries);
+  const compact = HDPopup.extractCompactDefinitionSummary(summaryGlossaries, "Illustrated", 2);
+  const fallback = HDPopup.extractCompactDefinitionSummary(summaryGlossaries, "Absent", 1);
+  const lateImage = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Late", glossary: JSON.stringify([
+    "text before image", { type: "image", path: "media/kanji.png" },
+  ]) }]);
+  const bulletSummary = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Bullets",
+    glossary: JSON.stringify([" • ".repeat(150000) + "first • second"]) }]);
+  check("compact summaries preserve ordered text, split nonempty bullets and select only a leading image without changing full glossaries",
+    JSON.stringify(compact?.items) === JSON.stringify(["first", "second"])
+      && compact?.dictionary === "Illustrated" && compact?.image?.path === "media/kanji.png"
+      && JSON.stringify(fallback?.items) === JSON.stringify(["plain first"])
+      && !lateImage?.image && JSON.stringify(bulletSummary?.items) === JSON.stringify(["first", "second"])
+      && JSON.stringify(summaryGlossaries) === summaryBefore,
+    JSON.stringify({ compact, fallback, lateImage, bulletSummary }));
 
   const host = document.createElement("div");
   document.body.appendChild(host);
