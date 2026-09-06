@@ -849,10 +849,13 @@
       let previousWasBlock = false;
       for (const child of value) {
         if (state.nodes >= COMPACT_DEFINITION_MAX_NODES) break;
-        const childIsBlock = isCompactDefinitionBlock(child);
+        let childIsBlock = false;
         let childHasText = false;
         for (const text of collectCompactDefinitionText(child, state, depth + 1)) {
-          if (!childHasText && hasText && (previousWasBlock || childIsBlock)) yield " ";
+          if (!childHasText) {
+            childIsBlock = isCompactDefinitionBlock(child);
+            if (hasText && (previousWasBlock || childIsBlock)) yield " ";
+          }
           childHasText = true;
           yield text;
         }
@@ -915,7 +918,7 @@
   }
 
   /** Block nodes with no block descendants: the smallest sense-sized chunks. */
-  function findCompactDefinitionLeafBlocks(root) {
+  function findCompactDefinitionLeafBlocks(root, state = { nodes: 0 }) {
     return findCompactDefinitionNodes(
       root,
       (value) => COMPACT_DEFINITION_BLOCK_TAGS.has(
@@ -927,7 +930,7 @@
         ),
         { nodes: 0 }
       ).length === 0,
-      { nodes: 0 }
+      state
     );
   }
 
@@ -987,8 +990,9 @@
   function* compactDefinitionFallbackNodes(parsed) {
     // Top-level glossary-array entries are separate senses, unlike inline
     // content arrays. Expand blocks within each sense without dropping siblings.
+    const discovery = { nodes: 0 };
     for (const sense of Array.isArray(parsed) ? parsed : [parsed]) {
-      const leafBlocks = findCompactDefinitionLeafBlocks(sense);
+      const leafBlocks = findCompactDefinitionLeafBlocks(sense, discovery);
       if (leafBlocks.length > 0) yield* leafBlocks;
       else yield sense;
     }

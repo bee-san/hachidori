@@ -424,18 +424,22 @@ changing lookup ranking. Unlike frequency and clicked-kanji routing, this
 preference is not pruned by package changes.
 
 The existing semantic extractor skips metadata/examples, retains ordered unique
-snippets and splits nonempty bullet-separated text. Each inspected raw glossary
-retains mixed plain and structured top-level senses in fallback order, expanding
+snippets and splits nonempty bullet-separated text. Fallback extraction retains
+mixed plain and structured top-level senses in order, expanding
 leaf blocks within each sense without discarding its siblings. Semantic marked
-glossary sections and the first nonempty list retain precedence. Each glossary
-is parsed once for text and leading-image selection. Inline text parts stream
+glossary sections and the first nonempty list retain precedence. Fallback
+leaf discovery shares its budget across senses; exhausted discovery
+still allows ordinary text fallback. Empty inline children need no block check.
+Each inspected raw glossary is parsed once for text and leading-image selection.
+Inline text parts stream
 without concatenating unused text or matching/normalizing whole fragments.
 One extra normalized code point beyond the 240-point display budget proves
 truncation without mistaking a long candidate for a previously seen duplicate.
 Adjacent inline parts retain split surrogate pairs and block separators. Native
 bounded text-run searches skip empty bullet and whitespace runs without a
-matcher call per character; full JSON parsing and
-necessary whitespace-prefix scans remain. Only the first meaningful content can
+matcher call per character. Only each run's boundary needs a surrogate join
+check; the bounded point array appends together. Full JSON parsing and necessary
+whitespace-prefix scans remain. Only the first meaningful content can
 supply the image: text, including zero/false, or an unsupported leading image
 prevents searching for a later image. Text/structured wrappers
 follow the glossary renderer's dispatch order. Existing display/traversal bounds

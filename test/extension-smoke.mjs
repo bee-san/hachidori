@@ -9889,8 +9889,8 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       && JSON.stringify(repeated?.items) === JSON.stringify(["a".repeat(200), "tail"])
       && sandbox.__summaryWork.duplicateMatches <= 6 && sandbox.__summaryWork.duplicateBoundaries <= 3
       && JSON.stringify(afterEmptySenses?.items) === JSON.stringify(["useful final sense"])
-      // Observed tag work before per-sense fallback was introduced, not an input cap.
-      && sandbox.__summaryWork.spanNormalizations <= 4880;
+      // Observed tag work before streaming/per-sense fallback, not an input cap.
+      && sandbox.__summaryWork.spanNormalizations <= 2832;
   } finally { sandbox.__restoreSummaryWork(); }
   const summaryWork = { splitFragments: sandbox.__summaryWork.splitFragments, codePoints: sandbox.__summaryWork.codePoints,
     emptyNormalizations: sandbox.__summaryWork.emptyNormalizations, largeNormalizations: sandbox.__summaryWork.largeNormalizations,
