@@ -9,7 +9,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-7c3aed" alt="GPL-3.0-or-later license"></a>
   <a href="#install-in-60-seconds"><img src="https://img.shields.io/badge/Chrome-118%2B-4285F4?logo=googlechrome&logoColor=white" alt="Chrome 118 or newer"></a>
-  <a href="#privacy-by-default"><img src="https://img.shields.io/badge/lookups-100%25_local-0f766e" alt="Lookups run locally"></a>
+  <a href="#privacy-by-default"><img src="https://img.shields.io/badge/dictionary_engine-local-0f766e" alt="Dictionary engine runs locally"></a>
   <a href="https://sonarcloud.io/summary/new_code?id=bee-san_hachidori"><img src="https://sonarcloud.io/api/project_badges/measure?project=bee-san_hachidori&metric=alert_status" alt="SonarQube Cloud quality gate"></a>
   <a href="https://github.com/bee-san/hachidori"><img src="https://img.shields.io/github/stars/bee-san/hachidori?style=flat&logo=github&color=f59e0b" alt="GitHub stars"></a>
 </p>
@@ -117,9 +117,13 @@ all Design controls without changing Reading preferences or your library.
 available. Add custom audio URL templates or Yomitan JSON sources, choose a system
 voice, and reorder, disable, or remove sources. Each row's **Test** plays 聞く / きく
 and reports completion, no result, or a provider/playback error. These settings
-autosave; an explicitly emptied list stays empty. Nothing plays automatically.
+autosave; an explicitly emptied list stays empty. Each term result has an **Audio**
+button. Shift-click, right-click or press Down on it to choose a pronunciation.
+**Automatically play the first lookup result** is optional and off by default;
+when enabled, it uses your configured sources as you look up words.
 Voice availability depends on Chrome and the operating system; some voices use
-online services. Popup Audio controls follow in E20.
+online services. Warm pronunciations are cached for replay; changing the result
+or source settings stops obsolete playback.
 [Audio settings screenshot](docs/assets/audio-settings.png).
 
 <p align="center">
@@ -215,13 +219,20 @@ This directional smoke comparison uses the full **VNDB Characters by Bee** dicti
 | Imports Yomitan dictionaries | Yes | Yes | Yes |
 | Hover popup on ordinary pages | Yes | Yes | No built-in browser popup |
 | Native helper or local server needed | No | No | The native program itself |
-| Audio, Anki, and mining workflows | Audio source configuration and testing; popup audio and Anki pending | Built in or integrated | Build your own integration |
+| Audio, Anki, and mining workflows | Popup audio, choices, optional autoplay and source settings; Anki pending | Built in or integrated | Build your own integration |
 
 Choose Hachidori when you want the shortest path from a Yomitan dictionary to a private hover definition. Choose Yomitan when you want the broader study ecosystem; choose the hoshidicts CLI when you want the native engine outside a browser.
 
 ## Privacy by default
 
-Lookups make no network calls. Your dictionaries and lookup text stay in Chrome, and the bundled WebAssembly engine queries them locally.
+The bundled WebAssembly engine searches your dictionaries locally in Chrome.
+Definition lookup does not require a network service. Optional pronunciation is
+separate: Audio, its chooser, Settings Test, and enabled autoplay may contact
+your configured audio providers. URL templates can send the expression, reading
+and language; JSON sources also fetch their returned media URLs. Autoplay does
+this automatically for the first current result, and is off by default. Some
+system speech voices also use online services. Leave autoplay off and avoid
+online audio sources if you do not want looked-up words sent to a provider.
 
 Opening an external reference in a definition navigates to that HTTP(S) website
 in a new browser tab. This happens only when you activate the link; rendering a
@@ -232,7 +243,8 @@ publishers linked on the Options page. Manual update checks and scheduled update
 runs request managed dictionaries' HTTPS indexes; installing an update also
 downloads its HTTPS archive. A generic index may select a new HTTPS archive URL,
 while recommended sources remain pinned to their built-in catalogue entries.
-Importing a local ZIP and every lookup remain local. Imported dictionaries are
+Importing a local ZIP and dictionary searches remain local; pronunciation has
+the separate network behavior described above. Imported dictionaries are
 persisted in Chrome's extension storage.
 
 Custom-dictionary source and its generated indexes also stay in Chrome. Saving

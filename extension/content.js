@@ -101,6 +101,7 @@
   let disposed = false;
   let appearance;
   let customStyle;
+  let audio;
   let options = { ...DEFAULT_OPTIONS };
   let dictionaries = [];
   let dictionaryGroups = [];
@@ -729,6 +730,7 @@
     if (disposed) {
       return;
     }
+    audio?.dispose();
     disposed = true;
     cancelPopupLayout();
     clearDictionaryResources();
@@ -748,6 +750,7 @@
     document.removeEventListener("mouseout", onMouseOut, true);
     window.removeEventListener("scroll", onScroll, true);
     window.removeEventListener("blur", onWindowBlur);
+    window.removeEventListener("pagehide", onPageHide);
     try {
       chrome.storage.onChanged.removeListener(onStorageChanged);
     } catch {
@@ -777,6 +780,7 @@
   }
 
   function discardUi() {
+    audio?.retire();
     cancelPopupLayout();
     clearDictionaryResources();
     try {
@@ -814,6 +818,7 @@
       return;
     }
     currentGeneration = generation;
+    audio?.retire();
     clearDictionaryResources();
     // Generation is an engine incarnation, not a monotonic storage revision.
     // Invalidate other in-flight owners even when a restarted engine returns 1.
@@ -832,7 +837,7 @@
         reject(new Error("extension context invalidated"));
         return;
       }
-      const requestId = `${type.replace(/^hd_/u, "")}-${nextRequestId += 1}`;
+      const requestId = payload?.requestId ?? `${type.replace(/^hd_/u, "")}-${nextRequestId += 1}`;
       const request = { ...payload, requestId, target, type };
       try {
         chrome.runtime.sendMessage(request, (reply) => {
@@ -1266,6 +1271,11 @@
   }
 
   function buildLevelUi(level) {
+    audio ??= window.HDAudio.createAudioController({ window,
+      send: (type, fields) => sendRequest(type, fields, "hachidori-audio"),
+      onMenuChange(owner) { cancelCandidateScan(); clearHideTimer(); positionPopup(owner); },
+    });
+    audio.update(options, optionsStorageRevision >= 0);
     const popup = document.createElement("div");
     popup.className = "gsm-hoshidicts-popup";
     popup.dataset.hoshidictsDepth = String(level.depth);
@@ -1295,7 +1305,10 @@
       onAddCustomEntry: (entry) => appendCustomEntry(entry, level),
       onKanjiClick: (character, result, candidate, link) => showKanji(character, result, candidate, link, level),
       onNoteEditingChange: (editing) => onNoteEditingChange(editing, level),
+      onResultsRendered: rendered => bindAudio(rendered, level),
+      onResultsExpanded: rendered => bindAudio(rendered, level),
       onBeforeResultsRendered: (intent) => {
+        audio.retire(level);
         pruneLevels(level.depth + 1);
         if (level.retainedView) {
           replayVisibleView(level, intent);
@@ -1315,6 +1328,14 @@
       sourceHighlightEnabled: options.sourceHighlightEnabled,
       toolbarPosition: window.HDPopup.resolveToolbarPosition(options.popupToolbarPosition),
       window,
+    });
+  }
+
+  function bindAudio(rendered, level) {
+    const token = level.lookupToken, request = level.currentViewRequest;
+    audio.bind(rendered.audioButtons, { owner: level, popup: level.popup, request,
+      isCurrent: () => level.currentViewRequest === request && !level.retainedView
+        && requestCanRender(token, level.activeCandidate, level),
     });
   }
 
@@ -1367,6 +1388,7 @@
     const removed = levels.splice(Math.max(1, depth));
     const focused = removed.some((level) => level.popup?.contains(shadow?.activeElement));
     for (const level of removed.reverse()) {
+      audio?.retire(level);
       level.retired = true;
       level.lookupToken += 1;
       level.popup.hidden = true;
@@ -1381,6 +1403,7 @@
   }
 
   function hide(level = rootLevel) {
+    audio?.retire(level);
     if (level !== rootLevel) {
       if (!level.retired) {
         pruneLevels(level.depth);
@@ -1490,7 +1513,7 @@
   }
 
   function scheduleHide() {
-    if (disposed || hasProtectedNote() || !rootLevel.popup || rootLevel.popup.hidden
+    if (disposed || hasProtectedNote() || audio?.hasMenu() || !rootLevel.popup || rootLevel.popup.hidden
         || popupHasFocus() || hideTimer !== null || transferTimer !== null) {
       return;
     }
@@ -1498,7 +1521,7 @@
     // time to cross it so the popup stays reachable and selectable.
     const dismiss = () => {
       hideTimer = null;
-      if (!hasProtectedNote() && !pointerInPopup && !popupHasFocus()) {
+      if (!hasProtectedNote() && !audio?.hasMenu() && !pointerInPopup && !popupHasFocus()) {
         hide();
       }
     };
@@ -1578,6 +1601,7 @@
   }
 
   async function restoreTermRender(previous, focusTarget, level = rootLevel) {
+    audio?.retire(level);
     if (previous.generation !== currentGeneration || !sameDictionaryContents(previous.dictionaries, dictionaries)) {
       const restoring = executeViewRequest(previous.request, level, previous.viewport);
       const token = level.lookupToken;
@@ -1668,6 +1692,7 @@
   }
 
   async function executeTermRequest(request, level = rootLevel, replayOptions = null) {
+    audio?.retire(level);
     const token = (level.lookupToken += 1);
     level.retainedView = replayOptions?.preserveViewControls === true;
     level.view?.hideImagePreview();
@@ -1799,6 +1824,7 @@
   }
 
   async function executeKanjiRequest(request, level = rootLevel, replayOptions = null) {
+    audio?.retire(level);
     const { candidate, capability, character } = request;
     const useTermDictionary = capability?.kind === "term";
     const token = (level.lookupToken += 1);
@@ -2230,6 +2256,11 @@
       return;
     }
     if (event.key === "Escape") {
+      if (audio?.closeMenu()) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (rootLevel.popup && !rootLevel.popup.hidden) {
         const focused = levels.find((level) => level.popup.contains(shadow.activeElement));
         const editing = focused?.noteEditing ? focused : levels.findLast((level) => level.noteEditing);
@@ -2300,6 +2331,12 @@
     }
   }
 
+  function onPageHide() {
+    // Navigation can destroy the content owner without blurring the tab.
+    // Retire while runtime messaging is alive; a BFCache return can reuse UI.
+    audio?.retire();
+  }
+
   function onScroll() {
     cancelCandidateScan();
     rootLevel.view?.hideImagePreview();
@@ -2322,6 +2359,7 @@
   }
 
   function invalidateStoredState(dictionaryChanged) {
+    audio?.retire();
     discardPendingCandidate();
     // A completed selection hit or miss also belongs to the old lookup state.
     // Preserve Note's view ownership through its deferred refresh.
@@ -2441,6 +2479,7 @@
     }
     optionsStorageRevision = revision;
     options = next;
+    audio?.update(options);
     appearance?.update(options);
     const cssChanged = customStyle?.update(options.customPopupCss);
     if (highlightChanged) {
@@ -2518,6 +2557,7 @@
     document.addEventListener("keyup", onKeyUp, true);
     window.addEventListener("scroll", onScroll, observe);
     window.addEventListener("blur", onWindowBlur);
+    window.addEventListener("pagehide", onPageHide);
   }
 
   start();

@@ -14,9 +14,12 @@ function environment({ failFirst = false, hold = false } = {}) {
     Audio: class {
       constructor(src) { this.src = src; this.error = { code: 4 }; audio.push(this); }
       play() {
-        if (!hold) queueMicrotask(() => {
+        queueMicrotask(() => {
           if (failFirst && audio.length === 1) this.onerror?.();
-          else this.onended?.();
+          else {
+            this.onplaying?.();
+            if (!hold) this.onended?.();
+          }
         });
         return Promise.resolve();
       }
@@ -49,6 +52,8 @@ test("source testing tries ordered JSON candidates through real player cleanup, 
   assert.equal(result.candidate.name, "Second");
   assert.equal(requests.length, 3);
   assert.ok(requests.every(request => request.credentials === "omit"));
+  assert.deepEqual(env.revoked, ["blob:0"], "only undecodable media is evicted; successful media stays warm");
+  player.dispose();
   assert.deepEqual(env.revoked, ["blob:0", "blob:1"]);
   assert.ok(env.audio.every(audio => audio.paused && audio.released && audio.src === ""));
   assert.equal(env.voiceReads(), 0);
@@ -63,6 +68,8 @@ test("an accepted play promise is not a completed Test and stopping releases onl
   assert.equal(settled, false);
   player.stop();
   assert.equal((await pending).status, "cancelled");
+  assert.deepEqual(env.revoked, [], "stopping a valid buffer does not discard its warm cache entry");
+  player.dispose();
   assert.deepEqual(env.revoked, ["blob:0"]);
   assert.ok(env.audio[0].paused && env.audio[0].released);
 });
@@ -120,4 +127,25 @@ test("a missing configured voice fails without silently using the system default
   assert.equal(env.utterances.length, 0);
   assert.equal((await player.play({ ...speech, voice: "" }, term)).status, "success");
   assert.equal(env.utterances[0].voice, undefined);
+});
+
+test("ordered sources fall through empty results and provider errors, then report the actual playing candidate", async () => {
+  const env = environment();
+  const requests = [], playing = [];
+  const player = createAudioPlayer({ window: env.window, fetch: async url => {
+    requests.push(url);
+    if (url.endsWith("empty")) return { ok: true, json: async () => ({ type: "audioSourceList", audioSources: [] }) };
+    if (url.endsWith("failure")) return { ok: false, status: 503 };
+    return { ok: true, blob: async () => new Blob(["audio"]) };
+  } });
+  const sources = [{ ...source, id: "empty", type: "custom-json", url: "https://example.test/empty" },
+    { ...source, id: "failure", url: "https://example.test/failure" }, source];
+  assert.equal((await player.playSources(sources, term, { onPlaying: event => playing.push(event) })).sourceId, source.id);
+  assert.equal(requests.length, 3);
+  assert.equal(playing.length, 1);
+  assert.equal(playing[0].sourceId, source.id);
+  assert.equal(playing[0].candidate.url, "https://example.test/%E3%81%8D%E3%81%8F.wav");
+  assert.equal((await player.play(source, term)).status, "success");
+  assert.equal(requests.length, 3, "warm replay neither rediscovers nor redownloads media");
+  player.dispose();
 });

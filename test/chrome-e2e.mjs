@@ -216,6 +216,10 @@ const PLANNED = [
   "Audio Settings preserve ordered source edits and disabled rows through revisioned save and reload",
   "Audio source Tests use encoded URLs and ordered JSON candidates with visible success, no-result and error feedback",
   "Audio Tests cancel stale playback and preserve the dictionary engine after audio becomes idle",
+  "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
+  "Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
+  "Popup autoplay is optional and does not replay after presentation updates or Back",
+  "Popup audio cancels obsolete discovery and playback on dismissal, source changes and navigation",
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
@@ -1063,7 +1067,35 @@ async function popupReader(page, depth = 0) {
     });
     return reply.result.value;
   }
-  return { click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview, nested, sourcePaint, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+  async function audio(action = "read", index = 0) {
+    const object = await resolvePopupObject();
+    if (!object) return null;
+    const reply = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true, arguments: [{ value: action }, { value: index }],
+      functionDeclaration: function (action, index) {
+        const root = this.getRootNode(), view = this.ownerDocument.defaultView;
+        const button = this.querySelectorAll(".gsm-hoshidicts-audio-button")[index];
+        if (action === "play") button.click();
+        if (action === "choose") button.dispatchEvent(new view.MouseEvent("click", { shiftKey: true, bubbles: true }));
+        const candidate = this.querySelectorAll(".gsm-hoshidicts-audio-choices div button")[index];
+        if (action === "candidate") candidate.scrollIntoView({ block: "nearest" });
+        const menu = this.querySelector(".gsm-hoshidicts-audio-choices");
+        const menuRect = menu?.getBoundingClientRect();
+        const popupRect = this.getBoundingClientRect();
+        const candidateRect = candidate?.getBoundingClientRect();
+        return { text: this.textContent, button: button?.textContent,
+          feedback: [...this.querySelectorAll(".gsm-hoshidicts-audio-status")].map(node => node.textContent),
+          choices: [...this.querySelectorAll(".gsm-hoshidicts-audio-choices div button")].map(node => node.textContent),
+          menu: Boolean(this.querySelector(".gsm-hoshidicts-audio-choices")),
+          menuFits: Boolean(menuRect && menuRect.height > 100 && menuRect.top >= popupRect.top && menuRect.bottom <= popupRect.bottom),
+          candidatePoint: candidateRect && { x: candidateRect.x + candidateRect.width / 2, y: candidateRect.y + candidateRect.height / 2 },
+          focused: root.activeElement?.className, rect: this.getBoundingClientRect().toJSON() };
+      }.toString(),
+    });
+    if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description || reply.exceptionDetails.text);
+    return reply.result.value;
+  }
+  return { audio, click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview, nested, sourcePaint, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
 }
 
 // Content scripts have their own Highlight constructor; changing the page's
@@ -3003,6 +3035,158 @@ async function checkSettingsTransport(page) {
     JSON.stringify({ evidence, saved }));
 }
 
+function makeAudioWav() {
+  // A genuine one-second PCM clip, decoded and completed by native Chrome.
+  const samples = 8000;
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write("RIFF"); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write("data", 36); wav.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i++) wav.writeInt16LE(i % 2 ? 100 : -100, 44 + i * 2);
+  return wav;
+}
+
+async function checkPopupAudio(settings, tab, popup, browser) {
+  const original = await settings.evaluate(async () => ({
+    options: (await chrome.storage.local.get("options")).options,
+    status: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
+  }));
+  const write = patch => settings.evaluate(async patch => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: patch });
+    if (!reply.ok) throw new Error(reply.error);
+  }, patch);
+  const source = (id, type, url, enabled = true) => ({ id, type, url, enabled, voice: "" });
+  const base = "https://audio.example.test/popup-";
+  const routes = new Map();
+  const route = (path, body, contentType = "application/json", status = 200) =>
+    routes.set(base + path, { body, contentType, status, requests: 0 });
+  route("failure", "Unavailable", "text/plain", 503);
+  route("disabled", "Must not request", "text/plain", 503);
+  route("bad.wav", "not audio", "audio/wav");
+  route("tokyo.wav", makeAudioWav(), "audio/wav");
+  route("osaka.wav", makeAudioWav(), "audio/wav");
+  route("list", JSON.stringify({ type: "audioSourceList", audioSources: [
+    { url: base + "bad.wav", name: "Unplayable" }, { url: base + "tokyo.wav", name: "Tokyo" },
+    { url: base + "osaka.wav", name: "Osaka" },
+  ] }));
+  const sources = [source("disabled", "custom", base + "disabled", false),
+    source("failure", "custom", base + "failure"), source("json", "custom-json", base + "list")];
+  const target = await browser.waitForTarget(target => target.url().endsWith("/offscreen.html"));
+  const session = await interceptFetches(target, routes, "popup-audio");
+  const native = await target.createCDPSession();
+  const evaluate = async expression => {
+    const reply = await native.send("Runtime.evaluate", { expression, returnByValue: true });
+    if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.text);
+    return reply.result.value;
+  };
+  await evaluate(`globalThis.__e20NativeAudio = Audio; globalThis.__e20Audio = [];
+    globalThis.Audio = function (...args) { const audio = new __e20NativeAudio(...args); __e20Audio.push(audio); return audio; };`);
+  const count = () => [...routes.values()].reduce((sum, route) => sum + route.requests, 0);
+  async function until(predicate) {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const state = await popup.audio();
+      if (predicate(state)) return state;
+      await new Promise(done => setTimeout(done, 25));
+    }
+    throw new Error(`Popup audio state timed out: ${JSON.stringify(await popup.audio())}`);
+  }
+  const completed = () => until(state => state?.button === "Audio" && state.feedback[0].startsWith("Played"));
+  const rehover = async () => {
+    await tab.keyboard.press("Escape");
+    await hoverForPopup(tab, popup, "#verb");
+  };
+  try {
+    await write({ audioSources: sources, audioAutoplay: false });
+    await rehover();
+    const silent = count() === 0;
+    await popup.audio("play");
+    const played = await completed();
+    check("Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
+      silent && played.feedback[0] === "Played — Tokyo." && routes.get(base + "disabled").requests === 0
+        && routes.get(base + "failure").requests === 1 && routes.get(base + "bad.wav").requests === 1,
+      JSON.stringify({ silent, played, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
+
+    await popup.audio("choose");
+    const choices = await until(state => state?.choices.length === 4);
+    if (process.env.HACHIDORI_AUDIO_POPUP_SCREENSHOT) {
+      const { x, y, width, height } = choices.rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_AUDIO_POPUP_SCREENSHOT, clip: { x, y, width, height } });
+    }
+    await tab.keyboard.press("Escape");
+    const escaped = await popup.audio();
+    await popup.audio("choose");
+    await until(state => state?.choices.length === 4);
+    const candidate = await popup.audio("candidate", 3);
+    await tab.mouse.click(candidate.candidatePoint.x, candidate.candidatePoint.y);
+    const chosen = await completed();
+    const beforeWarm = count();
+    await popup.audio("play");
+    const warm = await completed();
+    const media = await evaluate("__e20Audio.map(audio => ({ ended: audio.ended, source: audio.getAttribute('src'), paused: audio.paused }))");
+    check("Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
+      choices.menuFits && choices.choices.join(",") === "Pronunciation 1,Unplayable,Tokyo,Osaka" && !escaped.menu
+        && escaped.focused === "gsm-hoshidicts-audio-button" && chosen.feedback[0] === "Played — Osaka."
+        && warm.feedback[0] === chosen.feedback[0] && count() === beforeWarm && media.length === 4
+        && media.every(item => item.paused && item.source === null), JSON.stringify({ choices, escaped, chosen, warm, media }));
+
+    await write({ audioSources: [source("auto", "custom", base + "tokyo.wav")], audioAutoplay: true });
+    await rehover();
+    await completed();
+    const beforeEcho = await evaluate("__e20Audio.length");
+    await write({ popupTheme: "light" });
+    await popup.click(".gsm-hoshidicts-kanji-link");
+    await until(state => state?.text.includes(GENERIC_KANJI_GLOSSARY));
+    await completed();
+    const beforeBack = await evaluate("__e20Audio.length");
+    await popup.click(".gsm-hoshidicts-kanji-back");
+    await until(state => state?.text.includes("to eat"));
+    const afterBack = await evaluate("__e20Audio.length");
+    check("Popup autoplay is optional and does not replay after presentation updates or Back",
+      beforeBack === beforeEcho + 1 && afterBack === beforeBack, JSON.stringify({ beforeEcho, beforeBack, afterBack }));
+
+    await write({ audioAutoplay: false, audioSources: [source("pending", "custom", base + "pending")] });
+    const hold = await target.createCDPSession();
+    let held;
+    hold.on("Fetch.requestPaused", event => { held = event.requestId; });
+    await hold.send("Fetch.enable", { patterns: [{ urlPattern: base + "pending", requestStage: "Request" }] });
+    await popup.audio("play");
+    const holdDeadline = Date.now() + 5000;
+    while (!held && Date.now() < holdDeadline) await new Promise(done => setTimeout(done, 20));
+    if (!held) throw new Error("Popup pronunciation did not start its pending fetch");
+    await tab.keyboard.press("Escape");
+    await hold.send("Fetch.failRequest", { requestId: held, errorReason: "Aborted" }).catch(() => {});
+    await hold.detach();
+    const dismissed = !await popup.visible();
+    await write({ audioSources: [source("current", "custom", base + "tokyo.wav")] });
+    await rehover();
+    await popup.audio("play");
+    await until(state => state?.feedback[0].startsWith("Playing"));
+    await write({ audioSources: [] });
+    await until(state => state?.feedback[0] === "Stopped.");
+    const changed = await evaluate("__e20Audio.at(-1).paused && __e20Audio.at(-1).getAttribute('src') === null");
+    await write({ audioSources: [source("current", "custom", base + "tokyo.wav")] });
+    await popup.audio("play");
+    await until(state => state?.feedback[0].startsWith("Playing"));
+    await tab.reload({ waitUntil: "load" });
+    const navigated = await evaluate("__e20Audio.at(-1).paused && __e20Audio.at(-1).getAttribute('src') === null");
+    const status = await settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
+    check("Popup audio cancels obsolete discovery and playback on dismissal, source changes and navigation",
+      dismissed && changed && navigated && status.generation === original.status.generation,
+      JSON.stringify({ dismissed, changed, navigated, status }));
+  } finally {
+    await evaluate("globalThis.Audio = __e20NativeAudio; delete globalThis.__e20NativeAudio; delete globalThis.__e20Audio");
+    await native.detach();
+    await session.detach();
+    await write({ audioSources: original.options.audioSources, audioAutoplay: original.options.audioAutoplay ?? false,
+      popupTheme: original.options.popupTheme });
+    await tab.keyboard.press("Escape");
+  }
+}
+
 async function checkAudioSettings(page, browser) {
   await showSettingsSection(page, "audio");
   const original = await page.evaluate(async () => ({
@@ -3027,15 +3211,7 @@ async function checkAudioSettings(page, browser) {
   const route = (path, body, contentType = "application/json", status = 200) => {
     routes.set(`https://audio.example.test/${path}`, { body, contentType, status, requests: 0 });
   };
-  // A small genuine PCM clip: Chrome must decode it and emit native `ended`.
-  const samples = 8000;
-  const wav = Buffer.alloc(44 + samples * 2);
-  wav.write("RIFF"); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
-  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
-  wav.write("data", 36); wav.writeUInt32LE(samples * 2, 40);
-  for (let i = 0; i < samples; i++) wav.writeInt16LE(i % 2 ? 100 : -100, 44 + i * 2);
-  route("valid.wav", wav, "audio/wav");
+  route("valid.wav", makeAudioWav(), "audio/wav");
   route("invalid.wav", "not audio", "audio/wav");
   route("list?term=%E8%81%9E%E3%81%8F&reading=%E3%81%8D%E3%81%8F&lang=ja", JSON.stringify({
     type: "audioSourceList", audioSources: [
@@ -5683,6 +5859,7 @@ async function main() {
   await checkSourceFallback(page, tab, popup);
   await checkFrequencyDirection(browser, page, tab, popup);
   await checkPopupMetadata(browser, page, tab, popup);
+  await checkPopupAudio(page, tab, popup, browser);
   await hover("#verb");
 
   const clickedKanji = await popup.click(".gsm-hoshidicts-kanji-link");

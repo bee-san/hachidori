@@ -11,6 +11,9 @@ test("audio source options retain ordered enabled and disabled rows without a so
   assert.deepEqual(DEFAULT_OPTIONS.audioSources, [source("default-tts", { type: "text-to-speech-reading" })]);
   assert.deepEqual(normaliseOptions({}).audioSources, DEFAULT_OPTIONS.audioSources);
   assert.deepEqual(normaliseOptions({ audioSources: [] }).audioSources, []);
+  assert.equal(normaliseOptions({}).audioAutoplay, false);
+  assert.deepEqual(validateOptionsPatch({ audioAutoplay: true }), { audioAutoplay: true });
+  assert.throws(() => validateOptionsPatch({ audioAutoplay: "true" }));
   const sources = Array.from({ length: 33 }, (_, index) => source(String(index), { enabled: index % 2 === 0,
     type: ["custom", "custom-json", "text-to-speech", "text-to-speech-reading"][index % 4] }));
   assert.deepEqual(validateOptionsPatch({ audioSources: sources }), { audioSources: sources });

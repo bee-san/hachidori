@@ -790,22 +790,48 @@ Yomitan JSON discovery retains ordered named candidates. The four source types
 come from the pinned GSM PR #549 implementation, without its product caps.
 
 The worker forwards validated audio messages separately from engine requests and
-storage writes. Chrome's sender document ID and request ID own Test cancellation.
-A synchronous worker token retires stopped or superseded Tests before an
-offscreen-startup retry can dispatch them. Offscreen lazily imports the player;
-no audio requests wait on engine selection or acquire its mutation lock.
+storage writes. Chrome's sender document ID and request ID own cancellation and
+playback progress. A synchronous worker token retires stopped or superseded
+operations before an offscreen-startup retry can dispatch them. Popup requests
+use the enabled persisted sources, not caller-provided URLs. Offscreen lazily
+imports the player; audio never acquires the dictionary mutation lock.
 
 The offscreen document declares DOM_SCRAPING and AUDIO_PLAYBACK together. Chrome
 keeps it while its dictionary-engine purpose remains active, including after
-audio's 30-second idle window. URL playback fetches without credentials and uses
-one temporary Blob URL, releasing it on natural completion, error, or stop.
+audio's 30-second idle window. URL playback fetches without credentials.
 Candidate fallback includes actual decoding/playback failures. Speech uses the
 chosen native voice and expression or reading; unavailable browser voices are a
 visible error. Only natural completion reports success; the Settings Test has
 the reference's 15-second deadline. Leaving Audio, editing its tested source, or
-closing Settings stops its owned Test. This stage adds no popup autoplay or cache.
+closing Settings stops its owned Test.
+
+Each term result has a fixed Audio control. Shift-click, right-click or Down opens
+the source/name chooser; Escape closes it before dismissing the popup. A choice
+pins the source descriptor, term, candidate index, name and URL. The offscreen
+owner revalidates it against current discovery, including provider reordering
+after expiry. Failed choices are forgotten so ordinary playback can fall back.
+The content controller retains the explicit selection for the later Anki path;
+this stage does not add Anki submission.
+
+Optional autoplay is off by default and runs once for the first current result
+of a logical lookup/tab. Expansion, presentation echoes, Note refresh and Back
+do not replay it. One content owner binds progress to its connected result,
+request and popup level. Replacement, source changes, dismissal and navigation
+retire playback and discovery; pruning a child preserves a surviving parent's
+manual playback. Audio failure stays separate from definitions and Note saves.
+
+The shared offscreen repository uses the pinned GSM cache retention budgets:
+256 candidate lists / 2 MiB / five minutes and 64 media URLs / 64 MiB / thirty
+minutes. UTF-8 keys count toward byte budgets. Media has one Blob-backed object
+URL, retained for warm replay; active leases defer revocation until release if
+the cache evicts or expires it. Oversized values still play uncached—these are
+retention budgets, not input limits. A twelve-second discovery/fallback deadline
+pauses during native playback and resumes if playback fails, without imposing a
+recording-duration limit.
 
 ![Ordered pronunciation sources](assets/audio-settings.png)
+
+![Popup pronunciation chooser](assets/audio-popup.png)
 
 ### Live Design preview
 

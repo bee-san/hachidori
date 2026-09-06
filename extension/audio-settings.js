@@ -13,8 +13,7 @@ export function createAudioSettingsController({ document, readSources, editSourc
   const window = document.defaultView;
   const list = document.getElementById("audio-source-list");
   const rows = new Map();
-  const labels = { custom: "Audio URL", "custom-json": "Yomitan JSON",
-    "text-to-speech": "Speech: term", "text-to-speech-reading": "Speech: reading" };
+  const labels = window.HDReaderOptions.AUDIO_SOURCE_LABELS;
   let voices = [];
   let voiceVersion = 0;
   let active = null;

@@ -653,11 +653,13 @@
             <p class="hint">Choose where pronunciations come from, in priority order.</p>
           </div>
           <p>Text-to-speech is enabled on a fresh install. Keep it, choose a voice, or add your own audio URLs below.</p>
+          <label class="lookup-enable"><span>Automatically play the first lookup result</span><input id="opt-audio-autoplay" type="checkbox"></label>
+          <p class="field-hint">Off by default. You can always use Audio in the popup; Shift-click or right-click it to choose a pronunciation.</p>
           <p class="field-hint">URL templates accept <code>{term}</code>, <code>{expression}</code>, <code>{reading}</code> and <code>{language}</code> (ja). Substitutions are URL-encoded. Yomitan JSON sources return an <code>audioSourceList</code>.</p>
           <ol id="audio-source-list" class="audio-source-list"></ol>
           <p id="audio-source-empty" class="hint" hidden>No audio sources. Add one to configure pronunciation.</p>
           <button id="audio-source-add" type="button" class="ghost">Add source</button>
-          <p class="field-hint">Test plays 聞く / きく using this row, even if it is disabled. URL sources contact the configured provider; some system voices use an online service. Nothing plays automatically.</p>
+          <p class="field-hint">Test plays 聞く / きく using this row, even if it is disabled. URL sources contact the configured provider; some system voices use an online service.</p>
           <div class="options-feedback-slot"></div>
         </section>
       </main>

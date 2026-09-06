@@ -3,7 +3,7 @@
 # Hachidori test harness
 
 Twelve pieces, run in this order. The JavaScript checks use Node built-ins except
-`extension-smoke.mjs`, which needs jsdom. The browser checks need Chrome and
+`extension-smoke.mjs` and `audio-content.test.mjs`, which need jsdom. The browser checks need Chrome and
 `puppeteer-core`; those dependencies stay outside the repository.
 
 ```sh
@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 371 checks, all of
+full request→reply round trip per contract-C message type. 373 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -578,16 +578,27 @@ failure and Stop have distinct feedback. A stopped fetch cannot change the UI,
 and the same offscreen document and engine survive 31 seconds of audio silence.
 `HACHIDORI_AUDIO_SCREENSHOT` captures the Audio Settings page.
 
+Popup audio adds four browser assertions for default-off silence, enabled-source
+and decode fallback, source/name choice with native cached replay, once-per-view
+autoplay, and cancellation on dismissal, source edits and navigation. The chooser
+is checked against visible popup bounds and selected with a real mouse click;
+Escape restores Audio focus without hiding definitions.
+`HACHIDORI_AUDIO_POPUP_SCREENSHOT` captures the chooser. Test instrumentation
+observes native Audio instances without replacing decoding or completion events.
+
 The harness uses Chromium's `--disable-audio-output` clocked fake output device.
 This runs native fetching, decoding, playback progression and `ended` without
 requiring audio hardware; it does not bypass autoplay or synthesize completion.
 Without it, this headless macOS host accepts playback but stalls its audio clock
 at 64 ms. Audible hardware output and installed speech voices are not proved.
 
-`node --test test/audio-sources.test.mjs test/audio-player.test.mjs test/audio-offscreen.test.mjs`
-runs 11 focused tests for strict source options, defaults versus explicit empty
+`node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs`
+runs 25 focused tests for strict source options, defaults versus explicit empty
 lists, template encoding, candidate order, native callback ownership, cleanup,
-TTS supersession and unavailable selected voices, document-scoped cancellation and the Test deadline. Extension
+TTS supersession and unavailable selected voices, document-scoped cancellation,
+Test and fallback deadlines, LRU/TTL/byte accounting, leased URL cleanup, exact
+candidate identity, stale controls, chooser focus/failure recovery and autoplay,
+including delayed initial options without repeating a manual play. Extension
 checks exercise the actual worker's cancelled startup retries and Settings draft
 conflicts rather than duplicating their storage machinery.
 
@@ -595,7 +606,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 135 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 139 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -835,7 +846,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 135 assertions, and the summary line
+`PLANNED` at the top of the file names all 139 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

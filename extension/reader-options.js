@@ -19,6 +19,7 @@
     popupToolbarPosition: "auto",
     customPopupCss: "",
     audioSources: [{ id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" }],
+    audioAutoplay: false,
     popupWidthPx: 560,
     popupHeightPx: 420,
     popupOpacityPercent: 85,
@@ -83,7 +84,9 @@
   const ACTIVATION_NAMES = new Map(ACTIVATION_KEYS.map((key) => [key.toLowerCase(), key]));
   const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
   const OPTION_KEYS = Object.keys(DEFAULT_OPTIONS);
-  const AUDIO_SOURCE_TYPES = ["custom", "custom-json", "text-to-speech", "text-to-speech-reading"];
+  const AUDIO_SOURCE_LABELS = { custom: "Audio URL", "custom-json": "Yomitan JSON",
+    "text-to-speech": "Speech: term", "text-to-speech-reading": "Speech: reading" };
+  const AUDIO_SOURCE_TYPES = Object.keys(AUDIO_SOURCE_LABELS);
 
   function normaliseAudioSources(value) {
     if (!Array.isArray(value)) return [];
@@ -236,7 +239,7 @@
   globalThis.HDReaderOptions = {
     DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
-    AUDIO_SOURCE_TYPES,
+    AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     projectStoredOptions, validateOptionsPatch,
     resolvePopupImageSources,

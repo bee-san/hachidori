@@ -35,6 +35,7 @@
         "reader-options.js",
         "dictionary-group-state.js",
         "external-links.js",
+        "audio-content.js",
         "render/glossary.js",
         "render/popup.js",
         "content.js"
