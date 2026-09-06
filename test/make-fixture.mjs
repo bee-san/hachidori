@@ -595,7 +595,7 @@ export function compactSummaryFixture() {
   const image = path => ({ tag: 'img', path, width: 16, height: 16 });
   const leading = [{ type: 'structured-content', content: { tag: 'div', content: [
     { tag: 'span', data: { content: 'part-of-speech' }, content: 'noun' },
-    image('media/kanji.png'),
+    { ...image('media/kanji.png'), collapsed: true },
     { tag: 'ul', data: { content: 'glossary' }, content: [
       { tag: 'li', content: '短い説明 • • 使い方' }, { tag: 'li', content: '別の意味' },
     ] },

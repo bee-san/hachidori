@@ -9751,7 +9751,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
 
   const summaryRaw = JSON.stringify([{ type: "structured-content", content: [
     { tag: "span", data: { content: "part-of-speech" }, content: "noun" },
-    { tag: "img", path: "media/kanji.png", width: 16, height: 16 },
+    { tag: "img", path: "media/kanji.png", width: 16, height: 16, collapsed: true },
     { tag: "ul", data: { content: "glossary" }, content: [
       { tag: "li", content: "first • • second" }, { tag: "li", content: "third" },
     ] },
@@ -10253,7 +10253,9 @@ async function compactSummaryRenderStage({ HDGlossary, HDPopup, document, window
     const live = summary?.dataset.hoshidictsDictionary === "Illustrated"
       && JSON.stringify([...summary.querySelectorAll("li")].map(node => node.textContent)) === JSON.stringify(["first", "second"])
       && image && mediaRequests.length === 2 && mediaRequests[1].generation === 23
-      && mediaRequests[1].dictionary === "Illustrated" && mediaRequests[1].isCurrent();
+      && mediaRequests[1].dictionary === "Illustrated" && mediaRequests[1].isCurrent()
+      && image.closest(".gloss-image-link").dataset.collapsed === "false"
+      && popup.querySelector(".gsm-hoshidicts-glossary-content .gloss-image-link").dataset.collapsed === "true";
     const retained = popup.querySelector(".gsm-hoshidicts-expression") === expression
       && popup.querySelector(".gsm-hoshidicts-note-form") === note && document.activeElement === input
       && input.value === "retained draft" && input.selectionStart === 2 && input.selectionEnd === 6
