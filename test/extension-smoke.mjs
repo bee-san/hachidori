@@ -9805,19 +9805,24 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   const duplicateText = "a".repeat(200) + " • " + "a".repeat(200) + " • tail";
   sandbox.__summaryWork = { bulletText, longText, splitFragments: 0, codePoints: 0, emptyNormalizations: 0,
     largeNormalizations: 0, largeTrims: 0, matchedCodeUnits: 0, duplicateText, duplicateMatches: 0,
-    countDuplicateBoundaries: false, duplicateBoundaries: 0 };
+    countDuplicateBoundaries: false, duplicateBoundaries: 0, spanNormalizations: 0 };
   runInContext(`
     (() => {
       const split = String.prototype.split;
       const at = Array.prototype.at;
       const replace = String.prototype.replace;
       const trim = String.prototype.trim;
+      const toLowerCase = String.prototype.toLowerCase;
       const codePointAt = String.prototype.codePointAt;
       const exec = RegExp.prototype.exec;
       const iterator = String.prototype[Symbol.iterator];
       Array.prototype.at = function (...args) {
         if (__summaryWork.countDuplicateBoundaries) __summaryWork.duplicateBoundaries += 1;
         return at.apply(this, args);
+      };
+      String.prototype.toLowerCase = function () {
+        if (String(this) === "span") __summaryWork.spanNormalizations += 1;
+        return toLowerCase.call(this);
       };
       String.prototype.split = function (...args) {
         const result = split.apply(this, args);
@@ -9855,6 +9860,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
         String.prototype.split = split;
         String.prototype.replace = replace;
         String.prototype.trim = trim;
+        String.prototype.toLowerCase = toLowerCase;
         String.prototype.codePointAt = codePointAt;
         RegExp.prototype.exec = exec;
         String.prototype[Symbol.iterator] = iterator;
@@ -9870,18 +9876,27 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     sandbox.__summaryWork.countDuplicateBoundaries = true;
     const repeated = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Repeated", glossary: JSON.stringify([duplicateText]) }]);
     sandbox.__summaryWork.countDuplicateBoundaries = false;
+    sandbox.__summaryWork.spanNormalizations = 0;
+    const afterEmptySenses = HDPopup.extractCompactDefinitionSummary([{ dictionary: "Empty senses", glossary: JSON.stringify([
+      ...Array.from({ length: 16 }, () => ({ tag: "span", content: Array.from({ length: 128 }, () => ({ tag: "span", content: "" })) })),
+      "useful final sense",
+    ]) }], null, 1);
     boundedSummaryWork = JSON.stringify(bullets?.items) === JSON.stringify(["first", "second"])
       && long?.items[0] === "長😀".repeat(119) + "長…"
       && sandbox.__summaryWork.splitFragments === 0 && sandbox.__summaryWork.codePoints <= 241
       && sandbox.__summaryWork.emptyNormalizations === 0 && sandbox.__summaryWork.largeNormalizations === 0
       && sandbox.__summaryWork.largeTrims === 0 && sandbox.__summaryWork.matchedCodeUnits <= 482
       && JSON.stringify(repeated?.items) === JSON.stringify(["a".repeat(200), "tail"])
-      && sandbox.__summaryWork.duplicateMatches <= 6 && sandbox.__summaryWork.duplicateBoundaries <= 3;
+      && sandbox.__summaryWork.duplicateMatches <= 6 && sandbox.__summaryWork.duplicateBoundaries <= 3
+      && JSON.stringify(afterEmptySenses?.items) === JSON.stringify(["useful final sense"])
+      // Observed tag work before per-sense fallback was introduced, not an input cap.
+      && sandbox.__summaryWork.spanNormalizations <= 4880;
   } finally { sandbox.__restoreSummaryWork(); }
   const summaryWork = { splitFragments: sandbox.__summaryWork.splitFragments, codePoints: sandbox.__summaryWork.codePoints,
     emptyNormalizations: sandbox.__summaryWork.emptyNormalizations, largeNormalizations: sandbox.__summaryWork.largeNormalizations,
     largeTrims: sandbox.__summaryWork.largeTrims, matchedCodeUnits: sandbox.__summaryWork.matchedCodeUnits,
-    duplicateMatches: sandbox.__summaryWork.duplicateMatches, duplicateBoundaries: sandbox.__summaryWork.duplicateBoundaries };
+    duplicateMatches: sandbox.__summaryWork.duplicateMatches, duplicateBoundaries: sandbox.__summaryWork.duplicateBoundaries,
+    spanNormalizations: sandbox.__summaryWork.spanNormalizations };
   delete sandbox.__summaryWork;
   delete sandbox.__restoreSummaryWork;
   const duplicate = "a".repeat(200);
