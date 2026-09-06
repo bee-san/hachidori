@@ -2439,7 +2439,7 @@
     }
     if (toolbarChanged) {
       for (const level of levels) {
-        if (level.popup?.hidden) positionToolbar(level, null, true);
+        if (level.popup && (!options.hoverEnabled || level.popup.hidden)) positionToolbar(level, null, true);
       }
     }
     if (levels.length > options.popupNestingMaxDepth + 1) pruneLevels(options.popupNestingMaxDepth + 1);

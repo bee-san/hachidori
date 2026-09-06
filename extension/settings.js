@@ -164,8 +164,6 @@ function showSettingsSection(focus = false) {
   }
   for (const id of Object.keys(SECTION_STATUSES)) syncNavigationStatus(id);
   renderThemeChoices();
-  const toolbar = element("opt-popup-toolbar");
-  if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
   updateDesignPreview();
   if (fragment === "settings-content") element("settings-content").focus();
   else if (focus) element(activeSection).querySelector("h1").focus();
@@ -1049,6 +1047,8 @@ function renderOptions() {
   element("opt-japanese-only").checked = options.onlyScanJapaneseText;
   element("opt-source-highlight").checked = options.sourceHighlightEnabled;
   renderThemeChoices();
+  const toolbar = element("opt-popup-toolbar");
+  if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
   const mode = element("opt-lookup-mode");
   if (mode !== document.activeElement) mode.value = options.lookupMode;
   const activation = element("opt-activation-key");
