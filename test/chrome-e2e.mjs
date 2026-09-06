@@ -210,6 +210,9 @@ const PLANNED = [
   "live appearance changes preserve reader Notes and resources while applying the selected page highlight",
   "toolbar preferences persist and move the preview without detaching focused Notes or rebuilding cards",
   "live toolbar overrides apply to root and child and survive resize without focus or resource loss",
+  "custom CSS editor previews unsaved text, persists its count and resets only its stylesheet",
+  "custom CSS overrides built-in and late dictionary styles only inside the popup shadow tree and tolerates invalid CSS",
+  "live custom CSS updates root and child without losing Notes, Back or making engine requests",
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
@@ -974,6 +977,7 @@ async function popupReader(page, depth = 0) {
         });
         return {
           hidden: this.hidden, entries, scrollTop: this.scrollTop,
+          customOutline: getComputedStyle(this).outlineColor,
           showMore: Boolean(this.querySelector(".gsm-hoshidicts-show-more")),
           toolbar: this.dataset.toolbarPosition,
           tabs: tabs.map(button => ({ key: tabKey(button), label: button.textContent, title: button.title,
@@ -1466,6 +1470,9 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
       && value.entries[0].cards[0].dictionary === GENERIC_KANJI_TITLE, "E8 clicked-kanji group context");
     await child.dictionaryTabs("select", "all");
     const beforeBackRequests = (await requests()).length;
+    await optionsWrite({ customPopupCss: ".gsm-hoshidicts-popup { outline-color: rgb(12, 34, 56); }" });
+    await until(childState, value => value.customOutline === "rgb(12, 34, 56)", "E18 live child CSS");
+    evidence.cssChild = (await rootState()).customOutline === "rgb(12, 34, 56)";
     require(await child.click(".gsm-hoshidicts-kanji-back"), "E8 term Back");
     const back = await until(childState, value => selectedReady(studyKey)(value)
       && value.entries.length === beforeBack.entries.length && !value.showMore
@@ -1535,6 +1542,13 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await presentation({}, groups);
     await until(childState, value => value?.tabs.find(tab => tab.key === studyKey)?.label === "Focused learning", "E8 protected state event delivered");
     const protectedView = await rootState(), protectedDraft = await popup.retainedControls();
+    await optionsWrite({ customPopupCss: ".gsm-hoshidicts-popup { outline-color: rgb(56, 34, 12); }" });
+    await until(rootState, value => value.customOutline === "rgb(56, 34, 12)", "E18 live root CSS");
+    const cssDraft = await popup.retainedControls();
+    evidence.css = evidence.cssChild && (await childState()).customOutline === "rgb(56, 34, 12)"
+      && (await rootState()).sameCards && cssDraft.sameForm && cssDraft.mounted && cssDraft.inputFocused
+      && cssDraft.draft === draft.draft && equal(cssDraft.selection, [2, 7]);
+    await optionsWrite({ customPopupCss: "" });
     require(protectedView.sameCards && protectedView.samePanel && protectedView.sameAnchor
       && protectedView.entries[0].cards.length === 2 && protectedDraft.sameForm && protectedDraft.mounted
       && protectedDraft.inputFocused && protectedDraft.draft === draft.draft && equal(protectedDraft.selection, [2, 7]), "E8 live Note and child protect their original projection");
@@ -1721,6 +1735,9 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     evidence.passed && evidence.appearance === true, JSON.stringify({ appearance: evidence.appearance, child: evidence.appearanceChild }));
   check("live toolbar overrides apply to root and child and survive resize without focus or resource loss",
     evidence.passed && evidence.toolbar === true, JSON.stringify({ toolbar: evidence.toolbar, child: evidence.toolbarChild }));
+  check("live custom CSS updates root and child without losing Notes, Back or making engine requests",
+    evidence.passed && evidence.css && evidence.back && evidence.live.liveRequests.length === 1,
+    JSON.stringify({ css: evidence.css, child: evidence.cssChild }));
 }
 
 async function checkCompactSummaries(settings, tab, popup, browser) {
@@ -3161,6 +3178,97 @@ async function checkDesignAppearance(page, frame) {
   }
 }
 
+async function checkCustomCssPreview(page, frame) {
+  const saved = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
+  const css = "/* My popup */\n.gsm-hoshidicts-popup {\n  outline-color: rgb(12, 34, 56);\n  font-size: 17px;\n}\nbody { background: red; }\n.bad { color: ???; }";
+  const savedStatus = () => page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
+  const input = text => page.evaluate(text => {
+    const editor = document.getElementById("opt-custom-popup-css");
+    editor.value = text;
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    const root = document.getElementById("design-preview").contentDocument.getElementById("preview-host").shadowRoot;
+    return { color: getComputedStyle(root.querySelector(".gsm-hoshidicts-popup")).outlineColor,
+      status: document.getElementById("options-status").textContent,
+      count: document.getElementById("custom-css-count").textContent };
+  }, text);
+  await frame.evaluate(() => {
+    const root = document.getElementById("preview-host").shadowRoot;
+    const popup = root.querySelector(".gsm-hoshidicts-popup");
+    const base = new CSSStyleSheet();
+    base.replaceSync(".gsm-hoshidicts-popup { outline-color: rgb(1, 2, 3); }");
+    root.adoptedStyleSheets = [...root.adoptedStyleSheets, base];
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const form = popup.querySelector("form");
+    form.elements.definition.value = "Keep my draft";
+    window.cssProof = { base, form, card: popup.querySelector(".gsm-hoshidicts-glossary-card"),
+      pageBackground: getComputedStyle(document.body).backgroundColor };
+  });
+  try {
+    const immediate = await input(css);
+    await savedStatus();
+    const persisted = await page.evaluate(async () => (await chrome.storage.local.get("options")).options.customPopupCss);
+    const cascade = await frame.evaluate(() => {
+      const root = document.getElementById("preview-host").shadowRoot;
+      const popup = root.querySelector(".gsm-hoshidicts-popup");
+      const late = document.createElement("style");
+      late.textContent = ".gsm-hoshidicts-popup { outline-color: rgb(7, 8, 9); }";
+      root.append(late);
+      window.cssProof.late = late;
+      const style = getComputedStyle(popup);
+      return style.outlineColor === "rgb(12, 34, 56)" && style.fontSize === "17px"
+        && getComputedStyle(document.body).backgroundColor === window.cssProof.pageBackground
+        && root.adoptedStyleSheets.length === 2 && root.adoptedStyleSheets[0] === window.cssProof.base
+        && root.querySelector("form") === window.cssProof.form && window.cssProof.form.elements.definition.value === "Keep my draft"
+        && root.querySelector(".gsm-hoshidicts-glossary-card") === window.cssProof.card;
+    });
+    if (process.env.HACHIDORI_CUSTOM_CSS_SCREENSHOT) {
+      await input("/* A little more breathing room */\n.gsm-hoshidicts-popup {\n  font-size: 17px;\n}\n\n.gsm-hoshidicts-glossary-card {\n  border-radius: 10px;\n}");
+      await savedStatus();
+      await frame.evaluate(() => window.cssProof.form.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+      await page.setViewport({ width: 1440, height: 1000 });
+      await page.$eval("#opt-custom-popup-css", editor => editor.scrollIntoView({ block: "center" }));
+      await page.screenshot({ path: process.env.HACHIDORI_CUSTOM_CSS_SCREENSHOT });
+      await frame.evaluate(() => {
+        const popup = document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+        popup.querySelector(".gsm-hoshidicts-note-button").click();
+        window.cssProof.form = popup.querySelector("form");
+      });
+    }
+    const beforeReset = await page.evaluate(() => chrome.storage.local.get(["options", "dictionaryState"]));
+    await page.$eval("#reset-custom-css", button => button.click());
+    await savedStatus();
+    const reset = await page.evaluate(async before => {
+      const after = await chrome.storage.local.get(["options", "dictionaryState"]);
+      return after.options.customPopupCss === "" && document.getElementById("opt-custom-popup-css").value === ""
+        && document.getElementById("custom-css-count").textContent === "0 characters"
+        && Object.keys(before.options).filter(key => !["revision", "customPopupCss"].includes(key))
+          .every(key => JSON.stringify(before.options[key]) === JSON.stringify(after.options[key]))
+        && JSON.stringify(before.dictionaryState) === JSON.stringify(after.dictionaryState);
+    }, beforeReset);
+    const detached = await frame.evaluate(() => {
+      const root = document.getElementById("preview-host").shadowRoot;
+      return root.adoptedStyleSheets.length === 1 && root.adoptedStyleSheets[0] === window.cssProof.base
+        && getComputedStyle(root.querySelector(".gsm-hoshidicts-popup")).outlineColor === "rgb(1, 2, 3)"
+        && root.querySelector("form") === window.cssProof.form;
+    });
+    check("custom CSS editor previews unsaved text, persists its count and resets only its stylesheet",
+      immediate.color === "rgb(12, 34, 56)" && immediate.status === "Unsaved changes…"
+        && immediate.count === `${css.length} characters` && persisted === css && reset && detached,
+      JSON.stringify({ immediate, reset, detached }));
+    check("custom CSS overrides built-in and late dictionary styles only inside the popup shadow tree and tolerates invalid CSS", cascade);
+  } finally {
+    await frame.evaluate(() => {
+      const root = document.getElementById("preview-host").shadowRoot;
+      root.adoptedStyleSheets = root.adoptedStyleSheets.filter(sheet => sheet !== window.cssProof.base);
+      window.cssProof.late?.remove();
+      window.cssProof.form.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      delete window.cssProof;
+    });
+    await input(saved.customPopupCss || "");
+    await savedStatus();
+  }
+}
+
 async function checkDesignPreview(page) {
   const original = await readSettingsControls(page, ["opt-popup-columns", "opt-compact-summary", "opt-frequency-names"]);
   const originalViewport = page.viewport();
@@ -3243,6 +3351,7 @@ async function checkDesignPreview(page) {
     await page.setViewport({ width: 1280, height: 900 });
     await checkDesignAppearance(page, frame);
     await checkToolbarPreview(page, frame);
+    await checkCustomCssPreview(page, frame);
     if (process.env.HACHIDORI_DESIGN_SCREENSHOT) {
       await page.setViewport({ width: 1440, height: 1000 });
       await frame.evaluate(async () => {

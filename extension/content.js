@@ -100,6 +100,7 @@
 
   let disposed = false;
   let appearance;
+  let customStyle;
   let options = { ...DEFAULT_OPTIONS };
   let dictionaries = [];
   let dictionaryGroups = [];
@@ -759,6 +760,7 @@
       // Teardown is best effort.
     }
     appearance?.destroy();
+    customStyle?.destroy();
     host?.remove();
     host = null;
     shadow = null;
@@ -1251,6 +1253,8 @@
     document.body.appendChild(host);
     appearance = window.HDPopup.createPopupAppearance(host);
     appearance.update(options);
+    customStyle = window.HDPopup.createCustomPopupStyle(shadow);
+    customStyle.update(options.customPopupCss);
 
     highlighter = window.HDPopup.createSourceHighlighter(
       window,
@@ -2438,6 +2442,7 @@
     optionsStorageRevision = revision;
     options = next;
     appearance?.update(options);
+    const cssChanged = customStyle?.update(options.customPopupCss);
     if (highlightChanged) {
       for (const level of levels) level.view?.setSourceHighlightEnabled(options.sourceHighlightEnabled);
     }
@@ -2452,7 +2457,7 @@
     if ((sizeChanged || toolbarChanged) && options.hoverEnabled && rootLevel.popup && !rootLevel.popup.hidden) {
       positionPopup(rootLevel, toolbarChanged);
     }
-    if ((columnsChanged || sizeChanged) && options.hoverEnabled) {
+    if ((columnsChanged || sizeChanged || cssChanged) && options.hoverEnabled) {
       for (const level of levels) {
         if (!level.popup?.hidden) level.view?.scheduleMasonry();
       }

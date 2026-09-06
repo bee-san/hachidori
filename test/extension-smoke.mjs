@@ -1398,6 +1398,21 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const readerContext = createContext({});
     runInContext(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"), readerContext);
     const reader = readerContext.HDReaderOptions;
+    const cssCases = [];
+    for (const value of ["", "/* 日本語 */\r\n.gsm-hoshidicts-popup { color: red; }\n", "/*" + "x".repeat(40_000) + "*/"]) {
+      await local.set({ options: saved.options });
+      const reply = await send(message({ customPopupCss: value }));
+      const repeated = await send(message({ customPopupCss: value }, { baseRevision: reply.options?.revision }));
+      cssCases.push(reply.ok === true && reply.options?.customPopupCss === value
+        && repeated.options?.revision === reply.options.revision);
+    }
+    for (const value of [null, 1, {}, false]) {
+      await local.set({ options: saved.options });
+      cssCases.push((await send(message({ customPopupCss: value }))).ok === false && await unchanged(saved));
+    }
+    check("custom popup CSS preserves exact strings without a source-specific cap and uses idempotent options CAS",
+      reader.normaliseOptions({}).customPopupCss === "" && reader.DESIGN_OPTION_KEYS.includes("customPopupCss")
+        && cssCases.every(Boolean), JSON.stringify(cssCases));
     const toolbarCases = [];
     for (const value of ["auto", "top", "bottom"]) {
       await local.set({ options: saved.options });
@@ -4370,6 +4385,10 @@ async function main() {
   check("Design lazily previews unsaved presentation edits and retains the shared save feedback across sections",
     navigationSettings?.design === true, JSON.stringify(navigationSettings));
   const preview = await designPreviewStage();
+  check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
+    preview?.cssOwner === true, JSON.stringify(preview));
+  check("preview stylesheet load before its first update is safe and CSS edits retain mounted Notes and cards",
+    preview?.earlyLoad === true && preview.cssPreview === true, JSON.stringify(preview));
   check("Design uses production term, kanji, media and metadata views without saving sample Notes",
     preview?.sample === true && preview.note === true && preview.back === true, JSON.stringify(preview));
   check("Design updates presentation without rebuilding cards and skips unchanged option echoes",
@@ -4379,6 +4398,8 @@ async function main() {
   check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
     preview?.kanjiSource === true, JSON.stringify(preview));
   const frequencySettings = await settingsFrequencyStage();
+  check("the CSS editor counts unsaved text, preserves revision-bound drafts and resets only custom CSS",
+    frequencySettings?.css === true, JSON.stringify(frequencySettings?.css));
   const sourceHighlight = await sourceHighlightStage();
   check("source highlighting reuses unchanged scoped ranges without traversing other owners",
     sourceHighlight?.ownership === true, JSON.stringify(sourceHighlight));
@@ -5388,6 +5409,38 @@ async function designPreviewStage() {
     for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "design-preview.js"]) {
       window.eval(readFileSync(resolve(EXTENSION, file), "utf8"));
     }
+    let earlyLoad = true;
+    window.addEventListener("error", event => { earlyLoad = false; event.preventDefault(); });
+    window.document.getElementById("preview-host").shadowRoot.querySelector("link")
+      .dispatchEvent(new window.Event("load"));
+    await new Promise(done => window.setTimeout(done, 60));
+    // jsdom does not implement constructed sheets. The browser suite proves
+    // CSS parsing/cascade; this double counts ownership and no-op work only.
+    let parses = 0;
+    window.CSSStyleSheet = class { replaceSync(text) { this.text = text; parses += 1; } };
+    const shadow = window.document.getElementById("preview-host").shadowRoot;
+    let sheets = [];
+    let attachments = 0;
+    Object.defineProperty(shadow, "adoptedStyleSheets", {
+      get: () => sheets, set(value) { sheets = value; attachments += 1; },
+    });
+    let cssOwner = false;
+    if (window.HDPopup.createCustomPopupStyle) {
+      const base = {};
+      shadow.adoptedStyleSheets = [base];
+      const owner = window.HDPopup.createCustomPopupStyle(shadow);
+      const empty = !owner.update("") && parses === 0 && attachments === 1;
+      const first = owner.update(".gsm-hoshidicts-popup { color: red; }");
+      const sheet = sheets.at(-1);
+      const unchanged = !owner.update(sheet.text) && parses === 1 && attachments === 2;
+      const second = owner.update("invalid CSS");
+      cssOwner = empty && first && unchanged && second && sheets[0] === base && sheets.at(-1) === sheet
+        && parses === 2 && attachments === 2 && owner.update("") && sheets.length === 1;
+      owner.update("b { color: blue; }");
+      owner.destroy();
+      cssOwner &&= sheets.length === 1 && sheets[0] === base;
+      parses = 0;
+    }
     let state = { revision: 0, dictionaries: [], groups: [] };
     let options = { ...window.HDReaderOptions.DEFAULT_OPTIONS };
     const update = () => window.HDDesignPreview.update(options, state);
@@ -5402,6 +5455,16 @@ async function designPreviewStage() {
     query(".gsm-hoshidicts-note-button").click();
     const form = query("form");
     form.elements.definition.value = "A preview draft";
+    const source = window.document.getElementById("preview-source");
+    const sourceRect = source.getBoundingClientRect.bind(source);
+    let cssPlacements = 0;
+    source.getBoundingClientRect = () => { cssPlacements += 1; return sourceRect(); };
+    options = { ...options, customPopupCss: ".gsm-hoshidicts-popup { color: red; }" };
+    update();
+    await settle();
+    const cssPreview = parses === 1 && cssPlacements === 1 && query("form") === form
+      && query(".gsm-hoshidicts-glossary-card") === card;
+    source.getBoundingClientRect = sourceRect;
     options = { ...options, showFrequencyDictionaryNames: false, showPitchAccentBadge: false,
       showCompactDefinitionSummary: true, popupColumns: 2 };
     update();
@@ -5489,7 +5552,7 @@ async function designPreviewStage() {
     await settle();
     const routing = query(".gloss-image-link")?.dataset.imageLoadState === "load-error";
     highlight &&= highlightedText() === "食べる";
-    return { sample, note, back, incremental, routing, appearance, highlight, kanjiSource };
+    return { sample, note, back, incremental, routing, appearance, highlight, kanjiSource, earlyLoad, cssOwner, cssPreview };
   } finally { window.close(); }
 }
 
@@ -5805,7 +5868,37 @@ async function settingsFrequencyStage() {
         .every(key => JSON.stringify(storedOptions[key]) === JSON.stringify(beforeReset[key]))
       && Object.keys(writes.at(-1).options).every(key => DESIGN_OPTION_KEYS.includes(key));
     toolbar &&= toolbarSelect.value === "auto";
-    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset, toolbar,
+    let css = false;
+    const editor = window.document.getElementById("opt-custom-popup-css");
+    if (editor) {
+      editor.focus();
+      const inputCss = value => {
+        editor.value = value;
+        editor.dispatchEvent(new window.Event("input", { bubbles: true }));
+      };
+      const text = "/* 日本語 */\n.gsm-hoshidicts-popup { color: red; }";
+      inputCss(text);
+      editor.setSelectionRange(4, 7);
+      const revision = storedOptions.revision;
+      emitOptions({ popupTheme: "light" });
+      css = editor.value === text && editor.selectionStart === 4 && editor.selectionEnd === 7
+        && window.document.getElementById("custom-css-count").textContent === `${text.length} characters`;
+      await until(() => status().includes("Could not save"));
+      css &&= writes.at(-1).baseRevision === revision && writes.at(-1).options.customPopupCss === text;
+      editor.blur();
+      window.document.getElementById("options-use-saved").click();
+      css &&= editor.value === "";
+      editor.focus();
+      inputCss(text);
+      await until(() => status() === "Saved.");
+      css &&= storedOptions.customPopupCss === text && editor.value === text;
+      editor.blur();
+      window.document.getElementById("reset-custom-css").click();
+      await until(() => status() === "Saved.");
+      css &&= editor.value === "" && storedOptions.customPopupCss === "" && storedOptions.popupTheme === "light"
+        && Object.keys(writes.at(-1).options).join() === "customPopupCss";
+    }
+    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset, toolbar, css,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {

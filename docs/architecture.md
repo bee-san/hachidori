@@ -811,7 +811,7 @@ Fit/Actual transforms the outer stage, whose size follows the configured popup
 with room for the sample sentence; resizing does not rebuild the sample.
 
 `reader-options.js` owns the audited 42-theme grouped catalogue (18 dark, 23
-light, one high-contrast), strict option validation, and the 18 Design reset
+light, one high-contrast), strict option validation, and the 19 Design reset
 keys. Defaults are the Hachidori palette, 560 × 420 px, 85% background opacity,
 one column, Automatic toolbar placement, summary off with three snippets and automatic sources, frequency
 names/pitch contour/pitch badge/grammar/source highlighting on, and frequency
@@ -831,7 +831,32 @@ apply inline geometry before scheduling masonry so cards measure the new width
 on their first layout. Existing Note, tabs, and disclosure state remain mounted.
 Source highlighting can be toggled on current terms, native kanji, and Back
 without a lookup, retaining the exact raw page span rather than engine spelling.
-Custom CSS remains separate follow-up work.
+
+### Custom popup CSS
+
+![Custom CSS editor beside the live popup](assets/custom-popup-css.png)
+
+Design's plain-text CSS editor counts characters and previews unsaved changes
+immediately. It uses the same 150 ms sparse options save queue, revision-bound
+drafts, save feedback and explicit conflict/retry controls as Reading. Reset
+custom CSS clears only `customPopupCss`; Reset Design includes it. No CSS-specific
+length limit or trimming is imposed; existing options transport validation still
+applies. The browser parses the stylesheet and ignores invalid rules.
+
+The live reader and preview share one small constructed-stylesheet owner. It
+adopts the custom sheet last in the popup shadow root, after built-in adopted
+sheets and ordinary dictionary styles (including ones loaded later). Normal CSS
+specificity and `!important` still apply. Shadow DOM supplies the scope without
+rewriting selectors or wrapping CSS; use `.gsm-hoshidicts-popup` to target the
+popup. The sheet is not added to the page document or the source-highlight layer.
+CSS cannot register scripts or actions, but URL-bearing rules can fetch resources.
+
+The empty default creates no stylesheet. Exact-string echoes skip parsing,
+attachment and layout; changed CSS replaces the owned sheet's rules and queues
+one layout pass, without rerendering cards, closing Notes, changing Back context
+or making engine requests. Reset and teardown remove only the owned sheet.
+The preview initializes its geometry defaults before the linked stylesheet can
+load, so that early load cannot access uninitialized options.
 
 ### Exact source highlight ownership
 

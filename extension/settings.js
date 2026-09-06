@@ -1036,6 +1036,14 @@ function renderThemeChoices() {
   if (theme !== document.activeElement) theme.value = options.popupTheme;
 }
 
+function renderCustomCss(force = false) {
+  const editor = element("opt-custom-popup-css");
+  if ((force || editor !== document.activeElement) && editor.value !== options.customPopupCss) {
+    editor.value = options.customPopupCss;
+  }
+  element("custom-css-count").textContent = `${numberFormat.format(editor.value.length)} characters`;
+}
+
 function renderOptions() {
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
@@ -1047,6 +1055,7 @@ function renderOptions() {
   element("opt-japanese-only").checked = options.onlyScanJapaneseText;
   element("opt-source-highlight").checked = options.sourceHighlightEnabled;
   renderThemeChoices();
+  renderCustomCss();
   const toolbar = element("opt-popup-toolbar");
   if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
   const mode = element("opt-lookup-mode");
@@ -2031,7 +2040,20 @@ function attachHandlers() {
   });
   element("reset-design").addEventListener("click", () => {
     for (const key of DESIGN_OPTION_KEYS) options[key] = DEFAULT_OPTIONS[key];
+    renderCustomCss(true);
     renderOptions();
+    writeOptions();
+  });
+  element("opt-custom-popup-css").addEventListener("input", event => {
+    // This target listener runs before the section's bubbling draft listener.
+    optionsEditRevision ??= Math.max(0, optionsRevision);
+    options.customPopupCss = event.target.value;
+    renderCustomCss();
+    writeOptions();
+  });
+  element("reset-custom-css").addEventListener("click", () => {
+    options.customPopupCss = DEFAULT_OPTIONS.customPopupCss;
+    renderCustomCss(true);
     writeOptions();
   });
   for (const field of METADATA_FIELDS) {
@@ -2111,6 +2133,7 @@ function attachHandlers() {
     });
     section.addEventListener("focusout", (event) => {
       optionsEditRevision = null;
+      if (event.target.id === "opt-custom-popup-css") renderCustomCss(true);
       if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
       if (event.target.id === "opt-image-source") renderPopupImageSources();
       if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
@@ -2133,6 +2156,7 @@ function attachHandlers() {
     optionsEditRevision = null;
     optionsSaveFailed = false;
     renderCurrentOptions();
+    renderCustomCss(true);
     setOptionsStatus("Using saved settings.");
   });
 
