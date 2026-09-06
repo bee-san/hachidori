@@ -1260,6 +1260,7 @@
     level.view = window.HDPopup.createPopupView({
       appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
       appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
+      appendStructuredImage: window.HDGlossary.appendStructuredImage,
       document,
       getPopupColumns: () => options.popupColumns,
       highlightName: HIGHLIGHT_NAME,
@@ -1475,6 +1476,12 @@
     else hideTimer = window.setTimeout(dismiss, options.popupHideDelayMs);
   }
 
+  function compactSummaryOptions() {
+    return { showCompactDefinitionSummary: options.showCompactDefinitionSummary,
+      compactDefinitionSummaryCount: options.compactDefinitionSummaryCount,
+      compactDefinitionSummaryDictionary: options.compactDefinitionSummaryDictionary };
+  }
+
   function renderContextFor(level = rootLevel) {
     return {
       averageFrequency: false,
@@ -1491,7 +1498,7 @@
       },
       onInternalLink: (link) => onInternalLink(link, level),
       resolveMedia,
-      showCompactDefinitionSummary: false,
+      ...compactSummaryOptions(),
       showFrequencyDictionaryNames: true,
       showPitchAccentBadge: true,
       showPitchAccentFurigana: true,
@@ -2326,7 +2333,8 @@
   }
 
   function updateDictionaryPresentation() {
-    const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups() };
+    const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups(),
+      ...compactSummaryOptions() };
     for (const level of levels) {
       if (level.popup && !level.popup.hidden) level.view.updateDictionaryPresentation(context);
     }
@@ -2392,6 +2400,9 @@
     const scanDelayChanged = next.hoverDelayMs !== options.hoverDelayMs && scanTimer !== null;
     const hideDelayChanged = next.popupHideDelayMs !== options.popupHideDelayMs && hideTimer !== null;
     const columnsChanged = next.popupColumns !== options.popupColumns;
+    const summaryChanged = next.showCompactDefinitionSummary !== options.showCompactDefinitionSummary
+      || next.compactDefinitionSummaryCount !== options.compactDefinitionSummaryCount
+      || next.compactDefinitionSummaryDictionary !== options.compactDefinitionSummaryDictionary;
     if (activationChanged) {
       activationPressed = false;
       activationCode = null;
@@ -2404,6 +2415,7 @@
         if (!level.popup?.hidden) level.view?.scheduleMasonry();
       }
     }
+    if (summaryChanged && !lookupChanged && options.hoverEnabled) updateDictionaryPresentation();
     if (!options.hoverEnabled) {
       selectionDragActive = false;
       lastPointer = null;

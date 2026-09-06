@@ -1078,6 +1078,7 @@
     const popup = options.popup;
     const appendExpressionRuby = options.appendExpressionRuby;
     const appendTextOnlyGlossary = options.appendTextOnlyGlossary;
+    const appendStructuredImage = options.appendStructuredImage;
     const parseTagList = options.parseTagList;
     const positionPopup = options.positionPopup;
     // LookupKanji carries onyomi/kunyomi/tags as space-separated strings, but a
@@ -1797,6 +1798,48 @@
       strip.hidden = !tabList && capsule.hidden;
     }
 
+    function updateCompactSummary(headword, result, context, media) {
+      const previous = headword.querySelector(".gsm-hoshidicts-compact-definition-summary");
+      if (previous) {
+        hideImagePreview(previous.querySelector(".gloss-image-link"));
+        previous.remove();
+      }
+      if (context.showCompactDefinitionSummary !== true) return Boolean(previous);
+      const compact = extractCompactDefinitionSummary(result.term.glossaries,
+        context.compactDefinitionSummaryDictionary, context.compactDefinitionSummaryCount);
+      if (!compact) return Boolean(previous);
+      const summary = documentRef.createElement("div");
+      summary.className = "gsm-hoshidicts-compact-definition-summary";
+      summary.dataset.hoshidictsDictionary = compact.dictionary;
+      // Establish ownership before synchronous media admission. Replacing this
+      // summary retires its consumer without retiring the complete card's one.
+      headword.querySelector(".gsm-hoshidicts-expression").after(summary);
+      if (compact.image) {
+        const thumbnail = documentRef.createElement("span");
+        thumbnail.className = "gsm-hoshidicts-compact-definition-image";
+        summary.appendChild(thumbnail);
+        appendStructuredImage(documentRef, thumbnail, { ...compact.image,
+          preferredWidth: 36, preferredHeight: 36, sizeUnits: "px" }, {
+          isCurrent: () => headword.contains(summary) && media.isCurrent(),
+          onLayoutChange: media.onLayoutChange,
+          requestImagePreview, refreshImagePreview, hideImagePreview,
+          resolveMedia: typeof media.resolveMedia === "function"
+            ? query => media.resolveMedia({ ...query, dictionary: compact.dictionary, generation: media.generation })
+            : null,
+        });
+        if (!thumbnail.hasChildNodes()) thumbnail.remove();
+      }
+      const items = documentRef.createElement("ul");
+      items.className = "gsm-hoshidicts-compact-definition-items";
+      for (const item of compact.items) {
+        const li = documentRef.createElement("li");
+        li.textContent = item;
+        items.appendChild(li);
+      }
+      summary.appendChild(items);
+      return true;
+    }
+
     function createEntryHeader(
       result,
       candidate,
@@ -1807,6 +1850,7 @@
         compactDefinitionSummaryCount =
           DEFAULT_COMPACT_DEFINITION_SUMMARY_COUNT,
         compactDefinitionSummaryDictionary = null,
+        summaryMedia = null,
         showPitchAccentFurigana = true,
         pitchAccentFuriganaDictionary = null,
         onBack = null,
@@ -1846,22 +1890,8 @@
       );
       headword.appendChild(expression);
       if (showCompactDefinitionSummary === true) {
-        const compactSummary = extractCompactDefinitionSummary(
-          result.term.glossaries,
-          compactDefinitionSummaryDictionary,
-          compactDefinitionSummaryCount
-        );
-        if (compactSummary) {
-          const summary = documentRef.createElement("ul");
-          summary.className = "gsm-hoshidicts-compact-definition-summary";
-          summary.dataset.hoshidictsDictionary = compactSummary.dictionary;
-          for (const item of compactSummary.items) {
-            const listItem = documentRef.createElement("li");
-            listItem.textContent = item;
-            summary.appendChild(listItem);
-          }
-          headword.appendChild(summary);
-        }
+        updateCompactSummary(headword, result, { showCompactDefinitionSummary,
+          compactDefinitionSummaryCount, compactDefinitionSummaryDictionary }, summaryMedia);
       }
       const deinflection = buildDeinflectionDisclosure(documentRef, result, windowRef.navigator.language);
       if (deinflection) {
@@ -1928,6 +1958,8 @@
       const isCurrent = () => revision === renderRevision && ownsResultPanel(panel, renderContext);
       const isCurrentLink = () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext);
       const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
+      const summaryMedia = { isCurrent, generation: renderContext.generation,
+        resolveMedia: renderContext.resolveMedia, onLayoutChange: positionIfCurrent };
       hideImagePreview();
       panel.replaceChildren();
       const deferredGlossaryFills = [];
@@ -1950,6 +1982,7 @@
             typeof renderContext.compactDefinitionSummaryDictionary === "string"
               ? renderContext.compactDefinitionSummaryDictionary
               : null,
+          summaryMedia,
           showPitchAccentFurigana:
             renderContext.showPitchAccentFurigana !== false,
           pitchAccentFuriganaDictionary:
@@ -2183,11 +2216,22 @@
       return { lookupStats,
         isExpanded: () => expanded,
         updateDictionaryPresentation(context, names) {
+          const summaryChanged = context.showCompactDefinitionSummary !== renderContext.showCompactDefinitionSummary
+            || context.compactDefinitionSummaryCount !== renderContext.compactDefinitionSummaryCount
+            || context.compactDefinitionSummaryDictionary !== renderContext.compactDefinitionSummaryDictionary;
           Object.assign(renderContext, context);
           dictionaryDisplayNames = names;
           let changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);
+          if (summaryChanged && isCurrent()) {
+            changed = updateCompactSummary(primaryHeader.querySelector(".gsm-hoshidicts-headword"),
+              results[0], renderContext, summaryMedia) || changed;
+          }
           const entries = panel.querySelectorAll(":scope > .gsm-hoshidicts-entry");
           entries.forEach((entry, index) => {
+            if (index > 0 && summaryChanged && isCurrent()) {
+              changed = updateCompactSummary(entry.querySelector(".gsm-hoshidicts-headword"),
+                results[index], renderContext, summaryMedia) || changed;
+            }
             for (const row of entry.querySelectorAll(":scope > .gsm-hoshidicts-metadata")) {
               changed = updateMetadataLabels(row, results[index]) || changed;
             }

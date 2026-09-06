@@ -467,6 +467,32 @@
               </div>
             </div>
           </fieldset>
+          <fieldset class="lookup-group">
+            <legend>Compact summary</legend>
+            <label class="lookup-enable">
+              <span>Show brief definitions beside the headword</span>
+              <input id="opt-compact-summary" type="checkbox" />
+            </label>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">Snippets</span>
+                <select id="opt-summary-count">
+                  <option value="1">1 snippet</option>
+                  <option value="2">2 snippets</option>
+                  <option value="3">3 snippets</option>
+                  <option value="4">4 snippets</option>
+                  <option value="5">5 snippets</option>
+                  <option value="6">6 snippets</option>
+                </select>
+                <span class="field-hint">Full definitions stay available below.</span>
+              </label>
+              <label class="field">
+                <span class="field-label">Preferred dictionary</span>
+                <select id="opt-summary-dictionary"></select>
+                <span class="field-hint">Falls back to the first available definition in the current tab.</span>
+              </label>
+            </div>
+          </fieldset>
           <output id="options-status" class="custom-dictionary-status" aria-live="polite"></output>
           <div id="options-conflict-actions" class="options-actions" hidden>
             <button id="options-retry" class="primary-button" type="button">Save my changes</button>
