@@ -9,6 +9,7 @@ const CORE_MARKERS = ["expression", "reading", "furigana", "furigana-plain", "di
   "sentence", "sentence-furigana", "sentence-furigana-plain", "cloze-prefix", "cloze-body", "cloze-suffix",
   "frequency", "frequencies", "frequency-harmonic-rank", "frequency-harmonic-occurrence", "frequency-average-rank",
   "frequency-average-occurrence", "pitch", "pitch-position", "pitch-accent-positions", "pitch-categories", "pitch-accent-categories", "audio"];
+export const ANKI_TEMPLATE_MARKERS = CORE_MARKERS;
 const MARKER_ALIASES = new Map([["pitch-accent", "pitch"], ["pitch-accents", "pitch"],
   ["pitch-accent-graphs", "pitch"], ["pitch-accent-graphs-jj", "pitch"]]);
 const MARKERS = new Set([...CORE_MARKERS, ...MARKER_ALIASES.keys()]);

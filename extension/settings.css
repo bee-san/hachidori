@@ -894,6 +894,13 @@ textarea {
 .anki-template-mode select {
   width: auto;
 }
+.anki-markers {
+  font: 12px/1.9 ui-monospace, SFMono-Regular, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+.anki-marker-reference {
+  margin: 16px 0;
+}
 .field {
   min-width: 0;
   display: flex;

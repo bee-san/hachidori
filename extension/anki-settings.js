@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiAvailability } from "./anki.js";
-import { ankiFieldNames, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
+import { ANKI_TEMPLATE_MARKERS, ankiFieldNames, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
 import { reorderSettingsRows } from "./settings-dom.js";
 
 export function createAnkiSettingsController({ document, readConfig, editConfig, send }) {
@@ -53,7 +53,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       append: "Append", prepend: "Prepend", overwrite: "Replace" };
     for (const value of ANKI_OVERWRITE_MODES) mode.add(new document.defaultView.Option(names[value], value));
     const remove = row.querySelector("button");
-    const record = { field, row, label, editor, mode, remove };
+    const record = { field, row, label, editor, mode, remove, modeLabel: mode.parentElement };
     editor.addEventListener("input", () => editTemplate(record.field, { value: editor.value }));
     mode.addEventListener("change", () => editTemplate(record.field, { overwriteMode: mode.value }));
     remove.addEventListener("click", () => {
@@ -91,6 +91,8 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
       if (row.mode !== document.activeElement && row.mode.value !== template.overwriteMode) row.mode.value = template.overwriteMode;
       if (row.editor.readOnly === advanced) row.editor.readOnly = !advanced;
       if (row.mode.disabled === advanced) row.mode.disabled = !advanced;
+      const showMode = advanced && config.duplicateBehavior === "overwrite";
+      if (row.modeLabel.hidden === showMode) row.modeLabel.hidden = !showMode;
       const unavailable = resolved.staleFields.includes(field);
       if (row.remove.hidden === unavailable) row.remove.hidden = !unavailable;
     }
@@ -212,5 +214,6 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
   element("opt-anki-advanced").addEventListener("change", event => {
     change({ fieldTemplates: event.target.checked ? materializeTemplates() : null });
   });
+  element("anki-markers").textContent = ANKI_TEMPLATE_MARKERS.map(marker => `{${marker}}`).join("  ");
   return { render, refresh };
 }
