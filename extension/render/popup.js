@@ -2486,8 +2486,6 @@
         button.className = "gsm-hoshidicts-tab";
         button.setAttribute("role", "tab");
         button.setAttribute("aria-controls", panel.id);
-        button.setAttribute("aria-selected", "false");
-        button.tabIndex = -1;
         if (descriptor.groupId) button.dataset.groupId = descriptor.groupId;
         if (descriptor.dictionary) {
           button.dataset.dictionary = descriptor.dictionary;
@@ -2543,7 +2541,7 @@
         }
         focusedIndex = focusedKey ? tabDescriptors.findIndex(tab => tab.key === focusedKey) : selectedIndex;
         if (focusedIndex < 0) focusedIndex = selectedIndex;
-        updateTabState();
+        if (hasRendered) updateTabState();
         if (focusedKey && !tabButtons.includes(focused)) tabButtons[focusedIndex]?.focus();
         return changed;
       }
