@@ -10733,12 +10733,15 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
   const requests = [];
   let sources = null;
   let current = true;
+  let canUpdate = true;
+  let admissions = 0;
   let fills = 0;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
     appendTextOnlyGlossary(...args) { fills += 1; return HDGlossary.appendTextOnlyGlossary(...args); },
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList, positionPopup() {},
+    canUpdateCompactSummary() { admissions += 1; return canUpdate; },
   });
   const context = { generation: 23, dictionaryPresentation: [{ title: "Pictures", displayName: "Picture book" }],
     dictionaryTabGroups: [], isCurrentRequest: () => current, isCurrentView: () => true,
@@ -10768,6 +10771,12 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
     const items = summary.querySelector("ul");
     const images = [...popup.querySelectorAll("img")];
     const links = images.map(image => image.closest(".gloss-image-link"));
+    const listeners = [];
+    const addImageListener = images[1].addEventListener;
+    images[1].addEventListener = function (type, listener, options) {
+      listeners.push({ type, listener });
+      return addImageListener.call(this, type, listener, options);
+    };
     const cards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
     const originalFills = fills;
     popup.querySelector(".gsm-hoshidicts-note-button").click();
@@ -10798,6 +10807,28 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
         && form.elements.definition.selectionStart === 2 && form.elements.definition.selectionEnd === 7,
       JSON.stringify({ currentLoaded, requests: requests.length, beforeAlias, fills, originalFills,
         suppliers: suppliers.map(label => label.outerHTML), replacement: replacement.length }));
+
+    const oldListeners = listeners.slice();
+    links[1].focus();
+    const previewOpened = Boolean(popup.parentNode.querySelector(".gsm-hoshidicts-image-hover-preview"));
+    const beforeFocusRoute = requests.length;
+    route(["Focused supplier"]);
+    for (const { listener } of oldListeners) listener();
+    const pendingFocused = document.activeElement === links[1] && links[1].getAttribute("tabindex") === "0"
+      && !links[1].hasAttribute("href") && links[1].dataset.imageLoadState === "not-loaded"
+      && !popup.parentNode.querySelector(".gsm-hoshidicts-image-hover-preview");
+    view.hideImagePreview();
+    settle(requests.slice(beforeFocusRoute));
+    await tick();
+    images[1].dispatchEvent(new window.Event("load"));
+    const dismissedKept = !popup.parentNode.querySelector(".gsm-hoshidicts-image-hover-preview");
+    for (const { listener } of oldListeners) listener();
+    check("image route refresh retains keyboard focus and ignores retired load/error callbacks without reviving a dismissed preview",
+      previewOpened && pendingFocused && dismissedKept && document.activeElement === links[1]
+        && !images[1].hidden && images[1].src === mediaUrl && links[1].dataset.imageLoadState === "loaded",
+      JSON.stringify({ previewOpened, pendingFocused, dismissedKept }));
+    delete images[1].addEventListener;
+    form.elements.definition.focus();
 
     const beforeAutomatic = requests.length;
     route(null);
@@ -10834,6 +10865,39 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
     check("clearing the projection retires all image refresh handles and their pending completions",
       retired.length === 2 && retired.every(({ query }) => !query.isCurrent())
         && !popup.hasChildNodes() && images.every(image => !image.isConnected));
+
+    sources = null;
+    const group = { id: "reading", name: "Reading", dictionaries: ["Illustrated", "Plain"] };
+    Object.assign(context, { popupImageSources: null, dictionaryTabGroups: [group] });
+    view.renderResults([projected], candidate, { ...context, selectedDictionaryTab: { groupId: group.id } });
+    popup.querySelector(".gsm-hoshidicts-note-button").click();
+    const protectedCards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+    const beforeProtected = requests.length;
+    route(["Pictures"], { dictionaryTabGroups: [{ ...group, dictionaries: ["Plain"] }] });
+    const protectedRequests = requests.slice(beforeProtected);
+    settle(protectedRequests);
+    await tick();
+    const beforeOrphan = { requests: requests.length, admissions };
+    canUpdate = false;
+    route(null);
+    check("image-source admission compares the applied route while protected tab membership still awaits projection",
+      protectedRequests.length === 2 && protectedCards.every(card => card.isConnected)
+        && admissions === beforeOrphan.admissions + 1 && requests.length === beforeOrphan.requests,
+      JSON.stringify({ protectedRequests: protectedRequests.length, beforeOrphan, requests: requests.length, admissions }));
+    canUpdate = true;
+    route(["Pictures"], { dictionaryPresentation: [{ title: "Pictures", displayName: "Latest pictures" }] });
+    const beforeTab = requests.length;
+    popup.querySelector('[role="tab"][data-dictionary="Illustrated"]').click();
+    settle(requests.slice(beforeTab));
+    await tick();
+    const projectedLabels = [...popup.querySelectorAll(".gloss-image-source")];
+    const latestLabels = projectedLabels.length === 2
+      && projectedLabels.every(label => label.textContent === "Image: Latest pictures");
+    const beforeFlush = requests.length;
+    view.flushDictionaryPresentation();
+    check("local tab projection retains the latest image route and aliases without reloading again on deferred presentation flush",
+      latestLabels && beforeFlush === beforeTab + 2 && requests.length === beforeFlush,
+      JSON.stringify({ latestLabels, beforeTab, beforeFlush, requests: requests.length }));
   } finally {
     settle(requests);
     view.destroy();
