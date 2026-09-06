@@ -1359,6 +1359,8 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  const audioSettings = readFileSync(resolve(EXTENSION, "audio-settings.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
@@ -1372,13 +1374,14 @@ function loadSettingsScript(window) {
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
+    .replace(/import\s*\{ createAudioSettingsController \}\s*from\s*"\.\/audio-settings\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${readerOptions}\n${settings}`,
+    `${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${readerOptions}\n${audioSettings}\n${settings}`,
   );
 }
 
@@ -4398,6 +4401,8 @@ async function main() {
   check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
     preview?.kanjiSource === true, JSON.stringify(preview));
   const frequencySettings = await settingsFrequencyStage();
+  check("Audio Settings start with reading TTS, add ordered custom URLs and retain revision-bound drafts and explicit removal",
+    frequencySettings?.audio === true, JSON.stringify(frequencySettings?.audio));
   check("the CSS editor counts unsaved text, preserves revision-bound drafts and resets only custom CSS",
     frequencySettings?.css === true, JSON.stringify(frequencySettings?.css));
   const sourceHighlight = await sourceHighlightStage();
@@ -5581,7 +5586,8 @@ async function settingsFrequencyStage() {
     listener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
   };
   window.chrome = {
-    runtime: { async sendMessage(message) {
+    runtime: { onMessage: { addListener() {}, removeListener() {} }, async sendMessage(message) {
+      if (message.type === "hd_audio_voices") return { ok: true, voices: [] };
       if (message.type === "hd_state_read") return { ok: true, state: structuredClone(state) };
       if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 3 };
       if (message.type !== "hd_options_write") throw new Error(`Unexpected frequency Settings request ${message.type}`);
@@ -5898,7 +5904,43 @@ async function settingsFrequencyStage() {
       css &&= editor.value === "" && storedOptions.customPopupCss === "" && storedOptions.popupTheme === "light"
         && Object.keys(writes.at(-1).options).join() === "customPopupCss";
     }
-    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset, toolbar, css,
+    window.location.hash = "#audio";
+    const audioRows = () => [...window.document.querySelectorAll(".audio-source-row")];
+    await until(() => audioRows().length === 1);
+    let audio = audioRows()[0].querySelector(".audio-type").value === "text-to-speech-reading"
+      && audioRows()[0].querySelector(".audio-enabled").checked;
+    window.document.getElementById("audio-source-add").click();
+    const url = audioRows()[1].querySelector(".audio-url");
+    const urlText = "http://localhost:5050/?term={term}&reading={reading}";
+    url.value = urlText;
+    url.dispatchEvent(new window.Event("input", { bubbles: true }));
+    await until(() => status() === "Saved.");
+    audio &&= storedOptions.audioSources[1].url === urlText && window.document.activeElement === url;
+    url.blur();
+    audioRows()[1].querySelector(".audio-up").click();
+    await until(() => status() === "Saved.");
+    const enabled = audioRows()[0].querySelector(".audio-enabled");
+    enabled.checked = false;
+    enabled.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await until(() => status() === "Saved.");
+    audio &&= storedOptions.audioSources[0].url === urlText && !storedOptions.audioSources[0].enabled
+      && storedOptions.audioSources[1].type === "text-to-speech-reading";
+    url.focus();
+    url.value += "&draft=1";
+    url.dispatchEvent(new window.Event("input", { bubbles: true }));
+    const audioRevision = storedOptions.revision;
+    emitOptions({ popupTheme: "dark" });
+    await until(() => status().includes("Could not save"));
+    audio &&= writes.at(-1).baseRevision === audioRevision && url.value.endsWith("&draft=1");
+    url.blur();
+    window.document.getElementById("options-use-saved").click();
+    audio &&= url.value === urlText;
+    while (audioRows().length) audioRows()[0].querySelector(".audio-remove").click();
+    await until(() => status() === "Saved.");
+    emitOptions({ popupTheme: "light" });
+    audio &&= storedOptions.audioSources.length === 0 && audioRows().length === 0
+      && !window.document.getElementById("audio-source-empty").hidden;
+    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset, toolbar, css, audio,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {
