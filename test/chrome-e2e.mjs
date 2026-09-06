@@ -1532,6 +1532,14 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     }), fixture.query);
     require(evidence.native.ok && evidence.native.results.length === 1
       && evidence.native.results[0].term.glossaries[0].glossary === JSON.stringify(fixture.leading), "E10 real native leading glossary");
+    await settings.evaluate(async names => {
+      const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+        baseRevision: dictionaryState.revision,
+        dictionaries: dictionaryState.dictionaries.map(dictionary => ({ ...dictionary,
+          displayName: names[dictionary.title] ?? dictionary.displayName })), groups: dictionaryState.groups });
+      if (!reply.ok) throw new Error(reply.error);
+    }, { [fixture.illustrated]: "Illustrated definitions", [fixture.plain]: "Brief meanings" });
     await settings.bringToFront();
     await editSettingsControls(settings, { "opt-compact-summary": true, "opt-summary-count": "2",
       "opt-summary-dictionary": fixture.illustrated, "opt-max-results": "32" });
@@ -1582,6 +1590,10 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
       && Buffer.from(encoded, "base64").equals(makePng()), "E10 one shared native media request and exact PNG bytes");
     evidence.sharedMedia = media.length;
     await tab.keyboard.press("Escape");
+    if (process.env.HACHIDORI_SUMMARY_POPUP_SCREENSHOT) {
+      const { x, y, width, height } = (await popup.dictionaryTabs()).rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_SUMMARY_POPUP_SCREENSHOT, clip: { x, y, width, height } });
+    }
     await popup.dictionaryTabs("select", `dictionary:${fixture.plain}`);
     await until(summaries, value => equal(value[0]?.items, ["Alternative first", "Alternative second"])
       && value[0].image.length === 0, "E10 tab-local soft fallback");
@@ -1615,6 +1627,7 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     if (process.env.HACHIDORI_SUMMARY_SETTINGS_SCREENSHOT || process.env.HACHIDORI_SUMMARY_SETTINGS_DARK_SCREENSHOT) {
       await settings.bringToFront();
       await showSettingsSection(settings, "lookup");
+      await editSettingsControls(settings, { "opt-summary-count": "3", "opt-summary-dictionary": fixture.illustrated });
       for (const [scheme, path] of [["light", process.env.HACHIDORI_SUMMARY_SETTINGS_SCREENSHOT],
         ["dark", process.env.HACHIDORI_SUMMARY_SETTINGS_DARK_SCREENSHOT]]) {
         if (!path) continue;
