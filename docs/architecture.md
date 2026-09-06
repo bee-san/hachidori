@@ -343,6 +343,12 @@ Favourites still contribute when they also belong to a group. Tabs project the
 already-returned results without changing their order or sending a lookup;
 aliases label tabs while canonical dictionary titles and stable group IDs own
 their selections. Colliding labels are qualified without changing membership.
+Linked and clicked-kanji requests copy that selection from their source view.
+The destination retains it only when it contributes results, otherwise adopting
+All; a child's fallback or later selection never rewrites its parent or Back
+snapshot. Native kanji entries use the same membership resolver as term tabs.
+Content resolves saved group member IDs through the enabled package inventory
+using the shared D7 normalizer, including while a lookup reply is pending.
 
 Dictionary revisions, generation, media and style transport remain shared. A
 changed accepted engine generation invalidates other level tokens, including

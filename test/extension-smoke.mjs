@@ -6726,6 +6726,7 @@ async function staleKanjiResponseStage(invalidation) {
     return ["content.js instrumentation marker was not found"];
   }
   window.eval(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8"));
   window.eval(instrumented);
   const anchor = window.document.getElementById("anchor");
   const popup = window.document.createElement("div");
@@ -6988,6 +6989,7 @@ async function contentNoteStage() {
       throw new Error("content.js Note instrumentation marker was not found");
     }
     window.eval(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"));
+    window.eval(readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8"));
     window.eval(instrumented);
     const driver = window.__hachidoriContentNoteSmoke;
     const popup = driver.install();

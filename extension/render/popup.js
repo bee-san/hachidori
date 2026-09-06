@@ -2102,18 +2102,21 @@
     function renderKanji(kanji, candidate, renderOptions = {}) {
       const focused = retainedFocus(renderOptions.preserveViewControls);
       clear(renderOptions.preserveViewControls);
+      const { tabs, dictionaryDisplayNames } = createDictionaryTabs(
+        [...new Set(kanji.entries.map(({ dictionary }) => dictionary))], renderOptions,
+      );
+      const requestedKey = dictionaryTabKey(renderOptions.selectedDictionaryTab);
+      const selected = tabs.find((tab) => tab.key === requestedKey) || tabs[0];
+      renderOptions.onDictionaryTabSelected?.(normaliseDictionaryTab(selected));
+      if (selected.dictionaries.size > 0) {
+        kanji = { ...kanji, entries: kanji.entries.filter((entry) => selected.dictionaries.has(entry.dictionary)) };
+      }
       const noteControls = createNoteControls(() => ({
         term: kanji.character,
         reading: "",
         definition: "",
       }));
       currentNoteControls = noteControls;
-      const dictionaryDisplayNames = createDictionaryDisplayNames(
-        kanji.entries.map(({ dictionary }) => dictionary),
-        Array.isArray(renderOptions.dictionaryPresentation)
-          ? renderOptions.dictionaryPresentation
-          : []
-      );
       const primaryHeader = documentRef.createElement("header");
       primaryHeader.className =
         "gsm-hoshidicts-entry-header gsm-hoshidicts-primary-header";

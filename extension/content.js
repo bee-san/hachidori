@@ -20,6 +20,8 @@
   const HOST_TAG = "hachidori-host";
 
   const { DEFAULT_OPTIONS, clampOption, normaliseActivationKey, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
+  const { normaliseDictionaryGroups } = globalThis.HDDictionaryGroups;
+  const { normaliseDictionaryTab: normalizedDictionaryTab } = globalThis.HDPopup;
   const MODIFIER_PROPERTIES = new Map([
     ["Shift", "shiftKey"],
     ["Control", "ctrlKey"],
@@ -101,6 +103,7 @@
   let disposed = false;
   let options = { ...DEFAULT_OPTIONS };
   let dictionaries = [];
+  let dictionaryGroups = [];
   let nextRequestId = 0;
   let currentGeneration = -1;
 
@@ -191,6 +194,7 @@
     return {
       revision: Number.isInteger(state.revision) && state.revision >= 0 ? state.revision : 0,
       dictionaries: normalized,
+      groups: normaliseDictionaryGroups(state.groups, normalized),
     };
   }
 
@@ -219,6 +223,16 @@
         favorite: entry.favorite,
         ...(entry.displayName ? { displayName: entry.displayName } : {}),
       }));
+  }
+
+  function dictionaryTabGroups() {
+    const titles = new Map(dictionaries.filter((entry) => entry.enabled)
+      .map((entry) => [entry.id, entry.title]));
+    return dictionaryGroups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      dictionaries: group.dictionaryIds.filter((id) => titles.has(id)).map((id) => titles.get(id)),
+    }));
   }
 
   function selectedKanjiDictionaryCapability() {
@@ -1455,7 +1469,7 @@
       averageFrequency: false,
       definitionBlurState: "revealed",
       dictionaryPresentation: dictionaryPresentation(),
-      dictionaryTabGroups: [],
+      dictionaryTabGroups: dictionaryTabGroups(),
       generation: currentGeneration,
       hidePopupGrammarTags: false,
       onExternalLink({ url, active }) {
@@ -1540,14 +1554,13 @@
     focusKanjiLink(focusTarget, level);
   }
 
-  function normalizedDictionaryTab(value) {
-    if (typeof value?.dictionary === "string") {
-      return { dictionary: value.dictionary };
-    }
-    if (typeof value?.groupId === "string") {
-      return { groupId: value.groupId };
-    }
-    return null;
+  function dictionarySelectionContext(request) {
+    return {
+      selectedDictionaryTab: request?.selectedDictionaryTab ?? null,
+      onDictionaryTabSelected(selection) {
+        if (request) request.selectedDictionaryTab = normalizedDictionaryTab(selection);
+      },
+    };
   }
 
   function backRenderOptions(request, level = rootLevel) {
@@ -1591,10 +1604,7 @@
         isCurrentView: () => !disposed && !level.retired && level.currentViewRequest === request
           && (token === level.lookupToken || level.retainedView),
         onRenderError(error) { handleLookupFailure(token, error, level); },
-        selectedDictionaryTab: level.currentViewRequest?.selectedDictionaryTab ?? null,
-        onDictionaryTabSelected(selection) {
-          if (request) request.selectedDictionaryTab = normalizedDictionaryTab(selection);
-        },
+        ...dictionarySelectionContext(request),
       });
     } catch (error) {
       // A malformed result must cost one hover, not the whole content script.
@@ -1703,7 +1713,7 @@
       },
       previous: overrides.previous ?? null,
       returnFocus: overrides.returnFocus ?? null,
-      selectedDictionaryTab: null,
+      selectedDictionaryTab: normalizedDictionaryTab(overrides.selectedDictionaryTab),
     }, level);
   }
 
@@ -1739,7 +1749,10 @@
       sentence: anchor.textContent || "", sourceElements: [anchor], sourceDepth: level.depth,
       vertical: false,
     };
-    const promise = runLookup(child.activeCandidate, { primaryReading }, child);
+    const promise = runLookup(child.activeCandidate, {
+      primaryReading,
+      selectedDictionaryTab: level.currentViewRequest?.selectedDictionaryTab,
+    }, child);
     child.pendingLink = { promise, token: child.lookupToken };
     void promise.finally(() => { child.pendingLink = null; });
     return promise;
@@ -1811,7 +1824,8 @@
     pruneLevels(level.depth + 1);
     try {
       level.view.renderKanji({ ...kanji, entries }, candidate, {
-        dictionaryPresentation: dictionaryPresentation(),
+        ...renderContextFor(level),
+        ...dictionarySelectionContext(request),
         highlightText: request.highlightText,
         ...backRenderOptions(request, level),
         ...replayOptions,
@@ -1841,7 +1855,7 @@
       kind: "kanji",
       previous: level.activeTermRender,
       returnFocus: kanjiLinkFocusTarget(sourceLink, character, level),
-      selectedDictionaryTab: null,
+      selectedDictionaryTab: normalizedDictionaryTab(level.currentViewRequest?.selectedDictionaryTab),
       termPayload: capability?.kind === "term"
         ? {
             dictionary: capability.title,
@@ -2300,6 +2314,7 @@
     if (dictionaryChanged && !sameDictionaryContents(next.dictionaries, dictionaries)) clearDictionaryResources();
     dictionaryStateRevision = next.revision;
     dictionaries = next.dictionaries;
+    dictionaryGroups = next.groups;
     return { adopted: true, dictionaryChanged };
   }
 
