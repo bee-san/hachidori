@@ -16,6 +16,9 @@
     popupHideDelayMs: 160,
     popupNestingMaxDepth: 10,
     popupColumns: 1,
+    showCompactDefinitionSummary: false,
+    compactDefinitionSummaryCount: 3,
+    compactDefinitionSummaryDictionary: "",
     kanjiClickDictionary: "",
     frequencyDictionary: "",
     frequencyOrder: "auto",
@@ -27,6 +30,7 @@
     popupHideDelayMs: [0, 5000],
     popupNestingMaxDepth: [0, Number.MAX_SAFE_INTEGER],
     popupColumns: [1, 4],
+    compactDefinitionSummaryCount: [1, 6],
   };
   const LEGACY_MODIFIERS = new Map([["none", "Shift"], ["shift", "Shift"], ["ctrl", "Control"], ["alt", "Alt"]]);
   const LOOKUP_MODES = ["hover", "activation"];
@@ -75,7 +79,7 @@
 
   function normaliseField(key, value) {
     if (Object.hasOwn(NUMBER_RANGES, key)) return clampOption(key, value);
-    if (key === "hoverEnabled" || key === "onlyScanJapaneseText") {
+    if (key === "hoverEnabled" || key === "onlyScanJapaneseText" || key === "showCompactDefinitionSummary") {
       return typeof value === "boolean" ? value : DEFAULT_OPTIONS[key];
     }
     if (key === "lookupMode") return LOOKUP_MODES.includes(value) ? value : DEFAULT_OPTIONS.lookupMode;

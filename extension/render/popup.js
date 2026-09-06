@@ -880,7 +880,9 @@
       const text = normalizeCompactDefinitionText(
         collectCompactDefinitionText(node, { nodes: 0 })
       );
-      if (text) items.push(text);
+      for (const item of text.split(/\s*\u2022\s*/u)) {
+        if (item) items.push(item);
+      }
     }
     return items;
   }
@@ -920,8 +922,7 @@
       : compactDefinitionItemsFromNodes([node]);
   }
 
-  function extractCompactDefinitionItems(rawGlossary) {
-    const parsed = parseCompactDefinitionValue(rawGlossary);
+  function extractCompactDefinitionItems(parsed) {
     if (parsed === null) return [];
 
     const glossaryNodes = findCompactDefinitionNodes(
@@ -955,6 +956,26 @@
     return compactDefinitionItemsFromNodes([parsed]);
   }
 
+  // null means no visible content; false means text or another non-image lead.
+  // Stop at that first meaningful token, not at an image later in a definition.
+  function leadingCompactDefinitionImage(value, state, depth = 0) {
+    if (state.nodes >= COMPACT_DEFINITION_MAX_NODES || depth > COMPACT_DEFINITION_MAX_DEPTH) return false;
+    state.nodes += 1;
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        const leading = leadingCompactDefinitionImage(child, state, depth + 1);
+        if (leading !== null) return leading;
+      }
+      return null;
+    }
+    if (!isRecord(value)) return normalizeCompactDefinitionText(value) ? false : null;
+    if (isIgnoredCompactDefinitionSection(value)) return null;
+    const tag = String(value.tag || "").toLowerCase();
+    if (value.type === "image" || tag === "img") return value;
+    if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) return null;
+    return leadingCompactDefinitionImage(value.type === "text" ? value.text : value.content, state, depth + 1);
+  }
+
   function extractCompactDefinitionSummary(
     glossaries,
     preferredDictionary = null,
@@ -982,8 +1003,11 @@
       const items = [];
       const seen = new Set();
       let characterCount = 0;
+      let leading = null;
       for (const rawGlossary of rawGlossaries) {
-        for (const rawItem of extractCompactDefinitionItems(rawGlossary)) {
+        const parsed = parseCompactDefinitionValue(rawGlossary);
+        if (leading === null) leading = leadingCompactDefinitionImage(parsed, { nodes: 0 });
+        for (const rawItem of extractCompactDefinitionItems(parsed)) {
           if (items.length >= itemLimit) break;
           const item = normalizeCompactDefinitionText(rawItem);
           if (!item || seen.has(item)) continue;
@@ -1007,7 +1031,7 @@
           break;
         }
       }
-      if (items.length > 0) return { dictionary, items };
+      if (items.length > 0) return { dictionary, items, image: leading || null };
     }
     return null;
   }
