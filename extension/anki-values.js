@@ -119,7 +119,7 @@ function dynamicFrequencies(request) {
   return variants;
 }
 
-export function buildAnkiFields(request, templates, { definition, audio = "" }) {
+export async function buildAnkiFields(request, templates, { definition, audio = "" }) {
   const { term } = request;
   let sentenceParts;
   const parts = () => sentenceParts ??= [request.sentence.slice(0, request.matchOffset),
@@ -179,8 +179,9 @@ export function buildAnkiFields(request, templates, { definition, audio = "" }) 
     values.set(name, value);
     return value;
   }
-  return Object.fromEntries(Object.entries(templates).map(([field, template]) => {
-    const markers = Object.fromEntries([...new Set(ankiTemplateMarkerNames(template.value))].map(name => [name, valueFor(name)]));
+  return Object.fromEntries(await Promise.all(Object.entries(templates).map(async ([field, template]) => {
+    const markers = Object.fromEntries(await Promise.all([...new Set(ankiTemplateMarkerNames(template.value))]
+      .map(async name => [name, await valueFor(name)])));
     return [field, renderAnkiTemplate(template.value, markers)];
-  }));
+  })));
 }

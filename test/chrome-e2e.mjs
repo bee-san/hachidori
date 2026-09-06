@@ -3321,7 +3321,7 @@ async function checkAnkiGlossaryExport(page) {
       ]) }] }, trace: [], dictionaryAliases: {}, generation: 1,
       dictionaryMedia: [{ dictionary, path: "image.png", filename: "hd-anki-inert-image.png" }],
       dictionaryStyles: [{ dictionary, styles: '.gloss-sc-strong { color: rgb(17, 34, 51) } .gloss-sc-strong::before { content: "</style><img src=x onerror=alert(1)>" }' }] };
-      const html = createAnkiDefinitionRenderer(document, source)({});
+      const html = await createAnkiDefinitionRenderer(document, source)({});
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const inert = document.implementation.createHTMLDocument("");
       inert.body.innerHTML = html;

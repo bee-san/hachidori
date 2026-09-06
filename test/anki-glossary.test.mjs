@@ -22,11 +22,11 @@ function fixture(t) {
   return { document: dom.window.document, request };
 }
 
-test("Anki glossary export reuses the production structured renderer and preserves ordered senses, aliases and safe media", t => {
+test("Anki glossary export reuses the production structured renderer and preserves ordered senses, aliases and safe media", async t => {
   const { document, request } = fixture(t);
   const render = createAnkiDefinitionRenderer(document, request);
   const holder = document.createElement("div");
-  holder.innerHTML = render({});
+  holder.innerHTML = await render({});
   assert.deepEqual([...holder.querySelectorAll(".yomitan-glossary > ol > li")].map(node => node.dataset.dictionary), ["A", "B"]);
   assert.match(holder.textContent, /Alias <A>/u);
   assert.match(holder.textContent, /<script>literal<\/script>/u);
@@ -39,23 +39,23 @@ test("Anki glossary export reuses the production structured renderer and preserv
   assert.equal(document.body.children.length, 0, "export does not mount a popup or load images into the live document");
 });
 
-test("Anki first/brief/plain/dictionary variants keep their distinct source meanings", t => {
+test("Anki first/brief/plain/dictionary variants keep their distinct source meanings", async t => {
   const { document, request } = fixture(t);
   const render = createAnkiDefinitionRenderer(document, request);
-  const first = render({ firstOnly: true });
+  const first = await render({ firstOnly: true });
   assert.match(first, /first/u);
   assert.doesNotMatch(first, /second/u);
-  const brief = render({ dictionary: "B", brief: true });
+  const brief = await render({ dictionary: "B", brief: true });
   assert.match(brief, /second/u);
   assert.doesNotMatch(brief, /yomitan-glossary-meta|Rules:/u);
-  const plain = render({ plain: true, noDictionary: true });
+  const plain = await render({ plain: true, noDictionary: true });
   assert.match(plain, /first<br>&lt;script&gt;literal&lt;\/script&gt;/u);
   assert.doesNotMatch(plain, /<img|<script|Alias|Rules:/u);
-  assert.equal(render({ dictionary: "Missing" }), "");
-  assert.match(render({ dictionary: "A", plain: true }), /\(Alias &lt;A&gt;\)/u);
+  assert.equal(await render({ dictionary: "Missing" }), "");
+  assert.match(await render({ dictionary: "A", plain: true }), /\(Alias &lt;A&gt;\)/u);
 });
 
-test("plain Anki definitions omit decorative link icons and preferred image sizes retain the intrinsic ratio", t => {
+test("plain Anki definitions omit decorative link icons and preferred image sizes retain the intrinsic ratio", async t => {
   const { document, request } = fixture(t);
   request.term.glossaries = [{ dictionary: "B", glossary: JSON.stringify([{ type: "structured-content", content: [
     { tag: "a", href: "https://example.com/", content: "definition link" },
@@ -63,9 +63,9 @@ test("plain Anki definitions omit decorative link icons and preferred image size
     { tag: "img", path: "image.png", width: 200, height: 100, preferredHeight: 200 },
   ] }]) }];
   const render = createAnkiDefinitionRenderer(document, request);
-  assert.equal(render({ plain: true, noDictionary: true }), "definition link");
+  assert.equal(await render({ plain: true, noDictionary: true }), "definition link");
   const holder = document.createElement("div");
-  holder.innerHTML = render({});
+  holder.innerHTML = await render({});
   const [wide, tall] = holder.querySelectorAll("img");
   assert.equal(wide.style.width, "400px");
   assert.equal(wide.style.height, "auto");
@@ -73,7 +73,7 @@ test("plain Anki definitions omit decorative link icons and preferred image size
   assert.equal(tall.style.width, "auto");
 });
 
-test("serialized dictionary CSS cannot close its HTML style element and existing CSS escapes stay intact", t => {
+test("serialized dictionary CSS cannot close its HTML style element and existing CSS escapes stay intact", async t => {
   const { document, request } = fixture(t);
   const original = globalThis.HDGlossary.applyDictionaryStyles;
   t.after(() => { globalThis.HDGlossary.applyDictionaryStyles = original; });
@@ -84,7 +84,7 @@ test("serialized dictionary CSS cannot close its HTML style element and existing
     return [style];
   };
   request.dictionaryStyles = [{ dictionary: "A", styles: "parsed by the shared native sanitizer" }];
-  const html = createAnkiDefinitionRenderer(document, request)({ dictionary: "A" });
+  const html = await createAnkiDefinitionRenderer(document, request)({ dictionary: "A" });
   const holder = document.createElement("div");
   holder.innerHTML = html;
   assert.equal(holder.querySelector("img"), null);
