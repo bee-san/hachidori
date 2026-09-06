@@ -43,10 +43,10 @@ const settle = () => new Promise(resolveDone => setImmediate(resolveDone));
 test("default-off popup binding is silent; only the newest owned play updates controls", async t => {
   const f = fixture(t);
   const parent = f.view(), child = f.view("食べる");
-  parent.bind(); child.bind();
-  assert.equal(f.sent.length, 0);
   parent.item.status.remove();
   delete parent.item.status;
+  parent.bind(); child.bind();
+  assert.equal(f.sent.length, 0);
   parent.item.button.click();
   parent.item.status = parent.context.popup.querySelector(".gsm-hoshidicts-audio-status");
   assert.ok(parent.item.status, "play lazily creates its feedback");
