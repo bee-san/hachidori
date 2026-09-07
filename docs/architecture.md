@@ -150,8 +150,8 @@ of that record, not the reason alone, identifies a new installation.
   where `stage` is `dictionaries`, `anki`, `practice` or `complete`. The worker
   owns every write. `hd_setup_cas` accepts `{ baseRevision, stage }` from the
   exact startup page URL only, answers a stale base revision with a conflict and
-  the current state, validates the stage, and records `completedAt` once when
-  the stage becomes `complete`.
+  the current state, refuses a stage that is not later than the current one, and
+  records `completedAt` when the stage becomes `complete`.
 - `options`: the first-install preferences (`showCompactDefinitionSummary: true`,
   `compactDefinitionSummaryCount: 3`) at revision 1. The `reader-options.js`
   defaults are unchanged, so an extension update never alters an existing

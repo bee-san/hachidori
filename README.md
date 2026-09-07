@@ -36,7 +36,7 @@ git clone https://github.com/bee-san/hachidori.git
 3. Choose **Load unpacked** and select the cloned `hachidori/extension` directory.
 4. Hachidori opens a short setup tab on its first install. Open **Settings** from it, install the four recommended dictionaries or import your own Yomitan `.zip`, then hover Japanese text on any page.
 
-Hachidori will automatically open a new tab to install the reccomended dictionaries and auto-connect to Anki for you.
+The setup tab is where automatic installation of the recommended dictionaries and Anki detection are being added; today it walks through the steps and links to Settings.
 
 <p align="center">
   <img src="docs/assets/startup-dictionaries.png" alt="Hachidori's first-run setup tab showing the Dictionaries, Anki and Try it steps and the four recommended dictionaries" width="720">

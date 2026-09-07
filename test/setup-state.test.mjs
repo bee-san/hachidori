@@ -16,8 +16,11 @@ test("a new installation starts at the dictionary stage and advances through rev
   const complete = advanceSetupState(anki, "complete", "2026-09-07T10:02:00.000Z");
   assert.deepEqual(complete, { ...started, revision: 3, stage: "complete", completedAt: "2026-09-07T10:02:00.000Z" });
   assert.equal(setupIncomplete(complete), false);
-  // Completion time is recorded once; a repeated completion write keeps it.
-  assert.equal(advanceSetupState(complete, "complete", "2026-09-07T10:03:00.000Z").completedAt, complete.completedAt);
+  // Setup is monotonic: repeating a stage, returning to one, or reopening a
+  // finished setup is refused even with the current revision.
+  assert.throws(() => advanceSetupState(complete, "complete", "2026-09-07T10:03:00.000Z"), /backwards/u);
+  assert.throws(() => advanceSetupState(anki, "dictionaries", "2026-09-07T10:03:00.000Z"), /backwards/u);
+  assert.throws(() => advanceSetupState(complete, "practice", "2026-09-07T10:03:00.000Z"), /backwards/u);
   assert.throws(() => advanceSetupState(started, "lookup", "2026-09-07T10:02:00.000Z"), /invalid/u);
   assert.deepEqual(normaliseSetupState(complete), complete);
   assert.deepEqual(normaliseSetupState({ ...complete, extra: true }), complete);

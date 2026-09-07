@@ -52,12 +52,17 @@ export function setupIncomplete(state) {
   return state !== null && state.stage !== "complete";
 }
 
+// Setup only moves forward: a stale or unexpected write can neither reopen a
+// finished setup nor return to an earlier stage.
 export function advanceSetupState(current, stage, now) {
   if (!SETUP_STAGES.includes(stage)) throw new Error("the setup stage is invalid");
+  if (SETUP_STAGES.indexOf(stage) <= SETUP_STAGES.indexOf(current.stage)) {
+    throw new Error("the setup stage cannot move backwards");
+  }
   return {
     ...current,
     revision: current.revision + 1,
     stage,
-    completedAt: stage === "complete" ? current.completedAt ?? now : null,
+    completedAt: stage === "complete" ? now : null,
   };
 }

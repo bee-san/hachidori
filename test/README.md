@@ -534,10 +534,12 @@ What it proves, in order:
    later user edit alone through `update`, `onStartup` and a restarted worker
    context; a profile that already carries options keeps them. `hd_setup_cas`
    is answered only for the startup page URL, refuses a stale base revision with
-   the current state, rejects invalid stages and missing revisions, and records
-   `completedAt` once. A jsdom `startup.html` renders **Already installed** only
-   for trusted `sourceId`/index identity, keeps focus on its control through an
-   inventory event, ignores an older setup revision, defers rendering while a
+   the current state, rejects invalid stages, missing revisions and any move
+   back to an earlier or finished stage, and records `completedAt`. A jsdom
+   `startup.html` renders **Already installed** only for trusted
+   `sourceId`/index identity, keeps focus on its id-less Settings link and its
+   Continue button through inventory events, ignores an older setup revision,
+   defers rendering while a
    write is in flight, moves focus to the heading on a stage change, adopts a
    conflict reply's newer state, and closes its own tab after Finish. The
    Settings harness shows **Resume setup** only for an incomplete, readable

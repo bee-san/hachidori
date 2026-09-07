@@ -1133,13 +1133,16 @@ async function firstRunBackgroundStage() {
     await send({ baseRevision: 2, stage: "practice" }, { id: "another-extension", url: startupUrl }),
   ];
   const completed = await send({ baseRevision: 2, stage: "complete" });
+  // Setup is monotonic: a current-revision write cannot reopen a finished setup.
+  rejected.push(await send({ baseRevision: 3, stage: "practice" }));
   const validReply = (reply) => reply?.type === "hd_setup_cas_result" && reply.requestId === "setup-cas";
-  check("startup-page setup writes are revision-checked, stage-validated and refused from other senders",
+  check("startup-page setup writes are revision-checked, forward-only and refused from other senders",
     advanced?.ok && validReply(advanced)
       && JSON.stringify(advanced.state) === JSON.stringify({ ...seeded.setup, revision: 2, stage: "anki" })
       && stale?.ok === false && stale.conflict === true && validReply(stale)
       && JSON.stringify(stale.state) === JSON.stringify(advanced.state)
       && rejected.every((reply) => validReply(reply) && reply.ok === false && typeof reply.error === "string" && reply.conflict === undefined)
+      && rejected.at(-1).error.includes("backwards")
       && completed?.ok && completed.state.stage === "complete" && completed.state.revision === 3
       && validIso(completed.state.completedAt)
       && JSON.stringify(storage.raw.get("setupState")) === JSON.stringify(completed.state)
