@@ -305,10 +305,12 @@ mapping is **already-configured** and a half-made one — choosing a note type i
 Settings clears its fields — is **needs-attention** carrying Anki's own reason
 (for example *Map the first field, “Front”, before adding notes.*). A saved
 mapping that could not be checked because nothing answered stands as the user
-left it. The latest options are read again inside that write: a mapping the user changes
-while the check runs wins over anything it found, including a failure or an
-absence, judged from what is stored (`ankiMappingComplete`) because the check
-cannot be repeated while the storage write is held. A connection that does not answer or
+left it when it is at least locally usable (`ankiMappingComplete`); a half-made
+one keeps the connection's own reason instead. The latest options are read again inside that write: a mapping the user changes
+while the check runs makes that check stale, so the write is abandoned and the
+mapping now stored is checked instead — the second pass records what it found.
+A proposal is saved only when the mapping it was derived from is still the one
+stored. A connection that does not answer or
 times out is the ordinary **unavailable** outcome; any other failure keeps its
 own reason. The page renders the settled outcome as one sentence with a link to
 the Anki section of Settings, and that outcome moves setup to the last stage by

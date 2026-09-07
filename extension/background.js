@@ -775,17 +775,6 @@ function startupSender(sender) {
   return sender.id === chrome.runtime.id && sender.url?.split(/[?#]/u)[0] === chrome.runtime.getURL(STARTUP_PAGE);
 }
 
-// A mapping the user chose while a check was already running is reported from
-// what is stored, because the check cannot be repeated inside the storage write:
-// a complete one is already configured and a half-made one is theirs to finish.
-function chosenAnkiOutcome(anki) {
-  if (ankiMappingComplete(anki)) {
-    return { status: "already-configured", detail: null, model: anki.model, deck: anki.deck };
-  }
-  if (anki.model === "") return null;
-  return { status: "needs-attention", detail: `Finish the Anki mapping for ${anki.model} in Settings.`, model: null, deck: null };
-}
-
 // Ordinary absence is a connection that never answered; an answer that refused
 // or failed keeps its specific reason.
 function ankiSetupFailure(error) {
@@ -794,51 +783,55 @@ function ankiSetupFailure(error) {
   return { status: unavailable ? "unavailable" : "needs-attention", detail, model: null, deck: null };
 }
 
-// Read-only discovery of an existing mining setup, then one revisioned options
-// write. Anki is never modified, and the storage queue is held only for the write.
-async function detectFirstRunAnki() {
-  const stored = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
-  const options = normaliseOptions(stored[OPTIONS_KEY]);
-  let outcome;
-  let proposal = null;
+// One read-only conversation with Anki: an unconfigured profile is offered a
+// proposal, and a mapping the user already saved is verified the way Settings
+// verifies it, never replaced. Nothing here holds the storage queue.
+async function checkFirstRunAnki(anki) {
   ankiGateway ??= createAnkiGateway();
-  const invoke = (action, params) => ankiGateway.invoke(action, params, options.anki.apiKey);
+  const invoke = (action, params) => ankiGateway.invoke(action, params, anki.apiKey);
   try {
-    // A mapping the user already saved is verified the way Settings verifies it,
-    // never replaced; only an unconfigured profile is offered a proposal.
-    proposal = options.anki.model === ""
-      ? await detectAnkiSetup(invoke, options.anki)
-      : await verifyAnkiSetup(invoke, options.anki);
-    outcome = { status: proposal.status, detail: proposal.detail, model: proposal.model, deck: proposal.deck };
+    const proposal = anki.model === "" ? await detectAnkiSetup(invoke, anki) : await verifyAnkiSetup(invoke, anki);
+    return { proposal, outcome: { status: proposal.status, detail: proposal.detail, model: proposal.model, deck: proposal.deck } };
   } catch (error) {
     const failure = ankiSetupFailure(error);
-    // A saved mapping that could not be checked stands as the user left it.
-    outcome = failure.status === "unavailable" && options.anki.model !== ""
-      ? { status: "already-configured", detail: null, model: options.anki.model, deck: options.anki.deck }
-      : failure;
+    // A usable mapping that could not be checked stands as the user left it; a
+    // half-made one keeps the connection's own reason instead of claiming setup.
+    const stands = failure.status === "unavailable" && ankiMappingComplete(anki);
+    return { proposal: null,
+      outcome: stands ? { status: "already-configured", detail: null, model: anki.model, deck: anki.deck } : failure };
   }
-  return serialiseStorage(async () => {
-    const current = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
-    const setup = normaliseSetupState(current[SETUP_STATE_KEY]);
-    if (setup === null) throw new Error("Setup has not started on this installation.");
-    if (setup.anki !== null) return { state: setup };
-    const values = {};
-    // A mapping the user changed while the check ran wins over whatever it
-    // found, so a failed or absent check never reports over a fresh choice.
-    const latest = normaliseOptions(current[OPTIONS_KEY]);
-    const chosen = sameJsonValue(latest.anki, options.anki) ? null : chosenAnkiOutcome(latest.anki);
-    if (chosen !== null) {
-      outcome = chosen;
-    } else if (proposal?.status === "configured") {
-      const revision = optionsRevision(current[OPTIONS_KEY]);
-      const anki = { ...latest.anki, model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates };
-      values[OPTIONS_KEY] = { ...projectStoredOptions(current[OPTIONS_KEY]), ...validateOptionsPatch({ anki }), revision: revision + 1 };
-    }
-    const state = recordSetupAnki(setup, outcome);
-    values[SETUP_STATE_KEY] = state;
-    await chrome.storage.local.set(values);
-    return { state };
-  });
+}
+
+// The check runs outside the storage queue, so the mapping it judged can change
+// while it runs. The write then discards that check and the mapping now stored
+// is checked instead; the second pass records what it found.
+const ANKI_SETUP_ATTEMPTS = 2;
+
+async function detectFirstRunAnki() {
+  for (let attempt = 1; ; attempt += 1) {
+    const stored = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
+    const options = normaliseOptions(stored[OPTIONS_KEY]);
+    const { proposal, outcome } = await checkFirstRunAnki(options.anki);
+    const written = await serialiseStorage(async () => {
+      const current = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
+      const setup = normaliseSetupState(current[SETUP_STATE_KEY]);
+      if (setup === null) throw new Error("Setup has not started on this installation.");
+      if (setup.anki !== null) return { state: setup };
+      const latest = normaliseOptions(current[OPTIONS_KEY]);
+      if (attempt < ANKI_SETUP_ATTEMPTS && !sameJsonValue(latest.anki, options.anki)) return null;
+      const values = {};
+      if (proposal?.status === "configured" && sameJsonValue(latest.anki, options.anki)) {
+        const revision = optionsRevision(current[OPTIONS_KEY]);
+        const anki = { ...latest.anki, model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates };
+        values[OPTIONS_KEY] = { ...projectStoredOptions(current[OPTIONS_KEY]), ...validateOptionsPatch({ anki }), revision: revision + 1 };
+      }
+      const state = recordSetupAnki(setup, outcome);
+      values[SETUP_STATE_KEY] = state;
+      await chrome.storage.local.set(values);
+      return { state };
+    });
+    if (written !== null) return written;
+  }
 }
 
 // Dictionary-dependent initial preferences follow the committed entry's exact
