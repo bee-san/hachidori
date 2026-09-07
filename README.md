@@ -34,15 +34,13 @@ git clone https://github.com/bee-san/hachidori.git
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked** and select the cloned `hachidori/extension` directory.
-4. Hachidori opens a short setup tab on its first install. Open **Settings** from it, install the four recommended dictionaries or import your own Yomitan `.zip`, then hover Japanese text on any page.
-
-The setup tab is where automatic installation of the recommended dictionaries and Anki detection are being added; today it walks through the steps and links to Settings.
+4. Hachidori opens a short setup tab on its first install and starts installing the four recommended dictionaries by itself. Open **Settings** from it any time to import your own Yomitan `.zip`, then hover Japanese text on any page.
 
 <p align="center">
-  <img src="docs/assets/startup-dictionaries.png" alt="Hachidori's first-run setup tab showing the Dictionaries, Anki and Try it steps and the four recommended dictionaries" width="720">
+  <img src="docs/assets/startup-installing.png" alt="Hachidori's first-run setup tab installing the four recommended dictionaries with a download progress bar" width="720">
 </p>
 
-The setup tab uses the Settings theme in light and dark mode, walks through **Dictionaries → Anki → Try it**, and enables three-line compact definition summaries once as an initial preference. It appears only for a fresh installation: updates and restarts never reopen it or reset your settings. Closing it loses nothing; Settings shows **Resume setup** until you finish.
+The setup tab uses the Settings theme in light and dark mode and walks through **Dictionaries → Anki → Try it**. Dictionaries download and install one after another with real download progress and an installation phase; a source that fails is reported with its reason while the others continue, and **Retry missing dictionaries** fetches only what is still missing. Once every source is installed, the result stays on screen for five seconds and setup moves on. Initial preferences are set once: three-line compact definition summaries, Jitendex as their source and Bee's Ultimate Kanji Dictionary for clicked kanji, each only while you have not chosen otherwise. The tab appears only for a fresh installation: updates and restarts never reopen it or reset your settings, and the installation continues even if you close the tab; Settings shows **Resume setup** until you finish.
 
 # Blazing Fast
 
