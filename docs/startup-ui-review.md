@@ -46,6 +46,61 @@ The capture driver and complete state matrix remain in ignored
 `test/tmp/ui-review/`; production-path checks are documented in
 [the test guide](../test/README.md#chrome-e2emjs).
 
+The separate real-Chrome run imports the catalogue fixtures through the normal
+WASM engine. Pressing Enter on **Look up 辞書** returns their actual glossary
+content in the ordinary popup; pointer lookup is checked too. This viewport
+capture shows that result and the still-available Finish control:
+
+![Actual installed-fixture lookup on the practice scene](assets/startup-practice-lookup.png)
+
+The shared Settings tokens give the dim, success and error text on the inset
+surface contrast ratios of at least **5.67:1** in light mode and **6.77:1** in
+dark mode. The active step is **5.86:1** and **6.95:1**, respectively. Keyboard
+checks cover the skip link, lookup control, preserved selections, recovery and
+Finish. Live-region checks cover stage/outcome announcements without per-byte
+announcements; this is DOM/browser validation, not a VoiceOver session.
+
+Chrome 152 closes extension tabs when the native file-access switch reloads
+Hachidori. The optional prompt now explains **Extension options → Resume
+setup** after opening the details page. This final narrow capture uses the
+retained real fixture profile, with access disabled:
+
+![Saved-page instructions and reload recovery at narrow width](assets/startup-file-access-recovery.png)
+
+## Targeted progress-update measurements
+
+The persistent rows change the setup progress render path. On macOS 14.6.1,
+MacBook Air M2/8 GiB, Node 22.22.3 and headless Chrome 152.0.7977.82, the local
+capture driver compared `6b89552` with production sources at `fae45dd`.
+The independent benchmark's timed workloads had finished; these runs used
+separate profiles, serially, at Puppeteer's 800 × 600 default viewport.
+
+Reproduction setup: load each revision's startup page and Settings CSS in a
+scratch extension with an inert background. Stub the initial storage read to
+an empty dictionary inventory and a dictionary-stage setup record. Return an
+unfinished run from `hd_setup_install`: four catalogue rows, Jitendex downloading
+59,768,832 of 125,829,120 bytes and the other three waiting. Capture the startup
+runtime listener, then time 11 batches of 100 synchronous `hd_setup_progress`
+messages with `performance.now()`, incrementing the run sequence and received
+bytes by 1,024 per message. Use the same run ID and production listener/render
+path throughout. Verify the final row says 58.1 MB (48%) rather than 57.0 MB
+(47%) and record whether the original row remains connected. Run before/after,
+then after/before, each in a separate browser. The local commands are
+`node test/tmp/ui-review/capture.mjs before measure` and the corresponding
+`after measure`; raw samples and the capture driver remain beside that file.
+
+| Run | Before, median ms / 100 updates | After, median ms / 100 updates |
+| --- | ---: | ---: |
+| Before then after | 1.500 | 1.105 |
+| After then before | 1.615 | 1.050 |
+
+Before sample ranges were 1.255–3.185 and 1.240–2.760 ms; after ranges were
+0.790–2.080 and 0.765–5.725 ms. Both revisions applied the same updates; only
+the updated page retained the row. These short samples show no median
+synchronous-update regression, with visible warmup/noise. They exclude layout,
+paint, asynchronous work, downloads, native import and lookup latency, and do
+not establish an end-to-end speedup.
+
 The scene uses the exact background from GameSentenceMiner PR #549, retaining
 the embedded SovietGames, *Love, Money, Rock’n’Roll* and ArseniXC credits.
 [Asset attribution](../extension/assets/ATTRIBUTION.md) records its immutable

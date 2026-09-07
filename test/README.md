@@ -722,11 +722,17 @@ too. An options update preserves the connected scene and selection. Using
 **Skip to setup** keeps the exact startup URL, while explicitly injecting the
 reader into Settings, the design preview or a query-suffixed startup URL still
 produces no lookup. The file-access control opens this extension's own Chrome
-details page; the suite returns without enabling, flips the real switch in its
-isolated profile, returns and reloads to confirm access, and looks up 辞書 in a
-local HTML fixture. Access is then disabled again and **Not now** is followed
-by the ordinary Finish assertion. The later Anki success screen, after fixture
+details page. At the end of the browser suite, it returns without enabling,
+then flips the real switch in its isolated profile. Chrome closes extension
+tabs during the reload, so the test opens **Extension options** and follows
+**Resume setup** to the persisted practice stage. It confirms access on resume
+and page reload, then looks up 辞書 in a local HTML fixture. Access is disabled
+again before **Not now** and **Finish**. The Anki success screen, after fixture
 removal, proves dictionary recovery keeps Finish and Settings available.
+`HACHIDORI_STARTUP_LOOKUP_SCREENSHOT` captures the actual practice popup.
+The native-switch scenario enables Developer mode in its isolated profile:
+Chrome 152 otherwise disables a command-line extension when it reloads as an
+unpacked extension. No personal browser settings are changed.
 
 `node --test test/local-file-access.test.mjs test/startup-practice.test.mjs`
 covers the optional prompt's initial query, return/reload lifecycle, stale

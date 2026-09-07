@@ -6328,7 +6328,7 @@ async function main() {
     for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_READY_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT]]) {
       if (!path) continue;
       await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
-      await startup.screenshot({ path });
+      await startup.screenshot({ path, fullPage: true });
     }
     await startup.emulateMediaFeatures([]);
   }
