@@ -151,11 +151,22 @@
     }
   }
 
-  function normaliseMediaCapture(value) {
-    const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  function normaliseCaptureCollectors(source, result) {
     const texthooker = source.texthooker && typeof source.texthooker === "object"
       && !Array.isArray(source.texthooker) ? source.texthooker : {};
     const page = source.page && typeof source.page === "object" && !Array.isArray(source.page) ? source.page : {};
+    if (typeof texthooker.enabled === "boolean") result.texthooker.enabled = texthooker.enabled;
+    const url = normaliseTexthookerUrl(texthooker.url);
+    if (url !== null) result.texthooker.url = url;
+    if (MEDIA_TEXTHOOKER_FORMATS.includes(texthooker.format)) result.texthooker.format = texthooker.format;
+    for (const key of ["nativeCues", "domText", "autoLearnArea"]) {
+      if (typeof page[key] === "boolean") result.page[key] = page[key];
+    }
+    if (result.texthooker.enabled && !result.texthooker.url) result.texthooker.enabled = false;
+  }
+
+  function normaliseMediaCapture(value) {
+    const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const result = cloneMediaCapture();
     for (const key of ["enabled", "includeAnimation", "includeCapturedAudio"]) {
       if (typeof source[key] === "boolean") result[key] = source[key];
@@ -168,18 +179,11 @@
         && source.estimatedOffsetMs >= -2000 && source.estimatedOffsetMs <= 2000) {
       result.estimatedOffsetMs = source.estimatedOffsetMs;
     }
-    if (typeof texthooker.enabled === "boolean") result.texthooker.enabled = texthooker.enabled;
-    const url = normaliseTexthookerUrl(texthooker.url);
-    if (url !== null) result.texthooker.url = url;
-    if (MEDIA_TEXTHOOKER_FORMATS.includes(texthooker.format)) result.texthooker.format = texthooker.format;
-    for (const key of ["nativeCues", "domText", "autoLearnArea"]) {
-      if (typeof page[key] === "boolean") result.page[key] = page[key];
-    }
     if (!result.includeAnimation && !result.includeCapturedAudio) {
       result.includeAnimation = DEFAULT_MEDIA_CAPTURE.includeAnimation;
       result.includeCapturedAudio = DEFAULT_MEDIA_CAPTURE.includeCapturedAudio;
     }
-    if (result.texthooker.enabled && !result.texthooker.url) result.texthooker.enabled = false;
+    normaliseCaptureCollectors(source, result);
     return result;
   }
 

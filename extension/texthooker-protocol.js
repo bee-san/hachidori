@@ -31,8 +31,8 @@ export function parseGsmTexthookerMessage(value) {
       || typeof data.id !== "string" || !data.id
       || typeof data.session_id !== "string" || !data.session_id
       || data.history === true) return null;
-  const text = typeof payload.sentence === "string" ? payload.sentence
-    : typeof data.text === "string" ? data.text : "";
+  let text = payload.sentence;
+  if (typeof text !== "string") text = typeof data.text === "string" ? data.text : "";
   if (!text.trim() || text.length > MAX_TEXTHOOKER_TEXT_LENGTH) return null;
   return {
     type: "line",

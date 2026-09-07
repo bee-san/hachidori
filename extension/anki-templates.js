@@ -48,6 +48,7 @@ const SENREN = {
 const fieldKey = value => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 const knownMarker = value => MARKERS.has(value) || DYNAMIC_PREFIXES.some(prefix => value.startsWith(prefix) && value.length > prefix.length);
 const blankTemplate = () => ({ value: "", overwriteMode: "coalesce" });
+const semanticMarker = semantic => ({ captureAnimation: "capture-animation", captureAudio: "capture-audio" })[semantic] ?? semantic;
 
 export function ankiFieldNames(fields) {
   return new Map(fields.map(field => [field.toLowerCase(), field]));
@@ -107,8 +108,7 @@ function basicTemplates(config, fields) {
     if (!field) { errors.push(`Mapped field “${name}” is unavailable.`); continue; }
     const row = rows.get(field);
     const marker = semantic === "pitch" && field.toLowerCase() === "pitchposition" ? "pitch-position"
-      : semantic === "captureAnimation" ? "capture-animation"
-        : semantic === "captureAudio" ? "capture-audio" : semantic;
+      : semanticMarker(semantic);
     row.value += `${row.value ? "<br>" : ""}{${marker}}`;
   }
   return { templates: Object.fromEntries(rows), staleFields: [], errors };
@@ -141,7 +141,7 @@ export function applyAnkiPreset(config, fields, preset) {
   const suggestions = new Map();
   if (preset === "automatic") {
     for (const [semantic, aliases] of Object.entries(genericAliases)) {
-      for (const alias of aliases) suggestions.set(fieldKey(alias), { slot: semantic, value: `{${semantic}}` });
+      for (const alias of aliases) suggestions.set(fieldKey(alias), { slot: semantic, value: `{${semanticMarker(semantic)}}` });
     }
   }
   for (const [field, value] of Object.entries(table)) suggestions.set(fieldKey(field), {

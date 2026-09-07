@@ -744,6 +744,15 @@
     void Promise.resolve(value).then(pin => window.HDCapture?.release(pin)).catch(() => {});
   }
 
+  function releaseProvisionalCapture(value, level) {
+    // Child requests borrow the root pin. A root replay also borrows the pin
+    // already adopted by the visible popup, even if that replay becomes stale.
+    if (level !== rootLevel) return;
+    void Promise.resolve(value).then(pin => {
+      if (pin !== rootLevel.capturePin) releaseCapture(pin);
+    }).catch(() => {});
+  }
+
   function releaseRootCapture() {
     const capture = rootLevel.capturePinPromise ?? rootLevel.capturePin;
     rootLevel.capturePin = null;
@@ -1993,7 +2002,7 @@
         capturePinPromise,
       ]);
     } catch (error) {
-      releaseCapture(capturePinPromise);
+      releaseProvisionalCapture(capturePinPromise, level);
       if (retainProtectedReplay(request, token, level, replayOptions)) return false;
       return handleLookupFailure(token, error, level);
     }
@@ -2001,7 +2010,7 @@
     // Hover fires far faster than lookups return; anything but the newest reply
     // would repaint a word the pointer already left.
     if (!requestCanRender(token, request.candidate, level)) {
-      releaseCapture(capturePin);
+      releaseProvisionalCapture(capturePin, level);
       return;
     }
     if (level === rootLevel) rootLevel.capturePin = capturePin;

@@ -91,6 +91,9 @@ function captureFixture({
   duplicate = false,
   failFirstWrite = false,
   failReadback = false,
+  stopAfterLastUpload = false,
+  stopDuringFinalConfigRead = false,
+  stopDuringWrite = false,
   assets = {
     animation: { filename: "hachidori-abc123.avif", data: "AQI=", byteLength: 2 },
     audio: { filename: "hachidori-abc123.wav", data: "Aw==", byteLength: 1 },
@@ -100,6 +103,7 @@ function captureFixture({
   const calls = [];
   let fields = duplicate ? { Front: "猫", Media: "kept", CapturedAudio: "" } : null;
   let writes = 0;
+  let captureAvailable = true, uploads = 0;
   const options = globalThis.HDReaderOptions.normaliseOptions({
     mediaCapture: {
       ...globalThis.HDReaderOptions.DEFAULT_MEDIA_CAPTURE,
@@ -123,11 +127,13 @@ function captureFixture({
       if (action === "modelNamesAndIds") return { Basic: 7 };
       if (action === "findNotes") return duplicate ? [44] : [];
       if (action === "addNote") {
+        if (stopDuringWrite) captureAvailable = false;
         if (failFirstWrite && writes++ === 0) throw new Error("connection lost after send");
         fields = params.note.fields;
         return 12;
       }
       if (action === "updateNoteFields") {
+        if (stopDuringWrite) captureAvailable = false;
         fields = { ...fields, ...params.note.fields };
         return null;
       }
@@ -138,13 +144,18 @@ function captureFixture({
           Object.entries(fields).map(([field, value]) => [field, { value }]),
         ) }];
       }
-      if (action === "storeMediaFile") return params.filename;
+      if (action === "storeMediaFile") {
+        uploads++;
+        if (stopAfterLastUpload && uploads === Object.keys(assets).length) captureAvailable = false;
+        return params.filename;
+      }
       throw new Error(`Unexpected ${action}`);
     },
   };
   const captureCalls = [];
   const capture = async message => {
     captureCalls.push(message);
+    if (!captureAvailable) throw new Error("The media export job expired.");
     if (message.type === "hd_capture_job_status") {
       return { ok: true, state: "ready", warnings,
         assets: Object.fromEntries(Object.entries(assets).map(([kind, asset]) =>
@@ -159,7 +170,10 @@ function captureFixture({
   };
   const service = createAnkiWorkerService({
     gateway,
-    readOptions: async () => options,
+    readOptions: async () => {
+      if (stopDuringFinalConfigRead && uploads === Object.keys(assets).length) captureAvailable = false;
+      return options;
+    },
     readDictionaries: async () => [],
     engine: async message => {
       calls.push(message.type);
@@ -200,7 +214,7 @@ function captureFixture({
       readyAtMs: Date.now(),
     },
   };
-  return { service, calls, captureCalls, request, get fields() { return fields; } };
+  return { service, calls, captureCalls, request, stop() { captureAvailable = false; }, get fields() { return fields; } };
 }
 
 test("captured media preflight stays read-only and submission uploads referenced assets before the note", async () => {
@@ -218,8 +232,33 @@ test("captured media preflight stays read-only and submission uploads referenced
   assert.equal(f.fields.Media, '<img src="hachidori-abc123.avif">');
   assert.equal(f.fields.CapturedAudio, "[sound:hachidori-abc123.wav]");
   assert.deepEqual(f.captureCalls.map(call => call.type),
-    ["hd_capture_job_status", "hd_capture_asset", "hd_capture_asset", "hd_capture_complete"]);
+    ["hd_capture_job_status", "hd_capture_asset", "hd_capture_asset", "hd_capture_job_status", "hd_capture_complete"]);
   assert.ok(f.calls.lastIndexOf("storeMediaFile") < f.calls.indexOf("addNote"));
+});
+
+test("Stop during the final capture upload or config read prevents a new add or overwrite", async () => {
+  for (const duplicate of [false, true]) {
+    for (const stopPoint of ["stopAfterLastUpload", "stopDuringFinalConfigRead"]) {
+      const f = captureFixture({ duplicate, [stopPoint]: true });
+      f.request.configKey = (await f.service.status()).configKey;
+      f.request.captureJobId = "job-stopped";
+      await assert.rejects(f.service.submit(f.request), /export job expired/u);
+      assert.equal(f.calls.filter(action => action === "storeMediaFile").length, 2);
+      assert.equal(f.calls.includes("addNote"), false);
+      assert.equal(f.calls.includes("updateNoteFields"), false);
+    }
+  }
+});
+
+test("Stop after a mutation was sent preserves its confirmed result", async () => {
+  for (const duplicate of [false, true]) {
+    const f = captureFixture({ duplicate, stopDuringWrite: true });
+    f.request.configKey = (await f.service.status()).configKey;
+    f.request.captureJobId = "job-sent";
+    const result = await f.service.submit(f.request);
+    assert.equal(result.state, duplicate ? "updated" : "added");
+    assert.match(result.warnings.join(" "), /Captured media cleanup.*export job expired/u);
+  }
 });
 
 test("overwrite skip policy can suppress all captured media without a pin, export or upload", async () => {

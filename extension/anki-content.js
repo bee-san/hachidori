@@ -121,6 +121,23 @@
       refreshAll(); // Best-effort checks cannot turn a confirmed write into a retry.
       return true;
     }
+    function readyCaptureRequest(record, request, requirements, assets) {
+      captureBadge(record);
+      const unavailable = [];
+      if (requirements.includeAnimation && !assets?.animation) unavailable.push("animation");
+      if (requirements.includeAudio && !assets?.audio) unavailable.push("audio");
+      return { ...request, captureJobId: record.captureJobId, captureUnavailable: unavailable };
+    }
+    function captureProgress(record, status) {
+      if (status.state === "finishing") {
+        captureBadge(record, "Finishing clip");
+        text(record.output, "Finishing clip…");
+      } else {
+        captureBadge(record);
+        const progress = status.total > 0 ? ` ${status.progress}/${status.total}` : "";
+        text(record.output, `Encoding captured media${progress}…`);
+      }
+    }
     async function prepareCapture(record, request, owns) {
       const selected = record.decision?.capture;
       if (!selected) return request;
@@ -135,11 +152,7 @@
       for (;;) {
         const status = await capture("hd_capture_job_status", { jobId: record.captureJobId });
         if (status.state === "ready") {
-          captureBadge(record);
-          const unavailable = [];
-          if (selected.requirements.includeAnimation && !status.assets?.animation) unavailable.push("animation");
-          if (selected.requirements.includeAudio && !status.assets?.audio) unavailable.push("audio");
-          return { ...request, captureJobId: record.captureJobId, captureUnavailable: unavailable };
+          return readyCaptureRequest(record, request, selected.requirements, status.assets);
         }
         if (status.state === "error") {
           const message = status.error || "Captured media could not be encoded.";
@@ -147,16 +160,7 @@
           record.captureJobId = null;
           throw new Error(message);
         }
-        if (owns()) {
-          if (status.state === "finishing") {
-            captureBadge(record, "Finishing clip");
-            text(record.output, "Finishing clip…");
-          } else {
-            captureBadge(record);
-            const progress = status.total > 0 ? ` ${status.progress}/${status.total}` : "";
-            text(record.output, `Encoding captured media${progress}…`);
-          }
-        }
+        if (owns()) captureProgress(record, status);
         await wait(100);
       }
     }

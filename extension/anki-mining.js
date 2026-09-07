@@ -69,11 +69,25 @@ function captureForApplication(request, templates) {
   };
 }
 
+async function writeAnkiNote(invoke, note, target, fields) {
+  let noteId;
+  if (target) {
+    const reply = await invoke("updateNoteFields", { note: { id: target.noteId, fields } }, 10_000);
+    if (reply !== null) throw new Error("Anki returned an invalid field-update acknowledgement.");
+    noteId = target.noteId;
+  } else {
+    noteId = await invoke("addNote", { note }, 10_000);
+  }
+  if (!Number.isSafeInteger(noteId) || noteId <= 0) throw new Error("Anki did not return a valid note ID.");
+  return noteId;
+}
+
 export function createAnkiMiningService({
   gateway,
   readConfig,
   buildFields,
   beforeWrite,
+  beforeMutation = async () => {},
   afterConfirmed = async () => {},
   validateCapture = async () => {},
   enrich,
@@ -139,7 +153,7 @@ export function createAnkiMiningService({
     const prepared = await prepare(request, true);
     const checked = await decision(prepared);
     if (!checked.canAdd) return { state: checked.state, error: checked.error };
-    const { configJson, note, resolved, invoke } = prepared;
+    const { configJson, note, invoke } = prepared;
     const { fields, target, templates } = fieldsForDecision(prepared, checked);
     const capture = captureForApplication(request, templates);
     if (capture) await validateCapture({ request, prepared, capture });
@@ -152,16 +166,12 @@ export function createAnkiMiningService({
       capture,
     });
     if (JSON.stringify(await readConfig()) !== configJson) throw new Error(CONFIG_CHANGED);
+    // Uploads and configuration reads can outlive Stop. Validate the remaining
+    // write ownership last, with no unrelated await before sending the mutation.
+    await beforeMutation({ request, capture, writeResources });
     let noteId;
     try {
-      if (target) {
-        const reply = await invoke("updateNoteFields", { note: { id: target.noteId, fields } }, 10_000);
-        if (reply !== null) throw new Error("Anki returned an invalid field-update acknowledgement.");
-        noteId = target.noteId;
-      } else {
-        noteId = await invoke("addNote", { note }, 10_000);
-      }
-      if (!Number.isSafeInteger(noteId) || noteId <= 0) throw new Error("Anki did not return a valid note ID.");
+      noteId = await writeAnkiNote(invoke, note, target, fields);
     } catch (error) {
       if (isAnkiDuplicateError(error.message)) return { state: "duplicate", error: "This note already exists in Anki." };
       // A lost acknowledgement may follow a completed write. Neither this

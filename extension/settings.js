@@ -253,7 +253,6 @@ function renderMediaSettings() {
     if (input !== document.activeElement) input.value = String(value);
   }
   element("opt-media-auto-area").disabled = !capture.page.domText;
-  element("opt-media-texthooker-url").disabled = !capture.texthooker.enabled;
   element("opt-media-texthooker-format").disabled = !capture.texthooker.enabled;
 }
 
@@ -265,8 +264,7 @@ async function updateMediaSettings() {
     const reply = await send("hd_capture_status", {}, CAPTURE_TARGET);
     if (epoch !== mediaStatusEpoch) return;
     if (!reply.ok) throw new Error(reply.error || "Capture page unavailable.");
-    const state = reply.state === "recording" ? "Recording"
-      : reply.state === "disabled" ? "Disabled" : "Stopped";
+    const state = { recording: "Recording", disabled: "Disabled" }[reply.state] ?? "Stopped";
     mediaRuntimeState = reply.state;
     const source = reply.mediaSource?.name ? ` · ${reply.mediaSource.name}` : "";
     const linked = reply.linkedPage?.title ? ` · linked to ${reply.linkedPage.title}` : "";

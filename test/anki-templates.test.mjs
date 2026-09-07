@@ -65,6 +65,16 @@ test("marker validation retains unknown tokens as errors and recognizes nonempty
   assert.deepEqual(ankiTemplateErrors("text {} and an unmatched { brace"), []);
 });
 
+test("Automatic capture aliases produce valid hyphenated markers even before capture is enabled", () => {
+  for (const [animation, audio] of [["Capture Animation", "SentenceAudio"], ["SentenceAnimation", "Capture Audio"]]) {
+    const fields = ["Front", animation, audio];
+    const applied = applyAnkiPreset(config(), fields, "automatic");
+    assert.equal(applied.fieldTemplates[animation].value, "{capture-animation}");
+    assert.equal(applied.fieldTemplates[audio].value, "{capture-audio}");
+    assert.deepEqual(resolveAnkiTemplates(applied, fields).errors, []);
+  }
+});
+
 test("template rendering substitutes once, preserves literal HTML and removes only empty marker-only breaks", () => {
   assert.equal(renderAnkiTemplate("<b>{EXPRESSION}</b><br>{audio}<BR />literal<br>{single-glossary-missing}",
     { expression: "&lt;語&gt;", audio: "" }), "<b>&lt;語&gt;</b><br>literal");
