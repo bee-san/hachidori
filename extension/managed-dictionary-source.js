@@ -79,6 +79,13 @@ export function recommendedDictionarySource(sourceId) {
   return RECOMMENDED_BY_ID.get(sourceId) ?? null;
 }
 
+// A recommendation counts as installed through its validated catalogue identity
+// or its exact update index, never through a display name.
+export function recommendedDictionaryInstalled(entry, dictionaries) {
+  return dictionaries.some((dictionary) =>
+    dictionary.sourceId === entry.sourceId || dictionary.indexUrl === entry.indexUrl);
+}
+
 export function assertRecommendedDictionary(source, dictionary) {
   if (!new RegExp(source.titlePattern, "u").test(dictionary.title)) {
     throw new Error(`${source.name} archive did not match its expected title`);
