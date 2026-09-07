@@ -5478,10 +5478,11 @@ async function main() {
     // the options write above reaches it asynchronously. Click inside the page
     // so a handle resolved before that re-render cannot go stale, keeping the
     // user-clickable requirement Puppeteer's handle click would have enforced.
-    const clickStartupControl = (id) => startup.$eval(`#${id}`, (control) => {
-      if (control.disabled || !control.checkVisibility()) throw new Error(`#${control.id} is not user-clickable`);
+    const clickStartupControl = (id) => startup.evaluate((controlId) => {
+      const control = document.getElementById(controlId);
+      if (!control || control.disabled || !control.checkVisibility()) throw new Error(`#${controlId} is not user-clickable`);
       control.click();
-    });
+    }, id);
     const stageAfter = async (id, heading) => {
       await clickStartupControl(id);
       return startup.waitForFunction((expected) => {
