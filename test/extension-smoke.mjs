@@ -9325,6 +9325,18 @@ async function contentNoteStage() {
       harness.emitOptions({ ...blurOptions, definitionBlurDirection: "below", definitionBlurThreshold: 3, definitionBlurEnabled: false });
       outcomes["Below blurs a zero count and disabling blur reveals without another play"] =
         belowBlurred && harness.blurState() === "revealed" && plays() === 2;
+
+      // A stale lookup's late count must not settle the current lookup's autoplay.
+      harness.emitOptions({ ...blurOptions });
+      const stale = await lookup("古い");
+      const current = await lookup("現在");
+      answer(stale, 9, 9);
+      await harness.settle();
+      const currentStillPending = harness.blurState() === "pending" && plays() === 2;
+      answer(current, 1, 10);
+      await harness.settle();
+      outcomes["a stale lookup's late qualifying count leaves the current lookup's autoplay to its own count"] =
+        currentStillPending && harness.blurState() === "revealed" && plays() === 3;
     } finally { harness.close(); }
 
     const timed = await createHarness(undefined, { holdLookupStats: true,
