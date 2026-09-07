@@ -111,6 +111,12 @@ button,
   font-weight: 400;
   letter-spacing: normal;
 }
+.setup-resume {
+  display: block;
+  margin: 14px 10px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
 .settings-nav {
   display: flex;
   flex-direction: column;
