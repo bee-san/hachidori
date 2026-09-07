@@ -739,13 +739,23 @@
     return matched;
   }
 
+  function releaseCapture(value) {
+    if (!value) return;
+    void Promise.resolve(value).then(pin => window.HDCapture?.release(pin)).catch(() => {});
+  }
+
+  function releaseRootCapture() {
+    const capture = rootLevel.capturePinPromise ?? rootLevel.capturePin;
+    rootLevel.capturePin = null;
+    rootLevel.capturePinPromise = null;
+    releaseCapture(capture);
+  }
+
   function teardown(reason) {
     if (disposed) {
       return;
     }
-    void window.HDCapture?.release(rootLevel.capturePin);
-    rootLevel.capturePin = null;
-    rootLevel.capturePinPromise = null;
+    releaseRootCapture();
     audio?.dispose();
     mining?.retire();
     disposed = true;
@@ -798,9 +808,7 @@
   }
 
   function discardUi() {
-    void window.HDCapture?.release(rootLevel.capturePin);
-    rootLevel.capturePin = null;
-    rootLevel.capturePinPromise = null;
+    releaseRootCapture();
     audio?.retire();
     mining?.retire();
     cancelPopupLayout();
@@ -1693,9 +1701,7 @@
     clearTransferTimer();
     pointerLevel = null;
     pruneLevels(1, false);
-    void window.HDCapture?.release(rootLevel.capturePin);
-    rootLevel.capturePin = null;
-    rootLevel.capturePinPromise = null;
+    releaseRootCapture();
     rootLevel.activeCandidate = null;
     rootLevel.activeSignature = null;
     rootLevel.activeHighlightText = "";
@@ -1987,7 +1993,7 @@
         capturePinPromise,
       ]);
     } catch (error) {
-      void capturePinPromise.then(pin => window.HDCapture?.release(pin));
+      releaseCapture(capturePinPromise);
       if (retainProtectedReplay(request, token, level, replayOptions)) return false;
       return handleLookupFailure(token, error, level);
     }
@@ -1995,7 +2001,7 @@
     // Hover fires far faster than lookups return; anything but the newest reply
     // would repaint a word the pointer already left.
     if (!requestCanRender(token, request.candidate, level)) {
-      void window.HDCapture?.release(capturePin);
+      releaseCapture(capturePin);
       return;
     }
     if (level === rootLevel) rootLevel.capturePin = capturePin;

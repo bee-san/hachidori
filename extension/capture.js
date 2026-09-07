@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createCaptureSession } from "./capture-session.js";
+import { MAX_FRAME_BYTES } from "./capture-buffer.js";
 import {
   MAX_TEXTHOOKER_FRAME_LENGTH,
   MAX_TEXTHOOKER_TEXT_LENGTH,
@@ -9,7 +10,6 @@ import {
 const CAPTURE_TARGET = "hachidori-capture";
 const PAGE_TARGET = "hachidori-capture-page";
 const CONTENT_TARGET = "hachidori-capture-content";
-const MAX_FRAME_BYTES = 256 * 1024;
 const elements = Object.fromEntries([...document.querySelectorAll("[id]")].map(node => [node.id, node]));
 const session = createCaptureSession();
 let config;
@@ -21,6 +21,9 @@ let frameBusy = false;
 let mediaClockReady = Promise.resolve(null);
 let resolveMediaClock = null;
 let mediaClockOriginMs = null;
+let frameClockOriginMs = null;
+let videoReader = null;
+let processedVideoTrack = null;
 let audioReader = null;
 let audioTrack = null;
 let audioContext = null;
@@ -118,16 +121,22 @@ function establishMediaClock(metadata, now) {
   resolveMediaClock = null;
 }
 
+function establishTrackMediaClock(mediaTimeMs, observedAtMs = timestamp()) {
+  if (Number.isFinite(frameClockOriginMs)) return;
+  if (!Number.isFinite(mediaTimeMs)) throw new Error("The captured video did not provide media timestamps.");
+  frameClockOriginMs = observedAtMs - mediaTimeMs;
+}
+
 function clearMediaClock() {
   resolveMediaClock?.(null);
   resolveMediaClock = null;
   mediaClockOriginMs = null;
+  frameClockOriginMs = null;
 }
 
-async function captureFrame(canvas, context, at = timestamp()) {
-  if (!stream || elements["capture-preview"].readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-  const ownedStream = stream;
-  context.drawImage(elements["capture-preview"], 0, 0, canvas.width, canvas.height);
+async function captureFrame(canvas, context, source, at, ownedStream) {
+  if (!stream || stream !== ownedStream) return;
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
   let blob = await canvasBlob(canvas, 0.72);
   if (blob.size > MAX_FRAME_BYTES) blob = await canvasBlob(canvas, 0.5);
   if (blob.size > MAX_FRAME_BYTES || stream !== ownedStream) return;
@@ -141,13 +150,69 @@ async function captureFrame(canvas, context, at = timestamp()) {
   });
 }
 
-function startFrames() {
-  const video = elements["capture-preview"];
-  const { width, height } = captureDimensions(video.videoWidth, video.videoHeight);
-  const canvas = document.createElement("canvas");
+function frameCanvas(videoWidth, videoHeight) {
+  const { width, height } = captureDimensions(videoWidth, videoHeight);
+  const canvas = typeof OffscreenCanvas === "function"
+    ? new OffscreenCanvas(width, height) : document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw new Error("Could not create the capture frame canvas.");
+  return { canvas, context };
+}
+
+function startTimestampedFrames(sharedStream, sourceTrack) {
+  if (typeof MediaStreamTrackProcessor !== "function") return false;
+  let ownedTrack;
+  let reader;
+  try {
+    ownedTrack = sourceTrack.clone();
+    reader = new MediaStreamTrackProcessor({ track: ownedTrack }).readable.getReader();
+  } catch {
+    ownedTrack?.stop();
+    return false;
+  }
+  const ownedStream = sharedStream;
+  const fps = config.videoPreset === "compact" ? 6 : 8;
+  const intervalMs = 1000 / fps;
+  let canvas = null;
+  let context = null;
+  let lastTimestamp = -Infinity;
+  videoReader = reader;
+  processedVideoTrack = ownedTrack;
+  void (async () => {
+    while (stream === ownedStream && videoReader === reader) {
+      const { done, value } = await reader.read();
+      if (done || !value) return;
+      try {
+        const mediaTimeMs = value.timestamp / 1000;
+        establishTrackMediaClock(mediaTimeMs);
+        const frameTimestamp = frameClockOriginMs + mediaTimeMs;
+        if (frameTimestamp - lastTimestamp < intervalMs * 0.9) continue;
+        if (!canvas) {
+          ({ canvas, context } = frameCanvas(
+            value.displayWidth || value.codedWidth,
+            value.displayHeight || value.codedHeight,
+          ));
+        }
+        lastTimestamp = frameTimestamp;
+        await captureFrame(canvas, context, value, frameTimestamp, ownedStream);
+      } finally {
+        value.close();
+      }
+    }
+  })().catch(error => {
+    if (stream === ownedStream && videoReader === reader) {
+      stopCapture(`Video capture stopped: ${describe(error)}`);
+    }
+  });
+  return true;
+}
+
+function startFallbackFrames() {
+  const video = elements["capture-preview"];
+  const { canvas, context } = frameCanvas(video.videoWidth, video.videoHeight);
+  const ownedStream = stream;
   const fps = config.videoPreset === "compact" ? 6 : 8;
   const intervalMs = 1000 / fps;
   let lastStartedAt = -Infinity;
@@ -158,7 +223,7 @@ function startFrames() {
     const frameTimestamp = Math.max(at, lastTimestamp + 0.001);
     lastTimestamp = frameTimestamp;
     frameBusy = true;
-    void captureFrame(canvas, context, frameTimestamp)
+    void captureFrame(canvas, context, video, frameTimestamp, ownedStream)
       .catch(error => stopCapture(`Video capture stopped: ${describe(error)}`))
       .finally(() => { frameBusy = false; });
   };
@@ -177,6 +242,20 @@ function startFrames() {
   frameTimer = setInterval(() => {
     sample(timestamp(), performance.now());
   }, Math.round(1000 / fps));
+}
+
+function startFrames(sharedStream, sourceTrack) {
+  if (!startTimestampedFrames(sharedStream, sourceTrack)) {
+    startFallbackFrames();
+    return;
+  }
+  const video = elements["capture-preview"];
+  if (typeof video.requestVideoFrameCallback === "function") {
+    frameCallbackId = video.requestVideoFrameCallback((now, metadata) => {
+      frameCallbackId = null;
+      establishMediaClock(metadata, now);
+    });
+  }
 }
 
 function startTimestampedAudio(sharedStream, sourceTrack) {
@@ -250,7 +329,9 @@ async function startWorkletAudio(sharedStream, sourceTrack) {
 async function startAudio(sharedStream) {
   const sourceTrack = sharedStream.getAudioTracks()[0];
   if (!sourceTrack) return;
-  if (config.includeAnimation && typeof MediaStreamTrackProcessor === "function"
+  if (!globalThis.__hachidoriForceAudioWorklet
+      && config.includeAnimation && videoReader
+      && typeof MediaStreamTrackProcessor === "function"
       && typeof elements["capture-preview"].requestVideoFrameCallback === "function") {
     startTimestampedAudio(sharedStream, sourceTrack);
     return;
@@ -406,7 +487,7 @@ async function startCapture() {
     preview.srcObject = requested;
     preview.hidden = false;
     await preview.play();
-    if (config.includeAnimation) startFrames();
+    if (config.includeAnimation) startFrames(requested, videoTrack);
     if (config.includeCapturedAudio) await startAudio(requested);
     if (config.timingMode === "auto" && config.texthooker.enabled) texthooker = createTexthooker();
   } catch (error) {
@@ -423,6 +504,11 @@ function stopCapture(error = "") {
   clearInterval(frameTimer);
   frameTimer = null;
   frameBusy = false;
+  const frames = videoReader;
+  videoReader = null;
+  void frames?.cancel().catch(() => {});
+  processedVideoTrack?.stop();
+  processedVideoTrack = null;
   stopTexthooker();
   const reader = audioReader;
   audioReader = null;

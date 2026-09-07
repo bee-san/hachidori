@@ -8,8 +8,8 @@ const CORE_MARKERS = ["expression", "reading", "furigana", "furigana-plain", "di
   "conjugation", "part-of-speech", "phonetic-transcriptions", "tags", "popup-selection-text", "search-query", "document-title",
   "sentence", "sentence-furigana", "sentence-furigana-plain", "cloze-prefix", "cloze-body", "cloze-suffix",
   "frequency", "frequencies", "frequency-harmonic-rank", "frequency-harmonic-occurrence", "frequency-average-rank",
-  "frequency-average-occurrence", "pitch", "pitch-position", "pitch-accent-positions", "pitch-categories", "pitch-accent-categories", "audio"];
-CORE_MARKERS.push("capture-animation", "capture-audio");
+  "frequency-average-occurrence", "pitch", "pitch-position", "pitch-accent-positions", "pitch-categories",
+  "pitch-accent-categories", "audio", "capture-animation", "capture-audio"];
 export const ANKI_TEMPLATE_MARKERS = CORE_MARKERS;
 const MARKER_ALIASES = new Map([["pitch-accent", "pitch"], ["pitch-accents", "pitch"],
   ["pitch-accent-graphs", "pitch"], ["pitch-accent-graphs-jj", "pitch"]]);

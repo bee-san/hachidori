@@ -656,7 +656,7 @@ async function main() {
     await capture.setViewport({ width: 1280, height: 960, deviceScaleFactor: 1 });
     if (FORCE_AUDIO_WORKLET) {
       await capture.evaluateOnNewDocument(() => {
-        Object.defineProperty(globalThis, "MediaStreamTrackProcessor", { value: undefined });
+        globalThis.__hachidoriForceAudioWorklet = true;
       });
     }
     await capture.goto(`chrome-extension://${id}/capture.html`, { waitUntil: "domcontentloaded" });
@@ -687,6 +687,7 @@ async function main() {
     }, { polling: 100 });
     const audioHistory = await capture.$eval("#audio-history", element => element.textContent);
     assert.doesNotMatch(audioHistory, /unavailable/iu, "the selected tab supplies captured audio");
+    await source.bringToFront();
     const throughputStart = await captureControl(capture, "hd_capture_status");
     const throughputStartedAt = performance.now();
     const sustainedSeconds = Math.max(5,
@@ -730,6 +731,7 @@ async function main() {
     assert.ok(recordingLookup.medianMs <= Math.max(stoppedLookup.medianMs * 3, stoppedLookup.medianMs + 5),
       `capture should not materially delay dictionary lookup: ${JSON.stringify({ stoppedLookup, recordingLookup })}`);
 
+    await capture.bringToFront();
     await capture.waitForFunction(title => [...document.querySelectorAll("#reading-tab option")]
       .some(option => option.textContent === title), { polling: 100 }, SOURCE_TITLE);
     const sourceTab = await capture.$eval("#reading-tab", (select, title) =>
@@ -813,6 +815,7 @@ async function main() {
       return (pixel[0] + pixel[1] + pixel[2]) / 3 >= 240;
     }, { timeout: 3_000, polling: 50 });
     const markerFrameTimestamp = (await captureControl(capture, "hd_capture_status")).history.frameNewestMs;
+    await new Promise(done => setTimeout(done, 160));
     await source.evaluate(() => window.setFixtureFrame("#fff"));
     const markerDeadline = Date.now() + 2_000;
     let markerStatus;
@@ -973,6 +976,38 @@ async function main() {
       document.getElementById("texthooker-status")?.textContent === "Active",
     { polling: 100 });
 
+    const alternate = await browser.newPage();
+    await alternate.goto("http://127.0.0.1:8765/fixture", { waitUntil: "domcontentloaded" });
+    await alternate.evaluate(() => { document.title = "Hachidori Alternate Reading Page"; });
+    const alternateWorld = await extensionWorld(alternate, id);
+    const alternateTab = (await captureControl(capture, "hd_capture_tabs")).tabs
+      .find(tab => tab.title === "Hachidori Alternate Reading Page");
+    assert.ok(alternateTab, "capture controls list a second reading page");
+    await captureControl(capture, "hd_capture_link", { tabId: alternateTab.id });
+    await capture.waitForFunction(() =>
+      document.getElementById("linked-page")?.textContent === "Hachidori Alternate Reading Page",
+    { polling: 100 });
+    assert.equal(await world.evaluate(`(async () => {
+      const node = document.getElementById("subtitle").firstChild;
+      return HDCapture.rootLookup({ anchor: node, sentence: node.nodeValue, query: node.nodeValue });
+    })()`), null, "linking a second reading page unlinks the first collector");
+    const alternatePin = await alternateWorld.evaluate(`(async () => {
+      const node = document.getElementById("subtitle").firstChild;
+      const value = await HDCapture.rootLookup({ anchor: node, sentence: node.nodeValue, query: node.nodeValue });
+      await HDCapture.release(value);
+      return value;
+    })()`);
+    assert.equal(alternatePin.sourceLabel, "Recent clip");
+    await captureControl(capture, "hd_capture_link", { tabId: Number(sourceTab) });
+    await capture.waitForFunction(title =>
+      document.getElementById("linked-page")?.textContent === title,
+    { polling: 100 }, SOURCE_TITLE);
+    assert.equal(await alternateWorld.evaluate(`(async () => {
+      const node = document.getElementById("subtitle").firstChild;
+      return HDCapture.rootLookup({ anchor: node, sentence: node.nodeValue, query: node.nodeValue });
+    })()`), null, "relinking the first page unlinks the second collector");
+    await alternate.close();
+
     await settings.bringToFront();
     const dismissed = new Promise(resolveDialog => settings.once("dialog", async dialog => {
       assert.match(dialog.message(), /stops the current capture/u);
@@ -1026,7 +1061,7 @@ async function main() {
     console.log("PASS  decoded flash and beep stay aligned within 300 ms");
     console.log("PASS  live texthooker priority, active state and reconnect use the real loopback WebSocket");
     console.log("PASS  a second pinned interval encodes and cleans up independently");
-    console.log("PASS  reading-page navigation clears its binding without stopping capture");
+    console.log("PASS  one linked reading document is enforced and navigation clears it without stopping capture");
     console.log("PASS  capture-setting confirmation stops and clears without auto-rearming");
     console.log(`BENCH ${JSON.stringify({
       stoppedLookup,

@@ -1037,6 +1037,8 @@ imports the real dictionary fixture, opens its visible Capture controls, starts
 tab capture, links the reading page, and exercises:
 
 - compressed frame and sample-clocked audio history;
+- full-rate capture while the reading/source tab is foreground and Capture
+  controls remain open in a background tab;
 - first-baseline fallback and later observed DOM timing;
 - a real loopback plain-text WebSocket, texthooker priority, active state,
   disconnect, and reconnect epoch;
@@ -1047,7 +1049,8 @@ tab capture, links the reading page, and exercises:
   note write, and readback;
 - settings-change confirmation, stop/clear behavior, no automatic rearming, and
   absence of raw text/media in extension storage;
-- linked-page navigation clearing only the page binding while capture continues;
+- relinking enforcing one current reading document, and linked-page navigation
+  clearing only that binding while capture continues;
 - stopped-versus-recording dictionary latency, capture throughput, retained
   history, encoding latency, and output sizes.
 
@@ -1063,8 +1066,8 @@ The default measures five seconds of production throughput. The sustained form
 continues to 70 seconds and additionally requires both retained timelines to
 settle between 55 and 61 seconds while remaining within the 64 MiB frame budget.
 `HACHIDORI_CAPTURE_SUSTAINED_SECONDS` is clamped to 5–90 seconds. The final form
-is a test-only compatibility run that hides timestamped audio-track processing
-from the capture page and exercises its AudioWorklet fallback.
+is a test-only compatibility run that forces the AudioWorklet path while
+retaining timestamped video-track processing.
 
 The real chooser path must run headfully. On Linux, Xvfb provides the display;
 on a desktop host, omit `xvfb-run -a`. A screenshot run can use:

@@ -278,6 +278,80 @@ test("Tsukiweb-style accumulating text retains older line onsets through typewri
   assert.equal(accumulated.filter(message => message.record.text === "次の行").length, 1);
 });
 
+test("rolling unique lines retain identity while collapsed duplicate lines become unknown-onset baselines", async t => {
+  const rolling = fixture(t, {
+    html: `<!doctype html><body><section id="area">
+      <p id="first">一行目</p><p id="second">二行目</p>
+    </section></body>`,
+  });
+  await rolling.command("hd_capture_link");
+  const second = rolling.window.document.getElementById("second");
+  await rolling.window.HDCapture.rootLookup({
+    anchor: second.firstChild,
+    sentence: "二行目",
+    query: "二行目",
+  });
+  await flush();
+  const secondBaseline = rolling.sent.find(message =>
+    message.type === "hd_capture_text_begin" && message.record.text === "二行目");
+  rolling.window.document.getElementById("first").remove();
+  const third = rolling.window.document.createElement("p");
+  third.textContent = "三行目";
+  rolling.window.document.getElementById("area").append(third);
+  await flush();
+  const rollingBegins = rolling.sent.filter(message => message.type === "hd_capture_text_begin");
+  assert.equal(rollingBegins.filter(message =>
+    message.record.occurrenceId === secondBaseline.record.occurrenceId).length, 1);
+  assert.equal(rollingBegins.find(message => message.record.text === "三行目").record.onsetKnown, true);
+
+  const duplicate = fixture(t, {
+    html: `<!doctype html><body><section id="area">
+      <p id="first">同じ行</p><p id="second">同じ行</p>
+    </section></body>`,
+  });
+  await duplicate.command("hd_capture_link");
+  const duplicateSecond = duplicate.window.document.getElementById("second");
+  await duplicate.window.HDCapture.rootLookup({
+    anchor: duplicateSecond.firstChild,
+    sentence: "同じ行",
+    query: "同じ行",
+  });
+  await flush();
+  const baselineCount = duplicate.sent.filter(message =>
+    message.type === "hd_capture_text_begin" && message.record.text === "同じ行").length;
+  duplicate.window.document.getElementById("first").remove();
+  await flush();
+  const duplicateBegins = duplicate.sent.filter(message =>
+    message.type === "hd_capture_text_begin" && message.record.text === "同じ行");
+  assert.equal(duplicateBegins.length, baselineCount + 1);
+  assert.equal(duplicateBegins.at(-1).record.onsetKnown, false);
+
+  const ambiguousTypewriter = fixture(t, {
+    html: `<!doctype html><body><section id="area">
+      <p>同じ行</p><p id="second">同じ行</p>
+    </section></body>`,
+  });
+  await ambiguousTypewriter.command("hd_capture_link");
+  const ambiguousSecond = ambiguousTypewriter.window.document.getElementById("second");
+  await ambiguousTypewriter.window.HDCapture.rootLookup({
+    anchor: ambiguousSecond.firstChild,
+    sentence: "同じ行",
+    query: "同じ行",
+  });
+  await flush();
+  const ambiguousIds = new Set(ambiguousTypewriter.sent
+    .filter(message => message.type === "hd_capture_text_begin" && message.record.text === "同じ行")
+    .map(message => message.record.occurrenceId));
+  ambiguousSecond.textContent = "同じ行の続き";
+  await flush();
+  const extended = ambiguousTypewriter.sent.findLast(message =>
+    message.type === "hd_capture_text_begin" && message.record.text === "同じ行の続き");
+  assert.equal(extended.record.onsetKnown, true,
+    "the observed edit has a known onset");
+  assert.equal(ambiguousIds.has(extended.record.occurrenceId), false,
+    "a typewriter edit does not inherit an ambiguous duplicate occurrence");
+});
+
 test("multiple videos require an explicit cue source and ignore the unselected video", async t => {
   let firstTrack, secondTrack;
   const f = fixture(t, {

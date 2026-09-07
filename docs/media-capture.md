@@ -120,15 +120,15 @@ On 7 September 2026, a 70-second Linux run with Chrome for Testing
 
 | Measurement | Result |
 | --- | ---: |
-| Stopped lookup median / p95 | 1.70 ms / 3.20 ms |
-| Recording lookup median / p95 | 1.90 ms / 2.50 ms |
-| Capture input | 8.00 fps / 48,081 audio samples per second |
-| Retained history | 59.875 s video / 60.010 s audio |
-| Retained compressed frames | 4,017,829 bytes across 480 frames |
-| First AVIF + WAV encode | 2,785.76 ms |
-| Exported assets | 15,176-byte AVIF / 203,220-byte WAV |
-| Chrome-decoded AVIF frames | 12 |
-| Decoded flash/beep offset | 259.7 ms |
+| Stopped lookup median / p95 | 1.40 ms / 2.90 ms |
+| Recording lookup median / p95 | 1.40 ms / 2.10 ms |
+| Capture input | 7.99 fps / 48,061 audio samples per second |
+| Retained history | 59.998 s video / 60.010 s audio |
+| Retained compressed frames | 4,031,058 bytes across 481 frames |
+| First AVIF + WAV encode | 2,712.36 ms |
+| Exported assets | 14,971-byte AVIF / 218,060-byte WAV |
+| Chrome-decoded AVIF frames | 11 |
+| Decoded flash/beep offset | 237.9 ms |
 
 These are one machine's regression measurements, not product guarantees. The
 test enforces bounds and a relative stopped-versus-recording latency threshold

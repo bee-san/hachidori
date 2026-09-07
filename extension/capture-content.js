@@ -316,31 +316,65 @@
     }
     const at = now();
     const values = extractLines(trackedElement);
+    if (values.length === trackedLines.length
+        && values.every((text, index) => text === trackedLines[index].text)) return;
+    const previousByText = new Map();
+    const nextByText = new Map();
+    for (let index = 0; index < trackedLines.length; index += 1) {
+      const indexes = previousByText.get(trackedLines[index].text) ?? [];
+      indexes.push(index);
+      previousByText.set(trackedLines[index].text, indexes);
+    }
+    for (let index = 0; index < values.length; index += 1) {
+      const indexes = nextByText.get(values[index]) ?? [];
+      indexes.push(index);
+      nextByText.set(values[index], indexes);
+    }
+    const retained = new Map();
+    const usedPrevious = new Set();
+    for (const [text, previousIndexes] of previousByText) {
+      const nextIndexes = nextByText.get(text);
+      if (previousIndexes.length !== 1 || nextIndexes?.length !== 1) continue;
+      retained.set(nextIndexes[0], trackedLines[previousIndexes[0]]);
+      usedPrevious.add(previousIndexes[0]);
+    }
+    const previousLastIndex = trackedLines.length - 1;
+    const nextLastIndex = values.length - 1;
+    const previousLast = trackedLines[previousLastIndex];
+    const nextLast = values[nextLastIndex];
+    let typewriter = null;
+    if (previousLast && nextLast && nextLast !== previousLast.text
+        && previousByText.get(previousLast.text)?.length === 1
+        && nextByText.get(nextLast)?.length === 1
+        && !usedPrevious.has(previousLastIndex) && !retained.has(nextLastIndex)
+        && normalize(nextLast).startsWith(normalize(previousLast.text))
+        && Array.from(normalize(nextLast).slice(normalize(previousLast.text).length)).length
+          <= TYPEWRITER_GROWTH_LIMIT
+        && at - previousLast.updatedMs <= TYPEWRITER_GAP_MS) {
+      typewriter = { index: nextLastIndex, line: previousLast };
+      usedPrevious.add(previousLastIndex);
+    }
+    for (let index = 0; index < trackedLines.length; index += 1) {
+      if (!usedPrevious.has(index)) emitClose(domIdentity(trackedLines[index]), at);
+    }
     const next = [];
-    const count = Math.max(trackedLines.length, values.length);
-    for (let index = 0; index < count; index += 1) {
-      const previous = trackedLines[index];
+    for (let index = 0; index < values.length; index += 1) {
       const text = values[index];
-      if (previous && text === previous.text) {
+      const previous = retained.get(index);
+      if (previous) {
         next.push(previous);
         continue;
       }
-      if (previous && text && index === trackedLines.length - 1 && index === values.length - 1
-          && normalize(text).startsWith(normalize(previous.text))
-          && Array.from(normalize(text).slice(normalize(previous.text).length)).length <= TYPEWRITER_GROWTH_LIMIT
-          && at - previous.updatedMs <= TYPEWRITER_GAP_MS) {
-        emitBegin({ sourceKind: "dom", sourceEpoch: trackedEpoch, occurrenceId: previous.id,
+      if (typewriter?.index === index) {
+        emitBegin({ sourceKind: "dom", sourceEpoch: trackedEpoch, occurrenceId: typewriter.line.id,
           text, startMs: at, onsetKnown: !initial });
-        next.push({ ...previous, text, updatedMs: at });
+        next.push({ ...typewriter.line, text, updatedMs: at });
         continue;
       }
-      if (previous) emitClose(domIdentity(previous), at);
-      if (text) {
-        const line = { id: `line-${++nextLineId}`, text, updatedMs: at };
-        emitBegin({ sourceKind: "dom", sourceEpoch: trackedEpoch, occurrenceId: line.id,
-          text, startMs: at, onsetKnown: !initial });
-        next.push(line);
-      }
+      const line = { id: `line-${++nextLineId}`, text, updatedMs: at };
+      emitBegin({ sourceKind: "dom", sourceEpoch: trackedEpoch, occurrenceId: line.id,
+        text, startMs: at, onsetKnown: !initial && !previousByText.has(text) });
+      next.push(line);
     }
     trackedLines = next;
   }
