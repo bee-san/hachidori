@@ -2814,7 +2814,7 @@ async function main() {
   const presentedState = await request("hd_apply_state", {
     baseRevision: trustedState.revision,
     dictionaries: trustedState.dictionaries.map((dictionary, index) => index === trustedIndex
-      ? { ...dictionary, displayName: "Starter terms", enabled: false, favorite: true }
+      ? { ...dictionary, displayName: "Starter terms", enabled: false, favorite: true, updateScheduleOverride: "off" }
       : dictionary),
   });
   const updatedTitle = "Jitendex.org [2026-09-05]";
@@ -2837,6 +2837,7 @@ async function main() {
       && updatedPackage?.sourceId === recommended.sourceId
       && updatedPackage?.displayName === "Starter terms"
       && updatedPackage?.enabled === false
+      && updatedPackage?.updateScheduleOverride === "off"
       && updatedPackage?.favorite === true,
     JSON.stringify({ presentedState, updatedImport, updatedState }),
   );
@@ -2858,6 +2859,7 @@ async function main() {
       && localUpdatePackage?.sourceId === recommended.sourceId
       && localUpdatePackage?.displayName === "Starter terms"
       && localUpdatePackage?.enabled === false
+      && localUpdatePackage?.updateScheduleOverride === "off"
       && localUpdatePackage?.favorite === true,
     JSON.stringify({ localUpdateImport, localUpdateState }),
   );
@@ -3085,6 +3087,9 @@ async function main() {
     }),
   );
 
+  await pageChrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+    baseRevision: cleanupRaceState.revision, dictionaries: cleanupRaceState.dictionaries.map(dictionary => dictionary.id === managedId
+      ? { ...dictionary, updateScheduleOverride: null } : dictionary) });
   const scheduleBase = (await storage.api().local.get("dictionaryUpdates")).dictionaryUpdates?.revision ?? 0;
   const scheduled = await pageChrome.runtime.sendMessage({
     target: updateTarget,
@@ -4890,6 +4895,8 @@ async function main() {
   check("managed schedule waits for its initial revision and exposes queued work outside Updates",
     managedUpdateSettings?.initialReadBlocked === true && managedUpdateSettings.queuedNotice === true,
     JSON.stringify(managedUpdateSettings));
+  check("dictionary schedule controls persist only metadata, retain focus and refuse stale policy edits",
+    managedUpdateSettings?.dictionarySchedule === true, JSON.stringify(managedUpdateSettings));
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -6762,6 +6769,7 @@ async function settingsManagedUpdatesStage() {
       genericPackage({
         id: "managed-id",
         title: "Managed terms",
+        updateScheduleOverride: "monthly",
         enabled: false,
         isUpdatable: true,
         indexUrl: "https://example.test/managed/index.json",
@@ -6793,6 +6801,7 @@ async function settingsManagedUpdatesStage() {
   let updateSettings = { revision: 0, schedule: "off", lastCheckedAt: "2026-09-04T10:00:00.000Z" };
   let storageListener = null;
   const updateRequests = [];
+  const stateRequests = [];
   let heldSchedule = null, activeSchedules = 0;
   let loseScheduleReply = false, firstRead = true;
   let releaseInitialRead;
@@ -6814,6 +6823,13 @@ async function settingsManagedUpdatesStage() {
         }
         if (message.type === "hd_status") {
           return { ok: true, ready: true, loading: false, dictionaryCount: 1 };
+        }
+        if (message.type === "hd_state_cas") {
+          stateRequests.push(structuredClone(message));
+          if (message.baseRevision !== state.revision) return { ok: false, conflict: true, state: structuredClone(state) };
+          state = { ...state, revision: state.revision + 1, dictionaries: message.dictionaries, groups: message.groups };
+          storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+          return { ok: true, state: structuredClone(state) };
         }
         if (message.type === "hd_options_write") {
           return { ok: true, options: structuredClone(message.options) };
@@ -7050,6 +7066,27 @@ async function settingsManagedUpdatesStage() {
   await pause(200);
   result.discarded = schedule.value === "daily" && conflictActions.hidden
     && scheduleRequests().length === beforeDiscard && updateSettings.schedule === "daily";
+  const policy = () => managedRow()?.querySelector(".dict-update-schedule");
+  result.dictionarySchedule = false;
+  if (policy()) {
+    const initial = policy().value === "monthly" && !policy().disabled
+      && insecureRow().querySelector(".dict-schedule").hidden && localRow().querySelector(".dict-schedule").hidden;
+    policy().focus();
+    policy().value = "hourly";
+    policy().dispatchEvent(new window.Event("change", { bubbles: true }));
+    await waitSchedule(() => stateRequests.length === 1 && !policy().disabled);
+    const saved = state.dictionaries.find(entry => entry.id === "managed-id");
+    const persisted = saved.updateScheduleOverride === "hourly" && saved.enabled === false
+      && stateRequests[0].target === "hoshidicts-worker" && policy().value === "hourly"
+      && window.document.activeElement === policy();
+    const stale = policy();
+    publishState({ ...saved, updateScheduleOverride: "weekly" });
+    stale.value = "off";
+    stale.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await pause(20);
+    result.dictionarySchedule = initial && persisted && stateRequests.length === 1
+      && state.dictionaries.find(entry => entry.id === "managed-id").updateScheduleOverride === "weekly";
+  }
   dom.window.close();
   return result;
 }
