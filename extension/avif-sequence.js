@@ -96,6 +96,9 @@ export async function encodeJpegSequence(module, frames, {
     throw new Error("Captured frame dimensions changed during the selected interval.");
   }
   const durations = frameDurations(frames, endMs);
+  if (frames.length === 1 && durations[0] < 2) {
+    throw new Error("AVIF sequence duration is below the timebase precision");
+  }
   const canvas = createCanvas(width, height);
   const context = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
   if (!context) throw new Error("Could not create the AVIF frame decoder canvas.");
@@ -107,7 +110,16 @@ export async function encodeJpegSequence(module, frames, {
       try {
         context.drawImage(bitmap, 0, 0, width, height);
         const rgba = context.getImageData(0, 0, width, height).data;
-        encoder.add(new Uint8Array(rgba.buffer, rgba.byteOffset, rgba.byteLength), durations[index]);
+        const pixels = new Uint8Array(rgba.buffer, rgba.byteOffset, rgba.byteLength);
+        if (frames.length === 1) {
+          // libavif writes one image as a still AVIF without sequence timing.
+          // Repeat its pixels while preserving the exact selected sample count.
+          const firstDuration = Math.floor(durations[index] / 2);
+          encoder.add(pixels, firstDuration);
+          encoder.add(pixels, durations[index] - firstDuration);
+        } else {
+          encoder.add(pixels, durations[index]);
+        }
       } finally {
         bitmap.close();
       }

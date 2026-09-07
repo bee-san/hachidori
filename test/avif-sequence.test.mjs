@@ -93,6 +93,54 @@ test("production sequence export serializes the same duration as WAV after clipp
   assert.equal(ticks, Math.ceil((endMs - startMs) * 48));
 });
 
+test("a single retained frame becomes a timed looping AVIF with the exact WAV duration", async () => {
+  const module = await createAvifEncoderModule({
+    locateFile: name => new URL(`../extension/vendor/${name}`, import.meta.url).pathname,
+  });
+  const frame = { timestampMs: 0, width: 64, height: 64, data: new Uint8Array([1]) };
+  let decoded = 0;
+  const options = {
+    createBitmap: async () => { decoded += 1; return { close() {} }; },
+    createCanvas: () => ({ getContext: () => ({
+      drawImage() {},
+      getImageData: () => ({ data: new Uint8ClampedArray(64 * 64 * 4).fill(255) }),
+    }) }),
+  };
+  // A static ten-second clip and an odd sample count must both retain duration;
+  // two ticks is the shortest possible sequence with two nonempty samples.
+  for (const expectedTicks of [480000, 480001, 2]) {
+    const endMs = expectedTicks * 1000 / AVIF_TIMESCALE;
+    const output = await encodeJpegSequence(module, [frame], { ...options, endMs });
+    assert.equal(new TextDecoder().decode(output.slice(4, 12)), "ftypavis");
+    const bytes = Buffer.from(output);
+    const stts = bytes.indexOf(Buffer.from("stts")) - 4;
+    assert.ok(stts > 0, "a held frame still has a movie sample timing box");
+    const mdhd = bytes.indexOf(Buffer.from("mdhd")) - 4;
+    assert.equal(uint32(output, mdhd + (output[mdhd + 8] === 1 ? 28 : 20)), AVIF_TIMESCALE);
+    let samples = 0;
+    let ticks = 0;
+    for (let index = 0; index < uint32(output, stts + 12); index += 1) {
+      const count = uint32(output, stts + 16 + index * 8);
+      const duration = uint32(output, stts + 20 + index * 8);
+      assert.ok(duration > 0);
+      samples += count;
+      ticks += count * duration;
+    }
+    assert.equal(samples, 2);
+    assert.equal(ticks, expectedTicks);
+    const wav = encodeMonoWav(new Float32Array(expectedTicks), AVIF_TIMESCALE);
+    assert.equal(ticks, (wav.byteLength - 44) / 2);
+    // libavif represents infinite repetition as an all-ones movie duration.
+    const mvhd = bytes.indexOf(Buffer.from("mvhd")) - 4;
+    assert.equal(output[mvhd + 8], 1);
+    assert.equal(bytes.readBigUInt64BE(mvhd + 32), 0xffffffffffffffffn);
+  }
+  assert.equal(decoded, 3, "each retained JPEG is decoded only once");
+  await assert.rejects(encodeJpegSequence(module, [frame], {
+    ...options, endMs: 1000 / AVIF_TIMESCALE,
+  }), /timebase precision/u);
+});
+
 test("encoder client transfers copied frame bytes, reports progress and terminates on success or timeout", async () => {
   const workers = [];
   class FakeWorker extends EventTarget {

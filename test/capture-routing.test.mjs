@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import '../extension/reader-options.js';
+import { createCaptureSession } from '../extension/capture-session.js';
 
 const background = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
 const capture = readFileSync(new URL('../extension/capture-host.js', import.meta.url), 'utf8');
@@ -65,6 +67,36 @@ const pin = { type: 'hd_capture_pin', lookup: {
   lookupText: '猫', lookupTimeMs: Date.now(), occurrenceId: '', occurrenceSourceKind: '',
 } };
 
+function routedCaptureSession() {
+  const at = Date.now();
+  let nextId = 0;
+  const session = createCaptureSession({ now: () => at, randomId: () => `capture-${++nextId}`,
+    encodeAnimation: async () => new Uint8Array([1, 2, 3]) });
+  session.configure({ ...structuredClone(globalThis.HDReaderOptions.DEFAULT_MEDIA_CAPTURE),
+    enabled: true, timingMode: 'recent', includeCapturedAudio: false, clipSeconds: 5 });
+  session.start();
+  for (let offset = 0; offset <= 5000; offset += 1000) {
+    session.addFrame({ timestampMs: at - 5000 + offset, width: 2, height: 2, data: new Uint8Array([1]) });
+  }
+  const hostContext = vm.createContext({ session, captureDocumentId: hostDocumentId,
+    selectedTabId: null, linkedDocumentId: '', pageStatus: '', pageVideos: [], btoa,
+    captureStatus: () => session.status() });
+  vm.runInContext(capture.slice(capture.indexOf('function linked(message)'), capture.indexOf('await register();'))
+    .replace('export async function', 'async function'), hostContext);
+  const f = freshWorker();
+  f.context.capturePage = { documentId: hostDocumentId };
+  f.context.chrome.runtime.sendMessage = async message => {
+    try { return { ok: true, ...await hostContext.handleCaptureMessage(message) }; }
+    catch (error) { return { ok: false, error: error.message }; }
+  };
+  const link = async page => {
+    await f.context.relayCapture({ type: 'hd_capture_linked', page });
+    f.context.captureContentDocument = page;
+  };
+  const fromReader = (message, sender = reader) => f.context.handleCaptureContent(message, sender);
+  return { ...f, session, link, fromReader, at };
+}
+
 test('host registration restores only the same surviving linked document after worker restart', async () => {
   const { context } = freshWorker();
   await context.handleCaptureControl({ type: 'hd_capture_register', linkedPage }, host);
@@ -118,6 +150,41 @@ test('settings changes queued during host recovery apply the latest configuratio
   await vm.runInContext('captureConfigTail', context);
   assert.deepEqual(messages.filter(message => message.type === 'hd_capture_configure')
     .map(message => message.mediaCapture.enabled), [false]);
+});
+
+test('an admitted export remains accessible only to its original document after relinking', async () => {
+  for (const finish of ['complete', 'cancel']) {
+    const f = routedCaptureSession();
+    try {
+      await f.link(linkedPage);
+      const rootPin = await f.fromReader({ ...pin, lookup: { ...pin.lookup, lookupTimeMs: f.at } });
+      const job = await f.fromReader({ type: 'hd_capture_export', token: rootPin.token,
+        requirements: { includeAnimation: true, includeAudio: false } });
+      await new Promise(resolve => setImmediate(resolve));
+      const replacement = { ...reader, tab: { id: 3 }, documentId: 'replacement-document' };
+      await f.link({ tabId: replacement.tab.id, documentId: replacement.documentId });
+      const status = await f.fromReader({ type: 'hd_capture_job_status', jobId: job.jobId });
+      assert.equal(status.state, 'ready');
+      for (const stranger of [replacement, { ...reader, documentId: 'navigated-document' }]) {
+        for (const type of ['hd_capture_job_status', 'hd_capture_cancel']) {
+          await assert.rejects(f.fromReader({ type, jobId: job.jobId,
+            tabId: reader.tab.id, documentId: reader.documentId }, stranger), /does not own/);
+        }
+      }
+      await assert.rejects(f.fromReader({ ...pin, lookup: { ...pin.lookup, lookupTimeMs: f.at } }, replacement),
+        /still exporting/);
+      if (finish === 'complete') {
+        // The existing trusted Anki broker fetches and completes the asset after
+        // the originating reader finishes polling and submits its prepared note.
+        const asset = await f.context.relayCapture({ type: 'hd_capture_asset', jobId: job.jobId, kind: 'animation' });
+        assert.equal(asset.filename, rootPin.animationFilename);
+        assert.equal((await f.context.relayCapture({ type: 'hd_capture_complete', jobId: job.jobId })).completed, true);
+      } else {
+        assert.equal((await f.fromReader({ type: 'hd_capture_cancel', jobId: job.jobId })).cancelled, true);
+      }
+      assert.ok((await f.fromReader({ ...pin, lookup: { ...pin.lookup, lookupTimeMs: f.at } }, replacement)).token);
+    } finally { f.session.stop(); }
+  }
 });
 
 const stoppedHost = { type: 'hd_capture_host_stopped', captureDocumentId: hostDocumentId,

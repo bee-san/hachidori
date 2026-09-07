@@ -381,11 +381,18 @@ export function createCaptureSession({
     }
   }
 
-  function beginExport(token, requirements) {
+  function assertJobOwner(job, owner) {
+    if (owner && (owner.tabId !== job.owner?.tabId || owner.documentId !== job.owner?.documentId)) {
+      throw new Error("This reading document does not own the media export job.");
+    }
+  }
+
+  function beginExport(token, requirements, owner = linkedPage) {
     pruneJobs();
     if (activeJobId !== null) {
       const existing = jobs.get(activeJobId);
       if (existing?.token === token) {
+        assertJobOwner(existing, owner);
         return { jobId: existing.id, state: existing.state,
           sourceLabel: existing.sourceLabel, partial: existing.partial };
       }
@@ -404,7 +411,7 @@ export function createCaptureSession({
     const controller = new AbortController();
     const job = { id, token, state: "finishing", error: "", progress: 0, total: 0, encoderHeapBytes: 0,
       sourceLabel: pin.sourceLabel, partial: pin.partial === true, assets: {}, updatedAt: wallNow(),
-      controller, pin,
+      controller, pin, owner: owner ? { tabId: owner.tabId, documentId: owner.documentId } : null,
       warnings: requirements?.includeAudio === true && !pin.audioAvailable
         ? ["The shared source did not provide audio; this note will use animation only."] : [] };
     jobs.set(id, job);
@@ -454,10 +461,11 @@ export function createCaptureSession({
     return { jobId: id, state: job.state, sourceLabel: job.sourceLabel, partial: job.partial };
   }
 
-  function jobStatus(id) {
+  function jobStatus(id, owner = null) {
     pruneJobs();
     const job = jobs.get(id);
     if (!job) throw new Error("The media export job expired.");
+    assertJobOwner(job, owner);
     return {
       jobId: id,
       state: job.state,
@@ -490,9 +498,10 @@ export function createCaptureSession({
     return true;
   }
 
-  function cancelExport(id) {
+  function cancelExport(id, owner = null) {
     const job = jobs.get(id);
     if (!job) return false;
+    assertJobOwner(job, owner);
     job.controller.abort();
     if (!job.pin.finalized) {
       job.pin.finishDrain?.();

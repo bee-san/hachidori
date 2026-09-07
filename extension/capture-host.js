@@ -130,10 +130,7 @@ function startTimestampedFrames(sharedStream, sourceTrack) {
     return false;
   }
   const ownedStream = sharedStream;
-  const fps = config.videoPreset === "compact" ? 6 : 8;
-  const intervalMs = 1000 / fps;
   let dimensions = null;
-  let lastTimestamp = -Infinity;
   let lastMediaTimestamp = -Infinity;
   videoReader = reader;
   processedVideoTrack = ownedTrack;
@@ -149,17 +146,15 @@ function startTimestampedFrames(sharedStream, sourceTrack) {
         lastMediaTimestamp = mediaTimeMs;
         establishTrackMediaClock(mediaTimeMs);
         const frameTimestamp = frameClockOriginMs + mediaTimeMs;
-        if (frameTimestamp - lastTimestamp < intervalMs * 0.9) {
-          session.videoDelivered(frameTimestamp);
-          continue;
-        }
+        // The source track already has the preset's frame-rate ceiling. Its
+        // irregular frame timestamps must survive intact (e.g. a 30 fps video
+        // delivered at 8 fps alternates 100 ms and 133 ms frame spacings).
         if (!dimensions) {
           dimensions = captureDimensions(
             value.displayWidth || value.codedWidth,
             value.displayHeight || value.codedHeight,
           );
         }
-        lastTimestamp = frameTimestamp;
         await captureFrame(dimensions, value, frameTimestamp, ownedStream);
         if (stream === ownedStream) session.videoDelivered(frameTimestamp);
       } finally {
@@ -581,6 +576,16 @@ function linked(message) {
   return selectedTabId === message.tabId && linkedDocumentId === message.documentId;
 }
 
+function captureJobOwner(message) {
+  if (message.tabId === undefined && message.documentId === undefined) return null;
+  return { tabId: message.tabId, documentId: message.documentId };
+}
+
+function beginCaptureExport(message) {
+  if (!linked(message)) throw new Error("This export is not from the linked reading page.");
+  return session.beginExport(message.token, message.requirements, captureJobOwner(message));
+}
+
 function bytesToBase64(data) {
   let binary = "";
   for (let offset = 0; offset < data.length; offset += 0x8000) {
@@ -628,14 +633,14 @@ export async function handleCaptureMessage(message) {
       if (!linked(message)) throw new Error("This lookup is not from the linked reading page.");
       return session.pinLookup(message.lookup);
     case "hd_capture_release": return { released: session.releasePin(message.token) };
-    case "hd_capture_export": return session.beginExport(message.token, message.requirements);
-    case "hd_capture_job_status": return session.jobStatus(message.jobId);
+    case "hd_capture_export": return beginCaptureExport(message);
+    case "hd_capture_job_status": return session.jobStatus(message.jobId, captureJobOwner(message));
     case "hd_capture_asset": {
       const asset = session.jobAsset(message.jobId, message.kind);
       return { filename: asset.filename, data: bytesToBase64(asset.data) };
     }
     case "hd_capture_complete": return { completed: session.completeExport(message.jobId) };
-    case "hd_capture_cancel": return { cancelled: session.cancelExport(message.jobId) };
+    case "hd_capture_cancel": return { cancelled: session.cancelExport(message.jobId, captureJobOwner(message)) };
     default: throw new Error("Unknown capture page request.");
   }
 }

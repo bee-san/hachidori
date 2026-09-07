@@ -78,6 +78,43 @@ test("a backward raw video clock stops capture instead of silently skipping all 
   assert.deepEqual(closed, [1_000_000, 900_000]);
 });
 
+test("raw video preserves irregular frames within the source rate ceiling and serializes compression", async () => {
+  const timestamps = [0, 133333, 233333, 366667, 466667];
+  const encoded = [], delivered = [], closed = [];
+  let active = 0;
+  let maximumActive = 0;
+  const stream = {};
+  const values = timestamps.map(timestamp => ({ timestamp, displayWidth: 640, displayHeight: 360,
+    close: () => closed.push(timestamp) }));
+  const context = vm.createContext({ stream, videoReader: null, processedVideoTrack: null,
+    frameClockOriginMs: 1000, establishTrackMediaClock() {},
+    MediaStreamTrackProcessor: class {
+      constructor() {
+        this.readable = { getReader: () => ({ read: async () => values.length
+          ? { value: values.shift(), done: false } : { done: true } }) };
+      }
+    },
+    captureDimensions: () => ({ width: 640, height: 360 }),
+    captureFrame: async (_dimensions, _source, at) => {
+      maximumActive = Math.max(maximumActive, ++active);
+      await new Promise(resolve => setImmediate(resolve));
+      encoded.push(at);
+      active -= 1;
+    },
+    session: { videoDelivered: at => { assert.equal(active, 0); delivered.push(at); } },
+    describe: error => error.message, stopCapture: error => assert.fail(error) });
+  vm.runInContext(host.slice(host.indexOf("function startTimestampedFrames("),
+    host.indexOf("function startFallbackFrames(")), context);
+  context.startTimestampedFrames(stream, { clone: () => ({ stop() {} }) });
+  for (let frame = 0; frame <= timestamps.length; frame += 1) {
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.deepEqual(encoded, timestamps.map(timestamp => 1000 + timestamp / 1000));
+  assert.deepEqual(delivered, encoded);
+  assert.deepEqual(closed, timestamps);
+  assert.equal(maximumActive, 1);
+});
+
 function workletContext() {
   const contexts = [], nodes = [], audio = [], errors = [];
   const sharedStream = {};

@@ -1481,6 +1481,11 @@ async function handleCaptureContent(message, sender) {
     return { documentId: sender.documentId, tabId: sender.tab.id };
   }
   if (!capturePage || captureRecovery) await recoverCaptureHost();
+  // Admitted exports outlive reader relinking. The offscreen job retains the
+  // original document and checks these authoritative sender fields itself.
+  if (["hd_capture_job_status", "hd_capture_cancel"].includes(message.type)) {
+    return relayCaptureContent(message, sender);
+  }
   const document = captureContentDocument;
   if (document?.tabId !== sender.tab.id || document.documentId !== sender.documentId) {
     throw new Error("This reading document is not linked to the capture session.");
