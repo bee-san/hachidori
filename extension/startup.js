@@ -90,11 +90,14 @@ function paragraph(text, className = "hint") {
   return node;
 }
 
+// Every control the card rebuilds carries a stable key so a rerender can hand
+// focus back to its replacement.
 function settingsNote(before, href, after = ".") {
   const node = document.createElement("p");
   node.className = "hint";
   const link = document.createElement("a");
   link.href = href;
+  link.dataset.focusKey = `link:${href}`;
   link.textContent = "Settings";
   node.append(before, link, after);
   return node;
@@ -104,6 +107,7 @@ function button(id, text, onClick) {
   const node = document.createElement("button");
   node.type = "button";
   node.id = id;
+  node.dataset.focusKey = id;
   node.className = "primary-button";
   node.textContent = text;
   node.disabled = saving;
@@ -203,7 +207,7 @@ function currentView() {
 function render() {
   const stage = setupError === null ? setupState?.stage ?? null : null;
   const card = element("setup-card");
-  const focused = card.contains(document.activeElement) ? document.activeElement.id : "";
+  const focusKey = card.contains(document.activeElement) ? document.activeElement.dataset.focusKey ?? "" : "";
   const view = currentView();
   renderSteps(stage);
   const heading = element("setup-heading");
@@ -213,8 +217,8 @@ function render() {
   if (renderedStage !== undefined && renderedStage !== stage) {
     // The control that held focus belonged to the previous stage.
     heading.focus();
-  } else if (focused) {
-    element(focused)?.focus();
+  } else if (focusKey) {
+    [...card.querySelectorAll("[data-focus-key]")].find((node) => node.dataset.focusKey === focusKey)?.focus();
   }
   renderedStage = stage;
 }
@@ -269,4 +273,4 @@ async function start() {
   render();
 }
 
-start();
+await start();

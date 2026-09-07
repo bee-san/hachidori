@@ -5761,7 +5761,9 @@ function loadStartupScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
-  window.eval(`${readerOptions}\n${recommended}\n${managedSource}\n${setupState}\n${startup}`);
+  // startup.js is a module with a top-level await; an async wrapper keeps that
+  // legal in a classic-script eval and surfaces a load failure through its promise.
+  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${setupState}\n${startup}\n})()`);
 }
 
 // The startup page renders the worker-owned setup state, keeps focus through
@@ -5820,7 +5822,7 @@ async function startupPageStage() {
     return sent;
   };
   try {
-    loadStartupScript(window);
+    await loadStartupScript(window);
     await until(() => heading() === "Default dictionaries");
     const initial = currentStep() === "dictionaries" && doneSteps() === 0
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Not installed"], ["jmnedict", "Already installed"],
@@ -5829,11 +5831,20 @@ async function startupPageStage() {
       && document.getElementById("setup-continue")?.textContent === "Continue setup"
       && document.querySelector('a[href="settings.html"]') !== null && requests.length === 0;
 
-    document.getElementById("setup-continue").focus();
+    // Inventory updates rebuild the card; the id-less in-card Settings link and
+    // the Continue button must each keep focus through their replacement.
+    const importLink = () => document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]');
+    const linkBefore = importLink();
+    linkBefore.focus();
     dictionaryState = { ...dictionaryState, revision: 6, dictionaries: dictionaryState.dictionaries.filter((entry) => entry.id !== "names") };
     listener({ dictionaryState: { newValue: structuredClone(dictionaryState) } }, "local");
+    const linkFocusKept = importLink() !== linkBefore && document.activeElement === importLink()
+      && rows()[1][1] === "Not installed";
+    document.getElementById("setup-continue").focus();
+    dictionaryState = { ...dictionaryState, revision: 7, dictionaries: dictionaryState.dictionaries.filter((entry) => entry.id !== "bee") };
+    listener({ dictionaryState: { newValue: structuredClone(dictionaryState) } }, "local");
     listener({ setupState: { newValue: { ...setupState, revision: 2, stage: "anki" } } }, "local");
-    const inventory = document.activeElement?.id === "setup-continue" && rows()[1][1] === "Not installed"
+    const inventory = linkFocusKept && document.activeElement?.id === "setup-continue" && rows()[2][1] === "Not installed"
       && heading() === "Default dictionaries" && currentStep() === "dictionaries";
 
     document.getElementById("setup-continue").click();
