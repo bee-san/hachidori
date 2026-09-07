@@ -8693,7 +8693,7 @@ async function contentNoteStage() {
   const { JSDOM } = jsdom;
   const settle = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
 
-  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {} } = {}) {
+  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {}, deferInitialStorage = false } = {}) {
     const dom = new JSDOM(
       "<!doctype html><body><span id=anchor>\u98df\u3079\u305f</span></body>",
       {
@@ -8704,6 +8704,7 @@ async function contentNoteStage() {
     );
     const { window } = dom;
     let storageListener = null;
+    let deferredInitialStorage = null;
     const popupRecords = new Map();
     let stylesGeneration = 2;
     let holdStyles = false;
@@ -8845,7 +8846,7 @@ async function contentNoteStage() {
       storage: {
         local: {
           get(defaults, callback) {
-            callback({
+            const deliver = () => callback({
               ...defaults,
               dictionaryState: initialState,
               options: {
@@ -8859,6 +8860,8 @@ async function contentNoteStage() {
                 ...optionOverrides,
               },
             });
+            if (deferInitialStorage) deferredInitialStorage = deliver;
+            else deliver();
           },
         },
         onChanged: {
@@ -9037,6 +9040,12 @@ async function contentNoteStage() {
       }, "local"); },
       lookupStatistics: (depth = 0) => popupRecord(depth)?.lookupStatistics,
       blurState: (depth = 0) => popupRecord(depth)?.blurState,
+      deliverInitialStorage() { deferredInitialStorage?.(); deferredInitialStorage = null; },
+      pageTransition(type) {
+        const event = new window.Event(type);
+        Object.defineProperty(event, "persisted", { value: true });
+        window.dispatchEvent(event);
+      },
       hoverDefinitions(depth = 0) {
         popupRecord(depth).callbacks.popup.querySelector(".gsm-hoshidicts-definitions")
           .dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
@@ -9406,6 +9415,43 @@ async function contentNoteStage() {
       outcomes["timed reveal keeps one deadline from first display across Back"] =
         blurred && clickedRevealed && backBlurred && timed.blurState() === "revealed";
     } finally { timed.close(); }
+
+    // Stored settings arrive after the first lookup: the decision waits for them.
+    const early = await createHarness(null, { holdLookupStats: true, deferInitialStorage: true,
+      options: { ...blurOptions } });
+    try {
+      await early.initialLookup();
+      const pending = early.take("hd_lookup_stats_record");
+      const heldBeforeOptions = early.blurState() === "pending";
+      early.reply(pending, { descriptor: { generation: "statistics", revision: 1 },
+        statistics: { term: pending.request.term, reading: pending.request.reading, lookupCount: 7, seenCount: null } });
+      await early.settle();
+      const stillPending = early.blurState() === "pending"
+        && early.sent.filter(request => request.type === "hd_audio_play").length === 0;
+      early.deliverInitialStorage();
+      await early.settle();
+      outcomes["a lookup before stored settings arrive waits, then blurs and stays silent"] =
+        heldBeforeOptions && stillPending && early.blurState() === "blurred"
+        && early.sent.filter(request => request.type === "hd_audio_play").length === 0;
+    } finally { early.close(); }
+
+    // A BFCache return re-arms the remaining deadline.
+    const cached = await createHarness(null, { holdLookupStats: true,
+      options: { ...blurOptions, definitionBlurReveal: "timed", audioAutoplay: false } });
+    try {
+      const shown = Date.now();
+      await cached.initialLookup();
+      const pending = cached.take("hd_lookup_stats_record");
+      cached.reply(pending, { descriptor: { generation: "statistics", revision: 1 },
+        statistics: { term: pending.request.term, reading: pending.request.reading, lookupCount: 9, seenCount: null } });
+      await cached.settle();
+      cached.pageTransition("pagehide");
+      await wait(Math.max(0, shown + 1000 - Date.now()) + 200);
+      const frozen = cached.blurState() === "blurred";
+      cached.pageTransition("pageshow");
+      outcomes["a BFCache return reveals a timed blur whose deadline passed while hidden"] =
+        frozen && cached.blurState() === "revealed";
+    } finally { cached.close(); }
     return outcomes;
   }
 
