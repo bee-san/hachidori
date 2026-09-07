@@ -146,20 +146,36 @@ for (const message of engine.messages.splice(0)) {
 }
 await Promise.all(queued.slice(0, 128));
 
-const preparing = request("hd_backup_prepare", "leaving-prepare", { token: "leaving-page" });
-await tick();
-const prepareMessage = engine.messages.at(-1);
-const cancelling = request("hd_backup_cancel", "leaving-cancel", { token: "leaving-page" });
-await tick();
-const cancelMessage = engine.messages.at(-1);
-assert.equal(cancelMessage.message.type, "hd_backup_cancel", "the departing page can queue cancellation behind its own prepare");
-engine.emit("message", { channel: "engine-response", id: prepareMessage.id,
-  response: { type: "hd_backup_prepare_result", ok: true } });
-await preparing.promise;
-assert.match((await send("hd_lookup", "lookup-before-cancel")).error, /busy mutating/);
-engine.emit("message", { channel: "engine-response", id: cancelMessage.id,
-  response: { type: "hd_backup_cancel_result", ok: true } });
-await cancelling.promise;
+for (const type of ["hd_backup_prepare", "hd_custom_save"]) {
+  const saturated = Array.from({ length: 127 }, (_, index) => request("hd_lookup", `before-cancel-${index}`));
+  const preparing = request(type, "leaving-prepare", { token: "leaving-page" });
+  await tick();
+  const prepareMessage = engine.messages.at(-1);
+  const cancelling = request("hd_backup_cancel", "leaving-cancel", { token: "leaving-page" });
+  await tick();
+  const cancelMessage = engine.messages.at(-1);
+  assert.equal(cancelMessage.message.type, "hd_backup_cancel", "the departing page can queue cancellation behind preparation or another mutation");
+  const cleanup = request("hd_backup_release", "cleanup-during-cancel");
+  await tick();
+  const cleanupMessage = engine.messages.at(-1);
+  assert.equal(cleanupMessage.message.type, "hd_backup_release");
+  assert.match((await send("hd_backup_release", "cleanup-overflow")).error, /queue is full/);
+  engine.emit("message", { channel: "engine-response", id: cleanupMessage.id,
+    response: { type: "hd_backup_release_result", ok: true } });
+  await cleanup.promise;
+  engine.emit("message", { channel: "engine-response", id: prepareMessage.id,
+    response: { type: "hd_backup_prepare_result", ok: true } });
+  await preparing.promise;
+  assert.match((await send("hd_lookup", "lookup-before-cancel")).error, /busy mutating/);
+  engine.emit("message", { channel: "engine-response", id: cancelMessage.id,
+    response: { type: "hd_backup_cancel_result", ok: true } });
+  await cancelling.promise;
+  for (const message of engine.messages.splice(0)) {
+    engine.emit("message", { channel: "engine-response", id: message.id,
+      response: { type: "hd_lookup_result", ok: true } });
+  }
+  await Promise.all(saturated.map(entry => entry.promise));
+}
 
 const mutationTypes = [
   "hd_import",

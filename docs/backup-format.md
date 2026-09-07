@@ -27,6 +27,10 @@ list. Nothing is published until the replacement checkbox is selected and
 including empty/default values; it does not merge libraries. Cancel discards the
 prepared files. A concurrent saved edit requires preparing the backup again.
 Unsaved Settings drafts must be saved or discarded before starting an operation.
+Leaving Settings cancels its preparation using an ID allocated before the
+request starts. The background retires delayed/retrying preparation requests;
+the engine queues token-scoped cleanup even behind another active mutation.
+Cleanup does not depend on the closed page receiving a preparation reply.
 
 ![Backup preview and replacement confirmation in Settings](assets/backup-restore-settings.png)
 
@@ -61,9 +65,10 @@ The focused archive/state/download/Settings unit tests cover format and control
 contracts. `test/backup-engine-scenarios.mjs`, included by extension smoke, covers
 four-way conflicts, disabled-package validation, lost replies, storage failures,
 uncertain commits, damaged-installation recovery and empty restores through real
-WASM. Four shared browser assertions in `test/chrome-backup-scenarios.mjs` exercise
+WASM. Five shared browser assertions in `test/chrome-backup-scenarios.mjs` exercise
 the actual Chrome download, immutable preview/conflict, complete restore and
-corrupt-archive cleanup in both OPFS and IDBFS suites, followed by browser restart.
+corrupt-archive cleanup and actual page closure during staged preparation in
+both OPFS and IDBFS suites, followed by browser restart.
 
 ## Archive representation
 

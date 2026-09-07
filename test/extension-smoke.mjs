@@ -882,6 +882,42 @@ async function ankiBackgroundStage() {
       && !stale.ok && stale.options.anki.model === "Basic", JSON.stringify({ commit, stale }));
 }
 
+async function backupRelayStage() {
+  const results = [];
+  for (const retry of [false, true]) {
+    const bus = makeBus(), storage = makeStorage();
+    const chrome = makeChrome("backup-relay", bus, storage);
+    const sent = [], backoffs = [];
+    let releaseStartup, reachedStartup, fail = retry;
+    const startup = new Promise(resolve => { reachedStartup = resolve; });
+    chrome.runtime.getContexts = async () => {
+      if (retry || releaseStartup) return [{}];
+      return new Promise(resolve => { releaseStartup = () => resolve([{}]); reachedStartup(); });
+    };
+    chrome.runtime.sendMessage = async message => {
+      sent.push(message.type);
+      if (message.type === "hd_backup_prepare" && fail) { fail = false; return undefined; }
+      return { ok: true };
+    };
+    loadBackgroundScript({ chrome, console, clearTimeout, Promise, Error,
+      setTimeout: resolve => backoffs.push(resolve) });
+    const send = type => bus.sendMessage("backup-settings", { target: "hoshidicts-offscreen", type, token: "departed-page" });
+    const pending = send("hd_backup_prepare");
+    if (retry) {
+      for (let i = 0; i < 20 && backoffs.length === 0; i++) await Promise.resolve();
+      if (backoffs.length === 0) throw new Error("Backup relay did not reach its retry");
+    } else await startup;
+    await send("hd_backup_cancel");
+    if (retry) backoffs.shift()();
+    else releaseStartup();
+    const reply = await pending;
+    results.push(reply.status === "cancelled"
+      && sent.filter(type => type === "hd_backup_prepare").length === Number(retry)
+      && sent.filter(type => type === "hd_backup_cancel").length === 1);
+  }
+  check("backup cancellation retires delayed startup and lost-reply retries before they can recreate staging", results.every(Boolean));
+}
+
 async function audioRelayStage() {
   const bus = makeBus();
   const storage = makeStorage();
@@ -2079,6 +2115,7 @@ async function main() {
 
   section("external dictionary links");
   await externalLinksBackgroundStage();
+  await backupRelayStage();
   await audioRelayStage();
   await ankiBackgroundStage();
 
