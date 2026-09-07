@@ -5,11 +5,16 @@
 This records the follow-up to the 7 September 2026 review of
 [PR #71](https://github.com/bee-san/hachidori/pull/71), reviewed at
 `5e85e291ccf39f27c56f5f83da4f35762ec2b1c2`. Results below are local validation
-snapshots. The final capture runtime is `9cc5907`, extension tree
+snapshots. The timing/resource measurement runtime is `9cc5907`, extension tree
 `79cdedc83ca5b15bf42977925bd00c90ca4662df`. It passed both processor and
 AudioWorklet capture checks on Chrome for Testing
 152.0.7977.82 at later revisions with the same extension tree. The headful
 thirty-minute run at `9cc5907` completed **13/13 checks** and **27 repeated exports**.
+
+The final merge review additionally identified cleanup needed after a definitive
+Anki duplicate/invalid response and after a replacement reader fails to link.
+Those lifecycle corrections and their final validation are recorded separately
+below; the long-run measurements retain their original revision provenance.
 
 ## Nine review findings
 
@@ -39,18 +44,18 @@ node --test test/capture-*.test.mjs test/avif-sequence.test.mjs \
 | Area | Evidence as of 7 September 2026 | Status / remaining work |
 | --- | --- | --- |
 | Closed texthooker lines, DOM range association, ancestor visibility | Timeline/session/collector tests cover retained closed lines in the current live epoch, sentence ranges inside paragraphs, ambiguous ranges, and transparent ancestors with layout boxes. The production hover candidate supplies its DOM range. | Focused tests passed. |
-| Controls closure and source interruption | The shared offscreen document owns capture. Host tests cover a late picker after Stop/settings changes and source mute without a controls page; clock tests cover backward video timestamps and interrupted audio delivery. | Focused tests and real controls close/reopen passed. The final runtime also rejects delayed reader linking after Stop or session replacement, and an obsolete same-page link cannot unlink the replacement collector. |
+| Controls closure and source interruption | The shared offscreen document owns capture. Host tests cover a late picker after Stop/settings changes and source mute without a controls page; clock tests cover backward video timestamps and interrupted audio delivery. | Focused tests and real controls close/reopen passed. The measured runtime also rejects delayed reader linking after Stop or session replacement, and an obsolete same-page link cannot unlink the replacement collector. |
 | Real application window and monitor | `chrome-capture-surfaces.mjs`: **5/5** at `9cc5907`, Chrome for Testing **152.0.7977.82**, isolated Xvfb/KWin. Window resize arrived; minimize/restore retained the session and resumed frames; closing the source stopped and cleared history. Monitor capture and Stop passed. Neither surface provided audio, and the controls reported it unavailable. | Verified for this Linux/X11 setup. Physical sleep/wake and other OS capture/audio behavior untested. |
-| Default ten-second moving-text clip | Final-runtime browser export produced 80 frames over exactly ten seconds, with matching AVIF/WAV durations, a 32 MiB encoder heap, and 8,560.7 ms export time. | This export component passed actual Anki review: 80 distinct frames observed and repeated in the second loop; its ten-second WAV played/replayed for 10.049/10.087 seconds with PCM peaks of 65 matching the source. |
+| Default ten-second moving-text clip | The browser export at `9cc5907` produced 80 frames over exactly ten seconds, with matching AVIF/WAV durations, a 32 MiB encoder heap, and 8,560.7 ms export time. | This export component passed actual Anki review: 80 distinct frames observed and repeated in the second loop; its ten-second WAV played/replayed for 10.049/10.087 seconds with PCM peaks of 65 matching the source. |
 | Captured tab behind controls | A controlled focus comparison measured 7.99 fps with the source in front, 6.49 fps behind controls, and 7.99 fps after restoring source focus. In the background phase, Chrome counted 70 upstream frames and delivered 65 after five browser rate-adapter discards; all 65 reached JPEG encoding. | The configured 8 fps is a ceiling. The full-rate soak keeps the source in front to match its baseline; it does not establish 8 fps for background sources. |
-| Static-scene export | The final runtime exported a static scene after sixty seconds as a looping two-frame AVIF and WAV, each exactly ten seconds. Export took 771.8 ms with a 32 MiB encoder heap. Actual Anki held the same scene for 23.36 seconds and played/replayed audio for 10.068/10.082 seconds. | Static component passed. Rendered RGB RMS difference was 0.3840/255, within the 1/255 limit. An independent moving-frame negative control measured 17.2280/255 and was rejected. Both audio peaks of 65 matched the source; static pixels alone cannot prove a loop. |
-| Flash/beep content alignment ≤125 ms | Chrome for Testing **152.0.7977.82** measured **61.021 ms** with processor audio at `da96d6a`, **122.833 ms** with AudioWorklet at `2a5ce05`, and **106.833 ms** after the thirty-minute processor soak at `9cc5907`, all on final runtime tree `79cdedc83ca5b15bf42977925bd00c90ca4662df`. | All three **13/13** runs passed the unchanged 125 ms gate. The worklet result is close to that limit and is not a guarantee of additional timing margin. These measure exported content alignment, not synchronization between separate Anki image/audio playback schedules. |
+| Static-scene export | The measured runtime exported a static scene after sixty seconds as a looping two-frame AVIF and WAV, each exactly ten seconds. Export took 771.8 ms with a 32 MiB encoder heap. Actual Anki held the same scene for 23.36 seconds and played/replayed audio for 10.068/10.082 seconds. | Static component passed. Rendered RGB RMS difference was 0.3840/255, within the 1/255 limit. An independent moving-frame negative control measured 17.2280/255 and was rejected. Both audio peaks of 65 matched the source; static pixels alone cannot prove a loop. |
+| Flash/beep content alignment ≤125 ms | Chrome for Testing **152.0.7977.82** measured **61.021 ms** with processor audio at `da96d6a`, **122.833 ms** with AudioWorklet at `2a5ce05`, and **106.833 ms** after the thirty-minute processor soak at `9cc5907`, all on measured runtime tree `79cdedc83ca5b15bf42977925bd00c90ca4662df`. | All three **13/13** runs passed the unchanged 125 ms gate. The worklet result is close to that limit and is not a guarantee of additional timing margin. These measure exported content alignment, not synchronization between separate Anki image/audio playback schedules. |
 | Short sustained processor check | At `da96d6a`, the headful test completed **150.13 seconds** cycling static/moving/dense scenes. Initial full, static, moving, and dense exports contained **79, 2, 81, and 81 frames** respectively; each AVIF/WAV pair covered exactly ten seconds. Final retention was 480 video frames and 2,880,512 audio samples. | **13/13** browser checks passed, independently of the thirty-minute run. |
 | Thirty-minute retention, CPU, sampled memory, full-export lookup latency | At `9cc5907`, **1,809.97 seconds** of static/moving/dense recording completed **27 exports** and **559 lookup batches during those exports**. Each AVIF/WAV pair covered exactly ten seconds; moving/dense clips held 80–81 frames and static clips held two. | **13/13 passed.** Maximum observed retained JPEGs: **10.97 MiB** against the 64 MiB limit; retained audio: **60.011 seconds**, including a boundary block. Encoder heap: **32 MiB** for every export. Resource measurements and limits are detailed below. |
 | Actual Anki Desktop AVIF/WAV | Anki **26.05**, Qt **6.11.1**, embedded Chromium **140.0.7339.225**. Fresh isolated collection, real reviewer, AVIF looping, actual MPV playback/replay, private recorded audio sink, remote reviewer requests blocked. | Short, full moving, and full static asset pairs passed their respective checks. Audible and low-level source PCM were preserved on playback/replay. Static pixels do not independently establish a loop boundary. No AnkiWeb sync or extra-device/client playback was tested. |
-| Repository checks | Node **226/226**, focused collector/host/routing **28/28**, and extension smoke **445/445** for runtime `9cc5907`; Chrome E2E **170/170** at `9cc5907`; earlier Node/WASM smoke **116/116** and benchmark tests **39/39**. Final-tree capture: Chrome for Testing **152.0.7977.82**, processor **13/13** at `da96d6a` and AudioWorklet **13/13** at `2a5ce05`. | Checks are local results for the recorded revisions. Final CI, Sonar, and review status remain tied to the eventual PR head. |
+| Repository checks | Node **226/226**, focused collector/host/routing **28/28**, and extension smoke **445/445** for runtime `9cc5907`; Chrome E2E **170/170** at `9cc5907`; earlier Node/WASM smoke **116/116** and benchmark tests **39/39**. Capture checks: Chrome for Testing **152.0.7977.82**, processor **13/13** at `da96d6a` and AudioWorklet **13/13** at `2a5ce05`. | Checks are local results for the recorded revisions. Final CI, Sonar, and review status remain tied to the eventual PR head. |
 
-The completed processor and AudioWorklet runs both recorded final extension
+The completed processor and AudioWorklet runs both recorded measured extension
 runtime tree `79cdedc83ca5b15bf42977925bd00c90ca4662df` and
 `extensionModified: false`. Full exports covered exactly ten seconds in both
 formats and used a measured 32 MiB encoder WASM heap:
@@ -64,6 +69,26 @@ These are one machine's results, not performance guarantees. The thirty-minute
 run started at `9cc5907` with the same extension tree; its initial full ten-second
 export measured 8,560.7 ms with 29 lookup batches, whose largest median/p95 was
 7.9/14.0 ms. Its full and static assets were independently verified in Anki below.
+
+## Final merge review corrections
+
+The review of `518f190` identified two additional lifecycle failures.
+`93da66f` releases a prepared export after an explicit duplicate/invalid Anki
+response, including after popup retirement or reader relinking. Uncertain
+responses and lost replies retain their existing ownership. Its controller,
+worker, mining, and session checks passed **47/47**.
+
+`9148812` clears the previous host binding before attempting a replacement
+reader link. A failed replacement leaves the recorder running and unlinked;
+newer links and replacement sessions remain protected. Its focused routing and
+lifecycle checks passed **44/44**. Both failures were reproduced before the fix,
+and both changed runtime files passed the local SonarJS checks with zero findings.
+
+Before these final corrections, the prospective merge with `main` at `6b89552`
+passed **230 Node tests, 448 extension smoke checks, and 171 Chrome E2E checks**.
+The current main changes were then integrated without conflicts. The final
+cleanup changes received focused regressions; full-browser and thirty-minute
+checks were not repeated afterward and retain their measured revisions.
 
 ## Thirty-minute resource measurements
 
@@ -128,15 +153,15 @@ new evidence on another machine.
 | Focused lifecycle / extension smoke for runtime `9cc5907` | `/tmp/pr71-link-race-root-tests.log`: **28/28**; `/tmp/pr71-extension-smoke-9cc5907.log`: **445/445** |
 | Earlier Node-WASM smoke / benchmark tests | `/tmp/pr71-node-smoke.log`: **116/116**; `/tmp/pr71-benchmark-tests.log`: **39/39** |
 | Chrome E2E | `/tmp/pr71-chrome-e2e-9cc5907.log`: **170/170** |
-| Final-tree processor run | `/tmp/pr71-preflight-2a5ce05.log`: **13/13**; its recorded revision is `da96d6a`, as preserved in `/tmp/pr71-preflight-da96d6a-bench.json`; 150.13 seconds sustained, 61.021 ms flash/beep offset |
-| Final-tree AudioWorklet run | `/tmp/pr71-capture-worklet-2a5ce05.log`: **13/13** at `2a5ce05`, 122.833 ms flash/beep offset |
+| Processor run with recorded revision | `/tmp/pr71-preflight-2a5ce05.log`: **13/13**; its recorded revision is `da96d6a`, as preserved in `/tmp/pr71-preflight-da96d6a-bench.json`; 150.13 seconds sustained, 61.021 ms flash/beep offset |
+| AudioWorklet run with recorded revision | `/tmp/pr71-capture-worklet-2a5ce05.log`: **13/13** at `2a5ce05`, 122.833 ms flash/beep offset |
 | Earlier Chromium 150 processor coverage | `/tmp/pr71-capture-chromium150-marker-fixed.log`: **13/13** at `acf81a9`, 22.479 ms flash/beep offset |
 | Completed thirty-minute headful soak | `/tmp/pr71-capture-soak-active.log`: **13/13**, exit 0; `/tmp/pr71-capture-soak-final-bench.json`; assets and `resources.json` in `/tmp/pr71-capture-assets-soak-active/`; 1,809.97 seconds, 27 exports, 106.833 ms flash/beep offset |
 | Controlled captured-tab focus comparison | `/tmp/pr71-focus-cadence-ICTWdp/results.json` and `instrumentation.diff`: identical source and 1280 × 720 capture settings across foreground, background, and restored-foreground phases |
 | X11 surfaces | `/tmp/pr71-surfaces-9cc5907.log`; `/tmp/hachidori-surfaces-CCRf3L/results.json` |
 | Actual Anki audible clip | `/tmp/hachidori-anki-desktop-pm4uygh1/result.json`: 2.6173125 s WAV, two playback peaks of 8,669 matching the source; 14 distinct rendered AVIF frames, 13 observed again in the second loop. |
-| Final-runtime actual Anki full clip | `/tmp/hachidori-anki-desktop-xuc5hjr8/result.json`: 80 distinct rendered frames repeated in the second loop, 9.956 s sampled recurrence, 10.049/10.087 s audio plays with PCM peaks of 65 matching the source |
-| Final-runtime actual Anki static clip | `/tmp/hachidori-anki-desktop-6o14q5ti/result.json`: same scene observed for 23.36 s, RMS difference 0.3840/255; ten-second WAV played/replayed for 10.068/10.082 s, both PCM peaks of 65 matching source |
+| Actual Anki full clip from `9cc5907` | `/tmp/hachidori-anki-desktop-xuc5hjr8/result.json`: 80 distinct rendered frames repeated in the second loop, 9.956 s sampled recurrence, 10.049/10.087 s audio plays with PCM peaks of 65 matching the source |
+| Actual Anki static clip from `9cc5907` | `/tmp/hachidori-anki-desktop-6o14q5ti/result.json`: same scene observed for 23.36 s, RMS difference 0.3840/255; ten-second WAV played/replayed for 10.068/10.082 s, both PCM peaks of 65 matching source |
 | Static image tolerance controls | `/tmp/pr71-anki-static-controls-final.json`: final static RMS difference 0.3840 accepted; final moving-frame RMS of 17.2280 rejected against the 1/255 normalized RGB limit |
 
 The Anki harness snapshots the exact input bytes before importing them. Recorded
