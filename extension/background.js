@@ -104,6 +104,7 @@ const NOT_LISTENING = /Receiving end does not exist|Could not establish connecti
 let creating = null;
 let latestAudioOperation = null;
 let capturePage = null;
+let captureRecovery = null;
 let captureContentDocument = null;
 let captureLinkTabId = null;
 
@@ -122,9 +123,8 @@ function sleep(ms) {
 
 function capturePageSender(sender) {
   return sender.id === chrome.runtime.id
-    && sender.url === chrome.runtime.getURL(CAPTURE_DOCUMENT)
-    && typeof sender.documentId === "string" && sender.documentId !== ""
-    && Number.isInteger(sender.tab?.id);
+    && sender.url === chrome.runtime.getURL(OFFSCREEN_DOCUMENT)
+    && sender.tab === undefined;
 }
 
 function trustedCaptureControl(sender) {
@@ -139,8 +139,14 @@ function trustedCaptureControl(sender) {
   }
 }
 
-async function relayCapture(message) {
-  if (!capturePage?.documentId) throw new Error("Open the Media capture page and keep it open.");
+async function relayCapture(message, stillCurrent = null) {
+  if (!capturePage || captureRecovery) await recoverCaptureHost();
+  if (stillCurrent && !stillCurrent()) return { ignored: true };
+  return sendCapture(message);
+}
+
+async function sendCapture(message) {
+  if (!capturePage?.documentId) throw new Error("The media capture host is unavailable.");
   const request = {
     ...message,
     target: CAPTURE_PAGE_TARGET,
@@ -158,11 +164,47 @@ async function relayCapture(message) {
   if (!reply) {
     capturePage = null;
     void unlinkCaptureContent();
-    throw new Error("The Media capture page did not reply.");
+    throw new Error("The media capture host did not reply.");
   }
   if (!responseFits(reply)) throw new Error(responseLimitError(message.type));
   if (!reply.ok) throw new Error(reply.error || "The capture operation failed.");
   return reply;
+}
+
+async function recoverCaptureBinding(page) {
+  if (captureContentDocument || captureLinkTabId !== null || !page) return;
+  assertCaptureTabId(page.tabId);
+  if (!shortCaptureString(page.documentId)) throw new Error("The linked document identity is invalid.");
+  const owner = capturePage;
+  const identity = { tabId: page.tabId, documentId: page.documentId };
+  const reply = await chrome.tabs.sendMessage(page.tabId, {
+    target: CAPTURE_CONTENT_TARGET, type: "hd_capture_recover",
+  }, { documentId: page.documentId }).catch(() => null);
+  if (capturePage !== owner || captureContentDocument || captureLinkTabId !== null) return;
+  if (reply?.linked === true && reply.documentId === page.documentId) {
+    captureContentDocument = identity;
+  } else {
+    await sendCapture({ type: "hd_capture_unlinked", ...identity,
+      reason: "The reading document is no longer available. Link the page again." });
+  }
+}
+
+async function recoverCaptureHost() {
+  if (captureRecovery) return captureRecovery;
+  if (capturePage) return;
+  captureRecovery = (async () => {
+    await ensureOffscreen();
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: ["OFFSCREEN_DOCUMENT"], documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT)],
+    });
+    if (capturePage || contexts.length !== 1) return;
+    const context = contexts[0];
+    capturePage = { documentId: context.documentId };
+    const status = await sendCapture({ type: "hd_capture_status" });
+    await recoverCaptureBinding(status.linkedPage);
+  })();
+  try { await captureRecovery; }
+  finally { captureRecovery = null; }
 }
 
 function finiteCaptureTime(value) {
@@ -229,9 +271,9 @@ async function createOffscreen() {
   try {
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_DOCUMENT,
-      reasons: ["DOM_SCRAPING", "AUDIO_PLAYBACK"],
+      reasons: ["DOM_SCRAPING", "AUDIO_PLAYBACK", "DISPLAY_MEDIA"],
       justification:
-        "Runs the WebAssembly dictionary engine, parses Yomitan archives, and plays configured pronunciation audio outside page content policies.",
+        "Runs the dictionary engine and pronunciation audio, and owns explicitly started local display capture across control-page closure.",
     });
   } catch (error) {
     // Another extension context may have won the race; only a genuine absence
@@ -1248,6 +1290,8 @@ const CAPTURE_CONTROL_TYPES = new Set([
   "hd_capture_track_area",
   "hd_capture_clear_area",
   "hd_capture_status",
+  "hd_capture_start",
+  "hd_capture_stop",
 ]);
 const CAPTURE_CONTENT_TYPES = new Set([
   "hd_capture_content_identify",
@@ -1262,60 +1306,120 @@ const CAPTURE_CONTENT_TYPES = new Set([
   "hd_capture_cancel",
 ]);
 
+let captureConfigRevision = 0;
+let captureConfigTail = Promise.resolve();
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes[OPTIONS_KEY]) return;
+  const previous = globalThis.HDReaderOptions.normaliseOptions(changes[OPTIONS_KEY].oldValue).mediaCapture;
+  const mediaCapture = globalThis.HDReaderOptions.normaliseOptions(changes[OPTIONS_KEY].newValue).mediaCapture;
+  if (sameJsonValue(previous, mediaCapture)) return;
+  const revision = ++captureConfigRevision;
+  const apply = () => relayCapture({ type: "hd_capture_configure", mediaCapture },
+    () => revision === captureConfigRevision);
+  captureConfigTail = captureConfigTail.then(apply, apply).catch(error => {
+    console.error("hachidori: could not update media capture settings:", describe(error));
+  });
+});
+
+async function linkCapturePage(message) {
+  await unlinkCaptureContent();
+  const stored = await chrome.storage.local.get(OPTIONS_KEY);
+  const mediaCapture = globalThis.HDReaderOptions.projectContentOptions(stored[OPTIONS_KEY]).mediaCapture;
+  captureLinkTabId = message.tabId;
+  let details;
+  try {
+    details = await commandCaptureContent(message.tabId, "hd_capture_link", { mediaCapture });
+  } catch (error) {
+    await unlinkCaptureContent();
+    throw error;
+  } finally {
+    captureLinkTabId = null;
+  }
+  const document = captureContentDocument;
+  if (document?.tabId !== message.tabId || !document.documentId) {
+    throw new Error("The linked page did not establish a document identity.");
+  }
+  const tab = await chrome.tabs.get(message.tabId);
+  const page = {
+    tabId: message.tabId,
+    documentId: document.documentId,
+    title: String(tab.title || "").slice(0, 200),
+    url: String(tab.url || "").slice(0, 2048),
+    videos: Array.isArray(details?.videos) ? details.videos : [],
+    message: details?.message || "",
+  };
+  await relayCapture({ type: "hd_capture_linked", requestId: message.requestId, page });
+  return { page };
+}
+
+function sameCapturePage(page, expected) {
+  return page?.tabId === expected.tabId && page.documentId === expected.documentId;
+}
+
+async function unlinkRetiredCapture(message, documentId) {
+  if (message.captureDocumentId !== documentId) return;
+  const page = message.linkedPage;
+  assertCaptureTabId(page?.tabId);
+  if (!shortCaptureString(page.documentId) || !shortCaptureString(message.captureSessionId)) {
+    throw new Error("The retired capture identity is invalid.");
+  }
+  // A source-ended event can wake a fresh worker before routing has recovered.
+  // Check the live host without publishing a partly recovered capturePage.
+  const status = await chrome.runtime.sendMessage({
+    target: CAPTURE_PAGE_TARGET, type: "hd_capture_status", relayed: true, captureDocumentId: documentId,
+  }).catch(() => null);
+  if (status?.captureSessionId && status.captureSessionId !== message.captureSessionId
+      && sameCapturePage(status.linkedPage, page)) return;
+  await chrome.tabs.sendMessage(page.tabId, {
+    target: CAPTURE_CONTENT_TARGET, type: "hd_capture_unlink",
+  }, { documentId: page.documentId }).catch(() => {});
+  if (sameCapturePage(captureContentDocument, page)) captureContentDocument = null;
+}
+
+async function handleCaptureHostMessage(message, sender) {
+  if (!capturePageSender(sender)) throw new Error("Only the offscreen document can register or stop the capture host.");
+  const contexts = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"],
+    documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT)] });
+  const documentId = contexts.length === 1 ? contexts[0].documentId : null;
+  if (!documentId) throw new Error("The capture host document is unavailable.");
+  if (message.type === "hd_capture_host_stopped") {
+    await unlinkRetiredCapture(message, documentId);
+    return { stopped: true };
+  }
+  capturePage = { documentId };
+  await recoverCaptureBinding(message.linkedPage);
+  const stored = await chrome.storage.local.get(OPTIONS_KEY);
+  return { documentId,
+    mediaCapture: globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]).mediaCapture };
+}
+
+async function openCaptureControls() {
+  const existing = (await chrome.tabs.query({ url: chrome.runtime.getURL(CAPTURE_DOCUMENT) }))[0];
+  if (existing) {
+    try {
+      const tab = await chrome.tabs.update(existing.id, { active: true });
+      if (Number.isInteger(tab.windowId)) await chrome.windows.update(tab.windowId, { focused: true });
+      return { tabId: tab.id };
+    } catch { /* A closed controls tab can be reopened. */ }
+  }
+  const tab = await chrome.tabs.create({ url: chrome.runtime.getURL(CAPTURE_DOCUMENT), active: true });
+  return { tabId: tab.id };
+}
+
 async function handleCaptureControl(message, sender) {
-  if (message.type === "hd_capture_register") {
-    if (!capturePageSender(sender)) throw new Error("Only the Media capture page can register a capture host.");
-    capturePage = { documentId: sender.documentId, tabId: sender.tab.id };
-    return { documentId: sender.documentId, tabId: sender.tab.id };
+  if (["hd_capture_register", "hd_capture_host_stopped"].includes(message.type)) {
+    return handleCaptureHostMessage(message, sender);
   }
   if (!CAPTURE_CONTROL_TYPES.has(message.type) || !trustedCaptureControl(sender)) {
     throw new Error("Unknown or untrusted capture control request.");
   }
-  if (message.type === "hd_capture_open") {
-    if (capturePage?.tabId !== undefined) {
-      try {
-        const tab = await chrome.tabs.update(capturePage.tabId, { active: true });
-        if (Number.isInteger(tab.windowId)) await chrome.windows.update(tab.windowId, { focused: true });
-        return { tabId: tab.id };
-      } catch {
-        capturePage = null;
-      }
-    }
-    const tab = await chrome.tabs.create({ url: chrome.runtime.getURL(CAPTURE_DOCUMENT), active: true });
-    return { tabId: tab.id };
-  }
+  if (message.type === "hd_capture_open") return openCaptureControls();
   if (message.type === "hd_capture_tabs") return { tabs: await captureTabs() };
-  if (message.type === "hd_capture_status") return relayCapture(message);
+  if (["hd_capture_status", "hd_capture_start", "hd_capture_stop"].includes(message.type)) return relayCapture(message);
   assertCaptureTabId(message.tabId);
   if (message.type === "hd_capture_link") {
-    await unlinkCaptureContent();
-    const stored = await chrome.storage.local.get(OPTIONS_KEY);
-    const mediaCapture = globalThis.HDReaderOptions.projectContentOptions(stored[OPTIONS_KEY]).mediaCapture;
-    captureLinkTabId = message.tabId;
-    let details;
-    try {
-      details = await commandCaptureContent(message.tabId, "hd_capture_link", { mediaCapture });
-    } catch (error) {
-      await unlinkCaptureContent();
-      throw error;
-    } finally {
-      captureLinkTabId = null;
-    }
-    const document = captureContentDocument;
-    if (document?.tabId !== message.tabId || !document.documentId) {
-      throw new Error("The linked page did not establish a document identity.");
-    }
-    const tab = await chrome.tabs.get(message.tabId);
-    const page = {
-      tabId: message.tabId,
-      documentId: document.documentId,
-      title: String(tab.title || "").slice(0, 200),
-      url: String(tab.url || "").slice(0, 2048),
-      videos: Array.isArray(details?.videos) ? details.videos : [],
-      message: details?.message || "",
-    };
-    await relayCapture({ type: "hd_capture_linked", requestId: message.requestId, page });
-    return { page };
+    return linkCapturePage(message);
   }
   if (message.type === "hd_capture_unlink") {
     const result = await commandCaptureContent(message.tabId, "hd_capture_unlink", {});
@@ -1376,10 +1480,34 @@ async function handleCaptureContent(message, sender) {
     };
     return { documentId: sender.documentId, tabId: sender.tab.id };
   }
+  if (!capturePage || captureRecovery) await recoverCaptureHost();
   const document = captureContentDocument;
   if (document?.tabId !== sender.tab.id || document.documentId !== sender.documentId) {
     throw new Error("This reading document is not linked to the capture session.");
   }
+  return relayCaptureContent(message, sender);
+}
+
+function assertCaptureLookup(lookup) {
+  if (!lookup || typeof lookup.lookupText !== "string" || lookup.lookupText.length === 0
+      || lookup.lookupText.length > 4096 || !finiteCaptureTime(lookup.lookupTimeMs)
+      || (lookup.occurrenceId !== "" && !shortCaptureString(lookup.occurrenceId))
+      || !["", "dom", "cue"].includes(lookup.occurrenceSourceKind ?? "")) {
+    throw new Error("The reading page sent an invalid lookup capture request.");
+  }
+}
+
+function assertCaptureExport(message) {
+  if (!shortCaptureString(message.token)
+      || !message.requirements || typeof message.requirements !== "object"
+      || typeof message.requirements.includeAnimation !== "boolean"
+      || typeof message.requirements.includeAudio !== "boolean"
+      || (!message.requirements.includeAnimation && !message.requirements.includeAudio)) {
+    throw new Error("The capture export request is invalid.");
+  }
+}
+
+async function relayCaptureContent(message, sender) {
   const authority = { tabId: sender.tab.id, documentId: sender.documentId };
   if (message.type === "hd_capture_text_begin") {
     return relayCapture({ ...message, ...authority, record: authoritativeCaptureRecord(message, sender) });
@@ -1399,12 +1527,7 @@ async function handleCaptureContent(message, sender) {
   }
   if (message.type === "hd_capture_pin") {
     const lookup = message.lookup;
-    if (!lookup || typeof lookup.lookupText !== "string" || lookup.lookupText.length === 0
-        || lookup.lookupText.length > 4096 || !finiteCaptureTime(lookup.lookupTimeMs)
-        || (lookup.occurrenceId !== "" && !shortCaptureString(lookup.occurrenceId))
-        || !["", "dom", "cue"].includes(lookup.occurrenceSourceKind ?? "")) {
-      throw new Error("The reading page sent an invalid lookup capture request.");
-    }
+    assertCaptureLookup(lookup);
     return relayCapture({ ...message, ...authority,
       lookup: { ...lookup, occurrenceId: lookup.occurrenceId || "",
         occurrenceSourceKind: lookup.occurrenceSourceKind || "" } });
@@ -1414,13 +1537,7 @@ async function handleCaptureContent(message, sender) {
     return relayCapture({ ...message, ...authority });
   }
   if (message.type === "hd_capture_export") {
-    if (!shortCaptureString(message.token)
-        || !message.requirements || typeof message.requirements !== "object"
-        || typeof message.requirements.includeAnimation !== "boolean"
-        || typeof message.requirements.includeAudio !== "boolean"
-        || (!message.requirements.includeAnimation && !message.requirements.includeAudio)) {
-      throw new Error("The capture export request is invalid.");
-    }
+    assertCaptureExport(message);
     return relayCapture({
       ...message,
       ...authority,
@@ -1455,26 +1572,16 @@ function clearNavigatedCaptureDocument(tabId, reason) {
 
 chrome.tabs?.onUpdated?.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "loading") {
-    if (capturePage?.tabId === tabId) {
-      capturePage = null;
-      void unlinkCaptureContent();
-      return;
-    }
     clearNavigatedCaptureDocument(tabId, "The reading page navigated. Link it again.");
   }
 });
 chrome.tabs?.onRemoved?.addListener(tabId => {
-  if (capturePage?.tabId === tabId) {
-    capturePage = null;
-    void unlinkCaptureContent();
-    return;
-  }
   clearNavigatedCaptureDocument(tabId, "The linked reading tab was closed.");
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== CAPTURE_TARGET || message.relayed === true) return false;
-  const operation = message.type === "hd_capture_register" || CAPTURE_CONTROL_TYPES.has(message.type)
+  const operation = ["hd_capture_register", "hd_capture_host_stopped"].includes(message.type) || CAPTURE_CONTROL_TYPES.has(message.type)
     ? handleCaptureControl(message, sender)
     : handleCaptureContent(message, sender);
   Promise.resolve(operation).then(

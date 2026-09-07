@@ -14,6 +14,19 @@ const AUDIO_TARGET = "hachidori-audio";
 const ANKI_TARGET = "hachidori-anki-render";
 const SETUP_TARGET = "hachidori-setup";
 let audioService, ankiService, audioRepository, setupInstaller;
+let captureService;
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== "hachidori-capture-page" || message.relayed !== true
+      || sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("background.js")
+      || sender.tab !== undefined) return false;
+  captureService ??= import("./capture-host.js");
+  captureService.then(module => module.handleCaptureMessage(message)).then(
+    result => sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true, ...result }),
+    error => sendResponse(failedResponse(message, describe(error))),
+  );
+  return true;
+});
 
 function getAudioRepository() {
   audioRepository ??= import("./audio-repository.js").then(module => module.createAudioRepository({

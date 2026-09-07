@@ -1,0 +1,178 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import test from 'node:test';
+
+const background = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+const capture = readFileSync(new URL('../extension/capture-host.js', import.meta.url), 'utf8');
+const host = { id: 'extension', url: 'chrome-extension://extension/offscreen.html' };
+const hostDocumentId = 'capture-document';
+const reader = { id: 'extension', url: 'https://reader.example/',
+  documentId: 'reader-document', tab: { id: 2 }, frameId: 0 };
+const linkedPage = { tabId: 2, documentId: 'reader-document' };
+
+function freshWorker({ readerDocument = reader.documentId, linked = true, statusWait = async () => {},
+  hostStatus = {} } = {}) {
+  const messages = [];
+  const contentMessages = [];
+  let readerLinked = linked;
+  let optionsListener;
+  const context = vm.createContext({
+    capturePage: null, captureRecovery: null, captureContentDocument: null, captureLinkTabId: null,
+    OPTIONS_KEY: 'options', OFFSCREEN_DOCUMENT: 'offscreen.html',
+    ensureOffscreen: async () => {}, HDReaderOptions: { normaliseOptions: value => value },
+    CAPTURE_DOCUMENT: 'capture.html', CAPTURE_CONTENT_TARGET: 'hachidori-capture-content',
+    CAPTURE_PAGE_TARGET: 'hachidori-capture-page',
+    Date, Number, URL, Error, TypeError,
+    sameJsonValue: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+    responseFits: () => true,
+    describe: String,
+    chrome: {
+      runtime: {
+        id: 'extension', getURL: path => `chrome-extension://extension/${path}`,
+        getContexts: async () => [{ documentId: hostDocumentId }],
+        sendMessage: async message => {
+          messages.push(message);
+          if (message.type === 'hd_capture_status') {
+            await statusWait();
+            return { ok: true, linkedPage, ...hostStatus };
+          }
+          return { ok: true, token: 'same-session-pin' };
+        },
+      },
+      storage: { onChanged: { addListener(value) { optionsListener = value; } },
+        local: { get: async () => ({ options: { mediaCapture: {} } }) } },
+      tabs: { sendMessage: async (tabId, message, options) => {
+        contentMessages.push({ tabId, message, options });
+        assert.equal(tabId, reader.tab.id);
+        if (readerDocument !== options.documentId) throw new Error('Receiving end does not exist');
+        if (message.type === 'hd_capture_unlink') readerLinked = false;
+        else assert.equal(message.type, 'hd_capture_recover');
+        return { linked: readerLinked, documentId: readerDocument };
+      } },
+    },
+  });
+  const helpers = background.slice(background.indexOf('function capturePageSender'),
+    background.indexOf('async function captureTabs'));
+  const handlers = background.slice(background.indexOf('const CAPTURE_CONTROL_TYPES'),
+    background.indexOf('function clearNavigatedCaptureDocument'));
+  vm.runInContext(helpers + handlers, context);
+  return { context, messages, contentMessages, optionsListener, readerLinked: () => readerLinked };
+}
+
+const pin = { type: 'hd_capture_pin', lookup: {
+  lookupText: '猫', lookupTimeMs: Date.now(), occurrenceId: '', occurrenceSourceKind: '',
+} };
+
+test('host registration restores only the same surviving linked document after worker restart', async () => {
+  const { context } = freshWorker();
+  await context.handleCaptureControl({ type: 'hd_capture_register', linkedPage }, host);
+  assert.equal((await context.handleCaptureContent(pin, reader)).token, 'same-session-pin');
+  await assert.rejects(context.handleCaptureContent(pin, { ...reader, documentId: 'other-document' }), /not linked/);
+  await assert.rejects(context.handleCaptureControl({ type: 'hd_capture_register', linkedPage }, reader), /Only the offscreen/);
+});
+
+test('the first lookup after worker restart recovers routing without waiting for a host heartbeat', async () => {
+  const { context, messages } = freshWorker();
+  assert.equal((await context.handleCaptureContent(pin, reader)).token, 'same-session-pin');
+  assert.equal(messages[0].type, 'hd_capture_status');
+});
+
+test('navigation or lost collector state cannot recover an old reader binding', async () => {
+  for (const options of [{ readerDocument: 'new-document' }, { linked: false }]) {
+    const { context, messages } = freshWorker(options);
+    await context.handleCaptureControl({ type: 'hd_capture_register', linkedPage }, host);
+    await assert.rejects(context.handleCaptureContent(pin, reader), /not linked/);
+    assert.ok(messages.some(message => message.type === 'hd_capture_unlinked'));
+  }
+});
+
+test('reader requests wait for the binding while a concurrent status request recovers the worker', async () => {
+  let releaseStatus, statusEntered;
+  const gate = new Promise(resolve => { releaseStatus = resolve; });
+  const entered = new Promise(resolve => { statusEntered = resolve; });
+  const { context, messages } = freshWorker({ statusWait: () => { statusEntered(); return gate; } });
+  const status = context.handleCaptureControl({ type: 'hd_capture_status' },
+    { id: 'extension', url: 'chrome-extension://extension/capture.html', tab: { id: 1 } });
+  await entered;
+  const lookup = context.handleCaptureContent(pin, reader);
+  releaseStatus();
+  await status;
+  assert.equal((await lookup).token, 'same-session-pin');
+  assert.equal(messages.filter(message => message.type === 'hd_capture_pin').length, 1);
+});
+
+test('settings changes queued during host recovery apply the latest configuration without rollback', async () => {
+  let releaseStatus, statusEntered;
+  const gate = new Promise(resolve => { releaseStatus = resolve; });
+  const entered = new Promise(resolve => { statusEntered = resolve; });
+  const { context, messages, optionsListener } = freshWorker({ statusWait: () => { statusEntered(); return gate; } });
+  const change = (previous, enabled) => optionsListener({ options: {
+    oldValue: { mediaCapture: { enabled: previous } }, newValue: { mediaCapture: { enabled } },
+  } }, 'local');
+  change(false, true);
+  await entered;
+  change(true, false);
+  releaseStatus();
+  await vm.runInContext('captureConfigTail', context);
+  assert.deepEqual(messages.filter(message => message.type === 'hd_capture_configure')
+    .map(message => message.mediaCapture.enabled), [false]);
+});
+
+const stoppedHost = { type: 'hd_capture_host_stopped', captureDocumentId: hostDocumentId,
+  captureSessionId: 'retired-session', linkedPage };
+
+test('source loss immediately after worker restart unlinks the exact surviving reader without prior recovery', async () => {
+  const f = freshWorker({ hostStatus: { state: 'stopped', captureSessionId: '', linkedPage: null } });
+  await f.context.handleCaptureControl(stoppedHost, host);
+  assert.equal(f.readerLinked(), false);
+  assert.deepEqual(f.contentMessages.map(item => [item.message.type, item.options.documentId]),
+    [['hd_capture_unlink', reader.documentId]]);
+});
+
+test('retired-host cleanup rejects forged identity, navigation and a newer capture session', async () => {
+  const forged = freshWorker();
+  await forged.context.handleCaptureControl({ ...stoppedHost, captureDocumentId: 'another-host' }, host);
+  assert.equal(forged.contentMessages.length, 0);
+  await assert.rejects(forged.context.handleCaptureControl(stoppedHost, reader), /Only the offscreen/);
+
+  const navigated = freshWorker({ readerDocument: 'new-document' });
+  await navigated.context.handleCaptureControl(stoppedHost, host);
+  assert.equal(navigated.readerLinked(), true);
+  assert.equal(navigated.contentMessages[0].options.documentId, reader.documentId);
+
+  const restarted = freshWorker({ hostStatus: { state: 'recording', captureSessionId: 'new-session' } });
+  await restarted.context.handleCaptureControl(stoppedHost, host);
+  assert.equal(restarted.readerLinked(), true);
+  assert.equal(restarted.contentMessages.length, 0);
+
+  const unlinkedRestart = freshWorker({ hostStatus: {
+    state: 'recording', captureSessionId: 'new-session', linkedPage: null,
+  } });
+  await unlinkedRestart.context.handleCaptureControl(stoppedHost, host);
+  assert.equal(unlinkedRestart.readerLinked(), false);
+});
+
+test('captured source resize letterboxes each frame in the original canvas without upscaling', async () => {
+  const draws = [], fills = [], canvases = [], closed = [];
+  const worker = readFileSync(new URL('../extension/capture-frame-worker.js', import.meta.url), 'utf8');
+  const drawing = { fillRect: (...args) => fills.push(args), drawImage: (...args) => draws.push(args.slice(1)) };
+  const context = vm.createContext({
+    MAX_FRAME_BYTES: 262144,
+    OffscreenCanvas: class {
+      constructor(width, height) { this.width = width; this.height = height; canvases.push(this); }
+      getContext() { return drawing; }
+      async convertToBlob() { return { size: 1, arrayBuffer: async () => new ArrayBuffer(1) }; }
+    },
+  });
+  vm.runInContext(worker.slice(worker.indexOf('let canvas ='), worker.indexOf('self.addEventListener(')), context);
+  await context.encodeFrame({ frame: { displayWidth: 800, displayHeight: 800,
+    close: () => closed.push(1) }, width: 640, height: 360 });
+  await context.encodeFrame({ frame: { width: 200, height: 100,
+    close: () => closed.push(2) }, width: 640, height: 360 });
+  assert.deepEqual(draws, [[140, 0, 360, 360], [220, 130, 200, 100]]);
+  assert.deepEqual(fills, [[0, 0, 640, 360], [0, 0, 640, 360]]);
+  assert.deepEqual(canvases.map(canvas => [canvas.width, canvas.height]), [[640, 360]]);
+  assert.deepEqual(closed, [1, 2]);
+});

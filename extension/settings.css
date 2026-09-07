@@ -730,6 +730,7 @@ input[type="checkbox"] {
 input[type="text"],
 input[type="password"],
 input[type="search"],
+input[type="url"],
 input[type="number"],
 select,
 textarea {
@@ -987,6 +988,7 @@ textarea {
 .lookup-group input[type="number"] {
   width: 8ch;
 }
+#opt-media-offset { width: 10ch; }
 .field-hint,
 .suffix {
   color: var(--text-dim);

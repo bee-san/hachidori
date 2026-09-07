@@ -22,9 +22,9 @@
   let nextRequestId = 0;
   let nextLineId = 0;
   let linked = false;
+  let linkedDocumentId = null;
   let options = null;
   let documentEpoch = crypto.randomUUID();
-  let selectedVideo = null;
   let selectedVideoCleanup = null;
   let trackedElement = null;
   let trackedEpoch = "";
@@ -81,6 +81,14 @@
     return tracks;
   }
 
+  function activeTrackCues(track) {
+    try {
+      return [...(track.activeCues ?? [])];
+    } catch {
+      return [];
+    }
+  }
+
   function trackId(track) {
     let id = trackIds.get(track);
     if (!id) {
@@ -120,8 +128,8 @@
   function attachVideo(video) {
     selectedVideoCleanup?.();
     selectedVideoCleanup = null;
-    selectedVideo = video;
     if (!video) return;
+    const attachmentEpoch = crypto.randomUUID();
     let epochCounter = 0;
     let sourceEpoch = "";
     let interrupted = true;
@@ -140,7 +148,7 @@
 
     function resetEpoch(at = now()) {
       closeAll(at);
-      sourceEpoch = `video:${videoId(video)}:${++epochCounter}`;
+      sourceEpoch = `video:${videoId(video)}:${attachmentEpoch}:${++epochCounter}`;
     }
 
     function sync(onsetKnown) {
@@ -151,27 +159,12 @@
       }
       const next = new Map();
       for (const track of videoTracks(video)) {
-        let cues;
-        try {
-          cues = [...(track.activeCues ?? [])];
-        } catch {
-          continue;
-        }
-        for (const cue of cues) {
+        for (const cue of activeTrackCues(track)) {
           const text = String(cue.text ?? "");
           if (!normalize(text) || text.length > MAX_TEXT_LENGTH) continue;
           const id = `${trackId(track)}:${cueId(cue)}`;
           next.set(id, text);
-          if (!active.has(id)) {
-            emitBegin({
-              sourceKind: "cue",
-              sourceEpoch,
-              occurrenceId: id,
-              text,
-              startMs: at,
-              onsetKnown,
-            });
-          } else if (active.get(id) !== text) {
+          if (active.get(id) !== text) {
             emitBegin({
               sourceKind: "cue",
               sourceEpoch,
@@ -208,8 +201,8 @@
       }
     }
 
-    function interrupt(at = now()) {
-      closeAll(at);
+    function interrupt() {
+      closeAll(now());
       interrupted = true;
     }
 
@@ -247,20 +240,23 @@
       for (const cleanup of trackCleanups.values()) cleanup();
       trackCleanups.clear();
       for (const cleanup of cleanups.splice(0).reverse()) cleanup();
-      selectedVideo = null;
     };
   }
 
-  function renderedElement(element, requireLayout = false) {
+  function renderedElement(element, requireLayout = false, style = null) {
     if (!element?.isConnected || element.hidden || element.getAttribute("aria-hidden") === "true"
         || element.closest("hachidori-host")) return false;
-    const style = getComputedStyle(element);
+    style ??= getComputedStyle(element);
     return style.display !== "none" && style.visibility !== "hidden" && style.visibility !== "collapse"
       && Number(style.opacity) !== 0 && (!requireLayout || element.getClientRects().length > 0);
   }
 
   function visible(element) {
-    return renderedElement(element, true);
+    if (!renderedElement(element, true)) return false;
+    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      if (!renderedElement(ancestor)) return false;
+    }
+    return true;
   }
 
   function validTrackedElement(element) {
@@ -268,31 +264,71 @@
       && !element.closest("input, textarea, select, button, [contenteditable], hachidori-host");
   }
 
+  function domRangeFor(boundaries, previous) {
+    if (previous?.startContainer === boundaries.startContainer && previous.startOffset === boundaries.startOffset
+        && previous.endContainer === boundaries.endContainer && previous.endOffset === boundaries.endOffset) {
+      return previous;
+    }
+    const range = document.createRange();
+    range.setStart(boundaries.startContainer, boundaries.startOffset);
+    range.setEnd(boundaries.endContainer, boundaries.endOffset);
+    return range;
+  }
+
   function extractLines(element) {
     if (!visible(element)) return [];
-    const pieces = [];
+    const lines = [];
+    let text = "";
+    let range = null;
     const lineBreak = () => {
-      if (pieces.at(-1) !== "\n") pieces.push("\n");
+      const normalized = normalize(text);
+      if (normalized && lines.length < MAX_LINES) {
+        lines.push({ text: normalized.slice(0, MAX_TEXT_LENGTH),
+          range: domRangeFor(range, trackedLines[lines.length]?.range) });
+      }
+      text = "";
+      range = null;
     };
-    function visit(node, root = false) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        pieces.push(node.nodeValue || "");
+    function appendPart(node, value, offset) {
+      range ??= { startContainer: node, startOffset: offset };
+      range.endContainer = node;
+      range.endOffset = offset + value.length;
+      text += value;
+    }
+    function appendText(node) {
+      const value = node.nodeValue || "";
+      if (!/[\r\n]/u.test(value)) {
+        appendPart(node, value, 0);
         return;
       }
-      if (!(node instanceof Element) || (!root && node.matches(OMIT_TEXT_SELECTOR))
-          || !renderedElement(node)) return;
+      for (const part of value.matchAll(/[^\r\n]+|[\r\n]+/gu)) {
+        if (/^[\r\n]/u.test(part[0])) {
+          lineBreak();
+          continue;
+        }
+        appendPart(node, part[0], part.index);
+      }
+    }
+    function visit(node, root = false) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        appendText(node);
+        return;
+      }
+      if (!(node instanceof Element) || (!root && node.matches(OMIT_TEXT_SELECTOR))) return;
+      const style = getComputedStyle(node);
+      if (!renderedElement(node, false, style)) return;
       if (node.tagName === "BR") {
         lineBreak();
         return;
       }
-      const block = !root && !INLINE_DISPLAY_PATTERN.test(getComputedStyle(node).display);
+      const block = !root && !INLINE_DISPLAY_PATTERN.test(style.display);
       if (block) lineBreak();
       for (const child of node.childNodes) visit(child);
       if (block) lineBreak();
     }
     visit(element, true);
-    return pieces.join("").split(/\r?\n/gu).map(normalize).filter(Boolean).slice(0, MAX_LINES)
-      .map(value => value.slice(0, MAX_TEXT_LENGTH));
+    lineBreak();
+    return lines;
   }
 
   function domIdentity(line) {
@@ -302,6 +338,43 @@
   function closeTrackedLines(at = now()) {
     for (const line of trackedLines) emitClose(domIdentity(line), at);
     trackedLines = [];
+  }
+
+  function isTypewriterContinuation(previous, text, at) {
+    if (!previous || !text || text === previous.text || !text.startsWith(previous.text)) return false;
+    return Array.from(text.slice(previous.text.length)).length <= TYPEWRITER_GROWTH_LIMIT
+      && at - previous.updatedMs <= TYPEWRITER_GAP_MS;
+  }
+
+  function lineIndexes(values) {
+    const indexesByText = new Map();
+    for (const [index, text] of values.entries()) {
+      const indexes = indexesByText.get(text) ?? [];
+      indexes.push(index);
+      indexesByText.set(text, indexes);
+    }
+    return indexesByText;
+  }
+
+  function retainedLinesFor(values) {
+    const previousByText = lineIndexes(trackedLines.map(line => line.text));
+    const nextByText = lineIndexes(values);
+    const retained = new Map();
+    const usedPrevious = new Set();
+    for (const [text, previousIndexes] of previousByText) {
+      const nextIndexes = nextByText.get(text);
+      if (previousIndexes.length !== 1 || nextIndexes?.length !== 1) continue;
+      retained.set(nextIndexes[0], trackedLines[previousIndexes[0]]);
+      usedPrevious.add(previousIndexes[0]);
+    }
+    return { previousByText, nextByText, retained, usedPrevious };
+  }
+
+  function refreshUnchangedLineRanges(extracted) {
+    if (extracted.length !== trackedLines.length
+        || !extracted.every((line, index) => line.text === trackedLines[index].text)) return false;
+    for (const [index, line] of trackedLines.entries()) line.range = extracted[index].range;
+    return true;
   }
 
   function reconcileTracked(initial = false) {
@@ -314,42 +387,19 @@
       return;
     }
     const at = now();
-    const values = extractLines(trackedElement);
-    if (values.length === trackedLines.length
-        && values.every((text, index) => text === trackedLines[index].text)) return;
-    const previousByText = new Map();
-    const nextByText = new Map();
-    for (let index = 0; index < trackedLines.length; index += 1) {
-      const indexes = previousByText.get(trackedLines[index].text) ?? [];
-      indexes.push(index);
-      previousByText.set(trackedLines[index].text, indexes);
-    }
-    for (let index = 0; index < values.length; index += 1) {
-      const indexes = nextByText.get(values[index]) ?? [];
-      indexes.push(index);
-      nextByText.set(values[index], indexes);
-    }
-    const retained = new Map();
-    const usedPrevious = new Set();
-    for (const [text, previousIndexes] of previousByText) {
-      const nextIndexes = nextByText.get(text);
-      if (previousIndexes.length !== 1 || nextIndexes?.length !== 1) continue;
-      retained.set(nextIndexes[0], trackedLines[previousIndexes[0]]);
-      usedPrevious.add(previousIndexes[0]);
-    }
+    const extracted = extractLines(trackedElement);
+    if (refreshUnchangedLineRanges(extracted)) return;
+    const values = extracted.map(line => line.text);
+    const { previousByText, nextByText, retained, usedPrevious } = retainedLinesFor(values);
     const previousLastIndex = trackedLines.length - 1;
     const nextLastIndex = values.length - 1;
     const previousLast = trackedLines[previousLastIndex];
     const nextLast = values[nextLastIndex];
     let typewriter = null;
-    if (previousLast && nextLast && nextLast !== previousLast.text
+    if (isTypewriterContinuation(previousLast, nextLast, at)
         && previousByText.get(previousLast.text)?.length === 1
         && nextByText.get(nextLast)?.length === 1
-        && !usedPrevious.has(previousLastIndex) && !retained.has(nextLastIndex)
-        && normalize(nextLast).startsWith(normalize(previousLast.text))
-        && Array.from(normalize(nextLast).slice(normalize(previousLast.text).length)).length
-          <= TYPEWRITER_GROWTH_LIMIT
-        && at - previousLast.updatedMs <= TYPEWRITER_GAP_MS) {
+        && !usedPrevious.has(previousLastIndex) && !retained.has(nextLastIndex)) {
       typewriter = { index: nextLastIndex, line: previousLast };
       usedPrevious.add(previousLastIndex);
     }
@@ -359,18 +409,19 @@
     const next = [];
     for (let index = 0; index < values.length; index += 1) {
       const text = values[index];
+      const range = extracted[index].range;
       const previous = retained.get(index);
       if (previous) {
-        next.push(previous);
+        next.push({ ...previous, range });
         continue;
       }
       if (typewriter?.index === index) {
         emitBegin({ sourceKind: "dom", sourceEpoch: trackedEpoch, occurrenceId: typewriter.line.id,
           text, startMs: at, onsetKnown: !initial });
-        next.push({ ...typewriter.line, text, updatedMs: at });
+        next.push({ ...typewriter.line, text, range, updatedMs: at });
         continue;
       }
-      const line = { id: `line-${++nextLineId}`, text, updatedMs: at };
+      const line = { id: `line-${++nextLineId}`, text, range, updatedMs: at };
       emitBegin({ sourceKind: "dom", sourceEpoch: trackedEpoch, occurrenceId: line.id,
         text, startMs: at, onsetKnown: !initial && !previousByText.has(text) });
       next.push(line);
@@ -443,9 +494,19 @@
 
   function occurrenceFor(candidate) {
     if (!trackedElement || !candidate?.anchor || !trackedElement.contains(candidate.anchor)) return null;
-    const text = normalize(candidate.sentence);
-    const matches = trackedLines.filter(line => normalize(line.text) === text);
+    // Keep the reader's DOM evidence local: a sentence or selection may occupy
+    // only part of a timed paragraph, and identical lines need their own identity.
+    const range = candidate.anchorRange ?? document.createRange();
+    if (!candidate.anchorRange) range.selectNodeContents(candidate.anchor);
+    const matches = trackedLines.filter(line => line.range
+      && line.range.comparePoint(range.startContainer, range.startOffset) === 0
+      && line.range.comparePoint(range.endContainer, range.endOffset) === 0);
     return matches.length === 1 ? { occurrenceId: matches[0].id, occurrenceSourceKind: "dom" } : null;
+  }
+
+  function blockPickerInput(event) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
   }
 
   function picker() {
@@ -474,11 +535,6 @@
       outline.style.height = `${rect.height}px`;
     }
 
-    function block(event) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
-
     function finish(element = null) {
       pickerCleanup?.();
       if (element) {
@@ -491,26 +547,26 @@
 
     const listeners = [
       ["pointermove", event => {
-        block(event);
+        blockPickerInput(event);
         paint(document.elementFromPoint(event.clientX, event.clientY));
       }, true],
-      ["pointerdown", block, true],
-      ["pointerup", block, true],
-      ["mousedown", block, true],
-      ["mouseup", block, true],
-      ["auxclick", block, true],
-      ["dblclick", block, true],
-      ["contextmenu", block, true],
-      ["click", event => { block(event); finish(candidate); }, true],
+      ["pointerdown", blockPickerInput, true],
+      ["pointerup", blockPickerInput, true],
+      ["mousedown", blockPickerInput, true],
+      ["mouseup", blockPickerInput, true],
+      ["auxclick", blockPickerInput, true],
+      ["dblclick", blockPickerInput, true],
+      ["contextmenu", blockPickerInput, true],
+      ["click", event => { blockPickerInput(event); finish(candidate); }, true],
       ["keydown", event => {
-        block(event);
+        blockPickerInput(event);
         if (event.key === "Escape") finish();
         else if (event.key === "ArrowUp" && candidate?.parentElement) {
           paint(candidate.parentElement);
         }
       }, true],
-      ["keypress", block, true],
-      ["keyup", block, true],
+      ["keypress", blockPickerInput, true],
+      ["keyup", blockPickerInput, true],
     ];
     for (const [type, listener, capture] of listeners) window.addEventListener(type, listener, capture);
     pickerCleanup = () => {
@@ -522,7 +578,7 @@
   }
 
   async function link(mediaCapture) {
-    await identify();
+    const identity = await identify();
     if (!mediaCapture || typeof mediaCapture !== "object") {
       throw new Error("The capture service did not provide page timing settings.");
     }
@@ -534,6 +590,7 @@
       },
     };
     linked = true;
+    linkedDocumentId = identity.documentId;
     documentEpoch = crypto.randomUUID();
     const available = videos();
     if (options.mediaCapture.timingMode !== "recent"
@@ -543,30 +600,33 @@
     } else {
       attachVideo(null);
     }
-    return {
-      videos: available,
-      message: available.length > 1
-        ? "Choose which video supplies native subtitle cues."
-        : available.length === 0 ? "No native video cues found; page text and recent timing remain available."
-          : "Reading page linked.",
-    };
+    let message = "Reading page linked.";
+    if (available.length > 1) message = "Choose which video supplies native subtitle cues.";
+    else if (available.length === 0) message = "No native video cues found; page text and recent timing remain available.";
+    return { videos: available, message };
   }
 
-  async function pinLookup(candidate) {
+  function lookupSnapshot(candidate, lookupTimeMs = now()) {
     if (!linked || !options?.mediaCapture.enabled) return null;
     const pageTiming = options.mediaCapture.timingMode !== "recent";
     if (pageTiming) learnArea(candidate);
     const occurrence = pageTiming
       ? occurrenceFor(candidate) ?? { occurrenceId: "", occurrenceSourceKind: "" }
       : { occurrenceId: "", occurrenceSourceKind: "" };
+    return {
+      documentEpoch,
+      lookup: {
+        lookupText: String(candidate.sentence || candidate.query || "").slice(0, MAX_TEXT_LENGTH),
+        lookupTimeMs,
+        ...occurrence,
+      },
+    };
+  }
+
+  async function pinLookup(snapshot) {
+    if (!snapshot || !linked || snapshot.documentEpoch !== documentEpoch) return null;
     try {
-      return await send("hd_capture_pin", {
-        lookup: {
-          lookupText: String(candidate.sentence || candidate.query || "").slice(0, MAX_TEXT_LENGTH),
-          lookupTimeMs: now(),
-          ...occurrence,
-        },
-      });
+      return await send("hd_capture_pin", { lookup: snapshot.lookup });
     } catch {
       return null;
     }
@@ -579,11 +639,12 @@
   }
 
   function rootLookup(candidate) {
+    const snapshot = lookupSnapshot(candidate);
     const operation = rootPinTail.then(async () => {
       const previous = rootPin;
       rootPin = null;
       await releaseToken(previous);
-      const pin = await pinLookup(candidate);
+      const pin = await pinLookup(snapshot);
       rootPin = pin;
       return pin;
     });
@@ -591,22 +652,25 @@
     return operation;
   }
 
-  function release(pin = rootPin) {
+  function release(pin) {
     const operation = rootPinTail.then(async () => {
-      if (!pin?.token || rootPin?.token !== pin.token) return;
+      const owned = pin === undefined ? rootPin : pin;
+      if (!owned?.token || rootPin?.token !== owned.token) return;
       rootPin = null;
-      await releaseToken(pin);
+      await releaseToken(owned);
     });
     rootPinTail = operation.catch(() => {});
     return operation;
   }
 
   async function unlink() {
+    linked = false;
     await release();
     pickerCleanup?.();
     selectedVideoCleanup?.();
     clearTrackedArea(false);
     linked = false;
+    linkedDocumentId = null;
     options = null;
     return { linked: false };
   }
@@ -616,6 +680,7 @@
     Promise.resolve().then(async () => {
       switch (message.type) {
         case "hd_capture_link": return link(message.mediaCapture);
+        case "hd_capture_recover": return { linked, documentId: linkedDocumentId };
         case "hd_capture_video_select": {
           if (options?.mediaCapture.timingMode === "recent"
               || !options?.mediaCapture.page.nativeCues) {

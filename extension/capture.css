@@ -47,3 +47,5 @@ video { grid-column: 1 / -1; width: 100%; max-height: 360px; border-radius: 10px
   .capture-controls, .status-grid { grid-template-columns: 1fr; }
   .status-grid h2, .error, video { grid-column: 1; }
 }
+/* Author display rules must not reveal controls marked unavailable. */
+[hidden] { display: none !important; }

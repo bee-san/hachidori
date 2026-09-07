@@ -1985,6 +1985,30 @@
     return true;
   }
 
+  function handleTermMiss(request, dictionaryCount, token, level, replayOptions) {
+    if (retainProtectedReplay(request, token, level, replayOptions)) return false;
+    if (dictionaryCount === 0) {
+      show(request.candidate, level);
+      level.activeHighlightText = "";
+      level.activeTermRender = null;
+      clearDefinitionBlurTimer(level);
+      level.currentViewRequest = null;
+      level.view.renderNotice(
+        "No dictionaries loaded. Import a Yomitan .zip from the Hachidori options page.",
+        request.candidate
+      );
+      positionPopup(level);
+      return false;
+    }
+    hide(level);
+    // Retain an exact miss so subsequent pointer motion cannot turn it into
+    // a prefix lookup. Explicit dismissal or another selection resets it.
+    if (request.exactSelection && selectionIsUnchanged(request.candidate)) {
+      activeSelectionCandidate = request.candidate;
+    }
+    return false;
+  }
+
   async function executeTermRequest(request, level = rootLevel, replayOptions = null) {
     audio?.retire(level);
     mining?.retire(level);
@@ -2019,27 +2043,7 @@
       .filter((result) => result && result.term
         && (!request.exactSelection || result.matched === request.payload.text));
     if (results.length === 0) {
-      if (retainProtectedReplay(request, token, level, replayOptions)) return false;
-      if (reply.dictionaryCount === 0) {
-        show(request.candidate, level);
-        level.activeHighlightText = "";
-        level.activeTermRender = null;
-        clearDefinitionBlurTimer(level);
-        level.currentViewRequest = null;
-        level.view.renderNotice(
-          "No dictionaries loaded. Import a Yomitan .zip from the Hachidori options page.",
-          request.candidate
-        );
-        positionPopup(level);
-        return false;
-      }
-      hide(level);
-      // Retain an exact miss so subsequent pointer motion cannot turn it into
-      // a prefix lookup. Explicit dismissal or another selection resets it.
-      if (request.exactSelection && selectionIsUnchanged(request.candidate)) {
-        activeSelectionCandidate = request.candidate;
-      }
-      return false;
+      return handleTermMiss(request, reply.dictionaryCount, token, level, replayOptions);
     }
     if (!replayOptions?.preserveViewControls) show(request.candidate, level);
     const matched = results[0].matched || results[0].term.expression;
