@@ -83,13 +83,13 @@ test("a run installs requested sources in catalogue order, skips installed ones 
   // The inventory is rechecked before every import and again after waiting for the idle engine.
   assert.equal(log.asked.length, 7);
   assert.ok(log.dispatched.filter((message) => message.type === "hd_status").length >= 3);
-  // One durable record per outcome, then one for the run duration.
+  // One durable record per outcome; the last one also carries the run duration,
+  // so outcomes can never be settled with the run accounting still missing.
   assert.deepEqual(log.recorded.map((message) => [message.type, message.runId, Object.keys(message.outcomes ?? {})[0] ?? null, message.runSeconds ?? null]), [
     ["hd_setup_record", "run-1", "jitendex", null],
     ["hd_setup_record", "run-1", "jmnedict", null],
     ["hd_setup_record", "run-1", "bees-ultimate-kanji-dictionary", null],
-    ["hd_setup_record", "run-1", "jiten", null],
-    ["hd_setup_record", "run-1", null, 6],
+    ["hd_setup_record", "run-1", "jiten", 6],
   ]);
   assert.deepEqual(log.recorded[1].outcomes.jmnedict, { status: "failed", seconds: 1, error: "could not read JMnedict.zip: HTTP 503" });
   assert.deepEqual(log.recorded[2].outcomes["bees-ultimate-kanji-dictionary"], { status: "already-installed" });

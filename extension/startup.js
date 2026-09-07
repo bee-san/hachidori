@@ -385,7 +385,10 @@ function requestInstall(sourceIds) {
 function installedView(rows, importNote) {
   const total = setupState.dictionaries.totalSeconds;
   const installedHere = Object.values(setupState.dictionaries.outcomes).some((outcome) => outcome.status === "installed");
-  if (!advanceFailed) startCountdown();
+  // A failed advance is an action-required state: the countdown a render during
+  // those attempts restarted is cancelled rather than left to retry silently.
+  if (advanceFailed) cancelCountdown();
+  else startCountdown();
   return {
     heading: installedHere && total !== null ? `All dictionaries installed in ${formatSeconds(total)}` : "All dictionaries are already installed",
     body: [importNote, rows, ...(advanceFailed ? [] : [countdownView()])],

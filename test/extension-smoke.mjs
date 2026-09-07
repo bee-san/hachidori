@@ -5036,6 +5036,9 @@ async function main() {
   const reconcile = await startupReconcileStage();
   check("a failed source the user installed from Settings is reconciled once while a missing failure waits for Retry",
     reconcile !== null && Object.values(reconcile).every((value) => value === true), JSON.stringify(reconcile));
+  const advanceFailure = await startupAdvanceFailureStage();
+  check("a refused automatic advance leaves an explicit Continue and cancels the countdown instead of saving again on a timer",
+    advanceFailure !== null && Object.values(advanceFailure).every((value) => value === true), JSON.stringify(advanceFailure));
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
@@ -6112,7 +6115,7 @@ async function startupPageStage() {
 
 // One jsdom startup page with only the worker replies and stored values a
 // dictionary-stage case needs; the two stages below drive it from there.
-function startupCase(jsdom, { setup, dictionaries = [], reply }) {
+function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
     pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
   });
@@ -6127,6 +6130,7 @@ function startupCase(jsdom, { setup, dictionaries = [], reply }) {
     runtime: {
       async sendMessage(message) {
         requests.push(structuredClone(message));
+        if (message.type === "hd_setup_cas" && cas !== null) return cas(message);
         if (message.type !== "hd_setup_install") throw new Error(`Unexpected startup request ${message.type}`);
         return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
       },
@@ -6154,6 +6158,7 @@ function startupCase(jsdom, { setup, dictionaries = [], reply }) {
       eventListener({ target: "hachidori-setup-events", type: "hd_setup_progress", ...snapshot });
     },
     installs: () => requests.filter((message) => message.type === "hd_setup_install").map((message) => message.sourceIds),
+    saves: () => requests.filter((message) => message.type === "hd_setup_cas"),
     heading: () => document.getElementById("setup-heading").textContent,
     rowText: (sourceId) => document.querySelector(`.setup-dictionary[data-source-id="${sourceId}"] .setup-dictionary-status`).textContent,
     actionIds: () => [...document.querySelectorAll("#setup-actions button")].map((control) => control.id),
@@ -6243,6 +6248,38 @@ async function startupReconcileStage() {
       && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-retry", "setup-continue"])
       && page.installs().length === 1;
     return { requested, reconciled };
+  } finally {
+    page.window.close();
+  }
+}
+
+// Both automatic advances failing is an action-required state: the countdown a
+// render during those attempts restarted is cancelled, so nothing saves again
+// on a timer behind the explicit Continue setup.
+async function startupAdvanceFailureStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const setup = { ...structuredClone(SETUP_AT_DICTIONARIES), revision: 6,
+    dictionaries: { outcomes: Object.fromEntries(RECOMMENDED_CATALOGUE.map((entry) =>
+      [entry.sourceId, { status: "installed", seconds: 1, error: null }])),
+    totalSeconds: 4, continued: false, selectionsApplied: [], recordedRuns: ["run-a"] } };
+  const dictionaries = RECOMMENDED_CATALOGUE.map((entry) => ({ id: entry.sourceId, title: entry.title, sourceId: entry.sourceId, enabled: true }));
+  const page = startupCase(jsdom, { setup, dictionaries,
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }),
+    cas: (message) => ({ type: "hd_setup_cas_result", requestId: message.requestId, ok: false, error: "the setup record could not be written" }) });
+  const label = () => page.document.getElementById("setup-countdown-label");
+  try {
+    await page.load();
+    await page.until(() => page.heading() === "All dictionaries installed in 4.0 seconds", "the complete result");
+    const counting = label() !== null && page.saves().length === 0;
+    // The five-second countdown elapses; both automatic writes are refused.
+    await page.until(() => page.actionIds().includes("setup-continue"), "the failed advance");
+    const failed = counting && page.saves().length === 2 && label() === null
+      && page.heading() === "All dictionaries installed in 4.0 seconds";
+    // Another display period passes without a further write of its own.
+    await new Promise((done) => setTimeout(done, 6000));
+    const quiet = page.saves().length === 2 && label() === null && page.actionIds().includes("setup-continue");
+    return { counting, failed, quiet };
   } finally {
     page.window.close();
   }

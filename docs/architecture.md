@@ -233,7 +233,10 @@ duration through `hd_setup_record`, which the worker accepts from the offscreen
 document only, and a row settles only after that record is acknowledged: a lost
 reply or a restarting worker makes the installer resend the same record with
 backoff, and records are idempotent per run (`recordedRuns`), so a duration
-whose reply was lost is confirmed rather than counted twice. Outcomes replace
+whose reply was lost is confirmed rather than counted twice. The last row's
+record carries the run's duration with that outcome, so a document terminated
+between the two can never leave every outcome settled with the run accounting
+missing, which nothing could reconstruct. Outcomes replace
 earlier ones, durations accumulate into `totalSeconds`, and a
 committed Jitendex or Bee's entry settles its first-install selection once
 (`compactDefinitionSummaryDictionary` and the term-route
@@ -246,7 +249,9 @@ rendered only when the current inventory holds every catalogue source and this
 setup installed at least one of them; a profile that already carried them all
 reads **All dictionaries are already installed**. Either result
 stays for five seconds with a labelled countdown that is not a live region,
-then the page advances to Anki. **Continue setup** with missing sources
+then the page advances to Anki. If both automatic writes are refused, the
+countdown is cancelled and the result keeps an explicit **Continue setup**
+instead of saving again on a timer. **Continue setup** with missing sources
 records `continued: true`. Only settled outcomes are announced, never bytes.
 
 ![Automatic installation with a held download, light palette](assets/startup-installing.png)

@@ -99,16 +99,21 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
   }
 
   // The row settles only once its outcome is durable, so a reconnecting page
-  // never sees a finished row whose record is still in flight.
-  async function settle(entry, outcome) {
-    await record({ outcomes: { [entry.sourceId]: outcome } });
+  // never sees a finished row whose record is still in flight. The last row's
+  // record also carries the run's duration: a terminated document must not be
+  // able to leave every outcome settled with the run accounting missing, which
+  // nothing could later reconstruct.
+  async function settle(entry, outcome, last = false) {
+    await record(last
+      ? { outcomes: { [entry.sourceId]: outcome }, runSeconds: (now() - run.startedAt) / 1000 }
+      : { outcomes: { [entry.sourceId]: outcome } });
     entry.phase = outcome.status;
     entry.seconds = outcome.seconds ?? null;
     entry.error = outcome.error ?? null;
     emit();
   }
 
-  async function importEntry(entry, source) {
+  async function importEntry(entry, source, last) {
     entry.phase = "downloading";
     entry.startedAt = now();
     emit();
@@ -118,7 +123,7 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
       // The wait may have been another import of this very source, from
       // Settings or an earlier run: an installed source is never reimported.
       if (recommendedDictionaryInstalled(source, await inventory())) {
-        await settle(entry, { status: "already-installed" });
+        await settle(entry, { status: "already-installed" }, last);
         return;
       }
       reply = await dispatch({
@@ -132,28 +137,29 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
     } while (reply?.ok !== true && reply?.error === ENGINE_BUSY);
     const seconds = (now() - entry.startedAt) / 1000;
     if (reply?.ok === true && reply.report?.success === true) {
-      await settle(entry, { status: "installed", seconds });
+      await settle(entry, { status: "installed", seconds }, last);
     } else {
-      await settle(entry, { status: "failed", seconds, error: reply?.error || reply?.report?.error || "the import did not complete" });
+      await settle(entry, { status: "failed", seconds, error: reply?.error || reply?.report?.error || "the import did not complete" }, last);
     }
   }
 
   async function execute() {
+    const lastEntry = run.entries.at(-1);
     for (const entry of run.entries) {
       const source = RECOMMENDED_DICTIONARIES.find((candidate) => candidate.sourceId === entry.sourceId);
+      const last = entry === lastEntry;
       try {
         // Installed by Settings or an earlier run meanwhile: never import twice.
         if (recommendedDictionaryInstalled(source, await inventory())) {
-          await settle(entry, { status: "already-installed" });
+          await settle(entry, { status: "already-installed" }, last);
           continue;
         }
-        await importEntry(entry, source);
+        await importEntry(entry, source, last);
       } catch (error) {
-        await settle(entry, { status: "failed", seconds: entry.startedAt === null ? null : (now() - entry.startedAt) / 1000, error: describe(error) });
+        await settle(entry, { status: "failed", seconds: entry.startedAt === null ? null : (now() - entry.startedAt) / 1000, error: describe(error) }, last);
       }
     }
     run.finished = true;
-    await record({ runSeconds: (now() - run.startedAt) / 1000 });
     emit();
   }
 
