@@ -10,7 +10,7 @@ Desktop paths, profiles and application-backup plumbing are not portable.
 Settings → Backup & restore exports every installed dictionary, including
 disabled packages and generated media, plus dictionary order, aliases,
 favourites, groups, managed-source/update metadata, the personal source document,
-reader/Design/audio/Anki settings and the global update schedule. The archive is
+reader/Design/audio/Anki settings, update schedules and local lookup counts. The archive is
 unencrypted and can contain personal notes, custom URLs and API keys. Keep it
 private. It does not contain browser history, downloads, cached runtime results,
 or Anki's own collection/media database.
@@ -52,23 +52,31 @@ including disabled ones. It then restores the working loaded set without
 publishing a new logical generation. A damaged current installation does not
 prevent restoring a valid backup.
 
-Confirmation checks the exact raw four-key preparation snapshot, strict-loads
+Confirmation checks the exact raw five-key preparation snapshot, strict-loads
 the candidate again, and publishes `dictionaryState`, `options`,
-`customDictionarySource` and `dictionaryUpdates` in one background storage write.
+`customDictionarySource`, `dictionaryUpdates`, and `lookupStats`, together with
+the restored statistics rows, in one background storage write.
 Each local revision advances; archived revision numbers and generation paths are
 not adopted. The storage queue is never held while awaiting the engine.
 Schedule reconciliation runs after the storage commit.
 
-A lost commit reply is resolved by reading back the exact expected four-value
+A lost commit reply is resolved by reading back the exact expected five-value
 transaction. Confirmed success publishes the new engine generation and cleans
 superseded roots. Confirmed failure restores authoritative state and removes
 unpublished roots. An uncertain commit retains both sets for restart recovery.
 Post-commit alarm or Settings-refresh errors are reported separately from restore
 success so they do not invite a duplicate operation.
 
+Statistics rows use a fresh namespace on each restore. Its descriptor is part
+of the atomic publication and constant-size lost-reply readback; archived row
+keys are never adopted. A concurrent lookup invalidates a prepared restore just
+like a settings edit. Only confirmed success permits best-effort pruning of
+inactive statistics namespaces. Cleanup failure cannot make the restore
+retryable; an uncertain commit retains both namespaces.
+
 The focused archive/state/download/Settings unit tests cover format and control
 contracts. `test/backup-engine-scenarios.mjs`, included by extension smoke, covers
-four-way conflicts, disabled-package validation, lost replies, storage failures,
+five-way conflicts, disabled-package validation, lost replies, storage failures,
 uncertain commits, damaged-installation recovery and empty restores through real
 WASM. Five shared browser assertions in `test/chrome-backup-scenarios.mjs` exercise
 the actual Chrome download, immutable preview/conflict, complete restore and
@@ -80,9 +88,13 @@ both OPFS and IDBFS suites, followed by browser restart.
 The extension format is a stored ZIP64 archive. Native dictionary data is already
 compressed; storing it avoids recompression and allows files and archives larger
 than classic ZIP's representation. `hachidori-backup.json` identifies format
-`hachidori-backup`, version 1, creation time, the persisted-state snapshot and the
+`hachidori-backup`, version 2, creation time, the persisted-state snapshot,
+`lookupStatsRows` (term, reading, count and first/last lookup timestamps), and the
 exact file list with sizes. Payload names are `dictionaries/<ordinal>/<relative
 file path>`; paths from a backup are never used as live generation paths.
+Version 1 archives remain readable and restore an empty statistics collection,
+not the current browser's unrelated history. Version 2 requires a valid
+descriptor and canonical, unique term/reading rows.
 
 Every entry's CRC32, declared size, path and ZIP headers are validated before
 restore. CRC32 detects accidental corruption, not authenticity: only restore
