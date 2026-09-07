@@ -3277,7 +3277,7 @@ async function main() {
       && trustedPackage?.isUpdatable === true
       && trustedPackage?.indexUrl === recommended.indexUrl
       && trustedPackage?.downloadUrl === recommended.downloadUrl
-      && trustedPackage?.termCount === 1
+      && trustedPackage?.termCount === 2
       && trustedPackage?.frequencyCount === 1
       && trustedPackage?.mediaCount === 1,
     JSON.stringify({ trustedImport, trustedState }),
@@ -5192,6 +5192,9 @@ async function main() {
   const advanceFailure = await startupAdvanceFailureStage();
   check("a refused automatic advance leaves an explicit Continue and cancels the countdown instead of saving again on a timer",
     advanceFailure !== null && Object.values(advanceFailure).every((value) => value === true), JSON.stringify(advanceFailure));
+  const practice = await startupPracticeStage();
+  check("the practice step invites a lookup only when a dictionary can answer one and loads the reader once with that step",
+    practice !== null && Object.values(practice).every((value) => value === true), JSON.stringify(practice));
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
@@ -6185,7 +6188,7 @@ async function startupPageStage() {
       && status().classList.contains("is-error") && heading() === "Installing default dictionaries…";
     // The worker records outcomes before the run finishes; a complete inventory is what decides success.
     dictionaryState = { ...dictionaryState, revision: 7, dictionaries: [...dictionaryState.dictionaries,
-      { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true }] };
+      { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }] };
     storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
     setupState = { ...setupState, revision: 4, dictionaries: { ...emptyDictionaries, totalSeconds: 5,
       outcomes: { jitendex: { status: "installed", seconds: 3.2, error: null }, jiten: { status: "failed", seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" },
@@ -6277,14 +6280,15 @@ async function startupPageStage() {
     // the move this page asked for, so the final step is not an error screen.
     setupState = { ...setupState, revision: 9, stage: "practice" };
     reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
-    await until(() => heading() === "You’re ready.", "the practice stage");
+    await until(() => heading() === "You’re ready. Try looking up a word below.", "the practice stage");
     const outcomeNote = document.querySelector(".setup-anki-outcome");
     const practice = emptyReplyShown && ankiRequests() === 3 && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
       && checkedHeading === "Anki is set up"
       && outcomeNote?.dataset.status === "configured"
       && outcomeNote.textContent === "Automatically set up Kiku v2 for deck ‘Mining::Words’. Change in Settings."
       && outcomeNote.querySelector('a[href="settings.html#anki"]') !== null
-      && document.getElementById("setup-body").textContent.includes("Hold Control and hover")
+      && document.getElementById("setup-body").textContent.includes("Hold Control and hover over the Japanese below")
+      && document.querySelector(".setup-practice-sample")?.textContent === "朝ごはんを食べる。"
       && status().textContent === "" && !status().classList.contains("is-error")
       && document.getElementById("setup-finish") !== null && doneSteps() === 2;
     document.getElementById("setup-finish").click();
@@ -6341,6 +6345,13 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
       stored.setup = setupState;
       storageListener({ setupState: { newValue: structuredClone(setupState) } }, "local");
     },
+    // A dictionary-state write the page learns about through a storage event.
+    library(next) {
+      stored.dictionaries = next;
+      stored.dictionaryRevision += 1;
+      storageListener({ dictionaryState: { newValue: { schemaVersion: 1, revision: stored.dictionaryRevision,
+        groups: [], dictionaries: structuredClone(next) } } }, "local");
+    },
     // An installer broadcast for the run the page attached to.
     progress(snapshot) {
       eventListener({ target: "hachidori-setup-events", type: "hd_setup_progress", ...snapshot });
@@ -6358,6 +6369,10 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
     load: () => loadStartupScript(window),
   };
 }
+
+// The reader scripts the practice step appends, in order.
+const readerScripts = (document) => [...document.querySelectorAll("script[data-setup-reader]")]
+  .map((script) => script.getAttribute("src"));
 
 const SETUP_AT_DICTIONARIES = Object.freeze({ schemaVersion: 1, revision: 2, startedAt: "2026-09-07T10:00:00.000Z",
   stage: "dictionaries", completedAt: null,
@@ -6468,6 +6483,45 @@ async function startupAdvanceFailureStage() {
     await new Promise((done) => setTimeout(done, 6000));
     const quiet = page.saves().length === 2 && label() === null && page.actionIds().includes("setup-continue");
     return { counting, failed, quiet };
+  } finally {
+    page.window.close();
+  }
+}
+
+// The practice step invites a real lookup only when a dictionary can answer
+// one, and the reader arrives with that step rather than with the page.
+async function startupPracticeStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const setup = { ...structuredClone(SETUP_AT_DICTIONARIES), revision: 8, stage: "practice",
+    anki: { status: "unavailable", detail: "Open Anki with the AnkiConnect add-on installed, then retry.", model: null, deck: null } };
+  // A frequency-only package cannot answer a term lookup.
+  const frequencyOnly = [{ id: "jiten", title: "Jiten", sourceId: "jiten", enabled: true, termCount: 0, frequencyCount: 9 }];
+  const page = startupCase(jsdom, { setup, dictionaries: frequencyOnly, reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  const { document } = page;
+  const sample = () => document.querySelector(".setup-practice-sample");
+  try {
+    await page.load();
+    await page.until(() => page.heading() === "You’re ready.", "the final step without a usable dictionary");
+    const withoutDictionary = sample() === null && readerScripts(document).length === 0
+      && document.getElementById("setup-body").textContent.includes("No enabled dictionary can answer a lookup yet")
+      && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
+      && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
+      && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"]);
+    // A term dictionary arrives: the exercise appears and the reader is fetched once.
+    page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }]);
+    await page.until(() => page.heading() === "You’re ready. Try looking up a word below.", "the practice exercise");
+    const invited = withoutDictionary && sample()?.textContent === "朝ごはんを食べる。" && sample().lang === "ja"
+      && document.getElementById("setup-body").textContent.includes("Hover over the Japanese below to look it up.")
+      && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
+      && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"])
+      // jsdom does not run appended scripts, so the chain stops at the first one.
+      && JSON.stringify(readerScripts(document)) === JSON.stringify(["dictionary-group-state.js"]);
+    // Rerenders of the same step must not fetch the reader again.
+    page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 43 }]);
+    await page.until(() => sample() !== null, "the rerendered exercise");
+    const loadedOnce = invited && JSON.stringify(readerScripts(document)) === JSON.stringify(["dictionary-group-state.js"]);
+    return { withoutDictionary, invited, loadedOnce };
   } finally {
     page.window.close();
   }
