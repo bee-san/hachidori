@@ -58,10 +58,11 @@ It is even 3.5 times faster at looking up words.
 
 # Media mining
 
-Hachidori can optionally keep a bounded local history of one shared tab or
-window, then attach an animated AVIF and captured-source WAV to a mined Anki
-note. It is off by default and never starts without an explicit **Start
-capture** click.
+Hachidori can optionally keep a bounded local history of one shared browser tab,
+application window, or monitor, then attach an animated AVIF and captured-source
+WAV to a mined Anki note. Source audio availability depends on the browser and
+chosen share. Capture is off by default and requires an explicit **Start
+capture** click; the controls may then be closed while recording continues.
 
 Timing prefers a matching live texthooker event, then accessible video cues,
 then changes in a linked webpage text area. If none is usable, Hachidori uses

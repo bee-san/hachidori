@@ -20,18 +20,25 @@ Pronunciation `{audio}` remains separate. Media-mining templates use
 2. Enable media capture and keep at least one output enabled.
 3. Map `{capture-animation}` and/or `{capture-audio}` into non-first Anki
    fields. Unmapped outputs are neither encoded nor uploaded.
-4. Open **Capture controls**, click **Start capture**, and choose exactly one
-   tab or window in Chrome's picker. Do not choose an entire monitor.
+4. Open **Capture controls**, click **Start capture**, and choose one browser
+   tab, application window, or monitor in Chrome's picker. Source audio depends
+   on the browser, operating system, chosen surface, and picker audio option.
 5. Select and link the reading page. If it has several videos, select the
    relevant one. Hachidori may learn an ordinary accessible text area from the
    first root lookup, or you can use **Track this text area**.
-6. Keep the Capture controls page open while recording.
+6. The controls may be closed and reopened while recording continues. The
+   recorder lives in the extension's shared offscreen document.
 
 Changing collection settings while recording asks for confirmation, then stops
-capture and clears transient history. Settings, imports, extension restarts,
-and browser restarts never arm capture automatically. **Stop capture** clears
-media, text timing records, source bindings, and unsubmitted pins without
-touching dictionary state.
+capture and clears transient history. **Stop capture** cancels pending capture
+and export work and clears media, text timing records, source bindings, and
+unsubmitted pins. A note mutation already sent to Anki may still succeed;
+stopping during media upload prevents a new note mutation from being sent.
+
+Settings, imports, extension restarts, and browser restarts never arm capture
+automatically. A service-worker restart can recover the same recording and
+linked reading document while the offscreen recorder survives. Losing that
+recorder or the shared source requires another **Start capture** click.
 
 ![Media capture settings](assets/media-capture-settings.png)
 
@@ -56,15 +63,22 @@ cue collectors. A matching clip remains valid when its audio contains silence;
 Hachidori does not use voice activity detection.
 
 The texthooker client accepts only an explicitly configured loopback `ws://`
-endpoint. Plain mode requires a live-only stream. GSM mode recognizes the
+or `wss://` endpoint. Enter the endpoint before enabling the feed. Plain mode
+requires a live-only stream. GSM mode recognizes the
 tested live text messages and ignores snapshots, acknowledgements,
 translations, and unrelated commands. Incoming text is never displayed, used
 as HTML, or treated as an instruction to create a note.
 
+Closing a line keeps its timing eligible in the current live feed epoch.
+Disconnecting or reconnecting invalidates that feed's previous epoch. Page
+timing uses the lookup's DOM range to distinguish nearby occurrences; an
+ambiguous range falls back to recent history.
+
 ## Retention and export bounds
 
-The recorder targets the configured 30- or 60-second history while enforcing
-hard resource limits:
+The recorder targets the configured 30- or 60-second history and exports clips
+of up to the configured 5 or 10 seconds. A closed text interval or partial
+warmup history can produce a shorter clip. It enforces these resource limits:
 
 | Resource | Bound |
 | --- | --- |
@@ -77,11 +91,32 @@ hard resource limits:
 | Encoder job | one at a time, 30-second watchdog |
 | Capture asset message | 6 MiB serialized |
 
-Frames are downscaled and JPEG-compressed before entering the ring; audio uses
-a sample-clocked mono Float32 ring. A byte limit can shorten the available
-video history. If the selected share has no source audio, animation can still
-be exported with an explicit warning; Hachidori never substitutes microphone
-or fabricated silent audio.
+Frames are fitted without upscaling and JPEG-compressed in a dedicated worker
+before entering the ring. This keeps Chrome's background-page idle encoding
+from delaying frame delivery. Audio uses a sample-clocked mono Float32 ring.
+Each new frame preserves its aspect ratio inside the session's original canvas,
+with letterboxing after a source resize when needed. A byte limit can shorten
+the available video history.
+
+The 8/6 fps settings are ceilings. A static or background source may deliver
+fewer frames, and capture cannot restore frames the browser did not deliver.
+In a controlled Chrome test, moving the captured tab behind the controls
+reduced delivery from 7.99 to 6.49 fps; returning to the source restored
+7.99 fps. Every delivered frame reached the JPEG worker in that probe.
+
+At the selected interval's end, the recorder allows up to 250 ms for already
+captured audio and JPEG frames to arrive. This delivery drain does not move
+the lookup anchor or extend the clip. The frame displayed at the interval's
+start is retained, including when it precedes the boundary; a stationary source
+can hold its last frame. AVIF frame durations and WAV samples use a common
+48 kHz timebase so both files cover the same duration. Equal duration alone
+does not establish flash/beep synchronization; see the acceptance record below.
+
+If audio samples are still missing after the bounded drain, an export requiring
+that audio fails explicitly. Fully delivered source silence remains valid.
+If the selected share supplies no audio track, animation can still be exported
+with a warning; an audio-only mapping reports unavailable source audio.
+Hachidori never substitutes microphone or fabricated silent audio.
 
 Anki preflight performs no media work. On submission, Hachidori encodes only
 referenced outputs, rechecks duplicate/configuration state, uploads assets one
@@ -91,7 +126,8 @@ write is not automatically retried or duplicated.
 ## Privacy and limitations
 
 Raw frames, PCM, received text, identifiers, timing records, and source
-bindings stay in the live capture page and are not written to
+bindings stay in the offscreen recorder and linked page's transient state,
+and are not written to
 `chrome.storage.local`. Only explicitly mined final assets are sent to the
 configured local AnkiConnect endpoint.
 
@@ -102,37 +138,25 @@ texthooker or recent-history timing. This release intentionally has no OCR,
 speech recognition, VAD, subtitle interception/download, site-specific player
 adapters, or microphone capture.
 
-Chrome and the selected operating-system share determine whether tab or window
-audio is available. Animated AVIF and WAV are separate Anki media files rather
-than a synchronized video container, so client media support can vary.
+Navigating away from or unlinking the reading page clears its binding and
+unsubmitted pins while recording continues. An export already admitted owns
+its clip independently. A shared track ending or becoming unavailable stops
+capture and clears history. Detected capture-clock interruptions also stop
+capture. Minimize behavior depends on the selected share: it may keep producing
+frames or make the source unavailable. Stopped capture never resumes itself.
+
+Animated AVIF and WAV are separate Anki media files; client media support and
+playback scheduling can vary. Physical sleep/wake and media sync to additional
+Anki devices have not been validated.
 
 ## Verification
 
-The focused Node suite covers settings, priority, epochs, matching, cue and DOM
-lifecycles, pin/job ownership, buffer bounds, AVIF/WAV encoding, response
-limits, and Anki commit behavior. `test/chrome-capture.mjs` additionally drives
-real Chrome display capture, captured tab audio, a real loopback WebSocket,
-animated-AVIF decoding/playback, WAV samples, AnkiConnect upload/readback,
-settings lifecycle, storage privacy, lookup latency, and sustained retention.
+The focused Node suite exercises production settings handlers, lookup ownership,
+collector messages, restart routing, buffer and drain behavior, AVIF/WAV
+encoding, and the final Anki mutation boundary. Separate browser, Linux surface,
+and installed-Anki harnesses cover the real runtimes.
 
-On 7 September 2026, a 70-second Linux run with Chrome for Testing
-152.0.7977.75 produced:
-
-| Measurement | Result |
-| --- | ---: |
-| Stopped lookup median / p95 | 1.40 ms / 2.90 ms |
-| Recording lookup median / p95 | 1.40 ms / 2.10 ms |
-| Capture input | 7.99 fps / 48,061 audio samples per second |
-| Retained history | 59.998 s video / 60.010 s audio |
-| Retained compressed frames | 4,031,058 bytes across 481 frames |
-| First AVIF + WAV encode | 2,712.36 ms |
-| Exported assets | 14,971-byte AVIF / 218,060-byte WAV |
-| Chrome-decoded AVIF frames | 11 |
-| Decoded flash/beep offset | 237.9 ms |
-
-These are one machine's regression measurements, not product guarantees. The
-test enforces bounds and a relative stopped-versus-recording latency threshold
-instead of freezing those exact timings.
-
-See the exact commands and benchmark controls in the
+The [PR #71 acceptance record](media-capture-review.md) distinguishes verified
+results from outstanding checks, including final flash/beep alignment and the
+long retention soak. See the commands and measurement limits in the
 [test harness documentation](../test/README.md#chrome-capturemjs).

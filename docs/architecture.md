@@ -1178,8 +1178,10 @@ Capture markers are prepared through the same Anki queue rather than a second
 gateway. Preflight reports only the outputs referenced by fields that will
 actually be applied. Submission waits for the capture job, refreshes
 configuration, generation, duplicate and overwrite decisions, uploads final
-assets one at a time, revalidates, then performs and verifies the existing note
-write. `{audio}` remains pronunciation audio;
+assets one at a time, revalidates capture ownership immediately before the note
+mutation, then performs and verifies the existing write. Stop during the final
+upload or configuration read prevents a new add/update; a mutation already sent
+may still succeed. `{audio}` remains pronunciation audio;
 `{capture-animation}`/`{capture-audio}` are rejected in the first field. A
 confirmed note mutation releases its capture job even if field readback later
 warns. An uncertain note mutation retains the job for an explicit retry and is
@@ -1187,34 +1189,49 @@ neither automatically retried nor followed by automatic media deletion.
 
 ## Generic media capture
 
-Media capture is default-off and runs in a dedicated visible extension page
-because `getDisplayMedia()` needs a direct user action and the page must own the
-resulting stream. The capture page registers one current session with the
-service worker; it does not join the dictionary queue or close the existing
-offscreen dictionary host.
+Media capture is default-off and starts only through an explicit **Start
+capture** action in `capture.html`. That page is a control surface;
+`capture-host.js` owns the stream in the shared `offscreen.html` document.
+Closing or reopening controls leaves recording running. The service worker
+creates the offscreen document with `DOM_SCRAPING`, `AUDIO_PLAYBACK`, and
+`DISPLAY_MEDIA` reasons, sharing it with the dictionary and pronunciation
+services. Capture has its own session and workers and does not enter the
+dictionary mutation queue.
 
 ```text
 Settings / capture controls
           |
           v
-Service worker -- trusted sender validation and tab routing
+Service worker -- trusted sender validation and document routing
           |
           +--> linked content script: cue/DOM observations and root pins
           |
-          +--> capture page: MediaStream, WebSocket, rings, resolver and jobs
-                                 |
-                                 +--> local AVIF worker and WAV encoder
-                                 |
-                                 +--> existing Anki worker
+          +--> shared offscreen document: capture-host.js
+          |      MediaStream, WebSocket, rings, resolver, pins and export jobs
+          |          |
+          |          +--> dedicated JPEG frame worker
+          |          +--> dedicated AVIF export worker; local WAV encoder
+          |
+          +--> existing Anki queue and gateway: final assets and note mutation
 ```
 
-The service worker accepts control messages only from Settings or the exact
-capture-page URL, and observation messages only from the currently linked tab
-and document identity. The configured texthooker URL is retained by the capture
-page and omitted from content-script options. Only loopback `ws://` or `wss://`
-endpoints are accepted. A source change, full navigation, stop, relevant
-setting change, or capture loss invalidates the corresponding session or
-document epoch.
+The service worker accepts controls only from Settings or the capture-controls
+URL and observations only from the linked tab and document identity.
+`offscreen.js` lazily loads the recorder for relayed capture requests from the
+extension's background worker; other senders cannot dispatch Start there.
+Host registration is bound to the actual offscreen document returned by
+`chrome.runtime.getContexts()`. The configured texthooker URL is passed to the
+recorder and omitted from content-script options. Only loopback `ws://` or
+`wss://` endpoints are accepted.
+
+On service-worker restart, a control or reader request discovers the surviving
+offscreen host and validates its linked document through a content-script
+handshake. Recovery preserves the same session, observed timing, and pins;
+navigation or a missing collector cannot restore a stale binding. Losing the
+offscreen host, restarting the extension/browser, or changing capture settings
+requires an explicit new Start. No stored setting arms capture automatically.
+The picker allows one browser tab, application window, or monitor; actual audio
+availability comes from the tracks returned by the browser.
 
 The linked content script keeps DOM nodes and ranges locally. It observes one
 bounded ordinary text area plus an explicitly selected accessible video and
@@ -1233,29 +1250,75 @@ matches fail closed. The admitted root pin freezes the source, options, and
 interval; nested lookups inherit it. A still-open matched line may receive only
 its bounded future tail. Submitting transfers ownership to one independent
 encoder job, while replacing or dismissing an unsubmitted root releases its
-pin.
+pin. Stale or failed nested requests cannot release that borrowed root pin.
+Unlinking or navigating the reader drops its binding and unsubmitted pin while
+an already admitted export retains independent ownership. Closed texthooker
+occurrences remain eligible only in the current live feed epoch; a disconnect
+invalidates that epoch. DOM ranges associate a sentence lookup with its observed
+occurrence, with ambiguous ranges falling through to recent history.
 
-Video history is timestamped JPEG bytes with 60-second age, 64 MiB live, 32 MiB
-extra pinned, and 256 KiB per-frame limits. Audio is a mono Float32 sample-clock
-ring over the same timeline. Current Chrome reads timestamped video and audio
-chunks through `MediaStreamTrackProcessor`; video processing is independent of
-background-tab timer throttling and rate-limits itself from media timestamps.
-One initial video callback maps the audio media clock to the shared browser
-timeline, while the AudioWorklet sample clock and visible-video sampler remain
-compatibility fallbacks. Capture skips frame opportunities instead of queueing
-unbounded work. The local worker incrementally decodes selected JPEGs into an
-animated AVIF sequence; WAV generation converts only the selected PCM to 16-bit
-mono. One job, a 256 MiB worker heap ceiling, 30-second watchdog, 4 MiB AVIF
-limit, 1 MiB WAV limit, and 6 MiB serialized asset-response limit bound export.
-Missing source audio is reported and never replaced with microphone or
-fabricated silence.
+Video history contains timestamped JPEG bytes with the configured 30- or
+60-second age, 64 MiB live, 32 MiB extra pinned, and 256 KiB per-frame limits.
+`MediaStreamTrackProcessor` supplies raw video timestamps; the first frame maps
+that clock to `performance.timeOrigin + performance.now()`. Subsequent frames
+use that fixed origin and are sampled at up to 8 fps Standard or 6 fps Compact.
+The host transfers one cloned `VideoFrame` at a time to
+`capture-frame-worker.js`, which fits it into the initial canvas without
+upscaling, letterboxes changed aspect ratios, and JPEG-compresses it. Worker
+compression avoids the roughly one-second idle-encoding delay observed with a
+main-thread canvas in an offscreen document. The video-element compatibility
+sampler supplies an `ImageBitmap` to the same worker. Capture skips frame
+opportunities instead of building an unbounded queue.
 
-Frames, PCM, timing records, received text, stream state, page bindings, pins,
-and jobs are transient capture-page state. They are not persisted, logged as
-dialogue, sent to telemetry, or broadcast to unrelated tabs. Stopping capture
-closes tracks and sockets, observers, retries, pins, buffers, and encoder work;
-dictionary state remains untouched. See [Media mining](media-capture.md) for
-the user-facing setup and explicit unsupported surfaces.
+Audio is mixed to mono and retained as Float32 samples. Raw `AudioData` and
+`VideoFrame` timestamps shared a monotonic clock in the observed Chrome 150
+runtime, while Chrome 152 exposed page-relative audio timestamps with raw-clock
+video timestamps. At the first audio block, the recorder chooses between the
+video origin and `performance.timeOrigin` by proximity to the block's observed
+arrival time, then keeps that choice for the stream. This is a clock-domain
+comparison, not a browser-version branch or a mapping from preview playback
+`mediaTime`. Delivered sample counts determine subsequent block boundaries,
+tolerating timestamp rounding while rejecting dropped blocks or sample-rate
+changes. The AudioWorklet compatibility path establishes its origin only after
+`AudioContext.resume()` and maps `startFrame` to that origin; interrupted input
+reports an error. Retired stream/context callbacks cannot append to a new
+session.
+
+At a pin's selected end time, finalization waits up to 250 ms for outstanding
+JPEG and continuous audio delivery, finishing early if both cover the interval.
+The drain does not move the frozen interval. Frame selection keeps the last
+frame preceding the start and clips its presentation timestamp to that boundary.
+Stationary video may hold its last frame; audio still missing after the drain
+causes an export requiring it to fail. The AVIF encoder quantizes cumulative
+frame boundaries on a 48,000-tick timebase, with the final boundary rounded up
+to the same sample count as the 48 kHz WAV. Thus both serialized assets cover
+the same interval to sample precision without accumulating per-frame rounding
+drift. Content synchronization is independently checked by the flash/beep test.
+
+The AVIF worker incrementally decodes selected JPEGs into a looping sequence.
+A single retained frame is decoded once and encoded twice with split integer
+durations preserving the total sample count; otherwise libavif emits a still
+image without sequence timing. Fewer than two timebase ticks cannot represent
+that sequence and fail explicitly. WAV generation converts only selected PCM
+to 16-bit mono. One export job, a
+256 MiB encoder heap ceiling, 30-second watchdog, 4 MiB AVIF limit, 1 MiB WAV
+limit, and 6 MiB serialized asset-response limit bound export. Missing source
+audio permits a mapped animation with a warning, while an audio-only mapping
+fails explicitly. Microphone input and fabricated silence are never substituted;
+fully delivered source silence is valid.
+
+The offscreen recorder owns transient streams, rings, occurrence records,
+received texthooker text, pins, and export jobs. Its workers own frame canvases
+and encoding allocations. The linked content script owns local DOM nodes, ranges,
+observers, and collector epochs; the service worker owns validated routing
+identities. These are not persisted, logged as dialogue, sent to telemetry, or
+broadcast to unrelated tabs. Stop, relevant setting changes, source track
+`mute`/`ended`, or detected clock interruptions retire pending picker results,
+close tracks/sockets/workers, cancel drain/export work, clear history and pins,
+and unlink the collector. Dictionary state remains untouched. See
+[Media mining](media-capture.md) for setup and
+[the acceptance record](media-capture-review.md) for measured coverage and
+untested physical sleep/wake and additional-device sync behavior.
 
 ## Managed custom dictionary
 
@@ -1305,7 +1368,9 @@ retryable.
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
 | Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
-| Media streams, compressed-frame/PCM history, timing records, source bindings, pins, encoder jobs, and received texthooker text | visible capture page | transient memory only |
+| Media streams, compressed-frame/PCM history, occurrence timeline, pins, export jobs, and received texthooker text | offscreen capture host; dedicated workers own frame canvases and encoding allocations | transient memory only |
+| Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
+| Watched DOM nodes/ranges, cue/DOM observers, and collector epochs | linked content script | transient memory only |
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 
