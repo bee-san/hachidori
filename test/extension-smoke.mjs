@@ -6383,6 +6383,8 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, optio
   };
 }
 
+const PRACTICE_SENTENCE_TEXT = "朝ごはんを食べる。";
+
 // The reader scripts the practice step appends, in order, and the order the
 // manifest itself gives them: the page must follow that list, not a copy.
 const readerScripts = (document) => [...document.querySelectorAll("script[data-setup-reader]")]
@@ -6514,8 +6516,9 @@ async function startupPracticeStage() {
   const frequencyOnly = [{ id: "jiten", title: "Jiten", sourceId: "jiten", enabled: true, termCount: 0, frequencyCount: 9 }];
   // The engine answers the sentence only from the verb onwards, the way a real
   // library that holds 食べる but not 朝ごはん would.
+  let libraryAnswers = true;
   const answersVerb = (message) => ({ generation: 3, dictionaryCount: 1,
-    results: message.text.startsWith("食べる") ? [{ term: "食べる", matched: "食べる" }] : [] });
+    results: libraryAnswers && message.text.startsWith("食べる") ? [{ term: "食べる", matched: "食べる" }] : [] });
   const page = startupCase(jsdom, { setup, dictionaries: frequencyOnly, lookup: answersVerb,
     reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
   const { document } = page;
@@ -6543,9 +6546,18 @@ async function startupPracticeStage() {
     page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 43 }]);
     await page.until(() => sample() !== null, "the rerendered exercise");
     const loadedOnce = invited && JSON.stringify(readerScripts(document)) === JSON.stringify(MANIFEST_READER_SCRIPTS.slice(0, 1));
+    // The answering package is removed while an unrelated term dictionary stays:
+    // a previously successful probe must not keep the invitation standing.
+    const beforeRetire = page.lookups().length;
+    libraryAnswers = false;
+    page.library([{ id: "other", title: "Unrelated", enabled: true, termCount: 1 }]);
+    await page.until(() => page.document.getElementById("setup-body").textContent.includes("do not have the words in this sample"),
+      "the retired invitation");
+    const reprobed = loadedOnce && sample() === null
+      && page.lookups().length === beforeRetire + [...PRACTICE_SENTENCE_TEXT].length;
     const offHover = await startupPracticeWithoutHover(jsdom, setup);
     const unanswerable = await startupPracticeUnanswerable(jsdom, setup);
-    return { withoutDictionary, invited, loadedOnce, offHover, unanswerable };
+    return { withoutDictionary, invited, loadedOnce, reprobed, offHover, unanswerable };
   } finally {
     page.window.close();
   }

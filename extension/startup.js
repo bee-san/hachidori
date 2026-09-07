@@ -49,9 +49,11 @@ let runSilenceTimer = null;
 let readerLoading = null;
 // What a real lookup of the practice sentence found: unknown, "ready",
 // "missing" (nothing in the installed dictionaries) or "unavailable" (the engine
-// could not answer). Probed once per committed inventory.
+// could not answer). Probed again whenever the inventory or the options it
+// depends on change, so a removed dictionary or a shortened scan cannot leave a
+// stale invitation standing.
 let practiceOutcome = null;
-let practiceProbed = -1;
+let practiceProbed = "";
 // Anki detection is asked for once per page; a failed request waits for Retry.
 let ankiRequest = null;
 let ankiFailed = false;
@@ -575,35 +577,46 @@ function loadReader() {
 // page asks: an ordinary lookup from every offset in it, through the engine the
 // reader would use, stopping at the first hit. A partly installed library or an
 // unrelated dictionary therefore cannot advertise a hover that returns nothing.
+function practiceSignature() {
+  return `${dictionaryRevision}:${optionsRevision}`;
+}
+
 function probePractice() {
-  practiceProbed = dictionaryRevision;
+  const signature = practiceSignature();
+  practiceProbed = signature;
+  practiceOutcome = null;
   void (async () => {
+    // A newer inventory or option has its own probe; this one's answer is stale.
+    const settle = (found) => {
+      if (practiceProbed !== signature) return false;
+      practiceOutcome = found;
+      render();
+      return true;
+    };
     const characters = [...PRACTICE_SENTENCE];
     for (let start = 0; start < characters.length; start += 1) {
-      const text = characters.slice(start).join("");
       let reply;
       try {
-        reply = await send("hd_lookup", { text, scanLength: characters.length - start, maxResults: 1,
+        // The reader's own hover payload: the configured scan length decides how
+        // far a lookup from this offset may reach. One result settles existence.
+        reply = await send("hd_lookup", { text: characters.slice(start).join(""), scanLength: options.scanLength, maxResults: 1,
           options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder, primaryReading: "" },
         }, ENGINE_TARGET);
       } catch {
-        practiceOutcome = "unavailable";
-        render();
+        settle("unavailable");
         return;
       }
+      if (practiceProbed !== signature) return;
       if (reply?.ok === false) {
-        practiceOutcome = "unavailable";
-        render();
+        settle("unavailable");
         return;
       }
       if (Array.isArray(reply?.results) && reply.results.some((result) => result?.term)) {
-        practiceOutcome = "ready";
-        render();
+        settle("ready");
         return;
       }
     }
-    practiceOutcome = "missing";
-    render();
+    settle("missing");
   })();
 }
 
@@ -616,10 +629,6 @@ function lookupObstacle() {
   }
   if (!options.hoverEnabled) {
     return { text: "Lookups are turned off, so there is nothing to try here yet.", before: "Turn them back on in ", href: "settings.html#lookup" };
-  }
-  if (practiceOutcome === "missing") {
-    return { text: "The installed dictionaries do not have the words in this sample yet.",
-      before: "Install dictionaries in ", href: "settings.html#add-dictionaries" };
   }
   return null;
 }
@@ -638,10 +647,20 @@ function practiceView() {
       actions: finishAction,
     };
   }
+  // A changed inventory or option retires the previous answer, including a
+  // successful one: the exercise must describe the library as it is now.
+  if (practiceProbed !== practiceSignature()) probePractice();
+  if (practiceOutcome === "missing") {
+    return {
+      heading: "You’re ready.",
+      body: [...outcome, paragraph("The installed dictionaries do not have the words in this sample yet."),
+        settingsNote("Install dictionaries in ", "settings.html#add-dictionaries")],
+      actions: finishAction,
+    };
+  }
   if (practiceOutcome !== "ready") {
     // The engine answers in milliseconds; until it has, the step stands on its
     // own rather than promising a lookup this page has not proved.
-    if (practiceProbed !== dictionaryRevision) probePractice();
     return {
       heading: "You’re ready.",
       body: [...outcome, paragraph(practiceOutcome === "unavailable"
