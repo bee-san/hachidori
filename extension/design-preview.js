@@ -180,7 +180,7 @@
         view.renderKanji({ character: kanjiCharacter, entries: [{ dictionary: capability?.title || "Sample kanji",
           onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用", definitions: ["eat", "food"],
           stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }],
-        }] }, candidate, renderContext);
+        }] }, candidate, { ...renderContext, definitionBlurState: "revealed" });
       }
     } else {
       view.renderResults(sample.results, candidate, { ...context(), preserveViewControls,

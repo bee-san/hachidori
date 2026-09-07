@@ -6321,8 +6321,19 @@ async function designPreviewStage() {
     kanjiSource &&= query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
       && popup.textContent.includes("Second") && query("form") === kanjiNote
       && kanjiNote.elements.definition.value === "Keep across source choices";
+    // Native kanji stays outside term blur even while the sample count qualifies.
+    options = { ...options, definitionBlurEnabled: true, definitionBlurDirection: "below", definitionBlurThreshold: 5,
+      definitionBlurReveal: "hover" };
+    update();
+    await settle();
+    blur &&= (popup.dataset.definitionBlurState ?? "revealed") === "revealed"
+      && query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食";
     kanjiNote.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     query(".gsm-hoshidicts-kanji-back").click();
+    await settle();
+    blur &&= popup.dataset.definitionBlurState === "blurred";
+    options = { ...options, definitionBlurEnabled: false };
+    update();
     await settle();
     const back = kanji && query('[role="tab"][aria-selected="true"]')?.dataset.dictionary === tab.dataset.dictionary
       && query(".gsm-hoshidicts-glossary-card").open === false;
