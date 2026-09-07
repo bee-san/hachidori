@@ -13,6 +13,7 @@
   },
   "permissions": [
     "alarms",
+    "downloads",
     "offscreen",
     "storage",
     "unlimitedStorage"

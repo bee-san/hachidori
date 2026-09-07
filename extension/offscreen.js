@@ -29,6 +29,10 @@ const MUTATION_TYPES = new Set([
   "hd_remove",
   "hd_custom_save",
   "hd_custom_append",
+  "hd_backup_export",
+  "hd_backup_prepare",
+  "hd_backup_restore",
+  "hd_backup_cancel",
 ]);
 
 function supportsSharedWasmMemory() {
@@ -239,7 +243,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
-  if (activeMutationRequestId !== null) {
+  if (activeMutationRequestId !== null && message.type !== "hd_backup_release") {
     sendResponse(failedResponse(message, "the dictionary engine is busy mutating"));
     return true;
   }

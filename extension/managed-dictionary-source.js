@@ -52,6 +52,22 @@ export function recommendedDictionarySource(sourceId) {
   return RECOMMENDED_BY_ID.get(sourceId) ?? null;
 }
 
+export function assertRecommendedDictionary(source, dictionary) {
+  if (!new RegExp(source.titlePattern, "u").test(dictionary.title)) {
+    throw new Error(`${source.name} archive did not match its expected title`);
+  }
+  if (dictionary.indexUrl !== source.indexUrl) {
+    throw new Error(`${source.name} archive did not match its expected update source`);
+  }
+  if (typeof dictionary.revision !== "string" || dictionary.revision === "") {
+    throw new Error(`${source.name} archive did not declare a revision`);
+  }
+  const countKey = source.requiredCapability === "freq" ? "frequencyCount" : "termCount";
+  if (!(dictionary[countKey] > 0)) {
+    throw new Error(`${source.name} archive did not contain its expected capability`);
+  }
+}
+
 export function managedDictionarySource(dictionary) {
   const recommended = recommendedDictionarySource(dictionary?.sourceId);
   if (recommended !== null) {

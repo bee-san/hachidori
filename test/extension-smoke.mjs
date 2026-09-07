@@ -24,6 +24,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
+const nativeFetch = globalThis.fetch.bind(globalThis);
 
 // The trained fixture is built in memory rather than read out of test/fixtures:
 // the .zip on disk is only there for the browser test, which needs a real file to
@@ -524,6 +526,7 @@ function makeChrome(owner, bus, storage, alarms = makeAlarms()) {
   const onStartup = makeEvent();
   return {
     alarms: alarms.api,
+    downloads: { onChanged: makeEvent() },
     __events: { onInstalled, onStartup },
     runtime: {
       id: "hachidorismokeextensionid",
@@ -543,7 +546,10 @@ function makeChrome(owner, bus, storage, alarms = makeAlarms()) {
       onInstalled,
       onStartup,
       sendMessage(message, callback) {
-        const promise = bus.sendMessage(owner, message);
+        const promise = bus.sendMessage(owner, message, {
+          id: "hachidorismokeextensionid",
+          url: `${EXTENSION_ORIGIN}/${owner.includes("offscreen") ? "offscreen.html" : "settings.html"}`,
+        });
         if (typeof callback !== "function") {
           return promise;
         }
@@ -588,6 +594,7 @@ let nextBlobId = 0;
 function installFetch() {
   globalThis.fetch = async (input) => {
     const url = String(input);
+    if (url.startsWith("blob:nodedata:")) return nativeFetch(input);
     if (remoteResponses.has(url)) {
       return remoteResponses.get(url)(url);
     }
@@ -718,6 +725,7 @@ function loadClassicScript(file, sandbox) {
 }
 
 function loadBackgroundScript(sandbox) {
+  sandbox.loadBackupState = () => import("../extension/backup-state.js");
   sandbox.createAnkiWorkerService = createAnkiWorkerService;
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -736,6 +744,7 @@ function loadBackgroundScript(sandbox) {
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+    .replaceAll('import("./backup-state.js")', "loadBackupState()")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
@@ -5029,6 +5038,8 @@ async function main() {
     trainedLookup.results?.[0]?.term?.glossaries?.map((g) => [g.dictionary, g.glossary]),
     [[TRAINED_TITLE, JSON.stringify(trainedGlossary)]],
   );
+
+  await backupEngineScenarios({ request, pageChrome, hostChrome: offscreenChrome, storage, engine: observedEngine, check });
 
   const unreferencedTitle = "hachidori-unreferenced-restart-fixture";
   const unreferencedImport = await request("hd_import", {
