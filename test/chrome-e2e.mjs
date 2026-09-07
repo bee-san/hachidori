@@ -5232,6 +5232,7 @@ async function checkSourceFallback(settings, tab, popup) {
     check("fallback source paint stays beneath page headers and overlays",
       covers.every(value => value.bounded && value.initiallyUncovered && value.restored && Math.abs(value.expectedArea - value.actualArea) < 2),
       JSON.stringify(covers));
+    const stylesheetSource = await tab.$eval("#verb", element => element.getBoundingClientRect().toJSON());
     const styleChanges = [];
     for (const kind of ["insert", "declaration", "adopted", "load", "media-nested", "media-sheet"]) {
       let stylesSession;
@@ -5247,7 +5248,9 @@ async function checkSourceFallback(settings, tab, popup) {
           const element = document.createElement("div");
           element.id = "e17-page-cover";
           element.dataset.e17PaintedCover = "";
-          element.style.cssText = "width:220px;height:48px;background:white;z-index:100";
+          // Cover the measured source rather than assuming a font's glyph
+          // height: Japanese serif fallback can exceed the old 40px interior.
+          element.style.cssText = `width:${source.width + 20}px;height:${source.height + 16}px;background:white;z-index:100`;
           document.body.append(element);
           const initial = "#e17-page-cover { position:absolute;left:-1000px;top:0; }";
           const css = `#e17-page-cover { position:fixed;left:${source.left - 10}px;top:${source.top - 8}px; }`;
@@ -5278,7 +5281,7 @@ async function checkSourceFallback(settings, tab, popup) {
             document.head.append(link);
           }
           return css;
-        }, { source: sourceRect, kind });
+        }, { source: stylesheetSource, kind });
         const before = await snapshot();
         if (stylesSession) {
           const request = await pendingStyle;
@@ -5293,7 +5296,10 @@ async function checkSourceFallback(settings, tab, popup) {
         }, { css, kind });
         await new Promise(done => setTimeout(done, 350));
         const changed = await snapshot();
-        styleChanges.push({ kind, before: before.exact, covered: changed.paint.groups === 1 && changed.paint.rects.length === 0 });
+        const fullyCovered = changed.source.expected.every(rect =>
+          overlap(rect, changed.source.cover) >= area(rect) - 1);
+        styleChanges.push({ kind, before: before.exact, fullyCovered,
+          covered: changed.paint.groups === 1 && changed.paint.rects.length === 0 });
       } finally {
         await stylesSession?.detach();
         await tab.evaluate(() => {
@@ -5306,7 +5312,7 @@ async function checkSourceFallback(settings, tab, popup) {
       styleChanges.at(-1).restored = (await snapshot()).exact;
     }
     check("fallback source paint refreshes after stylesheet loading and CSSOM edits",
-      styleChanges.every(value => value.before && value.covered && value.restored), JSON.stringify(styleChanges));
+      styleChanges.every(value => value.before && value.fullyCovered && value.covered && value.restored), JSON.stringify(styleChanges));
     await tab.keyboard.press("Escape"); // Close the unsaved Note draft first.
     await tab.keyboard.press("Escape");
     await frame();

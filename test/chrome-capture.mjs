@@ -9,8 +9,10 @@
  */
 
 import assert from "node:assert/strict";
+import { captureResourceMonitor } from "./capture-resources.mjs";
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -27,7 +29,24 @@ const PROFILE = process.env.HACHIDORI_CAPTURE_PROFILE
 const SETTINGS_SCREENSHOT = process.env.HACHIDORI_MEDIA_SETTINGS_SCREENSHOT || "";
 const CAPTURE_SCREENSHOT = process.env.HACHIDORI_CAPTURE_SCREENSHOT || "";
 const ASSET_DIR = process.env.HACHIDORI_CAPTURE_ASSET_DIR || "";
+let fixtureOrigin;
 const FORCE_AUDIO_WORKLET = process.env.HACHIDORI_CAPTURE_FORCE_AUDIO_WORKLET === "1";
+
+const CHECKS = [
+  "real tab capture records bounded video and source audio",
+  "default ten-second moving-text export decodes roughly eighty frames with equal AVIF/WAV duration",
+  "dictionary lookups remain responsive during a full export",
+  "closing and reopening controls preserves the recording and reading document",
+  "service-worker restart recovers the same capture session and linked reader",
+  "learned DOM timing falls back first, then pins an observed line",
+  "animated AVIF and mono WAV upload through Anki one at a time",
+  "Chrome decodes changing AVIF frames and non-silent WAV samples",
+  "decoded flash and beep stay aligned within 125 ms",
+  "live texthooker priority, active state and reconnect use the real loopback WebSocket",
+  "a second pinned interval encodes and cleans up independently",
+  "one linked reading document is enforced and navigation clears it without stopping capture",
+  "capture-setting confirmation stops and clears without auto-rearming",
+];
 
 function cachedChrome() {
   const root = resolve(CACHE, "hachidori-browsers/chrome");
@@ -52,7 +71,7 @@ const FIXTURE_HTML = `<!doctype html>
     <style>
       html, body { margin: 0; min-height: 100%; background: #10141f; color: #f8fafc; font-family: sans-serif; }
       main { display: grid; place-items: center; gap: 24px; min-height: 100vh; }
-      #scene { width: min(80vw, 800px); aspect-ratio: 16 / 9; border-radius: 18px; box-shadow: 0 24px 60px #0008; }
+      #scene, #fixture-canvas { width: min(80vw, 800px); aspect-ratio: 16 / 9; border-radius: 18px; box-shadow: 0 24px 60px #0008; }
       #subtitle-area { min-width: 26rem; padding: 18px 28px; border-radius: 12px; background: #000c; text-align: center; }
       #subtitle { font-size: 32px; }
       button { padding: 12px 20px; font: inherit; }
@@ -60,8 +79,8 @@ const FIXTURE_HTML = `<!doctype html>
   </head>
   <body>
     <main>
-      <video id="scene" autoplay playsinline></video>
-      <canvas id="fixture-canvas" width="960" height="540" hidden></canvas>
+      <video id="scene" playsinline hidden></video>
+      <canvas id="fixture-canvas" width="960" height="540"></canvas>
       <div id="subtitle-area"><span id="subtitle">最初の行</span></div>
       <button id="fixture-start" type="button">Start fixture audio</button>
     </main>
@@ -71,10 +90,11 @@ const FIXTURE_HTML = `<!doctype html>
       const context = canvas.getContext("2d");
       let frame = 0;
       let painting = true;
-      let videoTrack = null;
+      let sceneMode = "dense";
+      window.setFixtureSceneMode = mode => { sceneMode = mode; painting = true; };
       function paint() {
         frame += 1;
-        if (painting) {
+        if (painting && sceneMode !== "static") {
           const hue = frame % 360;
           const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
           gradient.addColorStop(0, "hsl(" + hue + " 80% 45%)");
@@ -83,9 +103,12 @@ const FIXTURE_HTML = `<!doctype html>
           context.fillRect(0, 0, canvas.width, canvas.height);
           context.fillStyle = "#fff";
           context.font = "bold 72px sans-serif";
-          context.fillText("Hachidori " + frame, 80, 280);
+          context.fillText("Hachidori " + frame, 80, 130);
+          context.font = "26px sans-serif";
+          for (let line = 0; sceneMode === "dense" && line < 10; line += 1) {
+            context.fillText("日本語の読書と動く映像。空を飛ぶ鳥と青い海。" + frame, 40 + (frame % 30), 200 + line * 32);
+          }
         }
-        videoTrack?.requestFrame();
         requestAnimationFrame(paint);
       }
       paint();
@@ -93,38 +116,30 @@ const FIXTURE_HTML = `<!doctype html>
         painting = false;
         context.fillStyle = color;
         context.fillRect(0, 0, canvas.width, canvas.height);
-        videoTrack?.requestFrame();
       };
-      window.triggerSyncMarker = () => {
-        if (!window.fixtureAudio) throw new Error("fixture audio is not active");
-        const { audio, destination } = window.fixtureAudio;
-        const start = audio.currentTime + 0.05;
-        const end = start + 0.25;
-        painting = false;
-        context.fillStyle = "#fff";
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        videoTrack.requestFrame();
-        const oscillator = new OscillatorNode(audio, { frequency: 1200 });
-        const gain = new GainNode(audio, { gain: 0.22 });
-        oscillator.connect(gain).connect(destination);
-        oscillator.start(start);
-        oscillator.stop(end);
-        return { start, end };
+      window.triggerSyncMarker = async () => {
+        canvas.hidden = true;
+        scene.hidden = false;
+        scene.src = "/sync.webm";
+        await scene.play();
+      };
+      window.restoreFixtureScene = async () => {
+        scene.pause();
+        scene.removeAttribute("src");
+        scene.load();
+        scene.hidden = true;
+        canvas.hidden = false;
+        painting = true;
       };
       document.getElementById("fixture-start").addEventListener("click", async event => {
         const button = event.currentTarget;
         const audio = new AudioContext({ sampleRate: 48000 });
-        const destination = audio.createMediaStreamDestination();
+        const destination = audio.destination;
         const oscillator = new OscillatorNode(audio, { frequency: 440 });
-        const gain = new GainNode(audio, { gain: 0 });
+        const gain = new GainNode(audio, { gain: 0.002 });
         oscillator.connect(gain).connect(destination);
         oscillator.start();
         await audio.resume();
-        const canvasStream = canvas.captureStream(0);
-        videoTrack = canvasStream.getVideoTracks()[0];
-        scene.srcObject = new MediaStream([videoTrack, ...destination.stream.getAudioTracks()]);
-        videoTrack.requestFrame();
-        await scene.play();
         window.fixtureAudio = { audio, oscillator, gain, destination };
         button.textContent = "Fixture audio active";
         button.disabled = true;
@@ -152,13 +167,30 @@ function readRequest(req) {
   });
 }
 
+function synchronizationFixture() {
+  // A muxed timeline places both transitions at one second. Independent
+  // canvas/oscillator MediaStreams have different HTML video playout delays.
+  return execFileSync(process.env.HACHIDORI_FFMPEG || "ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=960x540:r=30:d=4",
+    "-f", "lavfi", "-i", "aevalsrc=if(between(t\\,1\\,1.25)\\,0.25*sin(2*PI*1200*t)\\,0):s=48000:d=4",
+    "-vf", "drawbox=color=white:t=fill:enable='between(t,1,1.25)',drawbox=color=red:t=fill:enable='between(t,1.3,2)',drawbox=color=blue:t=fill:enable='between(t,2,3)',drawbox=color=green:t=fill:enable='gte(t,3)'",
+    "-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-c:a", "libopus", "-f", "webm", "pipe:1",
+  ], { maxBuffer: 4 * 1024 * 1024 });
+}
+
 function createFixtureServer(anki) {
+  const syncMedia = synchronizationFixture();
   return createServer(async (req, res) => {
     if (req.method === "OPTIONS") {
       reply(res, 204, "");
       return;
     }
-    if (req.url === "/fixture") {
+    if (req.url === "/sync.webm") {
+      res.writeHead(200, { "content-type": "video/webm", "content-length": syncMedia.length });
+      res.end(syncMedia);
+      return;
+    }
+    if (req.url.split("?")[0] === "/fixture") {
       reply(res, 200, FIXTURE_HTML, "text/html");
       return;
     }
@@ -256,7 +288,7 @@ function attachTexthooker(server, state) {
 async function listen(server) {
   await new Promise((resolveListen, rejectListen) => {
     server.once("error", rejectListen);
-    server.listen(8765, "127.0.0.1", resolveListen);
+    server.listen(0, "127.0.0.1", resolveListen);
   });
 }
 
@@ -522,9 +554,79 @@ async function decodedFrameHashes(page, base64) {
   }, base64);
 }
 
+async function verifyFullRecentExport({ world, capture, source, pin, anki, stoppedLookup,
+  expectMotion = true, assetName = "full-capture" }) {
+  const ankiStatus = await runtimeMessage(world, "hachidori-anki", "hd_anki_status");
+  const engineStatus = await runtimeMessage(world, "hoshidicts-offscreen", "hd_status");
+  const started = performance.now();
+  const exported = await captureMessage(world, "hd_capture_export", {
+    token: pin.token, requirements: { includeAnimation: true, includeAudio: true },
+  });
+  const lookups = [];
+  let job;
+  const deadline = Date.now() + 35_000;
+  do {
+    job = await captureMessage(world, "hd_capture_job_status", { jobId: exported.jobId });
+    if (job.state === "error") throw new Error(job.error);
+    if (job.state !== "ready") {
+      lookups.push(await lookupBenchmark(world, 20));
+      await new Promise(done => setTimeout(done, 100));
+    }
+  } while (job.state !== "ready" && Date.now() < deadline);
+  assert.equal(job.state, "ready", "the default ten-second export finishes within its watchdog");
+  assert.ok(job.encoderHeapBytes > 0 && job.encoderHeapBytes <= 256 * 1024 * 1024,
+    `measured encoder WebAssembly memory stays within its 256 MiB ceiling: ${job.encoderHeapBytes}`);
+  const encodeMs = performance.now() - started;
+  assert.ok(lookups.length > 0, "dictionary lookups are measured while encoding");
+  for (const measured of lookups) {
+    assert.ok(measured.medianMs <= Math.max(stoppedLookup.medianMs * 3, stoppedLookup.medianMs + 5),
+      `encoding lookup latency: ${JSON.stringify({ stoppedLookup, measured })}`);
+  }
+  const result = await runtimeMessage(world, "hachidori-anki", "hd_anki_submit", { request: {
+    term: { expression: "最初", reading: "さいしょ", glossaries: [], frequencies: [], pitches: [] },
+    generation: engineStatus.generation, trace: [], sentence: "最初の行", matched: "最初", matchOffset: 0,
+    popupSelectionText: "", searchQuery: "最初", documentTitle: SOURCE_TITLE,
+    dictionaryAliases: {}, frequencyDictionaries: [], configKey: ankiStatus.configKey,
+    capturePin: pin, captureJobId: exported.jobId, captureUnavailable: [],
+  } });
+  assert.equal(result.state, "added");
+  const avif = Buffer.from(anki.media.get(pin.animationFilename), "base64");
+  const wav = Buffer.from(anki.media.get(pin.audioFilename), "base64");
+  const decoded = await decodedFrameHashes(source, avif.toString("base64"));
+  const timing = avifTiming(avif);
+  const videoSeconds = timing.durations.reduce((sum, value) => sum + value, 0) / timing.timescale;
+  const audioSeconds = wav.readUInt32LE(40) / 2 / wav.readUInt32LE(24);
+  assert.ok(Math.abs(videoSeconds - 10) <= 1 / 48000, `full animation duration ${videoSeconds}`);
+  assert.ok(Math.abs(videoSeconds - audioSeconds) <= 1 / 48000, "AVIF and WAV cover the same ten seconds");
+  if (expectMotion) {
+    assert.ok(decoded.frameCount >= 70 && decoded.frameCount <= 90,
+      `default moving-scene export has roughly eighty frames (${decoded.frameCount})`);
+    assert.ok(new Set(decoded.hashes).size >= 50, "moving text genuinely changes throughout the full export");
+  } else {
+    assert.ok(decoded.frameCount >= 1, "a static scene retains its held frame for the full interval");
+  }
+  assert.equal(decoded.repetitionCount, "Infinity");
+  if (ASSET_DIR) {
+    mkdirSync(resolve(ASSET_DIR), { recursive: true });
+    writeFileSync(resolve(ASSET_DIR, `${assetName}.avif`), avif);
+    writeFileSync(resolve(ASSET_DIR, `${assetName}.wav`), wav);
+  }
+  const summary = { assetName, encodeMs, encoderHeapBytes: job.encoderHeapBytes,
+    frames: decoded.frameCount, videoSeconds, audioSeconds,
+    avifBytes: avif.length, wavBytes: wav.length, lookupRounds: lookups.length,
+    maximumLookupMedianMs: Math.max(...lookups.map(value => value.medianMs)),
+    maximumLookupP95Ms: Math.max(...lookups.map(value => value.p95Ms)) };
+  console.log("FULL_EXPORT", JSON.stringify(summary));
+  return summary;
+}
+
 async function main() {
   assert.ok(CHROME && existsSync(CHROME), "Chrome for Testing is available");
   assert.ok(existsSync(PUPPETEER), "puppeteer-core is available");
+  const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
+  const extensionTree = execFileSync("git", ["rev-parse", "HEAD:extension"], { cwd: ROOT, encoding: "utf8" }).trim();
+  const extensionModified = Boolean(execFileSync("git", ["status", "--porcelain", "--", "extension"],
+    { cwd: ROOT, encoding: "utf8" }).trim());
 
   const anki = {
     actions: [],
@@ -537,12 +639,13 @@ async function main() {
   const server = createFixtureServer(anki);
   attachTexthooker(server, texthooker);
   await listen(server);
+  fixtureOrigin = `http://127.0.0.1:${server.address().port}`;
   rmSync(PROFILE, { recursive: true, force: true });
   mkdirSync(PROFILE, { recursive: true });
 
   const puppeteer = await import(`file://${PUPPETEER}`);
   const launcher = puppeteer.default?.launch ? puppeteer.default : puppeteer;
-  let browser;
+  let browser, resources;
   try {
     browser = await launcher.launch({
       executablePath: CHROME,
@@ -551,6 +654,7 @@ async function main() {
       dumpio: process.env.HACHIDORI_DUMPIO === "1",
       args: [
         "--no-sandbox",
+        ...(process.env.HACHIDORI_CAPTURE_X11 === "1" ? ["--ozone-platform=x11"] : []),
         "--disable-dev-shm-usage",
         "--autoplay-policy=no-user-gesture-required",
         "--enable-usermedia-screen-capturing",
@@ -560,6 +664,41 @@ async function main() {
       ],
     });
     const id = await extensionId(browser);
+    // Route every fixture Anki request before enabling mining. Never contact
+    // a user's Anki process, which may already own the production port.
+    const ankiClients = new Map();
+    const ankiAttachments = new Map();
+    let routeAnkiEnabled = true;
+    const routeAnki = target => {
+      if (!routeAnkiEnabled || target.type() !== "service_worker"
+          || !target.url().startsWith(`chrome-extension://${id}/`)) return;
+      if (ankiAttachments.has(target)) return ankiAttachments.get(target);
+      const attachment = (async () => {
+        const client = await target.createCDPSession();
+        ankiClients.set(target, client);
+        client.on("Fetch.requestPaused", async event => {
+          try {
+            const response = await fetch(fixtureOrigin, {
+              method: event.request.method,
+              headers: { "content-type": "application/json" },
+              body: event.request.postData,
+            });
+            await client.send("Fetch.fulfillRequest", { requestId: event.requestId,
+              responseCode: response.status,
+              responseHeaders: [{ name: "content-type", value: "application/json" },
+                { name: "access-control-allow-origin", value: "*" }],
+              body: Buffer.from(await response.arrayBuffer()).toString("base64") });
+          } catch {
+            await client.send("Fetch.failRequest", { requestId: event.requestId, errorReason: "Failed" });
+          }
+        });
+        await client.send("Fetch.enable", { patterns: [{ urlPattern: "http://127.0.0.1:8765*" }] });
+      })();
+      ankiAttachments.set(target, attachment);
+      return attachment;
+    };
+    await Promise.all(browser.targets().map(routeAnki));
+    browser.on("targetcreated", target => { void routeAnki(target); });
     const startupTarget = await browser.waitForTarget(
       candidate => candidate.type() === "page"
         && candidate.url() === `chrome-extension://${id}/startup.html`,
@@ -572,7 +711,7 @@ async function main() {
 
     const source = await browser.newPage();
     await source.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
-    await source.goto("http://127.0.0.1:8765/fixture", { waitUntil: "domcontentloaded" });
+    await source.goto(`${fixtureOrigin}/fixture`, { waitUntil: "domcontentloaded" });
     await source.bringToFront();
     await source.click("#fixture-start");
     await source.waitForFunction(() => document.getElementById("fixture-start")?.disabled === true);
@@ -589,7 +728,8 @@ async function main() {
       const value = (document.getElementById("import-state")?.textContent || "").trim();
       return value.startsWith("Finished 1 of 1 archive") ? value : false;
     }, { timeout: 120_000, polling: 250 }).then(handle => handle.jsonValue());
-    assert.equal(importState, "Finished 1 of 1 archive — 1 imported, 0 failed.");
+    assert.equal(importState, "Finished 1 of 1 archive — 1 imported, 0 failed.",
+      await settings.$eval("#import-detail", element => element.textContent));
     await settings.goto(`chrome-extension://${id}/settings.html#media`, { waitUntil: "domcontentloaded" });
     await settings.waitForSelector("#media:not([hidden])");
 
@@ -599,10 +739,10 @@ async function main() {
       includeAnimation: true,
       includeCapturedAudio: true,
       historySeconds: 60,
-      clipSeconds: 5,
+      clipSeconds: 10,
       videoPreset: "standard",
       estimatedOffsetMs: -500,
-      texthooker: { enabled: true, url: "ws://127.0.0.1:8765/ws", format: "plain" },
+      texthooker: { enabled: true, url: `${fixtureOrigin.replace("http:", "ws:")}/ws`, format: "plain" },
       page: { nativeCues: true, domText: true, autoLearnArea: true },
     };
     const ankiConfig = {
@@ -635,6 +775,9 @@ async function main() {
     await settings.reload({ waitUntil: "domcontentloaded" });
     await settings.waitForSelector("#media:not([hidden])");
     if (SETTINGS_SCREENSHOT) {
+      // Keep the whole section inside the viewport before measuring its crop;
+      // resizing during an element screenshot can shift the centered layout.
+      await settings.setViewport({ width: 1440, height: 1600, deviceScaleFactor: 1 });
       await settings.waitForFunction(() => {
         const status = (document.getElementById("options-status")?.textContent || "").trim();
         return status === "Saved.";
@@ -647,17 +790,22 @@ async function main() {
         await mediaSection.screenshot({ path: resolve(SETTINGS_SCREENSHOT) });
       } finally {
         await settings.$eval("#options-status", element => { element.style.visibility = ""; });
+        await settings.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
       }
     }
 
+    await source.bringToFront();
     const stoppedLookup = await lookupBenchmark(world);
+    resources = await captureResourceMonitor(browser);
+    await new Promise(done => setTimeout(done, 5000));
 
-    const capture = await browser.newPage();
+    let capture = await browser.newPage();
     await capture.setViewport({ width: 1280, height: 960, deviceScaleFactor: 1 });
     if (FORCE_AUDIO_WORKLET) {
-      await capture.evaluateOnNewDocument(() => {
-        globalThis.__hachidoriForceAudioWorklet = true;
-      });
+      const target = await browser.waitForTarget(candidate => candidate.url() === `chrome-extension://${id}/offscreen.html`);
+      const client = await target.createCDPSession();
+      await client.send("Runtime.evaluate", { expression: "globalThis.__hachidoriForceAudioWorklet = true" });
+      await client.detach();
     }
     await capture.goto(`chrome-extension://${id}/capture.html`, { waitUntil: "domcontentloaded" });
     await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped",
@@ -665,6 +813,7 @@ async function main() {
     assert.equal(await capture.$eval("#capture-state", element => element.textContent), "Stopped",
       "saved settings never auto-arm capture");
     await capture.bringToFront();
+    resources.phase("recording");
     await capture.click("#capture-start");
     await capture.waitForFunction(() => {
       const state = document.getElementById("capture-state")?.textContent;
@@ -688,21 +837,22 @@ async function main() {
     const audioHistory = await capture.$eval("#audio-history", element => element.textContent);
     assert.doesNotMatch(audioHistory, /unavailable/iu, "the selected tab supplies captured audio");
     await source.bringToFront();
+    console.log("SOURCE", await source.evaluate(() => ({ frame, visibility: document.visibilityState,
+      sceneTime: scene.currentTime,
+      viewport: [innerWidth, innerHeight], focused: document.hasFocus() })));
     const throughputStart = await captureControl(capture, "hd_capture_status");
     const throughputStartedAt = performance.now();
-    const sustainedSeconds = Math.max(5,
-      Math.min(90, Number(process.env.HACHIDORI_CAPTURE_SUSTAINED_SECONDS) || 5));
+    const sustainedSeconds = Number(process.env.HACHIDORI_CAPTURE_SUSTAINED_SECONDS) || 5;
+    assert.ok(Number.isFinite(sustainedSeconds) && sustainedSeconds >= 5,
+      "sustained capture duration must be at least five seconds");
     const throughputMeasurementSeconds = Math.min(5, sustainedSeconds);
     await new Promise(done => setTimeout(done, throughputMeasurementSeconds * 1000));
     const throughputElapsedSeconds = (performance.now() - throughputStartedAt) / 1000;
     const throughputEnd = await captureControl(capture, "hd_capture_status");
-    const remainingSustainedSeconds = sustainedSeconds - throughputMeasurementSeconds;
-    if (remainingSustainedSeconds > 0) {
-      await new Promise(done => setTimeout(done, remainingSustainedSeconds * 1000));
-    }
-    const retentionEnd = remainingSustainedSeconds > 0
-      ? await captureControl(capture, "hd_capture_status")
-      : throughputEnd;
+    console.log("SOURCE END", await source.evaluate(() => ({ frame, visibility: document.visibilityState,
+      sceneTime: scene.currentTime,
+      focused: document.hasFocus() })));
+    const retentionEnd = throughputEnd;
     const captureThroughput = {
       seconds: throughputElapsedSeconds,
       framesPerSecond: (throughputEnd.history.frameCount - throughputStart.history.frameCount)
@@ -721,12 +871,6 @@ async function main() {
       && captureThroughput.audioSamplesPerSecond <= 55_000,
     `capture audio follows its sample clock: ${JSON.stringify(captureThroughput)}`);
     assert.ok(captureThroughput.retainedFrameBytes <= 64 * 1024 * 1024);
-    if (sustainedSeconds >= 65) {
-      assert.ok(captureThroughput.retainedVideoSeconds >= 55
-        && captureThroughput.retainedVideoSeconds <= 61);
-      assert.ok(captureThroughput.retainedAudioSeconds >= 55
-        && captureThroughput.retainedAudioSeconds <= 61);
-    }
     const recordingLookup = await lookupBenchmark(world);
     assert.ok(recordingLookup.medianMs <= Math.max(stoppedLookup.medianMs * 3, stoppedLookup.medianMs + 5),
       `capture should not materially delay dictionary lookup: ${JSON.stringify({ stoppedLookup, recordingLookup })}`);
@@ -743,15 +887,126 @@ async function main() {
       document.getElementById("linked-page")?.textContent === title,
     { polling: 100 }, SOURCE_TITLE);
 
+    await source.bringToFront();
+    await capture.waitForFunction(async () => {
+      const reply = await chrome.runtime.sendMessage({target:"hachidori-capture",type:"hd_capture_status"});
+      return reply.ok && reply.history.newestMs - reply.history.oldestMs >= 10_100;
+    }, { timeout: 20_000, polling: 100 });
+    const beforeClose = await captureControl(settings, "hd_capture_status");
+    await capture.close();
+    await new Promise(done => setTimeout(done, 500));
+    const afterClose = await captureControl(settings, "hd_capture_status");
+    assert.equal(afterClose.state, "recording");
+    assert.equal(afterClose.captureSessionId, beforeClose.captureSessionId);
+    assert.equal(afterClose.linkedPage.documentId, beforeClose.linkedPage.documentId);
+    assert.ok(afterClose.history.audioNewestMs > beforeClose.history.audioNewestMs);
+    capture = await browser.newPage();
+    await capture.setViewport({ width: 1280, height: 960, deviceScaleFactor: 1 });
+    await capture.goto(`chrome-extension://${id}/capture.html`, { waitUntil: "domcontentloaded" });
+    await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Recording");
+    await capture.close();
+    routeAnkiEnabled = false;
+    await Promise.all(ankiAttachments.values());
+    await Promise.all([...ankiClients.values()].map(client => client.detach().catch(() => {})));
+    ankiClients.clear();
+    ankiAttachments.clear();
+    const oldWorkerTarget = browser.targets().find(target => target.type() === "service_worker"
+      && target.url() === `chrome-extension://${id}/background.js`);
+    assert.ok(oldWorkerTarget, "the original extension service worker is running");
+    const oldWorker = await oldWorkerTarget.worker();
+    // Puppeteer's close also detaches its worker session. A raw stopWorker
+    // command can otherwise wait on the debugger that is testing the stop.
+    const workerStopped = new Promise((resolveStopped, rejectStopped) => {
+      const timer = setTimeout(() => {
+        browser.off("targetdestroyed", destroyed);
+        rejectStopped(new Error("the original service worker did not stop"));
+      }, 10_000);
+      function destroyed(target) {
+        if (target !== oldWorkerTarget) return;
+        clearTimeout(timer);
+        browser.off("targetdestroyed", destroyed);
+        resolveStopped();
+      }
+      browser.on("targetdestroyed", destroyed);
+    });
+    console.log("RESTART stopping service worker");
+    await oldWorker.close();
+    await workerStopped;
+    console.log("RESTART service worker stopped");
+    routeAnkiEnabled = true;
+    const recovered = await captureControl(settings, "hd_capture_status");
+    const replacementWorker = await browser.waitForTarget(target => target.type() === "service_worker"
+      && target.url() === `chrome-extension://${id}/background.js` && target !== oldWorkerTarget,
+    { timeout: 10_000 });
+    assert.notEqual(replacementWorker, oldWorkerTarget);
+    await Promise.all(browser.targets().map(routeAnki));
+    capture = await browser.newPage();
+    await capture.setViewport({ width: 1280, height: 960, deviceScaleFactor: 1 });
+    await capture.goto(`chrome-extension://${id}/capture.html`, { waitUntil: "domcontentloaded" });
+    await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Recording");
+    assert.equal(recovered.state, "recording");
+    assert.equal(recovered.captureSessionId, beforeClose.captureSessionId);
+    assert.equal(recovered.linkedPage.documentId, beforeClose.linkedPage.documentId);
+
     const initialPin = await world.evaluate(`(async () => {
       const node = document.getElementById("subtitle").firstChild;
       const pin = await HDCapture.rootLookup({ anchor: node, sentence: node.nodeValue, query: node.nodeValue });
       globalThis.__capturePin = pin;
       return pin;
     })()`);
+    if (!initialPin) {
+      console.log("PIN DIAGNOSTIC", await world.evaluate(`chrome.runtime.sendMessage({target:"hachidori-capture",
+        type:"hd_capture_pin", requestId:"diagnostic", lookup:{lookupText:"最初の行",
+        lookupTimeMs:performance.timeOrigin+performance.now(),occurrenceId:"",occurrenceSourceKind:""}})`));
+      console.log("CAPTURE DIAGNOSTIC", await captureControl(capture, "hd_capture_status"));
+    }
     assert.equal(initialPin.sourceLabel, "Recent clip",
       "the first learned DOM baseline has unknown onset and falls back");
+    resources.phase("full-export");
+    const fullExport = await verifyFullRecentExport({ world, capture, source, pin: initialPin, anki, stoppedLookup });
+    resources.phase("recording");
     await world.evaluate("(async () => HDCapture.release(globalThis.__capturePin))()");
+
+    const soakExports = [];
+    if (sustainedSeconds > 5) {
+      const soakStarted = performance.now();
+      let cycle = 0;
+      while ((performance.now() - soakStarted) / 1000 < sustainedSeconds) {
+        const mode = ["static", "moving", "dense"][cycle % 3];
+        resources.phase(`soak-${mode}`);
+        await source.evaluate(mode => window.setFixtureSceneMode(mode), mode);
+        const remaining = sustainedSeconds - (performance.now() - soakStarted) / 1000;
+        const periodEnd = performance.now() + Math.min(60, remaining) * 1000;
+        while (performance.now() < periodEnd) {
+          await new Promise(done => setTimeout(done, Math.min(10_000, periodEnd - performance.now())));
+          const status = await captureControl(capture, "hd_capture_status");
+          assert.equal(status.state, "recording");
+          assert.ok(status.history.frameBytes <= 64 * 1024 * 1024);
+          assert.ok(status.history.audioSamples <= 61 * 48000);
+          console.log("SOAK", JSON.stringify({ seconds: (performance.now()-soakStarted)/1000,
+            mode, history: status.history }));
+        }
+        const retainedPin = await world.evaluate(`(async () => {
+          const node = document.getElementById("subtitle").firstChild;
+          return HDCapture.rootLookup({anchor:node,sentence:node.nodeValue,query:node.nodeValue});
+        })()`);
+        assert.ok(retainedPin?.token, "sustained capture can still pin retained history");
+        resources.phase(`soak-export-${mode}`);
+        soakExports.push(await verifyFullRecentExport({ world, capture, source, pin: retainedPin,
+          anki, stoppedLookup, expectMotion: mode !== "static" && remaining >= 12,
+          assetName: `soak-${cycle}-${mode}` }));
+        cycle += 1;
+      }
+      await source.evaluate(() => window.setFixtureSceneMode("dense"));
+      const retained = await captureControl(capture, "hd_capture_status");
+      const audioSeconds = (retained.history.audioNewestMs-retained.history.audioOldestMs)/1000;
+      assert.ok(audioSeconds > 0 && audioSeconds <= 61, `soaked retained audio duration ${audioSeconds}`);
+      if (sustainedSeconds >= 70) assert.ok(audioSeconds >= 55, `full retained audio duration ${audioSeconds}`);
+      captureThroughput.soakSeconds = (performance.now()-soakStarted)/1000;
+      captureThroughput.soakExports = soakExports;
+      captureThroughput.soakFinalHistory = retained.history;
+      resources.phase("recording");
+    }
 
     await source.$eval("#subtitle", element => { element.textContent = "次の行"; });
     await new Promise(done => setTimeout(done, 250));
@@ -799,24 +1054,12 @@ async function main() {
     assert.equal(exported.state, "finishing");
     await source.bringToFront();
     await source.evaluate(() => window.triggerSyncMarker());
-    assert.deepEqual(await source.$eval("#fixture-canvas", canvas => {
-      const pixel = canvas.getContext("2d").getImageData(10, 10, 1, 1).data;
-      return [...pixel];
-    }), [255, 255, 255, 255]);
-    await capture.waitForFunction(() => {
-      const video = document.getElementById("capture-preview");
-      if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return false;
-      const canvas = document.createElement("canvas");
-      canvas.width = 1;
-      canvas.height = 1;
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      context.drawImage(video, video.videoWidth / 2, video.videoHeight / 2, 1, 1, 0, 0, 1, 1);
-      const pixel = context.getImageData(0, 0, 1, 1).data;
-      return (pixel[0] + pixel[1] + pixel[2]) / 3 >= 240;
-    }, { timeout: 3_000, polling: 50 });
+    // The final independently decoded AVIF must contain the white frame.
+    // Controls no longer own a preview or any raw capture data.
+    await new Promise(done => setTimeout(done, 350));
     const markerFrameTimestamp = (await captureControl(capture, "hd_capture_status")).history.frameNewestMs;
     await new Promise(done => setTimeout(done, 160));
-    await source.evaluate(() => window.setFixtureFrame("#fff"));
+
     const markerDeadline = Date.now() + 2_000;
     let markerStatus;
     do {
@@ -827,13 +1070,10 @@ async function main() {
     } while (markerStatus.history.frameNewestMs <= markerFrameTimestamp
       && Date.now() < markerDeadline);
     assert.ok(markerStatus.history.frameNewestMs > markerFrameTimestamp,
-      "capture samples the synchronization flash before the fixture advances");
-    await source.evaluate(() => window.setFixtureFrame("#e11d48"));
-    await new Promise(done => setTimeout(done, 400));
-    await source.evaluate(() => window.setFixtureFrame("#2563eb"));
-    await new Promise(done => setTimeout(done, 400));
-    await source.evaluate(() => window.setFixtureFrame("#16a34a"));
-    await new Promise(done => setTimeout(done, 400));
+      "capture continues sampling while the clocked synchronization fixture plays");
+
+    await source.waitForFunction(() => document.getElementById("scene").currentTime >= 2.2,
+      { timeout: 10_000, polling: 50 });
     await source.$eval("#subtitle", element => { element.textContent = "終了"; });
 
     let job;
@@ -902,13 +1142,14 @@ async function main() {
     const audioMarkerSeconds = wavSignalOnsetSeconds(wav);
     assert.ok(audioMarkerSeconds !== null, "the captured WAV contains the synchronization beep");
     const syncOffsetMs = Math.abs(videoMarkerSeconds - audioMarkerSeconds) * 1000;
-    assert.ok(syncOffsetMs <= 300,
-      `decoded flash/beep alignment stays within 300 ms (${syncOffsetMs.toFixed(1)} ms)`);
+    assert.ok(syncOffsetMs <= 125,
+      `decoded flash/beep alignment stays within 125 ms (${syncOffsetMs.toFixed(1)} ms)`);
     const decoded = await playbackHashes(source, animationBase64);
     assert.ok(decoded.width <= 640 && decoded.height <= 360);
     assert.ok(new Set(decoded.hashes).size >= 2,
       `Chrome plays the animated AVIF (${JSON.stringify({ frameDecode, playback: decoded.hashes })})`);
 
+    await source.evaluate(() => window.restoreFixtureScene());
     texthooker.send("接続行");
     await capture.waitForFunction(() =>
       document.getElementById("texthooker-status")?.textContent === "Active",
@@ -927,6 +1168,7 @@ async function main() {
     assert.equal(await capture.$eval("#texthooker-status", element => element.textContent), "Active",
       "an accepted live record has no inactivity timeout");
 
+    resources.phase("repeat-export");
     const repeatEncodeStartedAt = performance.now();
     const repeatedExport = await captureMessage(world, "hd_capture_export", {
       token: texthookerPin.token,
@@ -977,7 +1219,7 @@ async function main() {
     { polling: 100 });
 
     const alternate = await browser.newPage();
-    await alternate.goto("http://127.0.0.1:8765/fixture", { waitUntil: "domcontentloaded" });
+    await alternate.goto(`${fixtureOrigin}/fixture`, { waitUntil: "domcontentloaded" });
     await alternate.evaluate(() => { document.title = "Hachidori Alternate Reading Page"; });
     const alternateWorld = await extensionWorld(alternate, id);
     const alternateTab = (await captureControl(capture, "hd_capture_tabs")).tabs
@@ -1019,7 +1261,7 @@ async function main() {
     assert.equal(await settings.$eval("#opt-media-history", element => element.value), "60");
     assert.equal((await captureControl(settings, "hd_capture_status")).state, "recording");
 
-    await source.goto("http://127.0.0.1:8765/fixture?navigation=1", {
+    await source.goto(`${fixtureOrigin}/fixture?navigation=1`, {
       waitUntil: "domcontentloaded",
     });
     await capture.waitForFunction(() =>
@@ -1040,6 +1282,8 @@ async function main() {
     }, { timeout: 10_000 });
     await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped",
       { timeout: 10_000, polling: 100 });
+    resources.phase("stopped");
+    await source.bringToFront();
     const stopped = await captureControl(settings, "hd_capture_status");
     assert.equal(stopped.history.frameCount, 0);
     assert.equal(stopped.history.audioSamples, 0);
@@ -1054,17 +1298,19 @@ async function main() {
     assert.equal(serialized.includes(pin.animationFilename), false);
     assert.equal(serialized.includes(animationBase64.slice(0, 80)), false);
 
-    console.log("PASS  real tab capture records bounded video and source audio");
-    console.log("PASS  learned DOM timing falls back first, then pins an observed line");
-    console.log("PASS  animated AVIF and mono WAV upload through Anki one at a time");
-    console.log("PASS  Chrome decodes changing AVIF frames and non-silent WAV samples");
-    console.log("PASS  decoded flash and beep stay aligned within 300 ms");
-    console.log("PASS  live texthooker priority, active state and reconnect use the real loopback WebSocket");
-    console.log("PASS  a second pinned interval encodes and cleans up independently");
-    console.log("PASS  one linked reading document is enforced and navigation clears it without stopping capture");
-    console.log("PASS  capture-setting confirmation stops and clears without auto-rearming");
+    await new Promise(done => setTimeout(done, 5000));
+    const resourceReport = await resources.stop();
+    resources = null;
+    if (ASSET_DIR) writeFileSync(resolve(ASSET_DIR, "resources.json"), JSON.stringify(resourceReport, null, 2));
+    console.log("RESOURCES", JSON.stringify(resourceReport.phases));
+    for (const name of CHECKS) console.log(`PASS  ${name}`);
     console.log(`BENCH ${JSON.stringify({
+      browser: await browser.version(),
+      revision,
+      extensionTree,
+      extensionModified,
       stoppedLookup,
+      fullExport,
       recordingLookup,
       captureThroughput,
       encodeMs,
@@ -1074,8 +1320,9 @@ async function main() {
       avifFrames: frameDecode.frameCount,
       syncOffsetMs,
     })}`);
-    console.log("9 passed, 0 failed");
+    console.log(`${CHECKS.length} passed, 0 failed`);
   } finally {
+    await resources?.stop().catch(() => {});
     texthooker.disconnect?.();
     for (const socket of texthooker.connections) socket.destroy();
     await browser?.close().catch(() => {});
