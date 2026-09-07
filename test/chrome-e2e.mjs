@@ -238,6 +238,8 @@ const PLANNED = [
   "accepted reader lookups persist canonical counts without delaying definitions",
   "live lookup-count Settings pause recording and preserve the displayed reader view",
   "optional GSM Seen counts use the configured loopback corpus and fail open",
+  "definition blur follows real lookup counts and settings and holds autoplay for blurred results",
+  "blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
   "lookup counts survive a full browser restart",
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
@@ -1167,8 +1169,27 @@ async function popupReader(page, depth = 0) {
     });
     return reply.result.value;
   }
+  async function definitionBlur() {
+    const object = await resolvePopupObject();
+    if (!object) return null;
+    const reply = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true,
+      functionDeclaration: function () {
+        const definitions = this.querySelector(".gsm-hoshidicts-definitions");
+        const rect = definitions?.getBoundingClientRect();
+        return {
+          state: this.dataset.definitionBlurState ?? "revealed",
+          definitionsState: definitions?.dataset.definitionBlurState ?? "revealed",
+          definitionsPoint: rect && { x: rect.x + rect.width / 2, y: rect.y + Math.min(rect.height / 2, 12) },
+          audioFeedback: [...this.querySelectorAll(".gsm-hoshidicts-audio-status")].map(node => node.textContent),
+          countText: this.querySelector(".gsm-hoshidicts-lookup-stats")?.textContent ?? "",
+        };
+      }.toString(),
+    });
+    return reply.result.value;
+  }
   return {
-    anki, audio, click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview,
+    anki, audio, click, compactSummaries, definitionBlur, dictionaryTabs, deinflection, externalLink, imagePreview,
     lookupStatistics, nested, sourcePaint, retainedControls, selectGlossaryText, state, visible,
     waitForVisible, waitForHidden, writeNote,
   };
@@ -4107,6 +4128,104 @@ async function checkLookupStatistics({ browser, settings, tab, popup, extensionI
   }
 }
 
+async function waitForDefinitionBlur(popup, predicate, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  let current = null;
+  while (Date.now() < deadline) {
+    current = await popup.definitionBlur();
+    if (predicate(current)) return current;
+    await new Promise(resolveWait => setTimeout(resolveWait, 50));
+  }
+  return current;
+}
+
+async function checkDefinitionBlur({ settings, tab, popup }) {
+  const controls = ["opt-lookup-counts", "opt-blur-enabled", "opt-blur-direction", "opt-blur-threshold",
+    "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"];
+  const original = await readSettingsControls(settings, controls);
+  const freshLookup = async () => {
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    return hoverForPopup(tab, popup, "#verb");
+  };
+  // The decision is made once the count line is painted from the same reply.
+  const decided = () => waitForDefinitionBlur(popup, value => value?.countText.includes("Looked up"));
+  try {
+    const before = await readLookupStatistics(settings);
+    const threshold = before.statistics.lookupCount + 1;
+    await updateSettingsControls(settings, {
+      "opt-lookup-counts": true, "opt-audio-autoplay": true, "opt-blur-enabled": true,
+      "opt-blur-direction": "atLeast", "opt-blur-threshold": String(threshold), "opt-blur-reveal": "hover",
+    });
+    const qualifyingDefinition = await freshLookup();
+    const qualifying = await decided();
+    const pendingOrBlurred = await popup.definitionBlur();
+    await tab.mouse.move(qualifying.definitionsPoint.x, qualifying.definitionsPoint.y);
+    const hovered = await waitForDefinitionBlur(popup, value => value?.state === "revealed");
+    await updateSettingsControls(settings, { "opt-blur-direction": "below" });
+    const revealedDefinition = await freshLookup();
+    const notQualifying = await decided();
+    const autoplayed = await waitForDefinitionBlur(popup, value => value?.audioFeedback.some(Boolean), 5_000);
+    check("definition blur follows real lookup counts and settings and holds autoplay for blurred results",
+      qualifyingDefinition?.plain.includes("食べる")
+        && qualifying?.state === "blurred" && qualifying.definitionsState === "blurred"
+        && qualifying.countText.includes(`Looked up ${threshold}`)
+        && !pendingOrBlurred.audioFeedback.some(Boolean)
+        && hovered?.state === "revealed" && !hovered.audioFeedback.some(Boolean)
+        && revealedDefinition?.plain.includes("食べる")
+        && notQualifying?.state === "revealed" && notQualifying.countText.includes(`Looked up ${threshold + 1}`)
+        && autoplayed?.audioFeedback.some(Boolean),
+      JSON.stringify({ threshold, qualifying, pendingOrBlurred, hovered, notQualifying, autoplayed }));
+
+    await updateSettingsControls(settings, {
+      "opt-audio-autoplay": false, "opt-blur-direction": "atLeast", "opt-blur-threshold": "1",
+      "opt-blur-reveal": "timed", "opt-blur-delay": "1",
+    });
+    const timedStart = Date.now();
+    await freshLookup();
+    const timedBlurred = await decided();
+    const timedRevealed = await waitForDefinitionBlur(popup, value => value?.state === "revealed", 5_000);
+    const elapsedMs = Date.now() - timedStart;
+    await updateSettingsControls(settings, { "opt-blur-delay": "3600" });
+    await freshLookup();
+    const longBlurred = await decided();
+    await popup.lookupStatistics("remember");
+    await updateSettingsControls(settings, { "opt-blur-enabled": false });
+    const disabled = await waitForDefinitionBlur(popup, value => value?.state === "revealed", 5_000);
+    const retained = await popup.lookupStatistics();
+    if (process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT) {
+      await updateSettingsControls(settings, { "opt-blur-enabled": true, "opt-blur-threshold": "5", "opt-blur-delay": "5" });
+      await settings.bringToFront();
+      await settings.setViewport({ width: 960, height: 900 });
+      await showSettingsSection(settings, "design");
+      // Puppeteer intersects a clip with the visual viewport in page coordinates.
+      const clip = await settings.$eval("#definition-blur-settings", (element) => {
+        element.scrollIntoView({ block: "center" });
+        const rect = element.getBoundingClientRect();
+        const padding = 12;
+        return { x: Math.max(0, rect.x - padding) + scrollX, y: Math.max(0, rect.y - padding) + scrollY,
+          width: rect.width + (2 * padding), height: rect.height + (2 * padding) };
+      });
+      await settings.screenshot({ captureBeyondViewport: false, clip, path: process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT });
+    }
+    check("blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
+      hovered?.state === "revealed"
+        && timedBlurred?.state === "blurred" && timedRevealed?.state === "revealed"
+        && elapsedMs >= 1000 && elapsedMs < 4000
+        && longBlurred?.state === "blurred" && disabled?.state === "revealed"
+        && retained?.samePopup === true && retained.samePanel === true && retained.popupHidden === false,
+      JSON.stringify({ hovered, timedBlurred, timedRevealed, elapsedMs, longBlurred, disabled, retained }));
+  } finally {
+    await popup.lookupStatistics("cleanup").catch(() => {});
+    await updateSettingsControls(settings, original).catch(error => {
+      diagnostics.push(`[definition blur restore] ${error?.stack ?? error}`);
+    });
+    await tab.bringToFront();
+    if (!popup.visible(await popup.state())) await hoverForPopup(tab, popup, "#verb");
+  }
+}
+
 async function checkToolbarPreview(page, frame) {
   const original = await readSettingsControls(page, ["opt-popup-toolbar"]);
   await frame.evaluate(() => {
@@ -6804,6 +6923,7 @@ async function main() {
     popup,
     extensionId,
   });
+  await checkDefinitionBlur({ settings: page, tab, popup });
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
