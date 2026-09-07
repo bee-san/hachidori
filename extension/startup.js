@@ -44,6 +44,10 @@ let advanceFailed = false;
 // A failed install request is shown once with Retry; the page never re-requests on its own.
 let installFailed = false;
 let runSilenceTimer = null;
+// Anki detection is asked for once per page; a failed request waits for Retry.
+let ankiRequest = null;
+let ankiFailed = false;
+let ankiAdvancing = false;
 const announced = new Map();
 
 function element(id) {
@@ -439,21 +443,106 @@ function dictionariesView() {
   return incompleteView(rows, importNote, missing);
 }
 
+function requestAnkiSetup() {
+  if (ankiRequest !== null) return ankiRequest;
+  ankiFailed = false;
+  ankiRequest = send("hd_setup_anki", {}).then((reply) => {
+    if (!reply.ok) throw new Error(reply.error || "Anki could not be checked");
+    adoptSetupState(reply.state);
+    // The reply promises a recorded outcome; without one the check is reported, not repeated.
+    if (setupState?.anki === null) throw new Error("no Anki outcome was recorded");
+  }).catch((error) => {
+    ankiFailed = true;
+    setStatus(`Could not check Anki: ${describe(error)}`, "error");
+  }).finally(() => {
+    ankiRequest = null;
+    render();
+  });
+  return ankiRequest;
+}
+
+// The settled Anki outcome, with its Settings link, as one readable sentence.
+// Names come from Anki and are rendered as text, never as markup.
+function ankiOutcomeNote(anki) {
+  const node = document.createElement("p");
+  node.className = "hint setup-anki-outcome";
+  node.dataset.status = anki.status;
+  const link = document.createElement("a");
+  link.href = "settings.html#anki";
+  link.dataset.focusKey = "link:settings.html#anki";
+  link.textContent = "Settings";
+  if (anki.status === "configured") {
+    node.append(`Automatically set up ${anki.model} for deck ‘${anki.deck}’. Change in `, link, ".");
+  } else if (anki.status === "already-configured") {
+    node.append(`Anki is already set up with ${anki.model} for deck ‘${anki.deck}’. Change in `, link, ".");
+  } else if (anki.status === "unavailable") {
+    node.append("No Anki found. Set up in ", link, ".");
+  } else {
+    node.append(`Anki needs attention: ${anki.detail} Set up in `, link, ".");
+  }
+  return node;
+}
+
+function ankiHeading(anki) {
+  switch (anki.status) {
+    case "configured": return "Anki is set up";
+    case "already-configured": return "Anki is already set up";
+    case "unavailable": return "No Anki found";
+    default: return "Anki needs attention";
+  }
+}
+
+// Detection runs once per installation; its recorded outcome moves setup on by
+// itself and stays readable on the final screen.
+function ankiView() {
+  const anki = setupState.anki;
+  if (anki === null) {
+    if (ankiFailed) {
+      return {
+        heading: "Anki could not be checked",
+        body: [settingsNote("Set up Anki in ", "settings.html#anki")],
+        actions: [
+          button("setup-retry", "Retry", () => { void requestAnkiSetup(); }),
+          button("setup-continue", "Continue setup", () => { void advance("practice"); }, "ghost"),
+        ],
+      };
+    }
+    void requestAnkiSetup();
+    return {
+      heading: "Checking for Anki…",
+      body: [paragraph("Hachidori looks for an existing Senren, Lapis or Kiku mining setup and configures it for you.")],
+      actions: [],
+    };
+  }
+  if (advanceFailed) {
+    return { heading: ankiHeading(anki), body: [ankiOutcomeNote(anki)],
+      actions: [button("setup-continue", "Continue setup", () => { void advance("practice"); })] };
+  }
+  if (!ankiAdvancing) void advanceAfterAnki();
+  return { heading: ankiHeading(anki), body: [ankiOutcomeNote(anki)], actions: [] };
+}
+
+async function advanceAfterAnki() {
+  ankiAdvancing = true;
+  try {
+    if (!await advance("practice") && setupState?.stage === "anki") advanceFailed = true;
+  } finally {
+    ankiAdvancing = false;
+  }
+  if (advanceFailed) render();
+}
+
 const VIEWS = {
   dictionaries: dictionariesView,
-  anki: () => ({
-    heading: "Anki",
-    body: [
-      paragraph("Hachidori can add the words you look up to Anki through AnkiConnect."),
-      settingsNote("Set up in ", "settings.html#anki"),
-    ],
-    actions: [button("setup-continue", "Continue setup", () => { void advance("practice"); })],
-  }),
+  anki: ankiView,
   practice: () => ({
     heading: "You’re ready.",
-    body: [paragraph(options.lookupMode === "activation"
-      ? `Hold ${options.activationKey} and hover over Japanese text on any webpage to look it up.`
-      : "Hover over Japanese text on any webpage to look it up.")],
+    body: [
+      ...(setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)]),
+      paragraph(options.lookupMode === "activation"
+        ? `Hold ${options.activationKey} and hover over Japanese text on any webpage to look it up.`
+        : "Hover over Japanese text on any webpage to look it up."),
+    ],
     actions: [button("setup-finish", "Finish", () => { void finish(); })],
   }),
   complete: () => ({
@@ -494,15 +583,14 @@ function renderSteps(stage) {
 function currentView() {
   if (setupError !== null) return failedView();
   if (setupState === null) return inactiveView();
-  if (setupState.stage !== "dictionaries") {
-    cancelCountdown();
-    advanceFailed = false;
-  }
+  if (setupState.stage !== "dictionaries") cancelCountdown();
   return VIEWS[setupState.stage]();
 }
 
 function render() {
   const stage = setupError === null ? setupState?.stage ?? null : null;
+  // A stage of its own starts without the previous stage's failed-advance state.
+  if (stage !== renderedStage) advanceFailed = false;
   const card = element("setup-card");
   const focusKey = card.contains(document.activeElement) ? document.activeElement.dataset.focusKey ?? "" : "";
   const view = currentView();
