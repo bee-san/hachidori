@@ -783,7 +783,7 @@ async function managedScheduleStage() {
   }
   const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
   const chrome = makeChrome("schedule-worker", bus, storage, alarms);
-  const dictionary = (id, override, age, enabled = true) => ({ id, title: id, path: `/dicts/${id}`, revision: "1",
+  const dictionary = (id, override, age, enabled = true) => genericPackage({ id, title: id, path: `/dicts/${id}`, revision: "1",
     isUpdatable: true, enabled, updateScheduleOverride: override,
     indexUrl: `https://example.com/${id}.json`, downloadUrl: `https://example.com/${id}.zip`,
     lastUpdateCheck: { checkedAt: new Date(now - age * hour).toISOString(), status: "up-to-date" } });
@@ -847,6 +847,36 @@ async function managedScheduleStage() {
   await runInContext("initialiseUpdateAlarm()", context);
   check("worker startup restores the same next-due alarm without a periodic polling interval",
     (await alarms.api.get(name))?.scheduledTime === now + hour && (await alarms.api.get(name))?.periodInMinutes === undefined);
+
+  const settleAlarm = async () => {
+    await new Promise(resolve => setTimeout(resolve, 10));
+    await runInContext("alarmTail", context);
+  };
+  await settleAlarm();
+  const originalGet = alarms.api.get;
+  let alarmReads = 0;
+  alarms.api.get = (...args) => { alarmReads += 1; return originalGet(...args); };
+  const schedule = async value => bus.sendMessage("schedule-page", { target: "hachidori-updates", type: "hd_updates_schedule",
+    baseRevision: (await chrome.storage.local.get("dictionaryUpdates")).dictionaryUpdates.revision, schedule: value });
+  await schedule("daily");
+  await settleAlarm();
+  const savedReads = alarmReads, savedWrites = storage.sets.length;
+  await schedule("daily");
+  await settleAlarm();
+  check("global schedule saves and no-op retries each reconcile exactly once",
+    savedReads === 1 && alarmReads === 2 && storage.sets.length === savedWrites,
+    JSON.stringify({ savedReads, alarmReads, savedWrites, writes: storage.sets.length }));
+
+  const base = (await bus.sendMessage("schedule-page", { target: "hoshidicts-worker", type: "hd_backup_base_read" })).snapshot;
+  const snapshot = (await bus.sendMessage("schedule-page", { target: "hoshidicts-worker", type: "hd_backup_read" })).snapshot;
+  for (const [key, revision] of Object.entries(backupRevisions(base))) snapshot[key].revision = revision + 1;
+  snapshot.updates.schedule = "weekly";
+  const beforeRestoreReads = alarmReads;
+  const restored = await bus.sendMessage("schedule-offscreen", { target: "hoshidicts-worker", type: "hd_backup_cas", base, snapshot },
+    { id: chrome.runtime.id, url: chrome.runtime.getURL("offscreen.html") });
+  await settleAlarm();
+  check("backup schedule-only publication reconciles without relying on a settings storage event",
+    restored.ok && alarmReads === beforeRestoreReads + 1, JSON.stringify({ restored, alarmReads, beforeRestoreReads }));
 }
 
 async function externalLinksBackgroundStage() {
