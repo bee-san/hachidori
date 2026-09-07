@@ -267,6 +267,8 @@ const PLANNED = [
   "managed update controls render persisted availability and last-checked state",
   "Update all atomically replaces a managed generation and preserves presentation",
   "one global update interval creates one periodic browser alarm",
+  "Settings schedule drafts preserve newer commits and retry lost replies without duplicate writes or alarms",
+  "Settings name autosave merges unrelated edits, rejects external renames and paints one completion",
   "a real browser alarm installs updates for disabled managed dictionaries",
   "a failed scheduled update preserves the working generation without OPFS debris",
   "worker restart recreates the configured managed-update alarm",
@@ -3060,6 +3062,153 @@ async function checkSettingsTransport(page) {
     evidence.rejected && evidence.unchanged && saved.options.revision === evidence.revision + 1
       && saved.options.maxResults === nextMaxResults && saved.status.generation === evidence.generation,
     JSON.stringify({ evidence, saved }));
+}
+
+async function checkManagementAutosave(page, browser, settingsUrl) {
+  const mirror = await browser.newPage();
+  const groupId = "browser-autosave-group";
+  const groupInput = `[data-group-id="${groupId}"] .dict-group-name`;
+  const edit = (target, selector, values, event = "input") => target.evaluate((selector, values, event) => {
+    const input = document.querySelector(selector);
+    for (const value of values) {
+      input.value = value;
+      input.dispatchEvent(new Event(event, { bubbles: true }));
+    }
+  }, selector, values, event);
+  const mutateGroup = (target, patch) => target.evaluate(async (id, patch) => {
+    const { dictionaryState: state } = await chrome.storage.local.get("dictionaryState");
+    const groups = state.groups.some(group => group.id === id)
+      ? state.groups.map(group => group.id === id ? { ...group, ...patch } : group)
+      : [...state.groups, { id, name: "Study", dictionaryIds: [], ...patch }];
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+      baseRevision: state.revision, dictionaries: state.dictionaries, groups });
+    if (!reply.ok) throw new Error(reply.error);
+  }, groupId, patch);
+  const waitName = (name) => page.waitForFunction(async (id, name) => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    return dictionaryState.groups.find(group => group.id === id)?.name === name;
+  }, { polling: 50 }, groupId, name);
+  try {
+    await mirror.goto(settingsUrl, { waitUntil: "domcontentloaded" });
+    await mirror.waitForFunction(() => document.getElementById("engine-status").textContent.startsWith("Ready"), { polling: 100 });
+    for (const target of [page, mirror]) await showSettingsSection(target, "updates");
+    await page.evaluate(() => {
+      const original = chrome.runtime.sendMessage.bind(chrome.runtime);
+      const probe = { calls: [], hold: true, lose: false, type: "hd_updates_schedule", release: null,
+        restore: () => { chrome.runtime.sendMessage = original; } };
+      window.__managementAutosave = probe;
+      chrome.runtime.sendMessage = async message => {
+        if (message.type !== probe.type) return original(message);
+        probe.calls.push(message);
+        const reply = await original(message);
+        if (probe.hold) {
+          probe.hold = false;
+          await new Promise(done => { probe.release = done; });
+        }
+        if (probe.lose) { probe.lose = false; throw new Error("simulated lost Settings reply"); }
+        return reply;
+      };
+    });
+    await edit(page, "#update-schedule", ["off", "hourly", "daily"], "change");
+    await page.waitForFunction(() => typeof window.__managementAutosave.release === "function", { polling: 50 });
+    await edit(page, "#update-schedule", ["monthly"], "change");
+    await mirror.waitForFunction(() => document.getElementById("update-schedule").value === "daily", { polling: 50 });
+    await edit(mirror, "#update-schedule", ["weekly"], "change");
+    await mirror.waitForFunction(() => document.getElementById("update-state").textContent === "Schedule saved.", { polling: 50 });
+    const whileHeld = await page.evaluate(() => window.__managementAutosave.calls.length);
+    await page.evaluate(() => window.__managementAutosave.release());
+    await page.waitForFunction(() => !document.getElementById("update-schedule-conflict-actions").hidden, { polling: 50 });
+    const schedule = await page.evaluate(async () => ({
+      draft: document.getElementById("update-schedule").value,
+      stored: (await chrome.storage.local.get("dictionaryUpdates")).dictionaryUpdates,
+      calls: window.__managementAutosave.calls,
+    }));
+    await page.bringToFront();
+    await page.click("#update-schedule-discard");
+    await page.evaluate(() => { window.__managementAutosave.lose = true; });
+    await edit(page, "#update-schedule", ["off"], "change");
+    await page.waitForFunction(() => !document.getElementById("update-schedule-conflict-actions").hidden, { polling: 50 });
+    const lostRevision = await page.evaluate(async () => (await chrome.storage.local.get("dictionaryUpdates")).dictionaryUpdates.revision);
+    await page.click("#update-schedule-retry");
+    await page.waitForFunction(() => document.getElementById("update-state").textContent === "Schedule saved.", { polling: 50 });
+    const retried = await page.evaluate(async () => ({
+      stored: (await chrome.storage.local.get("dictionaryUpdates")).dictionaryUpdates,
+      alarms: await chrome.alarms.getAll(), calls: window.__managementAutosave.calls.length,
+    }));
+    check("Settings schedule drafts preserve newer commits and retry lost replies without duplicate writes or alarms",
+      whileHeld === 1 && schedule.calls.length === 2 && schedule.draft === "monthly"
+        && schedule.stored.schedule === "weekly"
+        && schedule.calls[1].baseRevision === schedule.calls[0].baseRevision + 1
+        && retried.stored.revision === lostRevision && retried.stored.schedule === "off"
+        && retried.calls === 4 && retried.alarms.length === 0,
+      JSON.stringify({ whileHeld, schedule, lostRevision, retried }));
+
+    await mutateGroup(page, {});
+    for (const target of [page, mirror]) {
+      await showSettingsSection(target, "dictionary-groups");
+      await target.waitForSelector(groupInput);
+    }
+    await page.evaluate(() => {
+      Object.assign(window.__managementAutosave, { type: "hd_state_cas", calls: [], release: null });
+    });
+    await page.focus(groupInput);
+    await edit(page, groupInput, ["P", "Personal"]);
+    await mutateGroup(mirror, { dictionaryIds: [FIXTURE_ID] });
+    await waitName("Personal");
+    const coalesced = await page.evaluate(selector => ({
+      calls: window.__managementAutosave.calls.length,
+      focused: document.activeElement === document.querySelector(selector),
+    }), groupInput);
+    await page.evaluate(() => { window.__managementAutosave.hold = true; });
+    await edit(page, groupInput, ["Mine"], "change");
+    await page.waitForFunction(() => typeof window.__managementAutosave.release === "function", { polling: 50 });
+    await edit(page, groupInput, ["Next"]);
+    await mirror.waitForFunction(selector => document.querySelector(selector).value === "Mine", { polling: 50 }, groupInput);
+    await edit(mirror, groupInput, ["Shared"]);
+    await waitName("Shared");
+    await page.evaluate(() => window.__managementAutosave.release());
+    await page.waitForSelector(`${groupInput}[aria-invalid="true"]`);
+    const names = await page.evaluate(async (id, selector) => ({
+      stored: (await chrome.storage.local.get("dictionaryState")).dictionaryState.groups.find(group => group.id === id),
+      draft: document.querySelector(selector).value,
+      calls: window.__managementAutosave.calls.length,
+    }), groupId, groupInput);
+    if (process.env.HACHIDORI_AUTOSAVE_SCREENSHOT) {
+      await page.bringToFront();
+      await page.setViewport({ width: 1080, height: 900 });
+      await (await page.$("#dictionary-groups")).screenshot({ path: process.env.HACHIDORI_AUTOSAVE_SCREENSHOT });
+    }
+    await page.evaluate(() => {
+      const probe = window.__managementAutosave;
+      probe.renders = 0;
+      probe.observer = new MutationObserver(records => {
+        probe.renders += records.filter(record => record.target.id === "dict-group-list" && record.removedNodes.length > 0).length;
+      });
+      probe.observer.observe(document.getElementById("dict-group-list"), { childList: true });
+    });
+    await page.click(`[data-group-id="${groupId}"] .name-draft-retry`);
+    await waitName("Next");
+    await page.waitForFunction(() => !document.querySelector(".name-draft-feedback"), { polling: 50 });
+    await page.waitForFunction(() => window.__managementAutosave.renders > 0, { polling: 50 });
+    const renders = await page.evaluate(() => window.__managementAutosave.renders);
+    check("Settings name autosave merges unrelated edits, rejects external renames and paints one completion",
+      coalesced.calls === 1 && coalesced.focused && names.calls === 2 && names.draft === "Next"
+        && names.stored.name === "Shared" && names.stored.dictionaryIds.join(",") === FIXTURE_ID && renders === 1,
+      JSON.stringify({ coalesced, names, renders }));
+  } finally {
+    await page.evaluate(async id => {
+      window.__managementAutosave?.release?.();
+      window.__managementAutosave?.observer?.disconnect();
+      window.__managementAutosave?.restore();
+      delete window.__managementAutosave;
+      const { dictionaryState: state } = await chrome.storage.local.get("dictionaryState");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+        baseRevision: state.revision, dictionaries: state.dictionaries, groups: state.groups.filter(group => group.id !== id) });
+      if (!reply.ok) throw new Error(reply.error);
+    }, groupId);
+    await mirror.close();
+    await showSettingsSection(page, "updates");
+  }
 }
 
 function makeAudioWav() {
@@ -6999,6 +7148,7 @@ async function main() {
     }),
   );
 
+  await checkManagementAutosave(page, browser, settingsUrl);
   await page.select("#update-schedule", "hourly");
   const scheduledAlarm = await page.waitForFunction(async (alarmName) => {
     const { dictionaryUpdates } = await chrome.storage.local.get("dictionaryUpdates");

@@ -22,7 +22,7 @@ These instructions apply to the entire repository.
 
 ## Issue #9 scope and phases
 
-- D1-D9 are the dictionary-only feature group. That phase is complete. The user's subsequent request, "now do everything else" from issue #9, authorizes E1-E28 as the current phase, delivered in focused pull requests that preserve the completed dictionary behavior.
+- D1-D9 are the dictionary-only feature group. That phase is complete. The user's subsequent request, "now do everything else" from issue #9, authorizes E1-E27 as the current phase, delivered in focused pull requests that preserve the completed dictionary behavior.
 - The dictionary-only contract below limits dictionary-only tasks; it does not prohibit separately authorized E-series work. Later L1-L6 remain excluded from both current feature groups: no profiles, backup/restore, per-dictionary schedules, statistics, definition blur, or configurable popup actions.
 
 ## Dictionary-only issue #9 contract

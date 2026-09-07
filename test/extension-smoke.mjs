@@ -1524,7 +1524,10 @@ function loadSettingsScript(window) {
   const groups = readFileSync(resolve(EXTENSION, "dictionary-groups.js"), "utf8")
     .replace(/import "\.\/dictionary-group-state\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
+  const nameDrafts = readFileSync(resolve(EXTENSION, "dictionary-name-drafts.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{ createAudioSettingsController \}\s*from\s*"\.\/audio-settings\.js";\s*/u, "")
@@ -1534,7 +1537,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${settings}`,
+    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${settings}`,
   );
 }
 
@@ -2952,9 +2955,11 @@ async function main() {
     }),
   );
 
+  const scheduleBase = (await storage.api().local.get("dictionaryUpdates")).dictionaryUpdates?.revision ?? 0;
   const scheduled = await pageChrome.runtime.sendMessage({
     target: updateTarget,
     type: "hd_updates_schedule",
+    baseRevision: scheduleBase,
     schedule: "hourly",
   });
   const hourlyAlarm = await alarms.api.get(updateAlarmName);
@@ -2966,6 +2971,15 @@ async function main() {
       && alarms.values.size === 1,
     JSON.stringify({ scheduled, hourlyAlarm, alarms: [...alarms.values.values()] }),
   );
+
+  const staleSchedule = await pageChrome.runtime.sendMessage({ target: updateTarget,
+    type: "hd_updates_schedule", baseRevision: scheduleBase, schedule: "weekly" });
+  const latestSchedule = (await storage.api().local.get("dictionaryUpdates")).dictionaryUpdates;
+  check("managed update preferences reject stale schedule writes with the current revision and preserve the alarm",
+    scheduled.settings?.revision === scheduleBase + 1 && staleSchedule?.ok === false
+      && staleSchedule.settings?.revision === latestSchedule.revision
+      && latestSchedule.schedule === "hourly" && (await alarms.api.get(updateAlarmName))?.periodInMinutes === 60,
+    JSON.stringify({ scheduleBase, scheduled, staleSchedule, latestSchedule }));
 
   const alarmRevision = "2026.09.08.0";
   remoteJson(recommended.indexUrl, { revision: alarmRevision });
@@ -3073,6 +3087,7 @@ async function main() {
   const scheduleOff = await pageChrome.runtime.sendMessage({
     target: updateTarget,
     type: "hd_updates_schedule",
+    baseRevision: (await storage.api().local.get("dictionaryUpdates")).dictionaryUpdates.revision,
     schedule: "off",
   });
   check(
@@ -4454,19 +4469,18 @@ async function main() {
   );
   const settingsConflict = await settingsConflictStage();
   check(
-    "settings preserve a concurrent alias draft, queue its next action, and restore a rejected edit",
+    "settings refuse a conflicting alias draft, queue its next action, and restore a rejected edit",
     settingsConflict?.draftSurvived === true
       && settingsConflict.secondActionTargetSurvived === true
-      && settingsConflict.casRequests?.length === 2
-      && settingsConflict.casRequests[0].type === "hd_state_cas"
+      && settingsConflict.casRequests?.length === 1
+      && settingsConflict.casRequests[0].type === "hd_apply_state"
       && settingsConflict.casRequests[0].baseRevision === 8
-      && settingsConflict.casRequests[0].dictionaries[0].displayName === "My draft"
+      && settingsConflict.casRequests[0].dictionaries[0].displayName === "Other writer"
       && settingsConflict.casRequests[0].dictionaries[0].favorite === true
       && settingsConflict.casRequests[0].dictionaries[0].frequencyMode === "rank-based"
-      && settingsConflict.casRequests[1].type === "hd_apply_state"
-      && settingsConflict.casRequests[1].baseRevision === 9
-      && settingsConflict.casRequests[1].dictionaries[0].displayName === "My draft"
-      && settingsConflict.casRequests[1].dictionaries[0].enabled === false
+      && settingsConflict.casRequests[0].dictionaries[0].enabled === false
+      && settingsConflict.aliasConflict.includes("changed elsewhere")
+      && settingsConflict.retainedAlias === "My draft"
       && settingsConflict.directDictionaryWrites === 0
       && settingsConflict.enabled === true
       && settingsConflict.kanjiChoice === true
@@ -4722,6 +4736,17 @@ async function main() {
       && managedUpdateSettings.scheduleRequest.schedule === "daily",
     JSON.stringify(managedUpdateSettings),
   );
+  check("managed schedule autosave coalesces edits, serializes requests and ignores an older saved reply",
+    managedUpdateSettings?.newerSchedule === "weekly" && managedUpdateSettings.coalesced === true
+      && managedUpdateSettings.serialized === true && managedUpdateSettings.finalSchedule === "monthly",
+    JSON.stringify(managedUpdateSettings));
+  check("managed schedule conflicts retain drafts, retry a lost reply without another write, and discard explicitly",
+    managedUpdateSettings?.lostReplyRetained === true && managedUpdateSettings.retryNoWrite === true
+      && managedUpdateSettings.discarded === true,
+    JSON.stringify(managedUpdateSettings));
+  check("managed schedule waits for its initial revision and exposes queued work outside Updates",
+    managedUpdateSettings?.initialReadBlocked === true && managedUpdateSettings.queuedNotice === true,
+    JSON.stringify(managedUpdateSettings));
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -6620,9 +6645,12 @@ async function settingsManagedUpdatesStage() {
     ],
     groups: [],
   };
-  let updateSettings = { schedule: "weekly", lastCheckedAt: "2026-09-04T10:00:00.000Z" };
+  let updateSettings = { revision: 0, schedule: "off", lastCheckedAt: "2026-09-04T10:00:00.000Z" };
   let storageListener = null;
   const updateRequests = [];
+  let heldSchedule = null, activeSchedules = 0;
+  let loseScheduleReply = false, firstRead = true;
+  let releaseInitialRead;
 
   const publishState = (dictionary) => {
     state = {
@@ -6647,11 +6675,22 @@ async function settingsManagedUpdatesStage() {
         }
         if (message.type === "hd_updates_schedule") {
           updateRequests.push(structuredClone(message));
-          updateSettings = { ...updateSettings, schedule: message.schedule };
+          if (message.baseRevision !== updateSettings.revision) return { ok: false, error: "Schedule changed elsewhere", settings: structuredClone(updateSettings) };
+          activeSchedules++;
+          if (updateSettings.schedule !== message.schedule) {
+            updateSettings = { ...updateSettings, revision: updateSettings.revision + 1, schedule: message.schedule };
+          }
           storageListener?.({
             dictionaryUpdates: { newValue: structuredClone(updateSettings) },
           }, "local");
-          return { ok: true, settings: structuredClone(updateSettings) };
+          const reply = { ok: true, settings: structuredClone(updateSettings) };
+          if (heldSchedule) await heldSchedule.promise;
+          activeSchedules--;
+          if (loseScheduleReply) {
+            loseScheduleReply = false;
+            throw new Error("simulated lost schedule reply");
+          }
+          return reply;
         }
         if (message.type === "hd_updates_check") {
           updateRequests.push(structuredClone(message));
@@ -6666,7 +6705,7 @@ async function settingsManagedUpdatesStage() {
               error: null,
             },
           });
-          updateSettings = { ...updateSettings, lastCheckedAt: "2026-09-04T11:00:00.000Z" };
+          updateSettings = { ...updateSettings, revision: updateSettings.revision + 1, lastCheckedAt: "2026-09-04T11:00:00.000Z" };
           storageListener?.({
             dictionaryUpdates: { newValue: structuredClone(updateSettings) },
           }, "local");
@@ -6702,9 +6741,17 @@ async function settingsManagedUpdatesStage() {
     storage: {
       local: {
         async get() {
+          const captured = structuredClone(updateSettings);
+          if (firstRead) {
+            firstRead = false;
+            await new Promise(done => { releaseInitialRead = done; });
+            updateSettings = { ...updateSettings, revision: 1, schedule: "weekly" };
+            storageListener({ dictionaryUpdates: { newValue: structuredClone(updateSettings) } }, "local");
+            await new Promise(done => window.setTimeout(done, 0));
+          }
           return {
             options: { kanjiClickDictionary: "" },
-            dictionaryUpdates: structuredClone(updateSettings),
+            dictionaryUpdates: captured,
           };
         },
       },
@@ -6717,6 +6764,9 @@ async function settingsManagedUpdatesStage() {
   };
   loadSettingsScript(window);
 
+  const initialReadBlocked = window.document.getElementById("update-schedule").disabled;
+  releaseInitialRead();
+
   const deadline = Date.now() + 2000;
   while (!window.document.getElementById("engine-status")?.textContent?.startsWith("Ready")
       && Date.now() < deadline) {
@@ -6726,6 +6776,7 @@ async function settingsManagedUpdatesStage() {
   const insecureRow = () => window.document.querySelector('[data-dictionary-id="insecure-id"]');
   const localRow = () => window.document.querySelector('[data-dictionary-id="local-id"]');
   const result = {
+    initialReadBlocked,
     initial: {
       schedule: window.document.getElementById("update-schedule")?.value,
       lastChecked: window.document.getElementById("update-last-checked")?.textContent ?? "",
@@ -6795,6 +6846,65 @@ async function settingsManagedUpdatesStage() {
   }
   await new Promise((done) => window.setTimeout(done, 0));
   result.scheduleRequest = updateRequests.find((request) => request.type === "hd_updates_schedule");
+
+  const chooseSchedule = value => { schedule.value = value; schedule.dispatchEvent(new window.Event("change", { bubbles: true })); };
+  const scheduleRequests = () => updateRequests.filter(request => request.type === "hd_updates_schedule");
+  const pause = ms => new Promise(done => window.setTimeout(done, ms));
+  async function waitSchedule(predicate) {
+    const until = Date.now() + 2000;
+    while (!predicate() && Date.now() < until) await pause(5);
+  }
+  heldSchedule = Promise.withResolvers();
+  chooseSchedule("hourly");
+  await waitSchedule(() => activeSchedules === 1);
+  updateSettings = { ...updateSettings, revision: updateSettings.revision + 1, schedule: "weekly" };
+  storageListener({ dictionaryUpdates: { newValue: structuredClone(updateSettings) } }, "local");
+  heldSchedule.resolve();
+  heldSchedule = null;
+  await waitSchedule(() => activeSchedules === 0);
+  await pause(0);
+  result.newerSchedule = schedule.value;
+
+  const beforeCoalescing = scheduleRequests().length;
+  for (const value of ["off", "hourly", "daily"]) chooseSchedule(value);
+  result.queuedNotice = window.document.getElementById("nav-status-updates").textContent.includes("Unsaved schedule");
+  await pause(250);
+  result.coalesced = scheduleRequests().length === beforeCoalescing + 1 && updateSettings.schedule === "daily";
+
+  const beforeQueued = scheduleRequests().length;
+  heldSchedule = Promise.withResolvers();
+  chooseSchedule("hourly");
+  await waitSchedule(() => activeSchedules === 1);
+  chooseSchedule("weekly");
+  chooseSchedule("monthly");
+  await pause(250);
+  result.serialized = activeSchedules === 1 && scheduleRequests().length === beforeQueued + 1;
+  heldSchedule.resolve();
+  heldSchedule = null;
+  await waitSchedule(() => activeSchedules === 0 && updateSettings.schedule === "monthly");
+  await pause(0);
+  result.finalSchedule = schedule.value;
+
+  const conflictActions = window.document.getElementById("update-schedule-conflict-actions");
+  loseScheduleReply = true;
+  chooseSchedule("off");
+  await waitSchedule(() => !conflictActions.hidden);
+  const lostRevision = updateSettings.revision;
+  result.lostReplyRetained = schedule.value === "off" && !conflictActions.hidden;
+  window.document.getElementById("update-schedule-retry").click();
+  await waitSchedule(() => conflictActions.hidden && activeSchedules === 0);
+  await pause(0);
+  result.retryNoWrite = updateSettings.revision === lostRevision && updateSettings.schedule === "off";
+
+  chooseSchedule("hourly");
+  updateSettings = { ...updateSettings, revision: updateSettings.revision + 1, schedule: "daily" };
+  storageListener({ dictionaryUpdates: { newValue: structuredClone(updateSettings) } }, "local");
+  await waitSchedule(() => !conflictActions.hidden);
+  const beforeDiscard = scheduleRequests().length;
+  window.document.getElementById("update-schedule-discard").click();
+  await pause(200);
+  result.discarded = schedule.value === "daily" && conflictActions.hidden
+    && scheduleRequests().length === beforeDiscard && updateSettings.schedule === "daily";
   dom.window.close();
   return result;
 }
@@ -7349,7 +7459,7 @@ async function settingsConflictStage() {
   checkbox.checked = false;
   checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
   const selectedValue = JSON.stringify({ title: "Generic", kind: "term" });
-  while (casRequests.length < 2 && Date.now() < deadline) {
+  while (casRequests.length < 1 && Date.now() < deadline) {
     await new Promise((done) => window.setTimeout(done, 5));
   }
   await new Promise((done) => window.setTimeout(done, 0));
@@ -7374,6 +7484,8 @@ async function settingsConflictStage() {
 
   const result = {
     draftSurvived,
+    aliasConflict: window.document.querySelector(".name-draft-feedback")?.textContent ?? "",
+    retainedAlias: window.document.querySelector(".dict-display-name")?.value,
     secondActionTargetSurvived,
     casRequests: structuredClone(casRequests),
     directDictionaryWrites,

@@ -10,6 +10,7 @@ import {
   managedDictionaryFingerprint,
   managedDictionaryMatches,
   managedUpdateSchedule,
+  normaliseUpdateSettings,
   recommendedDictionarySource,
   recommendedIndexUrlMatches,
 } from "./managed-dictionary-source.js";
@@ -174,14 +175,6 @@ async function readDictionaryStorage(includeCustomDocument = false) {
     customDocument: includeCustomDocument
       ? stored?.[CUSTOM_DICTIONARY_SOURCE_KEY] ?? null
       : undefined,
-  };
-}
-
-function normaliseUpdateSettings(value) {
-  const schedule = managedUpdateSchedule(value?.schedule) ?? "off";
-  return {
-    schedule,
-    lastCheckedAt: typeof value?.lastCheckedAt === "string" ? value.lastCheckedAt : null,
   };
 }
 
@@ -589,9 +582,12 @@ function serialiseStorage(job) {
 async function writeUpdateSettings(update) {
   return serialiseStorage(async () => {
     const current = await readUpdateSettings();
-    const settings = update(current);
+    const next = update(current);
+    if (next === null) return { ok: false, error: "The update settings changed elsewhere. Review the current schedule before retrying.", settings: current };
+    if (sameJsonValue(next, current)) return { settings: current };
+    const settings = { ...next, revision: current.revision + 1 };
     await chrome.storage.local.set({ [UPDATE_SETTINGS_KEY]: settings });
-    return settings;
+    return { settings };
   });
 }
 
@@ -784,7 +780,7 @@ async function runManagedUpdateCycle({ dictionaryIds = null, install = false } =
       : checked.outcome);
   }
 
-  const settings = await writeUpdateSettings((current) => ({
+  const { settings } = await writeUpdateSettings((current) => ({
     ...current,
     lastCheckedAt: checkedAt,
   }));
@@ -835,9 +831,10 @@ const UPDATE_HANDLERS = {
     if (schedule === null) {
       throw new Error("the dictionary update schedule is invalid");
     }
-    const settings = await writeUpdateSettings((current) => ({ ...current, schedule }));
-    await reconcileUpdateAlarm();
-    return { settings };
+    const result = await writeUpdateSettings(current =>
+      message.baseRevision === current.revision ? { ...current, schedule } : null);
+    if (result.ok !== false) await reconcileUpdateAlarm();
+    return result;
   },
 
   async hd_updates_check() {

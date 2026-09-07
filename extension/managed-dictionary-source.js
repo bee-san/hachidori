@@ -26,6 +26,14 @@ export function managedUpdateSchedule(value) {
     : null;
 }
 
+export function normaliseUpdateSettings(value) {
+  return {
+    revision: Number.isSafeInteger(value?.revision) && value.revision >= 0 ? value.revision : 0,
+    schedule: managedUpdateSchedule(value?.schedule) ?? "off",
+    lastCheckedAt: typeof value?.lastCheckedAt === "string" ? value.lastCheckedAt : null,
+  };
+}
+
 export const MANAGED_DICTIONARY_CHANGED =
   "the managed dictionary changed while its update was being prepared";
 

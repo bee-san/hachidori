@@ -7,13 +7,14 @@
 import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
+import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
 import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
 } from "./dictionary-groups.js";
 import {
   managedDictionarySource,
-  managedUpdateSchedule,
+  normaliseUpdateSettings,
 } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 import {
@@ -76,7 +77,13 @@ let optionsTimer = null;
 let optionsSaveFailed = false;
 let optionsEditRevision = null;
 const OPTIONS_SAVE_DELAY_MS = 150;
-let updateSettings = { schedule: "off", lastCheckedAt: null };
+const nameDrafts = createDictionaryNameDrafts({
+  delayMs: OPTIONS_SAVE_DELAY_MS,
+  afterSave: () => renderChangedDictionaryState(),
+});
+let updateSettings = { revision: -1, schedule: "off", lastCheckedAt: null };
+let pendingSchedule = null, savingSchedule = null, scheduleTimer = null;
+let scheduleSaveFailed = false;
 let customDocument = null;
 let customBaseDocument = null;
 let customBaseEditorText = "";
@@ -122,7 +129,7 @@ function element(id) {
 function sectionHasPendingWork(id) {
   switch (id) {
     case "import-state": return importing;
-    case "update-state": return updating;
+    case "update-state": return updating || savingSchedule !== null || pendingSchedule !== null;
     case "custom-dictionary-status": return customLoading || customSaving || customDictionaryDirty();
     case "options-status": return savingOptions !== null || Object.keys(pendingOptions).length > 0;
     default: return false;
@@ -344,13 +351,6 @@ function normaliseDictionaryState(value) {
   };
 }
 
-function normaliseUpdateSettings(value) {
-  return {
-    schedule: managedUpdateSchedule(value?.schedule) ?? "off",
-    lastCheckedAt: typeof value?.lastCheckedAt === "string" ? value.lastCheckedAt : null,
-  };
-}
-
 function adoptDictionaryState(value) {
   const next = normaliseDictionaryState(value);
   if (next.revision <= dictionaryState.revision) {
@@ -359,6 +359,13 @@ function adoptDictionaryState(value) {
   dictionaryState = next;
   dictionaries = dictionaryState.dictionaries;
   pruneDictionarySelection();
+  return true;
+}
+
+function adoptUpdateSettings(value) {
+  const next = normaliseUpdateSettings(value);
+  if (next.revision <= updateSettings.revision) return false;
+  updateSettings = next;
   return true;
 }
 
@@ -714,9 +721,9 @@ function availableUpdates() {
 
 function renderUpdateControls() {
   const schedule = element("update-schedule");
-  if (schedule !== document.activeElement) {
-    schedule.value = updateSettings.schedule;
-  }
+  const value = pendingSchedule?.schedule ?? savingSchedule?.schedule ?? updateSettings.schedule;
+  if (schedule.value !== value) schedule.value = value;
+  element("update-schedule-conflict-actions").hidden = !scheduleSaveFailed;
   const checked = updateSettings.lastCheckedAt === null
     ? null
     : new Date(updateSettings.lastCheckedAt);
@@ -726,7 +733,7 @@ function renderUpdateControls() {
   const busy = updating || importing || removing || committing || customSaving;
   element("update-all").disabled = busy || availableUpdates().length === 0;
   element("update-check-now").disabled = busy;
-  schedule.disabled = busy;
+  schedule.disabled = busy || updateSettings.revision < 0;
 }
 
 function clearImportResults() {
@@ -1345,15 +1352,10 @@ function renderDeferredAfterBlur(control) {
 
 function bindDictionaryAlias(row, entry) {
   const input = row.querySelector(".dict-display-name");
-  input.value = entry.displayName || "";
   input.placeholder = entry.title;
   input.setAttribute("aria-label", `Display name for ${entry.title}`);
   input.title = `Display name for ${entry.title}`;
-  input.addEventListener("change", () => {
-    const value = input.value.trim() || null;
-    void commitDictionaries(updateDictionary(entry.id, (dictionary) =>
-      dictionary.displayName === value ? dictionary : { ...dictionary, displayName: value }), false);
-  });
+  bindNameDraft(input, "dictionaries", entry.id, "displayName", entry.displayName ?? "", value => value.trim());
   renderDeferredAfterBlur(input);
 }
 
@@ -1608,6 +1610,10 @@ function renderDictionaryState() {
     ?? (document.activeElement === document.body ? pendingManagementFocus : null);
   pendingManagementFocus = null;
   dictionaries = dictionaryState.dictionaries;
+  nameDrafts.retain(new Set([
+    ...dictionaries.map(entry => `dictionaries:${entry.id}`),
+    ...dictionaryState.groups.map(group => `groups:${group.id}`),
+  ]));
   dictionaryRenderDeferred = false;
   renderDictionaries();
   dictionaryGroupController.render();
@@ -1621,7 +1627,7 @@ function renderDictionaryState() {
 async function commitDictionaryStateChange(update, reloadEngine) {
   const next = update(dictionaryState);
   if (next === null) {
-    return;
+    return { ok: true, state: dictionaryState };
   }
   const baseRevision = dictionaryState.revision;
   try {
@@ -1639,9 +1645,10 @@ async function commitDictionaryStateChange(update, reloadEngine) {
       await restoreAuthoritativeState(reply);
       dictionaryCommitFailed = true;
       setStatus(`Dictionary change was not saved: ${reply.error ?? "the state changed elsewhere"}`, "error");
-      return;
+      return reply;
     }
     adoptDictionaryState(reply.state);
+    return reply;
   } catch (error) {
     try {
       await restoreAuthoritativeState();
@@ -1651,6 +1658,7 @@ async function commitDictionaryStateChange(update, reloadEngine) {
     }
     dictionaryCommitFailed = true;
     setStatus(`Dictionary change was not saved: ${describe(error)}`, "error");
+    return { ok: false, error: describe(error) };
   }
 }
 
@@ -1699,6 +1707,24 @@ function commitGroups(update) {
   }, false);
 }
 
+function bindNameDraft(input, collection, id, field, value, normalise, validate) {
+  nameDrafts.bind(`${collection}:${id}`, input, {
+    value, normalise,
+    readName: () => {
+      const entry = dictionaryState[collection].find(item => item.id === id);
+      return entry ? entry[field] ?? "" : undefined;
+    },
+    async save(baseName, name) {
+      let renamed;
+      const reply = await queueDictionaryStateChange(current => {
+        renamed = renameWithBaseline(current[collection], id, field, baseName, name, validate);
+        return renamed.error || renamed.items === current[collection] ? null : { ...current, [collection]: renamed.items };
+      }, false);
+      return renamed?.error ? { ok: false, ...renamed } : reply;
+    },
+  });
+}
+
 const dictionaryGroupController = createDictionaryGroupController({
   setError: (message) => setSectionStatus("dict-group-error", message, "error"),
   readState: () => dictionaryState,
@@ -1708,6 +1734,7 @@ const dictionaryGroupController = createDictionaryGroupController({
   moveListItem,
   updateItemById,
   renderDeferredAfterBlur,
+  bindNameDraft,
 });
 
 async function removeDictionary(id, title) {
@@ -1913,7 +1940,7 @@ async function runManagedUpdate(type, dictionaryIds = null) {
     if (!reply.ok) {
       throw new Error(reply.error || "the dictionary update operation failed");
     }
-    updateSettings = normaliseUpdateSettings(reply.settings);
+    adoptUpdateSettings(reply.settings);
     await reloadDictionaries();
     const summary = updateOutcomeSummary(type, reply.outcomes ?? []);
     setUpdateState(summary.message, summary.tone);
@@ -1926,17 +1953,45 @@ async function runManagedUpdate(type, dictionaryIds = null) {
   }
 }
 
-async function writeUpdateSchedule(schedule) {
+function writeUpdateSchedule(schedule) {
+  pendingSchedule = { schedule, baseRevision: pendingSchedule?.baseRevision ?? savingSchedule?.baseRevision ?? updateSettings.revision };
+  window.clearTimeout(scheduleTimer);
+  scheduleTimer = null;
+  if (scheduleSaveFailed) return;
+  setUpdateState("Unsaved schedule…", "");
+  scheduleTimer = window.setTimeout(() => { void flushUpdateSchedule(); }, OPTIONS_SAVE_DELAY_MS);
+}
+
+async function flushUpdateSchedule() {
+  window.clearTimeout(scheduleTimer);
+  scheduleTimer = null;
+  if (savingSchedule || scheduleSaveFailed || !pendingSchedule) return;
+  const sent = pendingSchedule;
+  pendingSchedule = null;
+  savingSchedule = sent;
+  renderUpdateControls();
+  setUpdateState("Saving schedule…", "");
   try {
-    const reply = await send("hd_updates_schedule", { schedule }, UPDATE_TARGET);
-    if (!reply.ok) {
-      throw new Error(reply.error || "the dictionary update schedule could not be saved");
-    }
-    updateSettings = normaliseUpdateSettings(reply.settings);
-    renderUpdateControls();
+    const reply = await send("hd_updates_schedule", sent, UPDATE_TARGET);
+    if (reply.settings) adoptUpdateSettings(reply.settings);
+    if (!reply.ok) throw new Error(reply.error || "the dictionary update schedule could not be saved");
+    // Advance a queued draft only through our own commit, never through an
+    // unrelated newer event that happened to arrive before this reply.
+    if (pendingSchedule) pendingSchedule.baseRevision = Math.max(pendingSchedule.baseRevision, reply.settings.revision);
+    setUpdateState(pendingSchedule ? "Unsaved schedule…" : "Schedule saved.", pendingSchedule ? "" : "ready");
   } catch (error) {
-    element("update-schedule").value = updateSettings.schedule;
-    setUpdateState(`Could not save the update schedule: ${describe(error)}`, "error");
+    pendingSchedule ??= sent;
+    scheduleSaveFailed = true;
+    try {
+      const stored = await chrome.storage.local.get("dictionaryUpdates");
+      adoptUpdateSettings(stored.dictionaryUpdates);
+    } catch { /* Keep the draft even if the committed state cannot be read. */ }
+    setUpdateState(`Could not save the schedule: ${describe(error)} Current schedule: ${updateSettings.schedule}. Your draft is retained.`, "error");
+  } finally {
+    savingSchedule = null;
+    renderUpdateControls();
+    syncNavigationStatus("update-state");
+    if (!scheduleSaveFailed && scheduleTimer === null && pendingSchedule) void flushUpdateSchedule();
   }
 }
 
@@ -2046,7 +2101,20 @@ function attachHandlers() {
     void runManagedUpdate("hd_updates_install", availableUpdates().map((dictionary) => dictionary.id));
   });
   element("update-schedule").addEventListener("change", (event) => {
-    void writeUpdateSchedule(event.target.value);
+    writeUpdateSchedule(event.target.value);
+  });
+  element("update-schedule-retry").addEventListener("click", () => {
+    if (!pendingSchedule) return;
+    pendingSchedule.baseRevision = updateSettings.revision;
+    scheduleSaveFailed = false;
+    void flushUpdateSchedule();
+  });
+  element("update-schedule-discard").addEventListener("click", () => {
+    window.clearTimeout(scheduleTimer);
+    scheduleTimer = pendingSchedule = null;
+    scheduleSaveFailed = false;
+    renderUpdateControls();
+    setUpdateState("Current schedule restored.", "ready");
   });
 
   for (const field of NUMBER_FIELDS) {
@@ -2200,10 +2268,11 @@ function attachHandlers() {
 
   window.addEventListener("beforeunload", (event) => {
     if (!importing && savingOptions === null && optionsEditRevision === null
-        && Object.keys(pendingOptions).length === 0) {
+        && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null
+        && !nameDrafts.hasPendingChanges()) {
       return;
     }
-    // Leaving revokes the blob URL the offscreen document is still reading from.
+    // Leaving can revoke an import's blob URL or discard a queued settings draft.
     event.preventDefault();
     event.returnValue = "";
   });
@@ -2218,7 +2287,7 @@ function dictionaryNameIsBeingEdited() {
 }
 
 function renderChangedDictionaryState() {
-  if (committing || managementPointerDown || dictionaryNameIsBeingEdited()) {
+  if (committing || nameDrafts.hasInFlightSave() || managementPointerDown || dictionaryNameIsBeingEdited()) {
     dictionaryRenderDeferred = true;
     return;
   }
@@ -2279,8 +2348,7 @@ function handleStorageChange(changes, area) {
     handleOptionsChange(changes.options);
   }
   if (changes.dictionaryUpdates) {
-    updateSettings = normaliseUpdateSettings(changes.dictionaryUpdates.newValue);
-    renderUpdateControls();
+    if (adoptUpdateSettings(changes.dictionaryUpdates.newValue)) renderUpdateControls();
   }
 }
 
@@ -2361,7 +2429,7 @@ async function start() {
   attachHandlers();
   const stored = await chrome.storage.local.get(["options", "dictionaryUpdates"]);
   adoptOptions(stored.options);
-  updateSettings = normaliseUpdateSettings(stored.dictionaryUpdates);
+  adoptUpdateSettings(stored.dictionaryUpdates);
   renderCustomDictionaryControls();
   if (await reloadDictionaries()) {
     writeOptions();

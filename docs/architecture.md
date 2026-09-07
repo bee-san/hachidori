@@ -107,6 +107,16 @@ not download archives. There is one global Off/hourly/daily/weekly/monthly
 setting and one Chrome alarm. An alarm runs the same checks and automatically
 installs available revisions, including revisions for disabled packages.
 
+`dictionaryUpdates` carries a monotonic revision shared by schedule and
+last-checked writes. Settings debounces schedule edits for 150 ms and sends one
+revision-checked save at a time. It adopts only newer committed settings from
+initial reads, storage events and replies; queued edits advance through their
+own save's revision. A conflict or lost reply retains the draft for explicit
+retry or discard. The schedule control stays disabled until a committed revision
+is loaded, and queued drafts remain visible in the navigation status. Retrying an
+already committed schedule reconciles the alarm
+without another storage write. Alarm work never holds the storage-write queue.
+
 An install carries the checked package ID, generation path, installed revision,
 source descriptor, check time, expected remote revision, and selected archive
 URL into the engine mutation queue. Recommended archives remain
@@ -1114,6 +1124,19 @@ worker commits prune members while preserving other group metadata. The Settings
 entrypoint owns imports, package management, and the shared commit queue. Groups
 remain in `dictionaryState` so package removal and membership pruning are one
 compare-and-set transaction rather than two coordinated writes.
+
+Group names and package aliases share `dictionary-name-drafts.js`: 150-ms
+autosave, one outstanding save per draft through the existing dictionary queue,
+and the original name as the same-field conflict baseline. Unrelated membership
+or presentation edits merge at the current CAS snapshot. An external rename
+retains the draft with Retry/Use saved name controls; correcting a local name
+validation error resumes autosave without rebasing a conflicting draft. Queued
+names advance only through their own committed name, and saves render the
+management lists once after draft ownership settles. Focused fields stay mounted.
+Group autosave follows E27; applying the same cadence to aliases is an intentional
+consistency improvement over the pinned GSM reference's explicit name submits.
+
+![A retained group-name draft after another Settings page renames the group](assets/settings-autosave-conflict.png)
 
 ## Runtime messages
 
