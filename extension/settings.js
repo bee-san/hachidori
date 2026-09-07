@@ -55,6 +55,7 @@ const NUMBER_FIELDS = [
   { key: "popupOpacityPercent", id: "opt-popup-opacity", live: true },
 ];
 const METADATA_FIELDS = [
+  { key: "showLookupCounts", id: "opt-lookup-counts" },
   { key: "showFrequencyDictionaryNames", id: "opt-frequency-names" },
   { key: "averageFrequency", id: "opt-average-frequency" },
   { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },

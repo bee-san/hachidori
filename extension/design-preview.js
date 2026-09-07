@@ -54,6 +54,9 @@
       popup.querySelector(".gsm-hoshidicts-kanji-back").focus({ preventScroll: true });
     },
     onAddCustomEntry() { throw new Error("This is a preview. Notes are not saved."); },
+    onResultsRendered({ lookupStats }) {
+      if (lookupStats) view.setLookupStats(lookupStats, { lookupCount: 3, seenCount: null });
+    },
   });
 
   function createSample() {
@@ -92,6 +95,7 @@
 
   function context() {
     return { ...HDPopup.metadataOptions(options),
+      showLookupCounts: options.showLookupCounts,
       showCompactDefinitionSummary: options.showCompactDefinitionSummary,
       compactDefinitionSummaryCount: options.compactDefinitionSummaryCount,
       compactDefinitionSummaryDictionary: options.compactDefinitionSummaryDictionary,
@@ -152,6 +156,7 @@
     if (geometryChanged || toolbarChanged) positionPopup(toolbarChanged);
     if (geometryChanged || cssChanged) view.scheduleMasonry();
     const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
+      nextOptions.showLookupCounts,
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
       nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextOptions.kanjiClickDictionary, nextState.revision]);
     if (key === updateKey) return;
