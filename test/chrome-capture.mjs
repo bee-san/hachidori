@@ -516,7 +516,7 @@ async function decodedFrameHashes(page, base64) {
     const context = canvas.getContext("2d", { willReadFrequently: true });
     const hashes = [];
     const luminances = [];
-    const centerLuminances = [];
+    const whitePixelFractions = [];
     for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
       const decoded = await decoder.decode({ frameIndex, completeFramesOnly: true });
       const image = decoded.image;
@@ -537,8 +537,11 @@ async function decodedFrameHashes(page, base64) {
       }
       hashes.push(hash >>> 0);
       luminances.push(luminance / luminanceSamples);
-      const center = (Math.floor(canvas.height / 2) * canvas.width + Math.floor(canvas.width / 2)) * 4;
-      centerLuminances.push((pixels[center] + pixels[center + 1] + pixels[center + 2]) / 3);
+      let whitePixels = 0;
+      for (let index = 0; index + 2 < pixels.length; index += 4) {
+        if (Math.min(pixels[index], pixels[index + 1], pixels[index + 2]) >= 240) whitePixels += 1;
+      }
+      whitePixelFractions.push(whitePixels / (canvas.width * canvas.height));
       image.close();
     }
     decoder.close();
@@ -549,7 +552,7 @@ async function decodedFrameHashes(page, base64) {
       height: canvas.height,
       hashes,
       luminances,
-      centerLuminances,
+      whitePixelFractions,
     };
   }, base64);
 }
@@ -813,7 +816,7 @@ async function main() {
     assert.equal(await capture.$eval("#capture-state", element => element.textContent), "Stopped",
       "saved settings never auto-arm capture");
     await capture.bringToFront();
-    resources.phase("recording");
+    await resources.phase("recording");
     await capture.click("#capture-start");
     await capture.waitForFunction(() => {
       const state = document.getElementById("capture-state")?.textContent;
@@ -962,9 +965,9 @@ async function main() {
     }
     assert.equal(initialPin.sourceLabel, "Recent clip",
       "the first learned DOM baseline has unknown onset and falls back");
-    resources.phase("full-export");
+    await resources.phase("full-export");
     const fullExport = await verifyFullRecentExport({ world, capture, source, pin: initialPin, anki, stoppedLookup });
-    resources.phase("recording");
+    await resources.phase("recording");
     await world.evaluate("(async () => HDCapture.release(globalThis.__capturePin))()");
 
     const soakExports = [];
@@ -973,7 +976,7 @@ async function main() {
       let cycle = 0;
       while ((performance.now() - soakStarted) / 1000 < sustainedSeconds) {
         const mode = ["static", "moving", "dense"][cycle % 3];
-        resources.phase(`soak-${mode}`);
+        await resources.phase(`soak-${mode}`);
         await source.evaluate(mode => window.setFixtureSceneMode(mode), mode);
         const remaining = sustainedSeconds - (performance.now() - soakStarted) / 1000;
         const periodEnd = performance.now() + Math.min(60, remaining) * 1000;
@@ -991,7 +994,7 @@ async function main() {
           return HDCapture.rootLookup({anchor:node,sentence:node.nodeValue,query:node.nodeValue});
         })()`);
         assert.ok(retainedPin?.token, "sustained capture can still pin retained history");
-        resources.phase(`soak-export-${mode}`);
+        await resources.phase(`soak-export-${mode}`);
         soakExports.push(await verifyFullRecentExport({ world, capture, source, pin: retainedPin,
           anki, stoppedLookup, expectMotion: mode !== "static" && remaining >= 12,
           assetName: `soak-${cycle}-${mode}` }));
@@ -1005,7 +1008,7 @@ async function main() {
       captureThroughput.soakSeconds = (performance.now()-soakStarted)/1000;
       captureThroughput.soakExports = soakExports;
       captureThroughput.soakFinalHistory = retained.history;
-      resources.phase("recording");
+      await resources.phase("recording");
     }
 
     await source.$eval("#subtitle", element => { element.textContent = "次の行"; });
@@ -1132,9 +1135,12 @@ async function main() {
     assert.equal(frameDecode.repetitionCount, "Infinity", "the AVIF loops indefinitely");
     assert.ok(new Set(frameDecode.hashes).size >= 2,
       `Chrome decodes changing AVIF frames (${frameDecode.hashes.join(", ")})`);
-    const brightFrame = frameDecode.centerLuminances.findIndex(value => value >= 240);
+    // The flash occupies at least 20% of these captured fixture layouts;
+    // ordinary text occupies less than 1%. Surface resizing can letterbox the
+    // video above the canvas center, so recognize its area instead of one pixel.
+    const brightFrame = frameDecode.whitePixelFractions.findIndex(value => value >= 0.1);
     assert.ok(brightFrame >= 0,
-      `Chrome decodes the synchronization flash (${frameDecode.centerLuminances.join(", ")})`);
+      `Chrome decodes the synchronization flash (${frameDecode.whitePixelFractions.join(", ")})`);
     const timing = avifTiming(avif);
     assert.equal(timing.durations.length, frameDecode.frameCount);
     const videoMarkerSeconds = timing.durations.slice(0, brightFrame)
@@ -1168,7 +1174,7 @@ async function main() {
     assert.equal(await capture.$eval("#texthooker-status", element => element.textContent), "Active",
       "an accepted live record has no inactivity timeout");
 
-    resources.phase("repeat-export");
+    await resources.phase("repeat-export");
     const repeatEncodeStartedAt = performance.now();
     const repeatedExport = await captureMessage(world, "hd_capture_export", {
       token: texthookerPin.token,
@@ -1282,7 +1288,7 @@ async function main() {
     }, { timeout: 10_000 });
     await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped",
       { timeout: 10_000, polling: 100 });
-    resources.phase("stopped");
+    await resources.phase("stopped");
     await source.bringToFront();
     const stopped = await captureControl(settings, "hd_capture_status");
     assert.equal(stopped.history.frameCount, 0);
