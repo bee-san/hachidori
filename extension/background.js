@@ -1342,6 +1342,11 @@ async function linkCapturePage(message) {
     }
     link.captureSessionId = status.captureSessionId;
     captureDocumentId = capturePage.documentId;
+    if (status.linkedPage) {
+      await relayCapture({ type: "hd_capture_unlinked", ...status.linkedPage,
+        reason: "Linking a reading page." }, () => captureLink === link);
+      assertCurrentCaptureLink(link);
+    }
     await unlinkCaptureContent();
     const stored = await chrome.storage.local.get(OPTIONS_KEY);
     assertCurrentCaptureLink(link);

@@ -23,7 +23,8 @@ function freshWorker({ readerDocument = reader.documentId, linked = true, status
   const context = vm.createContext({
     capturePage: null, captureRecovery: null, captureContentDocument: null, captureLink: null,
     OPTIONS_KEY: 'options', OFFSCREEN_DOCUMENT: 'offscreen.html',
-    ensureOffscreen: async () => {}, HDReaderOptions: { normaliseOptions: value => value },
+    ensureOffscreen: async () => {}, HDReaderOptions: { normaliseOptions: value => value,
+      projectContentOptions: globalThis.HDReaderOptions.projectContentOptions },
     CAPTURE_DOCUMENT: 'capture.html', CAPTURE_CONTENT_TARGET: 'hachidori-capture-content',
     CAPTURE_PAGE_TARGET: 'hachidori-capture-page',
     Date, Number, URL, Error, TypeError,
@@ -59,7 +60,9 @@ function freshWorker({ readerDocument = reader.documentId, linked = true, status
     background.indexOf('async function captureTabs'));
   const handlers = background.slice(background.indexOf('const CAPTURE_CONTROL_TYPES'),
     background.indexOf('function clearNavigatedCaptureDocument'));
-  vm.runInContext(helpers + handlers, context);
+  const contentCommands = background.slice(background.indexOf('async function commandCaptureContent'),
+    background.indexOf('async function offscreenExists'));
+  vm.runInContext(helpers + contentCommands + handlers, context);
   return { context, messages, contentMessages, optionsListener, readerLinked: () => readerLinked };
 }
 
@@ -97,6 +100,70 @@ function routedCaptureSession() {
   const fromReader = (message, sender = reader) => f.context.handleCaptureContent(message, sender);
   return { ...f, session, link, fromReader, at };
 }
+
+test('a replacement that fails before identification clears the retired reader from the live host', async () => {
+  const f = routedCaptureSession();
+  const unlinked = [];
+  try {
+    await f.link(linkedPage);
+    const captureSessionId = f.session.status().captureSessionId;
+    f.context.chrome.tabs.sendMessage = async (tabId, message) => {
+      if (message.type === 'hd_capture_unlink') {
+        unlinked.push(tabId);
+        return { linked: false };
+      }
+      assert.equal(message.type, 'hd_capture_link');
+      assert.equal(tabId, 3);
+      throw new Error('Receiving end does not exist');
+    };
+    await assert.rejects(f.context.linkCapturePage({ tabId: 3 }), /reading page is unavailable/);
+    assert.deepEqual(unlinked, [reader.tab.id]);
+    assert.equal(f.context.captureContentDocument, null);
+    const status = await f.context.relayCapture({ type: 'hd_capture_status' });
+    assert.equal(status.state, 'recording');
+    assert.equal(status.captureSessionId, captureSessionId);
+    assert.equal(status.linkedPage, null);
+    await assert.rejects(f.fromReader(pin), /not linked/);
+  } finally { f.session.stop(); }
+});
+
+test('a failed replacement cannot clear a newer same-page or different-page link in either session', async () => {
+  for (const restart of [false, true]) {
+    for (const samePage of [false, true]) {
+      const f = routedCaptureSession();
+      let entered, fail;
+      const waiting = new Promise(resolve => { entered = resolve; });
+      const failure = new Promise((_resolve, reject) => { fail = reject; });
+      try {
+        await f.link(linkedPage);
+        f.context.chrome.tabs.get = async () => ({ title: 'Reader', url: reader.url });
+        f.context.chrome.tabs.sendMessage = async (tabId, message) => {
+          if (message.type === 'hd_capture_unlink') return { linked: false };
+          assert.equal(message.type, 'hd_capture_link');
+          if (tabId === 3) { entered(); return failure; }
+          const sender = { ...reader, tab: { id: tabId }, documentId: `document-${tabId}` };
+          if (tabId === reader.tab.id) sender.documentId = reader.documentId;
+          await f.context.handleCaptureContent({ type: 'hd_capture_content_identify',
+            captureSessionId: message.captureSessionId }, sender);
+          return { videos: [] };
+        };
+        const obsolete = f.context.linkCapturePage({ tabId: 3 });
+        await waiting;
+        if (restart) { f.session.stop(); f.session.start(); }
+        const tabId = samePage ? reader.tab.id : 4;
+        await f.context.linkCapturePage({ tabId });
+        const retained = f.session.status();
+        fail(new Error('Receiving end does not exist'));
+        await assert.rejects(obsolete, /reading page is unavailable/);
+        const status = await f.context.relayCapture({ type: 'hd_capture_status' });
+        assert.equal(status.captureSessionId, retained.captureSessionId);
+        assert.deepEqual(status.linkedPage, retained.linkedPage);
+        assert.equal(status.linkedPage.tabId, tabId);
+        assert.equal(f.context.captureContentDocument.documentId, status.linkedPage.documentId);
+      } finally { f.session.stop(); }
+    }
+  }
+});
 
 test('host registration restores only the same surviving linked document after worker restart', async () => {
   const { context } = freshWorker();
