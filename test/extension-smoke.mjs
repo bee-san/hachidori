@@ -8159,7 +8159,7 @@ async function staleKanjiResponseStage(invalidation) {
           const stored = {
             ...defaults,
             dictionaryState,
-            options: { ...defaults.options, kanjiClickDictionary: firstSelection },
+            options: { ...defaults.options, kanjiClickDictionary: firstSelection, showLookupCounts: false },
           };
           if (invalidation === "initial-storage") {
             initialStorageCallback = () => callback(stored);
@@ -8183,7 +8183,8 @@ async function staleKanjiResponseStage(invalidation) {
     setState(candidate, nextPopup, nextView, nextHighlighter) {
       rootLevel.activeCandidate = candidate;
       rootLevel.activeHighlightText = "";
-      rootLevel.activeTermRender = { candidate, dictionaries, generation: 0, matchedText: "食べる", renderOptions: {}, results: [] };
+      rootLevel.activeTermRender = { candidate, dictionaries, generation: 0, matchedText: "食べる", renderOptions: {},
+        request: { kind: "term", candidate, payload: { text: "食べる" } }, results: [{ term: { expression: "食べる", reading: "たべる" } }] };
       currentGeneration = 0;
       styleGeneration = 0;
       rootLevel.popup = nextPopup;

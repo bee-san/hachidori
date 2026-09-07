@@ -3552,6 +3552,7 @@
         () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
           const summaryChanged = ["showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary"]
             .some(key => Object.hasOwn(context, key) && context[key] !== renderContext[key]);
+          const countsChanged = Object.hasOwn(context, "showLookupCounts") && context.showLookupCounts !== renderContext.showLookupCounts;
           // Image-only changes may proceed while Note, focus or a child keeps
           // the old tab/text projection mounted. Enter the same connected
           // request boundary before admitting new asynchronous image work.
@@ -3567,7 +3568,7 @@
           const sameMembers = sameTabMembers(previous[selectedIndex].dictionaries, next.tabs[index].dictionaries, dictionaries);
           const projectionDeferred = (summaryChanged && popup.contains(focused)
             && focused.closest(".gsm-hoshidicts-compact-definition-summary"))
-            || (!sameMembers && (!ownsView() || !canProjectPresentation()));
+            || ((!sameMembers || countsChanged) && (!ownsView() || !canProjectPresentation()));
           // New cards and summaries use the latest route. Only refresh handles
           // after replacing their owners, unless the projection is protected.
           for (const key of ["popupImageSources", "dictionaryPresentation", "resolveMedia", ...METADATA_OPTION_KEYS]) {
@@ -3587,7 +3588,7 @@
           if (selectedKey !== tabDescriptors[index].key) {
             renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
           }
-          if (sameMembers) {
+          if (sameMembers && !countsChanged) {
             const metadata = rendered.updateMetadata();
             changed = metadata.changed || changed;
             metadataDeferred = metadata.deferred;

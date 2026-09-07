@@ -155,6 +155,7 @@
 
   let optionsStorageRevision = -1;
   let dictionaryStateRevision = -1;
+  let lookupStatsDescriptor = { generation: null, revision: -1 };
 
   function extensionAlive() {
     try {
@@ -1345,6 +1346,8 @@
 
   function bindResultActions(rendered, level) {
     const token = level.lookupToken, request = level.currentViewRequest;
+    level.lookupStatsElement = rendered.lookupStats;
+    paintLookupStatistics(request, level);
     const context = { owner: level, popup: level.popup, request,
       isCurrent: () => level.currentViewRequest === request && !level.retainedView
         && requestCanRender(token, level.activeCandidate, level),
@@ -1365,6 +1368,71 @@
         frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
       };
     } });
+  }
+
+  function paintLookupStatistics(request, level) {
+    if (request !== level.currentViewRequest || level.retainedView
+        || !requestCanRender(level.lookupToken, level.activeCandidate, level) || !level.lookupStatsElement) return;
+    const payload = request?.lookupStats?.payload;
+    level.view.setLookupStats(level.lookupStatsElement,
+      options.showLookupCounts && payload?.descriptor.generation === lookupStatsDescriptor.generation
+        ? payload.statistics : null);
+  }
+
+  function adoptLookupStatsDescriptor(descriptor) {
+    if (!Number.isSafeInteger(descriptor?.revision) || descriptor.revision <= lookupStatsDescriptor.revision) return;
+    const replaced = descriptor.generation !== lookupStatsDescriptor.generation;
+    lookupStatsDescriptor = descriptor;
+    if (!replaced) return;
+    for (const level of levels) {
+      const request = level.currentViewRequest;
+      if (!request?.lookupStats) continue;
+      request.lookupStats.needsRefresh = true;
+      paintLookupStatistics(request, level);
+      refreshLookupStatistics(request, level);
+    }
+  }
+
+  function refreshLookupStatistics(request, level, record = false) {
+    const entry = request.lookupStats;
+    if (!options.showLookupCounts || entry.pending || (!record && !entry.needsRefresh)
+        || request !== level.currentViewRequest || level.retainedView
+        || !requestCanRender(level.lookupToken, level.activeCandidate, level)) return;
+    entry.pending = true;
+    entry.needsRefresh = false;
+    void sendRequest(record ? "hd_lookup_stats_record" : "hd_lookup_stats_read", {
+      term: entry.term, reading: entry.reading,
+    }, "hoshidicts-worker").then(payload => {
+      adoptLookupStatsDescriptor(payload.descriptor);
+      if (payload.descriptor.generation !== lookupStatsDescriptor.generation) {
+        entry.needsRefresh = true;
+        return;
+      }
+      entry.payload = payload;
+      entry.needsRefresh = false;
+      if (request.lookupStats === entry) paintLookupStatistics(request, level);
+    }).catch(error => {
+      // A lost reply may follow a committed increment. Never retry the write.
+      console.debug("hachidori: lookup statistics unavailable", error);
+    }).finally(() => {
+      entry.pending = false;
+      if (request.lookupStats === entry && entry.needsRefresh) refreshLookupStatistics(request, level);
+    });
+  }
+
+  function acceptLookupStatistics(results, request, level) {
+    const { expression: term, reading = "" } = results[0].term;
+    const firstVisit = !request.lookupStats;
+    let entry = request.lookupStats;
+    if (!entry || entry.term !== term || entry.reading !== reading) {
+      entry = request.lookupStats = { term, reading, pending: false, payload: null, needsRefresh: true };
+    } else if (entry.payload && entry.payload.descriptor.generation !== lookupStatsDescriptor.generation) {
+      entry.needsRefresh = true;
+    }
+    // The descriptor owns one visit, including a visit while counts are off.
+    // Back, tabs and Note refresh can read a replacement, but cannot increment.
+    paintLookupStatistics(request, level);
+    refreshLookupStatistics(request, level, firstVisit);
   }
 
   function ensureUi() {
@@ -1568,6 +1636,7 @@
   function renderContextFor(level = rootLevel) {
     return {
       definitionBlurState: "revealed",
+      showLookupCounts: options.showLookupCounts,
       dictionaryPresentation: dictionaryPresentation(),
       dictionaryTabGroups: dictionaryTabGroups(),
       generation: currentGeneration,
@@ -1711,7 +1780,7 @@
       // A malformed result must cost one hover, not the whole content script.
       console.warn("hachidori: could not render results", error);
       hide(level);
-      return;
+      return false;
     }
     level.activeHighlightText = matchedText;
     ensureDictionaryStyles(currentGeneration);
@@ -1720,6 +1789,8 @@
         && (level === rootLevel || request?.previous || level.focusLinkedBack)) {
       focusPopupControl(".gsm-hoshidicts-kanji-back", level);
     }
+    acceptLookupStatistics(results, request, level);
+    return true;
   }
 
   async function executeTermRequest(request, level = rootLevel, replayOptions = null) {
@@ -1776,7 +1847,7 @@
     if (request.highlightText === undefined) {
       request.highlightText = rawMatchedText(request.candidate, matched);
     }
-    renderTerms(
+    return renderTerms(
       results,
       request.candidate,
       request.highlightText,
@@ -1785,7 +1856,6 @@
       level,
       replayOptions,
     );
-    return true;
   }
 
   function runLookup(candidate, overrides = {}, level = rootLevel) {
@@ -1882,7 +1952,7 @@
         capability.title
       );
       if (results.length > 0) {
-        renderTerms(
+        return renderTerms(
           results,
           candidate,
           request.highlightText,
@@ -1891,7 +1961,6 @@
           level,
           replayOptions,
         );
-        return true;
       }
       try {
         reply = await sendRequest("hd_kanji", request.kanjiPayload);
@@ -2429,6 +2498,7 @@
 
   function updateDictionaryPresentation() {
     const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups(),
+      showLookupCounts: options.showLookupCounts,
       ...compactSummaryOptions(), ...imageSourceContext(), ...window.HDPopup.metadataOptions(options) };
     for (const level of levels) {
       if (level.popup && !level.popup.hidden) level.view.updateDictionaryPresentation(context);
@@ -2475,6 +2545,7 @@
       presentationChanged ||= adoption.presentationChanged;
       changed ||= dictionaryChanged;
     }
+    if (changes.lookupStats) adoptLookupStatsDescriptor(changes.lookupStats.newValue);
     if (changed) {
       invalidateStoredState(dictionaryChanged);
     } else if (presentationChanged) updateDictionaryPresentation();
@@ -2507,13 +2578,22 @@
     const metadataChanged = Object.entries(window.HDPopup.metadataOptions(next)).some(([key, value]) => value !== options[key]);
     // The caller adopts the complete storage delivery before new summary work.
     // A simultaneous dictionary replacement must invalidate the old view first.
-    const adoption = { lookupChanged, presentationChanged: (summaryChanged || imageSourceChanged || metadataChanged) && next.hoverEnabled };
+    const countsChanged = next.showLookupCounts !== options.showLookupCounts;
+    const adoption = { lookupChanged, presentationChanged: (summaryChanged || imageSourceChanged || metadataChanged || countsChanged) && next.hoverEnabled };
     if (activationChanged) {
       activationPressed = false;
       activationCode = null;
     }
     optionsStorageRevision = revision;
     options = next;
+    if (countsChanged) {
+      for (const level of levels) {
+        if (level.currentViewRequest?.lookupStats) {
+          paintLookupStatistics(level.currentViewRequest, level);
+          refreshLookupStatistics(level.currentViewRequest, level);
+        }
+      }
+    }
     audio?.update(options);
     mining?.update(options);
     appearance?.update(options);
@@ -2566,12 +2646,13 @@
   function start() {
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);
-      chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS }, (stored) => {
+      chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS, lookupStats: null }, (stored) => {
         if (disposed || chrome.runtime.lastError) {
           return;
         }
         const optionsAdoption = adoptOptions(stored && stored.options);
         const adoption = adoptDictionaryState(stored && stored.dictionaryState);
+        adoptLookupStatsDescriptor(stored && stored.lookupStats);
         if (optionsAdoption.lookupChanged || adoption.dictionaryChanged) {
           invalidateStoredState(adoption.dictionaryChanged);
         } else if (optionsAdoption.presentationChanged || adoption.presentationChanged) updateDictionaryPresentation();
