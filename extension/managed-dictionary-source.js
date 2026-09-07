@@ -38,6 +38,12 @@ export function effectiveDictionarySchedule(dictionary, globalSchedule) {
   return managedUpdateSchedule(dictionary.updateScheduleOverride) ?? globalSchedule;
 }
 
+export function assertDictionaryUpdateSchedule(dictionary) {
+  if (dictionary.updateScheduleOverride != null && managedUpdateSchedule(dictionary.updateScheduleOverride) === null) {
+    throw new Error("The dictionary update schedule is invalid.");
+  }
+}
+
 export function nextDictionaryUpdateCheck(dictionary, globalSchedule, now) {
   if (managedDictionarySource(dictionary) === null) return null;
   const interval = MANAGED_UPDATE_SCHEDULE_MINUTES[effectiveDictionarySchedule(dictionary, globalSchedule)];

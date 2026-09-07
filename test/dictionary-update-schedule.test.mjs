@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  effectiveDictionarySchedule, nextDictionaryUpdateCheck, nextManagedUpdateCheck,
+  assertDictionaryUpdateSchedule, effectiveDictionarySchedule, nextDictionaryUpdateCheck, nextManagedUpdateCheck,
 } from "../extension/managed-dictionary-source.js";
 
 const now = Date.parse("2026-09-07T12:00:00Z");
@@ -10,6 +10,12 @@ const managed = patch => ({ isUpdatable: true, indexUrl: "https://example.com/in
   downloadUrl: "https://example.com/dictionary.zip", ...patch });
 
 test("per-dictionary schedules inherit by default and explicit policies override global Off", () => {
+  for (const value of [undefined, null, "off", "hourly", "daily", "weekly", "monthly"]) {
+    assertDictionaryUpdateSchedule({ updateScheduleOverride: value });
+  }
+  for (const value of [false, "inherit", "sometimes"]) {
+    assert.throws(() => assertDictionaryUpdateSchedule({ updateScheduleOverride: value }), /schedule/u);
+  }
   assert.equal(effectiveDictionarySchedule(managed(), "daily"), "daily");
   assert.equal(effectiveDictionarySchedule(managed({ updateScheduleOverride: null }), "weekly"), "weekly");
   assert.equal(effectiveDictionarySchedule(managed({ updateScheduleOverride: "hourly" }), "off"), "hourly");

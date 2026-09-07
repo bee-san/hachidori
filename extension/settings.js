@@ -14,7 +14,9 @@ import {
   normaliseDictionaryGroups,
 } from "./dictionary-groups.js";
 import {
+  effectiveDictionarySchedule,
   managedDictionarySource,
+  nextDictionaryUpdateCheck,
   normaliseUpdateSettings,
 } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
@@ -360,6 +362,7 @@ function normaliseDictionary(row) {
     mediaCount: nonnegativeCount(row?.mediaCount),
     installedAt: stringValue(row?.installedAt),
     lastUpdateCheck: row?.lastUpdateCheck ?? null,
+    ...(row?.updateScheduleOverride === undefined ? {} : { updateScheduleOverride: row.updateScheduleOverride }),
     ...(sourceId === null ? {} : { sourceId }),
   };
 }
@@ -768,6 +771,11 @@ function renderUpdateControls() {
   element("update-all").disabled = busy || availableUpdates().length === 0;
   element("update-check-now").disabled = busy;
   schedule.disabled = busy || updateSettings.revision < 0;
+  const byId = new Map(dictionaries.map(dictionary => [dictionary.id, dictionary]));
+  for (const row of document.querySelectorAll(".dict-row")) {
+    const entry = byId.get(row.dataset.dictionaryId);
+    if (entry) renderDictionarySchedule(row, entry);
+  }
 }
 
 function clearImportResults() {
@@ -1212,6 +1220,38 @@ function bindDictionaryUpdate(row, entry) {
   update.addEventListener("click", () => {
     void runManagedUpdate("hd_updates_install", [entry.id]);
   });
+  renderDictionarySchedule(row, entry);
+  const schedule = row.querySelector(".dict-update-schedule");
+  schedule.value = entry.updateScheduleOverride ?? "inherit";
+  schedule.setAttribute("aria-label", `Automatic updates for ${dictionaryLabel(entry)}`);
+  schedule.addEventListener("change", async () => {
+    const value = schedule.value === "inherit" ? null : schedule.value;
+    let stale = false;
+    await commitDictionaries(updateDictionary(entry.id, current => {
+      if ((current.updateScheduleOverride ?? null) !== (entry.updateScheduleOverride ?? null)
+          || !isUpdateCheckable(current)) {
+        stale = true;
+        return current;
+      }
+      return value === (current.updateScheduleOverride ?? null) ? current : { ...current, updateScheduleOverride: value };
+    }), false);
+    if (stale) setStatus("The dictionary schedule changed elsewhere. Review its current value before choosing again.", "error");
+  });
+}
+
+function renderDictionarySchedule(row, entry) {
+  row.querySelector(".dict-schedule").hidden = !isUpdateCheckable(entry);
+  const schedule = row.querySelector(".dict-update-schedule");
+  const effective = effectiveDictionarySchedule(entry, updateSettings.schedule);
+  const inherit = schedule.querySelector('[value="inherit"]');
+  const label = `Use default (${updateSettings.schedule})`;
+  if (inherit.textContent !== label) inherit.textContent = label;
+  const now = Date.now();
+  const due = nextDictionaryUpdateCheck(entry, updateSettings.schedule, now);
+  const output = row.querySelector(".dict-next-check");
+  const text = due === null ? "Automatic updates off"
+    : `${effective.charAt(0).toUpperCase()}${effective.slice(1)} · ${due <= now ? "Due now" : `Next check ${new Date(due).toLocaleString()}`}`;
+  if (output.textContent !== text) output.textContent = text;
 }
 
 function updateItemById(current, id, update) {
@@ -1273,6 +1313,7 @@ function focusedManagementControl() {
       "dict-position-input",
       "dict-move",
       "dict-update",
+      "dict-update-schedule",
       "dict-remove",
     ].find((name) => active.classList.contains(name));
     return controlClass

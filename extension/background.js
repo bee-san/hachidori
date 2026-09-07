@@ -6,6 +6,7 @@ import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
 import {
+  assertDictionaryUpdateSchedule,
   httpsUrl,
   MANAGED_DICTIONARY_CHANGED,
   managedDictionaryFingerprint,
@@ -299,6 +300,7 @@ function committedSelectionTitle(title, current, dictionaries) {
 }
 
 function dictionaryCommit(current, currentOptions, dictionaries, groups) {
+  for (const dictionary of dictionaries) assertDictionaryUpdateSchedule(dictionary);
   const currentRevision = current?.revision ?? 0;
   const state = {
     schemaVersion: DICTIONARY_STATE_SCHEMA_VERSION,
