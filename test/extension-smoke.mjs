@@ -27,6 +27,7 @@ import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
 import { assertBackupSnapshot, backupRevisions } from "../extension/backup-state.js";
 import { createBackupDownloads } from "../extension/backup-downloads.js";
+import { lookupStatsKey } from "../extension/lookup-stats.js";
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
 // The trained fixture is built in memory rather than read out of test/fixtures:
@@ -8608,7 +8609,9 @@ async function contentNoteStage() {
       },
       emitOptions,
       emitState,
-      emitLookupStats(descriptor) { storageListener?.({ lookupStats: { newValue: descriptor } }, "local"); },
+      emitLookupStats(descriptor, row) { storageListener?.({ lookupStats: { newValue: descriptor },
+        ...(row ? { [lookupStatsKey(descriptor, row)]: { newValue: row } } : {}),
+      }, "local"); },
       lookupStatistics: (depth = 0) => popupRecord(depth)?.lookupStatistics,
       initialLookup,
       internalLink(link, depth = 0) {
@@ -8763,6 +8766,46 @@ async function contentNoteStage() {
       rebind(); rebind();
       outcomes[Object.keys(outcomes)[2]] = replaced && records().length === 6 && !harness.take("hd_lookup_stats_record");
     } finally { harness.close(); }
+    return outcomes;
+  }
+
+  async function lookupStatisticsRaceCase() {
+    const outcomes = {};
+    const harness = await createHarness(null, { holdLookupStats: true });
+    try {
+      await harness.initialLookup();
+      const pending = harness.take("hd_lookup_stats_record");
+      const row = { term: pending.request.term, reading: pending.request.reading, lookupCount: 2 };
+      harness.emitLookupStats({ generation: "statistics", revision: 2 }, row);
+      harness.reply(pending, { descriptor: { generation: "statistics", revision: 1 }, statistics: { ...row, lookupCount: 1 } });
+      await harness.settle();
+      harness.emitLookupStats({ generation: "statistics", revision: 3 }, { ...row, term: "別の言葉", lookupCount: 1 });
+      const reads = harness.sent.filter(request => request.type === "hd_lookup_stats_read");
+      outcomes["matching row events outrank old count replies without refreshing unrelated terms"] =
+        harness.lookupStatistics()?.lookupCount === 2 && reads.length === 0;
+      harness.edit(true);
+      harness.emitState(harness.state(2, "Replacement"));
+      harness.emitOptions({ showLookupCounts: false });
+      outcomes["turning counts off hides the existing line even in a retained Note view"] =
+        harness.popup.querySelector(".gsm-hoshidicts-lookup-stats").hidden;
+    } finally { harness.close(); }
+    const toggled = await createHarness(null, { holdLookupStats: true });
+    try {
+      await toggled.initialLookup();
+      const pending = toggled.take("hd_lookup_stats_record");
+      toggled.emitOptions({ showLookupCounts: false });
+      toggled.emitOptions({ showLookupCounts: true });
+      toggled.reply(pending, { descriptor: { generation: null, revision: 0 }, statistics: null });
+      await toggled.settle();
+      const repair = toggled.take("hd_lookup_stats_read");
+      if (repair) toggled.reply(repair, { descriptor: { generation: null, revision: 0 },
+        statistics: { term: pending.request.term, reading: pending.request.reading, lookupCount: 0, seenCount: null } });
+      await toggled.settle();
+      outcomes["an Off reply arriving after On repairs with one read and never another increment"] =
+        Boolean(repair) && toggled.lookupStatistics()?.lookupCount === 0
+        && toggled.sent.filter(request => request.type === "hd_lookup_stats_record").length === 1
+        && toggled.sent.filter(request => request.type === "hd_lookup_stats_read").length === 1;
+    } finally { toggled.close(); }
     return outcomes;
   }
 
@@ -11480,7 +11523,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
-    lookupStatistics: await lookupStatisticsCase(),
+    lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
