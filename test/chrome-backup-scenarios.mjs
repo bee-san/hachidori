@@ -56,7 +56,11 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   await page.waitForSelector("#backup-export", { visible: true });
   const before = await read();
   await page.click("#backup-export");
-  await page.waitForFunction(() => /Download started|Could not|cancelled/u.test(document.getElementById("backup-status").textContent), { timeout: 120_000 });
+  await page.waitForFunction(() => {
+    const status = document.getElementById("backup-status");
+    return /Download started|cancelled/u.test(status.textContent) || status.classList.contains("is-error");
+  }, { timeout: 120_000 });
+  assert.match(await page.$eval("#backup-status", element => element.textContent), /Download started/u);
   const downloaded = await page.waitForFunction(async () => {
     const [entry] = await chrome.downloads.search({ orderBy: ["-startTime"], limit: 1 });
     const tracked = (await chrome.storage.session.get("backupDownloads")).backupDownloads ?? {};

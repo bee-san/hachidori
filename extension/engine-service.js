@@ -1692,7 +1692,7 @@ function collectBackupFiles(root, prefix, assertPath, output) {
     const absolute = `${root}/${name}`;
     const stat = FS.lstat(absolute);
     if (isDirectory(stat)) collectBackupFiles(absolute, path, assertPath, output);
-    else if (FS.isFile(stat.mode)) output.push({ path, data: backupFileBlob(absolute, stat.size) });
+    else if ((stat.mode & 0o170000) === 0o100000) output.push({ path, data: backupFileBlob(absolute, stat.size) });
     else throw new Error(`Dictionary generation contains a non-file entry: ${path}`);
   }
 }
@@ -1731,26 +1731,28 @@ async function stageBackupFiles(prepared, roots) {
     engine.FS.mkdirTree(path.slice(0, path.lastIndexOf("/")));
     await streamResponseToFile(engine.FS, new Response(file.data), path);
   }
-  for (const dictionary of dictionaries) {
-    const generated = await packageFromIndex(dictionary.path);
-    const keys = ["title", "revision", "termCount", "frequencyCount", "pitchCount", "kanjiCount", "mediaCount"];
-    if (keys.some(key => generated[key] !== dictionary[key]) || !hasDictionaryMarker(dictionary.path)) {
-      throw new Error(`The backup dictionary metadata does not match its files: ${dictionary.title}`);
-    }
-    const required = ["hash.table", "bloom.filter", "blobs.bin"];
-    if (dictionary.mediaCount > 0) required.push("media.idx", "media.bin");
-    for (const name of required) {
-      if (!exists(`${dictionary.path}/${name}`)) throw new Error(`The backup is missing ${dictionary.title}/${name}`);
-    }
-    const recommended = recommendedDictionarySource(dictionary.sourceId);
-    if (recommended) assertRecommendedDictionary(recommended, generated);
-    if (dictionary.id === CUSTOM_DICTIONARY_ID
-        && !customDictionaryMetadataMatches(generated, dictionary.revision, dictionary.termCount)) {
-      throw new Error("The backup custom dictionary files do not satisfy the managed package invariants.");
-    }
-  }
+  for (const dictionary of dictionaries) await validateBackupDictionary(dictionary);
   await persistFilesystem();
   return dictionaries;
+}
+
+async function validateBackupDictionary(dictionary) {
+  const generated = await packageFromIndex(dictionary.path);
+  const keys = ["title", "revision", "termCount", "frequencyCount", "pitchCount", "kanjiCount", "mediaCount"];
+  if (keys.some(key => generated[key] !== dictionary[key]) || !hasDictionaryMarker(dictionary.path)) {
+    throw new Error(`The backup dictionary metadata does not match its files: ${dictionary.title}`);
+  }
+  const required = ["hash.table", "bloom.filter", "blobs.bin"];
+  if (dictionary.mediaCount > 0) required.push("media.idx", "media.bin");
+  for (const name of required) {
+    if (!exists(`${dictionary.path}/${name}`)) throw new Error(`The backup is missing ${dictionary.title}/${name}`);
+  }
+  const recommended = recommendedDictionarySource(dictionary.sourceId);
+  if (recommended) assertRecommendedDictionary(recommended, generated);
+  if (dictionary.id === CUSTOM_DICTIONARY_ID
+      && !customDictionaryMetadataMatches(generated, dictionary.revision, dictionary.termCount)) {
+    throw new Error("The backup custom dictionary files do not satisfy the managed package invariants.");
+  }
 }
 
 async function commitBackupSnapshot(current, snapshot) {
