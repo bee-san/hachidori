@@ -390,6 +390,12 @@ async function interceptFetches(target, routes, label) {
         return;
       }
       route.requests += 1;
+      // A route may also refuse the connection, which is how a local service
+      // this suite does not own is kept out of a check's outcome.
+      if (route.fail) {
+        await session.send("Fetch.failRequest", { requestId: event.requestId, errorReason: route.fail });
+        return;
+      }
       const response = route.respond ? await route.respond(event.request) : route;
       const body = Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.body);
       await session.send("Fetch.fulfillRequest", {
@@ -5970,6 +5976,14 @@ async function main() {
     await startup.emulateMediaFeatures([]);
   }
 
+  // The first-run Anki check must find nothing. Refuse the AnkiConnect
+  // connection on the worker for the duration, so a real Anki or another
+  // suite's mock server on this port cannot decide this outcome.
+  const ankiRefused = { requests: 0, fail: "ConnectionRefused" };
+  const ankiOffline = await interceptFetches(
+    await browser.waitForTarget((target) => target.type() === "service_worker" && target.url().endsWith("/background.js")),
+    new Map([["http://127.0.0.1:8765/", ankiRefused]]), "anki offline");
+
   // The Anki stage checks by itself and its outcome moves setup on, so both
   // headings are transient. Record every heading the page paints instead of
   // hoping a poll lands inside them.
@@ -6073,6 +6087,8 @@ async function main() {
     "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
     settledAnki !== null && settledAnki.step === "anki" && settledAnki.done === 1
       && settledAnki.outcome === "unavailable" && JSON.stringify(settledAnki.actions) === JSON.stringify([])
+      // Exactly one AnkiConnect attempt, and the absence is not asked about twice.
+      && ankiRefused.requests === 1
       && ankiStage?.anki?.status === "unavailable" && ankiStage.anki.model === null && ankiStage.anki.deck === null
       && ankiStage.anki.detail.includes("Open Anki with the AnkiConnect add-on")
       // The outcome moved setup on by itself and stays readable on the final step.
@@ -6086,8 +6102,10 @@ async function main() {
       && typeof completedSetup?.completedAt === "string" && completedSetup.anki?.status === "unavailable"
       && JSON.stringify(Object.keys(completedSetup.dictionaries.outcomes).sort()) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId).sort())
       && editedPreference?.showCompactDefinitionSummary === false && editedPreference.revision === 2,
-    JSON.stringify({ settledAnki, practiceReached, headingLog, completedSetup, editedPreference, closedTab, startupTabs: startupTabs() }),
+    JSON.stringify({ settledAnki, practiceReached, headingLog, completedSetup, editedPreference, closedTab,
+      ankiRequests: ankiRefused.requests, startupTabs: startupTabs() }),
   );
+  await ankiOffline.detach().catch(() => {});
   await page.bringToFront();
 
   // Clear the mocked catalogue packages so the Settings installer below starts

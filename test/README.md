@@ -684,8 +684,11 @@ jmnedict, the all-installed heading with the accumulated total, and the
 Jitendex summary source and Bee's clicked-kanji route settled once while the
 user's compact-summary edit stands; the result staying at least five seconds
 before **Checking for Anki…** with focus on the new heading; the absent Anki
-settling by itself into **No Anki found**, whose recorded outcome carries the
-gateway's reason and moves setup to **You’re ready.** with the outcome sentence
+settling by itself into **No Anki found** after exactly one AnkiConnect
+attempt, which the harness refuses on the worker target for that stage so a
+real Anki or another suite's mock server on port 8765 cannot decide the
+outcome, and whose recorded outcome carries the gateway's reason and moves
+setup to **You’re ready.** with the outcome sentence
 and its Settings link, where Finish closes the tab and the completed record
 hides the link; and, after the in-run service-worker restart and the full
 pass-2 relaunch, no reopened startup tab, no further archive request, the same
