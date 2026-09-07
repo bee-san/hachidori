@@ -1078,6 +1078,7 @@ async function firstRunBackgroundStage() {
   const seededOnce = tabs.length === 1 && tabs[0].url === startupUrl
     && JSON.stringify(seeded.setup) === JSON.stringify({
       schemaVersion: 1, revision: 1, startedAt: seeded.setup?.startedAt, stage: "dictionaries", completedAt: null,
+      dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [] },
     }) && validIso(seeded.setup?.startedAt)
     && JSON.stringify(seeded.options) === JSON.stringify({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3, revision: 1 })
     && JSON.stringify(storage.sets) === JSON.stringify([["options", "setupState"]]);
@@ -1132,6 +1133,8 @@ async function firstRunBackgroundStage() {
     await send({ baseRevision: 2, stage: "practice" }, { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") }),
     await send({ baseRevision: 2, stage: "practice" }, { id: "another-extension", url: startupUrl }),
   ];
+  const continuedWrite = await send({ baseRevision: 2, stage: "complete", continued: "yes" });
+  rejected.push(continuedWrite);
   const completed = await send({ baseRevision: 2, stage: "complete" });
   // Setup is monotonic: a current-revision write cannot reopen a finished setup.
   rejected.push(await send({ baseRevision: 3, stage: "practice" }));
@@ -1149,6 +1152,49 @@ async function firstRunBackgroundStage() {
       && JSON.stringify(storage.sets.slice(writesBefore)) === JSON.stringify([["setupState"], ["setupState"]])
       && !bus.log.some((message) => message.relayed),
     JSON.stringify({ advanced, stale, rejected, completed, sets: storage.sets.slice(writesBefore) }));
+
+  // The offscreen installer records outcomes; a committed Jitendex or Bee's
+  // entry settles its first-install selection once without touching an edit.
+  const offscreenSender = { id: chrome.runtime.id, url: chrome.runtime.getURL("offscreen.html") };
+  const record = (fields, sender = offscreenSender) => bus.sendMessage("offscreen-installer", {
+    target: "hoshidicts-worker", type: "hd_setup_record", requestId: "setup-record", runId: "run-1", ...fields,
+  }, sender);
+  const jitendexTitle = "Jitendex.org [2026-08-11]";
+  const beesTitle = "Bee's Ultimate Kanji Dictionary";
+  const committed = (id, title, sourceId, extra = {}) => ({ id, title, sourceId, revision: "1", enabled: true, favorite: false,
+    displayName: null, termCount: 1, frequencyCount: 0, pitchCount: 0, kanjiCount: 0, mediaCount: 0, path: `/dicts/g/${id}`, ...extra });
+  await storage.api().local.set({ dictionaryState: { schemaVersion: 1, revision: 1, groups: [],
+    dictionaries: [committed("jitendex-id", jitendexTitle, "jitendex"), committed("bees-id", beesTitle, "bees-ultimate-kanji-dictionary")] } });
+  const recordWritesBefore = storage.sets.length;
+  const fromPage = await record({ outcomes: { jitendex: { status: "installed", seconds: 2.5 } } }, startupSender);
+  const unknownSource = await record({ outcomes: { jmdict: { status: "installed", seconds: 2.5 } } });
+  const jitendexRecorded = await record({ outcomes: { jitendex: { status: "installed", seconds: 2.5 } } });
+  const afterJitendex = { setup: storage.raw.get("setupState"), options: storage.raw.get("options") };
+  // The user picks another summary source before a repeated record; the earlier choice must stand.
+  await storage.api().local.set({ options: { ...afterJitendex.options, compactDefinitionSummaryDictionary: beesTitle, revision: afterJitendex.options.revision + 1 } });
+  const jitendexAgain = await record({ outcomes: { jitendex: { status: "installed", seconds: 1 } } });
+  // An option the user already changed is consumed without being overwritten.
+  await storage.api().local.set({ options: { ...storage.raw.get("options"), kanjiClickDictionary: { title: jitendexTitle, kind: "term" }, revision: storage.raw.get("options").revision + 1 } });
+  const optionsBeforeBees = storage.raw.get("options");
+  const beesRecorded = await record({ outcomes: { "bees-ultimate-kanji-dictionary": { status: "installed", seconds: 4 } }, runSeconds: 6.5 });
+  const failedRecorded = await record({ outcomes: { jiten: { status: "failed", seconds: 0.5, error: "HTTP 503" } }, runSeconds: 0.5 });
+  const finalSetup = storage.raw.get("setupState");
+  check("installer outcomes are recorded from the engine host only and settle each dictionary selection once without overwriting edits",
+    fromPage?.ok === false && fromPage.error.includes("engine host") && unknownSource?.ok === false && unknownSource.error.includes("unknown catalogue source")
+      && jitendexRecorded?.ok === true && JSON.stringify(jitendexRecorded.state.dictionaries.outcomes) === JSON.stringify({ jitendex: { status: "installed", seconds: 2.5, error: null } })
+      && JSON.stringify(jitendexRecorded.state.dictionaries.selectionsApplied) === JSON.stringify(["jitendex"])
+      && afterJitendex.options.compactDefinitionSummaryDictionary === jitendexTitle && afterJitendex.options.showCompactDefinitionSummary === false
+      && afterJitendex.options.revision === edited.revision + 1
+      && JSON.stringify(storage.sets.slice(recordWritesBefore, recordWritesBefore + 1)) === JSON.stringify([["options", "setupState"]])
+      && jitendexAgain?.ok === true && storage.raw.get("options").compactDefinitionSummaryDictionary === beesTitle
+      && jitendexAgain.state.dictionaries.outcomes.jitendex.seconds === 1
+      && beesRecorded?.ok === true && JSON.stringify(storage.raw.get("options")) === JSON.stringify(optionsBeforeBees)
+      && JSON.stringify(beesRecorded.state.dictionaries.selectionsApplied) === JSON.stringify(["jitendex", "bees-ultimate-kanji-dictionary"])
+      && beesRecorded.state.dictionaries.totalSeconds === 6.5
+      && failedRecorded?.ok === true && finalSetup.dictionaries.totalSeconds === 7
+      && JSON.stringify(finalSetup.dictionaries.outcomes.jiten) === JSON.stringify({ status: "failed", seconds: 0.5, error: "HTTP 503" })
+      && finalSetup.stage === "complete" && finalSetup.revision === completed.state.revision + 4,
+    JSON.stringify({ fromPage, unknownSource, jitendexRecorded, afterJitendex, jitendexAgain, beesRecorded, failedRecorded, finalSetup, sets: storage.sets.slice(recordWritesBefore) }));
 }
 
 async function ankiBackgroundStage() {
@@ -4953,7 +4999,7 @@ async function main() {
   check("Settings shows Resume setup only while the first-run setup record is incomplete",
     navigationSettings?.resume === true, JSON.stringify(navigationSettings));
   const startup = await startupPageStage();
-  check("the startup page renders trusted inventory, keeps focus through updates and advances through revisioned writes",
+  check("the startup page mirrors its own installer run, keeps focus, retries only missing dictionaries and advances after the five-second result",
     startup !== null && Object.values(startup).every((value) => value === true), JSON.stringify(startup));
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
@@ -5463,9 +5509,10 @@ async function main() {
   const restartedEngineService = await import(
     `file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}?restart`
   );
+  const importProgress = [];
   restartedEngineService.configureEngineService(
     (message) => offscreenChrome.runtime.sendMessage(message),
-    { createHoshidicts, storageBackend: "idbfs", lowRam: true },
+    { createHoshidicts, storageBackend: "idbfs", lowRam: true, reportProgress: (event) => importProgress.push(structuredClone(event)) },
   );
   let restartCounter = 0;
   const restartRequest = (type, fields = {}) => {
@@ -5522,6 +5569,52 @@ async function main() {
       revisionedState,
       false,
     ],
+  );
+
+  // A recommended first install downloads its catalogue-pinned archive inside
+  // the engine and reports download bytes, then one installation phase.
+  const jmnedict = RECOMMENDED_DICTIONARIES.find((entry) => entry.sourceId === "jmnedict");
+  const jmnedictArchive = new Uint8Array(buildRecommendedZip({
+    title: jmnedict.title, revision: jmnedict.revision, indexUrl: jmnedict.indexUrl,
+    downloadUrl: jmnedict.downloadUrl, capabilities: jmnedict.capabilities,
+  }));
+  const jmnedictRequests = { count: 0 };
+  remoteArchive(jmnedict.downloadUrl, jmnedictArchive, "https://github.com/yomidevs/jmdict-yomitan/releases/download/JMnedict.2026-09-04/JMnedict.zip", jmnedictRequests);
+  const remoteRecommendedImport = await restartRequest("hd_import", {
+    sourceId: jmnedict.sourceId, archiveUrl: jmnedict.downloadUrl, fileName: jmnedict.archiveName,
+  });
+  const remoteRecommendedState = await storedDictionaryState();
+  const remoteRecommendedPackage = remoteRecommendedState.dictionaries.find((dictionary) => dictionary.sourceId === "jmnedict");
+  const downloadEvents = importProgress.filter((event) => event.phase === "downloading");
+  const installingEvents = importProgress.filter((event) => event.phase === "installing");
+  const wrongArchive = await restartRequest("hd_import", {
+    sourceId: "jiten", archiveUrl: "https://example.test/jiten.zip", fileName: "jiten-frequency.zip",
+  });
+  const noSource = await restartRequest("hd_import", { archiveUrl: jmnedict.downloadUrl, fileName: "JMnedict.zip" });
+  const jiten = RECOMMENDED_DICTIONARIES.find((entry) => entry.sourceId === "jiten");
+  remoteArchive(jiten.downloadUrl, jmnedictArchive, "https://unrelated.example/jiten.zip");
+  const unexpectedFinal = await restartRequest("hd_import", { sourceId: "jiten", archiveUrl: jiten.downloadUrl, fileName: jiten.archiveName });
+  const declared = restartedEngineService.declaredResponseLength;
+  const headers = (values) => ({ headers: { get: (name) => values[name.toLowerCase()] ?? null } });
+  check(
+    "a recommended first install downloads its catalogue archive in the engine and reports download then installation phases",
+    remoteRecommendedImport.ok === true && remoteRecommendedImport.report?.success === true && jmnedictRequests.count === 1
+      && remoteRecommendedPackage?.title === jmnedict.title && remoteRecommendedPackage.indexUrl === jmnedict.indexUrl
+      && remoteRecommendedPackage.downloadUrl === jmnedict.downloadUrl && remoteRecommendedPackage.isUpdatable === true
+      && importProgress.every((event) => event.requestId === `restart-${restartCounter - 3}`)
+      && downloadEvents.length >= 1 && downloadEvents.every((event) => event.totalBytes === null)
+      && downloadEvents.at(-1).receivedBytes === jmnedictArchive.byteLength
+      && installingEvents.length === 1 && installingEvents[0].receivedBytes === jmnedictArchive.byteLength
+      && importProgress.indexOf(installingEvents[0]) > importProgress.indexOf(downloadEvents.at(-1))
+      && wrongArchive.ok === false && wrongArchive.error.includes("catalogue archive URL")
+      && noSource.ok === false && noSource.error.includes("no archive URL")
+      && unexpectedFinal.ok === false && unexpectedFinal.error.includes("unexpected final URL")
+      && (await storedDictionaryState()).dictionaries.length === remoteRecommendedState.dictionaries.length
+      && declared(headers({ "content-length": "4096" })) === 4096
+      && declared(headers({ "content-length": "4096", "content-encoding": "gzip" })) === null
+      && declared(headers({ "content-length": "4096", "content-encoding": "identity" })) === 4096
+      && declared(headers({ "content-length": "0" })) === null && declared(headers({})) === null && declared({ body: {} }) === null,
+    JSON.stringify({ remoteRecommendedImport, remoteRecommendedPackage, importProgress, wrongArchive, noSource, unexpectedFinal, jmnedictRequests }),
   );
 
   console.log(`\n${passed} passed, ${failed} failed`);
@@ -5769,8 +5862,9 @@ function loadStartupScript(window) {
   return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${setupState}\n${startup}\n})()`);
 }
 
-// The startup page renders the worker-owned setup state, keeps focus through
-// inventory updates, and advances stages only through revision-checked writes.
+// The startup page renders the worker-owned setup state, mirrors the offscreen
+// installer's run for its own run identity only, keeps focus through updates,
+// and advances stages only through revision-checked writes.
 async function startupPageStage() {
   const jsdom = await loadJsdom();
   if (jsdom === null) return null;
@@ -5780,110 +5874,184 @@ async function startupPageStage() {
   const { window } = dom;
   const { document } = window;
   const requests = [];
-  let listener = null;
+  let storageListener = null;
+  let eventListener = null;
   let pendingReply = null;
-  let setupState = { schemaVersion: 1, revision: 3, startedAt: "2026-09-07T10:00:00.000Z", stage: "dictionaries", completedAt: null };
-  const jmnedictIndex = RECOMMENDED_CATALOGUE.find((entry) => entry.sourceId === "jmnedict").indexUrl;
+  let installReply = null;
+  const emptyDictionaries = { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [] };
+  let setupState = { schemaVersion: 1, revision: 3, startedAt: "2026-09-07T10:00:00.000Z", stage: "dictionaries", completedAt: null, dictionaries: emptyDictionaries };
+  const catalogue = (sourceId) => RECOMMENDED_CATALOGUE.find((entry) => entry.sourceId === sourceId);
   let dictionaryState = { schemaVersion: 1, revision: 5, groups: [], dictionaries: [
     { id: "bee", title: "Bee's Ultimate Kanji Dictionary", sourceId: "bees-ultimate-kanji-dictionary", enabled: true },
-    { id: "names", title: "JMnedict [2026-01-01]", indexUrl: jmnedictIndex, enabled: true },
+    { id: "names", title: "JMnedict [2026-01-01]", indexUrl: catalogue("jmnedict").indexUrl, enabled: true },
     // A display name is not a trusted identity.
     { id: "lookalike", title: "Jitendex", displayName: "Jitendex", enabled: true },
   ] };
   const options = { revision: 2, lookupMode: "activation", activationKey: "Control" };
   const closedTabs = [];
   window.chrome = {
-    runtime: { async sendMessage(message) {
-      requests.push(structuredClone(message));
-      if (message.type !== "hd_setup_cas") throw new Error(`Unexpected startup request ${message.type}`);
-      return new Promise((resolveReply) => { pendingReply = resolveReply; });
-    } },
+    runtime: {
+      async sendMessage(message) {
+        requests.push(structuredClone(message));
+        if (message.target === "hachidori-setup" && message.type === "hd_setup_install") {
+          return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
+        }
+        if (message.type !== "hd_setup_cas") throw new Error(`Unexpected startup request ${message.type}`);
+        return new Promise((resolveReply) => { pendingReply = resolveReply; });
+      },
+      onMessage: { addListener(value) { eventListener = value; } },
+    },
     storage: {
       local: { async get() {
         return { setupState: structuredClone(setupState), dictionaryState: structuredClone(dictionaryState), options: structuredClone(options) };
       } },
-      onChanged: { addListener(value) { listener = value; } },
+      onChanged: { addListener(value) { storageListener = value; } },
     },
     tabs: { async getCurrent() { return { id: 44 }; }, async remove(id) { closedTabs.push(id); } },
   };
   const pause = () => new Promise((done) => setTimeout(done, 10));
-  async function until(predicate) {
-    const deadline = Date.now() + 2000;
+  async function until(predicate, what = "its expected state") {
+    const deadline = Date.now() + 8000;
     while (!predicate() && Date.now() < deadline) await pause();
-    if (!predicate()) throw new Error("the startup page did not reach its expected state");
+    if (!predicate()) throw new Error(`the startup page did not reach ${what}`);
   }
   const heading = () => document.getElementById("setup-heading").textContent;
   const status = () => document.getElementById("setup-status");
   const currentStep = () => document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null;
   const doneSteps = () => document.querySelectorAll(".setup-step.is-done").length;
-  const rows = () => [...document.querySelectorAll(".setup-dictionary")].map((row) =>
-    [row.dataset.sourceId, row.querySelector(".setup-dictionary-status").textContent]);
+  const row = (sourceId) => document.querySelector(`.setup-dictionary[data-source-id="${sourceId}"]`);
+  const rows = () => [...document.querySelectorAll(".setup-dictionary")].map((item) =>
+    [item.dataset.sourceId, item.querySelector(".setup-dictionary-status").textContent]);
+  const bar = (sourceId) => row(sourceId)?.querySelector(".setup-track");
+  const actions = () => [...document.querySelectorAll("#setup-actions button")].map((control) => [control.id, control.textContent, control.className]);
+  const installs = () => requests.filter((message) => message.type === "hd_setup_install").map((message) => message.sourceIds);
   const reply = (fields) => {
     const sent = requests.at(-1);
     pendingReply({ type: "hd_setup_cas_result", requestId: sent.requestId, ok: true, error: null, ...fields });
     pendingReply = null;
     return sent;
   };
+  const storage = (changes) => storageListener(changes, "local");
+  const event = (fields) => eventListener({ target: "hachidori-setup-events", type: "hd_setup_progress", ...fields });
+  const runA = (sequence, entries, finished = false) => ({ runId: "run-a", sequence, finished, entries });
+  const entry = (sourceId, phase, extra = {}) => ({ sourceId, phase, receivedBytes: 0, totalBytes: null, seconds: null, error: null, ...extra });
   try {
+    installReply = (message) => runA(1, [entry("jitendex", "waiting"), entry("jiten", "waiting")]);
     await loadStartupScript(window);
-    await until(() => heading() === "Default dictionaries");
-    const initial = currentStep() === "dictionaries" && doneSteps() === 0
-      && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Not installed"], ["jmnedict", "Already installed"],
-        ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Not installed"]])
+    await until(() => heading() === "Installing default dictionaries…", "the installing view");
+    const attached = JSON.stringify(installs()) === JSON.stringify([["jitendex", "jiten"]])
+      && currentStep() === "dictionaries" && doneSteps() === 0
+      && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Waiting"], ["jmnedict", "Already installed"],
+        ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Waiting"]])
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
-      && document.getElementById("setup-continue")?.textContent === "Continue setup"
-      && document.querySelector('a[href="settings.html"]') !== null && requests.length === 0;
+      && document.querySelectorAll("#setup-actions button").length === 0
+      && status().textContent === "Installing default dictionaries.";
 
-    // Inventory updates rebuild the card; the id-less in-card Settings link and
-    // the Continue button must each keep focus through their replacement.
-    const importLink = () => document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]');
-    const linkBefore = importLink();
-    linkBefore.focus();
-    dictionaryState = { ...dictionaryState, revision: 6, dictionaries: dictionaryState.dictionaries.filter((entry) => entry.id !== "names") };
-    listener({ dictionaryState: { newValue: structuredClone(dictionaryState) } }, "local");
-    const linkFocusKept = importLink() !== linkBefore && document.activeElement === importLink()
-      && rows()[1][1] === "Not installed";
-    document.getElementById("setup-continue").focus();
-    dictionaryState = { ...dictionaryState, revision: 7, dictionaries: dictionaryState.dictionaries.filter((entry) => entry.id !== "bee") };
-    listener({ dictionaryState: { newValue: structuredClone(dictionaryState) } }, "local");
-    listener({ setupState: { newValue: { ...setupState, revision: 2, stage: "anki" } } }, "local");
-    const inventory = linkFocusKept && document.activeElement?.id === "setup-continue" && rows()[2][1] === "Not installed"
-      && heading() === "Default dictionaries" && currentStep() === "dictionaries";
+    // Live phases follow this run's events in order; older events and other runs cannot move the rows.
+    event(runA(2, [entry("jitendex", "downloading", { receivedBytes: 1_048_576, totalBytes: 4_194_304 }), entry("jiten", "waiting")]));
+    const determinate = rows()[0][1] === "Downloading… 1.0 MB of 4.0 MB (25%)" && bar("jitendex")?.classList.contains("is-determinate")
+      && bar("jitendex").getAttribute("aria-valuenow") === "25" && bar("jitendex").getAttribute("role") === "progressbar"
+      && bar("jitendex").getAttribute("aria-labelledby") === "setup-dictionary-jitendex" && bar("jiten") === null;
+    event(runA(1, [entry("jitendex", "waiting"), entry("jiten", "waiting")]));
+    event({ ...runA(9, [entry("jitendex", "installed", { seconds: 1 }), entry("jiten", "installed", { seconds: 1 })]), runId: "run-b" });
+    const ordered = rows()[0][1] === "Downloading… 1.0 MB of 4.0 MB (25%)";
+    event(runA(3, [entry("jitendex", "downloading", { receivedBytes: 2_097_152, totalBytes: null }), entry("jiten", "waiting")]));
+    const indeterminate = rows()[0][1] === "Downloading… 2.0 MB" && !bar("jitendex").classList.contains("is-determinate")
+      && bar("jitendex").getAttribute("aria-valuetext") === "In progress" && bar("jitendex").getAttribute("aria-valuenow") === null;
+    event(runA(4, [entry("jitendex", "installing", { receivedBytes: 4_194_304, totalBytes: 4_194_304 }), entry("jiten", "waiting")]));
+    const installing = rows()[0][1] === "Installing…" && status().textContent === "Installing default dictionaries.";
+    event(runA(5, [entry("jitendex", "installed", { seconds: 3.2 }), entry("jiten", "downloading")]));
+    const installed = rows()[0][1] === "Installed in 3.2 seconds" && status().textContent === "Jitendex installed in 3.2 seconds."
+      && !status().classList.contains("is-error") && rows()[3][1] === "Downloading… 0 KB";
+    event(runA(6, [entry("jitendex", "installed", { seconds: 3.2 }), entry("jiten", "failed", { seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" })]));
+    const failedRow = rows()[3][1] === "Failed: could not read jiten-frequency.zip: HTTP 503"
+      && status().textContent === "Jiten Frequency Dictionary could not be installed: could not read jiten-frequency.zip: HTTP 503"
+      && status().classList.contains("is-error") && heading() === "Installing default dictionaries…";
+    // The worker records outcomes before the run finishes; a complete inventory is what decides success.
+    dictionaryState = { ...dictionaryState, revision: 6, dictionaries: [...dictionaryState.dictionaries,
+      { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true }] };
+    storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
+    setupState = { ...setupState, revision: 4, dictionaries: { ...emptyDictionaries, totalSeconds: 5,
+      outcomes: { jitendex: { status: "installed", seconds: 3.2, error: null }, jiten: { status: "failed", seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" } } } };
+    storage({ setupState: { newValue: structuredClone(setupState) } });
+    event(runA(7, [entry("jitendex", "installed", { seconds: 3.2 }), entry("jiten", "failed", { seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" })], true));
+    const failureView = heading() === "Some dictionaries could not be installed"
+      && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Installed in 3.2 seconds"], ["jmnedict", "Already installed"],
+        ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Failed: could not read jiten-frequency.zip: HTTP 503"]])
+      && JSON.stringify(actions()) === JSON.stringify([["setup-retry", "Retry missing dictionaries", "primary-button"], ["setup-continue", "Continue setup", "ghost"]])
+      && document.getElementById("setup-countdown-label") === null && installs().length === 1;
 
+    // Continuing with a failure records an incomplete set; a conflict keeps the view and reports it.
+    document.getElementById("setup-retry").focus();
+    dictionaryState = { ...dictionaryState, revision: 7 };
+    storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
+    const focusKept = document.activeElement?.id === "setup-retry";
     document.getElementById("setup-continue").click();
-    await until(() => pendingReply !== null);
-    const saving = document.getElementById("setup-continue").disabled && status().textContent === "Saving…";
-    // Chrome delivers the storage event before the reply; the write in flight renders once.
-    setupState = { ...setupState, revision: 4, stage: "anki" };
-    listener({ setupState: { newValue: structuredClone(setupState) } }, "local");
-    const deferred = heading() === "Default dictionaries";
-    const advanceRequest = reply({ state: structuredClone(setupState) });
-    await until(() => heading() === "Anki");
-    const advanced = advanceRequest.target === "hoshidicts-worker" && advanceRequest.baseRevision === 3
-      && advanceRequest.stage === "anki" && currentStep() === "anki" && doneSteps() === 1
+    await until(() => pendingReply !== null, "the continue write");
+    const continueRequest = reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
+    await until(() => status().textContent.startsWith("Could not save"), "the continue conflict");
+    const continued = continueRequest.stage === "anki" && continueRequest.continued === true && continueRequest.baseRevision === 4
+      && heading() === "Some dictionaries could not be installed" && document.getElementById("setup-retry") !== null;
+
+    // Retry asks for the missing entry only and follows the new run.
+    installReply = () => ({ runId: "run-b", sequence: 1, finished: false, entries: [entry("jiten", "downloading")] });
+    document.getElementById("setup-retry").click();
+    await until(() => heading() === "Installing default dictionaries…", "the retry run");
+    const retried = JSON.stringify(installs().at(-1)) === JSON.stringify(["jiten"]) && rows()[3][1] === "Downloading… 0 KB"
+      && rows()[0][1] === "Installed in 3.2 seconds";
+    event({ runId: "run-a", sequence: 8, finished: false, entries: [entry("jitendex", "installed", { seconds: 3.2 }), entry("jiten", "installing")] });
+    const oldRunIgnored = rows()[3][1] === "Downloading… 0 KB";
+    event({ runId: "run-b", sequence: 2, finished: false, entries: [entry("jiten", "installed", { seconds: 2.5 })] });
+    dictionaryState = { ...dictionaryState, revision: 8, dictionaries: [...dictionaryState.dictionaries,
+      { id: "jiten", title: "Jiten", sourceId: "jiten", enabled: true }] };
+    storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
+    setupState = { ...setupState, revision: 5, dictionaries: { ...setupState.dictionaries, totalSeconds: 7.5,
+      outcomes: { ...setupState.dictionaries.outcomes, jiten: { status: "installed", seconds: 2.5, error: null } } } };
+    storage({ setupState: { newValue: structuredClone(setupState) } });
+    event({ runId: "run-b", sequence: 3, finished: true, entries: [entry("jiten", "installed", { seconds: 2.5 })] });
+    const successStarted = Date.now();
+    const success = heading() === "All dictionaries installed in 7.5 seconds"
+      && document.getElementById("setup-countdown-label")?.textContent === "Continuing to Anki in 5 seconds"
+      && document.getElementById("setup-countdown-track")?.getAttribute("role") === "progressbar"
+      && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
+      && document.querySelectorAll("#setup-actions button").length === 0
+      && status().textContent === "Jiten Frequency Dictionary installed in 2.5 seconds.";
+    // The result stays for five seconds; a conflicting write (the run total landed) is retried with the newer revision.
+    await new Promise((done) => setTimeout(done, 3000));
+    // The label ticks every 250 ms, so three seconds in it reads two or three.
+    const heldAtThree = heading() === "All dictionaries installed in 7.5 seconds" && pendingReply === null
+      && /Continuing to Anki in [123] seconds?/u.test(document.getElementById("setup-countdown-label")?.textContent ?? "");
+    await until(() => pendingReply !== null, "the countdown write");
+    const elapsed = Date.now() - successStarted;
+    const firstAdvance = requests.at(-1);
+    setupState = { ...setupState, revision: 6 };
+    reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
+    await until(() => pendingReply !== null, "the retried countdown write");
+    const secondAdvance = requests.at(-1);
+    setupState = { ...setupState, revision: 7, stage: "anki" };
+    reply({ state: structuredClone(setupState) });
+    await until(() => heading() === "Anki", "the Anki stage");
+    const advanced = elapsed >= 4900 && firstAdvance.stage === "anki" && firstAdvance.baseRevision === 5 && firstAdvance.continued === undefined
+      && secondAdvance.stage === "anki" && secondAdvance.baseRevision === 6 && currentStep() === "anki" && doneSteps() === 1
       && document.activeElement === document.getElementById("setup-heading") && status().textContent === ""
       && document.querySelector('#setup-body a[href="settings.html#anki"]') !== null;
 
     document.getElementById("setup-continue").click();
-    await until(() => pendingReply !== null);
-    setupState = { ...setupState, revision: 5, stage: "practice" };
-    const conflictRequest = reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
-    await until(() => heading() === "You’re ready.");
-    const conflict = conflictRequest.baseRevision === 4 && conflictRequest.stage === "practice"
-      && status().textContent === "Could not save setup progress: Setup changed in another tab."
-      && status().classList.contains("is-error") && currentStep() === "practice" && doneSteps() === 2
-      && document.getElementById("setup-body").textContent.includes("Hold Control and hover")
-      && document.getElementById("setup-finish") !== null && document.getElementById("setup-continue") === null;
-
+    await until(() => pendingReply !== null, "the practice write");
+    setupState = { ...setupState, revision: 8, stage: "practice" };
+    reply({ state: structuredClone(setupState) });
+    await until(() => heading() === "You’re ready.", "the practice stage");
+    const practice = document.getElementById("setup-body").textContent.includes("Hold Control and hover")
+      && document.getElementById("setup-finish") !== null && doneSteps() === 2;
     document.getElementById("setup-finish").click();
-    await until(() => pendingReply !== null);
-    setupState = { ...setupState, revision: 6, stage: "complete", completedAt: "2026-09-07T10:05:00.000Z" };
-    const finishRequest = reply({ state: structuredClone(setupState) });
-    await until(() => closedTabs.length === 1);
-    const finished = finishRequest.baseRevision === 5 && finishRequest.stage === "complete" && closedTabs[0] === 44
+    await until(() => pendingReply !== null, "the finish write");
+    const finishRequest = reply({ state: { ...setupState, revision: 9, stage: "complete", completedAt: "2026-09-07T10:05:00.000Z" } });
+    await until(() => closedTabs.length === 1, "the closed tab");
+    const finished = finishRequest.baseRevision === 8 && finishRequest.stage === "complete" && closedTabs[0] === 44
       && heading() === "Setup is complete." && currentStep() === null && doneSteps() === 3
-      && document.getElementById("setup-actions").childElementCount === 0 && requests.length === 3;
-    return { initial, inventory, saving, deferred, advanced, conflict, finished };
+      && document.getElementById("setup-actions").childElementCount === 0;
+    return { attached, determinate, ordered, indeterminate, installing, installed, failedRow, failureView, focusKept, continued,
+      retried, oldRunIgnored, success, heldAtThree, advanced, practice, finished };
   } finally {
     window.close();
   }

@@ -715,7 +715,7 @@ const WORKER_HANDLERS = {
       throw new Error("the setup write request carried no valid base revision");
     }
     if (message.continued !== undefined && typeof message.continued !== "boolean") {
-      throw new TypeError("the setup write request carried an invalid continuation flag");
+      throw new Error("the setup write request carried an invalid continuation flag");
     }
     const stored = await chrome.storage.local.get(SETUP_STATE_KEY);
     const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
@@ -738,7 +738,7 @@ const WORKER_HANDLERS = {
     const outcomes = message.outcomes ?? {};
     if (!outcomes || typeof outcomes !== "object" || Array.isArray(outcomes)
         || !Object.keys(outcomes).every((sourceId) => recommendedDictionarySource(sourceId) !== null)) {
-      throw new TypeError("the setup record names an unknown catalogue source");
+      throw new Error("the setup record names an unknown catalogue source");
     }
     const stored = await chrome.storage.local.get([SETUP_STATE_KEY, DICTIONARY_STATE_KEY, OPTIONS_KEY]);
     const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
