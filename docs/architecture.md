@@ -1158,10 +1158,12 @@ pin.
 
 Video history is timestamped JPEG bytes with 60-second age, 64 MiB live, 32 MiB
 extra pinned, and 256 KiB per-frame limits. Audio is a mono Float32 sample-clock
-ring over the same timeline. Capture skips frame opportunities instead of
-queueing unbounded work. The local worker incrementally decodes selected JPEGs
-into an animated AVIF sequence; WAV generation converts only the selected PCM
-to 16-bit mono. One job, a 256 MiB worker heap ceiling, 30-second watchdog,
+ring over the same timeline. Current Chrome audio chunks retain their media-track
+timestamps and share the video-frame media clock; the AudioWorklet sample clock
+remains the compatibility fallback. Capture skips frame opportunities instead
+of queueing unbounded work. The local worker incrementally decodes selected
+JPEGs into an animated AVIF sequence; WAV generation converts only the selected
+PCM to 16-bit mono. One job, a 256 MiB worker heap ceiling, 30-second watchdog,
 4 MiB AVIF limit, 1 MiB WAV limit, and 6 MiB serialized asset-response limit
 bound export. Missing source audio is reported and never replaced with
 microphone or fabricated silence.

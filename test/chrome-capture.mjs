@@ -27,6 +27,7 @@ const PROFILE = process.env.HACHIDORI_CAPTURE_PROFILE
 const SETTINGS_SCREENSHOT = process.env.HACHIDORI_MEDIA_SETTINGS_SCREENSHOT || "";
 const CAPTURE_SCREENSHOT = process.env.HACHIDORI_CAPTURE_SCREENSHOT || "";
 const ASSET_DIR = process.env.HACHIDORI_CAPTURE_ASSET_DIR || "";
+const FORCE_AUDIO_WORKLET = process.env.HACHIDORI_CAPTURE_FORCE_AUDIO_WORKLET === "1";
 
 function cachedChrome() {
   const root = resolve(CACHE, "hachidori-browsers/chrome");
@@ -51,7 +52,7 @@ const FIXTURE_HTML = `<!doctype html>
     <style>
       html, body { margin: 0; min-height: 100%; background: #10141f; color: #f8fafc; font-family: sans-serif; }
       main { display: grid; place-items: center; gap: 24px; min-height: 100vh; }
-      canvas { width: min(80vw, 800px); aspect-ratio: 16 / 9; border-radius: 18px; box-shadow: 0 24px 60px #0008; }
+      #scene { width: min(80vw, 800px); aspect-ratio: 16 / 9; border-radius: 18px; box-shadow: 0 24px 60px #0008; }
       #subtitle-area { min-width: 26rem; padding: 18px 28px; border-radius: 12px; background: #000c; text-align: center; }
       #subtitle { font-size: 32px; }
       button { padding: 12px 20px; font: inherit; }
@@ -59,15 +60,18 @@ const FIXTURE_HTML = `<!doctype html>
   </head>
   <body>
     <main>
-      <canvas id="scene" width="960" height="540"></canvas>
+      <video id="scene" autoplay playsinline></video>
+      <canvas id="fixture-canvas" width="960" height="540" hidden></canvas>
       <div id="subtitle-area"><span id="subtitle">最初の行</span></div>
       <button id="fixture-start" type="button">Start fixture audio</button>
     </main>
     <script>
-      const canvas = document.getElementById("scene");
+      const scene = document.getElementById("scene");
+      const canvas = document.getElementById("fixture-canvas");
       const context = canvas.getContext("2d");
       let frame = 0;
       let painting = true;
+      let videoTrack = null;
       function paint() {
         frame += 1;
         if (painting) {
@@ -81,6 +85,7 @@ const FIXTURE_HTML = `<!doctype html>
           context.font = "bold 72px sans-serif";
           context.fillText("Hachidori " + frame, 80, 280);
         }
+        videoTrack?.requestFrame();
         requestAnimationFrame(paint);
       }
       paint();
@@ -88,32 +93,41 @@ const FIXTURE_HTML = `<!doctype html>
         painting = false;
         context.fillStyle = color;
         context.fillRect(0, 0, canvas.width, canvas.height);
+        videoTrack?.requestFrame();
       };
       window.triggerSyncMarker = () => {
         if (!window.fixtureAudio) throw new Error("fixture audio is not active");
-        const { audio } = window.fixtureAudio;
-        const start = audio.currentTime;
+        const { audio, destination } = window.fixtureAudio;
+        const start = audio.currentTime + 0.05;
         const end = start + 0.25;
         painting = false;
         context.fillStyle = "#fff";
         context.fillRect(0, 0, canvas.width, canvas.height);
+        videoTrack.requestFrame();
         const oscillator = new OscillatorNode(audio, { frequency: 1200 });
         const gain = new GainNode(audio, { gain: 0.22 });
-        oscillator.connect(gain).connect(audio.destination);
+        oscillator.connect(gain).connect(destination);
         oscillator.start(start);
         oscillator.stop(end);
         return { start, end };
       };
       document.getElementById("fixture-start").addEventListener("click", async event => {
+        const button = event.currentTarget;
         const audio = new AudioContext({ sampleRate: 48000 });
+        const destination = audio.createMediaStreamDestination();
         const oscillator = new OscillatorNode(audio, { frequency: 440 });
         const gain = new GainNode(audio, { gain: 0 });
-        oscillator.connect(gain).connect(audio.destination);
+        oscillator.connect(gain).connect(destination);
         oscillator.start();
         await audio.resume();
-        window.fixtureAudio = { audio, oscillator, gain };
-        event.currentTarget.textContent = "Fixture audio active";
-        event.currentTarget.disabled = true;
+        const canvasStream = canvas.captureStream(0);
+        videoTrack = canvasStream.getVideoTracks()[0];
+        scene.srcObject = new MediaStream([videoTrack, ...destination.stream.getAudioTracks()]);
+        videoTrack.requestFrame();
+        await scene.play();
+        window.fixtureAudio = { audio, oscillator, gain, destination };
+        button.textContent = "Fixture audio active";
+        button.disabled = true;
       });
     </script>
   </body>
@@ -640,6 +654,11 @@ async function main() {
 
     const capture = await browser.newPage();
     await capture.setViewport({ width: 1280, height: 960, deviceScaleFactor: 1 });
+    if (FORCE_AUDIO_WORKLET) {
+      await capture.evaluateOnNewDocument(() => {
+        Object.defineProperty(globalThis, "MediaStreamTrackProcessor", { value: undefined });
+      });
+    }
     await capture.goto(`chrome-extension://${id}/capture.html`, { waitUntil: "domcontentloaded" });
     await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped",
       { polling: 100 });
@@ -776,13 +795,36 @@ async function main() {
       requirements: preflight.capture.requirements,
     });
     assert.equal(exported.state, "finishing");
-    await source.bringToFront();
+    await capture.bringToFront();
     await source.evaluate(() => window.triggerSyncMarker());
-    assert.deepEqual(await source.$eval("#scene", canvas => {
+    assert.deepEqual(await source.$eval("#fixture-canvas", canvas => {
       const pixel = canvas.getContext("2d").getImageData(10, 10, 1, 1).data;
       return [...pixel];
     }), [255, 255, 255, 255]);
-    await new Promise(done => setTimeout(done, 900));
+    await capture.waitForFunction(() => {
+      const video = document.getElementById("capture-preview");
+      if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return false;
+      const canvas = document.createElement("canvas");
+      canvas.width = 1;
+      canvas.height = 1;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      context.drawImage(video, video.videoWidth / 2, video.videoHeight / 2, 1, 1, 0, 0, 1, 1);
+      const pixel = context.getImageData(0, 0, 1, 1).data;
+      return (pixel[0] + pixel[1] + pixel[2]) / 3 >= 240;
+    }, { timeout: 3_000, polling: 50 });
+    const markerFrameTimestamp = (await captureControl(capture, "hd_capture_status")).history.frameNewestMs;
+    await source.evaluate(() => window.setFixtureFrame("#fff"));
+    const markerDeadline = Date.now() + 2_000;
+    let markerStatus;
+    do {
+      markerStatus = await captureControl(capture, "hd_capture_status");
+      if (markerStatus.history.frameNewestMs <= markerFrameTimestamp) {
+        await new Promise(done => setTimeout(done, 50));
+      }
+    } while (markerStatus.history.frameNewestMs <= markerFrameTimestamp
+      && Date.now() < markerDeadline);
+    assert.ok(markerStatus.history.frameNewestMs > markerFrameTimestamp,
+      "capture samples the synchronization flash before the fixture advances");
     await source.evaluate(() => window.setFixtureFrame("#e11d48"));
     await new Promise(done => setTimeout(done, 400));
     await source.evaluate(() => window.setFixtureFrame("#2563eb"));

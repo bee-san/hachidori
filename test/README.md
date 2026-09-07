@@ -1031,10 +1031,10 @@ prints after a failure.
 ## `chrome-capture.mjs`
 
 This separate browser test uses Chrome's real `getDisplayMedia()` path. It serves
-a self-contained animated canvas, changing Japanese DOM text, and WebAudio tone;
-Chrome's test-only picker flag selects that tab. The extension imports the real
-dictionary fixture, opens its visible Capture controls, starts tab capture,
-links the reading page, and exercises:
+a self-contained canvas-backed media stream, changing Japanese DOM text, and
+WebAudio tone; Chrome's test-only picker flag selects that tab. The extension
+imports the real dictionary fixture, opens its visible Capture controls, starts
+tab capture, links the reading page, and exercises:
 
 - compressed frame and sample-clocked audio history;
 - first-baseline fallback and later observed DOM timing;
@@ -1055,12 +1055,16 @@ links the reading page, and exercises:
 HACHIDORI_CAPTURE_HEADFUL=1 xvfb-run -a node test/chrome-capture.mjs
 HACHIDORI_CAPTURE_HEADFUL=1 HACHIDORI_CAPTURE_SUSTAINED_SECONDS=70 \
   xvfb-run -a node test/chrome-capture.mjs
+HACHIDORI_CAPTURE_HEADFUL=1 HACHIDORI_CAPTURE_FORCE_AUDIO_WORKLET=1 \
+  xvfb-run -a node test/chrome-capture.mjs
 ```
 
 The default measures five seconds of production throughput. The sustained form
 continues to 70 seconds and additionally requires both retained timelines to
 settle between 55 and 61 seconds while remaining within the 64 MiB frame budget.
-`HACHIDORI_CAPTURE_SUSTAINED_SECONDS` is clamped to 5–90 seconds.
+`HACHIDORI_CAPTURE_SUSTAINED_SECONDS` is clamped to 5–90 seconds. The final form
+is a test-only compatibility run that hides timestamped audio-track processing
+from the capture page and exercises its AudioWorklet fallback.
 
 The real chooser path must run headfully. On Linux, Xvfb provides the display;
 on a desktop host, omit `xvfb-run -a`. A screenshot run can use:
