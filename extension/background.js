@@ -1,6 +1,8 @@
 import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
+import { createBackupDownloads } from "./backup-downloads.js";
+import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
 import {
@@ -65,7 +67,7 @@ let ankiGateway, ankiMining;
 let backupDownloads;
 
 function getBackupDownloads() {
-  backupDownloads ??= import("./backup-downloads.js").then(module => module.createBackupDownloads(chrome, relay));
+  backupDownloads ??= createBackupDownloads(chrome, relay);
   return backupDownloads;
 }
 
@@ -345,7 +347,7 @@ const WORKER_HANDLERS = {
     if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
       throw new Error("Backup downloads are available only from Hachidori Settings.");
     }
-    return (await getBackupDownloads()).download();
+    return getBackupDownloads().download();
   },
   async hd_backup_base_read() {
     const stored = await chrome.storage.local.get([
@@ -373,7 +375,6 @@ const WORKER_HANDLERS = {
     if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)) {
       throw new Error("A backup restore must be prepared by the dictionary engine.");
     }
-    const { assertBackupSnapshot, backupRevisions } = await import("./backup-state.js");
     const { snapshot: current } = await WORKER_HANDLERS.hd_backup_base_read();
     if (!sameJsonValue(message.base, current)) {
       return { ok: false, conflict: true, error: "Hachidori changed since this backup was prepared. Prepare it again before restoring." };
@@ -1069,7 +1070,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.downloads.onChanged.addListener(delta => {
   if (!delta.state || delta.state.current === "in_progress") return;
-  getBackupDownloads().then(service => service.changed(delta.id)).catch(error => {
+  getBackupDownloads().changed(delta.id).catch(error => {
     console.warn("hoshidicts: could not release a finished backup download:", describe(error));
   });
 });

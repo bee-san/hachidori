@@ -63,7 +63,8 @@ export function assertRecommendedDictionary(source, dictionary) {
     throw new Error(`${source.name} archive did not declare a revision`);
   }
   const countKey = source.requiredCapability === "freq" ? "frequencyCount" : "termCount";
-  if (!(dictionary[countKey] > 0)) {
+  const hasCapability = dictionary[countKey] > 0;
+  if (!hasCapability) {
     throw new Error(`${source.name} archive did not contain its expected capability`);
   }
 }

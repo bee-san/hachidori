@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { assertBackupSnapshot, backupRevisions, restoredBackupSnapshot } from "../extension/backup-state.js";
-import { emptyCustomDictionaryDocument } from "../extension/custom-dictionary.js";
+import { CUSTOM_DICTIONARY_ID, CUSTOM_DICTIONARY_TITLE, customDictionarySemanticRevision,
+  emptyCustomDictionaryDocument, parseCustomDictionary } from "../extension/custom-dictionary.js";
 
 const snapshot = () => ({
   state: { schemaVersion: 1, revision: 8, dictionaries: [], groups: [] },
@@ -39,4 +40,21 @@ test("restore validation rejects malformed state, settings and inconsistent cust
     edit(value);
     await assert.rejects(assertBackupSnapshot(value));
   }
+});
+
+test("backup enforces managed custom metadata without imposing extra limits on ordinary titles", async () => {
+  const value = snapshot();
+  value.document.text = "猫,ねこ,cat";
+  value.document.semanticRevision = await customDictionarySemanticRevision(parseCustomDictionary(value.document.text).entries);
+  const dictionary = { id: CUSTOM_DICTIONARY_ID, title: CUSTOM_DICTIONARY_TITLE, revision: value.document.semanticRevision,
+    enabled: true, favorite: false, displayName: null, termCount: 1, frequencyCount: 0, pitchCount: 0, kanjiCount: 0, mediaCount: 0,
+    isUpdatable: false, indexUrl: null, downloadUrl: null, language: "ja" };
+  value.state.dictionaries = [dictionary];
+  await assertBackupSnapshot(value);
+  for (const patch of [{ mediaCount: 1 }, { language: "en" }, { isUpdatable: true }]) {
+    await assert.rejects(assertBackupSnapshot({ ...value, state: { ...value.state, dictionaries: [{ ...dictionary, ...patch }] } }));
+  }
+  value.document = emptyCustomDictionaryDocument();
+  value.state.dictionaries = [{ ...dictionary, id: "ordinary", title: "Title\nwith a tab\t" }];
+  await assertBackupSnapshot(value);
 });

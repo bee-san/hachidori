@@ -25,6 +25,8 @@ import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
+import { assertBackupSnapshot, backupRevisions } from "../extension/backup-state.js";
+import { createBackupDownloads } from "../extension/backup-downloads.js";
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
 // The trained fixture is built in memory rather than read out of test/fixtures:
@@ -725,7 +727,7 @@ function loadClassicScript(file, sandbox) {
 }
 
 function loadBackgroundScript(sandbox) {
-  sandbox.loadBackupState = () => import("../extension/backup-state.js");
+  Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads });
   sandbox.createAnkiWorkerService = createAnkiWorkerService;
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -744,7 +746,7 @@ function loadBackgroundScript(sandbox) {
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
-    .replaceAll('import("./backup-state.js")', "loadBackupState()")
+    .replace(/^import .* from "\.\/backup-(?:state|downloads)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")

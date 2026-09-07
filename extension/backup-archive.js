@@ -20,7 +20,7 @@ export function assertBackupPath(path) {
 
 function assertPayloadPath(path) {
   assertBackupPath(path);
-  if (!/^dictionaries\/(?:0|[1-9][0-9]*)\/.+/u.test(path)) {
+  if (!/^dictionaries\/(?:0|[1-9]\d*)\/.+/u.test(path)) {
     throw new Error(`Unexpected backup payload path: ${path}`);
   }
 }
@@ -48,6 +48,7 @@ export async function createBackupArchive(snapshot, files, createdAt = new Date(
   const entries = files.map(({ path, data }) => ({ path, size: data.size }));
   assertFileList(entries);
   const manifest = { format: "hachidori-backup", version: 1, createdAt, snapshot, files: entries };
+  /** @type {{add(name: string, reader: object): Promise<unknown>, close(): Promise<Blob>}} */
   const writer = new ZipWriter(new BlobWriter("application/zip"), ZIP_OPTIONS);
   await writer.add(MANIFEST, new BlobReader(new Blob([JSON.stringify(manifest)])));
   for (const file of files) await writer.add(file.path, new BlobReader(file.data));

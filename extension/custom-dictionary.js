@@ -14,6 +14,13 @@ export const CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION = 1;
 export const EMPTY_CUSTOM_DICTIONARY_SEMANTIC_REVISION =
   "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945";
 
+export function customDictionaryMetadataMatches(value, semanticRevision, entryCount) {
+  return value?.title === CUSTOM_DICTIONARY_TITLE && value.revision === semanticRevision
+    && value.termCount === entryCount
+    && ["frequencyCount", "pitchCount", "kanjiCount", "mediaCount"].every(key => value[key] === 0)
+    && value.isUpdatable === false && value.indexUrl === null && value.downloadUrl === null && value.language === "ja";
+}
+
 export function assertCustomDictionaryCommit(dictionaries) {
   const customIndexes = dictionaries.flatMap((dictionary, index) =>
     dictionary?.id === CUSTOM_DICTIONARY_ID ? [index] : []);
@@ -44,8 +51,7 @@ export function assertCustomSourceState(dictionaries, semanticRevision, entryCou
   assertCustomDictionaryCommit(dictionaries);
   const entry = custom[0];
   if (custom.length !== 1
-      || entry?.revision !== semanticRevision
-      || entry?.termCount !== entryCount) {
+      || !customDictionaryMetadataMatches(entry, semanticRevision, entryCount)) {
     throw new Error("the custom dictionary package does not match its source semantics");
   }
 }

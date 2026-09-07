@@ -13,6 +13,7 @@ import {
   appendCustomDictionaryEntry,
   buildCustomDictionaryZip,
   customDictionarySemanticRevision,
+  customDictionaryMetadataMatches,
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
 } from "./custom-dictionary.js";
@@ -1083,17 +1084,7 @@ async function customPackageSatisfies(state, semanticRevision, entryCount) {
   }
   try {
     const generated = await packageFromIndex(custom.path);
-    if (generated.title !== CUSTOM_DICTIONARY_TITLE
-        || generated.revision !== semanticRevision
-        || generated.termCount !== entryCount
-        || generated.frequencyCount !== 0
-        || generated.pitchCount !== 0
-        || generated.kanjiCount !== 0
-        || generated.mediaCount !== 0
-        || generated.isUpdatable !== false
-        || generated.indexUrl !== null
-        || generated.downloadUrl !== null
-        || generated.language !== "ja"
+    if (!customDictionaryMetadataMatches(generated, semanticRevision, entryCount)
         || !sameDictionaries(
           state.dictionaries,
           withCustomDictionary(state.dictionaries, generated),
@@ -1753,6 +1744,10 @@ async function stageBackupFiles(prepared, roots) {
     }
     const recommended = recommendedDictionarySource(dictionary.sourceId);
     if (recommended) assertRecommendedDictionary(recommended, generated);
+    if (dictionary.id === CUSTOM_DICTIONARY_ID
+        && !customDictionaryMetadataMatches(generated, dictionary.revision, dictionary.termCount)) {
+      throw new Error("The backup custom dictionary files do not satisfy the managed package invariants.");
+    }
   }
   await persistFilesystem();
   return dictionaries;

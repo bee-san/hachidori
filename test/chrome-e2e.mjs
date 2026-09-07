@@ -42,6 +42,7 @@ import {
   CUSTOM_DICTIONARY_TITLE,
 } from "../extension/custom-dictionary.js";
 import { RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE } from "../extension/recommended-dictionaries.js";
+import { BACKUP_CHROME_CHECKS, backupChromeScenarios } from "./chrome-backup-scenarios.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -193,6 +194,7 @@ const RECOMMENDED_LINKS = RECOMMENDED_DICTIONARIES.map(({ name, publisherUrl }) 
 // not the number of checks that happened to execute: a suite that skips an
 // assertion under a regression prints "23/24 passed" and reads like success.
 const PLANNED = [
+  ...BACKUP_CHROME_CHECKS,
   "extension loads and its service worker starts",
   "offscreen document compiles the wasm under the extension CSP",
   "extension pages expose pthread prerequisites",
@@ -5620,7 +5622,7 @@ async function main() {
     const links = [...document.querySelectorAll(".settings-nav a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 9
+      && links.length === 10
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION");
   });
   const selectionActions = await page.evaluate(() => {
@@ -5686,7 +5688,7 @@ async function main() {
     await page.setViewport({ width, height: 900 });
     for (const theme of ["light", "dark"]) {
       await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
-      for (const section of ["dictionaries", "lookup", "design", "audio", "anki", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups"]) {
+      for (const section of ["dictionaries", "lookup", "design", "audio", "anki", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups", "backup"]) {
         await showSettingsSection(page, section);
         themeLayouts.push(await page.evaluate(({ theme, section }) => {
           const root = getComputedStyle(document.documentElement);
@@ -5704,7 +5706,7 @@ async function main() {
           const panel = document.getElementById(section);
           const primary = {
             dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns", audio: "audio-source-add", anki: "anki-refresh", "custom-dictionary": "custom-dictionary-open",
-            "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new",
+            "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new", backup: "backup-export",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
             .filter((control) => control.checkVisibility());
@@ -7371,6 +7373,7 @@ async function main() {
 
   await editSettingsControls(page, { "opt-frequency-dictionary": "hachidori-fixture", "opt-frequency-order": "ascending",
     "opt-popup-columns": "2" });
+  await backupChromeScenarios({ browser, page, directory: resolve(PROFILE, "backup-downloads"), check });
   const optionsBeforeRestart = await page.evaluate(async () =>
     (await chrome.storage.local.get("options")).options);
   const chromeProcess = browser.process();
