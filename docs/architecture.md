@@ -146,12 +146,15 @@ only when it created the setup record. Chrome reports `install` again on every
 launch for an unpacked extension loaded from the command line, so the absence
 of that record, not the reason alone, identifies a new installation.
 
-- `setupState`: `{ schemaVersion: 1, revision, startedAt, stage, completedAt }`,
-  where `stage` is `dictionaries`, `anki`, `practice` or `complete`. The worker
-  owns every write. `hd_setup_cas` accepts `{ baseRevision, stage }` from the
-  exact startup page URL only, answers a stale base revision with a conflict and
-  the current state, refuses a stage that is not later than the current one, and
-  records `completedAt` when the stage becomes `complete`.
+- `setupState`: `{ schemaVersion: 1, revision, startedAt, stage, completedAt,
+  dictionaries }`, where `stage` is `dictionaries`, `anki`, `practice` or
+  `complete` and `dictionaries` holds `{ outcomes, totalSeconds, continued,
+  selectionsApplied, recordedRuns }`. The worker owns every write. `hd_setup_cas` accepts
+  `{ baseRevision, stage, continued? }` from the exact startup page URL only,
+  answers a stale base revision with a conflict and the current state, refuses a
+  stage that is not later than the current one, records `completedAt` when the
+  stage becomes `complete`, and records `continued` when the user leaves the
+  dictionary stage with an incomplete set.
 - `options`: the first-install preferences (`showCompactDefinitionSummary: true`,
   `compactDefinitionSummaryCount: 3`) at revision 1. The `reader-options.js`
   defaults are unchanged, so an extension update never alters an existing
@@ -166,23 +169,98 @@ part of a backup: it describes this installation's onboarding, not user data.
 focus rings and reduced-motion rules, and adds only layout in `startup.css`. The
 page reads `setupState`, `dictionaryState` and `options` from storage, adopts
 only newer revisions from storage events, and renders one card per stage under
-a **Dictionaries → Anki → Try it** indicator (`aria-current="step"`). The
-dictionary stage lists the four catalogue entries as **Already installed** or
-**Not installed** through the shared `recommendedDictionaryInstalled()` rule: a
-validated `sourceId` or the exact update index, never a display name. Continue
+a **Dictionaries → Anki → Try it** indicator (`aria-current="step"`). Continue
 and Finish send `hd_setup_cas` with the revision the page rendered; a conflict
 adopts the newer state and reports it in the card's live region, and a storage
 event that arrives while a write is in flight renders once with the reply. A
-stage change moves focus to the card heading; an inventory update keeps focus on
-the control that had it. Finish records completion and closes the tab. Settings
-shows **Resume setup** in its sidebar while `stage !== "complete"`, so closing
-the tab loses nothing. This shell owns activation, durable stage state, initial
-preferences and recovery; automatic dictionary installation, Anki detection and
-the lookup exercise attach to these stages separately.
+stage change moves focus to the card heading; an inventory or progress update
+keeps focus on the control that had it. Finish records completion and closes
+the tab. Settings shows **Resume setup** in its sidebar while
+`stage !== "complete"`, so closing the tab loses nothing. Anki detection and the
+lookup exercise attach to the remaining stages separately.
 
-![First-run setup in the light Settings palette](assets/startup-dictionaries.png)
+### Dictionary stage
 
-![First-run setup in the dark Settings palette](assets/startup-dictionaries-dark.png)
+The offscreen document owns the automatic installation. `setup-installer.js`
+runs one sequential batch at a time: for each requested catalogue source it
+rechecks the committed inventory through `hd_state_read` (a source installed
+meanwhile is **Already installed**, never imported twice), waits for the engine
+to be ready and idle, and dispatches an `hd_import` through the same admission
+and mutation lock as a relayed request. That import carries only `sourceId`
+and the catalogue-pinned `archiveUrl`; `prepareImportRequest` accepts this
+remote first-install shape beside the managed-update one, `fetchImportArchive`
+still validates the response's final URL, and the commit path applies the
+unchanged recommended-source checks. The engine streams the body into its
+filesystem and reports `downloading` progress about ten times a second with
+the received bytes and a `totalBytes` that is set only when `Content-Length`
+is present and no `Content-Encoding` makes it incomparable, then one
+`installing` phase, because `hdw_import` is a single native call without a
+progress callback. In the threaded engine these reports travel over a
+fire-and-forget `engine-progress` worker channel; the compatibility engine
+calls the sink directly. **Installed in X seconds** is reported only from the
+import reply, which follows the strict load, the CAS commit and generation
+cleanup. A run that meets another mutation's lock waits for the engine to go
+idle again instead of failing the row, and rechecks the inventory after that
+wait: a source Settings committed meanwhile settles as **Already installed**
+rather than being downloaded and imported twice.
+
+The startup page attaches with `hd_setup_install`, relayed by the service
+worker for the exact startup page URL only, and receives the current run
+snapshot: an active run is returned to every requester, so a reconnecting page,
+a duplicate tab or a restarted worker cannot start a second batch. Live rows
+follow `hd_setup_progress` broadcasts that name the run and carry a sequence;
+the page adopts only newer events for the run it attached to. Every catalogue
+source without a recorded outcome is requested, so a missing one installs by
+itself and an installed one is recorded as already installed — which also gives
+a package whose commit outlived the installer that made it its durable outcome
+and its first-install selection. A source whose recorded outcome is a failure
+but which the current inventory holds — the user installed it from Settings
+after the automatic attempt failed — is requested the same way, so the
+installer records it as already installed without importing anything and the
+stale failure no longer holds up the complete result. A failed source that is
+still missing, or one removed later, waits for **Retry missing dictionaries**,
+which requests only the missing ones; a request
+the worker does not answer is reported once with the same Retry, never
+re-requested on a timer. A run does report at every phase change and about ten
+times a second while a body arrives, so a longer silence means the offscreen
+document that owned it is gone: the page then observes the installer again with
+an empty request, which starts nothing. A live run answers with its own
+snapshot and keeps the progress the page already applied; a replacement
+installer answers with an empty, finished one, and the sources without a
+recorded outcome are requested once more instead of leaving a screen that can
+never change. The installer records every outcome and each run's
+duration through `hd_setup_record`, which the worker accepts from the offscreen
+document only, and a row settles only after that record is acknowledged: a lost
+reply or a restarting worker makes the installer resend the same record with
+backoff, and records are idempotent per run (`recordedRuns`), so a duration
+whose reply was lost is confirmed rather than counted twice. The last row's
+record carries the run's duration with that outcome, so a document terminated
+between the two can never leave every outcome settled with the run accounting
+missing, which nothing could reconstruct. Outcomes replace
+earlier ones, durations accumulate into `totalSeconds`, and a
+committed Jitendex or Bee's entry settles its first-install selection once
+(`compactDefinitionSummaryDictionary` and the term-route
+`kanjiClickDictionary`) while that option is still Automatic, through the
+revisioned options write. That entry is located by the same catalogue identity
+the installer uses — stored source ID or exact update index — so a package
+imported by hand or carried in from another profile settles its selection from
+its own committed title. **All dictionaries installed in X seconds** is
+rendered only when the current inventory holds every catalogue source and this
+setup installed at least one of them; a profile that already carried them all
+reads **All dictionaries are already installed**. Either result
+stays for five seconds with a labelled countdown that is not a live region,
+then the page advances to Anki. If both automatic writes are refused, the
+countdown is cancelled and the result keeps an explicit **Continue setup**
+instead of saving again on a timer. **Continue setup** with missing sources
+records `continued: true`. Only settled outcomes are announced, never bytes.
+
+![Automatic installation with a held download, light palette](assets/startup-installing.png)
+
+![Automatic installation with a held download, dark palette](assets/startup-installing-dark.png)
+
+![All dictionaries installed with the five-second countdown, light palette](assets/startup-complete.png)
+
+![All dictionaries installed with the five-second countdown, dark palette](assets/startup-complete-dark.png)
 
 ## Hover activation and popup ownership
 

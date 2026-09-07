@@ -17,6 +17,7 @@ import {
   CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION,
   CUSTOM_DICTIONARY_TITLE,
 } from "../extension/custom-dictionary.js";
+import { RECOMMENDED_DICTIONARIES } from "../extension/recommended-dictionaries.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE_EXTENSION = resolve(ROOT, "extension");
@@ -116,6 +117,42 @@ function launch() {
   ];
   if (process.env.HACHIDORI_ALLOW_NO_SANDBOX === "1") args.push("--no-sandbox");
   return puppeteer.launch({ executablePath: CHROME, userDataDir: PROFILE, headless: true, args });
+}
+
+// The fresh install starts the first-run dictionary run inside the fallback
+// engine. Its four catalogue downloads are answered 503 on the offscreen
+// target's Fetch domain, so nothing reaches the network and the library the
+// assertions below inspect stays empty until the fixture import.
+const setupArchiveRequests = [];
+function failSetupArchives(browser) {
+  const attached = new WeakSet();
+  const consider = async (target) => {
+    if (!target.url().endsWith("offscreen.html") || attached.has(target)) return;
+    attached.add(target);
+    const session = await target.createCDPSession();
+    session.on("Fetch.requestPaused", (event) => {
+      void (async () => {
+        const entry = RECOMMENDED_DICTIONARIES.find((candidate) => candidate.downloadUrl === event.request.url);
+        if (!entry) {
+          await session.send("Fetch.continueRequest", { requestId: event.requestId });
+          return;
+        }
+        setupArchiveRequests.push(entry.sourceId);
+        await session.send("Fetch.fulfillRequest", {
+          requestId: event.requestId,
+          responseCode: 503,
+          responseHeaders: [{ name: "Content-Type", value: "text/plain" }],
+          body: Buffer.from("fallback test: recommended archives are not downloaded").toString("base64"),
+        });
+      })().catch(() => {});
+    });
+    await session.send("Fetch.enable", {
+      patterns: RECOMMENDED_DICTIONARIES.map((entry) => ({ urlPattern: entry.downloadUrl, requestStage: "Request" })),
+    });
+  };
+  browser.on("targetcreated", (target) => { void consider(target); });
+  browser.on("targetchanged", (target) => { void consider(target); });
+  for (const target of browser.targets()) void consider(target);
 }
 
 async function extensionId(browser) {
@@ -220,8 +257,17 @@ let browser;
 let passed = false;
 try {
   browser = await launch();
+  failSetupArchives(browser);
   const id = await extensionId(browser);
   let page = await openSettings(browser, id);
+  // Let the automatic run fail all four sources before importing through the
+  // same engine lock; a single run must have asked for each source once.
+  await page.waitForFunction(async (expected) => {
+    const { setupState } = await chrome.storage.local.get("setupState");
+    const outcomes = setupState?.dictionaries?.outcomes ?? {};
+    return expected.every((sourceId) => outcomes[sourceId]?.status === "failed") && setupState.dictionaries.totalSeconds !== null;
+  }, { timeout: 120_000, polling: 100 }, RECOMMENDED_DICTIONARIES.map((entry) => entry.sourceId));
+  assert.deepEqual([...setupArchiveRequests].sort(), RECOMMENDED_DICTIONARIES.map((entry) => entry.sourceId).sort());
   await page.click('.settings-nav a[href="#add-dictionaries"]');
   await page.waitForSelector("#import-file", { visible: true });
   const input = await page.$("#import-file");
@@ -262,9 +308,11 @@ try {
   observed = await inspect(page);
   const customPath = observed.customDictionary.path;
   const customRevision = restoredBackup.document.revision;
+  const setupBeforeRestart = await page.evaluate(async () => (await chrome.storage.local.get("setupState")).setupState);
   await browser.close();
 
   browser = await launch();
+  failSetupArchives(browser);
   await extensionId(browser);
   page = await openSettings(browser, id);
   await page.waitForFunction(
@@ -272,6 +320,9 @@ try {
     { timeout: 90_000 },
   );
   observed = await inspect(page);
+  // A browser restart neither reseeds setup nor retries the failed sources.
+  assert.equal(setupArchiveRequests.length, RECOMMENDED_DICTIONARIES.length);
+  assert.deepEqual(await page.evaluate(async () => (await chrome.storage.local.get("setupState")).setupState), setupBeforeRestart);
   assert.equal(observed.crossOriginIsolated, false);
   assert.equal(observed.status.storageBackend, "idbfs");
   assert.equal(observed.status.threaded, false);

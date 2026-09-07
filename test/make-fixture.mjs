@@ -682,12 +682,15 @@ export function imagePreviewFixture() {
 // Small deterministic stand-ins for the recommended downloads. The browser
 // suite serves these bytes for the production catalogue URLs, so CI exercises
 // the complete download/import path without depending on live publishers.
+// `paddingBytes` adds one stored media file so a real-Chrome download of the
+// otherwise tiny archive arrives in several chunks and shows measurable progress.
 export function buildRecommendedZip({
   title,
   revision,
   indexUrl,
   downloadUrl,
   capabilities,
+  paddingBytes = 0,
 }) {
   const supported = new Set(capabilities);
   const entries = [zipEntry('index.json', JSON.stringify({
@@ -720,6 +723,9 @@ export function buildRecommendedZip({
   }
   if (supported.has('media')) {
     entries.push(zipEntry('media/recommended.png', makePng(4), STORE));
+  }
+  if (paddingBytes > 0) {
+    entries.push(zipEntry('media/padding.bin', Buffer.alloc(paddingBytes, 0x5a), STORE));
   }
   return buildZip(entries);
 }

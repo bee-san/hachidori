@@ -100,6 +100,11 @@ let started = false;
 let createHoshidicts = null;
 let storageBackend = "memory";
 let lowRam = true;
+// Optional sink for import download/installation phases, keyed by request ID.
+let reportProgress = null;
+// Download progress is a transient UI signal; one report per chunk would flood
+// the host bridge on a fast connection.
+const PROGRESS_INTERVAL_MS = 100;
 
 export function configureEngineService(request, options = {}) {
   if (hostRequest !== null) {
@@ -109,6 +114,7 @@ export function configureEngineService(request, options = {}) {
   createHoshidicts = options.createHoshidicts;
   storageBackend = options.storageBackend ?? "memory";
   lowRam = options.lowRam !== false;
+  reportProgress = typeof options.reportProgress === "function" ? options.reportProgress : null;
 }
 
 function describe(error) {
@@ -1254,16 +1260,34 @@ function mediaType(path) {
   return MEDIA_TYPES[extension] ?? "application/octet-stream";
 }
 
-export async function streamResponseToFile(FS, response, path) {
+// A declared length is only comparable to the received bytes when the body is
+// not transformed in flight; a content-encoded response counts decoded bytes
+// against an encoded total, so it reports no total at all.
+export function declaredResponseLength(response) {
+  const headers = response?.headers;
+  if (typeof headers?.get !== "function") return null;
+  const encoding = headers.get("content-encoding");
+  if (encoding !== null && encoding !== "" && encoding.trim().toLowerCase() !== "identity") return null;
+  const length = Number(headers.get("content-length"));
+  return Number.isSafeInteger(length) && length > 0 ? length : null;
+}
+
+export async function streamResponseToFile(FS, response, path, onProgress = null) {
   const reader = response.body?.getReader?.();
+  const totalBytes = declaredResponseLength(response);
+  const report = (receivedBytes) => {
+    onProgress?.({ phase: "downloading", receivedBytes, totalBytes: totalBytes !== null && receivedBytes <= totalBytes ? totalBytes : null });
+  };
   if (reader === undefined) {
     const bytes = new Uint8Array(await response.arrayBuffer());
     FS.writeFile(path, bytes);
+    report(bytes.byteLength);
     return bytes.byteLength;
   }
 
   const output = FS.open(path, "w");
   let written = 0;
+  let reportedAt = -Infinity;
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -1272,21 +1296,28 @@ export async function streamResponseToFile(FS, response, path) {
       if (bytes.byteLength === 0) continue;
       FS.write(output, bytes, 0, bytes.byteLength);
       written += bytes.byteLength;
+      if (onProgress !== null && performance.now() - reportedAt >= PROGRESS_INTERVAL_MS) {
+        reportedAt = performance.now();
+        report(written);
+      }
     }
   } finally {
     FS.close(output);
     reader.releaseLock?.();
   }
+  report(written);
   return written;
 }
 
-async function importDictionaryArchive(response, archivePath, generationRoot, importLowRam, fileName) {
+async function importDictionaryArchive(response, archivePath, generationRoot, importLowRam, fileName, onProgress = null) {
   const FS = engine.FS;
   try {
-    const archiveBytes = await streamResponseToFile(FS, response, archivePath);
+    const archiveBytes = await streamResponseToFile(FS, response, archivePath, onProgress);
     if (archiveBytes === 0) {
       throw new Error(`${fileName} is empty`);
     }
+    // The native importer has no progress callback: installation is one call.
+    onProgress?.({ phase: "installing", receivedBytes: archiveBytes, totalBytes: archiveBytes });
     return normaliseReport(
       parseJson(
         engine.ccall(
@@ -1350,13 +1381,22 @@ function validateLocalImportRequest(message, managedSource, recommendedSource) {
   }
 }
 
-function validateManagedImportRequest(managedSource, expectedRevision) {
-  if (managedSource === null) {
+// A remote import is either a checked managed update or a first install of a
+// recommended source, which downloads only its catalogue-pinned archive.
+function validateRemoteImportRequest(message, managedSource, recommendedSource, expectedRevision) {
+  if (managedSource !== null) {
+    if (expectedRevision === null) {
+      throw new Error("the managed import request carried no expected revision");
+    }
+    return managedSource.archiveUrl;
+  }
+  if (recommendedSource === null) {
     throw new Error("the import request carried no archive URL");
   }
-  if (expectedRevision === null) {
-    throw new Error("the managed import request carried no expected revision");
+  if (httpsUrl(message.archiveUrl) !== recommendedSource.downloadUrl) {
+    throw new Error(`${recommendedSource.name} must be downloaded from its catalogue archive URL`);
   }
+  return recommendedSource.downloadUrl;
 }
 
 async function prepareImportRequest(message) {
@@ -1366,13 +1406,14 @@ async function prepareImportRequest(message) {
   const managedSource = await managedSourceForImport(message, recommendedSource);
   const expectedRevision = optionalText(message.expectedRevision);
   const remote = blobUrl === "";
+  let archiveUrl = blobUrl;
   if (remote) {
-    validateManagedImportRequest(managedSource, expectedRevision);
+    archiveUrl = validateRemoteImportRequest(message, managedSource, recommendedSource, expectedRevision);
   } else {
     validateLocalImportRequest(message, managedSource, recommendedSource);
   }
   return {
-    archiveUrl: remote ? managedSource.archiveUrl : blobUrl,
+    archiveUrl,
     expectedRevision,
     fileName: text(message.fileName) || recommendedSource?.archiveName || "the archive",
     importLowRam,
@@ -1400,7 +1441,7 @@ async function fetchImportArchive(request) {
   return response;
 }
 
-async function runImportTransaction(response, fileName, importLowRam, commit) {
+async function runImportTransaction(response, fileName, importLowRam, commit, onProgress = null) {
   const generationRoot = createGenerationRoot();
   // Unload before importing: the loaded dictionaries are mapped into the same
   // 32-bit address space the importer needs. Public count/generation state is
@@ -1417,6 +1458,7 @@ async function runImportTransaction(response, fileName, importLowRam, commit) {
       generationRoot,
       importLowRam,
       fileName,
+      onProgress,
     );
     if (report.success && report.title === "") {
       // hdw_import refuses a title it cannot use as a folder name, so this is
@@ -2015,6 +2057,8 @@ const HANDLERS = {
       managedSource,
       recommendedSource,
     } = request;
+    const requestId = message.requestId ?? null;
+    const onProgress = reportProgress === null ? null : (event) => reportProgress({ requestId, ...event });
     const report = await runImportTransaction(
       response,
       fileName,
@@ -2027,6 +2071,7 @@ const HANDLERS = {
           managedSource,
           expectedRevision,
         ),
+      onProgress,
     );
 
     if (!report.success) {

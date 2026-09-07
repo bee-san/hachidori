@@ -202,7 +202,11 @@ const PLANNED = [
   "manifest and settings page are branded as Hachidori",
   "a fresh install opens one startup tab at the dictionary stage with first-install preferences",
   "Settings shows Resume setup while first-run setup is incomplete",
-  "the startup page advances through Anki to completion, closes its tab and hides Resume setup",
+  "a reconnecting startup page rejoins the running installer whose held download stays indeterminate",
+  "the automatic installer continues after a mocked failure through real download and installation phases",
+  "Retry installs only the missing dictionary and the committed entries settle their selections once",
+  "the all-installed result stays five seconds before setup moves to Anki",
+  "the startup page advances from Anki to completion, closes its tab and hides Resume setup",
   "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
   "Settings light and dark themes keep every task view readable without horizontal overflow",
@@ -5408,10 +5412,74 @@ async function main() {
     }
   }
 
+  // The first-run installer downloads the four catalogue archives from inside
+  // the offscreen engine, so those fetches are answered on the offscreen target's
+  // Fetch domain before the run can start. The first archive is held until the
+  // clean-profile checks have run; the second attempt of jmnedict succeeds; Bee's
+  // omits Content-Length so its progress must stay indeterminate.
+  const SETUP_PADDING_BYTES = 4 * 1024 * 1024;
+  const setupArchives = {
+    fixtures: new Map(RECOMMENDED_DICTIONARIES.map((entry) => [entry.downloadUrl, {
+      entry, body: buildRecommendedZip({ ...entry, paddingBytes: entry.sourceId === "jmnedict" ? 0 : SETUP_PADDING_BYTES }),
+    }])),
+    requests: [],
+    attempts: new Map(),
+    sessions: [],
+    attached: new WeakSet(),
+    release: null,
+    held: null,
+  };
+  setupArchives.held = new Promise((resolve) => { setupArchives.release = resolve; });
+  async function interceptSetupArchives(target) {
+    if (!target.url().endsWith("offscreen.html") || setupArchives.attached.has(target)) return;
+    setupArchives.attached.add(target);
+    try {
+      const session = await target.createCDPSession();
+      setupArchives.sessions.push(session);
+      session.on("Fetch.requestPaused", (event) => {
+        void (async () => {
+          const route = setupArchives.fixtures.get(event.request.url);
+          if (!route) {
+            await session.send("Fetch.continueRequest", { requestId: event.requestId });
+            return;
+          }
+          const attempt = (setupArchives.attempts.get(route.entry.sourceId) ?? 0) + 1;
+          setupArchives.attempts.set(route.entry.sourceId, attempt);
+          setupArchives.requests.push(route.entry.sourceId);
+          if (route.entry.sourceId === "jitendex" && attempt === 1) await setupArchives.held;
+          const responseHeaders = [
+            { name: "Access-Control-Allow-Origin", value: "*" },
+            { name: "Content-Type", value: "application/zip" },
+            { name: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+          ];
+          if (route.entry.sourceId === "jmnedict" && attempt === 1) {
+            await session.send("Fetch.fulfillRequest", { requestId: event.requestId, responseCode: 503, responseHeaders,
+              body: Buffer.from("mocked publisher failure").toString("base64") });
+            return;
+          }
+          if (route.entry.sourceId !== "bees-ultimate-kanji-dictionary") {
+            responseHeaders.push({ name: "Content-Length", value: String(route.body.length) });
+          }
+          await session.send("Fetch.fulfillRequest", { requestId: event.requestId, responseCode: 200, responseHeaders,
+            body: Buffer.from(route.body).toString("base64") });
+        })().catch(async (error) => {
+          diagnostics.push(`[setup archive mock] ${error?.stack ?? error}`);
+          await session.send("Fetch.failRequest", { requestId: event.requestId, errorReason: "Failed" }).catch(() => {});
+        });
+      });
+      await session.send("Fetch.enable", {
+        patterns: [...setupArchives.fixtures.keys()].map((urlPattern) => ({ urlPattern, requestStage: "Request" })),
+      });
+    } catch (error) {
+      diagnostics.push(`[setup archive mock] could not attach: ${error?.message ?? error}`);
+    }
+  }
+
   const watchedServiceWorkers = new Map();
   function watch(browser) {
     browser.on("targetcreated", async target => {
       watchOffscreen(target);
+      void interceptSetupArchives(target);
       try {
         const worker = await target.worker?.();
         worker?.on?.("console", m => diagnostics.push(`[sw] ${m.text()}`));
@@ -5420,10 +5488,15 @@ async function main() {
         }
       } catch { /* not a worker target */ }
     });
+    // The offscreen target is created with an empty URL and named afterwards.
+    browser.on("targetchanged", target => { void interceptSetupArchives(target); });
     browser.on("targetdestroyed", target => watchedServiceWorkers.delete(target));
     // The offscreen document is created from onInstalled, which can win the race
     // against the listener above.
-    for (const target of browser.targets()) watchOffscreen(target);
+    for (const target of browser.targets()) {
+      watchOffscreen(target);
+      void interceptSetupArchives(target);
+    }
   }
 
   // ---------------------------------------------------------------- pass 1
@@ -5481,38 +5554,93 @@ async function main() {
   );
   // ---------------------------------------------------------- first-run setup
   // chrome.runtime.onInstalled fired with reason "install" for this clean
-  // profile, so the extension itself opened startup.html.
+  // profile, so the extension itself opened startup.html and its installer is
+  // already waiting on the held first archive request.
+  await showSettingsSection(page, "add-dictionaries");
+  // Settings renders the starter card once its first dictionary-state read answers.
+  await page.waitForFunction(() => document.getElementById("recommended-starter")?.hidden === false,
+    { timeout: 90_000, polling: 100 }).catch(() => {});
+  const cleanInstaller = await page.evaluate(() => ({
+    starterHidden: document.getElementById("recommended-starter")?.hidden,
+    installText: document.getElementById("install-recommended")?.textContent?.trim() ?? "",
+    retryHidden: document.getElementById("recommended-retry")?.hidden,
+    localInputVisible: document.getElementById("import-file")?.checkVisibility() === true,
+    dictionaryManagementVisible: document.getElementById("dict-list")?.closest(".card")?.hidden !== true,
+  }));
+  check(
+    "a clean profile shows one recommended install action beside local import",
+    cleanInstaller.starterHidden === false
+      && cleanInstaller.installText === "Install recommended"
+      && cleanInstaller.retryHidden === true
+      && cleanInstaller.localInputVisible === true
+      && cleanInstaller.dictionaryManagementVisible === false,
+    JSON.stringify(cleanInstaller),
+  );
+
   const startupUrl = `chrome-extension://${extensionId}/startup.html`;
   const startupTabs = () => browser.targets().filter((target) =>
     target.type() === "page" && target.url() === startupUrl).length;
   const startupTarget = await browser.waitForTarget((target) =>
     target.type() === "page" && target.url() === startupUrl, { timeout: 30_000 }).catch(() => null);
   const startup = startupTarget === null ? null : await startupTarget.page();
-  startup?.on("console", (m) => diagnostics.push(`[startup] ${m.type()}: ${m.text()}`));
-  startup?.on("pageerror", (e) => diagnostics.push(`[startup] pageerror: ${e.message}`));
-  const startupShell = startup === null ? null : await startup.waitForFunction(() => {
-    const heading = document.getElementById("setup-heading")?.textContent ?? "";
-    if (heading === "" || heading.startsWith("Loading")) return false;
-    return {
-      title: document.title,
-      heading,
-      currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
-      steps: [...document.querySelectorAll(".setup-step")].map((step) => step.textContent.trim().replace(/^\d\s*/u, "")),
-      rows: [...document.querySelectorAll(".setup-dictionary")].map((row) =>
-        [row.dataset.sourceId, row.querySelector(".setup-dictionary-status")?.textContent ?? ""]),
-      importLink: document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null,
-      settingsLink: document.querySelector('a[href="settings.html"]') !== null,
-      continueText: document.getElementById("setup-continue")?.textContent ?? "",
-      background: getComputedStyle(document.body).backgroundColor,
-      cardBackground: getComputedStyle(document.getElementById("setup-card")).backgroundColor,
-    };
-  }, { timeout: 30_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
+  const watchStartup = (target) => {
+    target.on("console", (m) => diagnostics.push(`[startup] ${m.type()}: ${m.text()}`));
+    target.on("pageerror", (e) => diagnostics.push(`[startup] pageerror: ${e.message}`));
+  };
+  if (startup) watchStartup(startup);
+  const readStartup = () => ({
+    title: document.title,
+    heading: document.getElementById("setup-heading")?.textContent ?? "",
+    currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
+    steps: [...document.querySelectorAll(".setup-step")].map((step) => step.textContent.trim().replace(/^\d\s*/u, "")),
+    done: document.querySelectorAll(".setup-step.is-done").length,
+    rows: [...document.querySelectorAll(".setup-dictionary")].map((row) => [row.dataset.sourceId,
+      row.querySelector(".setup-dictionary-status")?.textContent ?? "",
+      row.querySelector(".setup-track")?.classList.contains("is-determinate") ?? null,
+      row.querySelector(".setup-track")?.getAttribute("aria-valuenow") ?? row.querySelector(".setup-track")?.getAttribute("aria-valuetext") ?? null]),
+    importLink: document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null,
+    settingsLink: document.querySelector('a[href="settings.html"]') !== null,
+    actions: [...document.querySelectorAll("#setup-actions button")].map((control) => [control.id, control.textContent]),
+    status: document.getElementById("setup-status")?.textContent ?? "",
+    countdown: document.getElementById("setup-countdown-label")?.textContent ?? null,
+    focused: document.activeElement?.id ?? "",
+    background: getComputedStyle(document.body).backgroundColor,
+    cardBackground: getComputedStyle(document.getElementById("setup-card")).backgroundColor,
+  });
+  // The startup page re-renders its controls on every storage change and
+  // progress event. Click inside the page so a handle resolved before a
+  // re-render cannot go stale, keeping the user-clickable requirement
+  // Puppeteer's handle click would have enforced.
+  const clickStartupControl = (id) => startup.evaluate((controlId) => {
+    const control = document.getElementById(controlId);
+    if (!control || control.disabled || !control.checkVisibility()) throw new Error(`#${controlId} is not user-clickable`);
+    control.click();
+  }, id);
+  // Extension pages forbid eval, so the page state is read with a plain
+  // evaluate and awaited from here rather than through a stringified predicate.
+  const waitStartup = async (predicate, timeout) => {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const state = await startup.evaluate(readStartup).catch(() => null);
+      if (state !== null && predicate(state)) return state;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return null;
+  };
+  // The engine boots first; the held request means Jitendex sits in Downloading.
+  const startupShell = startup === null ? null
+    : await waitStartup((state) => state.rows[0]?.[1]?.startsWith("Downloading"), 120_000);
+  // The row turns to Downloading when the import is dispatched; the archive
+  // request itself follows once the engine has validated the request.
+  for (let attempt = 0; attempt < 200 && setupArchives.requests.length === 0; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
   const settingsPalette = await page.evaluate(() => ({
     background: getComputedStyle(document.body).backgroundColor,
     surface: getComputedStyle(document.querySelector(".page")).backgroundColor,
   }));
   const firstInstallStorage = await page.evaluate(async () => {
-    const stored = await chrome.storage.local.get(["setupState", "options"]);
+    const stored = await chrome.storage.local.get(["setupState", "options", "dictionaryState"]);
     return { ...stored, effective: globalThis.HDReaderOptions.normaliseOptions(stored.options) };
   });
   const seededOptions = firstInstallStorage.options ?? {};
@@ -5525,18 +5653,27 @@ async function main() {
     "a fresh install opens one startup tab at the dictionary stage with first-install preferences",
     startupTabs() === 1 && seededInSettings
       && startupShell?.title === "Set up Hachidori"
-      && startupShell.heading === "Default dictionaries"
-      && startupShell.currentStep === "dictionaries"
+      && startupShell.heading === "Installing default dictionaries…"
+      && startupShell.currentStep === "dictionaries" && startupShell.done === 0
       && JSON.stringify(startupShell.steps) === JSON.stringify(["Dictionaries", "Anki", "Try it"])
-      && JSON.stringify(startupShell.rows) === JSON.stringify(
-        RECOMMENDED_DICTIONARIES.map(({ sourceId }) => [sourceId, "Not installed"]),
-      )
-      && startupShell.importLink && startupShell.settingsLink && startupShell.continueText === "Continue setup"
+      && JSON.stringify(startupShell.rows) === JSON.stringify([
+        ["jitendex", "Downloading… 0 KB", false, "In progress"],
+        ["jmnedict", "Waiting", null, null],
+        ["bees-ultimate-kanji-dictionary", "Waiting", null, null],
+        ["jiten", "Waiting", null, null],
+      ])
+      && startupShell.importLink && startupShell.settingsLink && startupShell.actions.length === 0
+      && startupShell.status === "Installing default dictionaries."
       && startupShell.background === settingsPalette.background
       && startupShell.cardBackground === settingsPalette.surface
       && firstInstallStorage.setupState?.stage === "dictionaries"
       && firstInstallStorage.setupState.revision === 1
       && firstInstallStorage.setupState.completedAt === null
+      && JSON.stringify(firstInstallStorage.setupState.dictionaries?.outcomes) === "{}"
+      && firstInstallStorage.setupState.dictionaries.totalSeconds === null
+      && firstInstallStorage.setupState.dictionaries.continued === false
+      && JSON.stringify(firstInstallStorage.setupState.dictionaries.selectionsApplied) === "[]"
+      && (firstInstallStorage.dictionaryState?.dictionaries?.length ?? 0) === 0
       && JSON.stringify(Object.keys(seededOptions).sort()) === JSON.stringify(
         ["compactDefinitionSummaryCount", "revision", "showCompactDefinitionSummary"],
       )
@@ -5545,11 +5682,12 @@ async function main() {
       && effective.popupTheme === "default" && effective.popupOpacityPercent === 85
       && effective.audioAutoplay === false
       && JSON.stringify(effective.audioSources?.map((source) => [source.type, source.enabled]))
-        === JSON.stringify([["text-to-speech-reading", true]]),
-    JSON.stringify({ startupTabs: startupTabs(), seededInSettings, startupShell, settingsPalette, firstInstallStorage }),
+        === JSON.stringify([["text-to-speech-reading", true]])
+      && JSON.stringify(setupArchives.requests) === JSON.stringify(["jitendex"]),
+    JSON.stringify({ startupTabs: startupTabs(), seededInSettings, startupShell, settingsPalette, firstInstallStorage, requests: setupArchives.requests }),
   );
   if (startup && (process.env.HACHIDORI_STARTUP_SCREENSHOT || process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT)) {
-    await startup.setViewport({ width: 900, height: 720 });
+    await startup.setViewport({ width: 900, height: 820 });
     for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT]]) {
       if (!path) continue;
       await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
@@ -5583,6 +5721,184 @@ async function main() {
     return reply.ok ? reply.options : { error: reply.error };
   });
 
+  // A reconnecting page rejoins the same run: the held request is still the only one.
+  let reconnected = null;
+  if (startup !== null) {
+    await startup.reload({ waitUntil: "domcontentloaded" });
+    reconnected = await waitStartup((state) => state.rows[0]?.[1]?.startsWith("Downloading"), 30_000);
+  }
+  const setupStateWhileHeld = await page.evaluate(async () => (await chrome.storage.local.get("setupState")).setupState);
+  check(
+    "a reconnecting startup page rejoins the running installer whose held download stays indeterminate",
+    reconnected?.heading === "Installing default dictionaries…"
+      && JSON.stringify(reconnected.rows[0]) === JSON.stringify(["jitendex", "Downloading… 0 KB", false, "In progress"])
+      && reconnected.rows.slice(1).every((row) => row[1] === "Waiting")
+      && JSON.stringify(setupArchives.requests) === JSON.stringify(["jitendex"])
+      && JSON.stringify(setupStateWhileHeld?.dictionaries?.outcomes) === JSON.stringify({})
+      && startupTabs() === 1,
+    JSON.stringify({ reconnected, requests: setupArchives.requests, setupStateWhileHeld }),
+  );
+
+  // Release the held archive: Jitendex and Jiten arrive with a declared length,
+  // Bee's without one, and jmnedict's publisher fails once. The installer's
+  // broadcasts are recorded in the page so phase order does not depend on
+  // polling luck; the polled rows still show what the user saw.
+  if (startup !== null) {
+    await startup.evaluate(() => {
+      window.__setupEvents = [];
+      chrome.runtime.onMessage.addListener((message) => {
+        if (message?.target === "hachidori-setup-events") window.__setupEvents.push(message);
+      });
+      // Every render of the rows, not only the ones a poll happens to catch.
+      window.__rowLog = [];
+      const rows = () => [...document.querySelectorAll(".setup-dictionary")].map((row) => [row.dataset.sourceId,
+        row.querySelector(".setup-dictionary-status")?.textContent ?? "",
+        row.querySelector(".setup-track")?.classList.contains("is-determinate") ?? null,
+        row.querySelector(".setup-track")?.getAttribute("aria-valuenow") ?? row.querySelector(".setup-track")?.getAttribute("aria-valuetext") ?? null]);
+      new MutationObserver(() => window.__rowLog.push(rows())).observe(document.getElementById("setup-body"), { childList: true, subtree: true, characterData: true });
+    });
+  }
+  setupArchives.release();
+  const phases = [];
+  const runOutcome = startup === null ? null : await (async () => {
+    const deadline = Date.now() + 120_000;
+    let last = null;
+    while (Date.now() < deadline) {
+      const state = await startup.evaluate(readStartup).catch(() => null);
+      if (state !== null) {
+        const key = JSON.stringify(state.rows);
+        if (phases.at(-1)?.key !== key) phases.push({ key, rows: state.rows, heading: state.heading, status: state.status });
+        last = state;
+        if (state.heading.startsWith("Some dictionaries")) return state;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    return last;
+  })();
+  const rowLog = startup === null ? [] : await startup.evaluate(() => window.__rowLog ?? []);
+  const seenPhase = (sourceId, predicate) => rowLog.some((rows) => rows.some((row) => row[0] === sourceId && predicate(row)));
+  const setupEvents = startup === null ? [] : await startup.evaluate(() => window.__setupEvents ?? []);
+  const entryEvents = (sourceId) => setupEvents.map((event) => event.entries.find((entry) => entry.sourceId === sourceId)).filter(Boolean);
+  const phaseOrder = (sourceId) => [...new Set(entryEvents(sourceId).map((entry) => entry.phase))];
+  const jitendexBytes = setupArchives.fixtures.get(RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "jitendex").downloadUrl).body.length;
+  const afterRun = await page.evaluate(async () => chrome.storage.local.get(["setupState", "options", "dictionaryState"]));
+  const runOutcomes = afterRun.setupState?.dictionaries?.outcomes ?? {};
+  const installedTitles = (afterRun.dictionaryState?.dictionaries ?? []).map((dictionary) => [dictionary.sourceId, dictionary.title]).sort();
+  check(
+    "the automatic installer continues after a mocked failure through real download and installation phases",
+    runOutcome?.heading === "Some dictionaries could not be installed"
+      && JSON.stringify(runOutcome.rows.map((row) => [row[0], row[1].replace(/\d+(\.\d+)? seconds/u, "N seconds")])) === JSON.stringify([
+        ["jitendex", "Installed in N seconds"],
+        ["jmnedict", "Failed: could not read JMnedict.zip: HTTP 503"],
+        ["bees-ultimate-kanji-dictionary", "Installed in N seconds"],
+        ["jiten", "Installed in N seconds"],
+      ])
+      && JSON.stringify(runOutcome.actions) === JSON.stringify([["setup-retry", "Retry missing dictionaries"], ["setup-continue", "Continue setup"]])
+      && runOutcome.countdown === null && runOutcome.importLink
+      // Each installed entry moved waiting → downloading → installing → installed in order (Jitendex was
+      // already downloading when recording began); the declared length made Jitendex's download
+      // comparable while Bee's stayed indeterminate.
+      && JSON.stringify(phaseOrder("jitendex")) === JSON.stringify(["downloading", "installing", "installed"])
+      && JSON.stringify(phaseOrder("bees-ultimate-kanji-dictionary")) === JSON.stringify(["waiting", "downloading", "installing", "installed"])
+      && JSON.stringify(phaseOrder("jmnedict")) === JSON.stringify(["waiting", "downloading", "failed"])
+      && entryEvents("jitendex").filter((entry) => entry.phase === "downloading").every((entry) => entry.totalBytes === null || entry.totalBytes === jitendexBytes)
+      && entryEvents("jitendex").some((entry) => entry.phase === "downloading" && entry.totalBytes === jitendexBytes && entry.receivedBytes === jitendexBytes)
+      && entryEvents("bees-ultimate-kanji-dictionary").every((entry) => entry.totalBytes === null)
+      && entryEvents("bees-ultimate-kanji-dictionary").some((entry) => entry.phase === "downloading" && entry.receivedBytes > 0)
+      // The rows the user saw: a determinate percentage for Jitendex, received bytes only for Bee's.
+      && seenPhase("jitendex", (row) => row[2] === true && /\(\d+%\)$/u.test(row[1]))
+      && !seenPhase("bees-ultimate-kanji-dictionary", (row) => row[2] === true)
+      && seenPhase("bees-ultimate-kanji-dictionary", (row) => /^Downloading… [\d.]+ (KB|MB)$/u.test(row[1]) && row[3] === "In progress")
+      && JSON.stringify(setupArchives.requests) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
+      && ["jitendex", "bees-ultimate-kanji-dictionary", "jiten"].every((sourceId) => runOutcomes[sourceId]?.status === "installed" && runOutcomes[sourceId].seconds > 0)
+      && runOutcomes.jmnedict?.status === "failed" && runOutcomes.jmnedict.error === "could not read JMnedict.zip: HTTP 503"
+      && afterRun.setupState.dictionaries.totalSeconds > 0 && afterRun.setupState.dictionaries.continued === false
+      && afterRun.setupState.stage === "dictionaries"
+      && JSON.stringify(installedTitles) === JSON.stringify(RECOMMENDED_DICTIONARIES.filter(({ sourceId }) => sourceId !== "jmnedict")
+        .map(({ sourceId, title }) => [sourceId, title]).sort())
+      && startupTabs() === 1,
+    JSON.stringify({ runOutcome, rowLog, phases: phases.map(({ rows, status }) => [rows, status]), afterRun, requests: setupArchives.requests,
+      phaseOrders: ["jitendex", "jmnedict", "bees-ultimate-kanji-dictionary", "jiten"].map(phaseOrder), events: setupEvents.length }),
+  );
+
+  // Settings meanwhile shows the partial state: no starter card, a retry control.
+  const settingsAfterRun = await page.evaluate(() => ({
+    starterHidden: document.getElementById("recommended-starter")?.hidden,
+    retryHidden: document.getElementById("recommended-retry")?.hidden,
+  }));
+  const jitendexTitle = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "jitendex").title;
+  const beesTitle = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "bees-ultimate-kanji-dictionary").title;
+  let retried = null;
+  let successShownAt = 0;
+  if (startup !== null) {
+    await startup.bringToFront();
+    await clickStartupControl("setup-retry");
+    retried = await waitStartup((state) => state.heading.startsWith("All dictionaries installed"), 60_000);
+    successShownAt = Date.now();
+  }
+  const afterRetry = await page.evaluate(async () => chrome.storage.local.get(["setupState", "options", "dictionaryState"]));
+  const retryOutcomes = afterRetry.setupState?.dictionaries?.outcomes ?? {};
+  check(
+    "Retry installs only the missing dictionary and the committed entries settle their selections once",
+    settingsAfterRun.starterHidden === true && settingsAfterRun.retryHidden === false
+      && JSON.stringify(setupArchives.requests.slice(4)) === JSON.stringify(["jmnedict"])
+      && retried?.heading === `All dictionaries installed in ${afterRetry.setupState.dictionaries.totalSeconds < 10
+        ? afterRetry.setupState.dictionaries.totalSeconds.toFixed(1) : Math.round(afterRetry.setupState.dictionaries.totalSeconds)} seconds`
+      && retried.rows.every((row) => /^Installed in \d+(\.\d+)? seconds$/u.test(row[1]))
+      && retried.actions.length === 0 && retried.importLink
+      && retried.countdown === "Continuing to Anki in 5 seconds"
+      && retryOutcomes.jmnedict?.status === "installed" && retryOutcomes.jmnedict.seconds > 0
+      && retryOutcomes.jitendex?.status === "installed"
+      && afterRetry.setupState.dictionaries.totalSeconds > afterRun.setupState.dictionaries.totalSeconds
+      && JSON.stringify(afterRetry.setupState.dictionaries.selectionsApplied) === JSON.stringify(["jitendex", "bees-ultimate-kanji-dictionary"])
+      && afterRetry.options.compactDefinitionSummaryDictionary === jitendexTitle
+      && afterRetry.options.kanjiClickDictionary?.title === beesTitle && afterRetry.options.kanjiClickDictionary.kind === "term"
+      && afterRetry.options.showCompactDefinitionSummary === false
+      && (afterRetry.dictionaryState?.dictionaries ?? []).length === RECOMMENDED_DICTIONARIES.length
+      && afterRetry.setupState.stage === "dictionaries",
+    JSON.stringify({ settingsAfterRun, retried, afterRetry, requests: setupArchives.requests }),
+  );
+  if (startup && (process.env.HACHIDORI_STARTUP_COMPLETE_SCREENSHOT || process.env.HACHIDORI_STARTUP_COMPLETE_DARK_SCREENSHOT)) {
+    await startup.setViewport({ width: 900, height: 820 });
+    for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_COMPLETE_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_COMPLETE_DARK_SCREENSHOT]]) {
+      if (!path) continue;
+      await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      await startup.screenshot({ path });
+    }
+    await startup.emulateMediaFeatures([]);
+  }
+
+  let heldResult = null;
+  let ankiReached = null;
+  if (startup !== null) {
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, successShownAt + 3500 - Date.now())));
+    heldResult = await startup.evaluate(readStartup).catch(() => null);
+    ankiReached = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "Anki"
+      ? { at: Date.now(), focused: document.activeElement?.id ?? "", done: document.querySelectorAll(".setup-step.is-done").length,
+        ankiLink: document.querySelector('#setup-body a[href="settings.html#anki"]') !== null } : false,
+    { timeout: 10_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
+  }
+  const ankiStage = await page.evaluate(async () => (await chrome.storage.local.get("setupState")).setupState);
+  check(
+    "the all-installed result stays five seconds before setup moves to Anki",
+    heldResult?.heading.startsWith("All dictionaries installed in") === true
+      && /^Continuing to Anki in [123] seconds?$/u.test(heldResult.countdown ?? "")
+      && ankiReached !== null && ankiReached.at - successShownAt >= 4800
+      && ankiReached.focused === "setup-heading" && ankiReached.done === 1 && ankiReached.ankiLink
+      && ankiStage?.stage === "anki" && ankiStage.dictionaries.continued === false,
+    JSON.stringify({ heldResult, ankiReached, successShownAt, ankiStage }),
+  );
+
+  // The dictionary-dependent selections were applied once; the user now returns
+  // both to Automatic so the remaining assertions keep their historical options.
+  await page.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      requestId: "first-run-reset", baseRevision: options.revision,
+      options: { compactDefinitionSummaryDictionary: "", kanjiClickDictionary: "" } });
+    if (!reply.ok) throw new Error(reply.error);
+  });
+
   let startupFlow = null;
   if (startup !== null) {
     await startup.bringToFront();
@@ -5593,34 +5909,20 @@ async function main() {
       browser.on("targetdestroyed", onDestroyed);
       setTimeout(() => { browser.off("targetdestroyed", onDestroyed); resolveClosed(false); }, 15_000);
     });
-    // The startup page re-renders its controls on every storage change, and
-    // the options write above reaches it asynchronously. Click inside the page
-    // so a handle resolved before that re-render cannot go stale, keeping the
-    // user-clickable requirement Puppeteer's handle click would have enforced.
-    const clickStartupControl = (id) => startup.evaluate((controlId) => {
-      const control = document.getElementById(controlId);
-      if (!control || control.disabled || !control.checkVisibility()) throw new Error(`#${controlId} is not user-clickable`);
-      control.click();
-    }, id);
-    const stageAfter = async (id, heading) => {
-      await clickStartupControl(id);
-      return startup.waitForFunction((expected) => {
-        const text = document.getElementById("setup-heading")?.textContent ?? "";
-        return text === expected ? {
-          focused: document.activeElement?.id ?? "",
-          currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
-          done: document.querySelectorAll(".setup-step.is-done").length,
-          body: document.getElementById("setup-body")?.textContent ?? "",
-          status: document.getElementById("setup-status")?.textContent ?? "",
-          ankiLink: document.querySelector('#setup-body a[href="settings.html#anki"]') !== null,
-        } : false;
-      }, { timeout: 10_000, polling: 50 }, heading).then((handle) => handle.jsonValue()).catch(() => null);
-    };
-    const anki = await stageAfter("setup-continue", "Anki");
-    const practice = await stageAfter("setup-continue", "You’re ready.");
+    await clickStartupControl("setup-continue");
+    const practice = await startup.waitForFunction(() => {
+      const text = document.getElementById("setup-heading")?.textContent ?? "";
+      return text === "You’re ready." ? {
+        focused: document.activeElement?.id ?? "",
+        currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
+        done: document.querySelectorAll(".setup-step.is-done").length,
+        body: document.getElementById("setup-body")?.textContent ?? "",
+        status: document.getElementById("setup-status")?.textContent ?? "",
+      } : false;
+    }, { timeout: 10_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
     await clickStartupControl("setup-finish");
     const closed = await startupClosed;
-    startupFlow = { anki, practice, closed };
+    startupFlow = { practice, closed };
   }
   const completedSetup = await page.waitForFunction(async () => {
     const { setupState } = await chrome.storage.local.get("setupState");
@@ -5628,18 +5930,38 @@ async function main() {
       ? setupState : false;
   }, { timeout: 10_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
   check(
-    "the startup page advances through Anki to completion, closes its tab and hides Resume setup",
-    startupFlow?.anki?.focused === "setup-heading" && startupFlow.anki.currentStep === "anki"
-      && startupFlow.anki.done === 1 && startupFlow.anki.ankiLink && startupFlow.anki.status === ""
-      && startupFlow.practice?.focused === "setup-heading" && startupFlow.practice.currentStep === "practice"
-      && startupFlow.practice.done === 2
+    "the startup page advances from Anki to completion, closes its tab and hides Resume setup",
+    startupFlow?.practice?.focused === "setup-heading" && startupFlow.practice.currentStep === "practice"
+      && startupFlow.practice.done === 2 && startupFlow.practice.status === ""
       && startupFlow.practice.body.includes("Hover over Japanese text on any webpage")
       && startupFlow.closed === true && startupTabs() === 0
-      && completedSetup?.revision === 4 && typeof completedSetup.completedAt === "string"
+      && typeof completedSetup?.completedAt === "string"
+      && JSON.stringify(Object.keys(completedSetup.dictionaries.outcomes).sort()) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId).sort())
       && editedPreference?.showCompactDefinitionSummary === false && editedPreference.revision === 2,
     JSON.stringify({ startupFlow, completedSetup, editedPreference, startupTabs: startupTabs() }),
   );
   await page.bringToFront();
+
+  // Clear the mocked catalogue packages so the Settings installer below starts
+  // from the same clean library it always did; the setup mock stays attached so
+  // no later run can reach the network, but must not answer Settings' own fetches.
+  for (const { title } of RECOMMENDED_DICTIONARIES) {
+    const removed = await page.evaluate((dictionaryTitle) => chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen",
+      type: "hd_remove",
+      requestId: `e2e-remove-setup-${dictionaryTitle}`,
+      title: dictionaryTitle,
+    }), title);
+    if (removed?.ok !== true) {
+      throw new Error(`could not clear the setup-installed dictionary ${title}: ${JSON.stringify(removed)}`);
+    }
+  }
+  await page.waitForFunction(async () => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    return dictionaryState?.dictionaries?.length === 0
+      && document.getElementById("recommended-starter")?.hidden === false;
+  }, { timeout: 90_000, polling: 100 });
+  const setupRequestsAfterSetup = setupArchives.requests.length;
 
   await checkSettingsAutosave(page, browser, settingsUrl);
   await checkSettingsTransport(page);
@@ -5752,22 +6074,6 @@ async function main() {
     return report();
   }
 
-  const cleanInstaller = await page.evaluate(() => ({
-    starterHidden: document.getElementById("recommended-starter")?.hidden,
-    installText: document.getElementById("install-recommended")?.textContent?.trim() ?? "",
-    retryHidden: document.getElementById("recommended-retry")?.hidden,
-    localInputVisible: document.getElementById("import-file")?.checkVisibility() === true,
-    dictionaryManagementVisible: document.getElementById("dict-list")?.closest(".card")?.hidden !== true,
-  }));
-  check(
-    "a clean profile shows one recommended install action beside local import",
-    cleanInstaller.starterHidden === false
-      && cleanInstaller.installText === "Install recommended"
-      && cleanInstaller.retryHidden === true
-      && cleanInstaller.localInputVisible === true
-      && cleanInstaller.dictionaryManagementVisible === false,
-    JSON.stringify(cleanInstaller),
-  );
   if (process.env.HACHIDORI_SETTINGS_SCREENSHOT) {
     const importCard = await page.$('section[aria-labelledby="import-heading"]');
     await importCard.screenshot({ path: process.env.HACHIDORI_SETTINGS_SCREENSHOT });
@@ -8031,8 +8337,10 @@ async function main() {
       && JSON.stringify(setupAfterRestart.setupState) === JSON.stringify(completedSetup)
       && setupAfterRestart.resumeHidden === true
       && restoredOptions?.showCompactDefinitionSummary === false
-      && restoredOptions.showCompactDefinitionSummary === optionsBeforeRestart.showCompactDefinitionSummary,
-    JSON.stringify({ startupTabsAfterWorkerRestart, startupTabs: startupTabs(), setupAfterRestart, completedSetup }),
+      && restoredOptions.showCompactDefinitionSummary === optionsBeforeRestart.showCompactDefinitionSummary
+      && setupArchives.requests.length === setupRequestsAfterSetup,
+    JSON.stringify({ startupTabsAfterWorkerRestart, startupTabs: startupTabs(), setupAfterRestart, completedSetup,
+      setupRequests: setupArchives.requests.length, setupRequestsAfterSetup }),
   );
 
   await showSettingsSection(page, "dictionaries");
