@@ -137,6 +137,53 @@ after publication. A title collision, changed fingerprint, wrong archive
 revision, or failed import leaves the working generation loaded and reports the
 failure without publishing the candidate.
 
+## First-run setup
+
+`chrome.runtime.onInstalled` with `reason === "install"` is the only entry to
+onboarding. Inside its serialized storage queue the service worker seeds the
+values that are still absent in one write, then opens one `startup.html` tab
+only when it created the setup record. Chrome reports `install` again on every
+launch for an unpacked extension loaded from the command line, so the absence
+of that record, not the reason alone, identifies a new installation.
+
+- `setupState`: `{ schemaVersion: 1, revision, startedAt, stage, completedAt }`,
+  where `stage` is `dictionaries`, `anki`, `practice` or `complete`. The worker
+  owns every write. `hd_setup_cas` accepts `{ baseRevision, stage }` from the
+  exact startup page URL only, answers a stale base revision with a conflict and
+  the current state, refuses a stage that is not later than the current one, and
+  records `completedAt` when the stage becomes `complete`.
+- `options`: the first-install preferences (`showCompactDefinitionSummary: true`,
+  `compactDefinitionSummaryCount: 3`) at revision 1. The `reader-options.js`
+  defaults are unchanged, so an extension update never alters an existing
+  user's popup, and a later edit through the ordinary revisioned options write
+  is the value that persists.
+
+Extension updates, browser starts and service-worker restarts only run
+`warmUp()`; they cannot reopen setup or reset preferences. Setup state is not
+part of a backup: it describes this installation's onboarding, not user data.
+
+`startup.html` links `settings.css` for its palette, typography, controls,
+focus rings and reduced-motion rules, and adds only layout in `startup.css`. The
+page reads `setupState`, `dictionaryState` and `options` from storage, adopts
+only newer revisions from storage events, and renders one card per stage under
+a **Dictionaries → Anki → Try it** indicator (`aria-current="step"`). The
+dictionary stage lists the four catalogue entries as **Already installed** or
+**Not installed** through the shared `recommendedDictionaryInstalled()` rule: a
+validated `sourceId` or the exact update index, never a display name. Continue
+and Finish send `hd_setup_cas` with the revision the page rendered; a conflict
+adopts the newer state and reports it in the card's live region, and a storage
+event that arrives while a write is in flight renders once with the reply. A
+stage change moves focus to the card heading; an inventory update keeps focus on
+the control that had it. Finish records completion and closes the tab. Settings
+shows **Resume setup** in its sidebar while `stage !== "complete"`, so closing
+the tab loses nothing. This shell owns activation, durable stage state, initial
+preferences and recovery; automatic dictionary installation, Anki detection and
+the lookup exercise attach to these stages separately.
+
+![First-run setup in the light Settings palette](assets/startup-dictionaries.png)
+
+![First-run setup in the dark Settings palette](assets/startup-dictionaries-dark.png)
+
 ## Hover activation and popup ownership
 
 The reader has one live `hoverEnabled` switch and `lookupMode` (`hover` or

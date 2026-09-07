@@ -746,6 +746,8 @@ function loadBackgroundScript(sandbox) {
     .replace(/^export\s+/gmu, "");
   const responseLimits = readFileSync(resolve(EXTENSION, "response-limits.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
@@ -759,7 +761,8 @@ function loadBackgroundScript(sandbox) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;
@@ -771,7 +774,7 @@ function loadBackgroundScript(sandbox) {
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${ankiTemplates}\n${anki}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${setupState}\n${ankiTemplates}\n${anki}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1050,6 +1053,102 @@ async function externalLinksBackgroundStage() {
     independent && failureAttempts === 1 && failed?.ok === false && validReply(failed) && failed.error.includes("tab creation failed")
       && !bus.log.some(message => message.relayed),
     JSON.stringify({ independent, failed, log: bus.log }));
+}
+
+async function firstRunBackgroundStage() {
+  const bus = makeBus();
+  const storage = makeStorage();
+  const chrome = makeChrome("first-run-worker", bus, storage);
+  const tabs = [];
+  chrome.tabs = { async create(properties) { tabs.push(structuredClone(properties)); return { id: tabs.length }; } };
+  const sandbox = () => ({ chrome, console, URL, setTimeout, clearTimeout, Promise, Error });
+  loadBackgroundScript(sandbox());
+  const settle = async (predicate = () => false) => {
+    for (let attempt = 0; attempt < 50 && !predicate(); attempt += 1) {
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+    }
+  };
+  const startupUrl = chrome.runtime.getURL("startup.html");
+  const validIso = (value) => typeof value === "string" && !Number.isNaN(Date.parse(value));
+
+  // A fresh installation: one tab, one seeded setup record, one initial options revision.
+  chrome.__events.onInstalled.fire({ reason: "install" });
+  await settle(() => tabs.length === 1 && offscreenState.exists);
+  const seeded = { setup: storage.raw.get("setupState"), options: storage.raw.get("options") };
+  const seededOnce = tabs.length === 1 && tabs[0].url === startupUrl
+    && JSON.stringify(seeded.setup) === JSON.stringify({
+      schemaVersion: 1, revision: 1, startedAt: seeded.setup?.startedAt, stage: "dictionaries", completedAt: null,
+    }) && validIso(seeded.setup?.startedAt)
+    && JSON.stringify(seeded.options) === JSON.stringify({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3, revision: 1 })
+    && JSON.stringify(storage.sets) === JSON.stringify([["options", "setupState"]]);
+
+  // The user edits a seeded preference; updates, browser starts, a restarted
+  // worker and the repeated "install" reason Chrome reports for a command-line
+  // loaded extension must neither reopen setup nor touch that edit.
+  const edited = { ...seeded.options, showCompactDefinitionSummary: false, revision: 2 };
+  await storage.api().local.set({ options: edited });
+  chrome.__events.onInstalled.fire({ reason: "update", previousVersion: "0.1.0" });
+  chrome.__events.onStartup.fire();
+  chrome.__events.onInstalled.fire({ reason: "chrome_update" });
+  chrome.__events.onInstalled.fire({ reason: "install" });
+  // A restarted worker replaces the previous one, so it listens on its own bus.
+  const restarted = makeChrome("first-run-worker-restart", makeBus(), storage);
+  restarted.tabs = chrome.tabs;
+  loadBackgroundScript({ ...sandbox(), chrome: restarted });
+  restarted.__events.onStartup.fire();
+  await settle();
+  const preserved = tabs.length === 1
+    && JSON.stringify(storage.raw.get("options")) === JSON.stringify(edited)
+    && JSON.stringify(storage.raw.get("setupState")) === JSON.stringify(seeded.setup);
+
+  // Seeding writes only absent values: a profile that already carries settings keeps them.
+  const carried = makeStorage();
+  await carried.api().local.set({ options: { scanLength: 20, revision: 4 } });
+  const carriedChrome = makeChrome("first-run-worker-carried", makeBus(), carried);
+  const carriedTabs = [];
+  carriedChrome.tabs = { async create(properties) { carriedTabs.push(structuredClone(properties)); return { id: 1 }; } };
+  loadBackgroundScript({ ...sandbox(), chrome: carriedChrome });
+  carriedChrome.__events.onInstalled.fire({ reason: "install" });
+  await settle(() => carriedTabs.length === 1);
+  const carriedKept = carriedTabs.length === 1
+    && JSON.stringify(carried.raw.get("options")) === JSON.stringify({ scanLength: 20, revision: 4 })
+    && carried.raw.get("setupState")?.stage === "dictionaries"
+    && JSON.stringify(carried.sets.at(-1)) === JSON.stringify(["setupState"]);
+  check("a fresh installation opens one startup tab and seeds first-install preferences exactly once",
+    seededOnce && preserved && carriedKept,
+    JSON.stringify({ tabs, seeded, sets: storage.sets, options: storage.raw.get("options"), carriedTabs, carried: [...carried.raw.entries()] }));
+
+  // Stage transitions are compare-and-set writes from the startup page only.
+  const startupSender = { id: chrome.runtime.id, url: `${startupUrl}#resume` };
+  const send = (fields, sender = startupSender) => bus.sendMessage("startup-page", {
+    target: "hoshidicts-worker", type: "hd_setup_cas", requestId: "setup-cas", ...fields,
+  }, sender);
+  const writesBefore = storage.sets.length;
+  const advanced = await send({ baseRevision: 1, stage: "anki" });
+  const stale = await send({ baseRevision: 1, stage: "practice" });
+  const rejected = [
+    await send({ baseRevision: 2, stage: "lookup" }),
+    await send({ stage: "practice" }),
+    await send({ baseRevision: 2, stage: "practice" }, { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") }),
+    await send({ baseRevision: 2, stage: "practice" }, { id: "another-extension", url: startupUrl }),
+  ];
+  const completed = await send({ baseRevision: 2, stage: "complete" });
+  // Setup is monotonic: a current-revision write cannot reopen a finished setup.
+  rejected.push(await send({ baseRevision: 3, stage: "practice" }));
+  const validReply = (reply) => reply?.type === "hd_setup_cas_result" && reply.requestId === "setup-cas";
+  check("startup-page setup writes are revision-checked, forward-only and refused from other senders",
+    advanced?.ok && validReply(advanced)
+      && JSON.stringify(advanced.state) === JSON.stringify({ ...seeded.setup, revision: 2, stage: "anki" })
+      && stale?.ok === false && stale.conflict === true && validReply(stale)
+      && JSON.stringify(stale.state) === JSON.stringify(advanced.state)
+      && rejected.every((reply) => validReply(reply) && reply.ok === false && typeof reply.error === "string" && reply.conflict === undefined)
+      && rejected.at(-1).error.includes("backwards")
+      && completed?.ok && completed.state.stage === "complete" && completed.state.revision === 3
+      && validIso(completed.state.completedAt)
+      && JSON.stringify(storage.raw.get("setupState")) === JSON.stringify(completed.state)
+      && JSON.stringify(storage.sets.slice(writesBefore)) === JSON.stringify([["setupState"], ["setupState"]])
+      && !bus.log.some((message) => message.relayed),
+    JSON.stringify({ advanced, stale, rejected, completed, sets: storage.sets.slice(writesBefore) }));
 }
 
 async function ankiBackgroundStage() {
@@ -1795,6 +1894,8 @@ function loadSettingsScript(window) {
     .replace(/^export\s+/gmu, "");
   const nameDrafts = readFileSync(resolve(EXTENSION, "dictionary-name-drafts.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
@@ -1804,10 +1905,11 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${settings}`,
+    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${settings}`,
   );
 }
 
@@ -2336,6 +2438,7 @@ async function main() {
 
   section("external dictionary links");
   await externalLinksBackgroundStage();
+  await firstRunBackgroundStage();
   await backupRelayStage();
   await managedScheduleStage();
   await lookupStatsStage();
@@ -4847,6 +4950,11 @@ async function main() {
     navigationSettings?.details === true, JSON.stringify(navigationSettings));
   check("Design lazily previews unsaved presentation edits and retains the shared save feedback across sections",
     navigationSettings?.design === true, JSON.stringify(navigationSettings));
+  check("Settings shows Resume setup only while the first-run setup record is incomplete",
+    navigationSettings?.resume === true, JSON.stringify(navigationSettings));
+  const startup = await startupPageStage();
+  check("the startup page renders trusted inventory, keeps focus through updates and advances through revisioned writes",
+    startup !== null && Object.values(startup).every((value) => value === true), JSON.stringify(startup));
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
@@ -5624,7 +5732,158 @@ async function settingsNavigationStage() {
       await navigate("design");
       design &&= updates.at(-1)?.popupColumns === 1 && requests.length === beforeReturn;
     }
-    return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details, design };
+    const resumeLink = document.getElementById("setup-resume");
+    let resume = resumeLink.hidden && resumeLink.getAttribute("href") === "startup.html"
+      && !resumeLink.closest(".settings-nav");
+    const setup = { schemaVersion: 1, revision: 1, startedAt: "2026-09-07T10:00:00.000Z", stage: "anki", completedAt: null };
+    listener({ setupState: { newValue: setup } }, "local");
+    resume &&= !resumeLink.hidden;
+    listener({ setupState: { newValue: { ...setup, revision: 2, stage: "complete", completedAt: "2026-09-07T10:05:00.000Z" } } }, "local");
+    resume &&= resumeLink.hidden;
+    listener({ setupState: { newValue: { ...setup, revision: 3 } } }, "local");
+    resume &&= !resumeLink.hidden;
+    listener({ setupState: { newValue: { schemaVersion: 2, revision: 4 } } }, "local");
+    resume &&= resumeLink.hidden;
+    return { navigation, draft: draft && unseenCompletion && mirror.textContent === "", details, design, resume };
+  } finally {
+    window.close();
+  }
+}
+
+function loadStartupScript(window) {
+  const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
+  const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
+  const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
+    .replace(/^export\s+/gmu, "");
+  const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
+  const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
+    .replace(/import "\.\/reader-options\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
+  // startup.js is a module with a top-level await; an async wrapper keeps that
+  // legal in a classic-script eval and surfaces a load failure through its promise.
+  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${setupState}\n${startup}\n})()`);
+}
+
+// The startup page renders the worker-owned setup state, keeps focus through
+// inventory updates, and advances stages only through revision-checked writes.
+async function startupPageStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
+    pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
+  });
+  const { window } = dom;
+  const { document } = window;
+  const requests = [];
+  let listener = null;
+  let pendingReply = null;
+  let setupState = { schemaVersion: 1, revision: 3, startedAt: "2026-09-07T10:00:00.000Z", stage: "dictionaries", completedAt: null };
+  const jmnedictIndex = RECOMMENDED_CATALOGUE.find((entry) => entry.sourceId === "jmnedict").indexUrl;
+  let dictionaryState = { schemaVersion: 1, revision: 5, groups: [], dictionaries: [
+    { id: "bee", title: "Bee's Ultimate Kanji Dictionary", sourceId: "bees-ultimate-kanji-dictionary", enabled: true },
+    { id: "names", title: "JMnedict [2026-01-01]", indexUrl: jmnedictIndex, enabled: true },
+    // A display name is not a trusted identity.
+    { id: "lookalike", title: "Jitendex", displayName: "Jitendex", enabled: true },
+  ] };
+  const options = { revision: 2, lookupMode: "activation", activationKey: "Control" };
+  const closedTabs = [];
+  window.chrome = {
+    runtime: { async sendMessage(message) {
+      requests.push(structuredClone(message));
+      if (message.type !== "hd_setup_cas") throw new Error(`Unexpected startup request ${message.type}`);
+      return new Promise((resolveReply) => { pendingReply = resolveReply; });
+    } },
+    storage: {
+      local: { async get() {
+        return { setupState: structuredClone(setupState), dictionaryState: structuredClone(dictionaryState), options: structuredClone(options) };
+      } },
+      onChanged: { addListener(value) { listener = value; } },
+    },
+    tabs: { async getCurrent() { return { id: 44 }; }, async remove(id) { closedTabs.push(id); } },
+  };
+  const pause = () => new Promise((done) => setTimeout(done, 10));
+  async function until(predicate) {
+    const deadline = Date.now() + 2000;
+    while (!predicate() && Date.now() < deadline) await pause();
+    if (!predicate()) throw new Error("the startup page did not reach its expected state");
+  }
+  const heading = () => document.getElementById("setup-heading").textContent;
+  const status = () => document.getElementById("setup-status");
+  const currentStep = () => document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null;
+  const doneSteps = () => document.querySelectorAll(".setup-step.is-done").length;
+  const rows = () => [...document.querySelectorAll(".setup-dictionary")].map((row) =>
+    [row.dataset.sourceId, row.querySelector(".setup-dictionary-status").textContent]);
+  const reply = (fields) => {
+    const sent = requests.at(-1);
+    pendingReply({ type: "hd_setup_cas_result", requestId: sent.requestId, ok: true, error: null, ...fields });
+    pendingReply = null;
+    return sent;
+  };
+  try {
+    await loadStartupScript(window);
+    await until(() => heading() === "Default dictionaries");
+    const initial = currentStep() === "dictionaries" && doneSteps() === 0
+      && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Not installed"], ["jmnedict", "Already installed"],
+        ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Not installed"]])
+      && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
+      && document.getElementById("setup-continue")?.textContent === "Continue setup"
+      && document.querySelector('a[href="settings.html"]') !== null && requests.length === 0;
+
+    // Inventory updates rebuild the card; the id-less in-card Settings link and
+    // the Continue button must each keep focus through their replacement.
+    const importLink = () => document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]');
+    const linkBefore = importLink();
+    linkBefore.focus();
+    dictionaryState = { ...dictionaryState, revision: 6, dictionaries: dictionaryState.dictionaries.filter((entry) => entry.id !== "names") };
+    listener({ dictionaryState: { newValue: structuredClone(dictionaryState) } }, "local");
+    const linkFocusKept = importLink() !== linkBefore && document.activeElement === importLink()
+      && rows()[1][1] === "Not installed";
+    document.getElementById("setup-continue").focus();
+    dictionaryState = { ...dictionaryState, revision: 7, dictionaries: dictionaryState.dictionaries.filter((entry) => entry.id !== "bee") };
+    listener({ dictionaryState: { newValue: structuredClone(dictionaryState) } }, "local");
+    listener({ setupState: { newValue: { ...setupState, revision: 2, stage: "anki" } } }, "local");
+    const inventory = linkFocusKept && document.activeElement?.id === "setup-continue" && rows()[2][1] === "Not installed"
+      && heading() === "Default dictionaries" && currentStep() === "dictionaries";
+
+    document.getElementById("setup-continue").click();
+    await until(() => pendingReply !== null);
+    const saving = document.getElementById("setup-continue").disabled && status().textContent === "Saving…";
+    // Chrome delivers the storage event before the reply; the write in flight renders once.
+    setupState = { ...setupState, revision: 4, stage: "anki" };
+    listener({ setupState: { newValue: structuredClone(setupState) } }, "local");
+    const deferred = heading() === "Default dictionaries";
+    const advanceRequest = reply({ state: structuredClone(setupState) });
+    await until(() => heading() === "Anki");
+    const advanced = advanceRequest.target === "hoshidicts-worker" && advanceRequest.baseRevision === 3
+      && advanceRequest.stage === "anki" && currentStep() === "anki" && doneSteps() === 1
+      && document.activeElement === document.getElementById("setup-heading") && status().textContent === ""
+      && document.querySelector('#setup-body a[href="settings.html#anki"]') !== null;
+
+    document.getElementById("setup-continue").click();
+    await until(() => pendingReply !== null);
+    setupState = { ...setupState, revision: 5, stage: "practice" };
+    const conflictRequest = reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
+    await until(() => heading() === "You’re ready.");
+    const conflict = conflictRequest.baseRevision === 4 && conflictRequest.stage === "practice"
+      && status().textContent === "Could not save setup progress: Setup changed in another tab."
+      && status().classList.contains("is-error") && currentStep() === "practice" && doneSteps() === 2
+      && document.getElementById("setup-body").textContent.includes("Hold Control and hover")
+      && document.getElementById("setup-finish") !== null && document.getElementById("setup-continue") === null;
+
+    document.getElementById("setup-finish").click();
+    await until(() => pendingReply !== null);
+    setupState = { ...setupState, revision: 6, stage: "complete", completedAt: "2026-09-07T10:05:00.000Z" };
+    const finishRequest = reply({ state: structuredClone(setupState) });
+    await until(() => closedTabs.length === 1);
+    const finished = finishRequest.baseRevision === 5 && finishRequest.stage === "complete" && closedTabs[0] === 44
+      && heading() === "Setup is complete." && currentStep() === null && doneSteps() === 3
+      && document.getElementById("setup-actions").childElementCount === 0 && requests.length === 3;
+    return { initial, inventory, saving, deferred, advanced, conflict, finished };
   } finally {
     window.close();
   }

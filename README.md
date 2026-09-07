@@ -34,9 +34,15 @@ git clone https://github.com/bee-san/hachidori.git
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked** and select the cloned `hachidori/extension` directory.
-4. Open Hachidori's **Options**, install the four recommended dictionaries or import your own Yomitan `.zip`, then hover Japanese text on any page.
+4. Hachidori opens a short setup tab on its first install. Open **Settings** from it, install the four recommended dictionaries or import your own Yomitan `.zip`, then hover Japanese text on any page.
 
-Hachidori will automatically open a new tab to install the reccomended dictionaries and auto-connect to Anki for you.
+The setup tab is where automatic installation of the recommended dictionaries and Anki detection are being added; today it walks through the steps and links to Settings.
+
+<p align="center">
+  <img src="docs/assets/startup-dictionaries.png" alt="Hachidori's first-run setup tab showing the Dictionaries, Anki and Try it steps and the four recommended dictionaries" width="720">
+</p>
+
+The setup tab uses the Settings theme in light and dark mode, walks through **Dictionaries → Anki → Try it**, and enables three-line compact definition summaries once as an initial preference. It appears only for a fresh installation: updates and restarts never reopen it or reset your settings. Closing it loses nothing; Settings shows **Resume setup** until you finish.
 
 # Blazing Fast
 

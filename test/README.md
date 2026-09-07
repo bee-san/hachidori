@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 373 checks, all of
+full request→reply round trip per contract-C message type. 428 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -528,6 +528,22 @@ What it proves, in order:
    to return the glossary bytes, which only decompress if `dict.zstd` was found
    and loaded. The restart case also proves an explicitly unreferenced generation
    is deleted rather than adopted from disk.
+11. **First-run setup.** A worker context receives `onInstalled` with reason
+   `install` and must create exactly one `startup.html` tab, seed the setup
+   record and the first-install options in one storage write, and leave a
+   later user edit alone through `update`, `onStartup` and a restarted worker
+   context; a profile that already carries options keeps them. `hd_setup_cas`
+   is answered only for the startup page URL, refuses a stale base revision with
+   the current state, rejects invalid stages, missing revisions and any move
+   back to an earlier or finished stage, and records `completedAt`. A jsdom
+   `startup.html` renders **Already installed** only for trusted
+   `sourceId`/index identity, keeps focus on its id-less Settings link and its
+   Continue button through inventory events, ignores an older setup revision,
+   defers rendering while a
+   write is in flight, moves focus to the heading on a stage change, adopts a
+   conflict reply's newer state, and closes its own tab after Finish. The
+   Settings harness shows **Resume setup** only for an incomplete, readable
+   setup record.
 
 ### jsdom
 
@@ -606,7 +622,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 139 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 164 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -627,6 +643,19 @@ text with a real mouse on a page served over `http://127.0.0.1` (content scripts
 opt-in), then relaunches against the same profile and hovers again with no
 re-import — which is the only test that proves direct OPFS persistence through a
 full Chrome restart.
+
+The clean profile also fires `chrome.runtime.onInstalled` with reason `install`,
+so the extension itself opens `startup.html`. Four assertions cover that tab:
+exactly one startup page at the dictionary stage with the Settings palette,
+four **Not installed** catalogue rows and the seeded first-install options
+(compact summaries on at three, TTS and the dark popup defaults untouched); the
+Settings sidebar's **Resume setup** link outside the section navigation; real
+clicks through Anki to **You’re ready.** with focus on each new heading, Finish
+closing the tab, and the completed record hiding the link; and, after the
+in-run service-worker restart and the full pass-2 relaunch, no reopened startup
+tab, the same completed record, and the user's earlier compact-summary edit
+still in force. `HACHIDORI_STARTUP_SCREENSHOT` and
+`HACHIDORI_STARTUP_DARK_SCREENSHOT` capture the dictionary stage in both themes.
 
 An in-memory external-reference fixture also passes through real WASM. Real Enter
 on its closed-shadow anchor must create exactly one worker-routed browser tab,
@@ -846,7 +875,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 139 assertions, and the summary line
+`PLANNED` at the top of the file names all 164 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

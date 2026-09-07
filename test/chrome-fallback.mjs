@@ -129,6 +129,9 @@ async function extensionId(browser) {
 async function openSettings(browser, id) {
   const page = await browser.newPage();
   await page.goto(`chrome-extension://${id}/settings.html`, { waitUntil: "domcontentloaded" });
+  // A fresh install opens the extension's own startup tab in the foreground;
+  // this page's animation-frame polling only runs while it is the visible tab.
+  await page.bringToFront();
   await page.waitForFunction(() => {
     const text = (document.querySelector("#engine-status")?.textContent || "").toLowerCase();
     return text.includes("ready") || text.includes("no dictionaries") || text.includes("error");

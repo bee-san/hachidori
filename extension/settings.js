@@ -18,6 +18,7 @@ import {
   managedDictionarySource,
   nextDictionaryUpdateCheck,
   normaliseUpdateSettings,
+  recommendedDictionaryInstalled,
 } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 import {
@@ -26,6 +27,7 @@ import {
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
 } from "./custom-dictionary.js";
+import { SETUP_STATE_KEY, normaliseSetupState, setupIncomplete } from "./setup-state.js";
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
@@ -818,8 +820,7 @@ function renderRecommendedCatalogue() {
 }
 
 function missingRecommendedDictionaries() {
-  return RECOMMENDED_DICTIONARIES.filter((entry) => !dictionaries.some((dictionary) =>
-    dictionary.sourceId === entry.sourceId || dictionary.indexUrl === entry.indexUrl));
+  return RECOMMENDED_DICTIONARIES.filter((entry) => !recommendedDictionaryInstalled(entry, dictionaries));
 }
 
 function renderRecommendedActions() {
@@ -2444,9 +2445,22 @@ function handleCustomDictionarySourceChange(change) {
   }
 }
 
+function renderSetupResume(value) {
+  let incomplete = false;
+  try {
+    incomplete = setupIncomplete(normaliseSetupState(value));
+  } catch {
+    // An unreadable setup record hides the resume link; the startup page reports it.
+  }
+  element("setup-resume").hidden = !incomplete;
+}
+
 function handleStorageChange(changes, area) {
   if (area !== "local") {
     return;
+  }
+  if (changes[SETUP_STATE_KEY]) {
+    renderSetupResume(changes[SETUP_STATE_KEY].newValue);
   }
   if (changes[CUSTOM_DICTIONARY_SOURCE_KEY]) {
     handleCustomDictionarySourceChange(changes[CUSTOM_DICTIONARY_SOURCE_KEY]);
@@ -2537,9 +2551,10 @@ async function start() {
   attachSettingsNavigation();
   renderRecommendedCatalogue();
   attachHandlers();
-  const stored = await chrome.storage.local.get(["options", "dictionaryUpdates"]);
+  const stored = await chrome.storage.local.get(["options", "dictionaryUpdates", SETUP_STATE_KEY]);
   adoptOptions(stored.options);
   adoptUpdateSettings(stored.dictionaryUpdates);
+  renderSetupResume(stored[SETUP_STATE_KEY]);
   renderCustomDictionaryControls();
   if (await reloadDictionaries()) {
     writeOptions();
