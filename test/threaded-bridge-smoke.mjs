@@ -120,6 +120,14 @@ assert.deepEqual(await queued[128], {
   ok: false,
   error: "the dictionary engine request queue is full",
 });
+const release = request("hd_backup_release", "saturated-release");
+await tick();
+assert.equal(engine.messages.at(-1).message.type, "hd_backup_release", "cleanup has one reserved slot");
+assert.match((await send("hd_backup_release", "release-overflow")).error, /queue is full/);
+engine.emit("message", { channel: "engine-response", id: engine.messages.at(-1).id,
+  response: { type: "hd_backup_release_result", ok: true } });
+assert.equal((await release.promise).ok, true);
+engine.messages.pop();
 const responseLimits = [["hd_lookup", 32 * 1024 * 1024], ["hd_media", 6 * 1024 * 1024]];
 for (const [type, limit] of responseLimits) {
   const fullQueueOversizedId = await send(type, "x".repeat(limit));
@@ -145,6 +153,10 @@ const mutationTypes = [
   "hd_remove",
   "hd_custom_save",
   "hd_custom_append",
+  "hd_backup_export",
+  "hd_backup_prepare",
+  "hd_backup_restore",
+  "hd_backup_cancel",
 ];
 
 for (const [index, type] of mutationTypes.entries()) {
@@ -301,6 +313,12 @@ try {
   assert.equal(localRequests.length, 128);
   const overflow = await send("hd_lookup", "local-overflow");
   assert.match(overflow.error, /queue is full/);
+  const localRelease = request("hd_backup_release", "local-saturated-release");
+  await tick();
+  assert.equal(localRequests.at(-1).message.type, "hd_backup_release");
+  assert.match((await send("hd_backup_release", "local-release-overflow")).error, /queue is full/);
+  localRequests.pop().resolve({ type: "hd_backup_release_result", ok: true });
+  assert.equal((await localRelease.promise).ok, true);
   localRequests.shift().resolve({ type: "hd_lookup_result", ok: true });
   await loading[0].promise;
   const replacement = request("hd_lookup", "local-replacement");
