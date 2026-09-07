@@ -734,6 +734,7 @@ function loadBackgroundScript(sandbox) {
   const ankiTemplates = readFileSync(resolve(EXTENSION, "anki-templates.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
+  const lookupStats = readFileSync(resolve(EXTENSION, "lookup-stats.js"), "utf8").replace(/^export\s+/gmu, "");
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
@@ -746,6 +747,7 @@ function loadBackgroundScript(sandbox) {
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+    .replace(/^import .* from "\.\/lookup-stats\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/backup-(?:state|downloads)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
@@ -765,7 +767,7 @@ function loadBackgroundScript(sandbox) {
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
-    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n`
+    `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${ankiTemplates}\n${anki}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,

@@ -33,6 +33,7 @@
     popupOpacityPercent: 85,
     sourceHighlightEnabled: true,
     popupColumns: 1,
+    showLookupCounts: true,
     showCompactDefinitionSummary: false,
     compactDefinitionSummaryCount: 3,
     compactDefinitionSummaryDictionary: "",

@@ -3,6 +3,7 @@ import { createAnkiGateway } from "./anki.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
 import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
+import { LOOKUP_STATS_KEY, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, normaliseLookupTerm } from "./lookup-stats.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
 import {
@@ -346,7 +347,29 @@ async function removeLegacyDictionaryRows(current, legacyDictionaries) {
 // The engine or settings page reads state, changes it, and sends it back a
 // message round trip later. A caller includes the revision it read so a stale
 // write cannot discard a change made by another extension context.
+async function lookupStatistics(message, record) {
+  const term = normaliseLookupTerm(message.term, message.reading);
+  const stored = await chrome.storage.local.get([LOOKUP_STATS_KEY, OPTIONS_KEY]);
+  let descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
+  assertLookupStatsDescriptor(descriptor);
+  if (projectStoredOptions(stored[OPTIONS_KEY]).showLookupCounts === false) return { descriptor, statistics: null };
+  const key = lookupStatsKey(descriptor, term);
+  let row = descriptor.generation === null ? undefined : (await chrome.storage.local.get(key))[key];
+  if (record) {
+    row = incrementLookupStats(row, term, Date.now());
+    descriptor = { generation: descriptor.generation ?? crypto.randomUUID(), revision: descriptor.revision + 1 };
+    assertLookupStatsDescriptor(descriptor);
+    await chrome.storage.local.set({ [LOOKUP_STATS_KEY]: descriptor, [lookupStatsKey(descriptor, term)]: row });
+  } else if (row !== undefined) {
+    assertLookupStatsRows(descriptor, [row]);
+    if (lookupStatsKey(descriptor, row) !== key) throw new Error("The lookup statistics row does not match its key.");
+  }
+  return { descriptor, statistics: { ...(row ?? { ...term, lookupCount: 0 }), seenCount: null } };
+}
+
 const WORKER_HANDLERS = {
+  hd_lookup_stats_record(message) { return lookupStatistics(message, true); },
+  hd_lookup_stats_read(message) { return lookupStatistics(message, false); },
   async hd_backup_download(message, sender) {
     if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
       throw new Error("Backup downloads are available only from Hachidori Settings.");
