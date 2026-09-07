@@ -247,7 +247,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse(failedResponse(message, "the dictionary engine is busy mutating"));
     return true;
   }
-  if (pending.size >= MAX_PENDING_REQUESTS) {
+  // Download cleanup is serialized by the storage owner. Reserve one bounded
+  // housekeeping slot so ordinary lookup saturation cannot retain its archive.
+  const limit = MAX_PENDING_REQUESTS + Number(message.type === "hd_backup_release");
+  if (pending.size >= limit) {
     sendResponse(failedResponse(message, "the dictionary engine request queue is full"));
     return true;
   }

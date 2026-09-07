@@ -34,7 +34,7 @@ export function createBackupDownloads(chrome, relay) {
         id = await chrome.downloads.download({ url: exported.blobUrl, saveAs: true,
           filename: `hachidori-backup-${new Date().toISOString().slice(0, 10)}.zip`, conflictAction: "uniquify" });
       } catch (error) {
-        await release(exported.blobUrl);
+        await serialise(() => release(exported.blobUrl));
         throw error;
       }
       let warning = null;
