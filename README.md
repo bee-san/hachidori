@@ -62,6 +62,12 @@ Do you keep on seeing a name pop up over & over again in a book, but it's not in
 
 With Hachidori, you can highlight the word and add it as a custom definition.
 
+# Lookup blur
+
+Sometimes we fall into a trap of looking up a word over & over again, but never learning it.
+
+Hachidori records how many times you have looked up a word and can blur it for you for a few seconds to force you to remember it.
+
 # Optionated
 
 Hachidori is an optionated program. If it does not benefit me, the creator, personally than I will not add that feature.
