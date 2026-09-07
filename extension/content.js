@@ -757,6 +757,7 @@
     window.removeEventListener("scroll", onScroll, true);
     window.removeEventListener("blur", onWindowBlur);
     window.removeEventListener("pagehide", onPageHide);
+    window.removeEventListener("pageshow", onPageShow);
     try {
       chrome.storage.onChanged.removeListener(onStorageChanged);
     } catch {
@@ -1531,15 +1532,31 @@
     }, remaining);
   }
 
+  // Before the stored settings arrive the decision stays pending, like the
+  // audio controller's own options hold, so a first lookup cannot reveal or
+  // auto-play against defaults that the stored settings then contradict.
   function beginDefinitionBlur(request, level) {
     clearDefinitionBlurTimer(level);
     if (!request) return;
     if (!request.blur) {
-      const active = options.definitionBlurEnabled && options.showLookupCounts;
-      request.blur = { state: active ? "pending" : "revealed", displayedAt: Date.now(),
-        decided: false, autoplayHeld: active, autoplaySuppressed: false };
+      const awaitingOptions = optionsStorageRevision < 0;
+      const active = awaitingOptions || (options.definitionBlurEnabled && options.showLookupCounts);
+      request.blur = { state: active ? "pending" : "revealed", displayedAt: Date.now(), awaitingOptions,
+        lookupCount: undefined, decided: false, autoplayHeld: active, autoplaySuppressed: false };
+    }
+    if (!request.blur.awaitingOptions) armDefinitionBlurTimer(request, level);
+  }
+
+  function resolveDefinitionBlurOptions(request, level) {
+    const blur = request.blur;
+    blur.awaitingOptions = false;
+    if (!options.definitionBlurEnabled || !options.showLookupCounts) {
+      releaseDefinitionBlurAutoplay(request, level, true);
+      revealDefinitions(request, level);
+      return;
     }
     armDefinitionBlurTimer(request, level);
+    if (blur.lookupCount !== undefined) settleDefinitionBlur(request, level, blur.lookupCount);
   }
 
   function releaseDefinitionBlurAutoplay(request, level, play) {
@@ -1555,6 +1572,10 @@
   function settleDefinitionBlur(request, level, lookupCount) {
     const blur = request.blur;
     if (!blur) return;
+    if (blur.awaitingOptions) {
+      blur.lookupCount = lookupCount;
+      return;
+    }
     const qualifies = definitionBlurQualifies(options, lookupCount);
     if (!blur.decided) {
       blur.decided = true;
@@ -2580,6 +2601,15 @@
     for (const level of levels) clearDefinitionBlurTimer(level);
   }
 
+  function onPageShow(event) {
+    if (!event.persisted) return;
+    // The absolute deadline kept running while the page was cached.
+    for (const level of levels) {
+      const request = level.currentViewRequest;
+      if (request?.blur && !request.blur.awaitingOptions) armDefinitionBlurTimer(request, level);
+    }
+  }
+
   function onScroll() {
     cancelCandidateScan();
     rootLevel.view?.hideImagePreview();
@@ -2722,6 +2752,7 @@
     const countsChanged = next.showLookupCounts !== options.showLookupCounts || corpusChanged;
     const blurChanged = next.showLookupCounts !== options.showLookupCounts || DEFINITION_BLUR_KEYS
       .some(key => next[key] !== options[key]);
+    const optionsArrived = optionsStorageRevision < 0;
     const adoption = { lookupChanged,
       presentationChanged: (summaryChanged || imageSourceChanged || metadataChanged) && next.hoverEnabled };
     if (activationChanged) {
@@ -2741,7 +2772,12 @@
         refreshLookupStatistics(request, level);
       }
     }
-    if (blurChanged) {
+    if (optionsArrived) {
+      for (const level of levels) {
+        const request = level.currentViewRequest;
+        if (request?.blur?.awaitingOptions) resolveDefinitionBlurOptions(request, level);
+      }
+    } else if (blurChanged) {
       for (const level of levels) {
         const request = level.currentViewRequest;
         const blur = request?.blur;
@@ -2837,6 +2873,7 @@
     window.addEventListener("scroll", onScroll, observe);
     window.addEventListener("blur", onWindowBlur);
     window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
   }
 
   start();
