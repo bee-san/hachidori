@@ -4,6 +4,7 @@ export function createBackupSettingsController({ document, send, download, check
   const element = id => document.getElementById(id);
   const window = document.defaultView;
   let busy = false, prepared = null;
+  let preparingToken = null;
   let pageEpoch = 0;
 
   function render() {
@@ -56,15 +57,23 @@ export function createBackupSettingsController({ document, send, download, check
     void run("Checking the archive and preparing fresh dictionary files…", async () => {
       const epoch = pageEpoch;
       await cancelPrepared();
+      if (epoch !== pageEpoch) return;
+      const token = window.crypto.randomUUID();
+      preparingToken = token;
       const blobUrl = window.URL.createObjectURL(file);
       let reply;
-      try { reply = await send("hd_backup_prepare", { blobUrl }); }
-      finally { window.URL.revokeObjectURL(blobUrl); }
-      if (!reply.ok) throw new Error(reply.error || "This backup could not be prepared.");
-      if (epoch !== pageEpoch) {
-        await send("hd_backup_cancel", { token: reply.token });
-        return;
+      try { reply = await send("hd_backup_prepare", { blobUrl, token }); }
+      catch (error) {
+        // The engine may have prepared successfully before its reply was lost.
+        try { await send("hd_backup_cancel", { token }); } catch { /* Keep the original failure. */ }
+        throw error;
       }
+      finally {
+        preparingToken = null;
+        window.URL.revokeObjectURL(blobUrl);
+      }
+      if (!reply.ok) throw new Error(reply.error || "This backup could not be prepared.");
+      if (epoch !== pageEpoch) return;
       prepared = reply;
       element("backup-confirm").checked = false;
       element("backup-file-name").textContent = file.name;
@@ -106,10 +115,12 @@ export function createBackupSettingsController({ document, send, download, check
 
   window.addEventListener("pagehide", () => {
     pageEpoch += 1;
-    const token = prepared?.token;
+    const token = preparingToken ?? prepared?.token;
+    preparingToken = null;
     prepared = null;
     element("backup-confirm").checked = false;
     render();
+    if (token) status("Restore cancelled. Choose the backup again to prepare it.", "");
     if (token) void send("hd_backup_cancel", { token }).catch(() => {});
   });
   render();

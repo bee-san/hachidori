@@ -1847,6 +1847,9 @@ const HANDLERS = {
 
   async hd_backup_prepare(message) {
     requireEngine();
+    if (typeof message.token !== "string" || message.token === "") {
+      throw new Error("Backup preparation requires its Settings cancellation token.");
+    }
     await discardPreparedBackup();
     const current = await readBackupSnapshot(true);
     const [{ openBackupArchive }, { assertBackupSnapshot }] = await Promise.all([
@@ -1869,7 +1872,7 @@ const HANDLERS = {
         reloadError = asError(error);
         warning = "The current dictionaries cannot be loaded. This validated backup can replace them.";
       }
-      const token = globalThis.crypto.randomUUID();
+      const token = message.token;
       preparedBackup = { token, current, roots, dictionaries, snapshot: prepared.snapshot };
       return { token, warning, createdAt: prepared.createdAt, dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
         customEntryCount: parseCustomDictionary(prepared.snapshot.document.text).entries.length };

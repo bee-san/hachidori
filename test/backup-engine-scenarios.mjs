@@ -14,7 +14,7 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
     return reply;
   };
   const roots = () => engine.FS.readdir("/dicts").filter(name => name.startsWith(".hdw-generation-")).sort();
-  const prepare = blobUrl => accepted("hd_backup_prepare", { blobUrl });
+  const prepare = blobUrl => accepted("hd_backup_prepare", { blobUrl, token: crypto.randomUUID() });
   const restore = async blobUrl => accepted("hd_backup_restore", { token: (await prepare(blobUrl)).token });
   const initial = await accepted("hd_backup_export");
   const initialSnapshot = await read();
@@ -99,7 +99,7 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
   const beforeCorrupt = await read();
   const corruptRoots = roots();
   try {
-    const invalid = await request("hd_backup_prepare", { blobUrl: corruptUrl });
+    const invalid = await request("hd_backup_prepare", { blobUrl: corruptUrl, token: crypto.randomUUID() });
     assert.equal(invalid.ok, false, "a corrupt disabled dictionary must be strictly loaded during prepare");
     assert.deepEqual(await read(), beforeCorrupt);
     assert.deepEqual(roots(), corruptRoots);

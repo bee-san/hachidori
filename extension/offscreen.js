@@ -243,13 +243,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
-  if (activeMutationRequestId !== null && message.type !== "hd_backup_release") {
+  const activeMutation = pending.get(activeMutationRequestId)?.message;
+  const cancelsBackup = message.type === "hd_backup_cancel" && typeof message.token === "string" && message.token !== "";
+  if (activeMutationRequestId !== null && message.type !== "hd_backup_release" && !cancelsBackup) {
     sendResponse(failedResponse(message, "the dictionary engine is busy mutating"));
     return true;
   }
-  // Download cleanup is serialized by the storage owner. Reserve one bounded
-  // housekeeping slot so ordinary lookup saturation cannot retain its archive.
-  const limit = MAX_PENDING_REQUESTS + Number(message.type === "hd_backup_release");
+  // One serialized download release and one token-scoped backup cancellation
+  // must fit even if ordinary requests occupy all 128 slots. The cancellation
+  // remains queued behind the active mutation and takes over its lock.
+  const cleanupSlots = message.type === "hd_backup_release"
+    ? 1 + Number(activeMutation?.type === "hd_backup_cancel") : 2 * Number(cancelsBackup);
+  const limit = MAX_PENDING_REQUESTS + cleanupSlots;
   if (pending.size >= limit) {
     sendResponse(failedResponse(message, "the dictionary engine request queue is full"));
     return true;

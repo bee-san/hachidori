@@ -921,6 +921,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+const backupPreparations = new Map();
+
+async function relayEngineRequest(message) {
+  if (message.type === "hd_backup_cancel") {
+    const preparation = backupPreparations.get(message.token);
+    if (preparation) preparation.cancelled = true;
+    return relay(message);
+  }
+  if (message.type !== "hd_backup_prepare") return relay(message);
+  const preparation = { cancelled: false };
+  backupPreparations.set(message.token, preparation);
+  try {
+    return await relay(message, () => !preparation.cancelled);
+  } finally {
+    if (backupPreparations.get(message.token) === preparation) backupPreparations.delete(message.token);
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || (message.target !== TARGET && message.target !== AUDIO_TARGET) || message.relayed === true) {
     return false;
@@ -950,7 +968,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   }
   const response = message.target === AUDIO_TARGET
-    ? prepareAudioRequest(message).then(prepared => relay(prepared, stillCurrent)) : relay(message);
+    ? prepareAudioRequest(message).then(prepared => relay(prepared, stillCurrent)) : relayEngineRequest(message);
   response.then(sendResponse, error => {
     sendResponse(failureReply(message, error));
   }).finally(() => { if (operation && latestAudioOperation === operation) latestAudioOperation = null; });
