@@ -224,7 +224,8 @@ try:
             QTimer.singleShot(100, prepare)
             return
         try:
-            assert str(base) in mw.col.path
+            if not Path(mw.col.path).resolve().is_relative_to(base.resolve()):
+                raise RuntimeError('The Anki collection is outside the private test profile base.')
             result['collection'] = mw.col.path
             media = Path(mw.col.media.dir())
             for name in ('capture.avif', 'capture.wav'):
