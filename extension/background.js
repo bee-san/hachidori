@@ -1,5 +1,6 @@
 import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
+import { detectAnkiSetup } from "./anki-setup.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
 import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
@@ -38,7 +39,7 @@ import {
 } from "./response-limits.js";
 import {
   FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
-  advanceSetupState, initialSetupState, normaliseSetupState, recordSetupDictionaries,
+  advanceSetupState, initialSetupState, normaliseSetupState, recordSetupAnki, recordSetupDictionaries,
 } from "./setup-state.js";
 
 const {
@@ -77,6 +78,8 @@ const SETUP_TARGET = "hachidori-setup";
 const WORKER_TARGET = "hoshidicts-worker";
 let ankiGateway, ankiMining;
 let backupDownloads;
+// One first-run Anki detection at a time; duplicate startup pages share it.
+let ankiSetupDetection = null;
 
 function getBackupDownloads() {
   backupDownloads ??= createBackupDownloads(chrome, relay);
@@ -732,6 +735,18 @@ const WORKER_HANDLERS = {
   // The offscreen installer reports each dictionary outcome and each run's
   // duration; a committed catalogue entry also settles its first-install
   // selection exactly once.
+  // The startup page asks once for Anki detection; the reply carries the
+  // settled outcome, which is also the durable record every later page reads.
+  async hd_setup_anki(message, sender) {
+    if (!startupSender(sender)) throw new Error("Anki setup is available only from the Hachidori startup page.");
+    const stored = await chrome.storage.local.get(SETUP_STATE_KEY);
+    const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
+    if (current === null) throw new Error("Setup has not started on this installation.");
+    if (current.anki !== null) return { state: current };
+    ankiSetupDetection ??= detectFirstRunAnki().finally(() => { ankiSetupDetection = null; });
+    return ankiSetupDetection;
+  },
+
   async hd_setup_record(message, sender) {
     if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)) {
       throw new Error("Setup outcomes are recorded only by the dictionary engine host.");
@@ -754,6 +769,62 @@ const WORKER_HANDLERS = {
     return { state };
   },
 };
+
+function startupSender(sender) {
+  return sender.id === chrome.runtime.id && sender.url?.split(/[?#]/u)[0] === chrome.runtime.getURL(STARTUP_PAGE);
+}
+
+// Ordinary absence is a connection that never answered; an answer that refused
+// or failed keeps its specific reason.
+function ankiSetupFailure(error) {
+  const detail = describe(error);
+  const unavailable = /Open Anki with the AnkiConnect add-on|timed out/iu.test(detail);
+  return { status: unavailable ? "unavailable" : "needs-attention", detail, model: null, deck: null };
+}
+
+// Read-only discovery of an existing mining setup, then one revisioned options
+// write. Anki is never modified, and the storage queue is held only for the write.
+async function detectFirstRunAnki() {
+  const stored = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
+  const options = normaliseOptions(stored[OPTIONS_KEY]);
+  let outcome;
+  let proposal = null;
+  if (options.anki.model !== "") {
+    outcome = { status: "already-configured", detail: null, model: options.anki.model, deck: options.anki.deck };
+  } else {
+    ankiGateway ??= createAnkiGateway();
+    try {
+      proposal = await detectAnkiSetup(
+        (action, params) => ankiGateway.invoke(action, params, options.anki.apiKey), options.anki,
+      );
+      outcome = { status: proposal.status, detail: proposal.detail, model: proposal.model, deck: proposal.deck };
+    } catch (error) {
+      outcome = ankiSetupFailure(error);
+    }
+  }
+  return serialiseStorage(async () => {
+    const current = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
+    const setup = normaliseSetupState(current[SETUP_STATE_KEY]);
+    if (setup === null) throw new Error("Setup has not started on this installation.");
+    if (setup.anki !== null) return { state: setup };
+    const values = {};
+    if (proposal?.status === "configured") {
+      // A choice the user made while discovery ran wins over the automatic one.
+      const latest = normaliseOptions(current[OPTIONS_KEY]);
+      if (latest.anki.model !== "") {
+        outcome = { status: "already-configured", detail: null, model: latest.anki.model, deck: latest.anki.deck };
+      } else {
+        const revision = optionsRevision(current[OPTIONS_KEY]);
+        const anki = { ...latest.anki, model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates };
+        values[OPTIONS_KEY] = { ...projectStoredOptions(current[OPTIONS_KEY]), ...validateOptionsPatch({ anki }), revision: revision + 1 };
+      }
+    }
+    const state = recordSetupAnki(setup, outcome);
+    values[SETUP_STATE_KEY] = state;
+    await chrome.storage.local.set(values);
+    return { state };
+  });
+}
 
 // Dictionary-dependent initial preferences follow the committed entry's exact
 // title, whether setup installed it or found it installed. Each is consumed
@@ -1288,7 +1359,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const invoke = () => WORKER_HANDLERS[type](message, sender);
   // Navigation and read-only Anki discovery must not hold up storage commits.
   const operation = [
-    "hd_open_external", "hd_anki_discover", "hd_backup_download",
+    "hd_open_external", "hd_anki_discover", "hd_setup_anki", "hd_backup_download",
     "hd_lookup_stats_record", "hd_lookup_stats_read",
   ].includes(type) ? invoke() : serialiseStorage(invoke);
   operation.then(
