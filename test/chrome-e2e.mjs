@@ -5474,8 +5474,17 @@ async function main() {
       browser.on("targetdestroyed", onDestroyed);
       setTimeout(() => { browser.off("targetdestroyed", onDestroyed); resolveClosed(false); }, 15_000);
     });
+    // The startup page re-renders its controls on every storage change, and
+    // the options write above reaches it asynchronously. Click inside the page
+    // so a handle resolved before that re-render cannot go stale, keeping the
+    // user-clickable requirement Puppeteer's handle click would have enforced.
+    const clickStartupControl = (id) => startup.evaluate((controlId) => {
+      const control = document.getElementById(controlId);
+      if (!control || control.disabled || !control.checkVisibility()) throw new Error(`#${controlId} is not user-clickable`);
+      control.click();
+    }, id);
     const stageAfter = async (id, heading) => {
-      await startup.click(`#${id}`);
+      await clickStartupControl(id);
       return startup.waitForFunction((expected) => {
         const text = document.getElementById("setup-heading")?.textContent ?? "";
         return text === expected ? {
@@ -5490,7 +5499,7 @@ async function main() {
     };
     const anki = await stageAfter("setup-continue", "Anki");
     const practice = await stageAfter("setup-continue", "You’re ready.");
-    await startup.click("#setup-finish");
+    await clickStartupControl("setup-finish");
     const closed = await startupClosed;
     startupFlow = { anki, practice, closed };
   }
