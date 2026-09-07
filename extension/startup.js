@@ -219,7 +219,8 @@ function dictionaryRows() {
     purpose.className = "setup-dictionary-purpose";
     purpose.textContent = entry.description;
     const status = document.createElement("span");
-    status.className = `setup-dictionary-status${state.tone ? ` is-${state.tone}` : ""}`;
+    status.className = "setup-dictionary-status";
+    if (state.tone) status.classList.add(`is-${state.tone}`);
     status.textContent = state.text;
     row.append(name, purpose, status);
     if (state.progress) row.appendChild(progressBar(state.progress, name.id));
@@ -507,12 +508,13 @@ function handleStorageChange(changes, area) {
 
 // Progress from the installer, which also reaches any other startup tab. Only
 // events for the run this page attached to, in order, can change the screen.
+// Nothing is answered, so the listener never claims an asynchronous response.
 function handleRuntimeMessage(message) {
-  if (message?.target !== SETUP_EVENTS_TARGET || message.type !== "hd_setup_progress") return false;
-  if (run === null || message.runId !== run.runId || !(Number(message.sequence) > run.sequence)) return false;
+  if (message?.target !== SETUP_EVENTS_TARGET || message.type !== "hd_setup_progress" || run === null) return;
+  const sequence = Number(message.sequence);
+  if (message.runId !== run.runId || !Number.isFinite(sequence) || sequence <= run.sequence) return;
   adoptRun(message);
   if (!saving) render();
-  return false;
 }
 
 async function start() {
