@@ -8782,10 +8782,14 @@ async function contentNoteStage() {
       harness.emitLookupStats({ generation: "statistics", revision: 2 }, row);
       harness.reply(pending, { descriptor: { generation: "statistics", revision: 1 }, statistics: { ...row, lookupCount: 1 } });
       await harness.settle();
-      harness.emitLookupStats({ generation: "statistics", revision: 3 }, { ...row, term: "別の言葉", lookupCount: 1 });
+      const matchingEventWon = harness.lookupStatistics()?.lookupCount === 2;
+      harness.emitLookupStats({ generation: "statistics", revision: 4 }, { ...row, term: "別の言葉", lookupCount: 1 });
       const reads = harness.sent.filter(request => request.type === "hd_lookup_stats_read");
       outcomes["matching row events outrank old count replies without refreshing unrelated terms"] =
-        harness.lookupStatistics()?.lookupCount === 2 && reads.length === 0;
+        matchingEventWon && harness.lookupStatistics()?.lookupCount === 2 && reads.length === 0;
+      harness.emitLookupStats({ generation: "statistics", revision: 3 }, { ...row, lookupCount: 3 });
+      outcomes["delayed matching rows survive newer unrelated global revisions"] =
+        harness.lookupStatistics()?.lookupCount === 3 && reads.length === 0;
       harness.edit(true);
       harness.emitState(harness.state(2, "Replacement"));
       harness.emitOptions({ showLookupCounts: false });
