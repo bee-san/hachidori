@@ -283,7 +283,9 @@ or Kiku) leads its name and ends at a word boundary, so `Kiku v2` and
 `Lapis-1.4` match while `Kikuchi` and `My Kiku` do not. Each candidate's
 `modelFieldNames` must satisfy the same preset mapping Settings would apply
 (`applyAnkiPreset` and `resolveAnkiTemplates`, validated through
-`ankiAvailability`), otherwise it is dropped. `findNotes mid:<id>` counts each
+`ankiAvailability`), and that mapping must cover the family's core — the
+expression, its reading, the sentence and a definition body — so a namesake
+that happens to carry one recognised field is dropped rather than adopted. `findNotes mid:<id>` counts each
 surviving candidate's distinct notes and the unique maximum wins; a tie, an
 unused note type or no candidate at all is a **needs-attention** outcome with
 the specific reason. The winner's deck is chosen the same way from

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiAvailability } from "./anki.js";
-import { applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
+import { ankiPresetCoreMapped, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
 
 /*
  * Read-only first-run Anki detection: recognise an installed Senren, Lapis or
@@ -32,9 +32,12 @@ function idList(value, what) {
 }
 
 // The preset is the mapping the user would get from Settings; a model that
-// carries a family name but not its field shape is not eligible.
+// carries a family name but not its field shape is not eligible. The preset
+// must have mapped the family's core fields — a namesake with one recognised
+// field would otherwise pass on its first field alone.
 export function ankiSetupTemplates(family, model, deck, fields, baseConfig) {
   const config = applyAnkiPreset({ ...baseConfig, model, deck }, fields, family);
+  if (!ankiPresetCoreMapped(config.fieldTemplates)) return null;
   const resolved = resolveAnkiTemplates(config, fields);
   const errors = ankiAvailability(config, { connected: true, model, decks: [deck], models: [model], fields, errors: [] }, resolved);
   return errors.length === 0 ? config.fieldTemplates : null;

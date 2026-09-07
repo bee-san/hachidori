@@ -87,6 +87,18 @@ test("ties, zero usage, missing families and incompatible layouts ask for Settin
   assert.match((await detectAnkiSetup(none.invoke, baseConfig())).detail, /No Senren, Lapis or Kiku/u);
   const shape = collection({ models: { Kiku: 1 }, fields: { Kiku: ["Front", "Back"] }, notes: { byModel: { 1: [11] }, cards: {} }, decks: {} });
   assert.match((await detectAnkiSetup(shape.invoke, baseConfig())).detail, /No Senren, Lapis or Kiku/u);
+  // A namesake carrying only part of the layout is not that setup: the family's
+  // core (expression, reading, sentence and a definition) has to be there.
+  for (const partial of [["Expression"], ["Expression", "Sentence"], ["Expression", "ExpressionReading", "Sentence"]]) {
+    const namesake = collection({ models: { Kiku: 1 }, fields: { Kiku: partial },
+      notes: { byModel: { 1: [11, 12] }, cards: { 11: [111], 12: [121] } }, decks: { 111: "Mining", 121: "Mining" } });
+    assert.match((await detectAnkiSetup(namesake.invoke, baseConfig())).detail, /No Senren, Lapis or Kiku/u);
+    assert.deepEqual(namesake.calls.filter((call) => call.action === "findNotes"), []);
+  }
+  // The core alone is enough, so a trimmed but usable layout still configures.
+  const core = collection({ models: { "Kiku mini": 1 }, fields: { "Kiku mini": ["Expression", "ExpressionReading", "Sentence", "Glossary"] },
+    notes: { byModel: { 1: [11] }, cards: { 11: [111] } }, decks: { 111: "Mining" } });
+  assert.equal((await detectAnkiSetup(core.invoke, baseConfig())).status, "configured");
   const deckTie = collection({ models: { Senren: 1 }, fields: { Senren: SENREN_FIELDS },
     notes: { byModel: { 1: [11, 12] }, cards: { 11: [111], 12: [121] } }, decks: { 111: "A", 121: "B" } });
   assert.match((await detectAnkiSetup(deckTie.invoke, baseConfig())).detail, /Two decks share/u);
