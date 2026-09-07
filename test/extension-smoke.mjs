@@ -5033,6 +5033,9 @@ async function main() {
   const runRecovery = await startupRunRecoveryStage();
   check("a startup page whose run went silent observes the installer again and restarts the unrecorded sources",
     runRecovery !== null && Object.values(runRecovery).every((value) => value === true), JSON.stringify(runRecovery));
+  const reconcile = await startupReconcileStage();
+  check("a failed source the user installed from Settings is reconciled once while a missing failure waits for Retry",
+    reconcile !== null && Object.values(reconcile).every((value) => value === true), JSON.stringify(reconcile));
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
@@ -6107,6 +6110,66 @@ async function startupPageStage() {
   }
 }
 
+// One jsdom startup page with only the worker replies and stored values a
+// dictionary-stage case needs; the two stages below drive it from there.
+function startupCase(jsdom, { setup, dictionaries = [], reply }) {
+  const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
+    pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
+  });
+  const { window } = dom;
+  const { document } = window;
+  const requests = [];
+  const stored = { setup, dictionaries, dictionaryRevision: 1 };
+  let installReply = reply;
+  let storageListener = null;
+  let eventListener = null;
+  window.chrome = {
+    runtime: {
+      async sendMessage(message) {
+        requests.push(structuredClone(message));
+        if (message.type !== "hd_setup_install") throw new Error(`Unexpected startup request ${message.type}`);
+        return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
+      },
+      onMessage: { addListener(value) { eventListener = value; } },
+    },
+    storage: {
+      local: { async get() {
+        return { setupState: structuredClone(stored.setup), options: { revision: 1 },
+          dictionaryState: { schemaVersion: 1, revision: stored.dictionaryRevision, groups: [], dictionaries: structuredClone(stored.dictionaries) } };
+      } },
+      onChanged: { addListener(value) { storageListener = value; } },
+    },
+    tabs: { async getCurrent() { return { id: 7 }; }, async remove() {} },
+  };
+  return {
+    window, document,
+    answer(next) { installReply = next; },
+    // A worker write the page learns about through a storage event.
+    record(setupState) {
+      stored.setup = setupState;
+      storageListener({ setupState: { newValue: structuredClone(setupState) } }, "local");
+    },
+    // An installer broadcast for the run the page attached to.
+    progress(snapshot) {
+      eventListener({ target: "hachidori-setup-events", type: "hd_setup_progress", ...snapshot });
+    },
+    installs: () => requests.filter((message) => message.type === "hd_setup_install").map((message) => message.sourceIds),
+    heading: () => document.getElementById("setup-heading").textContent,
+    rowText: (sourceId) => document.querySelector(`.setup-dictionary[data-source-id="${sourceId}"] .setup-dictionary-status`).textContent,
+    actionIds: () => [...document.querySelectorAll("#setup-actions button")].map((control) => control.id),
+    async until(predicate, what) {
+      const deadline = Date.now() + 15_000;
+      while (!predicate() && Date.now() < deadline) await new Promise((done) => setTimeout(done, 25));
+      if (!predicate()) throw new Error(`the startup page did not reach ${what}`);
+    },
+    load: () => loadStartupScript(window),
+  };
+}
+
+const SETUP_AT_DICTIONARIES = Object.freeze({ schemaVersion: 1, revision: 2, startedAt: "2026-09-07T10:00:00.000Z",
+  stage: "dictionaries", completedAt: null,
+  dictionaries: Object.freeze({ outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }) });
+
 // A run whose offscreen document disappeared stops reporting with the page
 // still holding an unfinished snapshot. After a silence longer than any phase
 // change the page observes the installer again: a live run keeps its progress,
@@ -6115,60 +6178,73 @@ async function startupPageStage() {
 async function startupRunRecoveryStage() {
   const jsdom = await loadJsdom();
   if (jsdom === null) return null;
-  const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
-    pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
-  });
-  const { window } = dom;
-  const { document } = window;
-  const requests = [];
   const everySource = RECOMMENDED_CATALOGUE.map((entry) => entry.sourceId);
-  const setupState = { schemaVersion: 1, revision: 2, startedAt: "2026-09-07T10:00:00.000Z", stage: "dictionaries", completedAt: null,
-    dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] } };
   const downloading = (runId) => ({ runId, sequence: 1, finished: false,
     entries: [{ sourceId: "jitendex", phase: "downloading", receivedBytes: 1024, totalBytes: null, seconds: null, error: null }] });
-  let installReply = () => downloading("run-a");
-  window.chrome = {
-    runtime: {
-      async sendMessage(message) {
-        requests.push(structuredClone(message));
-        if (message.type !== "hd_setup_install") throw new Error(`Unexpected startup request ${message.type}`);
-        return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
-      },
-      onMessage: { addListener() {} },
-    },
-    storage: {
-      local: { async get() {
-        return { setupState: structuredClone(setupState), options: { revision: 1 },
-          dictionaryState: { schemaVersion: 1, revision: 1, groups: [], dictionaries: [] } };
-      } },
-      onChanged: { addListener() {} },
-    },
-    tabs: { async getCurrent() { return { id: 7 }; }, async remove() {} },
-  };
-  const installs = () => requests.filter((message) => message.type === "hd_setup_install").map((message) => message.sourceIds);
-  const heading = () => document.getElementById("setup-heading").textContent;
-  const jitendexRow = () => document.querySelector('.setup-dictionary[data-source-id="jitendex"] .setup-dictionary-status').textContent;
-  const until = async (predicate, what) => {
-    const deadline = Date.now() + 15_000;
-    while (!predicate() && Date.now() < deadline) await new Promise((done) => setTimeout(done, 25));
-    if (!predicate()) throw new Error(`the startup page did not reach ${what}`);
-  };
+  const page = startupCase(jsdom, { setup: structuredClone(SETUP_AT_DICTIONARIES), reply: () => downloading("run-a") });
+  const { installs, heading } = page;
+  const jitendexRow = () => page.rowText("jitendex");
   try {
-    await loadStartupScript(window);
-    await until(() => heading() === "Installing default dictionaries…", "the installing view");
+    await page.load();
+    await page.until(() => heading() === "Installing default dictionaries…", "the installing view");
     const attached = JSON.stringify(installs()) === JSON.stringify([everySource]) && jitendexRow() === "Downloading… 1 KB";
     // The silent run is still there: the observing request carries no source and changes nothing.
-    await until(() => installs().length === 2, "the first liveness check");
+    await page.until(() => installs().length === 2, "the first liveness check");
     const observed = JSON.stringify(installs()[1]) === JSON.stringify([])
       && heading() === "Installing default dictionaries…" && jitendexRow() === "Downloading… 1 KB";
     // Now the offscreen document is gone and a replacement installer holds no run.
-    installReply = (message) => (message.sourceIds.length > 0 ? downloading("run-b") : { runId: null, sequence: 0, finished: true, entries: [] });
-    await until(() => installs().length >= 4, "the restarted run");
+    page.answer((message) => (message.sourceIds.length > 0 ? downloading("run-b") : { runId: null, sequence: 0, finished: true, entries: [] }));
+    await page.until(() => installs().length >= 4, "the restarted run");
     const recovered = JSON.stringify(installs()[2]) === JSON.stringify([]) && JSON.stringify(installs()[3]) === JSON.stringify(everySource)
       && heading() === "Installing default dictionaries…" && jitendexRow() === "Downloading… 1 KB";
     return { attached, observed, recovered };
   } finally {
-    window.close();
+    page.window.close();
+  }
+}
+
+// A source whose automatic attempt failed and which the user then installed
+// from Settings is reconciled: it is requested once so the installer can record
+// it as already installed, never reimported, and the stale failure disappears
+// instead of holding up the complete result. A failed source that is still
+// missing keeps waiting for the explicit Retry.
+async function startupReconcileStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const outcome = (status, extra = {}) => ({ status, seconds: null, error: null, ...extra });
+  const setup = { ...structuredClone(SETUP_AT_DICTIONARIES), revision: 5,
+    dictionaries: { outcomes: {
+      jitendex: outcome("installed", { seconds: 3.2 }),
+      jmnedict: outcome("already-installed"),
+      "bees-ultimate-kanji-dictionary": outcome("failed", { error: "could not read bees.zip: HTTP 503" }),
+      jiten: outcome("failed", { error: "could not read jiten-frequency.zip: HTTP 503" }),
+    }, totalSeconds: 4, continued: false, selectionsApplied: ["jitendex"], recordedRuns: ["run-a"] } };
+  const installed = (sourceId, title) => ({ id: sourceId, title, sourceId, enabled: true });
+  // Everything but Jiten is in the library: Bee's arrived from Settings after its failure.
+  const dictionaries = [installed("jitendex", "Jitendex.org [2026-08-11]"), installed("jmnedict", "JMnedict [2026-01-01]"),
+    installed("bees-ultimate-kanji-dictionary", "Bee's Ultimate Kanji Dictionary")];
+  const page = startupCase(jsdom, { setup, dictionaries,
+    reply: () => ({ runId: "run-b", sequence: 1, finished: false,
+      entries: [{ sourceId: "bees-ultimate-kanji-dictionary", phase: "waiting", receivedBytes: 0, totalBytes: null, seconds: null, error: null }] }) });
+  try {
+    await page.load();
+    await page.until(() => page.heading() === "Installing default dictionaries…", "the reconciling run");
+    // Only the installed-but-failed source is requested; the missing failure waits for Retry.
+    const requested = JSON.stringify(page.installs()) === JSON.stringify([["bees-ultimate-kanji-dictionary"]]);
+    // The installer records it as already installed without importing anything, then finishes.
+    page.record({ ...setup, revision: 6, dictionaries: { ...setup.dictionaries, totalSeconds: 4.1,
+      outcomes: { ...setup.dictionaries.outcomes, "bees-ultimate-kanji-dictionary": outcome("already-installed") },
+      selectionsApplied: ["jitendex", "bees-ultimate-kanji-dictionary"] } });
+    page.progress({ runId: "run-b", sequence: 2, finished: true,
+      entries: [{ sourceId: "bees-ultimate-kanji-dictionary", phase: "already-installed", receivedBytes: 0, totalBytes: null, seconds: null, error: null }] });
+    await page.until(() => page.heading() === "Some dictionaries could not be installed", "the remaining failure");
+    const reconciled = requested && page.rowText("bees-ultimate-kanji-dictionary") === "Already installed"
+      && page.rowText("jiten") === "Failed: could not read jiten-frequency.zip: HTTP 503"
+      && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-retry", "setup-continue"])
+      && page.installs().length === 1;
+    return { requested, reconciled };
+  } finally {
+    page.window.close();
   }
 }
 

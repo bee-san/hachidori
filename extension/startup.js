@@ -146,11 +146,18 @@ function missingEntries() {
   return RECOMMENDED_DICTIONARIES.filter((entry) => !recommendedDictionaryInstalled(entry, dictionaries));
 }
 
-// Sources without a recorded outcome: missing ones install, installed ones are
-// recorded as already installed, including a package whose commit outlived the
-// installer that made it.
+// Sources setup has no settled outcome for: a missing one installs, an
+// installed one is recorded as already installed. That covers a package whose
+// commit outlived the installer that made it, and one the user installed from
+// Settings after an automatic attempt failed — its stale failure is reconciled
+// without importing anything. A failed source that is still missing waits for
+// the explicit Retry.
 function untouchedEntries() {
-  return RECOMMENDED_DICTIONARIES.filter((entry) => setupState.dictionaries.outcomes[entry.sourceId] === undefined);
+  return RECOMMENDED_DICTIONARIES.filter((entry) => {
+    const outcome = setupState.dictionaries.outcomes[entry.sourceId];
+    if (outcome === undefined) return true;
+    return outcome.status === "failed" && recommendedDictionaryInstalled(entry, dictionaries);
+  });
 }
 
 function runActive() {

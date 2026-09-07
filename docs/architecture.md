@@ -213,8 +213,13 @@ the page adopts only newer events for the run it attached to. Every catalogue
 source without a recorded outcome is requested, so a missing one installs by
 itself and an installed one is recorded as already installed — which also gives
 a package whose commit outlived the installer that made it its durable outcome
-and its first-install selection. A failed or later removed source waits for
-**Retry missing dictionaries**, which requests only the missing ones; a request
+and its first-install selection. A source whose recorded outcome is a failure
+but which the current inventory holds — the user installed it from Settings
+after the automatic attempt failed — is requested the same way, so the
+installer records it as already installed without importing anything and the
+stale failure no longer holds up the complete result. A failed source that is
+still missing, or one removed later, waits for **Retry missing dictionaries**,
+which requests only the missing ones; a request
 the worker does not answer is reported once with the same Retry, never
 re-requested on a timer. A run does report at every phase change and about ten
 times a second while a body arrives, so a longer silence means the offscreen
