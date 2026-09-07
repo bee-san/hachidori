@@ -5001,6 +5001,9 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  for (const [name, passed] of Object.entries(noteContent?.lookupStatistics ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   for (const [name, passed] of Object.entries(noteContent?.kanjiNavigation ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -8277,7 +8280,7 @@ async function contentNoteStage() {
   const { JSDOM } = jsdom;
   const settle = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
 
-  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }) {
+  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false } = {}) {
     const dom = new JSDOM(
       "<!doctype html><body><span id=anchor>\u98df\u3079\u305f</span></body>",
       {
@@ -8295,6 +8298,7 @@ async function contentNoteStage() {
     const pending = [];
     const sent = [];
     const renders = [];
+    let lookupStatsRevision = 0;
 
     function createView(callbacks) {
       callbacks.popup.dataset.toolbarPosition = callbacks.toolbarPosition;
@@ -8346,7 +8350,16 @@ async function contentNoteStage() {
         },
         renderResults(results, candidate, context) {
           recordRender({ kind: "terms", results, candidate, context });
+          callbacks.popup.querySelector(".gsm-hoshidicts-lookup-stats")?.remove();
+          const lookupStats = context.showLookupCounts ? window.document.createElement("div") : null;
+          if (lookupStats) {
+            lookupStats.className = "gsm-hoshidicts-lookup-stats";
+            lookupStats.hidden = true;
+            callbacks.popup.append(lookupStats);
+          }
+          callbacks.onResultsRendered({ lookupStats, audioButtons: [], miningActions: [] });
         },
+        setLookupStats(element, payload) { record.lookupStatistics = payload; element.hidden = !payload; },
         setToolbarPosition(value) { callbacks.popup.dataset.toolbarPosition = value; },
       };
       popupRecords.set(callbacks.popup, record);
@@ -8386,6 +8399,12 @@ async function contentNoteStage() {
         getURL: (path) => `chrome-extension://hachidoricontnotesmoke/${path}`,
         sendMessage(request, callback) {
           sent.push(JSON.parse(JSON.stringify(request)));
+          if (!holdLookupStats && ["hd_lookup_stats_record", "hd_lookup_stats_read"].includes(request.type)) {
+            callback({ ok: true, requestId: request.requestId, type: `${request.type}_result`,
+              descriptor: { generation: "statistics", revision: ++lookupStatsRevision },
+              statistics: { term: request.term, reading: request.reading, lookupCount: 1, seenCount: null } });
+            return;
+          }
           if (request.type === "hd_styles" && !holdStyles) {
             callback({
               generation: stylesGeneration,
@@ -8587,6 +8606,8 @@ async function contentNoteStage() {
       },
       emitOptions,
       emitState,
+      emitLookupStats(descriptor) { storageListener?.({ lookupStats: { newValue: descriptor } }, "local"); },
+      lookupStatistics: (depth = 0) => popupRecord(depth)?.lookupStatistics,
       initialLookup,
       internalLink(link, depth = 0) {
         const record = popupRecord(depth);
@@ -8654,6 +8675,94 @@ async function contentNoteStage() {
   const newestOnlyOptions = (await probe.initialLookup()).request.maxResults === 50;
   probe.close();
   if (!callbacksWired) return { callbacksWired };
+
+  async function lookupStatisticsCase() {
+    const outcomes = {
+      "accepted primary views record once across tabs, expansion, Note refresh and Back": false,
+      "internal links and clicked-kanji terms record independently while misses and stale replies do not": false,
+      "statistics reject obsolete namespace replies and never retry a failed increment": false,
+    };
+    const harness = await createHarness(undefined, { holdLookupStats: true });
+    const records = () => harness.sent.filter(request => request.type === "hd_lookup_stats_record");
+    const answer = (item, count, generation = "statistics", revision = count) => harness.reply(item, {
+      descriptor: { generation, revision }, statistics: { term: item.request.term, reading: item.request.reading, lookupCount: count, seenCount: null },
+    });
+    const lookup = async (expression = "食べる") => {
+      const operation = harness.driver.runLookup(harness.candidate);
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term(expression)] });
+      await operation;
+    };
+    const rebind = () => harness.callbacks().onResultsRendered({
+      lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"), audioButtons: [], miningActions: [],
+    });
+    try {
+      await lookup();
+      const first = harness.take("hd_lookup_stats_record");
+      if (!first) return outcomes;
+      harness.emitLookupStats({ generation: "statistics", revision: 1 });
+      answer(first, 1);
+      await harness.settle();
+      const canonical = first.request.term === "食べる" && first.request.reading === "よみ"
+        && harness.lookupStatistics()?.lookupCount === 1;
+      harness.render().context.onDictionaryTabSelected({ dictionary: "Generic" });
+      rebind(); rebind();
+      harness.edit(true);
+      const append = harness.callbacks().onAddCustomEntry({ term: "食べる", reading: "よみ", definition: "eat" });
+      harness.reply(harness.take("hd_custom_append"), { document: { revision: 2, text: "", semanticRevision: "two" }, state: harness.state(2, "Note") });
+      await harness.settle();
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("食べる")] });
+      await append;
+      const noteCount = records().length;
+      const clicked = harness.driver.showKanji("食");
+      harness.reply(harness.take("hd_lookup_dictionary"), { dictionaryCount: 1, results: [harness.term("食")] });
+      await clicked;
+      const clickedCount = harness.take("hd_lookup_stats_record");
+      if (!clickedCount) return outcomes;
+      answer(clickedCount, 2);
+      await harness.settle();
+      await harness.render().context.onBack();
+      outcomes[Object.keys(outcomes)[0]] = canonical && noteCount === 1 && records().length === 2
+        && harness.lookupStatistics()?.lookupCount === 1;
+
+      const link = harness.internalLink({ query: "内部", primaryReading: "ないぶ" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("内部")] });
+      await link;
+      const linkedCount = harness.take("hd_lookup_stats_record");
+      if (!linkedCount) return outcomes;
+      answer(linkedCount, 3);
+      await harness.settle();
+      const miss = harness.driver.runLookup(harness.candidate);
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [] });
+      await miss;
+      const stale = harness.driver.runLookup(harness.candidate);
+      const oldLookup = harness.take("hd_lookup");
+      await lookup("現在");
+      const currentCount = harness.take("hd_lookup_stats_record");
+      if (!currentCount) return outcomes;
+      answer(currentCount, 4);
+      harness.reply(oldLookup, { dictionaryCount: 1, results: [harness.term("古い")] });
+      await stale;
+      outcomes[Object.keys(outcomes)[1]] = clickedCount.request.term === "食" && linkedCount.request.term === "内部" && records().length === 4;
+
+      await lookup("復元");
+      const oldCount = harness.take("hd_lookup_stats_record");
+      harness.emitLookupStats({ generation: "restored", revision: 10 });
+      answer(oldCount, 99, "statistics", 5);
+      await harness.settle();
+      const restored = harness.take("hd_lookup_stats_read");
+      if (!restored) return outcomes;
+      answer(restored, 0, "restored", 10);
+      await harness.settle();
+      const replaced = harness.lookupStatistics()?.lookupCount === 0 && records().length === 5;
+      await lookup("失敗");
+      const failed = harness.take("hd_lookup_stats_record");
+      harness.reply(failed, { error: "lost committed reply" }, false);
+      await harness.settle();
+      rebind(); rebind();
+      outcomes[Object.keys(outcomes)[2]] = replaced && records().length === 6 && !harness.take("hd_lookup_stats_record");
+    } finally { harness.close(); }
+    return outcomes;
+  }
 
   async function kanjiNavigationCase() {
     const outcomes = {};
@@ -11369,6 +11478,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
+    lookupStatistics: await lookupStatisticsCase(),
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
