@@ -23,7 +23,10 @@
     let options = window.HDReaderOptions.DEFAULT_OPTIONS;
     let sourceKey = JSON.stringify(options.audioSources);
     let active = null, menu = null;
-    let optionsReady = false, pendingAutoplay = null;
+    let optionsReady = false;
+    // One first result per owner may wait for options or for the owner's
+    // definition-blur decision; its first-visit key stays unconsumed meanwhile.
+    const pendingAutoplay = new Map();
 
     function firstVisit(record) {
       if (!record.request) return false;
@@ -34,14 +37,31 @@
       return true;
     }
 
-    function cancelAutoplay() {
-      if (pendingAutoplay) firstVisit(pendingAutoplay);
-      pendingAutoplay = null;
+    // A retired hold keeps its visit: the same request may bind again and its
+    // decision still settles it, while a request that is gone has no key to
+    // spend. A manual play consumes every waiting result.
+    function cancelAutoplay(owner, consumeHeld = true) {
+      for (const [key, record] of pendingAutoplay) {
+        if (owner !== undefined && key !== owner) continue;
+        if (consumeHeld || !record.autoplayHeld?.()) firstVisit(record);
+        pendingAutoplay.delete(key);
+      }
     }
 
     function autoplay(record) {
       if (!current(record)) return;
-      if (!optionsReady) { pendingAutoplay = record; return; }
+      // A suppressed first result consumes its visit silently, so no later
+      // rebind can start it either.
+      if (record.autoplaySuppressed?.()) {
+        firstVisit(record);
+        return;
+      }
+      if (!optionsReady || record.autoplayHeld?.()) {
+        const previous = pendingAutoplay.get(record.owner);
+        if (previous && previous.autoplayKey !== record.autoplayKey) firstVisit(previous);
+        pendingAutoplay.set(record.owner, record);
+        return;
+      }
       if (firstVisit(record) && options.audioAutoplay) void play(record);
     }
 
@@ -83,7 +103,7 @@
     }
 
     function retire(owner) {
-      if (pendingAutoplay && (owner === undefined || pendingAutoplay.owner === owner)) cancelAutoplay();
+      cancelAutoplay(owner, false);
       if (menu && (owner === undefined || menu.record.owner === owner)) closeMenu(false);
       if (active && (owner === undefined || active.record.owner === owner)) stop();
     }
@@ -221,23 +241,33 @@
       bind, retire, closeMenu,
       hasMenu: owner => Boolean(menu && (owner === undefined || menu.record.owner === owner)),
       selectionFor: result => selections.get(result) ?? null,
+      // Releases the owner's waiting first result for exactly this request: it
+      // plays when eligible, or its visit is consumed so a later rebind cannot
+      // start it. A stale request's late decision leaves a newer view alone.
+      settleAutoplay(owner, request, play) {
+        const record = pendingAutoplay.get(owner);
+        if (!record || record.request !== request) return;
+        pendingAutoplay.delete(owner);
+        if (play) autoplay(record);
+        else firstVisit(record);
+      },
       update(next, ready = true) {
-        const waiting = !optionsReady && ready ? pendingAutoplay : null;
-        if (waiting) pendingAutoplay = null;
+        const waiting = !optionsReady && ready ? [...pendingAutoplay] : [];
+        for (const [owner] of waiting) pendingAutoplay.delete(owner);
         const nextKey = JSON.stringify(next.audioSources);
         if (nextKey !== sourceKey) { retire(); selections = new WeakMap(); }
         else if (options.audioAutoplay && !next.audioAutoplay) retire();
         sourceKey = nextKey;
         options = next;
         optionsReady = ready;
-        if (waiting) {
-          pendingAutoplay = waiting;
+        for (const [owner, record] of waiting) {
+          pendingAutoplay.set(owner, record);
           // Adopt the complete storage event, including lookup invalidation,
           // before retrying a first result that rendered with unknown options.
           window.queueMicrotask(() => {
-            if (pendingAutoplay !== waiting) return;
-            pendingAutoplay = null;
-            autoplay(waiting);
+            if (pendingAutoplay.get(owner) !== record) return;
+            pendingAutoplay.delete(owner);
+            autoplay(record);
           });
         }
       },

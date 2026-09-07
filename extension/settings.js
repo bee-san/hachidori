@@ -36,7 +36,7 @@ const AUDIO_TARGET = "hachidori-audio";
 const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", anki: "Anki" };
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
-  POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
+  POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   clampOption, normaliseCorpusSeenUrl, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
@@ -52,6 +52,7 @@ const NUMBER_FIELDS = [
   { key: "popupNestingMaxDepth", id: "opt-popup-nesting-depth" },
   { key: "popupColumns", id: "opt-popup-columns" },
   { key: "compactDefinitionSummaryCount", id: "opt-summary-count" },
+  { key: "definitionBlurThreshold", id: "opt-blur-threshold" },
   { key: "popupWidthPx", id: "opt-popup-width", live: true },
   { key: "popupHeightPx", id: "opt-popup-height", live: true },
   { key: "popupOpacityPercent", id: "opt-popup-opacity", live: true },
@@ -59,6 +60,7 @@ const NUMBER_FIELDS = [
 const METADATA_FIELDS = [
   { key: "showLookupCounts", id: "opt-lookup-counts" },
   { key: "corpusSeenEnabled", id: "opt-corpus-seen" },
+  { key: "definitionBlurEnabled", id: "opt-blur-enabled" },
   { key: "showFrequencyDictionaryNames", id: "opt-frequency-names" },
   { key: "averageFrequency", id: "opt-average-frequency" },
   { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },
@@ -68,6 +70,8 @@ const METADATA_FIELDS = [
 const APPEARANCE_CHOICES = [
   { key: "popupTheme", id: "opt-popup-theme" },
   { key: "popupToolbarPosition", id: "opt-popup-toolbar" },
+  { key: "definitionBlurDirection", id: "opt-blur-direction", values: DEFINITION_BLUR_DIRECTIONS },
+  { key: "definitionBlurReveal", id: "opt-blur-reveal", values: DEFINITION_BLUR_REVEALS },
 ];
 
 const numberFormat = new Intl.NumberFormat();
@@ -960,6 +964,24 @@ function renderCompactSummaryControls() {
     "term", "Automatic — first available definition", enabled);
 }
 
+// Blur needs counts. The delay applies only to the timed reveal; the field
+// shows seconds, fractions allowed, for the stored milliseconds.
+function renderDefinitionBlurControls() {
+  const enabled = options.definitionBlurEnabled && options.showLookupCounts;
+  for (const [id, key] of [["opt-blur-direction", "definitionBlurDirection"], ["opt-blur-reveal", "definitionBlurReveal"],
+    ["opt-blur-threshold", "definitionBlurThreshold"]]) {
+    const control = element(id);
+    if (control === document.activeElement) continue;
+    control.value = String(options[key]);
+    control.disabled = !enabled;
+  }
+  const delay = element("opt-blur-delay");
+  if (delay !== document.activeElement) {
+    delay.value = String(options.definitionBlurDelayMs / 1000);
+    delay.disabled = !enabled || options.definitionBlurReveal !== "timed";
+  }
+}
+
 function renderPreferredDictionary(id, preferred, kind, automaticLabel, enabled) {
   const select = element(id);
   if (select === document.activeElement) return;
@@ -986,6 +1008,7 @@ function renderMetadataControls() {
     corpusUrl.value = options.corpusSeenUrl;
     corpusUrl.disabled = !options.corpusSeenEnabled;
   }
+  renderDefinitionBlurControls();
   renderPreferredDictionary("opt-pitch-dictionary", options.pitchAccentFuriganaDictionary,
     "pitch", "Automatic — first available pitch", options.showPitchAccentFurigana);
 }
@@ -2231,10 +2254,17 @@ function attachHandlers() {
   });
   for (const field of APPEARANCE_CHOICES) {
     element(field.id).addEventListener("change", (event) => {
-      options[field.key] = event.target.value;
+      options[field.key] = field.values && !field.values.includes(event.target.value)
+        ? DEFAULT_OPTIONS[field.key] : event.target.value;
+      if (field.key === "definitionBlurReveal") renderDefinitionBlurControls();
       writeOptions();
     });
   }
+  element("opt-blur-delay").addEventListener("change", (event) => {
+    options.definitionBlurDelayMs = clampOption("definitionBlurDelayMs", Math.round(Number(event.target.value) * 1000));
+    event.target.value = String(options.definitionBlurDelayMs / 1000);
+    writeOptions();
+  });
   element("opt-source-highlight").addEventListener("change", (event) => {
     options.sourceHighlightEnabled = event.target.checked;
     writeOptions();
@@ -2353,7 +2383,7 @@ function attachHandlers() {
       if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
       if (event.target.id === "opt-image-source") renderPopupImageSources();
       if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
-      if (event.target.id === "opt-corpus-url") renderMetadataControls();
+      if (event.target.id === "opt-corpus-url" || event.target.id === "opt-blur-delay") renderMetadataControls();
       if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
       const choice = APPEARANCE_CHOICES.find(({ id }) => id === event.target.id);
       if (choice) event.target.value = options[choice.key];

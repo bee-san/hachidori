@@ -45,3 +45,38 @@ reference for the term/reading identity, popup count display and corpus
 semantics. Frequency ranks, current page text and custom notes are not
 substituted for corpus history. No pages, page URLs or browsing history are
 sent to GameSentenceMiner.
+
+## Definition blur
+
+Settings → Design → Definition blur hides definitions, compact summaries and
+reading furigana behind a blur until you recall the word. It is off by default
+and needs lookup counts. GSM PR #549 blurs a word once it has been looked up
+**at least** the threshold number of times (default 5); **Below** is the issue #9
+adaptation for words looked up fewer times than the threshold, and zero is a
+valid Below count. The decision uses the same count the popup displays, after
+the current lookup is recorded.
+
+![Definition blur controls](assets/definition-blur-settings.png)
+
+A new lookup renders blurred while its count is unknown. A qualifying count
+keeps the blur; any other outcome, including counts being unavailable or
+turned off, reveals immediately. Hovering a definition or the compact summary
+reveals in either mode. With the timed reveal, one deadline runs from the
+first display: navigating to a kanji entry or another word cancels the live
+timer, and Back continues with the remaining time rather than restarting, as
+does a page restored from the back/forward cache. The decision belongs to that
+lookup, so tabs, Show more, a Note refresh and Back keep it; a later count for
+the same word never blurs a revealed view, and a different lookup starts
+fresh. A lookup made before the saved settings have loaded waits for them.
+Native kanji entries are outside term blur; term entries reached through a
+clicked kanji participate.
+
+Automatic pronunciation waits for the decision. A blurred result never
+auto-plays, even after hover or the deadline reveals it, so the audio does not
+give the reading away; a revealed result plays once as usual, and the Audio
+button always works manually.
+
+Turning blur or lookup counts off reveals open popups without touching a Note
+draft. Other live edits apply to unrevealed popups from their original display
+time. The Design preview uses its fixed sample count of 3 with the same rule,
+hover and delay, and records nothing.

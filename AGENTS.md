@@ -23,6 +23,7 @@ These instructions apply to the entire repository.
 ## Issue #9 scope and phases
 
 - D1-D9 and E1-E27 are delivered. The user's subsequent request, "work on l2 to l5", authorizes L2 backup/restore, L3 per-dictionary update schedules, L4 lookup/corpus-seen statistics, and L5 definition blur as the current phase. Deliver them in focused pull requests preserving the completed dictionary and reader behavior, using GSM PR #549 as the reference.
+- L2 (#62), L3 (#63) and L4 (#65) are merged; L5 is #67. When asked to "do L1-L5", the user confirmed L2-L5 only: L1 profiles stay excluded.
 - The dictionary-only contract below limits dictionary-only tasks; it does not prohibit separately authorized E-series or L2-L5 work. L3 intentionally extends D6's original global-only schedule; L5 depends on L4. L1 profiles and L6 configurable/custom popup actions remain excluded, as does localization.
 
 ## Dictionary-only issue #9 contract
@@ -60,6 +61,14 @@ When implementing the dictionary-only scope from issue #9:
 - Generalize the offscreen import lock to a mutation lock for custom saves/appends. Reuse private staging/import helpers; do not recursively invoke the public queued import handler.
 - The fixed Note form is shared by term and kanji views. Treat append success separately from best-effort lookup refresh so a refresh error cannot invite a duplicate retry. Refresh the exact current request/view only if it is still current and anchored, and make reply/state-event ordering harmless by adopting only newer committed revisions.
 - While the Note form is open, Escape closes the form before document capture can hide the popup, and hover-hide timers must not discard the draft.
+
+## Lookup statistics and definition blur
+
+- A lookup increments one descriptor plus one term/reading row in a serialized worker write; neither the worker hot path nor the reader scans the collection. The renderer always provides a hidden count slot on the All tab and the reader owns its visibility, so a count setting never reprojects definitions or disturbs a Note draft.
+- The reader adopts a row event or a reply for a term only when it is newer than that term's own payload, without rolling the global descriptor back; older generations stay rejected. Unrelated revisions never refresh visible terms.
+- Corpus Seen is optional and off by default. Only worker replies set it, after the storage transaction is released, from GSM's read-only word-detail endpoint over a loopback origin; a confirmed "Word not found" is zero and every failure fails open. Never use GSM's `POST /api/hoshidicts/lookup-stats` for Seen: it increments GSM's own count. Row events keep the displayed Seen value.
+- Blur decisions live on the request, so tabs, Show more, Note refresh and Back keep them and a new request starts fresh. The view renders pending before the count and never re-blurs once revealed. One absolute deadline runs from first display; navigating away cancels only the live timer, Back and a persisted `pageshow` re-arm the remainder. The decision waits for the stored options when a lookup renders before the initial storage read.
+- The first count decides autoplay for the whole visit: a qualifying count suppresses every later bind for that request, anything else releases the held first result once. The audio controller keys held first results by owner, settles them only for the request whose decision applies, and keeps a retired hold's visit unspent; a manual play consumes every waiting result.
 
 ## Repository map
 
@@ -105,3 +114,5 @@ Before merging a pull request:
 - Re-run the gate after every follow-up commit, including documentation-only fixes, then merge through GitHub and fast-forward the local `main` checkout.
 
 For real-Chrome update tests, intercept update-index fetches on the service-worker CDP target and archive fetches on the offscreen-document target, which also covers its dedicated engine worker. Do not attempt Fetch interception directly on the dedicated worker target.
+
+Screenshot clips passed to Puppeteer are page coordinates: it intersects them with the visual viewport, so add `scrollX`/`scrollY` after `scrollIntoView` or a scrolled element yields a zero-height clip.

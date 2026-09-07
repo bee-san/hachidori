@@ -36,6 +36,11 @@
     showLookupCounts: true,
     corpusSeenEnabled: false,
     corpusSeenUrl: "http://127.0.0.1:7275",
+    definitionBlurEnabled: false,
+    definitionBlurDirection: "atLeast",
+    definitionBlurThreshold: 5,
+    definitionBlurReveal: "timed",
+    definitionBlurDelayMs: 5000,
     showCompactDefinitionSummary: false,
     compactDefinitionSummaryCount: 3,
     compactDefinitionSummaryDictionary: "",
@@ -61,7 +66,12 @@
     popupOpacityPercent: [0, 100],
     popupColumns: [1, 4],
     compactDefinitionSummaryCount: [1, 6],
+    definitionBlurThreshold: [1, 1000000],
+    definitionBlurDelayMs: [1000, 3600000],
   };
+  // GSM PR #549 blurs at or above the threshold; Below is the issue #9 adaptation.
+  const DEFINITION_BLUR_DIRECTIONS = ["atLeast", "below"];
+  const DEFINITION_BLUR_REVEALS = ["timed", "hover"];
   // Audited Hoshidicts catalogue from GSM PR #549; palette values live in reader.css.
   const POPUP_THEME_GROUPS = [
     { label: "Dark", ids: ["default", "miku", "catppuccin-mocha", "solarized-dark", "dark", "synthwave",
@@ -78,6 +88,7 @@
   const DESIGN_OPTION_KEYS = [
     "popupTheme", "popupToolbarPosition", "customPopupCss", "popupWidthPx", "popupHeightPx", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
     "showLookupCounts", "corpusSeenEnabled", "corpusSeenUrl",
+    "definitionBlurEnabled", "definitionBlurDirection", "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs",
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags",
@@ -190,17 +201,33 @@
     }
   }
 
+  // Shared by the reader and the Design preview. A count that qualifies is
+  // blurred; a missing count fails open. Zero is a valid count for Below.
+  function definitionBlurQualifies(options, lookupCount) {
+    if (!options.definitionBlurEnabled || !Number.isSafeInteger(lookupCount) || lookupCount < 0) return false;
+    return options.definitionBlurDirection === "below"
+      ? lookupCount < options.definitionBlurThreshold
+      : lookupCount >= options.definitionBlurThreshold;
+  }
+
+  // Enumerated options fall back to their default outside the listed values.
+  const ENUMERATED_OPTIONS = {
+    lookupMode: new Set(LOOKUP_MODES),
+    popupTheme: POPUP_THEME_IDS,
+    popupToolbarPosition: POPUP_TOOLBAR_POSITIONS,
+    frequencyOrder: new Set(FREQUENCY_ORDERS),
+    definitionBlurDirection: new Set(DEFINITION_BLUR_DIRECTIONS),
+    definitionBlurReveal: new Set(DEFINITION_BLUR_REVEALS),
+  };
+
   function normaliseField(key, value) {
     if (Object.hasOwn(NUMBER_RANGES, key)) return clampOption(key, value);
     if (typeof DEFAULT_OPTIONS[key] === "boolean") {
       return typeof value === "boolean" ? value : DEFAULT_OPTIONS[key];
     }
+    if (Object.hasOwn(ENUMERATED_OPTIONS, key)) return ENUMERATED_OPTIONS[key].has(value) ? value : DEFAULT_OPTIONS[key];
     switch (key) {
-      case "lookupMode": return LOOKUP_MODES.includes(value) ? value : DEFAULT_OPTIONS.lookupMode;
-      case "popupTheme": return POPUP_THEME_IDS.has(value) ? value : DEFAULT_OPTIONS.popupTheme;
-      case "popupToolbarPosition": return POPUP_TOOLBAR_POSITIONS.has(value) ? value : DEFAULT_OPTIONS.popupToolbarPosition;
       case "activationKey": return normaliseActivationKey(value);
-      case "frequencyOrder": return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;
       case "kanjiClickDictionary": return normaliseKanjiSelection(value);
       case "popupImageSource": return normalisePopupImageSource(value);
       case "corpusSeenUrl": return normaliseCorpusSeenUrl(value) ?? DEFAULT_OPTIONS.corpusSeenUrl;
@@ -305,7 +332,8 @@
     POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
-    normaliseCorpusSeenUrl,
+    normaliseCorpusSeenUrl, definitionBlurQualifies,
+    DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
     projectStoredOptions, validateOptionsPatch,
     resolvePopupImageSources,
     resolveKanjiDictionary,

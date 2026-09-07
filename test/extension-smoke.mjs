@@ -4966,6 +4966,8 @@ async function main() {
     preview?.incremental === true && preview.routing === true, JSON.stringify(preview));
   check("Design repaints its sample count line on the count switch without rebuilding cards or the Note draft",
     preview?.counts === true, JSON.stringify(preview));
+  check("Design blurs its sample by the shared count rule, reveals on hover and restarts on blur edits without rerendering",
+    preview?.blur === true, JSON.stringify(preview));
   check("live preview appearance preserves cards and drafts while term and kanji highlights toggle exactly",
     preview?.appearance === true && preview.highlight === true, JSON.stringify(preview));
   check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
@@ -5181,6 +5183,9 @@ async function main() {
 
   const noteContent = await contentNoteStage();
   for (const [name, passed] of Object.entries(noteContent?.lookupStatistics ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
+  for (const [name, passed] of Object.entries(noteContent?.definitionBlur ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
   for (const [name, passed] of Object.entries(noteContent?.kanjiNavigation ?? {})) {
@@ -6234,6 +6239,26 @@ async function designPreviewStage() {
     await settle();
     counts &&= countLine()?.hidden === false && countLine().textContent === "Looked up 3 times"
       && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    const blurState = () => popup.dataset.definitionBlurState ?? "revealed";
+    let blur = blurState() === "revealed";
+    options = { ...options, definitionBlurEnabled: true, definitionBlurDirection: "below", definitionBlurThreshold: 5,
+      definitionBlurReveal: "hover" };
+    update();
+    await settle();
+    blur &&= blurState() === "blurred" && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    query(".gsm-hoshidicts-definitions").dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
+    blur &&= blurState() === "revealed";
+    options = { ...options, definitionBlurThreshold: 4 };
+    update();
+    await settle();
+    blur &&= blurState() === "blurred";
+    options = { ...options, definitionBlurDirection: "atLeast" };
+    update();
+    await settle();
+    blur &&= blurState() === "revealed" && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    options = { ...options, definitionBlurEnabled: false };
+    update();
+    await settle();
     options = { ...options, popupTheme: "miku", popupWidthPx: 720, popupHeightPx: 500, popupOpacityPercent: 0,
       sourceHighlightEnabled: false };
     update();
@@ -6296,8 +6321,19 @@ async function designPreviewStage() {
     kanjiSource &&= query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食"
       && popup.textContent.includes("Second") && query("form") === kanjiNote
       && kanjiNote.elements.definition.value === "Keep across source choices";
+    // Native kanji stays outside term blur even while the sample count qualifies.
+    options = { ...options, definitionBlurEnabled: true, definitionBlurDirection: "below", definitionBlurThreshold: 5,
+      definitionBlurReveal: "hover" };
+    update();
+    await settle();
+    blur &&= (popup.dataset.definitionBlurState ?? "revealed") === "revealed"
+      && query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食";
     kanjiNote.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     query(".gsm-hoshidicts-kanji-back").click();
+    await settle();
+    blur &&= popup.dataset.definitionBlurState === "blurred";
+    options = { ...options, definitionBlurEnabled: false };
+    update();
     await settle();
     const back = kanji && query('[role="tab"][aria-selected="true"]')?.dataset.dictionary === tab.dataset.dictionary
       && query(".gsm-hoshidicts-glossary-card").open === false;
@@ -6307,7 +6343,7 @@ async function designPreviewStage() {
     await settle();
     const routing = query(".gloss-image-link")?.dataset.imageLoadState === "load-error";
     highlight &&= highlightedText() === "食べる";
-    return { sample, note, back, incremental, counts, routing, appearance, highlight, kanjiSource, earlyLoad, cssOwner, cssPreview };
+    return { sample, note, back, incremental, counts, blur, routing, appearance, highlight, kanjiSource, earlyLoad, cssOwner, cssPreview };
   } finally { window.close(); }
 }
 
@@ -6543,6 +6579,7 @@ async function settingsFrequencyStage() {
     const metadataFields = [
       ["opt-lookup-counts", "showLookupCounts", true],
       ["opt-corpus-seen", "corpusSeenEnabled", false],
+      ["opt-blur-enabled", "definitionBlurEnabled", false],
       ["opt-frequency-names", "showFrequencyDictionaryNames", true],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
@@ -6571,6 +6608,25 @@ async function settingsFrequencyStage() {
       metadataDetails.push(writes.length === beforeInvalidCorpusUrl
         && corpusUrl.value === "http://localhost:7275"
         && status().includes("loopback"));
+      const blurControl = id => window.document.getElementById(id);
+      // Counts were switched off above, so blur controls are disabled even though blur is on.
+      metadataDetails.push(["opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay"]
+        .every(id => blurControl(id).disabled)
+        && blurControl("opt-blur-direction").value === "atLeast" && blurControl("opt-blur-threshold").value === "5"
+        && blurControl("opt-blur-reveal").value === "timed" && blurControl("opt-blur-delay").value === "5");
+      await editControl(blurControl("opt-lookup-counts"), true);
+      metadataDetails.push(!blurControl("opt-blur-direction").disabled && !blurControl("opt-blur-delay").disabled);
+      await editControl(blurControl("opt-blur-direction"), "below");
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurDirection: "below" }));
+      await editControl(blurControl("opt-blur-threshold"), "0");
+      metadataDetails.push(blurControl("opt-blur-threshold").value === "1"
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurThreshold: 1 }));
+      await editControl(blurControl("opt-blur-delay"), "2.5");
+      metadataDetails.push(blurControl("opt-blur-delay").value === "2.5"
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurDelayMs: 2500 }));
+      await editControl(blurControl("opt-blur-reveal"), "hover");
+      metadataDetails.push(blurControl("opt-blur-delay").disabled
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurReveal: "hover" }));
       metadataDetails.push(pitch.disabled);
       await editControl(window.document.getElementById("opt-pitch-furigana"), true);
       emitDictionaries({ pitchCount: 2 });
@@ -8637,7 +8693,7 @@ async function contentNoteStage() {
   const { JSDOM } = jsdom;
   const settle = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
 
-  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {} } = {}) {
+  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {}, deferInitialStorage = false } = {}) {
     const dom = new JSDOM(
       "<!doctype html><body><span id=anchor>\u98df\u3079\u305f</span></body>",
       {
@@ -8648,6 +8704,7 @@ async function contentNoteStage() {
     );
     const { window } = dom;
     let storageListener = null;
+    let deferredInitialStorage = null;
     const popupRecords = new Map();
     let stylesGeneration = 2;
     let holdStyles = false;
@@ -8707,13 +8764,25 @@ async function contentNoteStage() {
         },
         renderResults(results, candidate, context) {
           recordRender({ kind: "terms", results, candidate, context });
-          callbacks.popup.querySelector(".gsm-hoshidicts-lookup-stats")?.remove();
+          view.setDefinitionBlurState(context.definitionBlurState);
+          for (const stale of callbacks.popup.querySelectorAll(
+            ".gsm-hoshidicts-lookup-stats, .gsm-hoshidicts-definitions, .gsm-hoshidicts-audio-button")) stale.remove();
           // Like the production renderer, the slot exists on every All view.
           const lookupStats = window.document.createElement("div");
           lookupStats.className = "gsm-hoshidicts-lookup-stats";
           lookupStats.hidden = true;
-          callbacks.popup.append(lookupStats);
-          callbacks.onResultsRendered({ lookupStats, audioButtons: [], miningActions: [] });
+          const definitions = window.document.createElement("ol");
+          definitions.className = "gsm-hoshidicts-definitions";
+          const audioButton = window.document.createElement("button");
+          audioButton.className = "gsm-hoshidicts-audio-button";
+          callbacks.popup.append(lookupStats, definitions, audioButton);
+          callbacks.onResultsRendered({ lookupStats,
+            audioButtons: [{ button: audioButton, result: results[0] }], miningActions: [] });
+        },
+        setDefinitionBlurState(state) {
+          record.blurState = ["pending", "blurred"].includes(state) ? state : "revealed";
+          callbacks.popup.dataset.definitionBlurState = record.blurState;
+          return record.blurState;
         },
         setLookupStats(element, payload) { record.lookupStatistics = payload; element.hidden = !payload; },
         setToolbarPosition(value) { callbacks.popup.dataset.toolbarPosition = value; },
@@ -8777,7 +8846,7 @@ async function contentNoteStage() {
       storage: {
         local: {
           get(defaults, callback) {
-            callback({
+            const deliver = () => callback({
               ...defaults,
               dictionaryState: initialState,
               options: {
@@ -8791,6 +8860,8 @@ async function contentNoteStage() {
                 ...optionOverrides,
               },
             });
+            if (deferInitialStorage) deferredInitialStorage = deliver;
+            else deliver();
           },
         },
         onChanged: {
@@ -8968,6 +9039,17 @@ async function contentNoteStage() {
         ...(row ? { [lookupStatsKey(descriptor, row)]: { newValue: row } } : {}),
       }, "local"); },
       lookupStatistics: (depth = 0) => popupRecord(depth)?.lookupStatistics,
+      blurState: (depth = 0) => popupRecord(depth)?.blurState,
+      deliverInitialStorage() { deferredInitialStorage?.(); deferredInitialStorage = null; },
+      pageTransition(type) {
+        const event = new window.Event(type);
+        Object.defineProperty(event, "persisted", { value: true });
+        window.dispatchEvent(event);
+      },
+      hoverDefinitions(depth = 0) {
+        popupRecord(depth).callbacks.popup.querySelector(".gsm-hoshidicts-definitions")
+          .dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
+      },
       initialLookup,
       internalLink(link, depth = 0) {
         const record = popupRecord(depth);
@@ -9207,6 +9289,169 @@ async function contentNoteStage() {
         offVisit && Boolean(read) && hidden.lookupStatistics()?.lookupCount === 4 && slot()?.hidden === false
         && hidden.take("hd_lookup_stats_record") === null && hidden.renders.length === rendersBefore;
     } finally { hidden.close(); }
+    return outcomes;
+  }
+
+  async function definitionBlurCase() {
+    const outcomes = {};
+    const wait = ms => new Promise(done => setTimeout(done, ms));
+    const blurOptions = { showLookupCounts: true, definitionBlurEnabled: true, definitionBlurDirection: "atLeast",
+      definitionBlurThreshold: 5, definitionBlurReveal: "hover", definitionBlurDelayMs: 1000, audioAutoplay: true };
+    const harness = await createHarness(null, { holdLookupStats: true, options: blurOptions });
+    const plays = () => harness.sent.filter(request => request.type === "hd_audio_play").length;
+    const lookup = async expression => {
+      const operation = harness.driver.runLookup(harness.candidate);
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term(expression)] });
+      await operation;
+      return harness.take("hd_lookup_stats_record");
+    };
+    const answer = (item, lookupCount, revision = lookupCount) => harness.reply(item, {
+      descriptor: { generation: "statistics", revision },
+      statistics: { term: item.request.term, reading: item.request.reading, lookupCount, seenCount: null },
+    });
+    try {
+      const first = await lookup("五回");
+      const held = Boolean(first) && harness.blurState() === "pending" && plays() === 0
+        && harness.render().context.definitionBlurState === "pending";
+      answer(first, 5);
+      await harness.settle();
+      outcomes["a qualifying count blurs pending definitions and never auto-plays"] =
+        held && harness.blurState() === "blurred" && plays() === 0;
+      // A dictionary tab rebinds the first result under a new autoplay key.
+      const retab = () => {
+        const button = harness.popup.ownerDocument.createElement("button");
+        harness.popup.append(button);
+        harness.callbacks().onResultsRendered({ lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"),
+          audioButtons: [{ button, result: harness.term("五回") }], miningActions: [] });
+      };
+      harness.render().context.onDictionaryTabSelected({ dictionary: "Generic" });
+      retab();
+      const blurredTabSilent = plays() === 0;
+      harness.hoverDefinitions();
+      harness.render().context.onDictionaryTabSelected(null);
+      retab();
+      outcomes["a blurred lookup stays silent across dictionary tabs, even after a hover reveal"] =
+        blurredTabSilent && plays() === 0;
+      harness.hoverDefinitions();
+      const revealed = harness.blurState() === "revealed";
+      harness.emitLookupStats({ generation: "statistics", revision: 6 },
+        { term: first.request.term, reading: first.request.reading, lookupCount: 6 });
+      outcomes["hovering definitions reveals and a later count never reblurs or plays"] =
+        revealed && harness.blurState() === "revealed" && plays() === 0;
+
+      const second = await lookup("一回");
+      const heldAgain = harness.blurState() === "pending" && plays() === 0;
+      answer(second, 1);
+      await harness.settle();
+      outcomes["a non-qualifying count reveals and releases one held autoplay"] =
+        heldAgain && harness.blurState() === "revealed" && plays() === 1;
+
+      const third = await lookup("失敗");
+      harness.reply(third, { error: "lost committed reply" }, false);
+      await harness.settle();
+      outcomes["an unavailable count fails open and releases autoplay"] =
+        harness.blurState() === "revealed" && plays() === 2;
+
+      harness.emitOptions({ ...blurOptions, definitionBlurDirection: "below", definitionBlurThreshold: 3 });
+      const fourth = await lookup("零回");
+      answer(fourth, 0);
+      await harness.settle();
+      const belowBlurred = harness.blurState() === "blurred" && plays() === 2;
+      harness.emitOptions({ ...blurOptions, definitionBlurDirection: "below", definitionBlurThreshold: 3, definitionBlurEnabled: false });
+      outcomes["Below blurs a zero count and disabling blur reveals without another play"] =
+        belowBlurred && harness.blurState() === "revealed" && plays() === 2;
+
+      // A retained view replays the same request while its decision is pending:
+      // retiring the level must not spend the held first visit.
+      harness.emitOptions({ ...blurOptions });
+      const replayed = await lookup("再生");
+      harness.callbacks().onBeforeResultsRendered();
+      const replayButton = harness.popup.ownerDocument.createElement("button");
+      harness.popup.append(replayButton);
+      harness.callbacks().onResultsRendered({ lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"),
+        audioButtons: [{ button: replayButton, result: harness.term("再生") }], miningActions: [] });
+      const replayHeld = plays() === 2;
+      answer(replayed, 1, 8);
+      await harness.settle();
+      outcomes["retiring a held view before its replay keeps the first visit for the decision"] =
+        replayHeld && harness.blurState() === "revealed" && plays() === 3;
+
+      // A stale lookup's late count must not settle the current lookup's autoplay.
+      const stale = await lookup("古い");
+      const current = await lookup("現在");
+      answer(stale, 9, 9);
+      await harness.settle();
+      const currentStillPending = harness.blurState() === "pending" && plays() === 3;
+      answer(current, 1, 10);
+      await harness.settle();
+      outcomes["a stale lookup's late qualifying count leaves the current lookup's autoplay to its own count"] =
+        currentStillPending && harness.blurState() === "revealed" && plays() === 4;
+    } finally { harness.close(); }
+
+    const timed = await createHarness(undefined, { holdLookupStats: true,
+      options: { ...blurOptions, definitionBlurReveal: "timed", audioAutoplay: false } });
+    try {
+      const shown = Date.now();
+      await timed.initialLookup();
+      const pending = timed.take("hd_lookup_stats_record");
+      timed.reply(pending, { descriptor: { generation: "statistics", revision: 1 },
+        statistics: { term: pending.request.term, reading: pending.request.reading, lookupCount: 9, seenCount: null } });
+      await timed.settle();
+      const blurred = timed.blurState() === "blurred";
+      // Navigate away and back: the original deadline continues, not a new one.
+      await wait(250);
+      const clicked = timed.driver.showKanji("食");
+      timed.reply(timed.take("hd_lookup_dictionary"), { dictionaryCount: 1, results: [timed.term("食")] });
+      await clicked;
+      const kanjiPending = timed.take("hd_lookup_stats_record");
+      if (kanjiPending) timed.reply(kanjiPending, { descriptor: { generation: "statistics", revision: 2 },
+        statistics: { term: "食", reading: "よみ", lookupCount: 0, seenCount: null } });
+      await timed.settle();
+      const clickedRevealed = timed.blurState() === "revealed";
+      await wait(250);
+      await timed.render().context.onBack();
+      const backBlurred = timed.blurState() === "blurred";
+      await wait(Math.max(0, shown + 1000 - Date.now()) + 300);
+      outcomes["timed reveal keeps one deadline from first display across Back"] =
+        blurred && clickedRevealed && backBlurred && timed.blurState() === "revealed";
+    } finally { timed.close(); }
+
+    // Stored settings arrive after the first lookup: the decision waits for them.
+    const early = await createHarness(null, { holdLookupStats: true, deferInitialStorage: true,
+      options: { ...blurOptions } });
+    try {
+      await early.initialLookup();
+      const pending = early.take("hd_lookup_stats_record");
+      const heldBeforeOptions = early.blurState() === "pending";
+      early.reply(pending, { descriptor: { generation: "statistics", revision: 1 },
+        statistics: { term: pending.request.term, reading: pending.request.reading, lookupCount: 7, seenCount: null } });
+      await early.settle();
+      const stillPending = early.blurState() === "pending"
+        && early.sent.filter(request => request.type === "hd_audio_play").length === 0;
+      early.deliverInitialStorage();
+      await early.settle();
+      outcomes["a lookup before stored settings arrive waits, then blurs and stays silent"] =
+        heldBeforeOptions && stillPending && early.blurState() === "blurred"
+        && early.sent.filter(request => request.type === "hd_audio_play").length === 0;
+    } finally { early.close(); }
+
+    // A BFCache return re-arms the remaining deadline.
+    const cached = await createHarness(null, { holdLookupStats: true,
+      options: { ...blurOptions, definitionBlurReveal: "timed", audioAutoplay: false } });
+    try {
+      const shown = Date.now();
+      await cached.initialLookup();
+      const pending = cached.take("hd_lookup_stats_record");
+      cached.reply(pending, { descriptor: { generation: "statistics", revision: 1 },
+        statistics: { term: pending.request.term, reading: pending.request.reading, lookupCount: 9, seenCount: null } });
+      await cached.settle();
+      cached.pageTransition("pagehide");
+      await wait(Math.max(0, shown + 1000 - Date.now()) + 200);
+      const frozen = cached.blurState() === "blurred";
+      cached.pageTransition("pageshow");
+      outcomes["a BFCache return reveals a timed blur whose deadline passed while hidden"] =
+        frozen && cached.blurState() === "revealed";
+    } finally { cached.close(); }
     return outcomes;
   }
 
@@ -11925,6 +12170,7 @@ async function contentNoteStage() {
   return {
     callbacksWired,
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
+    definitionBlur: await definitionBlurCase(),
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),

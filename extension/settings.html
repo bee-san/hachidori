@@ -580,6 +580,38 @@
                 </label>
                 <p class="field-hint" id="corpus-seen-help">Optional and read-only. Hachidori asks the local GameSentenceMiner word-detail endpoint for the saved-corpus occurrence count. Only loopback URLs are accepted; pages and browsing history are not collected.</p>
               </fieldset>
+              <fieldset class="lookup-group" id="definition-blur-settings">
+                <legend>Definition blur</legend>
+                <label class="lookup-enable">
+                  <span>Blur definitions by lookup count</span>
+                  <input id="opt-blur-enabled" type="checkbox" aria-describedby="definition-blur-help" />
+                </label>
+                <div class="fields">
+                  <label class="field">
+                    <span class="field-label">Blur when looked up</span>
+                    <select id="opt-blur-direction">
+                      <option value="atLeast">At least</option>
+                      <option value="below">Below</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Threshold (lookups)</span>
+                    <input id="opt-blur-threshold" type="number" min="1" max="1000000" step="1" inputmode="numeric" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Reveal</span>
+                    <select id="opt-blur-reveal">
+                      <option value="timed">After a delay</option>
+                      <option value="hover">On hover only</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Delay (seconds)</span>
+                    <input id="opt-blur-delay" type="number" min="1" max="3600" step="0.5" inputmode="decimal" />
+                  </label>
+                </div>
+                <p class="field-hint" id="definition-blur-help">Needs lookup counts; the count is unknown for a moment, so definitions start blurred and clear when it does not qualify. Hovering a definition or the compact summary reveals in either mode. Pronunciation does not auto-play for blurred results.</p>
+              </fieldset>
               <fieldset class="lookup-group">
                 <legend>Frequency labels</legend>
                 <label class="lookup-enable">
