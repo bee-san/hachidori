@@ -59,6 +59,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 const EXTENSION = resolve(ROOT, "extension");
+const EXTENSION_MANIFEST = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"));
 const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
 const EXTENSION_ORIGIN = "chrome-extension://hachidorismokeextensionid";
 
@@ -6091,6 +6092,7 @@ async function startupPageStage() {
   const closedTabs = [];
   window.chrome = {
     runtime: {
+      getManifest: () => structuredClone(EXTENSION_MANIFEST),
       async sendMessage(message) {
         requests.push(structuredClone(message));
         if (message.target === "hachidori-setup" && message.type === "hd_setup_install") {
@@ -6307,19 +6309,20 @@ async function startupPageStage() {
 
 // One jsdom startup page with only the worker replies and stored values a
 // dictionary-stage case needs; the two stages below drive it from there.
-function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
+function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 } }) {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
     pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
   });
   const { window } = dom;
   const { document } = window;
   const requests = [];
-  const stored = { setup, dictionaries, dictionaryRevision: 1 };
+  const stored = { setup, dictionaries, options, dictionaryRevision: 1 };
   let installReply = reply;
   let storageListener = null;
   let eventListener = null;
   window.chrome = {
     runtime: {
+      getManifest: () => structuredClone(EXTENSION_MANIFEST),
       async sendMessage(message) {
         requests.push(structuredClone(message));
         if (message.type === "hd_setup_cas" && cas !== null) return cas(message);
@@ -6330,7 +6333,7 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
     },
     storage: {
       local: { async get() {
-        return { setupState: structuredClone(stored.setup), options: { revision: 1 },
+        return { setupState: structuredClone(stored.setup), options: structuredClone(stored.options),
           dictionaryState: { schemaVersion: 1, revision: stored.dictionaryRevision, groups: [], dictionaries: structuredClone(stored.dictionaries) } };
       } },
       onChanged: { addListener(value) { storageListener = value; } },
@@ -6370,9 +6373,11 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
   };
 }
 
-// The reader scripts the practice step appends, in order.
+// The reader scripts the practice step appends, in order, and the order the
+// manifest itself gives them: the page must follow that list, not a copy.
 const readerScripts = (document) => [...document.querySelectorAll("script[data-setup-reader]")]
   .map((script) => script.getAttribute("src"));
+const MANIFEST_READER_SCRIPTS = EXTENSION_MANIFEST.content_scripts[0].js.filter((src) => src !== "reader-options.js");
 
 const SETUP_AT_DICTIONARIES = Object.freeze({ schemaVersion: 1, revision: 2, startedAt: "2026-09-07T10:00:00.000Z",
   stage: "dictionaries", completedAt: null,
@@ -6516,12 +6521,32 @@ async function startupPracticeStage() {
       && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
       && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"])
       // jsdom does not run appended scripts, so the chain stops at the first one.
-      && JSON.stringify(readerScripts(document)) === JSON.stringify(["dictionary-group-state.js"]);
+      && JSON.stringify(readerScripts(document)) === JSON.stringify(MANIFEST_READER_SCRIPTS.slice(0, 1));
     // Rerenders of the same step must not fetch the reader again.
     page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 43 }]);
     await page.until(() => sample() !== null, "the rerendered exercise");
-    const loadedOnce = invited && JSON.stringify(readerScripts(document)) === JSON.stringify(["dictionary-group-state.js"]);
-    return { withoutDictionary, invited, loadedOnce };
+    const loadedOnce = invited && JSON.stringify(readerScripts(document)) === JSON.stringify(MANIFEST_READER_SCRIPTS.slice(0, 1));
+    const offHover = await startupPracticeWithoutHover(jsdom, setup);
+    return { withoutDictionary, invited, loadedOnce, offHover };
+  } finally {
+    page.window.close();
+  }
+}
+
+// The reader answers nothing while lookups are switched off, so the step says
+// so and points at that setting rather than inviting an impossible hover.
+async function startupPracticeWithoutHover(jsdom, setup) {
+  const page = startupCase(jsdom, { setup, options: { revision: 2, hoverEnabled: false },
+    dictionaries: [{ id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }],
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  try {
+    await page.load();
+    await page.until(() => page.heading() === "You’re ready.", "the final step with lookups off");
+    return page.document.querySelector(".setup-practice-sample") === null
+      && readerScripts(page.document).length === 0
+      && page.document.getElementById("setup-body").textContent.includes("Lookups are turned off")
+      && page.document.querySelector('#setup-body a[href="settings.html#lookup"]') !== null
+      && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"]);
   } finally {
     page.window.close();
   }

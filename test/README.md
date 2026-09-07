@@ -717,6 +717,10 @@ automatically configured one, and
 `HACHIDORI_STARTUP_PRACTICE_SCREENSHOT`/`_DARK_SCREENSHOT` the practice step with
 a real lookup open.
 
+The jsdom stage for that step also requires the appended list to match the
+manifest's own `content_scripts` order, and covers the two states that must not
+invite a lookup: a frequency-only library, and lookups switched off.
+
 Two further checks cover that practice step. The first waits for the reader
 scripts the page appends for itself, aims the real mouse at the verb's own
 character rectangle inside **朝ごはんを食べる。**, and requires the closed-shadow

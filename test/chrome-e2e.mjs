@@ -194,9 +194,10 @@ const RECOMMENDED_LINKS = RECOMMENDED_DICTIONARIES.map(({ name, publisherUrl }) 
 // not the number of checks that happened to execute: a suite that skips an
 // assertion under a regression prints "23/24 passed" and reads like success.
 // The reader as the manifest injects it into a page, minus `reader-options.js`,
-// which the startup page's own module already provides.
-const READER_SCRIPTS = ["dictionary-group-state.js", "lookup-stats-identity.js", "external-links.js",
-  "audio-content.js", "anki-content.js", "render/glossary.js", "render/popup.js", "content.js"];
+// which the startup page's own module already provides. Read from the manifest
+// so a reordered or extended reader cannot pass against a stale copy.
+const READER_SCRIPTS = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"))
+  .content_scripts[0].js.filter((src) => src !== "reader-options.js");
 
 const PLANNED = [
   ...BACKUP_CHROME_CHECKS,

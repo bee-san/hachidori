@@ -329,11 +329,11 @@ on its own.
 
 The last step is the real reader, on the startup page. When that step renders
 and the current inventory holds an enabled package that can answer a term
-lookup, the page appends the packaged reader scripts in the order the manifest
-gives an ordinary page — `dictionary-group-state.js`, `lookup-stats-identity.js`,
-`external-links.js`, `audio-content.js`, `anki-content.js`, `render/glossary.js`,
-`render/popup.js`, `content.js` — once per page, and `content.css` comes with the
-page itself. `reader-options.js` is already loaded by the startup module.
+lookup, the page appends the packaged reader scripts once, in the order the
+manifest itself lists them: it reads its own `content_scripts` entry through
+`chrome.runtime.getManifest()` and skips `reader-options.js`, which the startup
+module already loaded, so a reordered or extended reader cannot leave this step
+running a different one. `content.css` comes with the page.
 Nothing is fetched before that step, so the installation and Anki screens are
 never scanned, and a script that fails to load leaves the sentence and its
 instructions readable with the reason in the card's live region.
@@ -349,9 +349,10 @@ first-install dark appearance and compact summaries.
 The card shows the instruction that matches the current `lookupMode` — hover, or
 holding the configured activation key — and one sentence to try,
 **朝ごはんを食べる。** **Finish** and **Open Settings** stay available: the
-exercise is optional. When no enabled package can answer a lookup, the step says
-so and links to dictionary import instead of inviting a lookup that cannot
-answer.
+exercise is optional. The invitation appears only when it can be answered: with
+no enabled package that can answer a term lookup the step links to dictionary
+import instead, and with lookups switched off it says so and links to that
+setting, in both cases without loading the reader.
 
 ![The practice step with a real lookup open, light palette](assets/startup-practice.png)
 

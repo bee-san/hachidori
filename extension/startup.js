@@ -534,11 +534,14 @@ async function advanceAfterAnki() {
   if (advanceFailed) render();
 }
 
-// The reader itself, in the order the manifest gives an ordinary page, minus
-// `reader-options.js`, which this module already loaded. It arrives only when
-// the practice step does, so nothing scans the installation or Anki screens.
-const READER_SCRIPTS = Object.freeze(["dictionary-group-state.js", "lookup-stats-identity.js", "external-links.js",
-  "audio-content.js", "anki-content.js", "render/glossary.js", "render/popup.js", "content.js"]);
+// The reader itself, in the one authoritative order: the manifest's own
+// content-script list, minus `reader-options.js`, which this module already
+// loaded. It arrives only when the practice step does, so nothing scans the
+// installation or Anki screens.
+function readerScripts() {
+  const [injected] = chrome.runtime.getManifest().content_scripts ?? [];
+  return (injected?.js ?? []).filter((src) => src !== "reader-options.js");
+}
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -553,7 +556,7 @@ function loadScript(src) {
 
 // One load per page: the reader initialises itself when its last script runs.
 function loadReader() {
-  readerLoading ??= READER_SCRIPTS.reduce(
+  readerLoading ??= readerScripts().reduce(
     (chain, src) => chain.then(() => loadScript(src)), Promise.resolve(),
   ).catch((error) => {
     // The exercise is optional; the sentence and instructions stay readable.
@@ -562,11 +565,18 @@ function loadReader() {
   return readerLoading;
 }
 
-// A dictionary that can answer a term lookup right now, checked against the
-// live inventory rather than the setup record: the exercise must not invite a
-// lookup that cannot answer.
-function lookupReady() {
-  return dictionaries.some((dictionary) => dictionary?.enabled !== false && (dictionary?.termCount ?? 0) > 0);
+// What the exercise needs to be possible at all, checked against the live
+// inventory and options rather than the setup record: a package that can answer
+// a term lookup, and lookups switched on. The reader answers nothing while
+// `hoverEnabled` is off, so the step must not invite a hover in that case.
+function lookupObstacle() {
+  if (!dictionaries.some((dictionary) => dictionary?.enabled !== false && (dictionary?.termCount ?? 0) > 0)) {
+    return { text: "No enabled dictionary can answer a lookup yet.", before: "Install dictionaries in ", href: "settings.html#add-dictionaries" };
+  }
+  if (!options.hoverEnabled) {
+    return { text: "Lookups are turned off, so there is nothing to try here yet.", before: "Turn them back on in ", href: "settings.html#lookup" };
+  }
+  return null;
 }
 
 // The last step tries the real reader on this page: the packaged scripts, the
@@ -575,11 +585,11 @@ function lookupReady() {
 function practiceView() {
   const outcome = setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)];
   const finishAction = [button("setup-finish", "Finish", () => { void finish(); })];
-  if (!lookupReady()) {
+  const obstacle = lookupObstacle();
+  if (obstacle !== null) {
     return {
       heading: "You’re ready.",
-      body: [...outcome, paragraph("No enabled dictionary can answer a lookup yet."),
-        settingsNote("Install dictionaries in ", "settings.html#add-dictionaries")],
+      body: [...outcome, paragraph(obstacle.text), settingsNote(obstacle.before, obstacle.href)],
       actions: finishAction,
     };
   }
