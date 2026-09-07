@@ -46,7 +46,7 @@ Hachidori is 83 times faster than the worlds most popular Japanese dictionary ap
   <img src="docs/assets/benchmark-import.jpg" alt="Import-to-usable benchmark for the 6.65-million-row VNDB Characters by Bee dictionary: Hachidori 15 seconds, JL 4 minutes 6 seconds, and Yomitan 20 minutes 36 seconds" width="820">
 </p>
 
-It is even 4.5 times faster at looking up words.
+It is even 3.5 times faster at looking up words.
 
 <p align="center">
   <img src="docs/assets/benchmark-throughput.jpg" alt="Two-query lookup throughput benchmark: Hachidori 1,108 lookups per second, JL 375, and Yomitan 317" width="820">
