@@ -1096,6 +1096,83 @@ read/write interval is not atomic. Browser TTS cannot be attached to a note;
 downloadable sources are required for audio fields. Sentence-furigana markers
 use the GSM fallback when its optional native tokenizer is unavailable.
 
+Capture markers are prepared through the same Anki queue rather than a second
+gateway. Preflight reports only the outputs referenced by fields that will
+actually be applied. Submission waits for the capture job, refreshes
+configuration, generation, duplicate and overwrite decisions, uploads final
+assets one at a time, revalidates, then performs and verifies the existing note
+write. `{audio}` remains pronunciation audio;
+`{capture-animation}`/`{capture-audio}` are rejected in the first field. A
+confirmed note mutation releases its capture job even if field readback later
+warns. An uncertain note mutation retains the job for an explicit retry and is
+neither automatically retried nor followed by automatic media deletion.
+
+## Generic media capture
+
+Media capture is default-off and runs in a dedicated visible extension page
+because `getDisplayMedia()` needs a direct user action and the page must own the
+resulting stream. The capture page registers one current session with the
+service worker; it does not join the dictionary queue or close the existing
+offscreen dictionary host.
+
+```text
+Settings / capture controls
+          |
+          v
+Service worker -- trusted sender validation and tab routing
+          |
+          +--> linked content script: cue/DOM observations and root pins
+          |
+          +--> capture page: MediaStream, WebSocket, rings, resolver and jobs
+                                 |
+                                 +--> local AVIF worker and WAV encoder
+                                 |
+                                 +--> existing Anki worker
+```
+
+The service worker accepts control messages only from Settings or the exact
+capture-page URL, and observation messages only from the currently linked tab
+and document identity. The configured texthooker URL is retained by the capture
+page and omitted from content-script options. Only loopback `ws://` endpoints
+are accepted. A source change, full navigation, stop, relevant setting change,
+or capture loss invalidates the corresponding session or document epoch.
+
+The linked content script keeps DOM nodes and ranges locally. It observes one
+bounded ordinary text area plus an explicitly selected accessible video and
+sends only occurrence text, identities, normalized timestamps, and close
+events. Existing text is an unknown-onset baseline. Cue collection never
+enables a disabled track or changes subtitle language. Automatic area learning
+rejects editable roots, the document body, and Hachidori-owned UI; manual
+selection consumes the click and Escape so it does not advance the reading
+surface.
+
+All providers enter one occurrence timeline. Per root lookup the resolver tries
+a usable matching live texthooker record, selected-video cue, watched page text,
+then recent history. NFC and whitespace normalization are allowed; word-only,
+ambiguous, wrong-session, wrong-document, cross-epoch, expired, or evicted
+matches fail closed. The admitted root pin freezes the source, options, and
+interval; nested lookups inherit it. A still-open matched line may receive only
+its bounded future tail. Submitting transfers ownership to one independent
+encoder job, while replacing or dismissing an unsubmitted root releases its
+pin.
+
+Video history is timestamped JPEG bytes with 60-second age, 64 MiB live, 32 MiB
+extra pinned, and 256 KiB per-frame limits. Audio is a mono Float32 sample-clock
+ring over the same timeline. Capture skips frame opportunities instead of
+queueing unbounded work. The local worker incrementally decodes selected JPEGs
+into an animated AVIF sequence; WAV generation converts only the selected PCM
+to 16-bit mono. One job, a 256 MiB worker heap ceiling, 30-second watchdog,
+4 MiB AVIF limit, 1 MiB WAV limit, and 6 MiB serialized asset-response limit
+bound export. Missing source audio is reported and never replaced with
+microphone or fabricated silence.
+
+Frames, PCM, timing records, received text, stream state, page bindings, pins,
+and jobs are transient capture-page state. They are not persisted, logged as
+dialogue, sent to telemetry, or broadcast to unrelated tabs. Stopping capture
+closes tracks and sockets, observers, retries, pins, buffers, and encoder work;
+dictionary state remains untouched. See [Media mining](media-capture.md) for
+the user-facing setup and explicit unsupported surfaces.
+
 ## Managed custom dictionary
 
 `custom-dictionary.js` is a context-independent ES module shared by Settings,
@@ -1143,7 +1220,8 @@ retryable.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
-| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, and dictionary selectors | service worker writes; extension pages read | `chrome.storage.local` key `options` |
+| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
+| Media streams, compressed-frame/PCM history, timing records, source bindings, pins, encoder jobs, and received texthooker text | visible capture page | transient memory only |
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 
@@ -1209,6 +1287,11 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
 | `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |
+| `hd_capture_open`, `hd_capture_tabs`, `hd_capture_link`, `hd_capture_unlink` | Open the explicit capture surface, enumerate candidate reading tabs, and bind or release one trusted page/document |
+| `hd_capture_video_select`, `hd_capture_track_area`, `hd_capture_clear_area` | Control the linked page's session-only cue and DOM collectors |
+| `hd_capture_text_begin`, `hd_capture_text_close`, `hd_capture_text_source_close` | Forward bounded occurrence lifecycle records from the linked content script to the registered capture session |
+| `hd_capture_pin`, `hd_capture_release` | Freeze or release one root-lookup interval through the shared source-priority resolver |
+| `hd_capture_export`, `hd_capture_job_status`, `hd_capture_asset`, `hd_capture_complete`, `hd_capture_cancel` | Transfer pin ownership to one bounded encoder job and commit its final assets through Anki |
 
 ## Build outputs
 
@@ -1224,9 +1307,13 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 The zero-dependency Node suite checks imports, custom parsing and deterministic
 ZIP compilation, deinflection, normalized kana lookup, media extraction,
 malformed input, fallback persistence, thread-bridge transfer behavior,
-extension packaging, and generated runtime assets. Chrome E2E tests exercise
+extension packaging, generated runtime assets, capture settings and timing,
+bounded media rings, encoding, and Anki preparation/commit behavior. Chrome E2E tests exercise
 both the threaded direct-OPFS path and the forced compatibility path, including
 custom source compilation and restart durability, service-worker idling,
-bounded concurrency, and transactional replacement recovery.
+bounded concurrency, and transactional replacement recovery. The separate
+real-capture suite drives display permission, captured tab audio, loopback
+WebSocket lifecycle, animated-AVIF decode/playback, non-silent WAV output,
+sustained retention, dictionary-latency comparison, and storage privacy.
 
 The browser benchmark records import-to-first-valid-lookup, steady lookup, full-process restoration, process-tree resources, exact storage manifests, and input/runtime hashes. The cross-engine benchmark adds production-path adapters for Yomitan and JL under one rotating schedule; see [Benchmarks](../benchmark/README.md).

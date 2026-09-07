@@ -19,7 +19,7 @@ node test/threaded-bridge-smoke.mjs # 7. both-backend bridge admission/control t
 node test/extension-smoke.mjs    # 8. the extension's own JS against that wasm
 node --test benchmark/*.test.mjs # 9. fail-closed benchmark framework tests
 node test/chrome-e2e.mjs         # 10. pthread/OPFS path in a real Chrome
-node test/chrome-capture.mjs     # 11. real display capture, audio, timing and Anki path
+HACHIDORI_CAPTURE_HEADFUL=1 xvfb-run -a node test/chrome-capture.mjs # 11. real display capture, audio, timing and Anki path on Linux
 node test/chrome-fallback.mjs    # 12. capability fallback through IDBFS in real Chrome
 ./test/baseline.sh               # 13. optional native cross-check
 ```
@@ -1041,17 +1041,20 @@ links the reading page, and exercises:
 - a real loopback plain-text WebSocket, texthooker priority, active state,
   disconnect, and reconnect epoch;
 - root pinning, future-tail completion, animated AVIF encoding, Chrome frame
-  decoding and looping playback, and non-silent mono WAV samples;
+  decoding and looping playback, non-silent mono WAV samples, and decoded
+  flash/beep alignment within 300 ms;
 - a local AnkiConnect fixture with real preflight, one-at-a-time media uploads,
   note write, and readback;
 - settings-change confirmation, stop/clear behavior, no automatic rearming, and
   absence of raw text/media in extension storage;
+- linked-page navigation clearing only the page binding while capture continues;
 - stopped-versus-recording dictionary latency, capture throughput, retained
   history, encoding latency, and output sizes.
 
 ```sh
-node test/chrome-capture.mjs
-HACHIDORI_CAPTURE_SUSTAINED_SECONDS=70 node test/chrome-capture.mjs
+HACHIDORI_CAPTURE_HEADFUL=1 xvfb-run -a node test/chrome-capture.mjs
+HACHIDORI_CAPTURE_HEADFUL=1 HACHIDORI_CAPTURE_SUSTAINED_SECONDS=70 \
+  xvfb-run -a node test/chrome-capture.mjs
 ```
 
 The default measures five seconds of production throughput. The sustained form
@@ -1059,7 +1062,8 @@ continues to 70 seconds and additionally requires both retained timelines to
 settle between 55 and 61 seconds while remaining within the 64 MiB frame budget.
 `HACHIDORI_CAPTURE_SUSTAINED_SECONDS` is clamped to 5–90 seconds.
 
-On Linux, a headful screenshot run can use Xvfb:
+The real chooser path must run headfully. On Linux, Xvfb provides the display;
+on a desktop host, omit `xvfb-run -a`. A screenshot run can use:
 
 ```sh
 HACHIDORI_CAPTURE_HEADFUL=1 \
