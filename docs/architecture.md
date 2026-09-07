@@ -304,13 +304,13 @@ model's fields and applies the shared `ankiAvailability` rules, so a complete
 mapping is **already-configured** and a half-made one — choosing a note type in
 Settings clears its fields — is **needs-attention** carrying Anki's own reason
 (for example *Map the first field, “Front”, before adding notes.*). A saved
-mapping that could not be checked because nothing answered stands as the user
-left it when it is at least locally usable (`ankiMappingComplete`); a half-made
-one keeps the connection's own reason instead. The latest options are read again inside that write: a mapping the user changes
+mapping that could not be checked at all is not claimed to be set up: the
+connection's own reason is recorded and the mapping is left untouched. The latest options are read again inside that write: a mapping the user changes
 while the check runs makes that check stale, so the write is abandoned and the
-mapping now stored is checked instead — the second pass records what it found.
-A proposal is saved only when the mapping it was derived from is still the one
-stored. A connection that does not answer or
+mapping now stored is checked instead. A proposal is saved only while the
+mapping it was derived from is still the one stored, and a mapping that keeps
+changing across three passes settles as **needs-attention** saying so rather
+than recording a result for a mapping that no longer exists. A connection that does not answer or
 times out is the ordinary **unavailable** outcome; any other failure keeps its
 own reason. The page renders the settled outcome as one sentence with a link to
 the Anki section of Settings, and that outcome moves setup to the last stage by

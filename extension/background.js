@@ -1,7 +1,6 @@
 import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
 import { detectAnkiSetup, verifyAnkiSetup } from "./anki-setup.js";
-import { ankiMappingComplete } from "./anki-templates.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
 import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
@@ -793,39 +792,41 @@ async function checkFirstRunAnki(anki) {
     const proposal = anki.model === "" ? await detectAnkiSetup(invoke, anki) : await verifyAnkiSetup(invoke, anki);
     return { proposal, outcome: { status: proposal.status, detail: proposal.detail, model: proposal.model, deck: proposal.deck } };
   } catch (error) {
-    const failure = ankiSetupFailure(error);
-    // A usable mapping that could not be checked stands as the user left it; a
-    // half-made one keeps the connection's own reason instead of claiming setup.
-    const stands = failure.status === "unavailable" && ankiMappingComplete(anki);
-    return { proposal: null,
-      outcome: stands ? { status: "already-configured", detail: null, model: anki.model, deck: anki.deck } : failure };
+    // Nothing is claimed about a mapping that could not be checked: the
+    // connection's own reason is the outcome, and the mapping is left untouched.
+    return { proposal: null, outcome: ankiSetupFailure(error) };
   }
 }
 
 // The check runs outside the storage queue, so the mapping it judged can change
-// while it runs. The write then discards that check and the mapping now stored
-// is checked instead; the second pass records what it found.
-const ANKI_SETUP_ATTEMPTS = 2;
+// while it runs. Such a check is stale: the write is abandoned and the mapping
+// now stored is checked instead. Only a mapping that stops changing can be
+// recorded, so a user still editing Anki settings gets that reason and the link.
+const ANKI_SETUP_ATTEMPTS = 3;
+const ANKI_SETUP_CHANGED = "Anki settings changed while setup checked them. Confirm the mapping in Settings.";
 
 async function detectFirstRunAnki() {
   for (let attempt = 1; ; attempt += 1) {
     const stored = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
     const options = normaliseOptions(stored[OPTIONS_KEY]);
+    const last = attempt >= ANKI_SETUP_ATTEMPTS;
     const { proposal, outcome } = await checkFirstRunAnki(options.anki);
     const written = await serialiseStorage(async () => {
       const current = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
       const setup = normaliseSetupState(current[SETUP_STATE_KEY]);
       if (setup === null) throw new Error("Setup has not started on this installation.");
       if (setup.anki !== null) return { state: setup };
-      const latest = normaliseOptions(current[OPTIONS_KEY]);
-      if (attempt < ANKI_SETUP_ATTEMPTS && !sameJsonValue(latest.anki, options.anki)) return null;
+      const stale = !sameJsonValue(normaliseOptions(current[OPTIONS_KEY]).anki, options.anki);
+      if (stale && !last) return null;
       const values = {};
-      if (proposal?.status === "configured" && sameJsonValue(latest.anki, options.anki)) {
+      if (!stale && proposal?.status === "configured") {
         const revision = optionsRevision(current[OPTIONS_KEY]);
-        const anki = { ...latest.anki, model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates };
+        const anki = { ...options.anki, model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates };
         values[OPTIONS_KEY] = { ...projectStoredOptions(current[OPTIONS_KEY]), ...validateOptionsPatch({ anki }), revision: revision + 1 };
       }
-      const state = recordSetupAnki(setup, outcome);
+      const state = recordSetupAnki(setup, stale
+        ? { status: "needs-attention", detail: ANKI_SETUP_CHANGED, model: null, deck: null }
+        : outcome);
       values[SETUP_STATE_KEY] = state;
       await chrome.storage.local.set(values);
       return { state };

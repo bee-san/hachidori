@@ -757,7 +757,6 @@ function loadBackgroundScript(sandbox) {
     .replace(/^import .* from "\.\/backup-(?:state|downloads)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ detectAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
-    .replace(/import \{ ankiMappingComplete \} from "\.\/anki-templates\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/external-links\.js";\s*/u, "")
@@ -1296,14 +1295,11 @@ async function firstRunAnkiStage() {
   // Anki's own availability rules name what is missing.
   const partial = worldFor("anki-partial", { answer: collection, options: { revision: 3, anki: { ...defaultAnki(), model: "Basic", deck: "Words" } } });
   const partialReply = await partial.send();
-  // A saved mapping that cannot be checked stands as the user left it, while a
-  // half-made one keeps the connection's own reason instead of claiming setup.
+  // A saved mapping that could not be checked is not claimed to be set up: the
+  // connection's own reason is recorded and the mapping is left untouched.
   const offline = worldFor("anki-offline", { answer: () => new TypeError("Failed to fetch"),
     options: { revision: 3, anki: configuredAnki("Basic", "Words") } });
   const offlineReply = await offline.send();
-  const offlinePartial = worldFor("anki-offline-partial", { answer: () => new TypeError("Failed to fetch"),
-    options: { revision: 3, anki: { ...defaultAnki(), model: "Basic", deck: "Words" } } });
-  const offlinePartialReply = await offlinePartial.send();
   check("first-run Anki detection is startup-only, records absence or a specific refusal once, and reports an existing setup without any call",
     fromSettings?.ok === false && fromSettings.error.includes("startup page")
       && unavailable?.ok === true && unavailable.state.anki?.status === "unavailable" && unavailable.state.anki.detail.includes("Open Anki")
@@ -1320,13 +1316,12 @@ async function firstRunAnkiStage() {
       && partialReply.state.anki.model === null
       && JSON.stringify(partial.requests.map((request) => request.action)) === JSON.stringify(["modelNamesAndIds", "deckNames", "modelFieldNames"])
       && partial.storage.raw.get("options").revision === 3
-      && offlineReply?.ok === true && offlineReply.state.anki?.status === "already-configured"
-      && offlineReply.state.anki.model === "Basic" && offlineReply.state.anki.deck === "Words"
-      && offline.storage.raw.get("options").revision === 3
-      && offlinePartialReply?.ok === true && offlinePartialReply.state.anki?.status === "unavailable"
-      && offlinePartialReply.state.anki.detail.includes("Open Anki") && offlinePartialReply.state.anki.model === null,
+      && offlineReply?.ok === true && offlineReply.state.anki?.status === "unavailable"
+      && offlineReply.state.anki.detail.includes("Open Anki") && offlineReply.state.anki.model === null
+      && JSON.stringify(offline.storage.raw.get("options").anki) === JSON.stringify(configuredAnki("Basic", "Words"))
+      && offline.storage.raw.get("options").revision === 3,
     JSON.stringify({ fromSettings, unavailable, again, absentRequests: absent.requests, deniedReply, existingReply,
-      existingRequests: existing.requests, partialReply, partialRequests: partial.requests, offlineReply, offlinePartialReply }));
+      existingRequests: existing.requests, partialReply, partialRequests: partial.requests, offlineReply }));
 
   // A recognised setup: duplicate requests share one detection, the ranked
   // model and deck are saved with the preset through the options CAS, and the
@@ -1361,8 +1356,8 @@ async function firstRunAnkiStage() {
     baseRevision: 1, options: { anki: configuredAnki("Basic", "Default") } });
   racing.held.forEach((release) => release());
   const raced = await pendingDetection;
-  // The same choice wins when discovery finds nothing at all: a failure must not
-  // be recorded over a mapping the user now has.
+  // A mapping changed while a check ran makes that check stale: the new mapping
+  // is checked instead, so a failure of the old check is never recorded for it.
   const failing = worldFor("anki-racing-absent", { answer: (action, params, count) => (count === 1 ? "hold" : new TypeError("Failed to fetch")),
     options: { revision: 1 } });
   const pendingFailure = failing.send();
@@ -1375,8 +1370,10 @@ async function firstRunAnkiStage() {
     racing.held.length === 1 && userChoice?.ok === true && raced?.ok === true && raced.state.anki?.status === "already-configured"
       && raced.state.anki.model === "Basic" && racing.storage.raw.get("options").anki.model === "Basic"
       && racing.storage.raw.get("options").revision === 2
-      && lateChoice?.ok === true && rescued?.ok === true && rescued.state.anki?.status === "already-configured"
-      && rescued.state.anki.model === "Kiku v2" && rescued.state.anki.deck === "Mining" && rescued.state.anki.detail === null
+      && lateChoice?.ok === true && rescued?.ok === true && rescued.state.anki?.status === "unavailable"
+      && rescued.state.anki.detail.includes("Open Anki")
+      && failing.requests.filter((request) => request.action === "modelNamesAndIds").length === 2
+      && failing.storage.raw.get("options").anki.model === "Kiku v2"
       && failing.storage.raw.get("options").revision === 2,
     JSON.stringify({ userChoice, raced, options: racing.storage.raw.get("options"), lateChoice, rescued, failingOptions: failing.storage.raw.get("options") }));
 }
