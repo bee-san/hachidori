@@ -205,8 +205,9 @@ const PLANNED = [
   "a reconnecting startup page rejoins the running installer whose held download stays indeterminate",
   "the automatic installer continues after a mocked failure through real download and installation phases",
   "Retry installs only the missing dictionary and the committed entries settle their selections once",
-  "the all-installed result stays five seconds before setup moves to Anki",
-  "the startup page advances from Anki to completion, closes its tab and hides Resume setup",
+  "the all-installed result stays five seconds before setup checks for Anki",
+  "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
+  "first-run detection configures an existing Kiku mining setup read-only from the startup page",
   "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
   "Settings light and dark themes keep every task view readable without horizontal overflow",
@@ -3750,6 +3751,107 @@ async function checkAnkiGlossaryExport(page) {
   } finally { page.off("request", observe); }
 }
 
+// First-run Anki detection against a mocked AnkiConnect on the real service
+// worker: the startup page asks once, the ranked note type and deck are saved
+// with the preset, and nothing in the collection is modified. Setup state and
+// options are restored afterwards so the later Anki checks start as they did.
+async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
+  const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
+    "Glossary", "Sentence", "SentenceFurigana", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
+  const calls = [];
+  const route = { requests: 0, respond(request) {
+    const { action, params, version } = JSON.parse(request.postData);
+    calls.push({ action, params, version });
+    // Two notes live in Mining and one in the child deck, so Mining wins.
+    const result = action === "modelNamesAndIds" ? { Basic: 1, "Kiku v2": 2, "My Kiku": 3 }
+      : action === "modelFieldNames" ? (params.modelName === "Kiku v2" ? KIKU_FIELDS : ["Front", "Back"])
+        : action === "findNotes" ? [21, 22, 23]
+          : action === "findCards" ? [211, 212, 221, 231]
+            : action === "getDecks" ? { Mining: [211, 212, 221], "Mining::Old": [231] }
+              : action === "cardsToNotes" ? (params.cards.includes(231) ? [23] : [21, 22]) : null;
+    if (result === null) return { body: JSON.stringify({ result: null, error: `unexpected ${action}` }), status: 200, contentType: "application/json" };
+    return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
+  } };
+  const worker = await browser.waitForTarget((target) => target.type() === "service_worker" && target.url().endsWith("/background.js"));
+  const session = await interceptFetches(worker, new Map([["http://127.0.0.1:8765/", route]]), "anki setup");
+  const saved = await page.evaluate(async () => (await chrome.storage.local.get(["setupState", "options"])));
+  let startup = null;
+  try {
+    // Setup returns to the Anki stage with no outcome yet; the dictionary stage
+    // is already behind it, so the page checks Anki as soon as it opens.
+    await page.evaluate(async (previous) => {
+      await chrome.storage.local.set({ setupState: { ...previous, revision: previous.revision + 1, stage: "anki", completedAt: null, anki: null } });
+    }, saved.setupState);
+    startup = await browser.newPage();
+    startup.on("console", (message) => diagnostics.push(`[startup anki] ${message.type()}: ${message.text()}`));
+    startup.on("pageerror", (error) => diagnostics.push(`[startup anki] pageerror: ${error.message}`));
+    await startup.goto(startupUrl, { waitUntil: "domcontentloaded" });
+    await startup.evaluate(() => {
+      window.__headingLog = [];
+      const record = () => {
+        const text = document.getElementById("setup-heading")?.textContent ?? "";
+        if (window.__headingLog.at(-1) !== text) window.__headingLog.push(text);
+      };
+      record();
+      new MutationObserver(record).observe(document.getElementById("setup-card"), { childList: true, subtree: true, characterData: true });
+    });
+    const ready = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "You’re ready."
+      ? { outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
+        outcomeText: document.querySelector(".setup-anki-outcome")?.textContent ?? "",
+        outcomeLink: document.querySelector('.setup-anki-outcome a[href="settings.html#anki"]') !== null,
+        done: document.querySelectorAll(".setup-step.is-done").length,
+        status: document.getElementById("setup-status")?.textContent ?? "" } : false,
+    { timeout: 30_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
+    const headingLog = await startup.evaluate(() => window.__headingLog ?? []);
+    const detected = await page.evaluate(async () => (await chrome.storage.local.get(["setupState", "options"])));
+    const anki = detected.options?.anki ?? {};
+    const templates = anki.fieldTemplates ?? {};
+    if (process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT || process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT) {
+      await startup.setViewport({ width: 900, height: 820 });
+      for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT]]) {
+        if (!path) continue;
+        await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+        await startup.screenshot({ path });
+      }
+      await startup.emulateMediaFeatures([]);
+    }
+    check(
+      "first-run detection configures an existing Kiku mining setup read-only from the startup page",
+      JSON.stringify(headingLog.slice(0, 3)) === JSON.stringify(["Checking for Anki…", "Anki is set up", "You’re ready."])
+        && ready?.outcome === "configured" && ready.outcomeLink && ready.status === ""
+        && ready.outcomeText === "Automatically set up Kiku v2 for deck ‘Mining’. Change in Settings."
+        && ready.done === 2
+        // The durable outcome and the saved mapping name the same note type and deck.
+        && detected.setupState?.anki?.status === "configured" && detected.setupState.anki.detail === null
+        && detected.setupState.anki.model === "Kiku v2" && detected.setupState.anki.deck === "Mining"
+        && anki.model === "Kiku v2" && anki.deck === "Mining"
+        && detected.options.revision === saved.options.revision + 1
+        && Object.keys(templates).length === KIKU_FIELDS.length
+        && templates.Expression?.value === "{expression}" && templates.Picture?.value === ""
+        // Only the fixed read-only actions ran, in ranking order, at protocol version 6.
+        && JSON.stringify(calls.map(({ action }) => action)) === JSON.stringify(
+          ["modelNamesAndIds", "modelFieldNames", "findNotes", "findCards", "getDecks", "cardsToNotes", "cardsToNotes"])
+        && calls.every(({ version }) => version === 6)
+        && calls.find(({ action }) => action === "findNotes").params.query === "mid:2"
+        && calls.find(({ action }) => action === "findCards").params.query === "mid:2 -deck:filtered",
+      JSON.stringify({ headingLog, ready, detected, calls }),
+    );
+  } finally {
+    if (startup !== null) await startup.close().catch(() => {});
+    await session.detach().catch(() => {});
+    // The remaining Anki checks expect the unconfigured mapping and a completed setup.
+    await page.evaluate(async (previous) => {
+      const { options } = await chrome.storage.local.get("options");
+      await chrome.storage.local.set({ setupState: previous.setupState, options: { ...previous.options, revision: options.revision + 1 } });
+    }, saved);
+    await page.waitForFunction(async (expected) => {
+      const stored = await chrome.storage.local.get(["setupState", "options"]);
+      return stored.setupState?.stage === "complete"
+        && JSON.stringify(stored.options.anki ?? null) === JSON.stringify(expected ?? null);
+    }, { timeout: 10_000, polling: 100 }, saved.options.anki ?? null);
+  }
+}
+
 async function checkAnkiSettings(page, browser) {
   const original = await page.evaluate(async () => ({
     options: (await chrome.storage.local.get("options")).options,
@@ -5868,26 +5970,76 @@ async function main() {
     await startup.emulateMediaFeatures([]);
   }
 
+  // The Anki stage checks by itself and its outcome moves setup on, so both
+  // headings are transient. Record every heading the page paints instead of
+  // hoping a poll lands inside them.
+  if (startup !== null) {
+    await startup.evaluate(() => {
+      window.__headingLog = [];
+      const record = () => {
+        const text = document.getElementById("setup-heading")?.textContent ?? "";
+        if (window.__headingLog.at(-1)?.text === text) return;
+        window.__headingLog.push({
+          text,
+          at: Date.now(),
+          focused: document.activeElement?.id ?? "",
+          step: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
+          done: document.querySelectorAll(".setup-step.is-done").length,
+          actions: [...document.querySelectorAll("#setup-actions button")].map((control) => control.id),
+          outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
+          ankiLink: document.querySelector('#setup-body a[href="settings.html#anki"]') !== null,
+        });
+      };
+      record();
+      new MutationObserver(record).observe(document.getElementById("setup-card"),
+        { childList: true, subtree: true, characterData: true });
+    });
+  }
   let heldResult = null;
-  let ankiReached = null;
+  let practiceReached = null;
   if (startup !== null) {
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, successShownAt + 3500 - Date.now())));
     heldResult = await startup.evaluate(readStartup).catch(() => null);
-    ankiReached = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "Anki"
-      ? { at: Date.now(), focused: document.activeElement?.id ?? "", done: document.querySelectorAll(".setup-step.is-done").length,
-        ankiLink: document.querySelector('#setup-body a[href="settings.html#anki"]') !== null } : false,
-    { timeout: 10_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
+    // The final step waits for Finish, so it is the one stable state to poll for.
+    practiceReached = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "You’re ready."
+      ? { at: Date.now(), focused: document.activeElement?.id ?? "",
+        currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
+        done: document.querySelectorAll(".setup-step.is-done").length,
+        body: document.getElementById("setup-body")?.textContent ?? "",
+        outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
+        outcomeText: document.querySelector(".setup-anki-outcome")?.textContent ?? "",
+        outcomeLink: document.querySelector('.setup-anki-outcome a[href="settings.html#anki"]') !== null,
+        status: document.getElementById("setup-status")?.textContent ?? "",
+        actions: [...document.querySelectorAll("#setup-actions button")].map((control) => control.id) } : false,
+    { timeout: 30_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
   }
+  const headingLog = startup === null ? [] : await startup.evaluate(() => window.__headingLog ?? []);
+  const painted = (text) => headingLog.find((entry) => entry.text === text) ?? null;
+  const checkingAnki = painted("Checking for Anki…");
   const ankiStage = await page.evaluate(async () => (await chrome.storage.local.get("setupState")).setupState);
   check(
-    "the all-installed result stays five seconds before setup moves to Anki",
+    "the all-installed result stays five seconds before setup checks for Anki",
     heldResult?.heading.startsWith("All dictionaries installed in") === true
       && /^Continuing to Anki in [123] seconds?$/u.test(heldResult.countdown ?? "")
-      && ankiReached !== null && ankiReached.at - successShownAt >= 4800
-      && ankiReached.focused === "setup-heading" && ankiReached.done === 1 && ankiReached.ankiLink
-      && ankiStage?.stage === "anki" && ankiStage.dictionaries.continued === false,
-    JSON.stringify({ heldResult, ankiReached, successShownAt, ankiStage }),
+      && checkingAnki !== null && checkingAnki.at - successShownAt >= 4800
+      && checkingAnki.focused === "setup-heading" && checkingAnki.step === "anki" && checkingAnki.done === 1
+      && JSON.stringify(checkingAnki.actions) === JSON.stringify([])
+      && ankiStage?.dictionaries.continued === false,
+    JSON.stringify({ heldResult, checkingAnki, successShownAt, headingLog, ankiStage }),
   );
+
+  // Nothing answers AnkiConnect on this host, so the ordinary absence is
+  // recorded once and the page moves on without asking the user anything.
+  const settledAnki = painted("No Anki found");
+  if (startup && (process.env.HACHIDORI_STARTUP_READY_SCREENSHOT || process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT)) {
+    await startup.setViewport({ width: 900, height: 820 });
+    for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_READY_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT]]) {
+      if (!path) continue;
+      await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      await startup.screenshot({ path });
+    }
+    await startup.emulateMediaFeatures([]);
+  }
 
   // The dictionary-dependent selections were applied once; the user now returns
   // both to Automatic so the remaining assertions keep their historical options.
@@ -5899,7 +6051,7 @@ async function main() {
     if (!reply.ok) throw new Error(reply.error);
   });
 
-  let startupFlow = null;
+  let closedTab = null;
   if (startup !== null) {
     await startup.bringToFront();
     const startupClosed = new Promise((resolveClosed) => {
@@ -5909,20 +6061,8 @@ async function main() {
       browser.on("targetdestroyed", onDestroyed);
       setTimeout(() => { browser.off("targetdestroyed", onDestroyed); resolveClosed(false); }, 15_000);
     });
-    await clickStartupControl("setup-continue");
-    const practice = await startup.waitForFunction(() => {
-      const text = document.getElementById("setup-heading")?.textContent ?? "";
-      return text === "You’re ready." ? {
-        focused: document.activeElement?.id ?? "",
-        currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
-        done: document.querySelectorAll(".setup-step.is-done").length,
-        body: document.getElementById("setup-body")?.textContent ?? "",
-        status: document.getElementById("setup-status")?.textContent ?? "",
-      } : false;
-    }, { timeout: 10_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
     await clickStartupControl("setup-finish");
-    const closed = await startupClosed;
-    startupFlow = { practice, closed };
+    closedTab = await startupClosed;
   }
   const completedSetup = await page.waitForFunction(async () => {
     const { setupState } = await chrome.storage.local.get("setupState");
@@ -5930,15 +6070,23 @@ async function main() {
       ? setupState : false;
   }, { timeout: 10_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
   check(
-    "the startup page advances from Anki to completion, closes its tab and hides Resume setup",
-    startupFlow?.practice?.focused === "setup-heading" && startupFlow.practice.currentStep === "practice"
-      && startupFlow.practice.done === 2 && startupFlow.practice.status === ""
-      && startupFlow.practice.body.includes("Hover over Japanese text on any webpage")
-      && startupFlow.closed === true && startupTabs() === 0
-      && typeof completedSetup?.completedAt === "string"
+    "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
+    settledAnki !== null && settledAnki.step === "anki" && settledAnki.done === 1
+      && settledAnki.outcome === "unavailable" && JSON.stringify(settledAnki.actions) === JSON.stringify([])
+      && ankiStage?.anki?.status === "unavailable" && ankiStage.anki.model === null && ankiStage.anki.deck === null
+      && ankiStage.anki.detail.includes("Open Anki with the AnkiConnect add-on")
+      // The outcome moved setup on by itself and stays readable on the final step.
+      && practiceReached?.focused === "setup-heading" && practiceReached.currentStep === "practice"
+      && practiceReached.done === 2 && practiceReached.status === ""
+      && practiceReached.outcome === "unavailable" && practiceReached.outcomeLink
+      && practiceReached.outcomeText === "No Anki found. Set up in Settings."
+      && practiceReached.body.includes("Hover over Japanese text on any webpage")
+      && JSON.stringify(practiceReached.actions) === JSON.stringify(["setup-finish"])
+      && closedTab === true && startupTabs() === 0
+      && typeof completedSetup?.completedAt === "string" && completedSetup.anki?.status === "unavailable"
       && JSON.stringify(Object.keys(completedSetup.dictionaries.outcomes).sort()) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId).sort())
       && editedPreference?.showCompactDefinitionSummary === false && editedPreference.revision === 2,
-    JSON.stringify({ startupFlow, completedSetup, editedPreference, startupTabs: startupTabs() }),
+    JSON.stringify({ settledAnki, practiceReached, headingLog, completedSetup, editedPreference, closedTab, startupTabs: startupTabs() }),
   );
   await page.bringToFront();
 
@@ -5962,6 +6110,8 @@ async function main() {
       && document.getElementById("recommended-starter")?.hidden === false;
   }, { timeout: 90_000, polling: 100 });
   const setupRequestsAfterSetup = setupArchives.requests.length;
+
+  await checkFirstRunAnkiDetection(page, browser, startupUrl);
 
   await checkSettingsAutosave(page, browser, settingsUrl);
   await checkSettingsTransport(page);
