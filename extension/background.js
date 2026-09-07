@@ -35,6 +35,10 @@ import { sameJsonValue } from "./json-value.js";
 import {
   boundResponseFailure, responseFits, responseLimitError, validResponseRequestId,
 } from "./response-limits.js";
+import {
+  FIRST_INSTALL_OPTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
+  advanceSetupState, initialSetupState, normaliseSetupState,
+} from "./setup-state.js";
 
 const { DEFAULT_OPTIONS, normaliseCorpusSeenUrl, projectStoredOptions, validateOptionsPatch } = globalThis.HDReaderOptions;
 const { normaliseExternalUrl } = globalThis.HDExternalLinks;
@@ -699,6 +703,24 @@ const WORKER_HANDLERS = {
     }
     return result;
   },
+
+  async hd_setup_cas(message, sender) {
+    if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL(STARTUP_PAGE)) {
+      throw new Error("Setup progress can be changed only from the Hachidori startup page.");
+    }
+    if (!Number.isInteger(message.baseRevision) || message.baseRevision < 0) {
+      throw new Error("the setup write request carried no valid base revision");
+    }
+    const stored = await chrome.storage.local.get(SETUP_STATE_KEY);
+    const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
+    if (current === null) throw new Error("Setup has not started on this installation.");
+    if (message.baseRevision !== current.revision) {
+      return { ok: false, conflict: true, error: "Setup changed in another tab.", state: current };
+    }
+    const state = advanceSetupState(current, message.stage, new Date().toISOString());
+    await chrome.storage.local.set({ [SETUP_STATE_KEY]: state });
+    return { state };
+  },
 };
 
 // One read-then-write at a time, so the check above cannot be overtaken by
@@ -1261,8 +1283,34 @@ function warmUp() {
   });
 }
 
-// Load the dictionaries before the first hover asks for them.
-chrome.runtime.onInstalled.addListener(warmUp);
+// A fresh installation seeds its setup state and initial preferences once, then
+// opens one startup tab. Only values that are still absent are written, so a
+// profile that already carries settings keeps them.
+async function beginFirstRunSetup() {
+  await serialiseStorage(async () => {
+    const stored = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
+    const values = {};
+    if (stored[SETUP_STATE_KEY] === undefined) {
+      values[SETUP_STATE_KEY] = initialSetupState(new Date().toISOString());
+    }
+    if (stored[OPTIONS_KEY] === undefined) {
+      values[OPTIONS_KEY] = { ...validateOptionsPatch(FIRST_INSTALL_OPTIONS), revision: 1 };
+    }
+    if (Object.keys(values).length > 0) await chrome.storage.local.set(values);
+  });
+  await chrome.tabs.create({ url: chrome.runtime.getURL(STARTUP_PAGE) });
+}
+
+// Load the dictionaries before the first hover asks for them. Extension updates,
+// browser starts and service-worker restarts never reach the first-run path, so
+// they cannot reopen setup or reset preferences.
+chrome.runtime.onInstalled.addListener((details) => {
+  warmUp();
+  if (details.reason !== "install") return;
+  beginFirstRunSetup().catch((error) => {
+    console.error("hoshidicts: could not start first-run setup:", describe(error));
+  });
+});
 chrome.runtime.onStartup.addListener(warmUp);
 
 // Alarms may be cleared across browser restarts. Module evaluation is the one
