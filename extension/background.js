@@ -861,13 +861,16 @@ function reconcileUpdateAlarm() {
   const run = alarmTail.then(async () => {
     if (updateCycleActive) return;
     const { dictionaries, settings } = await serialiseStorage(readUpdatePlan);
-    const when = nextManagedUpdateCheck(dictionaries, settings.schedule, Date.now());
+    const now = Date.now();
+    const when = nextManagedUpdateCheck(dictionaries, settings.schedule, now);
     const existing = await chrome.alarms.get(UPDATE_ALARM);
+    if (updateCycleActive) return;
     if (when === null) {
       if (existing) await chrome.alarms.clear(UPDATE_ALARM);
       return;
     }
-    if (existing?.scheduledTime === when && existing.periodInMinutes === undefined) {
+    if (existing && existing.periodInMinutes === undefined
+        && (existing.scheduledTime === when || (when === now && existing.scheduledTime <= now))) {
       return;
     }
     await chrome.alarms.create(UPDATE_ALARM, { when });

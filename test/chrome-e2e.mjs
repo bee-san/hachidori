@@ -268,7 +268,8 @@ const PLANNED = [
   "Check now checks every managed dictionary including disabled packages without downloading",
   "managed update controls render persisted availability and last-checked state",
   "Update all atomically replaces a managed generation and preserves presentation",
-  "one global update interval creates one periodic browser alarm",
+  "one aggregate browser alarm follows the next dictionary due time",
+  "per-dictionary schedules persist without engine reload and override global Off",
   "Settings schedule drafts preserve newer commits and retry lost replies without duplicate writes or alarms",
   "Settings name autosave merges unrelated edits, rejects external renames and paints one completion",
   "a real browser alarm installs updates for disabled managed dictionaries",
@@ -6917,7 +6918,7 @@ async function main() {
   // irrelevant, while the combined fixture proves that every other managed
   // package was checked too. The engine owns this state change so its loaded set
   // and the worker-owned manifest cannot diverge.
-  const managedFixture = await page.evaluate(async ({ dictionaryId, indexUrl, downloadUrl }) => {
+  const managedFixture = await page.evaluate(async ({ dictionaryId, fixtureId, indexUrl, downloadUrl }) => {
     const { dictionaryState: current } = await chrome.storage.local.get("dictionaryState");
     return chrome.runtime.sendMessage({
       target: "hoshidicts-offscreen",
@@ -6932,10 +6933,11 @@ async function main() {
             downloadUrl,
             lastUpdateCheck: null,
           }
-        : dictionary),
+        : dictionary.id === fixtureId ? { ...dictionary, updateScheduleOverride: "off" } : dictionary),
     });
   }, {
     dictionaryId: GENERIC_KANJI_ID,
+    fixtureId: FIXTURE_ID,
     indexUrl: GENERIC_MANAGED_INDEX_URL,
     downloadUrl: GENERIC_MANAGED_DOWNLOAD_URL,
   });
@@ -7016,6 +7018,7 @@ async function main() {
     managedFixture?.ok === true
       && checkSummary === "Checked 2 managed dictionaries — 1 update available, 0 failed."
       && checkedFixture?.lastUpdateCheck?.status === "up-to-date"
+      && checkedFixture.updateScheduleOverride === "off"
       && checkedFixture.lastUpdateCheck.remoteRevision === "test-1"
       && checkedGeneric?.enabled === false
       && checkedGeneric?.lastUpdateCheck?.status === "update-available"
@@ -7152,23 +7155,68 @@ async function main() {
 
   await checkManagementAutosave(page, browser, settingsUrl);
   await page.select("#update-schedule", "hourly");
-  const scheduledAlarm = await page.waitForFunction(async (alarmName) => {
+  const expectedNextCheck = Date.parse(afterUpdatePackage.lastUpdateCheck.checkedAt) + 3_600_000;
+  const scheduledAlarm = await page.waitForFunction(async ({ alarmName, expected }) => {
     const { dictionaryUpdates } = await chrome.storage.local.get("dictionaryUpdates");
     const alarms = await chrome.alarms.getAll();
     const alarm = alarms.find((candidate) => candidate.name === alarmName);
-    return dictionaryUpdates?.schedule === "hourly" && alarm?.periodInMinutes === 60
+    return dictionaryUpdates?.schedule === "hourly" && alarm?.periodInMinutes === undefined && alarm?.scheduledTime === expected
       ? { alarm, alarms, dictionaryUpdates }
       : false;
-  }, { timeout: 30_000, polling: 100 }, MANAGED_UPDATE_ALARM)
+  }, { timeout: 30_000, polling: 100 }, { alarmName: MANAGED_UPDATE_ALARM, expected: expectedNextCheck })
     .then((handle) => handle.jsonValue())
     .catch(() => null);
   check(
-    "one global update interval creates one periodic browser alarm",
+    "one aggregate browser alarm follows the next dictionary due time",
     scheduledAlarm?.alarms?.length === 1
       && scheduledAlarm.alarm.name === MANAGED_UPDATE_ALARM
-      && scheduledAlarm.alarm.periodInMinutes === 60,
+      && scheduledAlarm.alarm.periodInMinutes === undefined
+      && scheduledAlarm.alarm.scheduledTime === expectedNextCheck,
     JSON.stringify(scheduledAlarm),
   );
+
+  const generationBeforePolicy = await page.evaluate(async () => (await chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen", type: "hd_status",
+  })).generation);
+  await openDictionaryDetails(page, GENERIC_KANJI_ID);
+  await page.select(`.dict-row[data-dictionary-id="${GENERIC_KANJI_ID}"] .dict-update-schedule`, "hourly");
+  await page.waitForFunction(async dictionaryId => (await chrome.storage.local.get("dictionaryState"))
+    .dictionaryState.dictionaries.find(dictionary => dictionary.id === dictionaryId).updateScheduleOverride === "hourly",
+  { polling: 100 }, GENERIC_KANJI_ID);
+  await showSettingsSection(page, "updates");
+  await page.waitForSelector("#update-schedule:not([disabled])");
+  await page.select("#update-schedule", "off");
+  await page.waitForFunction(async () => (await chrome.storage.local.get("dictionaryUpdates")).dictionaryUpdates.schedule === "off",
+    { polling: 100 });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => document.getElementById("engine-status")?.textContent.includes("Ready"), { polling: 100 });
+  await openDictionaryDetails(page, GENERIC_KANJI_ID);
+  const policyState = await page.evaluate(async ({ dictionaryId, fixtureId }) => ({
+    override: document.querySelector(`.dict-row[data-dictionary-id="${dictionaryId}"] .dict-update-schedule`).value,
+    fixture: document.querySelector(`.dict-row[data-dictionary-id="${fixtureId}"] .dict-update-schedule`).value,
+    hint: document.querySelector(`.dict-row[data-dictionary-id="${dictionaryId}"] .dict-next-check`).textContent,
+    global: document.getElementById("update-schedule").value,
+    alarms: await chrome.alarms.getAll(),
+    generation: (await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" })).generation,
+  }), { dictionaryId: GENERIC_KANJI_ID, fixtureId: FIXTURE_ID });
+  check("per-dictionary schedules persist without engine reload and override global Off",
+    policyState.override === "hourly" && policyState.fixture === "off" && policyState.global === "off"
+      && policyState.hint.includes("Next check") && policyState.generation === generationBeforePolicy
+      && policyState.alarms.length === 1 && policyState.alarms[0].scheduledTime === expectedNextCheck,
+    JSON.stringify(policyState));
+  if (process.env.HACHIDORI_SCHEDULE_SCREENSHOT) {
+    await page.bringToFront();
+    await page.setViewport({ width: 1200, height: 900 });
+    await page.screenshot({ path: process.env.HACHIDORI_SCHEDULE_SCREENSHOT, fullPage: true });
+  }
+  const scheduleManagedCheckSoon = () => page.evaluate(async dictionaryId => {
+    const { dictionaryState: current } = await chrome.storage.local.get("dictionaryState");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+      baseRevision: current.revision, dictionaries: current.dictionaries.map(dictionary => dictionary.id === dictionaryId
+        ? { ...dictionary, lastUpdateCheck: { ...dictionary.lastUpdateCheck, checkedAt: new Date(Date.now() - 3_600_000 + 1000).toISOString() } }
+        : dictionary) });
+    if (!reply.ok) throw new Error(reply.error);
+  }, GENERIC_KANJI_ID);
 
   setJsonResponse(genericIndexRoute, { revision: "test-3" });
   setArchiveResponse(genericArchiveRoute, buildRecommendedZip({
@@ -7179,10 +7227,8 @@ async function main() {
     capabilities: ["term"],
   }));
   const archiveRequestsBeforeAlarm = genericArchiveRoute.requests;
-  await page.evaluate(async (alarmName) => {
-    await chrome.alarms.clear(alarmName);
-    await chrome.alarms.create(alarmName, { when: Date.now() + 1000 });
-  }, MANAGED_UPDATE_ALARM);
+  const fixtureChecksBeforeAlarm = fixtureIndexRoute.requests;
+  await scheduleManagedCheckSoon();
   const alarmUpdateResult = await page.waitForFunction(async ({ dictionaryId, previousCheckedAt }) => {
     const { dictionaryState, dictionaryUpdates } = await chrome.storage.local.get([
       "dictionaryState",
@@ -7212,6 +7258,9 @@ async function main() {
       && alarmUpdatedPackage?.displayName === afterUpdatePackage?.displayName
       && alarmUpdatedPackage?.favorite === afterUpdatePackage?.favorite
       && genericArchiveRoute.requests === archiveRequestsBeforeAlarm + 1
+      && fixtureIndexRoute.requests === fixtureChecksBeforeAlarm
+      && alarmUpdatedPackage.updateScheduleOverride === "hourly"
+      && alarmUpdateResult.dictionaryUpdates.schedule === "off"
       && JSON.stringify(alarmUpdateState.groups) === JSON.stringify(afterUpdateState.groups),
     JSON.stringify({
       alarmUpdatedPackage,
@@ -7232,10 +7281,7 @@ async function main() {
     downloadUrl: GENERIC_MANAGED_DOWNLOAD_URL,
     capabilities: ["term"],
   }));
-  await page.evaluate(async (alarmName) => {
-    await chrome.alarms.clear(alarmName);
-    await chrome.alarms.create(alarmName, { when: Date.now() + 1000 });
-  }, MANAGED_UPDATE_ALARM);
+  await scheduleManagedCheckSoon();
   const failedAlarmResult = await page.waitForFunction(async ({ dictionaryId, previousCheckedAt }) => {
     const { dictionaryState, dictionaryUpdates } = await chrome.storage.local.get([
       "dictionaryState",
@@ -7287,6 +7333,8 @@ async function main() {
     }),
   );
 
+  // Simulate Chrome clearing the configured alarm before worker restart.
+  await page.evaluate(alarmName => chrome.alarms.clear(alarmName), MANAGED_UPDATE_ALARM);
   const alarmGone = await page.waitForFunction(async (alarmName) =>
     (await chrome.alarms.get(alarmName)) === undefined,
   { timeout: 30_000, polling: 100 }, MANAGED_UPDATE_ALARM)
@@ -7337,11 +7385,12 @@ async function main() {
     }),
     new Promise((resolveWake) => setTimeout(() => resolveWake({ timeout: true }), 10_000)),
   ])).catch((error) => ({ error: String(error) }));
-  const recreatedAlarm = await page.waitForFunction(async (alarmName) => {
+  const expectedRecreatedCheck = Date.parse(failedAlarmPackage.lastUpdateCheck.checkedAt) + 3_600_000;
+  const recreatedAlarm = await page.waitForFunction(async ({ alarmName, expected }) => {
     const alarms = await chrome.alarms.getAll();
     const alarm = alarms.find((candidate) => candidate.name === alarmName);
-    return alarm?.periodInMinutes === 60 ? { alarm, alarms } : false;
-  }, { timeout: 30_000, polling: 100 }, MANAGED_UPDATE_ALARM)
+    return alarm?.periodInMinutes === undefined && alarm?.scheduledTime === expected ? { alarm, alarms } : false;
+  }, { timeout: 30_000, polling: 100 }, { alarmName: MANAGED_UPDATE_ALARM, expected: expectedRecreatedCheck })
     .then((handle) => handle.jsonValue())
     .catch(() => null);
   await serviceWorkerCdp.send("ServiceWorker.disable");
@@ -7357,7 +7406,8 @@ async function main() {
       && restartedWorker?.url === `chrome-extension://${extensionId}/background.js`
       && recreatedAlarm?.alarms?.length === 1
       && recreatedAlarm.alarm.name === MANAGED_UPDATE_ALARM
-      && recreatedAlarm.alarm.periodInMinutes === 60,
+      && recreatedAlarm.alarm.periodInMinutes === undefined
+      && recreatedAlarm.alarm.scheduledTime === expectedRecreatedCheck,
     JSON.stringify({
       alarmGone,
       workerTargetInfo,

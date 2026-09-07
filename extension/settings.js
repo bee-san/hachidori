@@ -402,7 +402,9 @@ function adoptDictionaryState(value) {
 function adoptUpdateSettings(value) {
   const next = normaliseUpdateSettings(value);
   if (next.revision <= updateSettings.revision) return false;
+  const changedSchedule = next.schedule !== updateSettings.schedule;
   updateSettings = next;
+  if (changedSchedule) refreshDictionarySchedules();
   return true;
 }
 
@@ -771,6 +773,9 @@ function renderUpdateControls() {
   element("update-all").disabled = busy || availableUpdates().length === 0;
   element("update-check-now").disabled = busy;
   schedule.disabled = busy || updateSettings.revision < 0;
+}
+
+function refreshDictionarySchedules() {
   const byId = new Map(dictionaries.map(dictionary => [dictionary.id, dictionary]));
   for (const row of document.querySelectorAll(".dict-row")) {
     const entry = byId.get(row.dataset.dictionaryId);
@@ -828,7 +833,8 @@ function setControlsDisabled(disabled) {
   element("install-recommended").disabled = blocked || committing;
   element("retry-recommended").disabled = blocked || committing;
   for (const control of document.querySelectorAll(".dict-row select, .dict-row input, .dict-row button")) {
-    control.disabled = blocked || control.dataset.pinnedDisabled === "true";
+    control.disabled = blocked || control.dataset.pinnedDisabled === "true"
+      || (committing && control.classList.contains("dict-update-schedule"));
   }
   for (const drag of document.querySelectorAll(".dict-drag")) {
     drag.draggable = !blocked && drag.dataset.pinnedDisabled !== "true";
@@ -1249,8 +1255,11 @@ function renderDictionarySchedule(row, entry) {
   const now = Date.now();
   const due = nextDictionaryUpdateCheck(entry, updateSettings.schedule, now);
   const output = row.querySelector(".dict-next-check");
-  const text = due === null ? "Automatic updates off"
-    : `${effective.charAt(0).toUpperCase()}${effective.slice(1)} · ${due <= now ? "Due now" : `Next check ${new Date(due).toLocaleString()}`}`;
+  let text = "Automatic updates off";
+  if (due !== null) {
+    const next = due <= now ? "Due now" : `Next check ${new Date(due).toLocaleString()}`;
+    text = `${effective.charAt(0).toUpperCase()}${effective.slice(1)} · ${next}`;
+  }
   if (output.textContent !== text) output.textContent = text;
 }
 
