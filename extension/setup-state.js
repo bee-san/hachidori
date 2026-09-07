@@ -42,6 +42,8 @@ export function initialSetupState(startedAt) {
 
 // The Anki stage settles once: configured automatically, already configured
 // by the user, ordinarily absent, or needing attention for a specific reason.
+// A configured outcome names the model and deck and carries no reason text; the
+// other two carry a reason and no names, so neither can be rendered empty.
 export function normaliseSetupAnki(value) {
   if (value === undefined || value === null) return null;
   if (!value || typeof value !== "object" || Array.isArray(value)
@@ -52,8 +54,15 @@ export function normaliseSetupAnki(value) {
     throw new Error("the setup Anki outcome is malformed");
   }
   const configured = value.status === "configured" || value.status === "already-configured";
-  if (configured && (value.model === null || value.deck === null)) throw new Error("the setup Anki outcome is malformed");
-  return { status: value.status, detail: value.detail, model: configured ? value.model : null, deck: configured ? value.deck : null };
+  if (configured ? (value.model === null || value.deck === null) : (typeof value.detail !== "string" || value.detail === "")) {
+    throw new Error("the setup Anki outcome is malformed");
+  }
+  return {
+    status: value.status,
+    detail: configured ? null : value.detail,
+    model: configured ? value.model : null,
+    deck: configured ? value.deck : null,
+  };
 }
 
 function validSeconds(value) {

@@ -42,9 +42,13 @@ test("the Anki outcome settles once with its status, reason and exact configured
   const absent = recordSetupAnki(started, { status: "unavailable", detail: "Open Anki with the AnkiConnect add-on installed, then retry.", model: "ignored", deck: null });
   assert.deepEqual(absent.anki, { status: "unavailable", detail: "Open Anki with the AnkiConnect add-on installed, then retry.", model: null, deck: null });
   assert.deepEqual(recordSetupAnki(started, { status: "needs-attention", detail: "Two note types share the highest note count.", model: null, deck: null }).anki.model, null);
+  // A configured outcome carries no reason text, so no view can render one.
+  assert.equal(recordSetupAnki(started, { status: "configured", detail: "ignored", model: "Kiku", deck: "Mining" }).anki.detail, null);
   assert.deepEqual(SETUP_ANKI_STATUSES, ["configured", "already-configured", "unavailable", "needs-attention"]);
+  // A status that needs a reason cannot settle without one.
   for (const outcome of [null, { status: "done" }, { status: "configured", detail: null, model: null, deck: "Mining" },
-    { status: "already-configured", detail: null, model: "Kiku", deck: null }, { status: "unavailable", detail: 5, model: null, deck: null }]) {
+    { status: "already-configured", detail: null, model: "Kiku", deck: null }, { status: "unavailable", detail: 5, model: null, deck: null },
+    { status: "unavailable", detail: null, model: null, deck: null }, { status: "needs-attention", detail: "", model: null, deck: null }]) {
     assert.throws(() => recordSetupAnki(started, outcome), /malformed/u);
   }
   assert.throws(() => normaliseSetupState({ ...started, anki: { status: "later" } }), /malformed/u);

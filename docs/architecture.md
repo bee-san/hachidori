@@ -151,7 +151,10 @@ of that record, not the reason alone, identifies a new installation.
   `complete`, `dictionaries` holds `{ outcomes, totalSeconds, continued,
   selectionsApplied, recordedRuns }` and `anki` is `null` until the Anki stage
   settles once as `{ status, detail, model, deck }` with `status` one of
-  `configured`, `already-configured`, `unavailable` or `needs-attention`.
+  `configured`, `already-configured`, `unavailable` or `needs-attention`. A
+  configured outcome names the model and deck and carries no reason text; the
+  other two carry a non-empty reason and no names, so no view can render an
+  empty or absent one.
   The worker owns every write. `hd_setup_cas` accepts
   `{ baseRevision, stage, continued? }` from the exact startup page URL only,
   answers a stale base revision with a conflict and the current state, refuses a
