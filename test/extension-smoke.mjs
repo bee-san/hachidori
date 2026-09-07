@@ -6546,6 +6546,12 @@ async function startupPracticeStage() {
     page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 43 }]);
     await page.until(() => sample() !== null, "the rerendered exercise");
     const loadedOnce = invited && JSON.stringify(readerScripts(document)) === JSON.stringify(MANIFEST_READER_SCRIPTS.slice(0, 1));
+    // A group-only or presentation write advances the dictionary revision without
+    // changing what the engine can answer, so it must not disturb the exercise.
+    const beforeGroups = page.lookups().length;
+    page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 43 }]);
+    await page.until(() => page.heading() === "You’re ready. Try looking up a word below.", "the undisturbed exercise");
+    const groupWriteIgnored = page.lookups().length === beforeGroups && sample() !== null;
     // The answering package is removed while an unrelated term dictionary stays:
     // a previously successful probe must not keep the invitation standing.
     const beforeRetire = page.lookups().length;
@@ -6553,7 +6559,7 @@ async function startupPracticeStage() {
     page.library([{ id: "other", title: "Unrelated", enabled: true, termCount: 1 }]);
     await page.until(() => page.document.getElementById("setup-body").textContent.includes("do not have the words in this sample"),
       "the retired invitation");
-    const reprobed = loadedOnce && sample() === null
+    const reprobed = loadedOnce && groupWriteIgnored && sample() === null
       && page.lookups().length === beforeRetire + [...PRACTICE_SENTENCE_TEXT].length;
     const offHover = await startupPracticeWithoutHover(jsdom, setup);
     const unanswerable = await startupPracticeUnanswerable(jsdom, setup);

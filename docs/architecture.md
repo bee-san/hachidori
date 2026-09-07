@@ -352,10 +352,12 @@ holding the configured activation key — and one sentence to try,
 exercise is optional. The invitation appears only when it can be answered, and that is
 proved rather than assumed: the page runs an ordinary `hd_lookup` from every
 offset in the sentence, through the same engine the reader would use and with the
-reader's own configured scan length, and stops at the first hit. The answer
-belongs to one committed inventory and one options revision, so removing the
-package that answered, or shortening the scan length, retires it and the sentence
-is probed again. A library that holds no enabled term dictionary, one that
+reader's own configured scan length, and stops at the first hit. The answer belongs to
+the engine-visible library it was made against — each package's identity,
+revision, enabled state and term count — together with the lookup options the
+probe sends, so removing or disabling the package that answered, or shortening
+the scan length, retires it and the sentence is probed again, while a group-only
+or presentation write leaves a ready exercise alone. A library that holds no enabled term dictionary, one that
 cannot answer this sentence, or lookups switched off each get their own sentence
 and the matching Settings link, and none of them loads the reader. An engine that
 cannot answer at all falls back to the instruction that is true anywhere.

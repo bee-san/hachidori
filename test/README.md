@@ -720,7 +720,7 @@ a real lookup open.
 The jsdom stage for that step also requires the appended list to match the
 manifest's own `content_scripts` order, that the sentence is probed offset by
 offset until one lookup answers, that removing the package which answered retires
-the invitation and probes again, and covers every state that must not invite a
+the invitation and probes again while a group-only revision does not, and covers every state that must not invite a
 hover: a frequency-only library, a library that answers nothing, an engine that
 cannot answer, and lookups switched off.
 

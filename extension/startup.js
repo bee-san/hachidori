@@ -577,8 +577,13 @@ function loadReader() {
 // page asks: an ordinary lookup from every offset in it, through the engine the
 // reader would use, stopping at the first hit. A partly installed library or an
 // unrelated dictionary therefore cannot advertise a hover that returns nothing.
+// What the answer depends on, rather than the whole revision: the engine-visible
+// library and the lookup options the probe sends. A group-only or presentation
+// write leaves this unchanged, so it cannot invalidate a ready exercise.
 function practiceSignature() {
-  return `${dictionaryRevision}:${optionsRevision}`;
+  const library = dictionaries.map((dictionary) => [dictionary?.id ?? "", dictionary?.title ?? "",
+    dictionary?.revision ?? "", dictionary?.enabled !== false, dictionary?.termCount ?? 0].join("\u001f")).join("\u001e");
+  return `${library}|${options.scanLength}|${options.frequencyDictionary}|${options.frequencyOrder}`;
 }
 
 function probePractice() {
