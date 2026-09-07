@@ -147,9 +147,12 @@ launch for an unpacked extension loaded from the command line, so the absence
 of that record, not the reason alone, identifies a new installation.
 
 - `setupState`: `{ schemaVersion: 1, revision, startedAt, stage, completedAt,
-  dictionaries }`, where `stage` is `dictionaries`, `anki`, `practice` or
-  `complete` and `dictionaries` holds `{ outcomes, totalSeconds, continued,
-  selectionsApplied, recordedRuns }`. The worker owns every write. `hd_setup_cas` accepts
+  dictionaries, anki }`, where `stage` is `dictionaries`, `anki`, `practice` or
+  `complete`, `dictionaries` holds `{ outcomes, totalSeconds, continued,
+  selectionsApplied, recordedRuns }` and `anki` is `null` until the Anki stage
+  settles once as `{ status, detail, model, deck }` with `status` one of
+  `configured`, `already-configured`, `unavailable` or `needs-attention`.
+  The worker owns every write. `hd_setup_cas` accepts
   `{ baseRevision, stage, continued? }` from the exact startup page URL only,
   answers a stale base revision with a conflict and the current state, refuses a
   stage that is not later than the current one, records `completedAt` when the
@@ -176,8 +179,8 @@ event that arrives while a write is in flight renders once with the reply. A
 stage change moves focus to the card heading; an inventory or progress update
 keeps focus on the control that had it. Finish records completion and closes
 the tab. Settings shows **Resume setup** in its sidebar while
-`stage !== "complete"`, so closing the tab loses nothing. Anki detection and the
-lookup exercise attach to the remaining stages separately.
+`stage !== "complete"`, so closing the tab loses nothing. The lookup exercise
+attaches to the remaining stage separately.
 
 ### Dictionary stage
 
@@ -261,6 +264,49 @@ records `continued: true`. Only settled outcomes are announced, never bytes.
 ![All dictionaries installed with the five-second countdown, light palette](assets/startup-complete.png)
 
 ![All dictionaries installed with the five-second countdown, dark palette](assets/startup-complete-dark.png)
+
+### Anki stage
+
+The Anki stage checks for an existing mining setup by itself. The startup page
+asks the worker once with `hd_setup_anki`, accepted from the exact startup page
+URL only and answered outside the storage queue, so a read-only AnkiConnect
+conversation never holds up a commit. Duplicate startup pages share the one
+detection in flight, and a settled outcome is returned to every later caller
+without asking Anki again.
+
+`anki-setup.js` holds that discovery, and it only reads. `modelNamesAndIds`
+names the candidates: a model qualifies when a supported family (Senren, Lapis
+or Kiku) leads its name and ends at a word boundary, so `Kiku v2` and
+`Lapis-1.4` match while `Kikuchi` and `My Kiku` do not. Each candidate's
+`modelFieldNames` must satisfy the same preset mapping Settings would apply
+(`applyAnkiPreset` and `resolveAnkiTemplates`, validated through
+`ankiAvailability`), otherwise it is dropped. `findNotes mid:<id>` counts each
+surviving candidate's distinct notes and the unique maximum wins; a tie, an
+unused note type or no candidate at all is a **needs-attention** outcome with
+the specific reason. The winner's deck is chosen the same way from
+`findCards mid:<id> -deck:filtered`, `getDecks` and `cardsToNotes`, so
+temporary filtered decks are excluded and the deck holding the most distinct
+notes wins. No write action is ever issued: nothing in the collection changes.
+
+The worker records the outcome, and for a `configured` proposal it saves the
+model, deck and resolved field templates through the ordinary revisioned
+options write in the same storage write as the setup record. A mapping the user
+already had, or one the user chooses while discovery runs, is reported as
+**already-configured** and never replaced. A connection that does not answer or
+times out is the ordinary **unavailable** outcome; any other failure keeps its
+own reason. The page renders the settled outcome as one sentence with a link to
+the Anki section of Settings, and that outcome moves setup to the last stage by
+itself and stays readable there. A request the worker does not answer is
+reported once with **Retry** beside **Continue setup**; the page never re-asks
+on its own.
+
+![The final step after an absent Anki, light palette](assets/startup-ready.png)
+
+![The final step after an absent Anki, dark palette](assets/startup-ready-dark.png)
+
+![The final step after an automatically configured Anki, light palette](assets/startup-anki.png)
+
+![The final step after an automatically configured Anki, dark palette](assets/startup-anki-dark.png)
 
 ## Hover activation and popup ownership
 
