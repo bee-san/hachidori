@@ -5474,8 +5474,11 @@ async function main() {
       browser.on("targetdestroyed", onDestroyed);
       setTimeout(() => { browser.off("targetdestroyed", onDestroyed); resolveClosed(false); }, 15_000);
     });
+    // The startup page re-renders its controls on every storage change, and
+    // the options write above reaches it asynchronously. Click inside the page
+    // so a handle resolved before that re-render cannot go stale.
     const stageAfter = async (id, heading) => {
-      await startup.click(`#${id}`);
+      await startup.$eval(`#${id}`, (control) => control.click());
       return startup.waitForFunction((expected) => {
         const text = document.getElementById("setup-heading")?.textContent ?? "";
         return text === expected ? {
@@ -5490,7 +5493,7 @@ async function main() {
     };
     const anki = await stageAfter("setup-continue", "Anki");
     const practice = await stageAfter("setup-continue", "You’re ready.");
-    await startup.click("#setup-finish");
+    await startup.$eval("#setup-finish", (control) => control.click());
     const closed = await startupClosed;
     startupFlow = { anki, practice, closed };
   }
