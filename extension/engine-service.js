@@ -1658,10 +1658,10 @@ async function saveCustomDictionary(snapshot, source) {
 let preparedBackup = null;
 const backupUrls = new Set();
 
-async function readBackupSnapshot(raw = false) {
+async function readBackupStorage(raw = false) {
   const reply = await ask(raw ? "hd_backup_base_read" : "hd_backup_read");
   if (!reply.ok) throw new Error(reply.error || "Could not read the complete Hachidori state.");
-  return reply.snapshot;
+  return reply;
 }
 
 function backupFileBlob(path, size) {
@@ -1756,12 +1756,12 @@ async function validateBackupDictionary(dictionary) {
   }
 }
 
-async function commitBackupSnapshot(current, snapshot) {
+async function commitBackupSnapshot(current, snapshot, lookupStatsRows) {
   try {
-    return await ask("hd_backup_cas", { base: current, snapshot });
+    return await ask("hd_backup_cas", { base: current, snapshot, lookupStatsRows });
   } catch (commitError) {
     let readback;
-    try { readback = await readBackupSnapshot(true); }
+    try { readback = (await readBackupStorage(true)).snapshot; }
     catch (readError) { throw new UnknownDictionaryStateCommitError(commitError, readError, "backup restore"); }
     if (sameJsonValue(readback, snapshot)) return { ok: true, snapshot };
     if (!sameJsonValue(readback, current)) {
@@ -1781,18 +1781,25 @@ async function restoreBackup(message) {
   preparedBackup = null;
   try {
     const { restoredBackupSnapshot } = await import("./backup-state.js");
-    const current = await readBackupSnapshot(true);
+    const current = (await readBackupStorage(true)).snapshot;
     if (!sameJsonValue(current, prepared.current)) {
       throw new Error("Hachidori changed since this backup was prepared. Prepare it again before restoring.");
     }
     const loadedCount = loadDictionaries(prepared.dictionaries, { strict: true });
     const snapshot = restoredBackupSnapshot(current, prepared.snapshot, prepared.dictionaries);
-    const reply = await commitBackupSnapshot(current, snapshot);
+    const reply = await commitBackupSnapshot(current, snapshot, prepared.lookupStatsRows);
     if (!reply.ok) throw new Error(reply.error || "Could not commit the backup restore.");
     publishLoadedDictionaries(loadedCount);
     reloadError = null;
     await cleanupCommittedDictionaries();
-    return { restored: true, dictionaryCount, warning: reply.warning ?? null };
+    let warning = reply.warning ?? null;
+    try {
+      const cleanup = await ask("hd_lookup_stats_cleanup");
+      if (!cleanup.ok) throw new Error(cleanup.error);
+    } catch (error) {
+      warning = [warning, `Restored successfully; old lookup statistics could not be cleaned up: ${describe(error)}`].filter(Boolean).join("; ");
+    }
+    return { restored: true, dictionaryCount, warning };
   } catch (error) {
     if (error instanceof UnknownDictionaryStateCommitError) {
       reloadError = error;
@@ -1823,14 +1830,14 @@ const HANDLERS = {
     const [{ createBackupArchive, assertBackupPath }, { assertBackupSnapshot }] = await Promise.all([
       import("./backup-archive.js"), import("./backup-state.js"),
     ]);
-    const snapshot = await readBackupSnapshot();
+    const { snapshot, lookupStatsRows } = await readBackupStorage();
     await assertBackupSnapshot(snapshot);
     const files = [];
     for (const [index, dictionary] of snapshot.state.dictionaries.entries()) {
       if (dictionaryRoot(dictionary) === null) throw new Error("Cannot back up an invalid dictionary path.");
       collectBackupFiles(dictionary.path, `dictionaries/${index}`, assertBackupPath, files);
     }
-    const archive = await createBackupArchive(snapshot, files);
+    const archive = await createBackupArchive(snapshot, files, lookupStatsRows);
     const blobUrl = URL.createObjectURL(archive);
     backupUrls.add(blobUrl);
     return { blobUrl, size: archive.size };
@@ -1852,7 +1859,7 @@ const HANDLERS = {
       throw new Error("Backup preparation requires its Settings cancellation token.");
     }
     await discardPreparedBackup();
-    const current = await readBackupSnapshot(true);
+    const current = (await readBackupStorage(true)).snapshot;
     const [{ openBackupArchive }, { assertBackupSnapshot }] = await Promise.all([
       import("./backup-archive.js"), import("./backup-state.js"),
     ]);
@@ -1874,7 +1881,7 @@ const HANDLERS = {
         warning = "The current dictionaries cannot be loaded. This validated backup can replace them.";
       }
       const token = message.token;
-      preparedBackup = { token, current, roots, dictionaries, snapshot: prepared.snapshot };
+      preparedBackup = { token, current, roots, dictionaries, snapshot: prepared.snapshot, lookupStatsRows: prepared.lookupStatsRows };
       return { token, warning, createdAt: prepared.createdAt, dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
         customEntryCount: parseCustomDictionary(prepared.snapshot.document.text).entries.length };
     } catch (error) {

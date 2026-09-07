@@ -1,6 +1,7 @@
 // Hachidori's own stored ZIP64 format; loaded only for explicit backup work.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { BlobReader, BlobWriter, ZipReader, ZipWriter } from "./vendor/zip.js";
+import { assertLookupStatsRows, emptyLookupStats } from "./lookup-stats.js";
 
 const MANIFEST = "hachidori-backup.json";
 const ZIP_OPTIONS = {
@@ -44,10 +45,11 @@ function assertFileList(files) {
   }
 }
 
-export async function createBackupArchive(snapshot, files, createdAt = new Date().toISOString()) {
+export async function createBackupArchive(snapshot, files, lookupStatsRows, createdAt = new Date().toISOString()) {
   const entries = files.map(({ path, data }) => ({ path, size: data.size }));
   assertFileList(entries);
-  const manifest = { format: "hachidori-backup", version: 1, createdAt, snapshot, files: entries };
+  assertLookupStatsRows(snapshot?.lookupStats, lookupStatsRows);
+  const manifest = { format: "hachidori-backup", version: 2, createdAt, snapshot, lookupStatsRows, files: entries };
   /** @type {{add(name: string, reader: object): Promise<unknown>, close(): Promise<Blob>}} */
   const writer = new ZipWriter(new BlobWriter("application/zip"), ZIP_OPTIONS);
   await writer.add(MANIFEST, new BlobReader(new Blob([JSON.stringify(manifest)])));
@@ -85,10 +87,13 @@ export async function openBackupArchive(blob) {
     const manifestEntry = byPath.get(MANIFEST);
     if (!manifestEntry) throw new Error("The selected archive is not a Hachidori backup.");
     const manifest = JSON.parse(await (await readEntry(manifestEntry)).text());
-    if (manifest?.format !== "hachidori-backup" || manifest.version !== 1
+    if (manifest?.format !== "hachidori-backup" || ![1, 2].includes(manifest.version)
         || typeof manifest.createdAt !== "string" || Number.isNaN(Date.parse(manifest.createdAt))) {
       throw new Error("The selected archive is not a supported Hachidori backup.");
     }
+    const snapshot = manifest.version === 1 ? { ...manifest.snapshot, lookupStats: emptyLookupStats() } : manifest.snapshot;
+    const lookupStatsRows = manifest.version === 1 ? [] : manifest.lookupStatsRows;
+    assertLookupStatsRows(snapshot?.lookupStats, lookupStatsRows);
     assertFileList(manifest.files);
     if (entries.length !== manifest.files.length + 1) throw new Error("The backup contains unlisted or missing files.");
     const files = [];
@@ -100,7 +105,7 @@ export async function openBackupArchive(blob) {
       if (data.size !== file.size) throw new Error(`Incorrect extracted backup file size: ${file.path}`);
       files.push({ path: file.path, data });
     }
-    return { snapshot: manifest.snapshot, createdAt: manifest.createdAt, files };
+    return { snapshot, lookupStatsRows, createdAt: manifest.createdAt, files };
   } finally {
     await reader.close();
   }

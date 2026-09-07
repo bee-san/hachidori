@@ -3,7 +3,7 @@ import { createAnkiGateway } from "./anki.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
 import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
-import { LOOKUP_STATS_KEY, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, normaliseLookupTerm } from "./lookup-stats.js";
+import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm } from "./lookup-stats.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
 import {
@@ -367,9 +367,25 @@ async function lookupStatistics(message, record) {
   return { descriptor, statistics: { ...(row ?? { ...term, lookupCount: 0 }), seenCount: null } };
 }
 
+function assertBackupEngineSender(sender) {
+  if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)) {
+    throw new Error("Backup restore and cleanup must be requested by the dictionary engine.");
+  }
+}
+
 const WORKER_HANDLERS = {
   hd_lookup_stats_record(message) { return lookupStatistics(message, true); },
   hd_lookup_stats_read(message) { return lookupStatistics(message, false); },
+  async hd_lookup_stats_cleanup(_message, sender) {
+    assertBackupEngineSender(sender);
+    const stored = await chrome.storage.local.get(null);
+    const descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
+    assertLookupStatsDescriptor(descriptor);
+    const prefix = lookupStatsPrefix(descriptor);
+    const unused = Object.keys(stored).filter(key => key.startsWith(LOOKUP_STATS_ROW_PREFIX) && !key.startsWith(prefix));
+    if (unused.length > 0) await chrome.storage.local.remove(unused);
+    return {};
+  },
   async hd_backup_download(message, sender) {
     if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
       throw new Error("Backup downloads are available only from Hachidori Settings.");
@@ -378,36 +394,49 @@ const WORKER_HANDLERS = {
   },
   async hd_backup_base_read() {
     const stored = await chrome.storage.local.get([
-      DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_SOURCE_KEY, UPDATE_SETTINGS_KEY,
+      DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_SOURCE_KEY, UPDATE_SETTINGS_KEY, LOOKUP_STATS_KEY,
     ]);
     return { snapshot: {
       state: stored[DICTIONARY_STATE_KEY] ?? null,
       options: stored[OPTIONS_KEY] ?? null,
       document: stored[CUSTOM_DICTIONARY_SOURCE_KEY] ?? null,
       updates: stored[UPDATE_SETTINGS_KEY] ?? null,
+      lookupStats: stored[LOOKUP_STATS_KEY] ?? null,
     } };
   },
 
   async hd_backup_read() {
     const { snapshot } = await WORKER_HANDLERS.hd_backup_base_read();
+    const stored = await chrome.storage.local.get(null);
+    const descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
+    assertLookupStatsDescriptor(descriptor);
+    const prefix = lookupStatsPrefix(descriptor);
+    const lookupStatsRows = Object.entries(stored).filter(([key]) => key.startsWith(prefix)).map(([key, row]) => {
+      if (lookupStatsKey(descriptor, row) !== key) throw new Error("The lookup statistics row does not match its key.");
+      return row;
+    });
+    assertLookupStatsRows(descriptor, lookupStatsRows);
     return { snapshot: {
       state: snapshot.state,
       options: { ...projectStoredOptions(snapshot.options), revision: optionsRevision(snapshot.options) },
       document: normaliseCustomDictionaryDocument(snapshot.document),
       updates: normaliseUpdateSettings(snapshot.updates),
-    } };
+      lookupStats: descriptor,
+    }, lookupStatsRows };
   },
 
   async hd_backup_cas(message, sender) {
-    if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)) {
-      throw new Error("A backup restore must be prepared by the dictionary engine.");
-    }
+    assertBackupEngineSender(sender);
     const { snapshot: current } = await WORKER_HANDLERS.hd_backup_base_read();
     if (!sameJsonValue(message.base, current)) {
       return { ok: false, conflict: true, error: "Hachidori changed since this backup was prepared. Prepare it again before restoring." };
     }
     const snapshot = message.snapshot;
     await assertBackupSnapshot(snapshot);
+    assertLookupStatsRows(snapshot.lookupStats, message.lookupStatsRows);
+    if (snapshot.lookupStats.generation === null || snapshot.lookupStats.generation === current.lookupStats?.generation) {
+      throw new Error("A backup restore requires a fresh lookup statistics namespace.");
+    }
     const expected = Object.fromEntries(Object.entries(backupRevisions(current)).map(([key, revision]) => [key, revision + 1]));
     if (!sameJsonValue(backupRevisions(snapshot), expected)) throw new Error("Invalid backup restore revisions.");
     if (!sameJsonValue(snapshot.options, normaliseDictionarySelections(snapshot.options, snapshot.state.dictionaries))) {
@@ -418,6 +447,8 @@ const WORKER_HANDLERS = {
       [OPTIONS_KEY]: snapshot.options,
       [CUSTOM_DICTIONARY_SOURCE_KEY]: snapshot.document,
       [UPDATE_SETTINGS_KEY]: snapshot.updates,
+      [LOOKUP_STATS_KEY]: snapshot.lookupStats,
+      ...Object.fromEntries(message.lookupStatsRows.map(row => [lookupStatsKey(snapshot.lookupStats, row), row])),
     });
     return { snapshot };
   },
