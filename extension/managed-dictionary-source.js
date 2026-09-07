@@ -52,7 +52,7 @@ export function nextManagedUpdateCheck(dictionaries, globalSchedule, now) {
     const due = nextDictionaryUpdateCheck(dictionary, globalSchedule, now);
     if (due !== null && (next === null || due < next)) next = due;
   }
-  return next;
+  return next === null ? null : Math.max(now, next);
 }
 
 export const MANAGED_DICTIONARY_CHANGED =

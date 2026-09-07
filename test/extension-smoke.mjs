@@ -3097,7 +3097,8 @@ async function main() {
     "one global schedule creates one browser alarm",
     scheduled?.ok === true
       && scheduled.settings?.schedule === "hourly"
-      && hourlyAlarm?.periodInMinutes === 60
+      && hourlyAlarm?.periodInMinutes === undefined
+      && hourlyAlarm?.scheduledTime === Date.parse(cleanupRacePackage.lastUpdateCheck.checkedAt) + 3_600_000
       && alarms.values.size === 1,
     JSON.stringify({ scheduled, hourlyAlarm, alarms: [...alarms.values.values()] }),
   );
@@ -3108,10 +3109,18 @@ async function main() {
   check("managed update preferences reject stale schedule writes with the current revision and preserve the alarm",
     scheduled.settings?.revision === scheduleBase + 1 && staleSchedule?.ok === false
       && staleSchedule.settings?.revision === latestSchedule.revision
-      && latestSchedule.schedule === "hourly" && (await alarms.api.get(updateAlarmName))?.periodInMinutes === 60,
+      && latestSchedule.schedule === "hourly"
+      && (await alarms.api.get(updateAlarmName))?.scheduledTime === hourlyAlarm.scheduledTime,
     JSON.stringify({ scheduleBase, scheduled, staleSchedule, latestSchedule }));
 
   const alarmRevision = "2026.09.08.0";
+  const makeManagedCheckDue = async () => {
+    const state = await storedDictionaryState();
+    return pageChrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+      baseRevision: state.revision, dictionaries: state.dictionaries.map(dictionary => dictionary.id === managedId
+        ? { ...dictionary, lastUpdateCheck: { ...dictionary.lastUpdateCheck, checkedAt: new Date(Date.now() - 7_200_000).toISOString() } }
+        : dictionary) });
+  };
   remoteJson(recommended.indexUrl, { revision: alarmRevision });
   remoteArchive(
     recommended.downloadUrl,
@@ -3125,6 +3134,7 @@ async function main() {
     recommended.downloadUrl,
     archiveRequests,
   );
+  await makeManagedCheckDue();
   alarms.fire(updateAlarmName);
   const alarmDeadline = Date.now() + 10000;
   let alarmState = await storedDictionaryState();
@@ -3158,7 +3168,9 @@ async function main() {
   }
   check(
     "service-worker startup recreates a missing configured alarm",
-    repairedAlarm?.periodInMinutes === 60 && alarms.values.size === 1,
+    repairedAlarm?.periodInMinutes === undefined
+      && repairedAlarm?.scheduledTime === Date.parse(alarmUpdated.lastUpdateCheck.checkedAt) + 3_600_000
+      && alarms.values.size === 1,
     JSON.stringify({ repairedAlarm, alarms: [...alarms.values.values()] }),
   );
 
@@ -3178,6 +3190,7 @@ async function main() {
     recommended.downloadUrl,
     archiveRequests,
   );
+  await makeManagedCheckDue();
   alarms.fire(updateAlarmName);
   const failureDeadline = Date.now() + 10000;
   let failedAlarmState = await storedDictionaryState();
