@@ -58,6 +58,19 @@ export function createPracticeView({ document, onDismiss }) {
     document.body.appendChild(script);
   }
 
+  function updateRecovery(available, dictionaries) {
+    let section = "lookup";
+    let message = "Lookups are turned off. Enable them in ";
+    if (!available) {
+      section = dictionaries.some(entry => entry.termCount > 0) ? "dictionaries" : "add-dictionaries";
+      message = "Install or enable a term dictionary in ";
+    } else if (readerFailed) {
+      message = "The reader could not load. Reload this page or open ";
+    }
+    recoveryLink.href = `settings.html#${section}`;
+    recoveryMessage.textContent = message;
+  }
+
   function update(options, dictionaries) {
     currentOptions = options;
     currentDictionaries = dictionaries;
@@ -77,10 +90,7 @@ export function createPracticeView({ document, onDismiss }) {
       if (recoveryFocused) text.focus({ preventScroll: true });
     } else {
       instruction.textContent = "You can finish setup now and try a lookup later.";
-      recoveryLink.href = available ? "settings.html#lookup"
-        : dictionaries.some(entry => entry.termCount > 0) ? "settings.html#dictionaries" : "settings.html#add-dictionaries";
-      recoveryMessage.textContent = !available ? "Install or enable a term dictionary in "
-        : readerFailed ? "The reader could not load. Reload this page or open " : "Lookups are turned off. Enable them in ";
+      updateRecovery(available, dictionaries);
       if (practiceFocused) recoveryLink.focus();
     }
   }

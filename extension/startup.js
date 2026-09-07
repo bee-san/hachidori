@@ -624,6 +624,19 @@ function currentView() {
   return VIEWS[setupState.stage]();
 }
 
+function renderBody(children) {
+  const body = element("setup-body");
+  // Remove obsolete nodes backwards before inserting replacements, keeping
+  // persistent rows and the scene connected throughout the update.
+  for (let index = body.children.length - 1; index >= 0; index -= 1) {
+    const child = body.children[index];
+    if (!children.includes(child)) child.remove();
+  }
+  for (const [index, child] of children.entries()) {
+    if (body.children[index] !== child) body.insertBefore(child, body.children[index] ?? null);
+  }
+}
+
 function render() {
   const stage = setupError === null ? setupState?.stage ?? null : null;
   // A stage of its own starts without the previous stage's failed-advance state.
@@ -634,15 +647,7 @@ function render() {
   renderSteps(stage);
   const heading = element("setup-heading");
   if (heading.textContent !== view.heading) heading.textContent = view.heading;
-  // Move only changed children. Retain the live dictionary rows and the
-  // practice scene in place, including reader selections and popup anchors.
-  const body = element("setup-body");
-  for (const child of [...body.children]) {
-    if (!view.body.includes(child)) child.remove();
-  }
-  for (const [index, child] of view.body.entries()) {
-    if (body.children[index] !== child) body.insertBefore(child, body.children[index] ?? null);
-  }
+  renderBody(view.body);
   element("setup-actions").replaceChildren(...view.actions);
   announceOutcomes();
   if (heading.textContent !== lastAnnouncedHeading) {
