@@ -4,6 +4,7 @@ export function createBackupSettingsController({ document, send, download, check
   const element = id => document.getElementById(id);
   const window = document.defaultView;
   let busy = false, prepared = null;
+  let pageEpoch = 0;
 
   function render() {
     element("backup-export").disabled = busy;
@@ -53,12 +54,17 @@ export function createBackupSettingsController({ document, send, download, check
     element("backup-file").value = "";
     if (!file) return;
     void run("Checking the archive and preparing fresh dictionary files…", async () => {
+      const epoch = pageEpoch;
       await cancelPrepared();
       const blobUrl = window.URL.createObjectURL(file);
       let reply;
       try { reply = await send("hd_backup_prepare", { blobUrl }); }
       finally { window.URL.revokeObjectURL(blobUrl); }
       if (!reply.ok) throw new Error(reply.error || "This backup could not be prepared.");
+      if (epoch !== pageEpoch) {
+        await send("hd_backup_cancel", { token: reply.token });
+        return;
+      }
       prepared = reply;
       element("backup-confirm").checked = false;
       element("backup-file-name").textContent = file.name;
@@ -99,7 +105,12 @@ export function createBackupSettingsController({ document, send, download, check
   });
 
   window.addEventListener("pagehide", () => {
-    if (prepared) void send("hd_backup_cancel", { token: prepared.token }).catch(() => {});
+    pageEpoch += 1;
+    const token = prepared?.token;
+    prepared = null;
+    element("backup-confirm").checked = false;
+    render();
+    if (token) void send("hd_backup_cancel", { token }).catch(() => {});
   });
   render();
   return { render };
