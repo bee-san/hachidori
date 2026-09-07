@@ -153,8 +153,12 @@ export function createCaptureSession({
     const previous = linkedPage;
     if (previous) {
       const sourceId = `tab:${previous.tabId}`;
-      timeline.closeSource("cue", sourceId, undefined, now());
-      timeline.closeSource("dom", sourceId, undefined, now());
+      const endMs = now();
+      for (const sourceKind of ["cue", "dom"]) {
+        for (const record of timeline.closeSource(sourceKind, sourceId, undefined, endMs)) {
+          adjustOpenPin(record);
+        }
+      }
     }
     linkedPage = page ? {
       tabId: page.tabId,

@@ -1133,9 +1133,10 @@ Service worker -- trusted sender validation and tab routing
 The service worker accepts control messages only from Settings or the exact
 capture-page URL, and observation messages only from the currently linked tab
 and document identity. The configured texthooker URL is retained by the capture
-page and omitted from content-script options. Only loopback `ws://` endpoints
-are accepted. A source change, full navigation, stop, relevant setting change,
-or capture loss invalidates the corresponding session or document epoch.
+page and omitted from content-script options. Only loopback `ws://` or `wss://`
+endpoints are accepted. A source change, full navigation, stop, relevant
+setting change, or capture loss invalidates the corresponding session or
+document epoch.
 
 The linked content script keeps DOM nodes and ranges locally. It observes one
 bounded ordinary text area plus an explicitly selected accessible video and
@@ -1143,8 +1144,8 @@ sends only occurrence text, identities, normalized timestamps, and close
 events. Existing text is an unknown-onset baseline. Cue collection never
 enables a disabled track or changes subtitle language. Automatic area learning
 rejects editable roots, the document body, and Hachidori-owned UI; manual
-selection consumes the click and Escape so it does not advance the reading
-surface.
+selection consumes pointer and keyboard input so it does not advance the
+reading surface.
 
 All providers enter one occurrence timeline. Per root lookup the resolver tries
 a usable matching live texthooker record, selected-video cue, watched page text,

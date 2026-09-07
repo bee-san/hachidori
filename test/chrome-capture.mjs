@@ -797,7 +797,7 @@ async function main() {
       requirements: preflight.capture.requirements,
     });
     assert.equal(exported.state, "finishing");
-    await capture.bringToFront();
+    await source.bringToFront();
     await source.evaluate(() => window.triggerSyncMarker());
     assert.deepEqual(await source.$eval("#fixture-canvas", canvas => {
       const pixel = canvas.getContext("2d").getImageData(10, 10, 1, 1).data;

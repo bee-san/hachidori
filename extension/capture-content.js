@@ -265,8 +265,7 @@
 
   function validTrackedElement(element) {
     return element instanceof Element && !["HTML", "BODY"].includes(element.tagName)
-      && !element.matches("input, textarea, select, button, [contenteditable], hachidori-host")
-      && !element.closest("hachidori-host");
+      && !element.closest("input, textarea, select, button, [contenteditable], hachidori-host");
   }
 
   function extractLines(element) {
@@ -491,20 +490,27 @@
     }
 
     const listeners = [
-      ["pointermove", event => paint(document.elementFromPoint(event.clientX, event.clientY)), true],
+      ["pointermove", event => {
+        block(event);
+        paint(document.elementFromPoint(event.clientX, event.clientY));
+      }, true],
       ["pointerdown", block, true],
       ["pointerup", block, true],
       ["mousedown", block, true],
       ["mouseup", block, true],
       ["auxclick", block, true],
+      ["dblclick", block, true],
+      ["contextmenu", block, true],
       ["click", event => { block(event); finish(candidate); }, true],
       ["keydown", event => {
-        if (event.key === "Escape") { block(event); finish(); }
+        block(event);
+        if (event.key === "Escape") finish();
         else if (event.key === "ArrowUp" && candidate?.parentElement) {
-          block(event);
           paint(candidate.parentElement);
         }
       }, true],
+      ["keypress", block, true],
+      ["keyup", block, true],
     ];
     for (const [type, listener, capture] of listeners) window.addEventListener(type, listener, capture);
     pickerCleanup = () => {

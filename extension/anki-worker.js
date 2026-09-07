@@ -2,14 +2,16 @@
 import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
 import { ankiTemplateMarkerNames } from "./anki-templates.js";
+import { MAX_ANIMATED_AVIF_BYTES } from "./avif-sequence.js";
+import { MAX_WAV_BYTES } from "./capture-buffer.js";
 
 const CAPTURE_FILENAMES = {
   animation: /^hachidori-[a-z0-9]+\.avif$/u,
   audio: /^hachidori-[a-z0-9]+\.wav$/u,
 };
 const CAPTURE_LIMITS = {
-  animation: 4 * 1024 * 1024,
-  audio: 1024 * 1024,
+  animation: MAX_ANIMATED_AVIF_BYTES,
+  audio: MAX_WAV_BYTES,
 };
 
 function assertCapturePin(pin) {

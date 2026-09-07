@@ -175,18 +175,49 @@ test("Recent mode emits no page timing and the area picker consumes game input",
   const target = picker.window.document.getElementById("line");
   picker.window.document.elementFromPoint = () => target;
   let gameClicks = 0;
+  let gameMoves = 0;
+  let gameKeys = 0;
   target.addEventListener("click", () => { gameClicks++; });
+  target.addEventListener("pointermove", () => { gameMoves++; });
+  target.addEventListener("keydown", () => { gameKeys++; });
   await picker.command("hd_capture_track_area");
-  picker.window.dispatchEvent(new picker.window.MouseEvent("pointermove", {
+  const move = new picker.window.MouseEvent("pointermove", {
     bubbles: true, cancelable: true, clientX: 1, clientY: 1,
-  }));
+  });
+  target.dispatchEvent(move);
+  const key = new picker.window.KeyboardEvent("keydown", {
+    bubbles: true, cancelable: true, key: "Enter",
+  });
+  target.dispatchEvent(key);
   const click = new picker.window.MouseEvent("click", { bubbles: true, cancelable: true });
   target.dispatchEvent(click);
   await flush();
+  assert.equal(move.defaultPrevented, true);
+  assert.equal(key.defaultPrevented, true);
   assert.equal(click.defaultPrevented, true);
+  assert.equal(gameMoves, 0);
+  assert.equal(gameKeys, 0);
   assert.equal(gameClicks, 0);
   assert.ok(picker.sent.some(message => message.type === "hd_capture_text_begin"
     && message.record.onsetKnown === false));
+
+  const editor = fixture(t, {
+    autoLearnArea: false,
+    html: "<!doctype html><body><div contenteditable><span id='line'>猫</span></div></body>",
+  });
+  await editor.command("hd_capture_link");
+  const editableLine = editor.window.document.getElementById("line");
+  editor.window.document.elementFromPoint = () => editableLine;
+  await editor.command("hd_capture_track_area");
+  editableLine.dispatchEvent(new editor.window.MouseEvent("pointermove", {
+    bubbles: true, cancelable: true, clientX: 1, clientY: 1,
+  }));
+  editableLine.dispatchEvent(new editor.window.MouseEvent("click", {
+    bubbles: true, cancelable: true,
+  }));
+  await flush();
+  assert.equal(editor.sent.some(message => message.type === "hd_capture_text_begin"), false,
+    "manual tracking does not collect text nested inside an editable control");
 });
 
 test("native cues observe actual transitions without changing track mode and reset epochs across pause", async t => {

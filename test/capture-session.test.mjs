@@ -83,6 +83,21 @@ test("root lookup pins once, shortens an unfinished DOM tail when the line close
   assert.equal(h.session.status().pinActive, false);
 });
 
+test("relinking caps a pending page-timed clip at the old document boundary", async () => {
+  const h = harness({ enabled: true, clipSeconds: 5, estimatedOffsetMs: 0 });
+  seed(h);
+  h.session.setLinkedPage({ tabId: 1, documentId: "document-1", title: "First" });
+  const pin = h.session.pinLookup({ lookupText: "猫がいる", lookupTimeMs: h.now() });
+  h.advance(500);
+  h.session.setLinkedPage({ tabId: 2, documentId: "document-2", title: "Second" });
+  h.advance(1);
+  await Promise.resolve();
+  const started = h.session.beginExport(pin.token, { includeAnimation: true, includeAudio: false });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.jobStatus(started.jobId).state, "ready");
+  assert.equal(h.encoded[0].options.endMs, h.now() - 1);
+});
+
 test("recent fallback can be partial during warmup and jobs expose errors without a long request", async () => {
   const h = harness({ enabled: true, timingMode: "recent", includeAnimation: false });
   seed(h, { withText: false });
