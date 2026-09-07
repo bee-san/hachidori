@@ -200,6 +200,10 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
+  "a fresh install opens one startup tab at the dictionary stage with first-install preferences",
+  "Settings shows Resume setup while first-run setup is incomplete",
+  "the startup page advances through Anki to completion, closes its tab and hides Resume setup",
+  "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
   "Settings light and dark themes keep every task view readable without horizontal overflow",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
@@ -5356,6 +5360,159 @@ async function main() {
       ),
     JSON.stringify(branding),
   );
+  // ---------------------------------------------------------- first-run setup
+  // chrome.runtime.onInstalled fired with reason "install" for this clean
+  // profile, so the extension itself opened startup.html.
+  const startupUrl = `chrome-extension://${extensionId}/startup.html`;
+  const startupTabs = () => browser.targets().filter((target) =>
+    target.type() === "page" && target.url() === startupUrl).length;
+  const startupTarget = await browser.waitForTarget((target) =>
+    target.type() === "page" && target.url() === startupUrl, { timeout: 30_000 }).catch(() => null);
+  const startup = startupTarget === null ? null : await startupTarget.page();
+  startup?.on("console", (m) => diagnostics.push(`[startup] ${m.type()}: ${m.text()}`));
+  startup?.on("pageerror", (e) => diagnostics.push(`[startup] pageerror: ${e.message}`));
+  const startupShell = startup === null ? null : await startup.waitForFunction(() => {
+    const heading = document.getElementById("setup-heading")?.textContent ?? "";
+    if (heading === "" || heading.startsWith("Loading")) return false;
+    return {
+      title: document.title,
+      heading,
+      currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
+      steps: [...document.querySelectorAll(".setup-step")].map((step) => step.textContent.trim().replace(/^\d\s*/u, "")),
+      rows: [...document.querySelectorAll(".setup-dictionary")].map((row) =>
+        [row.dataset.sourceId, row.querySelector(".setup-dictionary-status")?.textContent ?? ""]),
+      importLink: document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null,
+      settingsLink: document.querySelector('a[href="settings.html"]') !== null,
+      continueText: document.getElementById("setup-continue")?.textContent ?? "",
+      background: getComputedStyle(document.body).backgroundColor,
+      cardBackground: getComputedStyle(document.getElementById("setup-card")).backgroundColor,
+    };
+  }, { timeout: 30_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
+  const settingsPalette = await page.evaluate(() => ({
+    background: getComputedStyle(document.body).backgroundColor,
+    surface: getComputedStyle(document.querySelector(".page")).backgroundColor,
+  }));
+  const firstInstallStorage = await page.evaluate(async () => {
+    const stored = await chrome.storage.local.get(["setupState", "options"]);
+    return { ...stored, effective: globalThis.HDReaderOptions.normaliseOptions(stored.options) };
+  });
+  const seededOptions = firstInstallStorage.options ?? {};
+  const effective = firstInstallStorage.effective ?? {};
+  const seededInSettings = await page.waitForFunction(() =>
+    document.getElementById("opt-compact-summary")?.checked === true
+      && document.getElementById("opt-summary-count")?.value === "3",
+  { timeout: 30_000, polling: 100 }).then(() => true).catch(() => false);
+  check(
+    "a fresh install opens one startup tab at the dictionary stage with first-install preferences",
+    startupTabs() === 1 && seededInSettings
+      && startupShell?.title === "Set up Hachidori"
+      && startupShell.heading === "Default dictionaries"
+      && startupShell.currentStep === "dictionaries"
+      && JSON.stringify(startupShell.steps) === JSON.stringify(["Dictionaries", "Anki", "Try it"])
+      && JSON.stringify(startupShell.rows) === JSON.stringify(
+        RECOMMENDED_DICTIONARIES.map(({ sourceId }) => [sourceId, "Not installed"]),
+      )
+      && startupShell.importLink && startupShell.settingsLink && startupShell.continueText === "Continue setup"
+      && startupShell.background === settingsPalette.background
+      && startupShell.cardBackground === settingsPalette.surface
+      && firstInstallStorage.setupState?.stage === "dictionaries"
+      && firstInstallStorage.setupState.revision === 1
+      && firstInstallStorage.setupState.completedAt === null
+      && JSON.stringify(Object.keys(seededOptions).sort()) === JSON.stringify(
+        ["compactDefinitionSummaryCount", "revision", "showCompactDefinitionSummary"],
+      )
+      && seededOptions.showCompactDefinitionSummary === true && seededOptions.compactDefinitionSummaryCount === 3
+      && seededOptions.revision === 1
+      && effective.popupTheme === "default" && effective.popupOpacityPercent === 85
+      && effective.audioAutoplay === false
+      && JSON.stringify(effective.audioSources?.map((source) => [source.type, source.enabled]))
+        === JSON.stringify([["text-to-speech-reading", true]]),
+    JSON.stringify({ startupTabs: startupTabs(), seededInSettings, startupShell, settingsPalette, firstInstallStorage }),
+  );
+  if (startup && (process.env.HACHIDORI_STARTUP_SCREENSHOT || process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT)) {
+    await startup.setViewport({ width: 900, height: 720 });
+    for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT]]) {
+      if (!path) continue;
+      await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      await startup.screenshot({ path });
+    }
+    await startup.emulateMediaFeatures([]);
+  }
+
+  const resumeVisible = await page.evaluate(() => {
+    const link = document.getElementById("setup-resume");
+    return {
+      hidden: link?.hidden, visible: link?.checkVisibility() === true, href: link?.href ?? "",
+      insideNavigation: link?.closest(".settings-nav") !== null, text: link?.textContent?.trim() ?? "",
+    };
+  });
+  check(
+    "Settings shows Resume setup while first-run setup is incomplete",
+    resumeVisible.hidden === false && resumeVisible.visible && resumeVisible.href === startupUrl
+      && !resumeVisible.insideNavigation && resumeVisible.text === "Resume setup",
+    JSON.stringify(resumeVisible),
+  );
+
+  // The user turns the seeded compact summary off through the revisioned options
+  // write Settings uses; the edit must be the value that persists, and the
+  // remaining assertions keep their historical popup layout. The Design view is
+  // left unopened so its lazy-preview assertion below still starts cold.
+  const editedPreference = await page.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      requestId: "first-run-edit", baseRevision: options.revision, options: { showCompactDefinitionSummary: false } });
+    return reply.ok ? reply.options : { error: reply.error };
+  });
+
+  let startupFlow = null;
+  if (startup !== null) {
+    await startup.bringToFront();
+    const startupClosed = new Promise((resolveClosed) => {
+      const onDestroyed = (target) => {
+        if (target.url() === startupUrl) { browser.off("targetdestroyed", onDestroyed); resolveClosed(true); }
+      };
+      browser.on("targetdestroyed", onDestroyed);
+      setTimeout(() => { browser.off("targetdestroyed", onDestroyed); resolveClosed(false); }, 15_000);
+    });
+    const stageAfter = async (id, heading) => {
+      await startup.click(`#${id}`);
+      return startup.waitForFunction((expected) => {
+        const text = document.getElementById("setup-heading")?.textContent ?? "";
+        return text === expected ? {
+          focused: document.activeElement?.id ?? "",
+          currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
+          done: document.querySelectorAll(".setup-step.is-done").length,
+          body: document.getElementById("setup-body")?.textContent ?? "",
+          status: document.getElementById("setup-status")?.textContent ?? "",
+          ankiLink: document.querySelector('#setup-body a[href="settings.html#anki"]') !== null,
+        } : false;
+      }, { timeout: 10_000, polling: 50 }, heading).then((handle) => handle.jsonValue()).catch(() => null);
+    };
+    const anki = await stageAfter("setup-continue", "Anki");
+    const practice = await stageAfter("setup-continue", "You’re ready.");
+    await startup.click("#setup-finish");
+    const closed = await startupClosed;
+    startupFlow = { anki, practice, closed };
+  }
+  const completedSetup = await page.waitForFunction(async () => {
+    const { setupState } = await chrome.storage.local.get("setupState");
+    return setupState?.stage === "complete" && document.getElementById("setup-resume")?.hidden === true
+      ? setupState : false;
+  }, { timeout: 10_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
+  check(
+    "the startup page advances through Anki to completion, closes its tab and hides Resume setup",
+    startupFlow?.anki?.focused === "setup-heading" && startupFlow.anki.currentStep === "anki"
+      && startupFlow.anki.done === 1 && startupFlow.anki.ankiLink && startupFlow.anki.status === ""
+      && startupFlow.practice?.focused === "setup-heading" && startupFlow.practice.currentStep === "practice"
+      && startupFlow.practice.done === 2
+      && startupFlow.practice.body.includes("Hover over Japanese text on any webpage")
+      && startupFlow.closed === true && startupTabs() === 0
+      && completedSetup?.revision === 4 && typeof completedSetup.completedAt === "string"
+      && editedPreference?.showCompactDefinitionSummary === false && editedPreference.revision === 2,
+    JSON.stringify({ startupFlow, completedSetup, editedPreference, startupTabs: startupTabs() }),
+  );
+  await page.bringToFront();
+
   await checkSettingsAutosave(page, browser, settingsUrl);
   await checkSettingsTransport(page);
   await checkDesignPreview(page);
@@ -7633,6 +7790,7 @@ async function main() {
     .then(() => true)
     .catch((error) => ({ error: String(error) }));
   const restartedWorker = await restartedWorkerPromise;
+  const startupTabsAfterWorkerRestart = startupTabs();
   const restartWakeReply = await page.evaluate(() => Promise.race([
     chrome.runtime.sendMessage({
       target: "hoshidicts-worker",
@@ -7730,6 +7888,22 @@ async function main() {
       && lookupStatsAfterRestart.descriptor?.revision === lookupStatsBeforeRestart.descriptor?.revision
       && JSON.stringify(lookupStatsAfterRestart.statistics) === JSON.stringify(lookupStatsBeforeRestart.statistics),
     JSON.stringify({ lookupStatsBeforeRestart, lookupStatsAfterRestart }),
+  );
+
+  // The relaunch fired onStartup, and pass 1 restarted the worker version: neither
+  // may reopen the completed startup page or touch the edited preference.
+  const setupAfterRestart = await page.evaluate(async () => {
+    const { setupState } = await chrome.storage.local.get("setupState");
+    return { setupState, resumeHidden: document.getElementById("setup-resume")?.hidden };
+  });
+  check(
+    "a browser restart keeps completed setup closed and the edited first-install preference",
+    startupTabsAfterWorkerRestart === 0 && startupTabs() === 0
+      && JSON.stringify(setupAfterRestart.setupState) === JSON.stringify(completedSetup)
+      && setupAfterRestart.resumeHidden === true
+      && restoredOptions?.showCompactDefinitionSummary === false
+      && restoredOptions.showCompactDefinitionSummary === optionsBeforeRestart.showCompactDefinitionSummary,
+    JSON.stringify({ startupTabsAfterWorkerRestart, startupTabs: startupTabs(), setupAfterRestart, completedSetup }),
   );
 
   await showSettingsSection(page, "dictionaries");
