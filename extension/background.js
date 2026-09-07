@@ -896,9 +896,10 @@ function updateTiming(dictionaries = []) {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || updateCycleActive) return;
   const state = changes[DICTIONARY_STATE_KEY];
-  if (changes[UPDATE_SETTINGS_KEY] || (state && !sameJsonValue(
+  // Update-settings writers reconcile explicitly after releasing the storage queue.
+  if (state && !sameJsonValue(
     updateTiming(state.oldValue?.dictionaries), updateTiming(state.newValue?.dictionaries),
-  ))) void refreshUpdateAlarm();
+  )) void refreshUpdateAlarm();
 });
 
 const UPDATE_HANDLERS = {
