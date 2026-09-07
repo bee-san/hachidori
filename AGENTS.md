@@ -100,6 +100,11 @@ Do not claim a check that was not run. Report each command and its exact outcome
 
 Before opening the pull request:
 
+- Perform a simplification pass over the complete diff. Look for code that can
+  be removed or replaced by existing helpers, transaction paths, state
+  machines, and UI primitives. Apply worthwhile reuse when semantics,
+  ownership, lifetime, and trust boundaries match; do not force reuse across
+  genuinely different boundaries. Summarize the result in the pull request.
 - Self-review `git diff --check` and the complete branch diff against its base.
 - Remove accidental generated files, fixture output, debug logging, and unrelated edits.
 - Use a clear title and a body that explains the problem, the chosen behavior, the important implementation details, and the validation performed.
