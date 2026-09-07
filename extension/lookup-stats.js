@@ -1,5 +1,7 @@
 // Canonical persistent lookup rows, shared by the storage owner and backup validator.
 // SPDX-License-Identifier: GPL-3.0-or-later
+import "./lookup-stats-identity.js";
+export const { normaliseLookupTerm, lookupStatsPrefix, lookupStatsKey } = globalThis.HDLookupStats;
 export const LOOKUP_STATS_KEY = "lookupStats";
 export const LOOKUP_STATS_ROW_PREFIX = "lookupStats:";
 
@@ -7,26 +9,11 @@ export function emptyLookupStats() {
   return { generation: null, revision: 0 };
 }
 
-export function normaliseLookupTerm(term, reading = "") {
-  if (typeof term !== "string" || typeof reading !== "string" || term.trim() === "") {
-    throw new TypeError("Lookup statistics require a nonempty term and a reading string.");
-  }
-  return { term: term.trim().normalize("NFC"), reading: reading.trim().normalize("NFC") };
-}
-
 export function assertLookupStatsDescriptor(descriptor) {
   if (!descriptor || !Number.isSafeInteger(descriptor.revision) || descriptor.revision < 0
       || (descriptor.generation !== null && (typeof descriptor.generation !== "string" || descriptor.generation === ""))) {
     throw new Error("Invalid lookup statistics descriptor.");
   }
-}
-
-export function lookupStatsPrefix(descriptor) {
-  return `${LOOKUP_STATS_ROW_PREFIX}${JSON.stringify(descriptor.generation)}:`;
-}
-
-export function lookupStatsKey(descriptor, { term, reading }) {
-  return lookupStatsPrefix(descriptor) + JSON.stringify([term, reading]);
 }
 
 function assertLookupStatsRow(row) {

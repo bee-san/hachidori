@@ -21,6 +21,7 @@
 
   const { DEFAULT_OPTIONS, clampOption, normaliseActivationKey, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
   const { normaliseDictionaryGroups } = globalThis.HDDictionaryGroups;
+  const { normaliseLookupTerm, lookupStatsKey } = globalThis.HDLookupStats;
   const { normaliseDictionaryTab: normalizedDictionaryTab } = globalThis.HDPopup;
   const MODIFIER_PROPERTIES = new Map([
     ["Shift", "shiftKey"],
@@ -1371,23 +1372,32 @@
   }
 
   function paintLookupStatistics(request, level) {
+    if (!options.showLookupCounts) {
+      if (level.lookupStatsElement) level.lookupStatsElement.hidden = true;
+      return;
+    }
     if (request !== level.currentViewRequest || level.retainedView
-        || !requestCanRender(level.lookupToken, level.activeCandidate, level) || !level.lookupStatsElement) return;
+        || !requestCanRender(level.lookupToken, level.activeCandidate, level) || !level.lookupStatsElement?.isConnected) return;
     const payload = request?.lookupStats?.payload;
     level.view.setLookupStats(level.lookupStatsElement,
-      options.showLookupCounts && payload?.descriptor.generation === lookupStatsDescriptor.generation
+      payload?.descriptor.generation === lookupStatsDescriptor.generation
         ? payload.statistics : null);
   }
 
-  function adoptLookupStatsDescriptor(descriptor) {
-    if (!Number.isSafeInteger(descriptor?.revision) || descriptor.revision <= lookupStatsDescriptor.revision) return;
+  function adoptLookupStatsDescriptor(descriptor, changes = {}) {
+    if (!Number.isSafeInteger(descriptor?.revision) || descriptor.revision < lookupStatsDescriptor.revision) return;
     const replaced = descriptor.generation !== lookupStatsDescriptor.generation;
     lookupStatsDescriptor = descriptor;
-    if (!replaced) return;
     for (const level of levels) {
       const request = level.currentViewRequest;
-      if (!request?.lookupStats) continue;
-      request.lookupStats.needsRefresh = true;
+      const entry = request?.lookupStats;
+      if (!entry) continue;
+      const row = changes[lookupStatsKey(descriptor, entry)]?.newValue;
+      if (row && (!entry.payload || entry.payload.descriptor.revision < descriptor.revision)) {
+        entry.payload = { descriptor, statistics: { ...row, seenCount: null } };
+        entry.needsRefresh = false;
+      } else if (replaced) entry.needsRefresh = true;
+      else continue;
       paintLookupStatistics(request, level);
       refreshLookupStatistics(request, level);
     }
@@ -1400,6 +1410,7 @@
         || !requestCanRender(level.lookupToken, level.activeCandidate, level)) return;
     entry.pending = true;
     entry.needsRefresh = false;
+    const requestedOptionsRevision = optionsStorageRevision;
     void sendRequest(record ? "hd_lookup_stats_record" : "hd_lookup_stats_read", {
       term: entry.term, reading: entry.reading,
     }, "hoshidicts-worker").then(payload => {
@@ -1408,8 +1419,10 @@
         entry.needsRefresh = true;
         return;
       }
+      if (entry.payload?.descriptor.revision > payload.descriptor.revision) return;
       entry.payload = payload;
-      entry.needsRefresh = false;
+      entry.needsRefresh = payload.statistics === null && options.showLookupCounts
+        && requestedOptionsRevision !== optionsStorageRevision;
       if (request.lookupStats === entry) paintLookupStatistics(request, level);
     }).catch(error => {
       // A lost reply may follow a committed increment. Never retry the write.
@@ -1421,7 +1434,7 @@
   }
 
   function acceptLookupStatistics(results, request, level) {
-    const { expression: term, reading = "" } = results[0].term;
+    const { term, reading } = normaliseLookupTerm(results[0].term.expression, results[0].term.reading);
     const firstVisit = !request.lookupStats;
     let entry = request.lookupStats;
     if (!entry || entry.term !== term || entry.reading !== reading) {
@@ -2545,7 +2558,7 @@
       presentationChanged ||= adoption.presentationChanged;
       changed ||= dictionaryChanged;
     }
-    if (changes.lookupStats) adoptLookupStatsDescriptor(changes.lookupStats.newValue);
+    if (changes.lookupStats) adoptLookupStatsDescriptor(changes.lookupStats.newValue, changes);
     if (changed) {
       invalidateStoredState(dictionaryChanged);
     } else if (presentationChanged) updateDictionaryPresentation();

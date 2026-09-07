@@ -735,7 +735,8 @@ function loadBackgroundScript(sandbox) {
   const ankiTemplates = readFileSync(resolve(EXTENSION, "anki-templates.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
-  const lookupStats = readFileSync(resolve(EXTENSION, "lookup-stats.js"), "utf8").replace(/^export\s+/gmu, "");
+  const lookupStats = readFileSync(resolve(EXTENSION, "lookup-stats-identity.js"), "utf8")
+    + readFileSync(resolve(EXTENSION, "lookup-stats.js"), "utf8").replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
@@ -8206,6 +8207,7 @@ async function staleKanjiResponseStage(invalidation) {
   }
   window.eval(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "lookup-stats-identity.js"), "utf8"));
   window.eval(instrumented);
   const anchor = window.document.getElementById("anchor");
   const popup = window.document.createElement("div");
@@ -8495,6 +8497,7 @@ async function contentNoteStage() {
     }
     window.eval(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8"));
+    window.eval(readFileSync(resolve(EXTENSION, "lookup-stats-identity.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "audio-content.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "anki-content.js"), "utf8"));
     window.eval(instrumented);
