@@ -2,7 +2,7 @@
 
 # Hachidori test harness
 
-Twelve pieces, run in this order. The JavaScript checks use Node built-ins except
+Thirteen pieces, run in this order. The JavaScript checks use Node built-ins except
 `extension-smoke.mjs` and `audio-content.test.mjs`, which need jsdom. The browser checks need Chrome and
 `puppeteer-core`; those dependencies stay outside the repository.
 
@@ -19,8 +19,9 @@ node test/threaded-bridge-smoke.mjs # 7. both-backend bridge admission/control t
 node test/extension-smoke.mjs    # 8. the extension's own JS against that wasm
 node --test benchmark/*.test.mjs # 9. fail-closed benchmark framework tests
 node test/chrome-e2e.mjs         # 10. pthread/OPFS path in a real Chrome
-node test/chrome-fallback.mjs    # 11. capability fallback through IDBFS in real Chrome
-./test/baseline.sh               # 12. optional native cross-check
+node test/chrome-capture.mjs     # 11. real display capture, audio, timing and Anki path
+node test/chrome-fallback.mjs    # 12. capability fallback through IDBFS in real Chrome
+./test/baseline.sh               # 13. optional native cross-check
 ```
 
 Step 4 is optional on its own: `node-smoke.mjs` imports the generator and builds
@@ -1024,6 +1025,53 @@ The offscreen document has a permanent CDP session on `Runtime`, because it has 
 console anyone reads and a boot failure there is otherwise invisible: its
 `consoleAPICalled` and `exceptionThrown` events go into the diagnostics the run
 prints after a failure.
+
+---
+
+## `chrome-capture.mjs`
+
+This separate browser test uses Chrome's real `getDisplayMedia()` path. It serves
+a self-contained animated canvas, changing Japanese DOM text, and WebAudio tone;
+Chrome's test-only picker flag selects that tab. The extension imports the real
+dictionary fixture, opens its visible Capture controls, starts tab capture,
+links the reading page, and exercises:
+
+- compressed frame and sample-clocked audio history;
+- first-baseline fallback and later observed DOM timing;
+- a real loopback plain-text WebSocket, texthooker priority, active state,
+  disconnect, and reconnect epoch;
+- root pinning, future-tail completion, animated AVIF encoding, Chrome frame
+  decoding and looping playback, and non-silent mono WAV samples;
+- a local AnkiConnect fixture with real preflight, one-at-a-time media uploads,
+  note write, and readback;
+- settings-change confirmation, stop/clear behavior, no automatic rearming, and
+  absence of raw text/media in extension storage;
+- stopped-versus-recording dictionary latency, capture throughput, retained
+  history, encoding latency, and output sizes.
+
+```sh
+node test/chrome-capture.mjs
+HACHIDORI_CAPTURE_SUSTAINED_SECONDS=70 node test/chrome-capture.mjs
+```
+
+The default measures five seconds of production throughput. The sustained form
+continues to 70 seconds and additionally requires both retained timelines to
+settle between 55 and 61 seconds while remaining within the 64 MiB frame budget.
+`HACHIDORI_CAPTURE_SUSTAINED_SECONDS` is clamped to 5–90 seconds.
+
+On Linux, a headful screenshot run can use Xvfb:
+
+```sh
+HACHIDORI_CAPTURE_HEADFUL=1 \
+HACHIDORI_MEDIA_SETTINGS_SCREENSHOT=docs/assets/media-capture-settings.png \
+HACHIDORI_CAPTURE_SCREENSHOT=docs/assets/media-capture-controls.png \
+xvfb-run -a node test/chrome-capture.mjs
+```
+
+The same external browser variables as `chrome-e2e.mjs` are accepted, plus
+`HACHIDORI_CAPTURE_PROFILE`. Captured tab audio depends on Chrome and the host
+share implementation; the test fails rather than substituting microphone or a
+silent track.
 
 ---
 
