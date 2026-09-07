@@ -156,7 +156,8 @@ collector messages, restart routing, buffer and drain behavior, AVIF/WAV
 encoding, and the final Anki mutation boundary. Separate browser, Linux surface,
 and installed-Anki harnesses cover the real runtimes.
 
-The [PR #71 acceptance record](media-capture-review.md) distinguishes verified
-results from outstanding checks, including final flash/beep alignment and the
-long retention soak. See the commands and measurement limits in the
+The [PR #71 acceptance record](media-capture-review.md) records passing processor
+and AudioWorklet capture, flash/beep alignment within 125 ms, a thirty-minute
+retention soak, and actual Anki Desktop playback. It also records measurement
+limits and untested platform/client behavior. See the commands in the
 [test harness documentation](../test/README.md#chrome-capturemjs).

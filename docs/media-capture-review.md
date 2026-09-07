@@ -6,10 +6,10 @@ This records the follow-up to the 7 September 2026 review of
 [PR #71](https://github.com/bee-san/hachidori/pull/71), reviewed at
 `5e85e291ccf39f27c56f5f83da4f35762ec2b1c2`. Results below are local validation
 snapshots. The final capture runtime is `9cc5907`, extension tree
-`79cdedc83ca5b15bf42977925bd00c90ca4662df`. Its full and static export components
-have passed browser checks; the thirty-minute headful aggregate remains pending.
-Earlier complete capture runs passed processor and AudioWorklet paths on
-Chromium 150 and Chrome for Testing 152 respectively.
+`79cdedc83ca5b15bf42977925bd00c90ca4662df`. It passed both processor and
+AudioWorklet capture checks on Chrome for Testing
+152.0.7977.82 at later revisions with the same extension tree. The headful
+thirty-minute run at `9cc5907` completed **13/13 checks** and **27 repeated exports**.
 
 ## Nine review findings
 
@@ -44,28 +44,68 @@ node --test test/capture-*.test.mjs test/avif-sequence.test.mjs \
 | Default ten-second moving-text clip | Final-runtime browser export produced 80 frames over exactly ten seconds, with matching AVIF/WAV durations, a 32 MiB encoder heap, and 8,560.7 ms export time. | This export component passed actual Anki review: 80 distinct frames observed and repeated in the second loop; its ten-second WAV played/replayed for 10.049/10.087 seconds with PCM peaks of 65 matching the source. |
 | Captured tab behind controls | A controlled focus comparison measured 7.99 fps with the source in front, 6.49 fps behind controls, and 7.99 fps after restoring source focus. In the background phase, Chrome counted 70 upstream frames and delivered 65 after five browser rate-adapter discards; all 65 reached JPEG encoding. | The configured 8 fps is a ceiling. The full-rate soak keeps the source in front to match its baseline; it does not establish 8 fps for background sources. |
 | Static-scene export | The final runtime exported a static scene after sixty seconds as a looping two-frame AVIF and WAV, each exactly ten seconds. Export took 771.8 ms with a 32 MiB encoder heap. Actual Anki held the same scene for 23.36 seconds and played/replayed audio for 10.068/10.082 seconds. | Static component passed. Rendered RGB RMS difference was 0.3840/255, within the 1/255 limit. An independent moving-frame negative control measured 17.2280/255 and was rejected. Both audio peaks of 65 matched the source; static pixels alone cannot prove a loop. |
-| Flash/beep content alignment ≤125 ms | The decoded white-area/WAV-onset oracle measured **22.479 ms** on Chromium 150 processor audio and **33.979 ms** on Chrome for Testing 152 AudioWorklet audio, both on runtime tree `f628dd9a3117921330377e6c61ff874ee7ee3765`. | Both **13/13** runs passed. The oracle recognizes the flash area across fixture layouts; it does not assume a centered video. Thirty-minute validation remains pending. |
-| Thirty-minute retention, CPU, sampled memory, full-export lookup latency | The 1,800-second run cycles static/moving/dense scenes, checks ring bounds, exports each period, and records CPU/RSS for the entire test browser, including fixture tabs. New processes contribute observed CPU time; phase totals exclude intervening phases. | **Running at `9cc5907`; final aggregate pending.** This run explicitly enables headful mode and restores source focus after lifecycle checks, matching the throughput baseline. `sampledPeakRssMiB` is a sampled RSS sum with duplicated shared pages, not a continuous or unique-memory peak. Processes entirely between samples are missed; encoder heap is measured separately. |
+| Flash/beep content alignment ≤125 ms | Chrome for Testing **152.0.7977.82** measured **61.021 ms** with processor audio at `da96d6a`, **122.833 ms** with AudioWorklet at `2a5ce05`, and **106.833 ms** after the thirty-minute processor soak at `9cc5907`, all on final runtime tree `79cdedc83ca5b15bf42977925bd00c90ca4662df`. | All three **13/13** runs passed the unchanged 125 ms gate. The worklet result is close to that limit and is not a guarantee of additional timing margin. These measure exported content alignment, not synchronization between separate Anki image/audio playback schedules. |
+| Short sustained processor check | At `da96d6a`, the headful test completed **150.13 seconds** cycling static/moving/dense scenes. Initial full, static, moving, and dense exports contained **79, 2, 81, and 81 frames** respectively; each AVIF/WAV pair covered exactly ten seconds. Final retention was 480 video frames and 2,880,512 audio samples. | **13/13** browser checks passed, independently of the thirty-minute run. |
+| Thirty-minute retention, CPU, sampled memory, full-export lookup latency | At `9cc5907`, **1,809.97 seconds** of static/moving/dense recording completed **27 exports** and **559 lookup batches during those exports**. Each AVIF/WAV pair covered exactly ten seconds; moving/dense clips held 80–81 frames and static clips held two. | **13/13 passed.** Maximum observed retained JPEGs: **10.97 MiB** against the 64 MiB limit; retained audio: **60.011 seconds**, including a boundary block. Encoder heap: **32 MiB** for every export. Resource measurements and limits are detailed below. |
 | Actual Anki Desktop AVIF/WAV | Anki **26.05**, Qt **6.11.1**, embedded Chromium **140.0.7339.225**. Fresh isolated collection, real reviewer, AVIF looping, actual MPV playback/replay, private recorded audio sink, remote reviewer requests blocked. | Short, full moving, and full static asset pairs passed their respective checks. Audible and low-level source PCM were preserved on playback/replay. Static pixels do not independently establish a loop boundary. No AnkiWeb sync or extra-device/client playback was tested. |
-| Repository checks | Node **226/226**, focused collector/host/routing **28/28**, and extension smoke **445/445** for runtime `9cc5907`; Chrome E2E **170/170** at `9cc5907`; earlier Node/WASM smoke **116/116** and benchmark tests **39/39**. Capture runs: Chromium **150.0.7871.186** processor **13/13**, Chrome for Testing **152.0.7977.82** AudioWorklet **13/13**. | Checks are local results for the recorded revisions. Final CI, Sonar, and review status remain tied to the eventual PR head. |
+| Repository checks | Node **226/226**, focused collector/host/routing **28/28**, and extension smoke **445/445** for runtime `9cc5907`; Chrome E2E **170/170** at `9cc5907`; earlier Node/WASM smoke **116/116** and benchmark tests **39/39**. Final-tree capture: Chrome for Testing **152.0.7977.82**, processor **13/13** at `da96d6a` and AudioWorklet **13/13** at `2a5ce05`. | Checks are local results for the recorded revisions. Final CI, Sonar, and review status remain tied to the eventual PR head. |
 
-The earlier complete processor and AudioWorklet runs recorded commit `acf81a9`, runtime tree
-`f628dd9a3117921330377e6c61ff874ee7ee3765`, and `extensionModified: false`.
-The Chromium 150 run also used the corrected white-area oracle. Full exports
-covered exactly ten seconds in both formats and used a measured 32 MiB encoder
-WASM heap:
+The completed processor and AudioWorklet runs both recorded final extension
+runtime tree `79cdedc83ca5b15bf42977925bd00c90ca4662df` and
+`extensionModified: false`. Full exports covered exactly ten seconds in both
+formats and used a measured 32 MiB encoder WASM heap:
 
-| Runtime / audio path | Full AVIF frames | Export time | Largest lookup-batch median / p95 during export |
+| Chrome for Testing 152 audio path / revision | Full AVIF frames | Export time | Largest lookup-batch median / p95 during export |
 | --- | ---: | ---: | ---: |
-| Chromium 150 / processor | 81 | 6,241.4 ms | 7.9 / 18.0 ms across 21 batches |
-| Chrome for Testing 152 / AudioWorklet | 79 | 8,549.1 ms | 7.3 / 13.4 ms across 34 batches |
+| Processor / `da96d6a` | 79 | 8,792.1 ms | 7.7 / 14.9 ms across 30 batches |
+| AudioWorklet / `2a5ce05` | 80 | 8,964.6 ms | 9.2 / 15.6 ms across 30 batches |
 
-These are one machine's results, not performance guarantees or a completed
-long-run memory assessment. They do not isolate extension CPU from the animated
-fixture. The current headful run records `9cc5907`, extension tree
-`79cdedc83ca5b15bf42977925bd00c90ca4662df`; its full ten-second export measured
-8,560.7 ms with 29 lookup batches, whose largest median/p95 was 7.9/14.0 ms.
-The completed thirty-minute aggregate remains pending.
+These are one machine's results, not performance guarantees. The thirty-minute
+run started at `9cc5907` with the same extension tree; its initial full ten-second
+export measured 8,560.7 ms with 29 lookup batches, whose largest median/p95 was
+7.9/14.0 ms. Its full and static assets were independently verified in Anki below.
+
+## Thirty-minute resource measurements
+
+The completed run used an Intel Core Ultra 7 165U (14 logical CPUs), Linux
+7.1.5-1-cachyos, Chrome for Testing 152.0.7977.82, an isolated Xvfb display, and
+a 1280 × 720 source with the default 640 × 360 / 8 fps output preset. It explicitly enabled headful mode and
+restored source focus after lifecycle checks, matching the throughput baseline.
+Nine static, nine moving, and nine dense-scene exports ran while recording
+continued. Moving/dense export times ranged from 7,838.2 to 9,342.5 ms; static
+exports took 705.6–771.8 ms. Every encoder reported a 32 MiB WASM heap.
+
+The stopped/recording lookup medians were 6.4/6.3 ms. Across the 559 lookup
+batches during repeated exports, the largest batch median was 14.9 ms and the
+largest batch p95 was 23.1 ms. These are maxima of batch statistics, not a pooled
+p95 or a maximum individual lookup latency.
+
+| Browser phase | Observed duration (s) | CPU (% of one core) | Sampled peak summed RSS (MiB) |
+| --- | ---: | ---: | ---: |
+| Capture off, animated fixture running | 5.22 | 91.2 | 1,940.3 |
+| Initial recording | 20.33 | 161.4 | 2,622.7 |
+| Initial full export | 10.51 | 321.9 | 2,722.1 |
+| Static recording, nine periods | 540.22 | 18.3 | 2,625.6 |
+| Static exports, nine periods | 11.63 | 156.8 | 2,491.1 |
+| Moving recording, nine periods | 540.25 | 149.0 | 2,475.5 |
+| Moving exports, nine periods | 88.95 | 316.8 | 2,532.6 |
+| Dense recording, nine periods | 533.52 | 153.1 | 2,537.9 |
+| Dense exports, nine periods | 95.31 | 315.5 | 2,570.2 |
+
+CPU/RSS covers the entire test browser, including the animated fixture tabs;
+it does not isolate capture overhead. Repeated phase totals exclude intervening
+phases, and newly observed processes contribute their observed CPU time.
+Sampling occurs every second and at phase boundaries. Processes that start and
+exit between samples are missed. Summed RSS counts shared pages in each process,
+so it is neither unique memory nor a continuous peak. Export phase durations
+include surrounding harness work and differ from the export timings above.
+
+![Browser memory and bounded capture history over the completed soak](assets/media-capture-soak.png)
+
+The ring checks observed at most 482 retained frames, 10.97 MiB of JPEGs, and
+2,880,512 audio samples. Browser RSS rose modestly across scene cycles and also
+showed reclamation; this run establishes bounded recording history and measured
+resource use, not absence of a browser or extension memory leak.
 
 Chromium forwards the requested frame rate as a
 [minimum capture period](https://github.com/chromium/chromium/blob/152.0.7977.82/content/browser/media/capture/frame_sink_video_capture_device.cc#L327).
@@ -88,10 +128,10 @@ new evidence on another machine.
 | Focused lifecycle / extension smoke for runtime `9cc5907` | `/tmp/pr71-link-race-root-tests.log`: **28/28**; `/tmp/pr71-extension-smoke-9cc5907.log`: **445/445** |
 | Earlier Node-WASM smoke / benchmark tests | `/tmp/pr71-node-smoke.log`: **116/116**; `/tmp/pr71-benchmark-tests.log`: **39/39** |
 | Chrome E2E | `/tmp/pr71-chrome-e2e-9cc5907.log`: **170/170** |
-| Real tab capture, processor audio | `/tmp/pr71-capture-worker.log`; assets and process resource samples in `/tmp/pr71-capture-assets-worker/` |
-| Committed-runtime Chromium 150 processor run | `/tmp/pr71-capture-chromium150-marker-fixed.log`: **13/13**, 22.479 ms flash/beep offset |
-| Committed-runtime Chrome for Testing 152 AudioWorklet run | `/tmp/pr71-capture-worklet-acf81a9.log`: **13/13**, 33.979 ms flash/beep offset |
-| Current thirty-minute headful soak | `/tmp/pr71-capture-soak-active.log`; assets in `/tmp/pr71-capture-assets-soak-active/`; final aggregate pending |
+| Final-tree processor run | `/tmp/pr71-preflight-2a5ce05.log`: **13/13**; its recorded revision is `da96d6a`, as preserved in `/tmp/pr71-preflight-da96d6a-bench.json`; 150.13 seconds sustained, 61.021 ms flash/beep offset |
+| Final-tree AudioWorklet run | `/tmp/pr71-capture-worklet-2a5ce05.log`: **13/13** at `2a5ce05`, 122.833 ms flash/beep offset |
+| Earlier Chromium 150 processor coverage | `/tmp/pr71-capture-chromium150-marker-fixed.log`: **13/13** at `acf81a9`, 22.479 ms flash/beep offset |
+| Completed thirty-minute headful soak | `/tmp/pr71-capture-soak-active.log`: **13/13**, exit 0; `/tmp/pr71-capture-soak-final-bench.json`; assets and `resources.json` in `/tmp/pr71-capture-assets-soak-active/`; 1,809.97 seconds, 27 exports, 106.833 ms flash/beep offset |
 | Controlled captured-tab focus comparison | `/tmp/pr71-focus-cadence-ICTWdp/results.json` and `instrumentation.diff`: identical source and 1280 × 720 capture settings across foreground, background, and restored-foreground phases |
 | X11 surfaces | `/tmp/pr71-surfaces-9cc5907.log`; `/tmp/hachidori-surfaces-CCRf3L/results.json` |
 | Actual Anki audible clip | `/tmp/hachidori-anki-desktop-pm4uygh1/result.json`: 2.6173125 s WAV, two playback peaks of 8,669 matching the source; 14 distinct rendered AVIF frames, 13 observed again in the second loop. |
@@ -115,8 +155,8 @@ flash/beep marker.
 
 ## Superseded attempts
 
-These explain the earlier failures and are not evidence that the current full
-soak passed. `/tmp/pr71-capture-static-check.log` passed its static export but
+These explain earlier failures and are excluded from the completed soak's
+acceptance results. `/tmp/pr71-capture-static-check.log` passed its static export but
 later failed alignment. `/tmp/pr71-capture-soak-measured.log` omitted headful
 mode and stopped after 387 seconds on its dense-frame gate. Its silent-source
 assets did pass isolated Anki playback checks
