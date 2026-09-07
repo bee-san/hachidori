@@ -101,6 +101,16 @@ function basicTemplates(config, fields) {
   return { templates: Object.fromEntries(rows), staleFields: [], errors };
 }
 
+// The core a mined card needs: the expression, its reading, the sentence and a
+// definition body. A note type that only shares a family name maps fewer than
+// these, so first-run detection can tell a real setup from a namesake.
+export function ankiPresetCoreMapped(fieldTemplates) {
+  const values = new Set(Object.values(fieldTemplates).map(template => template.value));
+  return values.has(KIKU.Expression) && values.has(KIKU.ExpressionReading)
+    && (values.has(KIKU.MainDefinition) || values.has(KIKU.Glossary))
+    && values.has(KIKU.Sentence);
+}
+
 export function resolveAnkiTemplates(config, fields) {
   if (config.fieldTemplates === null) return basicTemplates(config, fields);
   const saved = config.fieldTemplates;

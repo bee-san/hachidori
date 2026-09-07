@@ -147,9 +147,15 @@ launch for an unpacked extension loaded from the command line, so the absence
 of that record, not the reason alone, identifies a new installation.
 
 - `setupState`: `{ schemaVersion: 1, revision, startedAt, stage, completedAt,
-  dictionaries }`, where `stage` is `dictionaries`, `anki`, `practice` or
-  `complete` and `dictionaries` holds `{ outcomes, totalSeconds, continued,
-  selectionsApplied, recordedRuns }`. The worker owns every write. `hd_setup_cas` accepts
+  dictionaries, anki }`, where `stage` is `dictionaries`, `anki`, `practice` or
+  `complete`, `dictionaries` holds `{ outcomes, totalSeconds, continued,
+  selectionsApplied, recordedRuns }` and `anki` is `null` until the Anki stage
+  settles once as `{ status, detail, model, deck }` with `status` one of
+  `configured`, `already-configured`, `unavailable` or `needs-attention`. A
+  configured outcome names the model and deck and carries no reason text; the
+  other two carry a non-empty reason and no names, so no view can render an
+  empty or absent one.
+  The worker owns every write. `hd_setup_cas` accepts
   `{ baseRevision, stage, continued? }` from the exact startup page URL only,
   answers a stale base revision with a conflict and the current state, refuses a
   stage that is not later than the current one, records `completedAt` when the
@@ -171,13 +177,15 @@ page reads `setupState`, `dictionaryState` and `options` from storage, adopts
 only newer revisions from storage events, and renders one card per stage under
 a **Dictionaries → Anki → Try it** indicator (`aria-current="step"`). Continue
 and Finish send `hd_setup_cas` with the revision the page rendered; a conflict
-adopts the newer state and reports it in the card's live region, and a storage
+adopts the newer state and reports it in the card's live region, unless that
+state has already reached the requested stage — a second tab making the same
+move is the move this page asked for, not a failure — and a storage
 event that arrives while a write is in flight renders once with the reply. A
 stage change moves focus to the card heading; an inventory or progress update
 keeps focus on the control that had it. Finish records completion and closes
 the tab. Settings shows **Resume setup** in its sidebar while
-`stage !== "complete"`, so closing the tab loses nothing. Anki detection and the
-lookup exercise attach to the remaining stages separately.
+`stage !== "complete"`, so closing the tab loses nothing. The lookup exercise
+attaches to the remaining stage separately.
 
 ### Dictionary stage
 
@@ -261,6 +269,62 @@ records `continued: true`. Only settled outcomes are announced, never bytes.
 ![All dictionaries installed with the five-second countdown, light palette](assets/startup-complete.png)
 
 ![All dictionaries installed with the five-second countdown, dark palette](assets/startup-complete-dark.png)
+
+### Anki stage
+
+The Anki stage checks for an existing mining setup by itself. The startup page
+asks the worker once with `hd_setup_anki`, accepted from the exact startup page
+URL only and answered outside the storage queue, so a read-only AnkiConnect
+conversation never holds up a commit. Duplicate startup pages share the one
+detection in flight, and a settled outcome is returned to every later caller
+without asking Anki again.
+
+`anki-setup.js` holds that discovery, and it only reads. `modelNamesAndIds`
+names the candidates: a model qualifies when a supported family (Senren, Lapis
+or Kiku) leads its name and ends at a word boundary, so `Kiku v2` and
+`Lapis-1.4` match while `Kikuchi` and `My Kiku` do not. Each candidate's
+`modelFieldNames` must satisfy the same preset mapping Settings would apply
+(`applyAnkiPreset` and `resolveAnkiTemplates`, validated through
+`ankiAvailability`), and that mapping must cover the family's core — the
+expression, its reading, the sentence and a definition body — so a namesake
+that happens to carry one recognised field is dropped rather than adopted. `findNotes mid:<id>` counts each
+surviving candidate's distinct notes and the unique maximum wins; a tie, an
+unused note type or no candidate at all is a **needs-attention** outcome with
+the specific reason. The winner's deck is chosen the same way from
+`findCards mid:<id> -deck:filtered`, `getDecks` and `cardsToNotes`, so
+temporary filtered decks are excluded and the deck holding the most distinct
+notes wins. No write action is ever issued: nothing in the collection changes.
+
+The worker records the outcome, and for a `configured` proposal it saves the
+model, deck and resolved field templates through the ordinary revisioned
+options write in the same storage write as the setup record. A mapping the user
+already had is never replaced and is checked rather than assumed: instead of
+proposing anything, `verifyAnkiSetup` reads the note types, the decks and that
+model's fields and applies the shared `ankiAvailability` rules, so a complete
+mapping is **already-configured** and a half-made one — choosing a note type in
+Settings clears its fields — is **needs-attention** carrying Anki's own reason
+(for example *Map the first field, “Front”, before adding notes.*). A saved
+mapping that could not be checked at all is not claimed to be set up: the
+connection's own reason is recorded and the mapping is left untouched. The latest options are read again inside that write: a mapping the user changes
+while the check runs makes that check stale, so the write is abandoned and the
+mapping now stored is checked instead. A proposal is saved only while the
+mapping it was derived from is still the one stored, and a mapping that keeps
+changing across three passes settles as **needs-attention** saying so rather
+than recording a result for a mapping that no longer exists. A connection that does not answer or
+times out is the ordinary **unavailable** outcome; any other failure keeps its
+own reason. The page renders the settled outcome as one sentence with a link to
+the Anki section of Settings, and that outcome moves setup to the last stage by
+itself and stays readable there. A request the worker does not answer is
+reported once with **Retry** beside **Continue setup**; the page never re-asks
+on its own.
+
+![The final step after an absent Anki, light palette](assets/startup-ready.png)
+
+![The final step after an absent Anki, dark palette](assets/startup-ready-dark.png)
+
+![The final step after an automatically configured Anki, light palette](assets/startup-anki.png)
+
+![The final step after an automatically configured Anki, dark palette](assets/startup-anki-dark.png)
 
 ## Hover activation and popup ownership
 

@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 433 checks, all of
+full request→reply round trip per contract-C message type. 448 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -639,7 +639,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 168 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 171 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -683,14 +683,37 @@ Continue, durable outcomes and no all-installed claim; Retry fetching only
 jmnedict, the all-installed heading with the accumulated total, and the
 Jitendex summary source and Bee's clicked-kanji route settled once while the
 user's compact-summary edit stands; the result staying at least five seconds
-before Anki with focus on the new heading; real clicks to **You’re ready.**,
-Finish closing the tab and the completed record hiding the link; and, after the
-in-run service-worker restart and the full pass-2 relaunch, no reopened startup
-tab, no further archive request, the same completed record, and the earlier
-edit still in force. The four setup-installed packages are removed afterwards
-so the Settings installer below still starts from an empty library.
-`HACHIDORI_STARTUP_SCREENSHOT`/`_DARK_SCREENSHOT` capture the held download and
-`HACHIDORI_STARTUP_COMPLETE_SCREENSHOT`/`_DARK_SCREENSHOT` the countdown result.
+before **Checking for Anki…** with focus on the new heading; the absent Anki
+settling by itself into **No Anki found** after exactly one AnkiConnect
+attempt, which the harness refuses on the worker target for that stage so a
+real Anki or another suite's mock server on port 8765 cannot decide the
+outcome, and whose recorded outcome carries the gateway's reason and moves
+setup to **You’re ready.** with the outcome sentence
+and its Settings link, where Finish closes the tab and the completed record
+hides the link; and, after the in-run service-worker restart and the full
+pass-2 relaunch, no reopened startup tab, no further archive request, the same
+completed record, and the earlier edit still in force. Both Anki headings are
+transient, so the page records every heading it paints through a
+`MutationObserver` instead of relying on a poll landing inside them. The four
+setup-installed packages are removed afterwards so the Settings installer below
+still starts from an empty library.
+
+One further check drives the recognised case. With setup returned to the Anki
+stage and a mocked AnkiConnect answering on the service-worker target, a new
+startup page must detect the busiest of three note types (`Kiku v2` beside
+`Basic` and the non-matching `My Kiku`), choose the deck holding the most of
+its distinct notes, save that model, deck and the resolved preset templates
+through the revisioned options write, record the `configured` outcome, and
+issue only the fixed read-only actions in ranking order at protocol version 6.
+The mock is detached and the previous setup record and Anki options are
+restored, so the Anki Settings checks below still begin with a lazy, offline
+connection and an unconfigured mapping.
+`HACHIDORI_STARTUP_SCREENSHOT`/`_DARK_SCREENSHOT` capture the held download,
+`HACHIDORI_STARTUP_COMPLETE_SCREENSHOT`/`_DARK_SCREENSHOT` the countdown
+result, `HACHIDORI_STARTUP_READY_SCREENSHOT`/`_DARK_SCREENSHOT` the final step
+after an absent Anki, and
+`HACHIDORI_STARTUP_ANKI_SCREENSHOT`/`_DARK_SCREENSHOT` the final step after an
+automatically configured one.
 
 An in-memory external-reference fixture also passes through real WASM. Real Enter
 on its closed-shadow anchor must create exactly one worker-routed browser tab,
@@ -910,7 +933,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 168 assertions, and the summary line
+`PLANNED` at the top of the file names all 171 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
