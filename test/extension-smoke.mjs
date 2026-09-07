@@ -6200,6 +6200,7 @@ async function settingsFrequencyStage() {
         && imageSource.value === "" && !imageSource.disabled;
     }
     const metadataFields = [
+      ["opt-lookup-counts", "showLookupCounts", true],
       ["opt-frequency-names", "showFrequencyDictionaryNames", true],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
@@ -11859,6 +11860,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   );
 
   await metadataRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+  lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candidate, results: lookup.results });
 
   const glossary = lookup.results[0].term.glossaries[0];
   const noteResults = [
@@ -12660,6 +12662,46 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
     view.destroy();
     popup.remove();
   }
+}
+
+function lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candidate, results }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  let renders = 0;
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
+    onResultsRendered({ lookupStats }) {
+      renders += 1;
+      if (lookupStats) view.setLookupStats(lookupStats, { lookupCount: 3, seenCount: null });
+    },
+  });
+  const line = () => popup.querySelector(".gsm-hoshidicts-lookup-stats");
+  try {
+    view.renderResults(results, candidate, { showLookupCounts: true });
+    const count = line()?.textContent === "Looked up 3 times" && !line().hidden;
+    popup.querySelector('.gsm-hoshidicts-tab[data-dictionary]').click();
+    const projected = !line();
+    popup.querySelector('.gsm-hoshidicts-tab').click();
+    popup.querySelector('.gsm-hoshidicts-note-button').click();
+    const form = popup.querySelector('form');
+    form.elements.definition.value = "keep count-setting draft";
+    form.elements.definition.focus();
+    view.updateDictionaryPresentation({ showLookupCounts: false });
+    const protectedDraft = popup.querySelector('form') === form && document.activeElement === form.elements.definition
+      && form.elements.definition.value === "keep count-setting draft";
+    view.closeNoteForm();
+    view.flushDictionaryPresentation();
+    const disabled = !line();
+    view.updateDictionaryPresentation({ showLookupCounts: true });
+    const enabled = line()?.textContent === "Looked up 3 times" && !line().hidden;
+    const previous = renders;
+    view.updateDictionaryPresentation({ showLookupCounts: true });
+    check("lookup count display stays on All and live toggles preserve Note without rerendering unchanged options",
+      count && projected && protectedDraft && disabled && enabled && renders === previous,
+      JSON.stringify({ count, projected, protectedDraft, disabled, enabled, renders, previous }));
+  } finally { view.destroy(); popup.remove(); }
 }
 
 async function metadataRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
