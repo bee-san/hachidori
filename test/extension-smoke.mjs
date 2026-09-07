@@ -800,7 +800,7 @@ async function managedScheduleStage() {
     } });
   await runInContext("initialiseUpdateAlarm()", context);
   const name = "hachidori-managed-dictionary-updates";
-  assert.equal((await alarms.api.get(name))?.scheduledTime, now);
+  check("an unchecked scheduled package is due immediately", (await alarms.api.get(name))?.scheduledTime === now);
   const cycle = () => runInContext("queueManagedUpdate({ install: true, dueOnly: true })", context);
   await cycle();
   let saved = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
