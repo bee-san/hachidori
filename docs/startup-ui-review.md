@@ -71,7 +71,7 @@ retained real fixture profile, with access disabled:
 
 The persistent rows change the setup progress render path. On macOS 14.6.1,
 MacBook Air M2/8 GiB, Node 22.22.3 and headless Chrome 152.0.7977.82, the local
-capture driver compared `6b89552` with production sources at `fae45dd`.
+capture driver compared `6b89552` with production sources at `6beb5f4`.
 The independent benchmark's timed workloads had finished; these runs used
 separate profiles, serially, at Puppeteer's 800 × 600 default viewport.
 
@@ -91,11 +91,11 @@ then after/before, each in a separate browser. The local commands are
 
 | Run | Before, median ms / 100 updates | After, median ms / 100 updates |
 | --- | ---: | ---: |
-| Before then after | 1.500 | 1.105 |
-| After then before | 1.615 | 1.050 |
+| Before then after | 1.465 | 1.005 |
+| After then before | 1.580 | 1.065 |
 
-Before sample ranges were 1.255–3.185 and 1.240–2.760 ms; after ranges were
-0.790–2.080 and 0.765–5.725 ms. Both revisions applied the same updates; only
+Before sample ranges were 1.260–7.605 and 1.290–2.515 ms; after ranges were
+0.770–2.825 and 0.710–2.810 ms. Both revisions applied the same updates; only
 the updated page retained the row. These short samples show no median
 synchronous-update regression, with visible warmup/noise. They exclude layout,
 paint, asynchronous work, downloads, native import and lookup latency, and do
