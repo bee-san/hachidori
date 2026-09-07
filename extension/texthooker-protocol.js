@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 const IGNORED_PLAIN_MESSAGES = new Set(["True", "False"]);
+export const MAX_TEXTHOOKER_FRAME_LENGTH = 64 * 1024;
+export const MAX_TEXTHOOKER_TEXT_LENGTH = 4096;
 
 export function parsePlainTexthookerMessage(value) {
-  if (typeof value !== "string" || !value.trim() || IGNORED_PLAIN_MESSAGES.has(value.trim())) return null;
+  if (typeof value !== "string" || value.length > MAX_TEXTHOOKER_FRAME_LENGTH
+      || !value.trim() || value.length > MAX_TEXTHOOKER_TEXT_LENGTH
+      || IGNORED_PLAIN_MESSAGES.has(value.trim())) return null;
   try {
     JSON.parse(value);
     return null;
@@ -13,6 +17,7 @@ export function parsePlainTexthookerMessage(value) {
 }
 
 export function parseGsmTexthookerMessage(value) {
+  if (typeof value === "string" && value.length > MAX_TEXTHOOKER_FRAME_LENGTH) return null;
   let payload;
   try {
     payload = typeof value === "string" ? JSON.parse(value) : value;
@@ -28,7 +33,7 @@ export function parseGsmTexthookerMessage(value) {
       || data.history === true) return null;
   const text = typeof payload.sentence === "string" ? payload.sentence
     : typeof data.text === "string" ? data.text : "";
-  if (!text.trim()) return null;
+  if (!text.trim() || text.length > MAX_TEXTHOOKER_TEXT_LENGTH) return null;
   return {
     type: "line",
     id: data.id,

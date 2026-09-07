@@ -58,12 +58,14 @@ test("lookup timing follows texthooker, cue, DOM, then recent priority with sour
     clipSeconds: 5, estimatedOffsetMs: -500 };
   assert.deepEqual(resolveCaptureInterval({ ...common, texthookerActive: true }), {
     sourceKind: "texthooker", sourceLabel: "Texthooker estimate", occurrenceId: "ws",
+    sourceId: "ws", sourceEpoch: "connection:1",
     startMs: 1500, endMs: 6500, pendingTail: true,
   });
   assert.equal(resolveCaptureInterval({ ...common, texthookerActive: false }).sourceKind, "cue");
   assert.equal(resolveCaptureInterval({ ...common, timingMode: "page", texthookerActive: true }).sourceKind, "cue");
   assert.deepEqual(resolveCaptureInterval({ ...common, timingMode: "recent", availableStartMs: 2000 }), {
     sourceKind: "recent", sourceLabel: "Recent clip", occurrenceId: "",
+    sourceId: "", sourceEpoch: "",
     startMs: 2000, endMs: 4000, pendingTail: false, partial: true,
   });
 });
@@ -78,4 +80,27 @@ test("unknown onsets, duplicate ambiguity and evicted starts fall through conser
   assert.equal(result.partial, true);
   assert.equal(resolveCaptureInterval({ records: [duplicate], lookupText: "猫", occurrenceId: "one",
     lookupTimeMs: 1500, availableStartMs: 1100, clipSeconds: 5, texthookerActive: false }).sourceKind, "recent");
+});
+
+test("active but unmatched texthooker falls through while word-only and cross-epoch matches fail closed", () => {
+  const records = [
+    record({ sourceKind: "texthooker", sourceId: "ws", sourceEpoch: "connection:2",
+      occurrenceId: "hook", text: "犬がいる", startMs: 1000 }),
+    record({ sourceKind: "cue", sourceId: "video:1", sourceEpoch: "playback:1",
+      occurrenceId: "cue", text: "猫がいる", startMs: 1200 }),
+  ];
+  const common = { records, lookupTimeMs: 1500, availableStartMs: 0, clipSeconds: 5,
+    texthookerActive: true };
+  assert.equal(resolveCaptureInterval({ ...common, lookupText: "猫がいる" }).sourceKind, "cue");
+  assert.equal(resolveCaptureInterval({ ...common, lookupText: "猫" }).sourceKind, "recent");
+
+  const duplicateEpochs = [
+    record({ sourceKind: "dom", sourceId: "tab:1", sourceEpoch: "document:old",
+      occurrenceId: "same", text: "猫", startMs: 1000 }),
+    record({ sourceKind: "dom", sourceId: "tab:1", sourceEpoch: "document:new",
+      occurrenceId: "same", text: "猫", startMs: 1100 }),
+  ];
+  assert.equal(resolveCaptureInterval({ records: duplicateEpochs, lookupText: "猫",
+    occurrenceId: "same", occurrenceSourceKind: "dom", lookupTimeMs: 1500,
+    availableStartMs: 0, clipSeconds: 5 }).sourceKind, "recent");
 });

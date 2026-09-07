@@ -14,12 +14,12 @@ async function until(predicate) {
   for (let n = 0; n < 100 && !predicate(); n++) await tick();
   assert.ok(predicate(), "mining controller did not reach the expected state");
 }
-function fixture(t, send) {
+function fixture(t, send, capture = send, wait) {
   const dom = new JSDOM("<!doctype html><body><section></section></body>");
   t.after(() => dom.window.close());
   const popup = dom.window.document.querySelector("section");
   const owner = {}, request = {};
-  const controller = globalThis.HDAnki.createAnkiController({ send, onChange() {} });
+  const controller = globalThis.HDAnki.createAnkiController({ send, capture, onChange() {}, ...(wait ? { wait } : {}) });
   const context = { owner, popup, request, isCurrent: () => true,
     getRequest: result => ({ term: result.term }) };
   const items = ["猫", "犬", "鳥"].map(expression => {
@@ -204,4 +204,88 @@ test("a reused primary action anchor binds the newly projected result and ignore
     await until(() => f.items[0].add.textContent === "Added");
     assert.deepEqual(submitted, [term]);
   }
+});
+
+test("captured media shows its source badge, polls a short job and submits only after encoding is ready", async t => {
+  const captureCalls = [];
+  const statuses = [
+    { state: "finishing", partial: true, assets: {} },
+    { state: "encoding", progress: 2, total: 4, partial: true, assets: {} },
+    { state: "ready", partial: true, assets: {
+      animation: { filename: "hachidori-abc.avif", byteLength: 2 },
+    } },
+  ];
+  let submitted;
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true, capture: {
+      requirements: { includeAnimation: true, includeAudio: false },
+      sourceLabel: "Video cue",
+      partial: true,
+    } };
+    if (type === "hd_anki_submit") {
+      submitted = request;
+      return { state: "added", noteId: 73, warnings: [] };
+    }
+    throw new Error(`Unexpected ${type}`);
+  }, async (type, fields) => {
+    captureCalls.push([type, fields]);
+    if (type === "hd_capture_export") return { jobId: "job-1", state: "finishing" };
+    if (type === "hd_capture_job_status") return statuses.shift();
+    throw new Error(`Unexpected ${type}`);
+  }, async () => {});
+  f.context.getRequest = result => ({ term: result.term, capturePin: {
+    token: "pin-1",
+    animationFilename: "hachidori-abc.avif",
+    audioFilename: "hachidori-abc.wav",
+  } });
+  f.controller.update({ ...configured, mediaCapture: {
+    ...globalThis.HDReaderOptions.DEFAULT_MEDIA_CAPTURE,
+    enabled: true,
+  } });
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add && !f.items[0].add.disabled);
+  assert.equal(f.items[0].control.querySelector(".gsm-hoshidicts-capture-badge").textContent,
+    "Video cue · Partial");
+  f.items[0].add.click();
+  await until(() => f.items[0].add.textContent === "Added");
+  assert.equal(submitted.captureJobId, "job-1");
+  assert.deepEqual(submitted.captureUnavailable, []);
+  assert.deepEqual(captureCalls.map(([type]) => type),
+    ["hd_capture_export", "hd_capture_job_status", "hd_capture_job_status", "hd_capture_job_status"]);
+});
+
+test("capture encoding failure is safely retryable and never becomes an uncertain Anki write", async t => {
+  let writes = 0;
+  const f = fixture(t, async (type) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true, capture: {
+      requirements: { includeAnimation: true, includeAudio: false },
+      sourceLabel: "Recent clip",
+      partial: false,
+    } };
+    if (type === "hd_anki_submit") { writes++; return { state: "added", noteId: 1, warnings: [] }; }
+    throw new Error(`Unexpected ${type}`);
+  }, async type => {
+    if (type === "hd_capture_export") return { jobId: "job-error" };
+    if (type === "hd_capture_job_status") return { state: "error", error: "encoder failed" };
+    if (type === "hd_capture_cancel") return { cancelled: true };
+    throw new Error(`Unexpected ${type}`);
+  }, async () => {});
+  f.context.getRequest = result => ({ term: result.term, capturePin: {
+    token: "pin-1",
+    animationFilename: "hachidori-abc.avif",
+    audioFilename: "hachidori-abc.wav",
+  } });
+  f.controller.update({ ...configured, mediaCapture: {
+    ...globalThis.HDReaderOptions.DEFAULT_MEDIA_CAPTURE,
+    enabled: true,
+  } });
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add && !f.items[0].add.disabled);
+  f.items[0].add.click();
+  await until(() => f.items[0].output.textContent.includes("encoder failed"));
+  assert.equal(f.items[0].add.dataset.state, "addable");
+  assert.equal(f.items[0].add.disabled, false);
+  assert.equal(writes, 0);
 });

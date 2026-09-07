@@ -64,6 +64,10 @@ const OFFSCREEN_DOCUMENT = "offscreen.html";
 const TARGET = "hoshidicts-offscreen";
 const UPDATE_TARGET = "hachidori-updates";
 const AUDIO_TARGET = "hachidori-audio";
+const CAPTURE_TARGET = "hachidori-capture";
+const CAPTURE_PAGE_TARGET = "hachidori-capture-page";
+const CAPTURE_CONTENT_TARGET = "hachidori-capture-content";
+const CAPTURE_DOCUMENT = "capture.html";
 
 // Requests the worker answers itself. A second target is what keeps them out of
 // the relay below: a message from the offscreen document carrying TARGET is
@@ -95,6 +99,8 @@ const NOT_LISTENING = /Receiving end does not exist|Could not establish connecti
 
 let creating = null;
 let latestAudioOperation = null;
+let capturePage = null;
+const captureContentDocuments = new Map();
 
 function describe(error) {
   if (error instanceof Error) {
@@ -107,6 +113,87 @@ function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function capturePageSender(sender) {
+  return sender.id === chrome.runtime.id
+    && sender.url === chrome.runtime.getURL(CAPTURE_DOCUMENT)
+    && typeof sender.documentId === "string" && sender.documentId !== ""
+    && Number.isInteger(sender.tab?.id);
+}
+
+function trustedCaptureControl(sender) {
+  if (sender.id !== chrome.runtime.id || typeof sender.url !== "string") return false;
+  try {
+    const url = new URL(sender.url);
+    if (url.search) return false;
+    url.hash = "";
+    return [chrome.runtime.getURL("settings.html"), chrome.runtime.getURL(CAPTURE_DOCUMENT)].includes(url.href);
+  } catch {
+    return false;
+  }
+}
+
+async function relayCapture(message) {
+  if (!capturePage?.documentId) throw new Error("Open the Media capture page and keep it open.");
+  const request = {
+    ...message,
+    target: CAPTURE_PAGE_TARGET,
+    relayed: true,
+    captureDocumentId: capturePage.documentId,
+  };
+  let reply;
+  try {
+    reply = await chrome.runtime.sendMessage(request);
+  } catch (error) {
+    capturePage = null;
+    throw error;
+  }
+  if (!reply) {
+    capturePage = null;
+    throw new Error("The Media capture page did not reply.");
+  }
+  if (!responseFits(reply)) throw new Error(responseLimitError(message.type));
+  if (!reply.ok) throw new Error(reply.error || "The capture operation failed.");
+  return reply;
+}
+
+function finiteCaptureTime(value) {
+  return Number.isFinite(value) && Math.abs(value - Date.now()) <= 10 * 60 * 1000;
+}
+
+function shortCaptureString(value, limit = 256) {
+  return typeof value === "string" && value.length > 0 && value.length <= limit;
+}
+
+function assertCaptureTabId(tabId) {
+  if (!Number.isInteger(tabId) || tabId < 0) throw new Error("Choose a valid reading tab.");
+}
+
+async function captureTabs() {
+  const tabs = await chrome.tabs.query({});
+  return tabs.filter(tab => Number.isInteger(tab.id) && typeof tab.url === "string"
+      && /^(https?|file):/u.test(tab.url))
+    .map(tab => ({ id: tab.id, title: String(tab.title || "").slice(0, 200), url: tab.url.slice(0, 2048) }));
+}
+
+async function commandCaptureContent(tabId, type, fields = {}) {
+  assertCaptureTabId(tabId);
+  try {
+    const reply = await chrome.tabs.sendMessage(tabId, {
+      target: CAPTURE_CONTENT_TARGET,
+      type,
+      ...fields,
+    }, { frameId: 0 });
+    if (reply?.error) throw new Error(reply.error);
+    return reply;
+  } catch (error) {
+    throw new Error(`The reading page is unavailable. Reload it and try again. ${describe(error)}`);
+  }
+}
+
+function captureDocumentKey(tabId) {
+  return `tab:${tabId}`;
 }
 
 async function offscreenExists() {
@@ -1075,6 +1162,199 @@ function failureReply(message, error) {
 
 const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight", hd_anki_submit: "submit", hd_anki_browse: "browse" };
 
+const CAPTURE_CONTROL_TYPES = new Set([
+  "hd_capture_open",
+  "hd_capture_tabs",
+  "hd_capture_link",
+  "hd_capture_unlink",
+  "hd_capture_video_select",
+  "hd_capture_track_area",
+  "hd_capture_clear_area",
+  "hd_capture_status",
+]);
+const CAPTURE_CONTENT_TYPES = new Set([
+  "hd_capture_content_identify",
+  "hd_capture_text_begin",
+  "hd_capture_text_close",
+  "hd_capture_text_source_close",
+  "hd_capture_page_status",
+  "hd_capture_pin",
+  "hd_capture_release",
+  "hd_capture_export",
+  "hd_capture_job_status",
+  "hd_capture_cancel",
+]);
+
+async function handleCaptureControl(message, sender) {
+  if (message.type === "hd_capture_register") {
+    if (!capturePageSender(sender)) throw new Error("Only the Media capture page can register a capture host.");
+    capturePage = { documentId: sender.documentId, tabId: sender.tab.id, seenAt: Date.now() };
+    return { documentId: sender.documentId, tabId: sender.tab.id };
+  }
+  if (!CAPTURE_CONTROL_TYPES.has(message.type) || !trustedCaptureControl(sender)) {
+    throw new Error("Unknown or untrusted capture control request.");
+  }
+  if (message.type === "hd_capture_open") {
+    if (capturePage?.tabId !== undefined) {
+      try {
+        const tab = await chrome.tabs.update(capturePage.tabId, { active: true });
+        if (Number.isInteger(tab.windowId)) await chrome.windows.update(tab.windowId, { focused: true });
+        return { tabId: tab.id };
+      } catch {
+        capturePage = null;
+      }
+    }
+    const tab = await chrome.tabs.create({ url: chrome.runtime.getURL(CAPTURE_DOCUMENT), active: true });
+    return { tabId: tab.id };
+  }
+  if (message.type === "hd_capture_tabs") return { tabs: await captureTabs() };
+  if (message.type === "hd_capture_status") return relayCapture(message);
+  assertCaptureTabId(message.tabId);
+  if (message.type === "hd_capture_link") {
+    const details = await commandCaptureContent(message.tabId, "hd_capture_link", {});
+    const document = captureContentDocuments.get(message.tabId);
+    if (!document?.documentId) throw new Error("The linked page did not establish a document identity.");
+    const tab = await chrome.tabs.get(message.tabId);
+    const page = {
+      tabId: message.tabId,
+      documentId: document.documentId,
+      title: String(tab.title || "").slice(0, 200),
+      url: String(tab.url || "").slice(0, 2048),
+      videos: Array.isArray(details?.videos) ? details.videos : [],
+      message: details?.message || "",
+    };
+    await relayCapture({ type: "hd_capture_linked", requestId: message.requestId, page });
+    return { page };
+  }
+  if (message.type === "hd_capture_unlink") {
+    const result = await commandCaptureContent(message.tabId, "hd_capture_unlink", {});
+    captureContentDocuments.delete(message.tabId);
+    return result;
+  }
+  const command = {
+    hd_capture_video_select: ["hd_capture_video_select", { videoId: message.videoId }],
+    hd_capture_track_area: ["hd_capture_track_area", {}],
+    hd_capture_clear_area: ["hd_capture_clear_area", {}],
+  }[message.type];
+  return commandCaptureContent(message.tabId, command[0], command[1]);
+}
+
+function authoritativeCaptureRecord(message, sender) {
+  const record = message.record;
+  if (!record || !["cue", "dom"].includes(record.sourceKind)
+      || !shortCaptureString(record.sourceEpoch) || !shortCaptureString(record.occurrenceId)
+      || typeof record.text !== "string" || record.text.length === 0 || record.text.length > 4096
+      || !finiteCaptureTime(record.startMs)) throw new Error("The reading page sent an invalid text timing record.");
+  return {
+    sourceKind: record.sourceKind,
+    sourceId: captureDocumentKey(sender.tab.id),
+    sourceEpoch: `${sender.documentId}:${record.sourceEpoch}`,
+    occurrenceId: record.occurrenceId,
+    text: record.text,
+    startMs: record.startMs,
+    onsetKnown: record.onsetKnown !== false,
+  };
+}
+
+function authoritativeCaptureIdentity(message, sender) {
+  const identity = message.identity;
+  if (!identity || !["cue", "dom"].includes(identity.sourceKind)
+      || !shortCaptureString(identity.sourceEpoch) || !shortCaptureString(identity.occurrenceId)
+      || !finiteCaptureTime(message.endMs)) throw new Error("The reading page sent an invalid text close record.");
+  return {
+    sourceKind: identity.sourceKind,
+    sourceId: captureDocumentKey(sender.tab.id),
+    sourceEpoch: `${sender.documentId}:${identity.sourceEpoch}`,
+    occurrenceId: identity.occurrenceId,
+  };
+}
+
+async function handleCaptureContent(message, sender) {
+  if (!CAPTURE_CONTENT_TYPES.has(message.type) || sender.id !== chrome.runtime.id
+      || !Number.isInteger(sender.tab?.id) || sender.frameId !== 0
+      || typeof sender.documentId !== "string" || sender.documentId === "") {
+    throw new Error("Unknown or untrusted reading-page capture request.");
+  }
+  captureContentDocuments.set(sender.tab.id, {
+    documentId: sender.documentId,
+    url: String(sender.url || ""),
+    seenAt: Date.now(),
+  });
+  if (message.type === "hd_capture_content_identify") {
+    return { documentId: sender.documentId, tabId: sender.tab.id };
+  }
+  const authority = { tabId: sender.tab.id, documentId: sender.documentId };
+  if (message.type === "hd_capture_text_begin") {
+    return relayCapture({ ...message, ...authority, record: authoritativeCaptureRecord(message, sender) });
+  }
+  if (message.type === "hd_capture_text_close") {
+    return relayCapture({ ...message, ...authority, identity: authoritativeCaptureIdentity(message, sender) });
+  }
+  if (message.type === "hd_capture_text_source_close") {
+    if (!["cue", "dom"].includes(message.sourceKind) || !shortCaptureString(message.sourceEpoch)
+        || !finiteCaptureTime(message.endMs)) throw new Error("The reading page sent an invalid source close.");
+    return relayCapture({
+      ...message,
+      ...authority,
+      sourceId: captureDocumentKey(sender.tab.id),
+      sourceEpoch: `${sender.documentId}:${message.sourceEpoch}`,
+    });
+  }
+  if (message.type === "hd_capture_pin") {
+    const lookup = message.lookup;
+    if (!lookup || typeof lookup.lookupText !== "string" || lookup.lookupText.length === 0
+        || lookup.lookupText.length > 4096 || !finiteCaptureTime(lookup.lookupTimeMs)
+        || (lookup.occurrenceId !== "" && !shortCaptureString(lookup.occurrenceId))
+        || !["", "dom", "cue"].includes(lookup.occurrenceSourceKind ?? "")) {
+      throw new Error("The reading page sent an invalid lookup capture request.");
+    }
+    return relayCapture({ ...message, ...authority,
+      lookup: { ...lookup, occurrenceId: lookup.occurrenceId || "",
+        occurrenceSourceKind: lookup.occurrenceSourceKind || "" } });
+  }
+  if (message.type === "hd_capture_release") {
+    if (!shortCaptureString(message.token)) throw new Error("The capture release token is invalid.");
+    return relayCapture({ ...message, ...authority });
+  }
+  if (message.type === "hd_capture_export") {
+    if (!shortCaptureString(message.token)
+        || !message.requirements || typeof message.requirements !== "object"
+        || typeof message.requirements.includeAnimation !== "boolean"
+        || typeof message.requirements.includeAudio !== "boolean"
+        || (!message.requirements.includeAnimation && !message.requirements.includeAudio)) {
+      throw new Error("The capture export request is invalid.");
+    }
+    return relayCapture({
+      ...message,
+      ...authority,
+      requirements: {
+        includeAnimation: message.requirements.includeAnimation,
+        includeAudio: message.requirements.includeAudio,
+      },
+    });
+  }
+  if (message.type === "hd_capture_job_status" || message.type === "hd_capture_cancel") {
+    if (!shortCaptureString(message.jobId)) throw new Error("The capture export job is invalid.");
+    return relayCapture({ ...message, ...authority });
+  }
+  if (message.type === "hd_capture_page_status") {
+    return relayCapture({ ...message, ...authority });
+  }
+  throw new Error("Unknown reading-page capture request.");
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== CAPTURE_TARGET || message.relayed === true) return false;
+  const operation = message.type === "hd_capture_register" || CAPTURE_CONTROL_TYPES.has(message.type)
+    ? handleCaptureControl(message, sender)
+    : handleCaptureContent(message, sender);
+  Promise.resolve(operation).then(
+    result => sendResponse(workerReply(message, result)),
+    error => sendResponse(failureReply(message, error)),
+  );
+  return true;
+});
+
 // Anki owns its own mutation queue. Discovery, DOM rendering and network I/O
 // must never hold the dictionary storage queue while the engine calls into it.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -1092,6 +1372,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         readOptions: async () => globalThis.HDReaderOptions.normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]),
         readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
         engine: fields => send(TARGET, fields), offscreen: fields => send("hachidori-anki-render", fields),
+        capture: fields => relayCapture({ ...fields, requestId: `anki-capture-${crypto.randomUUID()}` }),
       });
     }
     return ankiMining[ANKI_METHODS[message.type]](message.type === "hd_anki_browse" ? message.expression : message.request);

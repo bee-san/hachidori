@@ -106,11 +106,11 @@ function temporalMatches(record, lookupTimeMs) {
   return record.startMs <= lookupTimeMs && (record.endMs == null || lookupTimeMs <= record.endMs);
 }
 
-function matchingRecord(records, sourceKind, lookupText, occurrenceId, lookupTimeMs) {
+function matchingRecord(records, sourceKind, lookupText, occurrenceId, occurrenceSourceKind, lookupTimeMs) {
   const normalized = normaliseCaptureText(lookupText);
   const matches = records.filter(record => record.sourceKind === sourceKind
     && record.onsetKnown !== false && temporalMatches(record, lookupTimeMs)
-    && (occurrenceId ? record.occurrenceId === occurrenceId
+    && (occurrenceId && occurrenceSourceKind === sourceKind ? record.occurrenceId === occurrenceId
       : (record.normalizedText ?? normaliseCaptureText(record.text)) === normalized));
   return matches.length === 1 ? matches[0] : null;
 }
@@ -133,6 +133,7 @@ export function resolveCaptureInterval({
   records,
   lookupText,
   occurrenceId = "",
+  occurrenceSourceKind = "",
   lookupTimeMs,
   availableStartMs,
   timingMode = "auto",
@@ -153,17 +154,26 @@ export function resolveCaptureInterval({
     dom: "Page-text estimate",
   };
   for (const kind of priorities) {
-    const record = matchingRecord(records, kind, lookupText, occurrenceId, lookupTimeMs);
+    const record = matchingRecord(records, kind, lookupText, occurrenceId, occurrenceSourceKind, lookupTimeMs);
     if (!record) continue;
     const interval = timedInterval(record, lookupTimeMs, clipMs, kind === "cue" ? 0 : estimatedOffsetMs);
     if (interval.startMs < availableStartMs || interval.endMs <= interval.startMs) continue;
-    return { ...interval, sourceKind: kind, sourceLabel: labels[kind], occurrenceId: record.occurrenceId };
+    return {
+      ...interval,
+      sourceKind: kind,
+      sourceLabel: labels[kind],
+      sourceId: record.sourceId,
+      sourceEpoch: record.sourceEpoch,
+      occurrenceId: record.occurrenceId,
+    };
   }
   const startMs = Math.max(availableStartMs, lookupTimeMs - clipMs);
   if (lookupTimeMs <= startMs) return null;
   return {
     sourceKind: "recent",
     sourceLabel: "Recent clip",
+    sourceId: "",
+    sourceEpoch: "",
     occurrenceId: "",
     startMs,
     endMs: lookupTimeMs,

@@ -12,6 +12,8 @@ test("plain texthooker accepts only live non-JSON text and ignores acknowledgeme
   for (const value of ["", "  ", "True", "False", "{\"sentence\":\"history\"}", null]) {
     assert.equal(parsePlainTexthookerMessage(value), null);
   }
+  assert.equal(parsePlainTexthookerMessage("x".repeat(4097)), null);
+  assert.equal(parsePlainTexthookerMessage("x".repeat(64 * 1024 + 1)), null);
 });
 
 test("GSM texthooker accepts the explicit text_received schema and preserves occurrence identity", () => {
@@ -36,6 +38,7 @@ test("GSM parser ignores snapshots, history, translations, malformed and unrelat
     { ...base, data: { ...base.data, id: "" } },
     { ...base, data: { ...base.data, session_id: "" } },
     { event: "translation", sentence: "cat" },
+    { ...base, sentence: "x".repeat(4097) },
     [{ ...base }],
   ]) assert.equal(parseGsmTexthookerMessage(value), null);
   assert.throws(() => parseTexthookerMessage("future", "text"), /unsupported/u);

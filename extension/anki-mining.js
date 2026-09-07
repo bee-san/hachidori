@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiAvailability } from "./anki.js";
-import { resolveAnkiTemplates } from "./anki-templates.js";
+import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
 import { ankiBrowseQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, findAnkiOverwriteTarget,
   isAnkiDuplicateError, overwriteAnkiFields } from "./anki-duplicates.js";
@@ -35,7 +35,50 @@ async function decision(prepared) {
   return { state: "duplicate", canAdd: config.duplicateBehavior === "new", error: null };
 }
 
-export function createAnkiMiningService({ gateway, readConfig, buildFields, beforeWrite, enrich, now = Date.now }) {
+function fieldsForDecision(prepared, checked) {
+  const target = checked.target;
+  if (!target) {
+    return {
+      fields: prepared.note.fields,
+      target: null,
+      templates: prepared.resolved.templates,
+    };
+  }
+  const canonical = canonicalAnkiFields(prepared.note.fields, prepared.resolved.templates, target.fields);
+  return {
+    fields: overwriteAnkiFields(canonical.fields, target.fields, canonical.templates),
+    target,
+    templates: Object.fromEntries(Object.entries(canonical.templates).filter(([field, template]) =>
+      template.overwriteMode !== "skip"
+      && !(template.overwriteMode === "coalesce" && target.fields[field]))),
+  };
+}
+
+function captureForApplication(request, templates) {
+  const requirements = ankiCaptureRequirements(templates);
+  const unavailable = new Set(Array.isArray(request.captureUnavailable) ? request.captureUnavailable : []);
+  requirements.includeAnimation &&= !unavailable.has("animation");
+  requirements.includeAudio &&= !unavailable.has("audio");
+  if (!requirements.includeAnimation && !requirements.includeAudio) return null;
+  const pin = request.capturePin;
+  return {
+    requirements,
+    sourceLabel: pin?.sourceLabel,
+    partial: pin?.partial === true,
+    readyAtMs: pin?.readyAtMs,
+  };
+}
+
+export function createAnkiMiningService({
+  gateway,
+  readConfig,
+  buildFields,
+  beforeWrite,
+  afterVerified = async () => {},
+  validateCapture = async () => {},
+  enrich,
+  now = Date.now,
+}) {
   let cached = null;
   let mutations = Promise.resolve();
   const invokeFor = config => (action, params, timeoutMs) => gateway.invoke(action, params, config.apiKey, timeoutMs);
@@ -78,8 +121,18 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, befo
   }
 
   async function preflight(request) {
-    const result = await decision(await prepare(request, false));
-    return { state: result.state, canAdd: result.canAdd, error: result.error, action: result.action };
+    const prepared = await prepare(request, false);
+    const result = await decision(prepared);
+    const applied = result.canAdd ? fieldsForDecision(prepared, result) : null;
+    const capture = applied ? captureForApplication(request, applied.templates) : null;
+    if (capture) await validateCapture({ request, prepared, capture });
+    return {
+      state: result.state,
+      canAdd: result.canAdd,
+      error: result.error,
+      action: result.action,
+      capture,
+    };
   }
 
   async function write(request) {
@@ -87,11 +140,18 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, befo
     const checked = await decision(prepared);
     if (!checked.canAdd) return { state: checked.state, error: checked.error };
     const { configJson, note, resolved, invoke } = prepared;
-    const target = checked.target;
-    const canonical = target ? canonicalAnkiFields(note.fields, resolved.templates, target.fields) : null;
-    const fields = target ? overwriteAnkiFields(canonical.fields, target.fields, canonical.templates) : note.fields;
+    const { fields, target, templates } = fieldsForDecision(prepared, checked);
+    const capture = captureForApplication(request, templates);
+    if (capture) await validateCapture({ request, prepared, capture });
     if (JSON.stringify(await readConfig()) !== configJson) throw new Error(CONFIG_CHANGED);
-    await beforeWrite(request);
+    const writeResources = await beforeWrite({
+      request,
+      ...prepared,
+      target,
+      appliedFields: fields,
+      capture,
+    });
+    if (JSON.stringify(await readConfig()) !== configJson) throw new Error(CONFIG_CHANGED);
     let noteId;
     try {
       if (target) {
@@ -108,11 +168,34 @@ export function createAnkiMiningService({ gateway, readConfig, buildFields, befo
       // worker nor the reader retries it automatically, including append modes.
       return { state: "uncertain", error: `The write could not be confirmed. Use View in Anki before trying again. ${error.message}` };
     }
-    const warnings = [];
+    const warnings = [...(Array.isArray(writeResources?.warnings) ? writeResources.warnings : [])];
+    let verified = false;
     try {
       await verifyAnkiFields(invoke, noteId, fields);
-      warnings.push(...await enrich({ request, ...prepared, noteId, existingFields: target?.fields, appliedFields: fields }));
-    } catch (error) { warnings.push(error.message); }
+      verified = true;
+    } catch (error) {
+      warnings.push(error.message);
+    }
+    if (verified) {
+      try {
+        await afterVerified({
+          request,
+          ...prepared,
+          noteId,
+          existingFields: target?.fields,
+          appliedFields: fields,
+          capture,
+          writeResources,
+        });
+      } catch (error) {
+        warnings.push(`Captured media cleanup: ${error.message}`);
+      }
+      try {
+        warnings.push(...await enrich({ request, ...prepared, noteId, existingFields: target?.fields, appliedFields: fields }));
+      } catch (error) {
+        warnings.push(error.message);
+      }
+    }
     cached = null;
     return { state: target ? "updated" : "added", noteId, warnings };
   }

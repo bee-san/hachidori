@@ -7,10 +7,12 @@ import { applyAnkiPreset, resolveAnkiTemplates, ankiTemplateErrors, renderAnkiTe
 const config = patch => ({ ...globalThis.HDReaderOptions.normaliseOptions({}).anki, ...patch });
 
 test("basic mappings preserve disabled values and combine shared fields in semantic order", () => {
-  const value = config({ fields: { ...config().fields, expression: "Front", reading: "front", pitch: "PitchPosition" } });
-  const resolved = resolveAnkiTemplates(value, ["Front", "Back", "PitchPosition"]);
+  const value = config({ fields: { ...config().fields, expression: "Front", reading: "front", pitch: "PitchPosition",
+    captureAnimation: "Media", captureAudio: "Media" } });
+  const resolved = resolveAnkiTemplates(value, ["Front", "Back", "PitchPosition", "Media"]);
   assert.deepEqual(resolved.templates, { Front: { value: "{expression}<br>{reading}", overwriteMode: "coalesce" },
-    Back: { value: "", overwriteMode: "coalesce" }, PitchPosition: { value: "{pitch-position}", overwriteMode: "coalesce" } });
+    Back: { value: "", overwriteMode: "coalesce" }, PitchPosition: { value: "{pitch-position}", overwriteMode: "coalesce" },
+    Media: { value: "{capture-animation}<br>{capture-audio}", overwriteMode: "coalesce" } });
   assert.deepEqual(resolved.errors, []);
   assert.deepEqual(resolveAnkiTemplates(config({ fieldTemplates: {} }), ["Front"]).templates,
     { Front: { value: "", overwriteMode: "coalesce" } });
@@ -56,6 +58,7 @@ test("Automatic and named presets materialize only discovered fields with visibl
 
 test("marker validation retains unknown tokens as errors and recognizes nonempty dictionary-specific markers", () => {
   assert.deepEqual(ankiTemplateErrors("{Expression}<br>{single-glossary-辞典-plain}{single-frequency-number-辞典}"), []);
+  assert.deepEqual(ankiTemplateErrors("{capture-animation}{capture-audio}"), []);
   const source = "literal {unknown} {single-glossary-} {screenshot} {unknown}";
   assert.deepEqual(ankiTemplateErrors(source), ["Unknown marker: {unknown}", "Unknown marker: {single-glossary-}", "Unknown marker: {screenshot}"]);
   assert.equal(source, "literal {unknown} {single-glossary-} {screenshot} {unknown}");

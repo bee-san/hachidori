@@ -95,5 +95,10 @@ test("availability revalidates retained choices, all mappings and the first mode
   assert.match(ankiAvailability(value, { ...discovery, fields: ["Other", "Back"] }).join(" "), /front.*unavailable/iu);
   assert.match(ankiAvailability(value, { ...discovery, fields: ["Other", "Front", "Back"] }).join(" "), /first field/u);
   assert.match(ankiAvailability(value, { ...discovery, model: "Old" }).join(" "), /Refresh/u);
+  const capturedFirst = config({ model: "Basic", fieldTemplates: {
+    Front: { value: "{capture-animation}", overwriteMode: "overwrite" },
+    Back: { value: "{expression}", overwriteMode: "overwrite" },
+  } });
+  assert.match(ankiAvailability(capturedFirst, discovery).join(" "), /captured media.*first field/iu);
   assert.deepEqual(value, before);
 });

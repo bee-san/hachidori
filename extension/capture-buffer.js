@@ -61,7 +61,7 @@ export function createFrameRing({
     finiteTime(startMs, "pin start");
     finiteTime(endMs, "pin end");
     if (endMs <= startMs) throw new Error("capture pin interval is empty");
-    const selected = frames.filter(frame => frame.timestampMs >= startMs && frame.timestampMs <= endMs);
+    const selected = frames.filter(frame => frame.timestampMs >= startMs && frame.timestampMs < endMs);
     if (!selected.length) throw new Error("No retained video frames cover this lookup.");
     const size = selected.reduce((sum, frame) => sum + frame.data.byteLength, 0);
     if (size > pinnedLimit) throw new Error("The selected video exceeds the pinned-frame memory limit.");

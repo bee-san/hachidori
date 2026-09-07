@@ -6,6 +6,7 @@ export function encodeCapturedAnimation(frames, options, {
   WorkerClass = globalThis.Worker,
   timeoutMs = CAPTURE_ENCODING_TIMEOUT_MS,
   onProgress = () => {},
+  signal,
 } = {}) {
   if (typeof WorkerClass !== "function") return Promise.reject(new Error("Media encoder workers are unavailable."));
   const worker = new WorkerClass(new URL("./capture-encoder-worker.js", import.meta.url), {
@@ -15,16 +16,24 @@ export function encodeCapturedAnimation(frames, options, {
   const id = crypto.randomUUID();
   return new Promise((resolve, reject) => {
     let settled = false;
+    let timer;
     const finish = (callback, value) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       worker.terminate();
       callback(value);
     };
-    const timer = setTimeout(() => {
+    const onAbort = () => finish(reject, new Error("Media encoding was cancelled."));
+    timer = setTimeout(() => {
       finish(reject, new Error("Media encoding exceeded the 30-second deadline."));
     }, timeoutMs);
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
     worker.addEventListener("error", event => {
       finish(reject, event.error ?? new Error(event.message || "The media encoder worker stopped."));
     });

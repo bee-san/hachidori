@@ -9,6 +9,7 @@ const CORE_MARKERS = ["expression", "reading", "furigana", "furigana-plain", "di
   "sentence", "sentence-furigana", "sentence-furigana-plain", "cloze-prefix", "cloze-body", "cloze-suffix",
   "frequency", "frequencies", "frequency-harmonic-rank", "frequency-harmonic-occurrence", "frequency-average-rank",
   "frequency-average-occurrence", "pitch", "pitch-position", "pitch-accent-positions", "pitch-categories", "pitch-accent-categories", "audio"];
+CORE_MARKERS.push("capture-animation", "capture-audio");
 export const ANKI_TEMPLATE_MARKERS = CORE_MARKERS;
 const MARKER_ALIASES = new Map([["pitch-accent", "pitch"], ["pitch-accents", "pitch"],
   ["pitch-accent-graphs", "pitch"], ["pitch-accent-graphs-jj", "pitch"]]);
@@ -21,6 +22,8 @@ const genericAliases = {
   definition: ["Definition", "Definitions", "Meaning", "Glossary"], sentence: ["Sentence", "Context", "Example Sentence"],
   frequency: ["Frequency", "Frequencies"], pitch: ["Pitch Accent", "PitchAccent", "Pitch", "Accent"],
   audio: ["WordAudio", "PronunciationAudio", "Pronunciation", "Audio"],
+  captureAnimation: ["Capture Animation", "CaptureAnimation", "Sentence Animation", "SentenceAnimation"],
+  captureAudio: ["Capture Audio", "CaptureAudio", "Sentence Audio", "SentenceAudio"],
 };
 // Kiku table from GSM PR #549. Lapis uses this same field shape, verified against
 // donkuri/lapis f4eb29bd build/anki_fields.yaml; non-mining fields stay blank.
@@ -55,6 +58,14 @@ export function ankiTemplateMarkerNames(template) {
     const name = match[1].toLowerCase();
     return MARKER_ALIASES.get(name) ?? name;
   });
+}
+
+export function ankiCaptureRequirements(templates) {
+  const markers = new Set(Object.values(templates).flatMap(template => ankiTemplateMarkerNames(template.value)));
+  return {
+    includeAnimation: markers.has("capture-animation"),
+    includeAudio: markers.has("capture-audio"),
+  };
 }
 
 export function ankiTemplateErrors(template) {
@@ -95,7 +106,9 @@ function basicTemplates(config, fields) {
     const field = canonical.get(name.toLowerCase());
     if (!field) { errors.push(`Mapped field “${name}” is unavailable.`); continue; }
     const row = rows.get(field);
-    const marker = semantic === "pitch" && field.toLowerCase() === "pitchposition" ? "pitch-position" : semantic;
+    const marker = semantic === "pitch" && field.toLowerCase() === "pitchposition" ? "pitch-position"
+      : semantic === "captureAnimation" ? "capture-animation"
+        : semantic === "captureAudio" ? "capture-audio" : semantic;
     row.value += `${row.value ? "<br>" : ""}{${marker}}`;
   }
   return { templates: Object.fromEntries(rows), staleFields: [], errors };
