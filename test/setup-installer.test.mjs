@@ -5,8 +5,9 @@ import { SETUP_EVENTS_TARGET, createSetupInstaller, requestedSetupSources } from
 
 const BUSY = "the dictionary engine is busy mutating";
 
-function harness({ installed = [], statuses = null, imports = {} } = {}) {
+function harness({ installed = [], statuses = null, imports = {}, recordFailures = 0 } = {}) {
   const log = { dispatched: [], asked: [], recorded: [], broadcast: [] };
+  let failingRecords = recordFailures;
   let clock = 1000;
   let statusIndex = 0;
   let ids = 0;
@@ -34,6 +35,11 @@ function harness({ installed = [], statuses = null, imports = {} } = {}) {
     },
     async notify(message) {
       log.recorded.push(message);
+      if (failingRecords > 0) {
+        failingRecords -= 1;
+        if (failingRecords % 2 === 0) throw new Error("Could not establish connection");
+        return undefined;
+      }
       return { ok: true };
     },
     broadcast(event) {
@@ -143,6 +149,22 @@ test("the installer waits for a ready, idle engine and queues behind another mut
   assert.equal(installer.snapshot().entries[0].phase, "installed");
   assert.equal(log.recorded[0].outcomes.jiten.status, "installed");
   assert.ok(log.dispatched.filter((message) => message.type === "hd_status").length >= 4);
+});
+
+test("an outcome record is resent until the worker answers, and the entry settles only then", async () => {
+  const { installer, log } = harness({ recordFailures: 2, imports: { jiten: { seconds: 1 } } });
+  installer.attach(["jiten"]);
+  // Two failed attempts (a lost reply and a thrown send) keep the entry unsettled.
+  for (let attempt = 0; attempt < 100 && log.recorded.length < 2; attempt += 1) await settle();
+  assert.equal(log.recorded.length, 2);
+  assert.equal(installer.snapshot().entries[0].phase, "downloading");
+  assert.equal(log.broadcast.some((event) => event.entries[0].phase === "installed"), false);
+  await untilFinished(installer);
+  const outcomeRecords = log.recorded.filter((message) => message.outcomes?.jiten);
+  assert.equal(outcomeRecords.length, 3);
+  assert.ok(outcomeRecords.every((message) => message.runId === "run-1" && message.outcomes.jiten.status === "installed"));
+  assert.equal(installer.snapshot().entries[0].phase, "installed");
+  assert.equal(log.recorded.at(-1).runSeconds > 0, true);
 });
 
 test("an unavailable engine or inventory fails the row with its reason and the run still finishes", async () => {

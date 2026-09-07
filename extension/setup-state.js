@@ -24,7 +24,7 @@ export const FIRST_INSTALL_SELECTIONS = Object.freeze({
 });
 
 function emptySetupDictionaries() {
-  return { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [] };
+  return { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] };
 }
 
 export function initialSetupState(startedAt) {
@@ -63,7 +63,9 @@ function normaliseSetupDictionaries(value) {
       || !validSeconds(value.totalSeconds)
       || typeof value.continued !== "boolean"
       || !Array.isArray(value.selectionsApplied)
-      || !value.selectionsApplied.every((sourceId) => Object.hasOwn(FIRST_INSTALL_SELECTIONS, sourceId))) {
+      || !value.selectionsApplied.every((sourceId) => Object.hasOwn(FIRST_INSTALL_SELECTIONS, sourceId))
+      || !Array.isArray(value.recordedRuns)
+      || !value.recordedRuns.every((runId) => typeof runId === "string" && runId !== "")) {
     throw new Error("the setup state is malformed");
   }
   return {
@@ -72,6 +74,7 @@ function normaliseSetupDictionaries(value) {
     totalSeconds: value.totalSeconds,
     continued: value.continued,
     selectionsApplied: [...new Set(value.selectionsApplied)],
+    recordedRuns: [...new Set(value.recordedRuns)],
   };
 }
 
@@ -125,7 +128,10 @@ export function advanceSetupState(current, stage, now, { continued = false } = {
 
 // The installer reports one outcome per dictionary and one duration per run.
 // Retries accumulate into the stage total; a superseded outcome is replaced.
-export function recordSetupDictionaries(current, { outcomes = {}, runSeconds = null, selectionsApplied = [] }) {
+// A record is idempotent: the installer resends it until the reply arrives, so
+// a run whose duration already landed is not counted again.
+export function recordSetupDictionaries(current, { runId, outcomes = {}, runSeconds = null, selectionsApplied = [] }) {
+  if (typeof runId !== "string" || runId === "") throw new Error("the setup record names no run");
   if (!validSeconds(runSeconds)) throw new Error("the setup run duration is invalid");
   const recorded = Object.fromEntries(Object.entries(outcomes).map(([sourceId, outcome]) =>
     [sourceId, normaliseSetupOutcome(outcome)]));
@@ -133,14 +139,16 @@ export function recordSetupDictionaries(current, { outcomes = {}, runSeconds = n
     throw new Error("the setup selection is unknown");
   }
   const dictionaries = current.dictionaries;
+  const countRun = runSeconds !== null && !dictionaries.recordedRuns.includes(runId);
   return {
     ...current,
     revision: current.revision + 1,
     dictionaries: {
       ...dictionaries,
       outcomes: { ...dictionaries.outcomes, ...recorded },
-      totalSeconds: runSeconds === null ? dictionaries.totalSeconds : (dictionaries.totalSeconds ?? 0) + runSeconds,
+      totalSeconds: countRun ? (dictionaries.totalSeconds ?? 0) + runSeconds : dictionaries.totalSeconds,
       selectionsApplied: [...new Set([...dictionaries.selectionsApplied, ...selectionsApplied])],
+      recordedRuns: countRun ? [...dictionaries.recordedRuns, runId] : dictionaries.recordedRuns,
     },
   };
 }

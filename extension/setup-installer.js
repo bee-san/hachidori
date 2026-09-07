@@ -18,6 +18,8 @@ const ENGINE_TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
 const ENGINE_BUSY = "the dictionary engine is busy mutating";
 const IDLE_POLL_MS = 250;
+const RECORD_RETRY_MS = 250;
+const RECORD_RETRY_MAX_MS = 2000;
 
 function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);
@@ -78,20 +80,31 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
     return reply.state?.dictionaries ?? [];
   }
 
+  // The worker owns the only durable copy of an outcome, and a restarting
+  // worker or a lost reply must not discard it: the same record is resent, with
+  // backoff, until the worker answers. Records are idempotent per run, so a
+  // write whose reply was lost is simply confirmed by the next attempt.
   async function record(patch) {
-    try {
-      const reply = await notify({ target: WORKER_TARGET, type: "hd_setup_record", requestId: requestId("record"), runId: run.runId, ...patch });
-      if (reply?.ok !== true) throw new Error(reply?.error || "no reply");
-    } catch (error) {
-      console.warn(`hoshidicts: could not record a setup outcome: ${describe(error)}`);
+    const message = { target: WORKER_TARGET, type: "hd_setup_record", runId: run.runId, ...patch };
+    for (let delay = RECORD_RETRY_MS; ; delay = Math.min(delay * 2, RECORD_RETRY_MAX_MS)) {
+      try {
+        const reply = await notify({ ...message, requestId: requestId("record") });
+        if (reply?.ok === true) return;
+        throw new Error(reply?.error || "no reply");
+      } catch (error) {
+        console.warn(`hoshidicts: could not record a setup outcome, retrying: ${describe(error)}`);
+      }
+      await sleep(delay);
     }
   }
 
+  // The row settles only once its outcome is durable, so a reconnecting page
+  // never sees a finished row whose record is still in flight.
   async function settle(entry, outcome) {
+    await record({ outcomes: { [entry.sourceId]: outcome } });
     entry.phase = outcome.status;
     entry.seconds = outcome.seconds ?? null;
     entry.error = outcome.error ?? null;
-    await record({ outcomes: { [entry.sourceId]: outcome } });
     emit();
   }
 

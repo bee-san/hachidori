@@ -38,6 +38,8 @@ let run = null;
 let attaching = null;
 let countdown = null;
 let advanceFailed = false;
+// A failed install request is shown once with Retry; the page never re-requests on its own.
+let installFailed = false;
 const announced = new Map();
 
 function element(id) {
@@ -45,7 +47,7 @@ function element(id) {
 }
 
 function describe(error) {
-  return error instanceof Error ? error.message || String(error) : String(error);
+  return typeof error?.message === "string" && error.message !== "" ? error.message : String(error);
 }
 
 async function send(type, fields, target = WORKER_TARGET) {
@@ -319,11 +321,13 @@ function adoptRun(snapshot) {
 
 function requestInstall(sourceIds) {
   if (attaching !== null) return attaching.promise;
+  installFailed = false;
   const promise = send("hd_setup_install", { sourceIds }, SETUP_TARGET).then((reply) => {
     if (!reply.ok) throw new Error(reply.error || "the dictionary installer did not start");
     adoptRun(reply);
     if (runActive() && sourceIds.length > 0) setStatus("Installing default dictionaries.");
   }).catch((error) => {
+    installFailed = true;
     setStatus(`Could not start dictionary installation: ${describe(error)}`, "error");
   }).finally(() => {
     attaching = null;
@@ -363,11 +367,11 @@ function dictionariesView() {
   }
   cancelCountdown();
   const untouched = untouchedEntries();
-  if (untouched.length > 0) {
+  if (untouched.length > 0 && !installFailed) {
     void requestInstall(untouched.map((entry) => entry.sourceId));
     return installingView();
   }
-  const failed = missing.some((entry) => setupState.dictionaries.outcomes[entry.sourceId]?.status === "failed");
+  const failed = installFailed || missing.some((entry) => setupState.dictionaries.outcomes[entry.sourceId]?.status === "failed");
   return {
     heading: failed ? "Some dictionaries could not be installed" : "Some dictionaries are not installed",
     body: [rows, importNote],

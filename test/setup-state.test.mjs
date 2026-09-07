@@ -6,7 +6,7 @@ import {
 } from "../extension/setup-state.js";
 import "../extension/reader-options.js";
 
-const EMPTY_DICTIONARIES = { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [] };
+const EMPTY_DICTIONARIES = { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] };
 
 test("a new installation starts at the dictionary stage and advances through revisioned stages", () => {
   const started = initialSetupState("2026-09-07T10:00:00.000Z");
@@ -36,6 +36,7 @@ test("a new installation starts at the dictionary stage and advances through rev
 test("dictionary outcomes accumulate across runs and continuing records an incomplete set", () => {
   const started = initialSetupState("2026-09-07T10:00:00.000Z");
   const first = recordSetupDictionaries(started, {
+    runId: "run-1",
     outcomes: { jitendex: { status: "installed", seconds: 12.5 }, jmnedict: { status: "failed", seconds: 3, error: "HTTP 503" } },
   });
   assert.equal(first.revision, 2);
@@ -44,10 +45,17 @@ test("dictionary outcomes accumulate across runs and continuing records an incom
     jmnedict: { status: "failed", seconds: 3, error: "HTTP 503" },
   });
   assert.equal(first.dictionaries.totalSeconds, null);
-  const run = recordSetupDictionaries(first, { runSeconds: 16.25, selectionsApplied: ["jitendex"] });
+  assert.deepEqual(first.dictionaries.recordedRuns, []);
+  const run = recordSetupDictionaries(first, { runId: "run-1", runSeconds: 16.25, selectionsApplied: ["jitendex"] });
   assert.equal(run.dictionaries.totalSeconds, 16.25);
   assert.deepEqual(run.dictionaries.selectionsApplied, ["jitendex"]);
+  assert.deepEqual(run.dictionaries.recordedRuns, ["run-1"]);
+  // A resent record for a run whose duration already landed changes nothing but the revision.
+  const resent = recordSetupDictionaries(run, { runId: "run-1", runSeconds: 16.25 });
+  assert.equal(resent.dictionaries.totalSeconds, 16.25);
+  assert.deepEqual(resent.dictionaries.recordedRuns, ["run-1"]);
   const retry = recordSetupDictionaries(run, {
+    runId: "run-2",
     outcomes: { jmnedict: { status: "installed", seconds: 4 }, jiten: { status: "already-installed", seconds: 9, error: "ignored" } },
     runSeconds: 4.5, selectionsApplied: ["jitendex"],
   });
@@ -56,10 +64,12 @@ test("dictionary outcomes accumulate across runs and continuing records an incom
   assert.deepEqual(retry.dictionaries.outcomes.jiten, { status: "already-installed", seconds: null, error: null });
   assert.equal(retry.dictionaries.totalSeconds, 20.75);
   assert.deepEqual(retry.dictionaries.selectionsApplied, ["jitendex"]);
+  assert.deepEqual(retry.dictionaries.recordedRuns, ["run-1", "run-2"]);
   assert.deepEqual(normaliseSetupState(retry), retry);
-  assert.throws(() => recordSetupDictionaries(retry, { outcomes: { jitendex: { status: "done" } } }), /malformed/u);
-  assert.throws(() => recordSetupDictionaries(retry, { runSeconds: -1 }), /invalid/u);
-  assert.throws(() => recordSetupDictionaries(retry, { selectionsApplied: ["jiten"] }), /unknown/u);
+  assert.throws(() => recordSetupDictionaries(retry, { runId: "run-3", outcomes: { jitendex: { status: "done" } } }), /malformed/u);
+  assert.throws(() => recordSetupDictionaries(retry, { runId: "run-3", runSeconds: -1 }), /invalid/u);
+  assert.throws(() => recordSetupDictionaries(retry, { runId: "run-3", selectionsApplied: ["jiten"] }), /unknown/u);
+  assert.throws(() => recordSetupDictionaries(retry, { runSeconds: 1 }), /names no run/u);
   const continued = advanceSetupState(retry, "anki", "2026-09-07T10:01:00.000Z", { continued: true });
   assert.equal(continued.dictionaries.continued, true);
   assert.equal(advanceSetupState(retry, "anki", "2026-09-07T10:01:00.000Z").dictionaries.continued, false);
@@ -90,6 +100,8 @@ test("absent state is null and malformed or unsupported state is refused", () =>
     value => { value.dictionaries.totalSeconds = "3"; },
     value => { value.dictionaries.continued = "yes"; },
     value => { value.dictionaries.selectionsApplied = ["jiten"]; },
+    value => { value.dictionaries.recordedRuns = [""]; },
+    value => { delete value.dictionaries.recordedRuns; },
   ]) {
     const value = structuredClone(valid);
     edit(value);

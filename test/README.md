@@ -537,11 +537,13 @@ What it proves, in order:
    the current state, rejects invalid stages, missing revisions and any move
    back to an earlier or finished stage, and records `completedAt` and
    `continued`. `hd_setup_record` is answered for the offscreen document only:
-   it stores each outcome, accumulates run durations, and settles the Jitendex
+   it stores each outcome, accumulates run durations once per run (a resent
+   record confirms rather than recounts), and settles the Jitendex
    summary source and Bee's clicked-kanji route once from the committed titles,
    in one write with the setup record, without overwriting an option the user
    already changed. A jsdom `startup.html` attaches to the installer with the
-   untouched sources, renders **Already installed** only for trusted
+   untouched sources, shows an unanswered request once with Retry instead of
+   re-requesting, renders **Already installed** only for trusted
    `sourceId`/index identity, mirrors determinate and indeterminate download
    rows, installation, installed and failed phases for its own run identity and
    sequence only, announces settled outcomes but not bytes, shows Retry and

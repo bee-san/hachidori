@@ -149,7 +149,7 @@ of that record, not the reason alone, identifies a new installation.
 - `setupState`: `{ schemaVersion: 1, revision, startedAt, stage, completedAt,
   dictionaries }`, where `stage` is `dictionaries`, `anki`, `practice` or
   `complete` and `dictionaries` holds `{ outcomes, totalSeconds, continued,
-  selectionsApplied }`. The worker owns every write. `hd_setup_cas` accepts
+  selectionsApplied, recordedRuns }`. The worker owns every write. `hd_setup_cas` accepts
   `{ baseRevision, stage, continued? }` from the exact startup page URL only,
   answers a stale base revision with a conflict and the current state, refuses a
   stage that is not later than the current one, records `completedAt` when the
@@ -209,10 +209,15 @@ a duplicate tab or a restarted worker cannot start a second batch. Live rows
 follow `hd_setup_progress` broadcasts that name the run and carry a sequence;
 the page adopts only newer events for the run it attached to. Untouched
 sources install by themselves; a failed or later removed source waits for
-**Retry missing dictionaries**, which requests only the missing ones. The
-installer records every outcome and each run's duration through
-`hd_setup_record`, which the worker accepts from the offscreen document only:
-outcomes replace earlier ones, durations accumulate into `totalSeconds`, and a
+**Retry missing dictionaries**, which requests only the missing ones; a request
+the worker does not answer is reported once with the same Retry, never
+re-requested on a timer. The installer records every outcome and each run's
+duration through `hd_setup_record`, which the worker accepts from the offscreen
+document only, and a row settles only after that record is acknowledged: a lost
+reply or a restarting worker makes the installer resend the same record with
+backoff, and records are idempotent per run (`recordedRuns`), so a duration
+whose reply was lost is confirmed rather than counted twice. Outcomes replace
+earlier ones, durations accumulate into `totalSeconds`, and a
 committed Jitendex or Bee's entry settles its first-install selection once
 (`compactDefinitionSummaryDictionary` and the term-route
 `kanjiClickDictionary`) while that option is still Automatic, through the

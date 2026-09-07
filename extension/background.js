@@ -745,7 +745,7 @@ const WORKER_HANDLERS = {
     if (current === null) throw new Error("Setup has not started on this installation.");
     const selections = firstInstallSelections(current, outcomes, stored[DICTIONARY_STATE_KEY], stored[OPTIONS_KEY]);
     const state = recordSetupDictionaries(current, {
-      outcomes, runSeconds: message.runSeconds ?? null, selectionsApplied: selections.applied,
+      runId: message.runId, outcomes, runSeconds: message.runSeconds ?? null, selectionsApplied: selections.applied,
     });
     const values = { [SETUP_STATE_KEY]: state };
     if (selections.options !== null) values[OPTIONS_KEY] = selections.options;
