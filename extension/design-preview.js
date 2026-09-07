@@ -28,6 +28,42 @@
   let sampleMedia = null;
   let sampleLookupStats = null;
   let clickedKanjiIndex = 0;
+  // The sample count is 3; the shared rule, real hover and the real delay
+  // decide the preview's blur. Nothing is recorded.
+  const SAMPLE_LOOKUP_COUNT = 3;
+  let sampleRevealed = false;
+  let sampleBlurTimer = null;
+  let sampleTermView = false;
+  const DEFINITION_BLUR_KEYS = ["showLookupCounts", "definitionBlurEnabled", "definitionBlurDirection",
+    "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs"];
+
+  function sampleBlurState() {
+    return !sampleRevealed && options.showLookupCounts
+      && HDReaderOptions.definitionBlurQualifies(options, SAMPLE_LOOKUP_COUNT) ? "blurred" : "revealed";
+  }
+
+  function clearSampleBlurTimer() {
+    if (sampleBlurTimer === null) return;
+    clearTimeout(sampleBlurTimer);
+    sampleBlurTimer = null;
+  }
+
+  function revealSample() {
+    sampleRevealed = true;
+    clearSampleBlurTimer();
+    view.setDefinitionBlurState("revealed");
+  }
+
+  function armSampleBlur() {
+    clearSampleBlurTimer();
+    if (sampleBlurState() !== "blurred" || options.definitionBlurReveal !== "timed") return;
+    sampleBlurTimer = setTimeout(() => { sampleBlurTimer = null; revealSample(); }, options.definitionBlurDelayMs);
+  }
+
+  popup.addEventListener("mouseover", (event) => {
+    if (sampleBlurState() === "blurred" && event.target instanceof Element
+        && event.target.closest(".gsm-hoshidicts-definitions, .gsm-hoshidicts-compact-definition-summary")) revealSample();
+  });
 
   function positionPopup(resetToolbar = false) {
     const position = HDPopup.calculatePopupPosition(source.getBoundingClientRect(),
@@ -103,6 +139,7 @@
 
   function context() {
     return { ...HDPopup.metadataOptions(options),
+      definitionBlurState: sampleBlurState(),
       showCompactDefinitionSummary: options.showCompactDefinitionSummary,
       compactDefinitionSummaryCount: options.compactDefinitionSummaryCount,
       compactDefinitionSummaryDictionary: options.compactDefinitionSummaryDictionary,
@@ -134,7 +171,12 @@
           expression: kanjiCharacter, reading: "しょく", glossaries: [{ dictionary: capability.title,
             glossary: JSON.stringify(["food; eating — sample single-kanji entry"]) }], frequencies: [], pitches: [],
         } }], candidate, renderContext);
+        sampleTermView = true;
+        armSampleBlur();
       } else {
+        // Native kanji is outside term blur.
+        sampleTermView = false;
+        clearSampleBlurTimer();
         view.renderKanji({ character: kanjiCharacter, entries: [{ dictionary: capability?.title || "Sample kanji",
           onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用", definitions: ["eat", "food"],
           stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }],
@@ -147,6 +189,8 @@
         restoreScrollTop: termView?.restoreScrollTop, disclosures: termView?.disclosures,
       });
       termView = null;
+      sampleTermView = true;
+      armSampleBlur();
     }
   }
 
@@ -160,10 +204,19 @@
     appearance.update(nextOptions);
     const cssChanged = customStyle.update(nextOptions.customPopupCss);
     const countsChanged = !state || options.showLookupCounts !== nextOptions.showLookupCounts;
+    // A blur edit restarts the sample decision so its effect is visible.
+    const blurChanged = !state || DEFINITION_BLUR_KEYS.some(key => options[key] !== nextOptions[key]);
     options = { ...nextOptions };
     if (geometryChanged || toolbarChanged) positionPopup(toolbarChanged);
     if (geometryChanged || cssChanged) view.scheduleMasonry();
     if (countsChanged) paintSampleLookupStats();
+    if (blurChanged) {
+      sampleRevealed = false;
+      if (sampleTermView) {
+        view.setDefinitionBlurState(sampleBlurState());
+        armSampleBlur();
+      }
+    }
     const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
       nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextOptions.kanjiClickDictionary, nextState.revision]);
@@ -185,5 +238,5 @@
     } else view.updateDictionaryPresentation(context());
   } };
   stylesheet.addEventListener("load", () => { appearance.refreshHighlight(); view.scheduleMasonry(); });
-  window.addEventListener("pagehide", () => { customStyle.destroy(); appearance.destroy(); view.destroy(); }, { once: true });
+  window.addEventListener("pagehide", () => { clearSampleBlurTimer(); customStyle.destroy(); appearance.destroy(); view.destroy(); }, { once: true });
 }());

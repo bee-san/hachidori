@@ -4966,6 +4966,8 @@ async function main() {
     preview?.incremental === true && preview.routing === true, JSON.stringify(preview));
   check("Design repaints its sample count line on the count switch without rebuilding cards or the Note draft",
     preview?.counts === true, JSON.stringify(preview));
+  check("Design blurs its sample by the shared count rule, reveals on hover and restarts on blur edits without rerendering",
+    preview?.blur === true, JSON.stringify(preview));
   check("live preview appearance preserves cards and drafts while term and kanji highlights toggle exactly",
     preview?.appearance === true && preview.highlight === true, JSON.stringify(preview));
   check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
@@ -6237,6 +6239,26 @@ async function designPreviewStage() {
     await settle();
     counts &&= countLine()?.hidden === false && countLine().textContent === "Looked up 3 times"
       && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    const blurState = () => popup.dataset.definitionBlurState ?? "revealed";
+    let blur = blurState() === "revealed";
+    options = { ...options, definitionBlurEnabled: true, definitionBlurDirection: "below", definitionBlurThreshold: 5,
+      definitionBlurReveal: "hover" };
+    update();
+    await settle();
+    blur &&= blurState() === "blurred" && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    query(".gsm-hoshidicts-definitions").dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
+    blur &&= blurState() === "revealed";
+    options = { ...options, definitionBlurThreshold: 4 };
+    update();
+    await settle();
+    blur &&= blurState() === "blurred";
+    options = { ...options, definitionBlurDirection: "atLeast" };
+    update();
+    await settle();
+    blur &&= blurState() === "revealed" && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    options = { ...options, definitionBlurEnabled: false };
+    update();
+    await settle();
     options = { ...options, popupTheme: "miku", popupWidthPx: 720, popupHeightPx: 500, popupOpacityPercent: 0,
       sourceHighlightEnabled: false };
     update();
@@ -6310,7 +6332,7 @@ async function designPreviewStage() {
     await settle();
     const routing = query(".gloss-image-link")?.dataset.imageLoadState === "load-error";
     highlight &&= highlightedText() === "食べる";
-    return { sample, note, back, incremental, counts, routing, appearance, highlight, kanjiSource, earlyLoad, cssOwner, cssPreview };
+    return { sample, note, back, incremental, counts, blur, routing, appearance, highlight, kanjiSource, earlyLoad, cssOwner, cssPreview };
   } finally { window.close(); }
 }
 
@@ -6546,6 +6568,7 @@ async function settingsFrequencyStage() {
     const metadataFields = [
       ["opt-lookup-counts", "showLookupCounts", true],
       ["opt-corpus-seen", "corpusSeenEnabled", false],
+      ["opt-blur-enabled", "definitionBlurEnabled", false],
       ["opt-frequency-names", "showFrequencyDictionaryNames", true],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
@@ -6574,6 +6597,25 @@ async function settingsFrequencyStage() {
       metadataDetails.push(writes.length === beforeInvalidCorpusUrl
         && corpusUrl.value === "http://localhost:7275"
         && status().includes("loopback"));
+      const blurControl = id => window.document.getElementById(id);
+      // Counts were switched off above, so blur controls are disabled even though blur is on.
+      metadataDetails.push(["opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay"]
+        .every(id => blurControl(id).disabled)
+        && blurControl("opt-blur-direction").value === "atLeast" && blurControl("opt-blur-threshold").value === "5"
+        && blurControl("opt-blur-reveal").value === "timed" && blurControl("opt-blur-delay").value === "5");
+      await editControl(blurControl("opt-lookup-counts"), true);
+      metadataDetails.push(!blurControl("opt-blur-direction").disabled && !blurControl("opt-blur-delay").disabled);
+      await editControl(blurControl("opt-blur-direction"), "below");
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurDirection: "below" }));
+      await editControl(blurControl("opt-blur-threshold"), "0");
+      metadataDetails.push(blurControl("opt-blur-threshold").value === "1"
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurThreshold: 1 }));
+      await editControl(blurControl("opt-blur-delay"), "2.5");
+      metadataDetails.push(blurControl("opt-blur-delay").value === "2.5"
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurDelayMs: 2500 }));
+      await editControl(blurControl("opt-blur-reveal"), "hover");
+      metadataDetails.push(blurControl("opt-blur-delay").disabled
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurReveal: "hover" }));
       metadataDetails.push(pitch.disabled);
       await editControl(window.document.getElementById("opt-pitch-furigana"), true);
       emitDictionaries({ pitchCount: 2 });
