@@ -22,8 +22,8 @@ These instructions apply to the entire repository.
 
 ## Issue #9 scope and phases
 
-- D1-D9 are the dictionary-only feature group. That phase is complete. The user's subsequent request, "now do everything else" from issue #9, authorizes E1-E27 as the current phase, delivered in focused pull requests that preserve the completed dictionary behavior.
-- The dictionary-only contract below limits dictionary-only tasks; it does not prohibit separately authorized E-series work. Later L1-L6 remain excluded from both current feature groups: no profiles, backup/restore, per-dictionary schedules, statistics, definition blur, or configurable popup actions.
+- D1-D9 and E1-E27 are delivered. The user's subsequent request, "work on l2 to l5", authorizes L2 backup/restore, L3 per-dictionary update schedules, L4 lookup/corpus-seen statistics, and L5 definition blur as the current phase. Deliver them in focused pull requests preserving the completed dictionary and reader behavior, using GSM PR #549 as the reference.
+- The dictionary-only contract below limits dictionary-only tasks; it does not prohibit separately authorized E-series or L2-L5 work. L3 intentionally extends D6's original global-only schedule; L5 depends on L4. L1 profiles and L6 configurable/custom popup actions remain excluded, as does localization.
 
 ## Dictionary-only issue #9 contract
 
