@@ -129,7 +129,7 @@ function element(id) {
 function sectionHasPendingWork(id) {
   switch (id) {
     case "import-state": return importing;
-    case "update-state": return updating || savingSchedule !== null;
+    case "update-state": return updating || savingSchedule !== null || pendingSchedule !== null;
     case "custom-dictionary-status": return customLoading || customSaving || customDictionaryDirty();
     case "options-status": return savingOptions !== null || Object.keys(pendingOptions).length > 0;
     default: return false;
@@ -733,7 +733,7 @@ function renderUpdateControls() {
   const busy = updating || importing || removing || committing || customSaving;
   element("update-all").disabled = busy || availableUpdates().length === 0;
   element("update-check-now").disabled = busy;
-  schedule.disabled = busy;
+  schedule.disabled = busy || updateSettings.revision < 0;
 }
 
 function clearImportResults() {

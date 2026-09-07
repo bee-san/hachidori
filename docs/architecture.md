@@ -112,7 +112,9 @@ last-checked writes. Settings debounces schedule edits for 150 ms and sends one
 revision-checked save at a time. It adopts only newer committed settings from
 initial reads, storage events and replies; queued edits advance through their
 own save's revision. A conflict or lost reply retains the draft for explicit
-retry or discard. Retrying an already committed schedule reconciles the alarm
+retry or discard. The schedule control stays disabled until a committed revision
+is loaded, and queued drafts remain visible in the navigation status. Retrying an
+already committed schedule reconciles the alarm
 without another storage write. Alarm work never holds the storage-write queue.
 
 An install carries the checked package ID, generation path, installed revision,
