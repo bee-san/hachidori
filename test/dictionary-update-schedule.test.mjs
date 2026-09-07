@@ -40,4 +40,5 @@ test("one aggregate due time selects only managed active schedules", () => {
   assert.equal(nextManagedUpdateCheck(dictionaries, "daily", now), now + hour);
   assert.equal(nextManagedUpdateCheck(dictionaries, "off", now), now + hour);
   assert.equal(nextManagedUpdateCheck([...dictionaries, managed()], "daily", now), now);
+  assert.equal(nextManagedUpdateCheck([managed({ lastUpdateCheck: { checkedAt: new Date(now - 48 * hour).toISOString() } })], "daily", now), now);
 });

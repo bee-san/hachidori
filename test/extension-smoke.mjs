@@ -800,7 +800,7 @@ async function managedScheduleStage() {
     } });
   await runInContext("initialiseUpdateAlarm()", context);
   const name = "hachidori-managed-dictionary-updates";
-  check("an unchecked scheduled package is due immediately", (await alarms.api.get(name))?.scheduledTime === now);
+  check("an overdue scheduled package creates an immediate alarm", (await alarms.api.get(name))?.scheduledTime === now);
   const cycle = () => runInContext("queueManagedUpdate({ install: true, dueOnly: true })", context);
   await cycle();
   let saved = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
@@ -813,7 +813,7 @@ async function managedScheduleStage() {
   await cycle();
   check("an early scheduled wake does not fetch or write state", fetched.length === 1 && storage.sets.length === writes);
 
-  await bus.sendMessage("schedule-page", { target: "hoshidicts-managed-updates", type: "hd_updates_check" });
+  await bus.sendMessage("schedule-page", { target: "hachidori-updates", type: "hd_updates_check" });
   check("manual Check now still checks Off and not-yet-due dictionary policies", fetched.length === 4);
   saved = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
   const changed = { ...saved, revision: saved.revision + 1,
