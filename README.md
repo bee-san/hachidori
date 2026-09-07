@@ -4,7 +4,7 @@
 
 <h1 align="center">Hachidori</h1>
 
-<p align="center"><strong>Your Japanese dictionaries, on every webpage — fast, private, and entirely in Chrome.</strong></p>
+<p align="center"><strong>The fastest, most feature rich Japanese dictionary app in the world</strong></p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-7c3aed" alt="GPL-3.0-or-later license"></a>
