@@ -1542,7 +1542,7 @@
   function releaseDefinitionBlurAutoplay(request, level, play) {
     if (!request.blur.autoplayHeld) return;
     request.blur.autoplayHeld = false;
-    audio?.settleAutoplay(level, play);
+    audio?.settleAutoplay(level, request, play);
   }
 
   // A qualifying count blurs a pending view and never auto-plays; any other

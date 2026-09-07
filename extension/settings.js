@@ -965,7 +965,7 @@ function renderCompactSummaryControls() {
 }
 
 // Blur needs counts. The delay applies only to the timed reveal; the field
-// shows whole seconds for the stored milliseconds.
+// shows seconds, fractions allowed, for the stored milliseconds.
 function renderDefinitionBlurControls() {
   const enabled = options.definitionBlurEnabled && options.showLookupCounts;
   for (const [id, key] of [["opt-blur-direction", "definitionBlurDirection"], ["opt-blur-reveal", "definitionBlurReveal"],

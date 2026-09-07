@@ -232,11 +232,12 @@
       bind, retire, closeMenu,
       hasMenu: owner => Boolean(menu && (owner === undefined || menu.record.owner === owner)),
       selectionFor: result => selections.get(result) ?? null,
-      // Releases the owner's waiting first result: it plays when eligible, or
-      // its visit is consumed so a later rebind cannot start it.
-      settleAutoplay(owner, play) {
+      // Releases the owner's waiting first result for exactly this request: it
+      // plays when eligible, or its visit is consumed so a later rebind cannot
+      // start it. A stale request's late decision leaves a newer view alone.
+      settleAutoplay(owner, request, play) {
         const record = pendingAutoplay.get(owner);
-        if (!record) return;
+        if (!record || record.request !== request) return;
         pendingAutoplay.delete(owner);
         if (play) autoplay(record);
         else firstVisit(record);
