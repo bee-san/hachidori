@@ -775,7 +775,7 @@ function loadBackgroundScript(sandbox) {
 }
 
 async function managedScheduleStage() {
-  const now = Date.parse("2026-09-07T12:00:00Z");
+  let now = Date.parse("2026-09-07T12:00:00Z");
   const hour = 3_600_000;
   class ScheduleDate extends Date {
     constructor(...args) { super(...(args.length ? args : [now])); }
@@ -801,6 +801,11 @@ async function managedScheduleStage() {
   await runInContext("initialiseUpdateAlarm()", context);
   const name = "hachidori-managed-dictionary-updates";
   check("an overdue scheduled package creates an immediate alarm", (await alarms.api.get(name))?.scheduledTime === now);
+  const firstAlarm = await alarms.api.get(name);
+  now += 100;
+  await runInContext("reconcileUpdateAlarm()", context);
+  check("reconciling an already-due alarm does not postpone its browser delivery",
+    (await alarms.api.get(name))?.scheduledTime === firstAlarm.scheduledTime);
   const cycle = () => runInContext("queueManagedUpdate({ install: true, dueOnly: true })", context);
   await cycle();
   let saved = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
@@ -6802,7 +6807,7 @@ async function settingsManagedUpdatesStage() {
   let storageListener = null;
   const updateRequests = [];
   const stateRequests = [];
-  let heldSchedule = null, activeSchedules = 0;
+  let heldSchedule = null, activeSchedules = 0, heldState = null;
   let loseScheduleReply = false, firstRead = true;
   let releaseInitialRead;
 
@@ -6829,6 +6834,7 @@ async function settingsManagedUpdatesStage() {
           if (message.baseRevision !== state.revision) return { ok: false, conflict: true, state: structuredClone(state) };
           state = { ...state, revision: state.revision + 1, dictionaries: message.dictionaries, groups: message.groups };
           storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+          if (heldState) await heldState.promise;
           return { ok: true, state: structuredClone(state) };
         }
         if (message.type === "hd_options_write") {
@@ -7072,8 +7078,13 @@ async function settingsManagedUpdatesStage() {
     const initial = policy().value === "monthly" && !policy().disabled
       && insecureRow().querySelector(".dict-schedule").hidden && localRow().querySelector(".dict-schedule").hidden;
     policy().focus();
+    heldState = Promise.withResolvers();
     policy().value = "hourly";
     policy().dispatchEvent(new window.Event("change", { bubbles: true }));
+    await waitSchedule(() => stateRequests.length === 1);
+    const editBlockedDuringSave = policy().disabled;
+    heldState.resolve();
+    heldState = null;
     await waitSchedule(() => stateRequests.length === 1 && !policy().disabled);
     const saved = state.dictionaries.find(entry => entry.id === "managed-id");
     const persisted = saved.updateScheduleOverride === "hourly" && saved.enabled === false
@@ -7084,7 +7095,7 @@ async function settingsManagedUpdatesStage() {
     stale.value = "off";
     stale.dispatchEvent(new window.Event("change", { bubbles: true }));
     await pause(20);
-    result.dictionarySchedule = initial && persisted && stateRequests.length === 1
+    result.dictionarySchedule = initial && persisted && editBlockedDuringSave && stateRequests.length === 1
       && state.dictionaries.find(entry => entry.id === "managed-id").updateScheduleOverride === "weekly";
   }
   dom.window.close();
