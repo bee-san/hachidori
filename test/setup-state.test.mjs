@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, SETUP_STAGES, advanceSetupState, initialSetupState,
-  normaliseSetupState, recordSetupDictionaries, setupIncomplete,
+  FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, SETUP_ANKI_STATUSES, SETUP_STAGES, advanceSetupState, initialSetupState,
+  normaliseSetupState, recordSetupAnki, recordSetupDictionaries, setupIncomplete,
 } from "../extension/setup-state.js";
 import "../extension/reader-options.js";
 
@@ -12,7 +12,7 @@ test("a new installation starts at the dictionary stage and advances through rev
   const started = initialSetupState("2026-09-07T10:00:00.000Z");
   assert.deepEqual(started, {
     schemaVersion: 1, revision: 1, startedAt: "2026-09-07T10:00:00.000Z", stage: "dictionaries", completedAt: null,
-    dictionaries: EMPTY_DICTIONARIES,
+    dictionaries: EMPTY_DICTIONARIES, anki: null,
   });
   assert.equal(setupIncomplete(started), true);
   const anki = advanceSetupState(started, "anki", "2026-09-07T10:01:00.000Z");
@@ -29,8 +29,25 @@ test("a new installation starts at the dictionary stage and advances through rev
   assert.deepEqual(normaliseSetupState(complete), complete);
   assert.deepEqual(normaliseSetupState({ ...complete, extra: true }), complete);
   // A record written before dictionary outcomes existed reads as an empty stage.
-  const { dictionaries, ...legacy } = started;
+  const { dictionaries: _dictionaries, anki: _anki, ...legacy } = started;
   assert.deepEqual(normaliseSetupState(legacy), started);
+});
+
+test("the Anki outcome settles once with its status, reason and exact configured names", () => {
+  const started = initialSetupState("2026-09-07T10:00:00.000Z");
+  const configured = recordSetupAnki(started, { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" });
+  assert.equal(configured.revision, 2);
+  assert.deepEqual(configured.anki, { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" });
+  assert.deepEqual(normaliseSetupState(configured), configured);
+  const absent = recordSetupAnki(started, { status: "unavailable", detail: "Open Anki with the AnkiConnect add-on installed, then retry.", model: "ignored", deck: null });
+  assert.deepEqual(absent.anki, { status: "unavailable", detail: "Open Anki with the AnkiConnect add-on installed, then retry.", model: null, deck: null });
+  assert.deepEqual(recordSetupAnki(started, { status: "needs-attention", detail: "Two note types share the highest note count.", model: null, deck: null }).anki.model, null);
+  assert.deepEqual(SETUP_ANKI_STATUSES, ["configured", "already-configured", "unavailable", "needs-attention"]);
+  for (const outcome of [null, { status: "done" }, { status: "configured", detail: null, model: null, deck: "Mining" },
+    { status: "already-configured", detail: null, model: "Kiku", deck: null }, { status: "unavailable", detail: 5, model: null, deck: null }]) {
+    assert.throws(() => recordSetupAnki(started, outcome), /malformed/u);
+  }
+  assert.throws(() => normaliseSetupState({ ...started, anki: { status: "later" } }), /malformed/u);
 });
 
 test("dictionary outcomes accumulate across runs and continuing records an incomplete set", () => {
