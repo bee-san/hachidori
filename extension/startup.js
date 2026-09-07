@@ -19,6 +19,7 @@ const WORKER_TARGET = "hoshidicts-worker";
 const SETUP_TARGET = "hachidori-setup";
 const SETUP_EVENTS_TARGET = "hachidori-setup-events";
 const SUCCESS_DISPLAY_MS = 5000;
+const PRACTICE_SENTENCE = "朝ごはんを食べる。";
 const COUNTDOWN_TICK_MS = 250;
 // A run reports at every phase change and about ten times a second while a body
 // arrives, so a longer silence means the offscreen document that owned it is gone.
@@ -44,6 +45,7 @@ let advanceFailed = false;
 // A failed install request is shown once with Retry; the page never re-requests on its own.
 let installFailed = false;
 let runSilenceTimer = null;
+let readerLoading = null;
 // Anki detection is asked for once per page; a failed request waits for Retry.
 let ankiRequest = null;
 let ankiFailed = false;
@@ -532,19 +534,74 @@ async function advanceAfterAnki() {
   if (advanceFailed) render();
 }
 
+// The reader itself, in the order the manifest gives an ordinary page, minus
+// `reader-options.js`, which this module already loaded. It arrives only when
+// the practice step does, so nothing scans the installation or Anki screens.
+const READER_SCRIPTS = Object.freeze(["dictionary-group-state.js", "lookup-stats-identity.js", "external-links.js",
+  "audio-content.js", "anki-content.js", "render/glossary.js", "render/popup.js", "content.js"]);
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.dataset.setupReader = "true";
+    script.addEventListener("load", () => { resolve(); });
+    script.addEventListener("error", () => { reject(new Error(`${src} could not be loaded`)); });
+    document.head.appendChild(script);
+  });
+}
+
+// One load per page: the reader initialises itself when its last script runs.
+function loadReader() {
+  readerLoading ??= READER_SCRIPTS.reduce(
+    (chain, src) => chain.then(() => loadScript(src)), Promise.resolve(),
+  ).catch((error) => {
+    // The exercise is optional; the sentence and instructions stay readable.
+    setStatus(`The lookup exercise could not start: ${describe(error)}`, "error");
+  });
+  return readerLoading;
+}
+
+// A dictionary that can answer a term lookup right now, checked against the
+// live inventory rather than the setup record: the exercise must not invite a
+// lookup that cannot answer.
+function lookupReady() {
+  return dictionaries.some((dictionary) => dictionary?.enabled !== false && (dictionary?.termCount ?? 0) > 0);
+}
+
+// The last step tries the real reader on this page: the packaged scripts, the
+// installed dictionaries, the ordinary runtime lookup and the same popup a
+// webpage gets. Finish and Open Settings stay available throughout.
+function practiceView() {
+  const outcome = setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)];
+  const finishAction = [button("setup-finish", "Finish", () => { void finish(); })];
+  if (!lookupReady()) {
+    return {
+      heading: "You’re ready.",
+      body: [...outcome, paragraph("No enabled dictionary can answer a lookup yet."),
+        settingsNote("Install dictionaries in ", "settings.html#add-dictionaries")],
+      actions: finishAction,
+    };
+  }
+  void loadReader();
+  const sample = document.createElement("p");
+  sample.className = "setup-practice-sample";
+  sample.lang = "ja";
+  sample.textContent = PRACTICE_SENTENCE;
+  return {
+    heading: "You’re ready. Try looking up a word below.",
+    body: [...outcome, paragraph(options.lookupMode === "activation"
+      ? `Hold ${options.activationKey} and hover over the Japanese below to look it up.`
+      : "Hover over the Japanese below to look it up."), sample,
+    paragraph("It works the same way on any webpage.")],
+    actions: finishAction,
+  };
+}
+
 const VIEWS = {
   dictionaries: dictionariesView,
   anki: ankiView,
-  practice: () => ({
-    heading: "You’re ready.",
-    body: [
-      ...(setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)]),
-      paragraph(options.lookupMode === "activation"
-        ? `Hold ${options.activationKey} and hover over Japanese text on any webpage to look it up.`
-        : "Hover over Japanese text on any webpage to look it up."),
-    ],
-    actions: [button("setup-finish", "Finish", () => { void finish(); })],
-  }),
+  practice: practiceView,
   complete: () => ({
     heading: "Setup is complete.",
     body: [settingsNote("Change dictionaries, Anki and reading preferences any time in ", "settings.html")],
