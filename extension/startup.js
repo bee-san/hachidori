@@ -582,7 +582,8 @@ function loadReader() {
 // write leaves this unchanged, so it cannot invalidate a ready exercise.
 function practiceSignature() {
   const library = dictionaries.map((dictionary) => [dictionary?.id ?? "", dictionary?.title ?? "",
-    dictionary?.revision ?? "", dictionary?.enabled !== false, dictionary?.termCount ?? 0].join("\u001f")).join("\u001e");
+    dictionary?.revision ?? "", dictionary?.path ?? "", dictionary?.enabled !== false,
+    dictionary?.termCount ?? 0].join("\u001f")).join("\u001e");
   return `${library}|${options.scanLength}|${options.frequencyDictionary}|${options.frequencyOrder}`;
 }
 

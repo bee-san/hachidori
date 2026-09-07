@@ -354,8 +354,8 @@ proved rather than assumed: the page runs an ordinary `hd_lookup` from every
 offset in the sentence, through the same engine the reader would use and with the
 reader's own configured scan length, and stops at the first hit. The answer belongs to
 the engine-visible library it was made against — each package's identity,
-revision, enabled state and term count — together with the lookup options the
-probe sends, so removing or disabling the package that answered, or shortening
+revision, persisted generation path, enabled state and term count — together with
+the lookup options the probe sends, so removing or disabling the package that answered, or shortening
 the scan length, retires it and the sentence is probed again, while a group-only
 or presentation write leaves a ready exercise alone. A library that holds no enabled term dictionary, one that
 cannot answer this sentence, or lookups switched off each get their own sentence
