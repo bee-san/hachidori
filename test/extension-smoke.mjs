@@ -27,6 +27,7 @@ import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
 import { assertBackupSnapshot, backupRevisions } from "../extension/backup-state.js";
 import { createBackupDownloads } from "../extension/backup-downloads.js";
+import { lookupStatsKey } from "../extension/lookup-stats.js";
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
 // The trained fixture is built in memory rather than read out of test/fixtures:
@@ -734,6 +735,8 @@ function loadBackgroundScript(sandbox) {
   const ankiTemplates = readFileSync(resolve(EXTENSION, "anki-templates.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
+  const lookupStats = readFileSync(resolve(EXTENSION, "lookup-stats-identity.js"), "utf8")
+    + readFileSync(resolve(EXTENSION, "lookup-stats.js"), "utf8").replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");
@@ -746,6 +749,7 @@ function loadBackgroundScript(sandbox) {
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+    .replace(/^import .* from "\.\/lookup-stats\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/backup-(?:state|downloads)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
@@ -757,6 +761,7 @@ function loadBackgroundScript(sandbox) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
+  sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;
   sandbox.Uint8Array ??= Uint8Array;
   sandbox.Uint32Array ??= Uint32Array;
@@ -765,13 +770,108 @@ function loadBackgroundScript(sandbox) {
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
-    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n`
+    `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${ankiTemplates}\n${anki}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
   );
   return context;
+}
+
+async function lookupStatsStage() {
+  const bus = makeBus(), storage = makeStorage();
+  const chrome = makeChrome("lookup-stats-worker", bus, storage);
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error });
+  const send = (type, fields = {}) => bus.sendMessage("lookup-page", { target: "hoshidicts-worker", type, ...fields });
+  const fields = { term: "  は\u3099 ", reading: " は\u3099 " };
+  const replies = await Promise.all(Array.from({ length: 25 }, () => send("hd_lookup_stats_record", fields)));
+  const current = await send("hd_lookup_stats_read", fields);
+  check("concurrent lookups increment one canonical row without scanning or rewriting the statistics collection",
+    replies.every(reply => reply.ok) && current.statistics?.lookupCount === 25 && current.statistics.term === "ば"
+      && current.statistics.reading === "ば" && current.statistics.seenCount === null
+      && storage.gets.every(query => query !== null) && storage.sets.length === 25
+      && storage.sets.every(keys => keys.length === 2 && keys.includes("lookupStats")), JSON.stringify(current));
+
+  const restartBus = makeBus();
+  const restartChrome = makeChrome("lookup-stats-restarted", restartBus, storage);
+  loadBackgroundScript({ chrome: restartChrome, console, setTimeout, clearTimeout, Promise, Error });
+  const restored = await restartBus.sendMessage("lookup-page", { target: "hoshidicts-worker", type: "hd_lookup_stats_read", ...fields });
+  const separate = await send("hd_lookup_stats_record", { term: "ば", reading: "" });
+  check("lookup counts survive worker restart and distinguish empty readings",
+    restored.statistics?.lookupCount === 25 && separate.statistics?.lookupCount === 1 && separate.statistics.reading === "");
+
+  await send("hd_options_write", { baseRevision: 0, options: { showLookupCounts: false } });
+  const beforeDisabled = storage.sets.length;
+  const disabled = await send("hd_lookup_stats_record", fields);
+  check("disabled lookup statistics do not record or claim a corpus count",
+    disabled.ok && disabled.statistics === null && storage.sets.length === beforeDisabled, JSON.stringify(disabled));
+
+  await chrome.storage.local.set({ options: { revision: 2, showLookupCounts: "false",
+    corpusSeenEnabled: 1, corpusSeenUrl: "https://example.com" } });
+  const beforeMalformed = storage.sets.length;
+  const malformedOptions = await send("hd_lookup_stats_record", { term: "既定", reading: "きてい" });
+  check("lookup statistics read scalar option defaults without normalizing unrelated settings",
+    malformedOptions.statistics?.lookupCount === 1 && malformedOptions.statistics.seenCount === null
+      && storage.sets.length === beforeMalformed + 1, JSON.stringify(malformedOptions));
+
+  const corpusBus = makeBus(), corpusStorage = makeStorage();
+  const corpusChrome = makeChrome("lookup-stats-corpus-worker", corpusBus, corpusStorage);
+  await corpusChrome.storage.local.set({ options: { revision: 1, showLookupCounts: true,
+    corpusSeenEnabled: true, corpusSeenUrl: "http://127.0.0.1:7275" } });
+  const corpusFetches = [];
+  let releaseFirstFetch;
+  let markFirstFetchStarted;
+  const firstFetchStarted = new Promise(resolvePromise => { markFirstFetchStarted = resolvePromise; });
+  loadBackgroundScript({
+    chrome: corpusChrome, console, setTimeout, clearTimeout, Promise, Error, AbortController,
+    fetch: async (url, init) => {
+      corpusFetches.push({ url, init });
+      if (url.endsWith(encodeURIComponent("本"))) {
+        markFirstFetchStarted();
+        await new Promise(resolvePromise => { releaseFirstFetch = resolvePromise; });
+        return { ok: true, status: 200, json: async () => ({ total_occurrences: 7 }) };
+      }
+      if (url.endsWith(encodeURIComponent("存在しない"))) {
+        return { ok: false, status: 404, json: async () => ({ error: "Word not found" }) };
+      }
+      return { ok: false, status: 503, json: async () => ({ error: "Tokenization unavailable" }) };
+    },
+  });
+  const sendCorpus = (type, fields = {}) =>
+    corpusBus.sendMessage("lookup-page", { target: "hoshidicts-worker", type, ...fields });
+  const pendingCorpus = sendCorpus("hd_lookup_stats_record", { term: "本", reading: "ほん" });
+  await firstFetchStarted;
+  let optionsReply = null;
+  const optionsWrite = sendCorpus("hd_options_write", { baseRevision: 1, options: { hoverDelayMs: 51 } })
+    .then(reply => { optionsReply = reply; return reply; });
+  await new Promise(resolvePromise => setTimeout(resolvePromise, 0));
+  const storageWriteFinishedDuringFetch = optionsReply?.ok === true;
+  releaseFirstFetch();
+  const corpus = await pendingCorpus;
+  await optionsWrite;
+  check("optional local GSM corpus reads Seen without holding storage writes",
+    storageWriteFinishedDuringFetch && corpus.statistics?.lookupCount === 1 && corpus.statistics.seenCount === 7
+      && corpusFetches[0]?.url === "http://127.0.0.1:7275/api/tokenization/word/%E6%9C%AC"
+      && corpusFetches[0]?.init.method === "GET" && corpusFetches[0]?.init.credentials === "omit",
+    JSON.stringify({ corpus, corpusFetches: corpusFetches.map(({ url, init }) => ({ url, method: init.method })) }));
+
+  const unseen = await sendCorpus("hd_lookup_stats_read", { term: "存在しない", reading: "" });
+  const unavailable = await sendCorpus("hd_lookup_stats_record", { term: "失敗", reading: "" });
+  check("only a confirmed corpus miss maps to zero while GSM failures remain unavailable",
+    unseen.statistics?.lookupCount === 0 && unseen.statistics.seenCount === 0
+      && unavailable.statistics?.lookupCount === 1 && unavailable.statistics.seenCount === null,
+    JSON.stringify({ unseen, unavailable }));
+
+  await sendCorpus("hd_options_write", {
+    baseRevision: optionsReply.options.revision,
+    options: { corpusSeenEnabled: false },
+  });
+  const beforeCorpusDisabled = corpusFetches.length;
+  const corpusDisabled = await sendCorpus("hd_lookup_stats_read", { term: "本", reading: "ほん" });
+  check("disabled corpus Seen integration performs no network request",
+    corpusDisabled.statistics?.lookupCount === 1 && corpusDisabled.statistics.seenCount === null
+      && corpusFetches.length === beforeCorpusDisabled, JSON.stringify(corpusDisabled));
 }
 
 async function managedScheduleStage() {
@@ -870,9 +970,10 @@ async function managedScheduleStage() {
   const base = (await bus.sendMessage("schedule-page", { target: "hoshidicts-worker", type: "hd_backup_base_read" })).snapshot;
   const snapshot = (await bus.sendMessage("schedule-page", { target: "hoshidicts-worker", type: "hd_backup_read" })).snapshot;
   for (const [key, revision] of Object.entries(backupRevisions(base))) snapshot[key].revision = revision + 1;
+  snapshot.lookupStats.generation = crypto.randomUUID();
   snapshot.updates.schedule = "weekly";
   const beforeRestoreReads = alarmReads;
-  const restored = await bus.sendMessage("schedule-offscreen", { target: "hoshidicts-worker", type: "hd_backup_cas", base, snapshot },
+  const restored = await bus.sendMessage("schedule-offscreen", { target: "hoshidicts-worker", type: "hd_backup_cas", base, snapshot, lookupStatsRows: [] },
     { id: chrome.runtime.id, url: chrome.runtime.getURL("offscreen.html") });
   await settleAlarm();
   check("backup schedule-only publication reconciles without relying on a settings storage event",
@@ -2237,6 +2338,7 @@ async function main() {
   await externalLinksBackgroundStage();
   await backupRelayStage();
   await managedScheduleStage();
+  await lookupStatsStage();
   await audioRelayStage();
   await ankiBackgroundStage();
 
@@ -4754,6 +4856,8 @@ async function main() {
     preview?.sample === true && preview.note === true && preview.back === true, JSON.stringify(preview));
   check("Design updates presentation without rebuilding cards and skips unchanged option echoes",
     preview?.incremental === true && preview.routing === true, JSON.stringify(preview));
+  check("Design repaints its sample count line on the count switch without rebuilding cards or the Note draft",
+    preview?.counts === true, JSON.stringify(preview));
   check("live preview appearance preserves cards and drafts while term and kanji highlights toggle exactly",
     preview?.appearance === true && preview.highlight === true, JSON.stringify(preview));
   check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
@@ -4968,6 +5072,9 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  for (const [name, passed] of Object.entries(noteContent?.lookupStatistics ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   for (const [name, passed] of Object.entries(noteContent?.kanjiNavigation ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -5857,6 +5964,17 @@ async function designPreviewStage() {
     await settle();
     incremental &&= mutations === 0;
     observer.disconnect();
+    const countLine = () => query(".gsm-hoshidicts-lookup-stats");
+    let counts = countLine()?.hidden === false && countLine().textContent === "Looked up 3 times";
+    options = { ...options, showLookupCounts: false };
+    update();
+    await settle();
+    counts &&= countLine()?.hidden === true && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    options = { ...options, showLookupCounts: true };
+    update();
+    await settle();
+    counts &&= countLine()?.hidden === false && countLine().textContent === "Looked up 3 times"
+      && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
     options = { ...options, popupTheme: "miku", popupWidthPx: 720, popupHeightPx: 500, popupOpacityPercent: 0,
       sourceHighlightEnabled: false };
     update();
@@ -5930,7 +6048,7 @@ async function designPreviewStage() {
     await settle();
     const routing = query(".gloss-image-link")?.dataset.imageLoadState === "load-error";
     highlight &&= highlightedText() === "食べる";
-    return { sample, note, back, incremental, routing, appearance, highlight, kanjiSource, earlyLoad, cssOwner, cssPreview };
+    return { sample, note, back, incremental, counts, routing, appearance, highlight, kanjiSource, earlyLoad, cssOwner, cssPreview };
   } finally { window.close(); }
 }
 
@@ -6164,6 +6282,8 @@ async function settingsFrequencyStage() {
         && imageSource.value === "" && !imageSource.disabled;
     }
     const metadataFields = [
+      ["opt-lookup-counts", "showLookupCounts", true],
+      ["opt-corpus-seen", "corpusSeenEnabled", false],
       ["opt-frequency-names", "showFrequencyDictionaryNames", true],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
@@ -6180,6 +6300,18 @@ async function settingsFrequencyStage() {
         metadataDetails.push(JSON.stringify(writes.at(-1).options)
           === JSON.stringify({ [key]: key === "hidePopupGrammarTags" ? checked : !checked }));
       }
+      const corpusUrl = window.document.getElementById("opt-corpus-url");
+      metadataDetails.push(corpusUrl && !corpusUrl.disabled
+        && corpusUrl.value === "http://127.0.0.1:7275");
+      await editControl(corpusUrl, "http://localhost:7275/");
+      metadataDetails.push(corpusUrl.value === "http://localhost:7275"
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ corpusSeenUrl: "http://localhost:7275" }));
+      const beforeInvalidCorpusUrl = writes.length;
+      corpusUrl.value = "https://example.com";
+      corpusUrl.dispatchEvent(new window.Event("change", { bubbles: true }));
+      metadataDetails.push(writes.length === beforeInvalidCorpusUrl
+        && corpusUrl.value === "http://localhost:7275"
+        && status().includes("loopback"));
       metadataDetails.push(pitch.disabled);
       await editControl(window.document.getElementById("opt-pitch-furigana"), true);
       emitDictionaries({ pitchCount: 2 });
@@ -8123,7 +8255,7 @@ async function staleKanjiResponseStage(invalidation) {
           const stored = {
             ...defaults,
             dictionaryState,
-            options: { ...defaults.options, kanjiClickDictionary: firstSelection },
+            options: { ...defaults.options, kanjiClickDictionary: firstSelection, showLookupCounts: false },
           };
           if (invalidation === "initial-storage") {
             initialStorageCallback = () => callback(stored);
@@ -8147,7 +8279,8 @@ async function staleKanjiResponseStage(invalidation) {
     setState(candidate, nextPopup, nextView, nextHighlighter) {
       rootLevel.activeCandidate = candidate;
       rootLevel.activeHighlightText = "";
-      rootLevel.activeTermRender = { candidate, dictionaries, generation: 0, matchedText: "食べる", renderOptions: {}, results: [] };
+      rootLevel.activeTermRender = { candidate, dictionaries, generation: 0, matchedText: "食べる", renderOptions: {},
+        request: { kind: "term", candidate, payload: { text: "食べる" } }, results: [{ term: { expression: "食べる", reading: "たべる" } }] };
       currentGeneration = 0;
       styleGeneration = 0;
       rootLevel.popup = nextPopup;
@@ -8167,6 +8300,7 @@ async function staleKanjiResponseStage(invalidation) {
   }
   window.eval(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"));
   window.eval(readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8"));
+  window.eval(readFileSync(resolve(EXTENSION, "lookup-stats-identity.js"), "utf8"));
   window.eval(instrumented);
   const anchor = window.document.getElementById("anchor");
   const popup = window.document.createElement("div");
@@ -8244,7 +8378,7 @@ async function contentNoteStage() {
   const { JSDOM } = jsdom;
   const settle = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
 
-  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }) {
+  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {} } = {}) {
     const dom = new JSDOM(
       "<!doctype html><body><span id=anchor>\u98df\u3079\u305f</span></body>",
       {
@@ -8262,6 +8396,7 @@ async function contentNoteStage() {
     const pending = [];
     const sent = [];
     const renders = [];
+    let lookupStatsRevision = 0;
 
     function createView(callbacks) {
       callbacks.popup.dataset.toolbarPosition = callbacks.toolbarPosition;
@@ -8313,7 +8448,15 @@ async function contentNoteStage() {
         },
         renderResults(results, candidate, context) {
           recordRender({ kind: "terms", results, candidate, context });
+          callbacks.popup.querySelector(".gsm-hoshidicts-lookup-stats")?.remove();
+          // Like the production renderer, the slot exists on every All view.
+          const lookupStats = window.document.createElement("div");
+          lookupStats.className = "gsm-hoshidicts-lookup-stats";
+          lookupStats.hidden = true;
+          callbacks.popup.append(lookupStats);
+          callbacks.onResultsRendered({ lookupStats, audioButtons: [], miningActions: [] });
         },
+        setLookupStats(element, payload) { record.lookupStatistics = payload; element.hidden = !payload; },
         setToolbarPosition(value) { callbacks.popup.dataset.toolbarPosition = value; },
       };
       popupRecords.set(callbacks.popup, record);
@@ -8353,6 +8496,12 @@ async function contentNoteStage() {
         getURL: (path) => `chrome-extension://hachidoricontnotesmoke/${path}`,
         sendMessage(request, callback) {
           sent.push(JSON.parse(JSON.stringify(request)));
+          if (!holdLookupStats && ["hd_lookup_stats_record", "hd_lookup_stats_read"].includes(request.type)) {
+            callback({ ok: true, requestId: request.requestId, type: `${request.type}_result`,
+              descriptor: { generation: "statistics", revision: ++lookupStatsRevision },
+              statistics: { term: request.term, reading: request.reading, lookupCount: 1, seenCount: null } });
+            return;
+          }
           if (request.type === "hd_styles" && !holdStyles) {
             callback({
               generation: stylesGeneration,
@@ -8380,6 +8529,7 @@ async function contentNoteStage() {
                 maxResults: 7,
                 modifier: "none",
                 scanLength: 9,
+                ...optionOverrides,
               },
             });
           },
@@ -8440,6 +8590,7 @@ async function contentNoteStage() {
     }
     window.eval(readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8"));
+    window.eval(readFileSync(resolve(EXTENSION, "lookup-stats-identity.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "audio-content.js"), "utf8"));
     window.eval(readFileSync(resolve(EXTENSION, "anki-content.js"), "utf8"));
     window.eval(instrumented);
@@ -8554,6 +8705,10 @@ async function contentNoteStage() {
       },
       emitOptions,
       emitState,
+      emitLookupStats(descriptor, row) { storageListener?.({ lookupStats: { newValue: descriptor },
+        ...(row ? { [lookupStatsKey(descriptor, row)]: { newValue: row } } : {}),
+      }, "local"); },
+      lookupStatistics: (depth = 0) => popupRecord(depth)?.lookupStatistics,
       initialLookup,
       internalLink(link, depth = 0) {
         const record = popupRecord(depth);
@@ -8621,6 +8776,180 @@ async function contentNoteStage() {
   const newestOnlyOptions = (await probe.initialLookup()).request.maxResults === 50;
   probe.close();
   if (!callbacksWired) return { callbacksWired };
+
+  async function lookupStatisticsCase() {
+    const outcomes = {
+      "accepted primary views record once across tabs, expansion, Note refresh and Back": false,
+      "internal links and clicked-kanji terms record independently while misses and stale replies do not": false,
+      "statistics reject obsolete namespace replies and never retry a failed increment": false,
+    };
+    const harness = await createHarness(undefined, { holdLookupStats: true });
+    const records = () => harness.sent.filter(request => request.type === "hd_lookup_stats_record");
+    const answer = (item, count, generation = "statistics", revision = count) => harness.reply(item, {
+      descriptor: { generation, revision }, statistics: { term: item.request.term, reading: item.request.reading, lookupCount: count, seenCount: null },
+    });
+    const lookup = async (expression = "食べる") => {
+      const operation = harness.driver.runLookup(harness.candidate);
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term(expression)] });
+      await operation;
+    };
+    const rebind = () => harness.callbacks().onResultsRendered({
+      lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"), audioButtons: [], miningActions: [],
+    });
+    try {
+      await lookup();
+      const first = harness.take("hd_lookup_stats_record");
+      if (!first) return outcomes;
+      harness.emitLookupStats({ generation: "statistics", revision: 1 });
+      answer(first, 1);
+      await harness.settle();
+      const canonical = first.request.term === "食べる" && first.request.reading === "よみ"
+        && harness.lookupStatistics()?.lookupCount === 1;
+      harness.render().context.onDictionaryTabSelected({ dictionary: "Generic" });
+      rebind(); rebind();
+      harness.edit(true);
+      const append = harness.callbacks().onAddCustomEntry({ term: "食べる", reading: "よみ", definition: "eat" });
+      harness.reply(harness.take("hd_custom_append"), { document: { revision: 2, text: "", semanticRevision: "two" }, state: harness.state(2, "Note") });
+      await harness.settle();
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("食べる")] });
+      await append;
+      const noteCount = records().length;
+      const clicked = harness.driver.showKanji("食");
+      harness.reply(harness.take("hd_lookup_dictionary"), { dictionaryCount: 1, results: [harness.term("食")] });
+      await clicked;
+      const clickedCount = harness.take("hd_lookup_stats_record");
+      if (!clickedCount) return outcomes;
+      answer(clickedCount, 2);
+      await harness.settle();
+      await harness.render().context.onBack();
+      outcomes[Object.keys(outcomes)[0]] = canonical && noteCount === 1 && records().length === 2
+        && harness.lookupStatistics()?.lookupCount === 1;
+
+      const link = harness.internalLink({ query: "内部", primaryReading: "ないぶ" });
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term("内部")] });
+      await link;
+      const linkedCount = harness.take("hd_lookup_stats_record");
+      if (!linkedCount) return outcomes;
+      answer(linkedCount, 3);
+      await harness.settle();
+      const miss = harness.driver.runLookup(harness.candidate);
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [] });
+      await miss;
+      const stale = harness.driver.runLookup(harness.candidate);
+      const oldLookup = harness.take("hd_lookup");
+      await lookup("現在");
+      const currentCount = harness.take("hd_lookup_stats_record");
+      if (!currentCount) return outcomes;
+      answer(currentCount, 4);
+      harness.reply(oldLookup, { dictionaryCount: 1, results: [harness.term("古い")] });
+      await stale;
+      outcomes[Object.keys(outcomes)[1]] = clickedCount.request.term === "食" && linkedCount.request.term === "内部" && records().length === 4;
+
+      await lookup("復元");
+      const oldCount = harness.take("hd_lookup_stats_record");
+      harness.emitLookupStats({ generation: "restored", revision: 10 });
+      answer(oldCount, 99, "statistics", 5);
+      await harness.settle();
+      const restored = harness.take("hd_lookup_stats_read");
+      if (!restored) return outcomes;
+      answer(restored, 0, "restored", 10);
+      await harness.settle();
+      const replaced = harness.lookupStatistics()?.lookupCount === 0 && records().length === 5;
+      await lookup("失敗");
+      const failed = harness.take("hd_lookup_stats_record");
+      harness.reply(failed, { error: "lost committed reply" }, false);
+      await harness.settle();
+      rebind(); rebind();
+      outcomes[Object.keys(outcomes)[2]] = replaced && records().length === 6 && !harness.take("hd_lookup_stats_record");
+    } finally { harness.close(); }
+    return outcomes;
+  }
+
+  async function lookupStatisticsRaceCase() {
+    const outcomes = {};
+    const harness = await createHarness(null, { holdLookupStats: true });
+    try {
+      await harness.initialLookup();
+      const pending = harness.take("hd_lookup_stats_record");
+      const row = { term: pending.request.term, reading: pending.request.reading, lookupCount: 2 };
+      harness.emitLookupStats({ generation: "statistics", revision: 2 }, row);
+      harness.reply(pending, { descriptor: { generation: "statistics", revision: 1 }, statistics: { ...row, lookupCount: 1, seenCount: 7 } });
+      await harness.settle();
+      const matchingEventWon = harness.lookupStatistics()?.lookupCount === 2;
+      harness.emitLookupStats({ generation: "statistics", revision: 4 }, { ...row, term: "別の言葉", lookupCount: 1 });
+      const reads = harness.sent.filter(request => request.type === "hd_lookup_stats_read");
+      outcomes["matching row events outrank old count replies without refreshing unrelated terms"] =
+        matchingEventWon && harness.lookupStatistics()?.lookupCount === 2 && reads.length === 0;
+      outcomes["an outranked reply still supplies its corpus Seen value"] =
+        harness.lookupStatistics()?.seenCount === 7;
+      harness.emitLookupStats({ generation: "statistics", revision: 3 }, { ...row, lookupCount: 3 });
+      outcomes["delayed matching rows survive newer unrelated global revisions"] =
+        harness.lookupStatistics()?.lookupCount === 3 && harness.lookupStatistics()?.seenCount === 7 && reads.length === 0;
+      // Show more rebinds only the newly revealed audio and mining controls.
+      harness.callbacks().onResultsExpanded({ audioButtons: [], miningActions: [] });
+      harness.emitLookupStats({ generation: "statistics", revision: 5 }, { ...row, lookupCount: 4 });
+      outcomes["expanding results keeps the count element for later row events"] =
+        harness.lookupStatistics()?.lookupCount === 4 && !harness.popup.querySelector(".gsm-hoshidicts-lookup-stats").hidden;
+      harness.edit(true);
+      const retainedLine = harness.popup.querySelector(".gsm-hoshidicts-lookup-stats");
+      harness.emitState(harness.state(2, "Replacement"));
+      harness.emitOptions({ showLookupCounts: false });
+      outcomes["turning counts off hides the existing line even in a retained Note view"] =
+        retainedLine === harness.popup.querySelector(".gsm-hoshidicts-lookup-stats")
+        && retainedLine.hidden;
+    } finally { harness.close(); }
+    const toggled = await createHarness(null, { holdLookupStats: true });
+    try {
+      await toggled.initialLookup();
+      const pending = toggled.take("hd_lookup_stats_record");
+      toggled.emitOptions({ showLookupCounts: false });
+      toggled.emitOptions({ showLookupCounts: true });
+      toggled.reply(pending, { descriptor: { generation: null, revision: 0 }, statistics: null });
+      await toggled.settle();
+      const repair = toggled.take("hd_lookup_stats_read");
+      if (repair) toggled.reply(repair, { descriptor: { generation: null, revision: 0 },
+        statistics: { term: pending.request.term, reading: pending.request.reading, lookupCount: 0, seenCount: null } });
+      await toggled.settle();
+      outcomes["an Off reply arriving after On repairs with one read and never another increment"] =
+        Boolean(repair) && toggled.lookupStatistics()?.lookupCount === 0
+        && toggled.sent.filter(request => request.type === "hd_lookup_stats_record").length === 1
+        && toggled.sent.filter(request => request.type === "hd_lookup_stats_read").length === 1;
+      toggled.emitOptions({ corpusSeenEnabled: true, corpusSeenUrl: "http://127.0.0.1:7275" });
+      const corpusRead = toggled.take("hd_lookup_stats_read");
+      if (corpusRead) toggled.reply(corpusRead, {
+        descriptor: { generation: null, revision: 0 },
+        statistics: { term: pending.request.term, reading: pending.request.reading,
+          lookupCount: 0, seenCount: 8 },
+      });
+      await toggled.settle();
+      outcomes["changing the corpus source refreshes the retained count without another increment"] =
+        Boolean(corpusRead) && toggled.lookupStatistics()?.seenCount === 8
+        && toggled.sent.filter(request => request.type === "hd_lookup_stats_record").length === 1
+        && toggled.sent.filter(request => request.type === "hd_lookup_stats_read").length === 2;
+      // Another tab's lookup of the same term only changes the local count.
+      toggled.emitLookupStats({ generation: "statistics", revision: 1 },
+        { term: pending.request.term, reading: pending.request.reading, lookupCount: 1 });
+      outcomes["matching row events keep the displayed corpus Seen value without a corpus read"] =
+        toggled.lookupStatistics()?.lookupCount === 1 && toggled.lookupStatistics()?.seenCount === 8
+        && toggled.sent.filter(request => request.type === "hd_lookup_stats_read").length === 2;
+    } finally { toggled.close(); }
+    const hidden = await createHarness(null, { holdLookupStats: true, options: { showLookupCounts: false } });
+    try {
+      await hidden.initialLookup();
+      const slot = () => hidden.popup.querySelector(".gsm-hoshidicts-lookup-stats");
+      const offVisit = hidden.take("hd_lookup_stats_record") === null && slot()?.hidden === true;
+      const rendersBefore = hidden.renders.length;
+      hidden.emitOptions({ showLookupCounts: true });
+      const read = hidden.take("hd_lookup_stats_read");
+      if (read) hidden.reply(read, { descriptor: { generation: "statistics", revision: 1 },
+        statistics: { term: read.request.term, reading: read.request.reading, lookupCount: 4, seenCount: null } });
+      await hidden.settle();
+      outcomes["enabling counts paints the open popup's hidden slot with one read and no rerender"] =
+        offVisit && Boolean(read) && hidden.lookupStatistics()?.lookupCount === 4 && slot()?.hidden === false
+        && hidden.take("hd_lookup_stats_record") === null && hidden.renders.length === rendersBefore;
+    } finally { hidden.close(); }
+    return outcomes;
+  }
 
   async function kanjiNavigationCase() {
     const outcomes = {};
@@ -11336,6 +11665,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
+    lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
@@ -11715,6 +12045,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   );
 
   await metadataRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
+  lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candidate, results: lookup.results });
 
   const glossary = lookup.results[0].term.glossaries[0];
   const noteResults = [
@@ -12516,6 +12847,38 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
     view.destroy();
     popup.remove();
   }
+}
+
+function lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candidate, results }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  let renders = 0;
+  let showCounts = false;
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
+    // The owner decides visibility; the renderer only provides the slot.
+    onResultsRendered({ lookupStats }) {
+      renders += 1;
+      if (lookupStats) view.setLookupStats(lookupStats, showCounts ? { lookupCount: 3, seenCount: null } : null);
+    },
+  });
+  const line = () => popup.querySelector(".gsm-hoshidicts-lookup-stats");
+  try {
+    view.renderResults(results, candidate, {});
+    const slotHidden = line() !== null && line().hidden;
+    showCounts = true;
+    if (line()) view.setLookupStats(line(), { lookupCount: 3, seenCount: null });
+    const painted = line()?.textContent === "Looked up 3 times" && !line().hidden && renders === 1;
+    popup.querySelector('.gsm-hoshidicts-tab[data-dictionary]').click();
+    const projected = !line();
+    popup.querySelector('.gsm-hoshidicts-tab').click();
+    const restored = line()?.textContent === "Looked up 3 times" && !line().hidden;
+    check("the lookup count slot renders hidden on All only and its owner paints it without rerendering",
+      slotHidden && painted && projected && restored,
+      JSON.stringify({ slotHidden, painted, projected, restored, renders }));
+  } finally { view.destroy(); popup.remove(); }
 }
 
 async function metadataRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {

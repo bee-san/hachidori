@@ -9,6 +9,7 @@ const snapshot = () => ({
   document: emptyCustomDictionaryDocument(),
   options: { revision: 21, popupTheme: "dark" },
   updates: { revision: 4, schedule: "daily", lastCheckedAt: null },
+  lookupStats: { generation: "archived", revision: 7 },
 });
 
 test("complete restore advances each local revision and replaces absent/default settings", async () => {
@@ -19,7 +20,8 @@ test("complete restore advances each local revision and replaces absent/default 
   archived.state.revision = 0;
   await assertBackupSnapshot(archived);
   const restored = restoredBackupSnapshot(current, archived, []);
-  assert.deepEqual(backupRevisions(restored), { state: 9, options: 22, document: 1, updates: 5 });
+  assert.deepEqual(backupRevisions(restored), { state: 9, options: 22, document: 1, updates: 5, lookupStats: 8 });
+  assert.notEqual(restored.lookupStats.generation, archived.lookupStats.generation);
   assert.deepEqual(restored.options, { revision: 22 });
   assert.equal(restored.updates.schedule, "off");
   await assertBackupSnapshot(restored);
@@ -32,6 +34,7 @@ test("restore validation rejects malformed state, settings and inconsistent cust
     value => { value.options = { revision: 0, popupWidthPx: -1 }; },
     value => { value.options.unknown = true; },
     value => { value.updates.schedule = "sometimes"; },
+    value => { value.lookupStats.generation = ""; },
     value => { value.document.text = "猫,ねこ,cat"; },
     value => { value.state.groups = [{ id: "x", name: "All", dictionaryIds: [] }]; },
   ];

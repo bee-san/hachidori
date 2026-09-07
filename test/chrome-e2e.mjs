@@ -231,6 +231,10 @@ const PLANNED = [
   "Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
   "Popup autoplay is optional and does not replay after presentation updates or Back",
   "Popup audio cancels obsolete discovery and playback on dismissal, source changes and navigation",
+  "accepted reader lookups persist canonical counts without delaying definitions",
+  "live lookup-count Settings pause recording and preserve the displayed reader view",
+  "optional GSM Seen counts use the configured loopback corpus and fail open",
+  "lookup counts survive a full browser restart",
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
@@ -1127,7 +1131,43 @@ async function popupReader(page, depth = 0) {
     });
     return reply.result.value;
   }
-  return { anki, audio, click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview, nested, sourcePaint, retainedControls, selectGlossaryText, state, visible, waitForVisible, waitForHidden, writeNote };
+  async function lookupStatistics(action = "read") {
+    const object = await resolvePopupObject();
+    if (!object) return null;
+    const reply = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true, arguments: [{ value: action }],
+      functionDeclaration: function (action) {
+        const root = this.getRootNode();
+        const line = this.querySelector(".gsm-hoshidicts-lookup-stats");
+        if (action === "remember") {
+          root.__lookupStatisticsView = {
+            popup: this,
+            line,
+            panel: this.querySelector(".gsm-hoshidicts-tab-panel"),
+          };
+        }
+        if (action === "cleanup") {
+          delete root.__lookupStatisticsView;
+          return null;
+        }
+        const saved = root.__lookupStatisticsView;
+        return {
+          hidden: line?.hidden ?? true,
+          text: line?.textContent ?? "",
+          popupHidden: this.hidden,
+          samePopup: saved?.popup === this,
+          sameLine: saved?.line === line,
+          samePanel: saved?.panel === this.querySelector(".gsm-hoshidicts-tab-panel"),
+        };
+      }.toString(),
+    });
+    return reply.result.value;
+  }
+  return {
+    anki, audio, click, compactSummaries, dictionaryTabs, deinflection, externalLink, imagePreview,
+    lookupStatistics, nested, sourcePaint, retainedControls, selectGlossaryText, state, visible,
+    waitForVisible, waitForHidden, writeNote,
+  };
 }
 
 // Content scripts have their own Highlight constructor; changing the page's
@@ -3855,6 +3895,214 @@ async function editSettingsControls(settings, values) {
     { polling: 100, timeout: 10_000 });
 }
 
+async function updateSettingsControls(settings, values) {
+  const current = await readSettingsControls(settings, Object.keys(values));
+  const changed = Object.fromEntries(Object.entries(values).filter(([id, value]) => current[id] !== value));
+  if (Object.keys(changed).length > 0) await editSettingsControls(settings, changed);
+}
+
+async function waitForLookupStatistics(popup, predicate, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  let current = null;
+  while (Date.now() < deadline) {
+    current = await popup.lookupStatistics();
+    if (predicate(current)) return current;
+    await new Promise(resolveWait => setTimeout(resolveWait, 50));
+  }
+  return current;
+}
+
+async function readLookupStatistics(settings) {
+  return settings.evaluate(() => chrome.runtime.sendMessage({
+    target: "hoshidicts-worker",
+    type: "hd_lookup_stats_read",
+    term: "食べる",
+    reading: "たべる",
+  })).catch(error => ({ error: String(error) }));
+}
+
+async function checkLookupStatistics({ browser, settings, tab, popup, extensionId }) {
+  const original = await readSettingsControls(settings, [
+    "opt-lookup-counts", "opt-corpus-seen", "opt-corpus-url",
+  ]);
+  let corpusSession = null;
+  const freshLookup = async () => {
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    return hoverForPopup(tab, popup, "#verb");
+  };
+  try {
+    await updateSettingsControls(settings, {
+      "opt-lookup-counts": true,
+      "opt-corpus-seen": false,
+    });
+    const initialDefinition = await popup.state();
+    const initialLine = await waitForLookupStatistics(
+      popup,
+      value => value !== null && !value.hidden && value.text.includes("Looked up"),
+    );
+    const before = await readLookupStatistics(settings);
+    const secondDefinition = await freshLookup();
+    const secondLine = await waitForLookupStatistics(
+      popup,
+      value => value !== null && !value.hidden && value.text.includes("Looked up"),
+    );
+    const after = await readLookupStatistics(settings);
+    check(
+      "accepted reader lookups persist canonical counts without delaying definitions",
+      initialDefinition?.plain.includes("食べる")
+        && secondDefinition?.plain.includes("食べる")
+        && initialLine?.text.includes(`Looked up ${before.statistics?.lookupCount}`)
+        && secondLine?.text.includes(`Looked up ${after.statistics?.lookupCount}`)
+        && before.ok === true
+        && before.statistics?.term === "食べる"
+        && before.statistics?.reading === "たべる"
+        && Number.isFinite(before.statistics?.firstLookedUpAt)
+        && after.statistics?.lookupCount === before.statistics.lookupCount + 1
+        && after.statistics.firstLookedUpAt === before.statistics.firstLookedUpAt
+        && after.statistics.lastLookedUpAt >= before.statistics.lastLookedUpAt,
+      JSON.stringify({ initialDefinition, initialLine, before, secondDefinition, secondLine, after }),
+    );
+
+    await popup.lookupStatistics("remember");
+    await updateSettingsControls(settings, { "opt-lookup-counts": false });
+    const hidden = await waitForLookupStatistics(
+      popup,
+      value => value?.hidden === true && value.popupHidden === false,
+    );
+    const retainedDefinition = await popup.state();
+    const disabledDefinition = await freshLookup();
+    await popup.lookupStatistics("remember");
+    await updateSettingsControls(settings, { "opt-lookup-counts": true });
+    // Re-enabling paints the popup that rendered while counts were off, with
+    // one read: the same popup and panel, and no new hover or increment.
+    const reenabled = await waitForLookupStatistics(
+      popup,
+      value => value !== null && !value.hidden && value.text.includes("Looked up"),
+    );
+    const afterPause = await readLookupStatistics(settings);
+    const resumedDefinition = await freshLookup();
+    const incrementedLine = await waitForLookupStatistics(
+      popup,
+      value => value !== null && !value.hidden && value.text.includes("Looked up"),
+    );
+    const afterResume = await readLookupStatistics(settings);
+    check(
+      "live lookup-count Settings pause recording and preserve the displayed reader view",
+      hidden?.samePopup === true
+        && hidden.sameLine === true
+        && hidden.samePanel === true
+        && retainedDefinition?.plain.includes("食べる")
+        && disabledDefinition?.plain.includes("食べる")
+        && reenabled?.samePopup === true
+        && reenabled.sameLine === true
+        && reenabled.samePanel === true
+        && reenabled.text.includes(`Looked up ${afterPause.statistics?.lookupCount}`)
+        && resumedDefinition?.plain.includes("食べる")
+        && incrementedLine?.text.includes(`Looked up ${afterResume.statistics?.lookupCount}`)
+        && afterPause.statistics?.lookupCount === after.statistics.lookupCount
+        && afterResume.statistics?.lookupCount === afterPause.statistics.lookupCount + 1,
+      JSON.stringify({
+        hidden, retainedDefinition, disabledDefinition, reenabled, afterPause,
+        resumedDefinition, incrementedLine, afterResume,
+      }),
+    );
+
+    const workerTarget = browser.targets().find(target =>
+      target.type() === "service_worker"
+        && target.url() === `chrome-extension://${extensionId}/background.js`);
+    const corpusRoute = {
+      requests: 0,
+      body: JSON.stringify({ total_occurrences: 9 }),
+      status: 200,
+      contentType: "application/json",
+    };
+    const corpusUrl = "http://127.0.0.1:7275/api/tokenization/word/%E9%A3%9F%E3%81%B9%E3%82%8B";
+    let corpusEvidence;
+    if (workerTarget === undefined) {
+      corpusEvidence = { error: "service worker target unavailable" };
+    } else {
+      corpusSession = await interceptFetches(
+        workerTarget,
+        new Map([[corpusUrl, corpusRoute]]),
+        "lookup-statistics-corpus",
+      );
+      await updateSettingsControls(settings, {
+        "opt-corpus-url": "http://127.0.0.1:7275",
+        "opt-corpus-seen": true,
+      });
+      const available = await waitForLookupStatistics(
+        popup,
+        value => value?.text.includes("Seen 9 times") && value.text.includes("Looked up"),
+      );
+      setJsonResponse(corpusRoute, { error: "Tokenization unavailable" }, 503);
+      const failedDefinition = await freshLookup();
+      const unavailable = await waitForLookupStatistics(
+        popup,
+        value => corpusRoute.requests >= 2 && value !== null && !value.hidden
+          && value.text.includes("Looked up") && !value.text.includes("Seen"),
+      );
+      if (process.env.HACHIDORI_LOOKUP_STATS_SCREENSHOT) {
+        await settings.bringToFront();
+        await settings.setViewport({ width: 960, height: 900 });
+        await showSettingsSection(settings, "design");
+        const screenshotClip = await settings.$eval("#lookup-history-settings", (element) => {
+          element.scrollIntoView({ block: "center" });
+          const rect = element.getBoundingClientRect();
+          const padding = 12;
+          const x = Math.max(0, rect.x - padding);
+          const y = Math.max(0, rect.y - padding);
+          return {
+            x,
+            y,
+            width: Math.min(innerWidth - x, rect.width + (2 * padding)),
+            height: Math.min(innerHeight - y, rect.height + (2 * padding)),
+          };
+        });
+        await settings.screenshot({
+          captureBeyondViewport: false,
+          clip: screenshotClip,
+          path: process.env.HACHIDORI_LOOKUP_STATS_SCREENSHOT,
+        });
+      }
+      await updateSettingsControls(settings, { "opt-corpus-seen": false });
+      const afterCorpusFailure = await readLookupStatistics(settings);
+      corpusEvidence = {
+        available,
+        unavailable,
+        failedDefinition,
+        requests: corpusRoute.requests,
+        afterCorpusFailure,
+      };
+    }
+    check(
+      "optional GSM Seen counts use the configured loopback corpus and fail open",
+      corpusEvidence?.available?.text.includes("Seen 9 times")
+        && corpusEvidence.available.text.includes(`Looked up ${afterResume.statistics.lookupCount}`)
+        && corpusEvidence.failedDefinition?.plain.includes("食べる")
+        && corpusEvidence.unavailable?.text.includes(
+          `Looked up ${corpusEvidence.afterCorpusFailure?.statistics?.lookupCount}`,
+        )
+        && !corpusEvidence.unavailable.text.includes("Seen")
+        && corpusEvidence.afterCorpusFailure?.statistics?.lookupCount === afterResume.statistics.lookupCount + 1
+        && corpusEvidence.requests === 2,
+      JSON.stringify(corpusEvidence),
+    );
+  } finally {
+    if (corpusSession !== null) {
+      await corpusSession.send("Fetch.disable").catch(() => {});
+      await corpusSession.detach().catch(() => {});
+    }
+    await updateSettingsControls(settings, original).catch(error => {
+      diagnostics.push(`[lookup statistics restore] ${error?.stack ?? error}`);
+    });
+    await popup.lookupStatistics("cleanup").catch(() => {});
+    await tab.bringToFront();
+    if (!popup.visible(await popup.state())) await hoverForPopup(tab, popup, "#verb");
+  }
+}
+
 async function checkToolbarPreview(page, frame) {
   const original = await readSettingsControls(page, ["opt-popup-toolbar"]);
   await frame.evaluate(() => {
@@ -6383,6 +6631,13 @@ async function main() {
     `popup tabs: ${JSON.stringify(verbState.tabs)}`,
   );
 
+  await checkLookupStatistics({
+    browser,
+    settings: page,
+    tab,
+    popup,
+    extensionId,
+  });
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
@@ -7426,6 +7681,7 @@ async function main() {
   const backupRestored = await backupChromeScenarios({ browser, page, directory: resolve(PROFILE, "backup-downloads"), check });
   const restoredFixture = backupRestored.state.dictionaries.find(dictionary => dictionary.id === fixtureId);
   const restoredFixtureGeneration = ownedGenerationRoot(restoredFixture.path, "hachidori-fixture");
+  const lookupStatsBeforeRestart = await readLookupStatistics(page);
   const optionsBeforeRestart = await page.evaluate(async () =>
     (await chrome.storage.local.get("options")).options);
   const chromeProcess = browser.process();
@@ -7465,6 +7721,16 @@ async function main() {
   check("reader settings and their revision survive a full browser restart",
     restoredOptions?.revision === optionsBeforeRestart.revision && restoredOptions !== null,
     JSON.stringify({ optionsBeforeRestart, restoredOptions }));
+  const lookupStatsAfterRestart = await readLookupStatistics(page);
+  check(
+    "lookup counts survive a full browser restart",
+    lookupStatsBeforeRestart.ok === true
+      && lookupStatsAfterRestart.ok === true
+      && lookupStatsAfterRestart.descriptor?.generation === lookupStatsBeforeRestart.descriptor?.generation
+      && lookupStatsAfterRestart.descriptor?.revision === lookupStatsBeforeRestart.descriptor?.revision
+      && JSON.stringify(lookupStatsAfterRestart.statistics) === JSON.stringify(lookupStatsBeforeRestart.statistics),
+    JSON.stringify({ lookupStatsBeforeRestart, lookupStatsAfterRestart }),
+  );
 
   await showSettingsSection(page, "dictionaries");
   const persistedPackage = await page.waitForFunction(async (id, expectedPath) => {

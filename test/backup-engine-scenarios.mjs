@@ -5,10 +5,12 @@ import { createBackupArchive, openBackupArchive } from "../extension/backup-arch
 import { backupRevisions } from "../extension/backup-state.js";
 import { emptyCustomDictionaryDocument } from "../extension/custom-dictionary.js";
 import { managedDictionarySource } from "../extension/managed-dictionary-source.js";
+import { emptyLookupStats, lookupStatsKey, lookupStatsPrefix, LOOKUP_STATS_ROW_PREFIX } from "../extension/lookup-stats.js";
 
 export async function backupEngineScenarios({ request, pageChrome, hostChrome, storage, engine, check }) {
   const sendWorker = (type, fields = {}) => pageChrome.runtime.sendMessage({ target: "hoshidicts-worker", type, ...fields });
   const read = async () => structuredClone((await sendWorker("hd_backup_read")).snapshot);
+  const readRows = async () => structuredClone((await sendWorker("hd_backup_read")).lookupStatsRows);
   const accepted = async (type, fields) => {
     const reply = await request(type, fields);
     assert.equal(reply.ok, true, JSON.stringify(reply));
@@ -39,11 +41,16 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
   current = await read();
   assert.equal((await pageChrome.runtime.sendMessage({ target: "hachidori-updates", type: "hd_updates_schedule",
     baseRevision: current.updates.revision, schedule: "weekly" })).ok, true);
-  const archived = await read();
+  for (const reading of ["ねこ", "ねこ", ""]) {
+    assert.equal((await sendWorker("hd_lookup_stats_record", { term: "猫", reading })).ok, true);
+  }
+  const archived = await read(), archivedRows = await readRows();
   const exported = await accepted("hd_backup_export");
   const archive = await (await fetch(exported.blobUrl)).blob();
   const parsed = await openBackupArchive(archive);
   assert.deepEqual(parsed.snapshot, archived);
+  assert.deepEqual(parsed.lookupStatsRows, archivedRows);
+  assert.deepEqual(archivedRows.map(row => row.lookupCount), [2, 1]);
   assert.ok(parsed.files.some(file => file.path.endsWith("/dict.zstd")));
   assert.ok(parsed.files.some(file => file.path.endsWith("/media.bin")));
   check("complete backup captures disabled files, trained data, custom source and one coherent settings snapshot", true);
@@ -58,10 +65,14 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
   const writes = storage.sets.length;
   await accepted("hd_backup_restore", { token: prepared.token });
   const restored = await read();
-  for (const key of ["state", "options", "document", "updates"]) {
+  for (const key of Object.keys(backupRevisions(restored))) {
     assert.equal(restored[key].revision, beforeRestore[key].revision + 1);
     const original = { ...archived[key] }, actual = { ...restored[key] };
     delete original.revision; delete actual.revision;
+    if (key === "lookupStats") {
+      assert.notEqual(actual.generation, original.generation);
+      delete original.generation; delete actual.generation;
+    }
     if (key === "state") {
       const withoutPath = entry => { const next = { ...entry }; delete next.path; return next; };
       original.dictionaries = original.dictionaries.map(withoutPath);
@@ -69,13 +80,15 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
     }
     assert.deepEqual(actual, original);
   }
-  assert.deepEqual(storage.sets.slice(writes), [["customDictionarySource", "dictionaryState", "dictionaryUpdates", "options"]]);
+  assert.deepEqual(await readRows(), archivedRows);
+  assert.deepEqual(storage.sets.slice(writes), [["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options",
+    ...archivedRows.map(row => lookupStatsKey(restored.lookupStats, row))].sort()]);
   assert.ok(roots().every(root => !oldRoots.includes(root)));
   const customLookup = await accepted("hd_lookup", { text: "猫" });
   assert.ok(customLookup.results.length > 0);
-  check("restore publishes all four values once with newer revisions and fresh generations before old-file cleanup", true);
+  check("restore publishes all five values and statistics rows once before superseded-generation cleanup", true);
 
-  for (const edit of ["options", "document", "updates", "state"]) {
+  for (const edit of ["options", "document", "updates", "state", "lookupStats"]) {
     const pending = await prepare(exported.blobUrl);
     const base = await read();
     if (edit === "options") await sendWorker("hd_options_write", { baseRevision: base.options.revision, options: { scanLength: base.options.scanLength + 1 } });
@@ -84,6 +97,7 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
       baseRevision: base.updates.revision, schedule: "off" });
     if (edit === "state") await sendWorker("hd_state_cas", { baseRevision: base.state.revision,
       dictionaries: base.state.dictionaries, groups: [] });
+    if (edit === "lookupStats") await sendWorker("hd_lookup_stats_record", { term: "猫", reading: "ねこ" });
     const changed = await read();
     assert.notDeepEqual(backupRevisions(changed), backupRevisions(base));
     const refused = await request("hd_backup_restore", { token: pending.token });
@@ -92,11 +106,11 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
     assert.deepEqual(await read(), changed);
     assert.equal(roots().length, changed.state.dictionaries.length);
   }
-  check("restore refuses concurrent options, source, schedule and dictionary edits without overwriting them or leaking staging", true);
+  check("restore refuses concurrent options, source, schedule, dictionary and statistics edits without leaking staging", true);
 
   const corruptFiles = parsed.files.map(file => file.path.endsWith("/hash.table") && file.path.startsWith("dictionaries/2/")
     ? { ...file, data: new Blob([new Uint8Array([0])]) } : file);
-  const corruptUrl = URL.createObjectURL(await createBackupArchive(parsed.snapshot, corruptFiles));
+  const corruptUrl = URL.createObjectURL(await createBackupArchive(parsed.snapshot, corruptFiles, parsed.lookupStatsRows));
   const beforeCorrupt = await read();
   const corruptRoots = roots();
   try {
@@ -119,23 +133,27 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
     const before = storage.sets.length;
     await accepted("hd_backup_restore", { token: pending.token });
     assert.equal(storage.sets.length, before + 1);
+    assert.deepEqual(await readRows(), archivedRows);
     assert.equal(roots().length, (await read()).state.dictionaries.length);
   } finally { hostChrome.runtime.sendMessage = originalSend; }
-  check("lost complete-restore CAS reply is recovered by exact four-value readback without a duplicate commit", true);
+  check("lost complete-restore CAS reply is recovered by exact five-value readback without a duplicate commit", true);
 
   const beforeFailure = await read();
+  const rowsBeforeFailure = await readRows();
   const failureRoots = roots();
   const refusedWrite = await prepare(exported.blobUrl);
   storage.failNextSet(new Error("injected restore storage failure"));
   assert.equal((await request("hd_backup_restore", { token: refusedWrite.token })).ok, false);
   assert.deepEqual(await read(), beforeFailure);
+  assert.deepEqual(await readRows(), rowsBeforeFailure);
   assert.deepEqual(roots(), failureRoots);
   assert.ok((await accepted("hd_lookup", { text: "猫" })).results.length > 0);
   check("a refused complete-state write preserves the working lookup and removes all prepared generations", true);
 
   const uncertain = await prepare(exported.blobUrl);
-  let committed = false;
+  let committed = false, statsCleanups = 0;
   hostChrome.runtime.sendMessage = async message => {
+    if (message.type === "hd_lookup_stats_cleanup") statsCleanups += 1;
     if (message.type === "hd_backup_base_read" && committed) throw new Error("backup readback unavailable");
     const reply = await originalSend(message);
     if (message.type === "hd_backup_cas") { committed = true; throw new Error("lost committed restore reply"); }
@@ -145,6 +163,7 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
     const reply = await request("hd_backup_restore", { token: uncertain.token });
     assert.equal(reply.ok, false);
     assert.match(reply.error, /readback unavailable/u);
+    assert.equal(statsCleanups, 0, "unknown publication retains both statistics namespaces");
     assert.equal(roots().length, failureRoots.length * 2, "retain both generations until a confirmed recovery read");
   } finally { hostChrome.runtime.sendMessage = originalSend; }
   await accepted("hd_reload");
@@ -165,11 +184,29 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
   assert.ok((await accepted("hd_lookup", { text: "猫" })).results.length > 0);
   check("a validated backup repairs missing live files and malformed source without requiring the broken generation to load", true);
 
+  const beforeCleanup = await read();
+  await storage.api().local.set({ unrelatedLookupData: "keep" });
+  hostChrome.runtime.sendMessage = message => message.type === "hd_lookup_stats_cleanup"
+    ? Promise.resolve({ ok: false, error: "injected statistics cleanup failure" }) : originalSend(message);
+  try {
+    const reply = await restore(exported.blobUrl);
+    assert.equal(reply.restored, true);
+    assert.match(reply.warning, /statistics.*cleaned up/u);
+    assert.ok([...storage.raw.keys()].some(key => key.startsWith(lookupStatsPrefix(beforeCleanup.lookupStats))));
+    assert.deepEqual(await readRows(), archivedRows);
+  } finally { hostChrome.runtime.sendMessage = originalSend; }
+  await restore(exported.blobUrl);
+  const activePrefix = lookupStatsPrefix((await read()).lookupStats);
+  assert.ok([...storage.raw.keys()].filter(key => key.startsWith(LOOKUP_STATS_ROW_PREFIX)).every(key => key.startsWith(activePrefix)));
+  assert.equal(storage.raw.get("unrelatedLookupData"), "keep");
+  check("statistics cleanup is best effort and later confirmed restore prunes only inactive owned namespaces", true);
+
   const emptyUrl = URL.createObjectURL(await createBackupArchive({
     state: { schemaVersion: 1, revision: 0, dictionaries: [], groups: [] },
     options: { revision: 0 }, document: emptyCustomDictionaryDocument(),
     updates: { revision: 0, schedule: "off", lastCheckedAt: null },
-  }, []));
+    lookupStats: emptyLookupStats(),
+  }, [], []));
   try {
     await restore(emptyUrl);
     const empty = await read();
@@ -178,6 +215,7 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
     assert.deepEqual(Object.keys(empty.options), ["revision"]);
     assert.equal(empty.document.text, "");
     assert.equal(empty.updates.schedule, "off");
+    assert.deepEqual(await readRows(), []);
     assert.equal(roots().length, 0);
   } finally { URL.revokeObjectURL(emptyUrl); }
   check("an empty backup resets settings, custom source and schedule rather than retaining unrelated live values", true);

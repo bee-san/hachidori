@@ -8,9 +8,10 @@ import {
 } from "./custom-dictionary.js";
 import { assertDictionaryUpdateSchedule, assertRecommendedDictionary, normaliseUpdateSettings, recommendedDictionarySource } from "./managed-dictionary-source.js";
 import { sameJsonValue } from "./json-value.js";
+import { assertLookupStatsDescriptor } from "./lookup-stats.js";
 
 export function backupRevisions(snapshot) {
-  return Object.fromEntries(["state", "options", "document", "updates"].map(key => {
+  return Object.fromEntries(["state", "options", "document", "updates", "lookupStats"].map(key => {
     const revision = snapshot[key]?.revision;
     return [key, Number.isSafeInteger(revision) && revision >= 0 ? revision : 0];
   }));
@@ -20,6 +21,7 @@ export function restoredBackupSnapshot(current, archived, dictionaries) {
   return Object.fromEntries(Object.entries(backupRevisions(current)).map(([key, revision]) => [key, {
     ...archived[key],
     ...(key === "state" ? { dictionaries } : {}),
+    ...(key === "lookupStats" ? { generation: crypto.randomUUID() } : {}),
     revision: revision + 1,
   }]));
 }
@@ -72,6 +74,7 @@ export async function assertBackupSnapshot(snapshot) {
     throw new Error("The backup contains invalid dictionary state.");
   }
   assertDictionaryList(snapshot.state.dictionaries);
+  assertLookupStatsDescriptor(snapshot.lookupStats);
   assertGroups(snapshot.state.groups, snapshot.state.dictionaries);
   const document = normaliseCustomDictionaryDocument(snapshot.document);
   const entries = parseCustomDictionary(document.text).entries;

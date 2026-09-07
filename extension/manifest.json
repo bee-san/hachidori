@@ -35,6 +35,7 @@
       "js": [
         "reader-options.js",
         "dictionary-group-state.js",
+        "lookup-stats-identity.js",
         "external-links.js",
         "audio-content.js",
         "anki-content.js",
