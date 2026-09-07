@@ -34,6 +34,33 @@ export function normaliseUpdateSettings(value) {
   };
 }
 
+export function effectiveDictionarySchedule(dictionary, globalSchedule) {
+  return managedUpdateSchedule(dictionary.updateScheduleOverride) ?? globalSchedule;
+}
+
+export function assertDictionaryUpdateSchedule(dictionary) {
+  if (dictionary.updateScheduleOverride != null && managedUpdateSchedule(dictionary.updateScheduleOverride) === null) {
+    throw new Error("The dictionary update schedule is invalid.");
+  }
+}
+
+export function nextDictionaryUpdateCheck(dictionary, globalSchedule, now) {
+  if (managedDictionarySource(dictionary) === null) return null;
+  const interval = MANAGED_UPDATE_SCHEDULE_MINUTES[effectiveDictionarySchedule(dictionary, globalSchedule)];
+  if (interval === null) return null;
+  const checkedAt = Date.parse(dictionary.lastUpdateCheck?.checkedAt);
+  return Number.isNaN(checkedAt) ? now : checkedAt + interval * 60_000;
+}
+
+export function nextManagedUpdateCheck(dictionaries, globalSchedule, now) {
+  let next = null;
+  for (const dictionary of dictionaries) {
+    const due = nextDictionaryUpdateCheck(dictionary, globalSchedule, now);
+    if (due !== null && (next === null || due < next)) next = due;
+  }
+  return next === null ? null : Math.max(now, next);
+}
+
 export const MANAGED_DICTIONARY_CHANGED =
   "the managed dictionary changed while its update was being prepared";
 

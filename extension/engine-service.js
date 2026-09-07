@@ -788,6 +788,7 @@ function withStoredPresentation(generated, stored) {
     indexUrl: stored?.indexUrl ?? generated.indexUrl,
     downloadUrl: stored?.downloadUrl ?? generated.downloadUrl,
     lastUpdateCheck: stored?.lastUpdateCheck ?? null,
+    ...(stored?.updateScheduleOverride === undefined ? {} : { updateScheduleOverride: stored.updateScheduleOverride }),
     ...(sourceId === null ? {} : { sourceId }),
   };
 }

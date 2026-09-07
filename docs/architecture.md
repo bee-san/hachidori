@@ -16,7 +16,7 @@ settings.html / content.js
        └─ background.js (MV3 service worker)
             ├─ owns chrome.storage.local dictionary metadata
             ├─ atomically owns the revisioned custom source document
-            ├─ checks managed update indexes and owns one periodic alarm
+            ├─ checks managed update indexes and owns one next-due alarm
             ├─ creates or reconnects to offscreen.html
             └─ relays requests without holding engine state
                  └─ offscreen.js
@@ -103,9 +103,12 @@ module shared by the worker, engine, and Settings page.
 
 **Check now** fetches each candidate's index and records `up-to-date`,
 `update-available`, or `check-failed` against that package generation. It does
-not download archives. There is one global Off/hourly/daily/weekly/monthly
-setting and one Chrome alarm. An alarm runs the same checks and automatically
-installs available revisions, including revisions for disabled packages.
+not download archives. The global Off/hourly/daily/weekly/monthly setting is the
+default; each managed package can inherit it or choose its own interval or Off.
+One nonperiodic Chrome alarm targets the earliest package due time and
+automatically installs available revisions, including those for disabled
+packages. Explicit package intervals work when the default is Off. See
+[update schedules](update-schedules.md) for due-time and reconciliation behavior.
 
 `dictionaryUpdates` carries a monotonic revision shared by schedule and
 last-checked writes. Settings debounces schedule edits for 150 ms and sends one

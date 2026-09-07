@@ -6,7 +6,7 @@ import {
   assertCustomSourceState, customDictionarySemanticRevision,
   normaliseCustomDictionaryDocument, parseCustomDictionary,
 } from "./custom-dictionary.js";
-import { assertRecommendedDictionary, normaliseUpdateSettings, recommendedDictionarySource } from "./managed-dictionary-source.js";
+import { assertDictionaryUpdateSchedule, assertRecommendedDictionary, normaliseUpdateSettings, recommendedDictionarySource } from "./managed-dictionary-source.js";
 import { sameJsonValue } from "./json-value.js";
 
 export function backupRevisions(snapshot) {
@@ -27,6 +27,7 @@ export function restoredBackupSnapshot(current, archived, dictionaries) {
 function assertDictionaryList(dictionaries) {
   const ids = new Set(), titles = new Set();
   for (const entry of dictionaries) {
+    assertDictionaryUpdateSchedule(entry);
     if (typeof entry?.id !== "string" || entry.id === "" || ids.has(entry.id)
         || typeof entry.title !== "string" || entry.title === "" || titles.has(entry.title)
         || /[\\/]/u.test(entry.title) || entry.title.includes("\0") || [".", ".."].includes(entry.title)

@@ -14,7 +14,9 @@ import {
   normaliseDictionaryGroups,
 } from "./dictionary-groups.js";
 import {
+  effectiveDictionarySchedule,
   managedDictionarySource,
+  nextDictionaryUpdateCheck,
   normaliseUpdateSettings,
 } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
@@ -360,6 +362,7 @@ function normaliseDictionary(row) {
     mediaCount: nonnegativeCount(row?.mediaCount),
     installedAt: stringValue(row?.installedAt),
     lastUpdateCheck: row?.lastUpdateCheck ?? null,
+    ...(row?.updateScheduleOverride === undefined ? {} : { updateScheduleOverride: row.updateScheduleOverride }),
     ...(sourceId === null ? {} : { sourceId }),
   };
 }
@@ -399,7 +402,9 @@ function adoptDictionaryState(value) {
 function adoptUpdateSettings(value) {
   const next = normaliseUpdateSettings(value);
   if (next.revision <= updateSettings.revision) return false;
+  const changedSchedule = next.schedule !== updateSettings.schedule;
   updateSettings = next;
+  if (changedSchedule) refreshDictionarySchedules();
   return true;
 }
 
@@ -770,6 +775,14 @@ function renderUpdateControls() {
   schedule.disabled = busy || updateSettings.revision < 0;
 }
 
+function refreshDictionarySchedules() {
+  const byId = new Map(dictionaries.map(dictionary => [dictionary.id, dictionary]));
+  for (const row of document.querySelectorAll(".dict-row")) {
+    const entry = byId.get(row.dataset.dictionaryId);
+    if (entry) renderDictionarySchedule(row, entry);
+  }
+}
+
 function clearImportResults() {
   const detail = element("import-detail");
   detail.textContent = "";
@@ -820,7 +833,8 @@ function setControlsDisabled(disabled) {
   element("install-recommended").disabled = blocked || committing;
   element("retry-recommended").disabled = blocked || committing;
   for (const control of document.querySelectorAll(".dict-row select, .dict-row input, .dict-row button")) {
-    control.disabled = blocked || control.dataset.pinnedDisabled === "true";
+    control.disabled = blocked || control.dataset.pinnedDisabled === "true"
+      || (committing && control.classList.contains("dict-update-schedule"));
   }
   for (const drag of document.querySelectorAll(".dict-drag")) {
     drag.draggable = !blocked && drag.dataset.pinnedDisabled !== "true";
@@ -1212,6 +1226,48 @@ function bindDictionaryUpdate(row, entry) {
   update.addEventListener("click", () => {
     void runManagedUpdate("hd_updates_install", [entry.id]);
   });
+  renderDictionarySchedule(row, entry);
+  const schedule = row.querySelector(".dict-update-schedule");
+  schedule.value = entry.updateScheduleOverride ?? "inherit";
+  schedule.setAttribute("aria-label", `Automatic updates for ${dictionaryLabel(entry)}`);
+  schedule.addEventListener("change", async () => {
+    const value = schedule.value === "inherit" ? null : schedule.value;
+    let stale = false;
+    await commitDictionaries(updateDictionary(entry.id, current => {
+      if ((current.updateScheduleOverride ?? null) !== (entry.updateScheduleOverride ?? null)
+          || !isUpdateCheckable(current)) {
+        stale = true;
+        return current;
+      }
+      return value === (current.updateScheduleOverride ?? null) ? current : { ...current, updateScheduleOverride: value };
+    }), false);
+    if (stale) {
+      const current = dictionaries.find(dictionary => dictionary.id === entry.id);
+      if (current) {
+        schedule.value = current.updateScheduleOverride ?? "inherit";
+        renderDictionarySchedule(row, current);
+      }
+      setStatus("The dictionary schedule changed elsewhere. Review its current value before choosing again.", "error");
+    }
+  });
+}
+
+function renderDictionarySchedule(row, entry) {
+  row.querySelector(".dict-schedule").hidden = !isUpdateCheckable(entry);
+  const schedule = row.querySelector(".dict-update-schedule");
+  const effective = effectiveDictionarySchedule(entry, updateSettings.schedule);
+  const inherit = schedule.querySelector('[value="inherit"]');
+  const label = `Use default (${updateSettings.schedule})`;
+  if (inherit.textContent !== label) inherit.textContent = label;
+  const now = Date.now();
+  const due = nextDictionaryUpdateCheck(entry, updateSettings.schedule, now);
+  const output = row.querySelector(".dict-next-check");
+  let text = "Automatic updates off";
+  if (due !== null) {
+    const next = due <= now ? "Due now" : `Next check ${new Date(due).toLocaleString()}`;
+    text = `${effective.charAt(0).toUpperCase()}${effective.slice(1)} · ${next}`;
+  }
+  if (output.textContent !== text) output.textContent = text;
 }
 
 function updateItemById(current, id, update) {
@@ -1273,6 +1329,7 @@ function focusedManagementControl() {
       "dict-position-input",
       "dict-move",
       "dict-update",
+      "dict-update-schedule",
       "dict-remove",
     ].find((name) => active.classList.contains(name));
     return controlClass

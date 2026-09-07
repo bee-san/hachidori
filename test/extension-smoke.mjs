@@ -506,7 +506,7 @@ function makeAlarms() {
         return values.delete(name);
       },
       create(name, info) {
-        values.set(name, { name, ...structuredClone(info) });
+        values.set(name, { name, ...structuredClone(info), scheduledTime: info.when ?? Date.now() + info.periodInMinutes * 60_000 });
       },
       async get(name) {
         return values.has(name) ? structuredClone(values.get(name)) : undefined;
@@ -772,6 +772,117 @@ function loadBackgroundScript(sandbox) {
     { filename: resolve(EXTENSION, "background.js") },
   );
   return context;
+}
+
+async function managedScheduleStage() {
+  let now = Date.parse("2026-09-07T12:00:00Z");
+  const hour = 3_600_000;
+  class ScheduleDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  }
+  const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
+  const chrome = makeChrome("schedule-worker", bus, storage, alarms);
+  const dictionary = (id, override, age, enabled = true) => genericPackage({ id, title: id, path: `/dicts/${id}`, revision: "1",
+    isUpdatable: true, enabled, updateScheduleOverride: override,
+    indexUrl: `https://example.com/${id}.json`, downloadUrl: `https://example.com/${id}.zip`,
+    lastUpdateCheck: { checkedAt: new Date(now - age * hour).toISOString(), status: "up-to-date" } });
+  await chrome.storage.local.set({ dictionaryState: { schemaVersion: 1, revision: 1, groups: [], dictionaries: [
+    dictionary("hourly", "hourly", 2, false), dictionary("daily", null, 2), dictionary("off", "off", 48),
+  ] }, dictionaryUpdates: { revision: 1, schedule: "daily", lastCheckedAt: null } });
+  const fetched = [];
+  let fail = false, onFetch = async () => {};
+  const context = loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, Date: ScheduleDate,
+    fetch: async url => {
+      fetched.push(url);
+      await onFetch(url);
+      return { ok: !fail, status: fail ? 503 : 200, url, json: async () => ({ revision: "1" }) };
+    } });
+  await runInContext("initialiseUpdateAlarm()", context);
+  const name = "hachidori-managed-dictionary-updates";
+  check("an overdue scheduled package creates an immediate alarm", (await alarms.api.get(name))?.scheduledTime === now);
+  const firstAlarm = await alarms.api.get(name);
+  now += 100;
+  await runInContext("reconcileUpdateAlarm()", context);
+  check("reconciling an already-due alarm does not postpone its browser delivery",
+    (await alarms.api.get(name))?.scheduledTime === firstAlarm.scheduledTime);
+  const cycle = () => runInContext("queueManagedUpdate({ install: true, dueOnly: true })", context);
+  await cycle();
+  let saved = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+  check("per-dictionary schedules check only due managed packages including disabled overrides",
+    JSON.stringify(fetched) === JSON.stringify(["https://example.com/hourly.json"])
+      && saved.dictionaries[0].enabled === false && saved.dictionaries[0].lastUpdateCheck.checkedAt === new Date(now).toISOString()
+      && (await alarms.api.get(name))?.scheduledTime === now + hour && alarms.values.size === 1,
+    JSON.stringify({ fetched, saved, alarms: [...alarms.values.values()] }));
+  const writes = storage.sets.length;
+  await cycle();
+  check("an early scheduled wake does not fetch or write state", fetched.length === 1 && storage.sets.length === writes);
+
+  await bus.sendMessage("schedule-page", { target: "hachidori-updates", type: "hd_updates_check" });
+  check("manual Check now still checks Off and not-yet-due dictionary policies", fetched.length === 4);
+  saved = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+  const changed = { ...saved, revision: saved.revision + 1,
+    dictionaries: saved.dictionaries.map(entry => ({ ...entry, lastUpdateCheck: null })) };
+  await chrome.storage.local.set({ dictionaryState: changed,
+    dictionaryUpdates: { revision: 10, schedule: "off", lastCheckedAt: null } });
+  fail = true;
+  await cycle();
+  saved = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+  check("explicit schedules survive global Off and failed checks advance their due time",
+    fetched.length === 5 && saved.dictionaries[0].lastUpdateCheck.status === "check-failed"
+      && (await alarms.api.get(name))?.scheduledTime === now + hour);
+
+  // A policy may change while a preceding dictionary's fetch is in flight.
+  fail = false;
+  await chrome.storage.local.set({ dictionaryState: { ...saved, revision: saved.revision + 1,
+    dictionaries: saved.dictionaries.slice(0, 2).map(entry => ({ ...entry, updateScheduleOverride: "hourly", lastUpdateCheck: null })) } });
+  onFetch = async () => {
+    const state = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
+    await chrome.storage.local.set({ dictionaryState: { ...state, revision: state.revision + 1,
+      dictionaries: state.dictionaries.map(entry => entry.id === "daily" ? { ...entry, updateScheduleOverride: "off" } : entry) } });
+  };
+  await cycle();
+  check("scheduled work rechecks a later package policy before fetching", fetched.length === 6 && fetched.at(-1).includes("hourly"));
+  await alarms.api.clear(name);
+  await runInContext("initialiseUpdateAlarm()", context);
+  check("worker startup restores the same next-due alarm without a periodic polling interval",
+    (await alarms.api.get(name))?.scheduledTime === now + hour && (await alarms.api.get(name))?.periodInMinutes === undefined);
+
+  const settleAlarm = async () => {
+    await new Promise(resolve => setTimeout(resolve, 10));
+    await runInContext("alarmTail", context);
+  };
+  await settleAlarm();
+  const originalGet = alarms.api.get;
+  let alarmReads = 0;
+  alarms.api.get = (...args) => { alarmReads += 1; return originalGet(...args); };
+  const schedule = async value => bus.sendMessage("schedule-page", { target: "hachidori-updates", type: "hd_updates_schedule",
+    baseRevision: (await chrome.storage.local.get("dictionaryUpdates")).dictionaryUpdates.revision, schedule: value });
+  await schedule("daily");
+  await settleAlarm();
+  const savedReads = alarmReads, savedWrites = storage.sets.length;
+  await schedule("daily");
+  await settleAlarm();
+  check("global schedule saves and no-op retries each reconcile exactly once",
+    savedReads === 1 && alarmReads === 2 && storage.sets.length === savedWrites,
+    JSON.stringify({ savedReads, alarmReads, savedWrites, writes: storage.sets.length }));
+
+  const base = (await bus.sendMessage("schedule-page", { target: "hoshidicts-worker", type: "hd_backup_base_read" })).snapshot;
+  const snapshot = (await bus.sendMessage("schedule-page", { target: "hoshidicts-worker", type: "hd_backup_read" })).snapshot;
+  for (const [key, revision] of Object.entries(backupRevisions(base))) snapshot[key].revision = revision + 1;
+  snapshot.updates.schedule = "weekly";
+  const beforeRestoreReads = alarmReads;
+  const restored = await bus.sendMessage("schedule-offscreen", { target: "hoshidicts-worker", type: "hd_backup_cas", base, snapshot },
+    { id: chrome.runtime.id, url: chrome.runtime.getURL("offscreen.html") });
+  await settleAlarm();
+  check("backup schedule-only publication reconciles without relying on a settings storage event",
+    restored.ok && alarmReads === beforeRestoreReads + 1, JSON.stringify({ restored, alarmReads, beforeRestoreReads }));
+
+  await chrome.storage.local.set({ dictionaryState: { ...snapshot.state, revision: snapshot.state.revision + 1, dictionaries: [] },
+    dictionaryUpdates: { ...snapshot.updates, revision: snapshot.updates.revision + 1, lastCheckedAt: null } });
+  const manual = await bus.sendMessage("schedule-page", { target: "hachidori-updates", type: "hd_updates_check" });
+  check("manual Check now records completion even when no managed dictionary is installed",
+    manual.ok && manual.outcomes.length === 0 && manual.settings.lastCheckedAt === new Date(now).toISOString(), JSON.stringify(manual));
 }
 
 async function externalLinksBackgroundStage() {
@@ -2125,6 +2236,7 @@ async function main() {
   section("external dictionary links");
   await externalLinksBackgroundStage();
   await backupRelayStage();
+  await managedScheduleStage();
   await audioRelayStage();
   await ankiBackgroundStage();
 
@@ -2743,7 +2855,7 @@ async function main() {
   const presentedState = await request("hd_apply_state", {
     baseRevision: trustedState.revision,
     dictionaries: trustedState.dictionaries.map((dictionary, index) => index === trustedIndex
-      ? { ...dictionary, displayName: "Starter terms", enabled: false, favorite: true }
+      ? { ...dictionary, displayName: "Starter terms", enabled: false, favorite: true, updateScheduleOverride: "off" }
       : dictionary),
   });
   const updatedTitle = "Jitendex.org [2026-09-05]";
@@ -2766,6 +2878,7 @@ async function main() {
       && updatedPackage?.sourceId === recommended.sourceId
       && updatedPackage?.displayName === "Starter terms"
       && updatedPackage?.enabled === false
+      && updatedPackage?.updateScheduleOverride === "off"
       && updatedPackage?.favorite === true,
     JSON.stringify({ presentedState, updatedImport, updatedState }),
   );
@@ -2787,6 +2900,7 @@ async function main() {
       && localUpdatePackage?.sourceId === recommended.sourceId
       && localUpdatePackage?.displayName === "Starter terms"
       && localUpdatePackage?.enabled === false
+      && localUpdatePackage?.updateScheduleOverride === "off"
       && localUpdatePackage?.favorite === true,
     JSON.stringify({ localUpdateImport, localUpdateState }),
   );
@@ -3014,6 +3128,9 @@ async function main() {
     }),
   );
 
+  await pageChrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+    baseRevision: cleanupRaceState.revision, dictionaries: cleanupRaceState.dictionaries.map(dictionary => dictionary.id === managedId
+      ? { ...dictionary, updateScheduleOverride: null } : dictionary) });
   const scheduleBase = (await storage.api().local.get("dictionaryUpdates")).dictionaryUpdates?.revision ?? 0;
   const scheduled = await pageChrome.runtime.sendMessage({
     target: updateTarget,
@@ -3026,7 +3143,8 @@ async function main() {
     "one global schedule creates one browser alarm",
     scheduled?.ok === true
       && scheduled.settings?.schedule === "hourly"
-      && hourlyAlarm?.periodInMinutes === 60
+      && hourlyAlarm?.periodInMinutes === undefined
+      && hourlyAlarm?.scheduledTime === Date.parse(cleanupRacePackage.lastUpdateCheck.checkedAt) + 3_600_000
       && alarms.values.size === 1,
     JSON.stringify({ scheduled, hourlyAlarm, alarms: [...alarms.values.values()] }),
   );
@@ -3037,10 +3155,18 @@ async function main() {
   check("managed update preferences reject stale schedule writes with the current revision and preserve the alarm",
     scheduled.settings?.revision === scheduleBase + 1 && staleSchedule?.ok === false
       && staleSchedule.settings?.revision === latestSchedule.revision
-      && latestSchedule.schedule === "hourly" && (await alarms.api.get(updateAlarmName))?.periodInMinutes === 60,
+      && latestSchedule.schedule === "hourly"
+      && (await alarms.api.get(updateAlarmName))?.scheduledTime === hourlyAlarm.scheduledTime,
     JSON.stringify({ scheduleBase, scheduled, staleSchedule, latestSchedule }));
 
   const alarmRevision = "2026.09.08.0";
+  const makeManagedCheckDue = async () => {
+    const state = await storedDictionaryState();
+    return pageChrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+      baseRevision: state.revision, dictionaries: state.dictionaries.map(dictionary => dictionary.id === managedId
+        ? { ...dictionary, lastUpdateCheck: { ...dictionary.lastUpdateCheck, checkedAt: new Date(Date.now() - 7_200_000).toISOString() } }
+        : dictionary) });
+  };
   remoteJson(recommended.indexUrl, { revision: alarmRevision });
   remoteArchive(
     recommended.downloadUrl,
@@ -3054,6 +3180,7 @@ async function main() {
     recommended.downloadUrl,
     archiveRequests,
   );
+  await makeManagedCheckDue();
   alarms.fire(updateAlarmName);
   const alarmDeadline = Date.now() + 10000;
   let alarmState = await storedDictionaryState();
@@ -3087,7 +3214,9 @@ async function main() {
   }
   check(
     "service-worker startup recreates a missing configured alarm",
-    repairedAlarm?.periodInMinutes === 60 && alarms.values.size === 1,
+    repairedAlarm?.periodInMinutes === undefined
+      && repairedAlarm?.scheduledTime === Date.parse(alarmUpdated.lastUpdateCheck.checkedAt) + 3_600_000
+      && alarms.values.size === 1,
     JSON.stringify({ repairedAlarm, alarms: [...alarms.values.values()] }),
   );
 
@@ -3107,6 +3236,7 @@ async function main() {
     recommended.downloadUrl,
     archiveRequests,
   );
+  await makeManagedCheckDue();
   alarms.fire(updateAlarmName);
   const failureDeadline = Date.now() + 10000;
   let failedAlarmState = await storedDictionaryState();
@@ -4806,6 +4936,8 @@ async function main() {
   check("managed schedule waits for its initial revision and exposes queued work outside Updates",
     managedUpdateSettings?.initialReadBlocked === true && managedUpdateSettings.queuedNotice === true,
     JSON.stringify(managedUpdateSettings));
+  check("dictionary schedule controls persist only metadata, retain focus and refuse stale policy edits",
+    managedUpdateSettings?.dictionarySchedule === true, JSON.stringify(managedUpdateSettings));
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -6678,6 +6810,7 @@ async function settingsManagedUpdatesStage() {
       genericPackage({
         id: "managed-id",
         title: "Managed terms",
+        updateScheduleOverride: "monthly",
         enabled: false,
         isUpdatable: true,
         indexUrl: "https://example.test/managed/index.json",
@@ -6709,7 +6842,8 @@ async function settingsManagedUpdatesStage() {
   let updateSettings = { revision: 0, schedule: "off", lastCheckedAt: "2026-09-04T10:00:00.000Z" };
   let storageListener = null;
   const updateRequests = [];
-  let heldSchedule = null, activeSchedules = 0;
+  const stateRequests = [];
+  let heldSchedule = null, activeSchedules = 0, heldState = null;
   let loseScheduleReply = false, firstRead = true;
   let releaseInitialRead;
 
@@ -6730,6 +6864,14 @@ async function settingsManagedUpdatesStage() {
         }
         if (message.type === "hd_status") {
           return { ok: true, ready: true, loading: false, dictionaryCount: 1 };
+        }
+        if (message.type === "hd_state_cas") {
+          stateRequests.push(structuredClone(message));
+          if (message.baseRevision !== state.revision) return { ok: false, conflict: true, state: structuredClone(state) };
+          state = { ...state, revision: state.revision + 1, dictionaries: message.dictionaries, groups: message.groups };
+          storageListener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+          if (heldState) await heldState.promise;
+          return { ok: true, state: structuredClone(state) };
         }
         if (message.type === "hd_options_write") {
           return { ok: true, options: structuredClone(message.options) };
@@ -6966,6 +7108,35 @@ async function settingsManagedUpdatesStage() {
   await pause(200);
   result.discarded = schedule.value === "daily" && conflictActions.hidden
     && scheduleRequests().length === beforeDiscard && updateSettings.schedule === "daily";
+  const policy = () => managedRow()?.querySelector(".dict-update-schedule");
+  result.dictionarySchedule = false;
+  if (policy()) {
+    const initial = policy().value === "monthly" && !policy().disabled
+      && insecureRow().querySelector(".dict-schedule").hidden && localRow().querySelector(".dict-schedule").hidden;
+    policy().focus();
+    heldState = Promise.withResolvers();
+    policy().value = "hourly";
+    policy().dispatchEvent(new window.Event("change", { bubbles: true }));
+    await waitSchedule(() => stateRequests.length === 1);
+    const editBlockedDuringSave = policy().disabled;
+    heldState.resolve();
+    heldState = null;
+    await waitSchedule(() => stateRequests.length === 1 && !policy().disabled);
+    const saved = state.dictionaries.find(entry => entry.id === "managed-id");
+    const persisted = saved.updateScheduleOverride === "hourly" && saved.enabled === false
+      && stateRequests[0].target === "hoshidicts-worker" && policy().value === "hourly"
+      && window.document.activeElement === policy();
+    const stale = policy();
+    stale.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }));
+    publishState({ ...saved, updateScheduleOverride: "weekly" });
+    stale.value = "off";
+    stale.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await pause(20);
+    result.dictionarySchedule = initial && persisted && editBlockedDuringSave && stateRequests.length === 1
+      && state.dictionaries.find(entry => entry.id === "managed-id").updateScheduleOverride === "weekly"
+      && stale.isConnected && policy().value === "weekly" && managedRow().querySelector(".dict-next-check").textContent.startsWith("Weekly");
+    window.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true }));
+  }
   dom.window.close();
   return result;
 }

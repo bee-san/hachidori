@@ -6,12 +6,15 @@ import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
 import {
+  assertDictionaryUpdateSchedule,
   httpsUrl,
   MANAGED_DICTIONARY_CHANGED,
-  MANAGED_UPDATE_SCHEDULE_MINUTES,
   managedDictionaryFingerprint,
   managedDictionaryMatches,
+  managedDictionarySource,
   managedUpdateSchedule,
+  nextDictionaryUpdateCheck,
+  nextManagedUpdateCheck,
   normaliseUpdateSettings,
   recommendedDictionarySource,
   recommendedIndexUrlMatches,
@@ -297,6 +300,7 @@ function committedSelectionTitle(title, current, dictionaries) {
 }
 
 function dictionaryCommit(current, currentOptions, dictionaries, groups) {
+  for (const dictionary of dictionaries) assertDictionaryUpdateSchedule(dictionary);
   const currentRevision = current?.revision ?? 0;
   const state = {
     schemaVersion: DICTIONARY_STATE_SCHEMA_VERSION,
@@ -794,32 +798,56 @@ async function installCheckedCandidate(candidate, checked, checkedAt) {
   }
 }
 
-async function runManagedUpdateCycle({ dictionaryIds = null, install = false } = {}) {
+async function readUpdatePlan() {
+  const stored = await chrome.storage.local.get([DICTIONARY_STATE_KEY, UPDATE_SETTINGS_KEY]);
+  return { dictionaries: stored[DICTIONARY_STATE_KEY]?.dictionaries ?? [],
+    settings: normaliseUpdateSettings(stored[UPDATE_SETTINGS_KEY]) };
+}
+
+async function scheduledCandidateIsDue(candidate) {
+  const { dictionaries, settings } = await serialiseStorage(readUpdatePlan);
+  const current = dictionaries.find(dictionary => dictionary.id === candidate.id);
+  if (!current || !managedDictionaryMatches(current, candidate.fingerprint)) return false;
+  const now = Date.now();
+  const due = nextDictionaryUpdateCheck(current, settings.schedule, now);
+  return due !== null && due <= now;
+}
+
+async function runManagedUpdateCycle({ dictionaryIds = null, install = false, dueOnly = false } = {}) {
   const candidates = await managedCandidates(dictionaryIds);
-  const checkedAt = new Date().toISOString();
   const outcomes = [];
 
   for (const candidate of candidates) {
+    // A later package can be switched Off while an earlier fetch is in flight.
+    if (dueOnly && !await scheduledCandidateIsDue(candidate)) continue;
+    const checkedAt = new Date().toISOString();
     const checked = await checkManagedCandidate(candidate, checkedAt);
     outcomes.push(install
       ? await installCheckedCandidate(candidate, checked, checkedAt)
       : checked.outcome);
   }
 
+  if (dueOnly && outcomes.length === 0) return { outcomes, settings: await readUpdateSettings() };
   const { settings } = await writeUpdateSettings((current) => ({
     ...current,
-    lastCheckedAt: checkedAt,
+    lastCheckedAt: new Date().toISOString(),
   }));
   return { outcomes, settings };
 }
 
 let updateTail = Promise.resolve();
+let updateCycleActive = false;
 
 function queueManagedUpdate(options) {
-  const run = updateTail.then(
-    () => runManagedUpdateCycle(options),
-    () => runManagedUpdateCycle(options),
-  );
+  const execute = async () => {
+    updateCycleActive = true;
+    try { return await runManagedUpdateCycle(options); }
+    finally {
+      updateCycleActive = false;
+      await refreshUpdateAlarm();
+    }
+  };
+  const run = updateTail.then(execute, execute);
   updateTail = run.then(
     () => undefined,
     () => undefined,
@@ -831,18 +859,21 @@ let alarmTail = Promise.resolve();
 
 function reconcileUpdateAlarm() {
   const run = alarmTail.then(async () => {
-    const settings = await readUpdateSettings();
-    const periodInMinutes = MANAGED_UPDATE_SCHEDULE_MINUTES[settings.schedule];
+    if (updateCycleActive) return;
+    const { dictionaries, settings } = await serialiseStorage(readUpdatePlan);
+    const now = Date.now();
+    const when = nextManagedUpdateCheck(dictionaries, settings.schedule, now);
     const existing = await chrome.alarms.get(UPDATE_ALARM);
-    if (periodInMinutes === null) {
+    if (updateCycleActive) return;
+    if (when === null) {
       if (existing) await chrome.alarms.clear(UPDATE_ALARM);
       return;
     }
-    if (existing?.periodInMinutes === periodInMinutes) {
+    if (existing && existing.periodInMinutes === undefined
+        && (existing.scheduledTime === when || (when === now && existing.scheduledTime <= now))) {
       return;
     }
-    if (existing) await chrome.alarms.clear(UPDATE_ALARM);
-    await chrome.alarms.create(UPDATE_ALARM, { periodInMinutes });
+    await chrome.alarms.create(UPDATE_ALARM, { when });
   });
   alarmTail = run.then(
     () => undefined,
@@ -850,6 +881,26 @@ function reconcileUpdateAlarm() {
   );
   return run;
 }
+
+function refreshUpdateAlarm() {
+  return reconcileUpdateAlarm().catch(error => {
+    console.error("hoshidicts: could not reconcile the dictionary update alarm:", describe(error));
+  });
+}
+
+function updateTiming(dictionaries = []) {
+  return dictionaries.map(dictionary => [managedDictionarySource(dictionary) !== null,
+    dictionary.updateScheduleOverride ?? null, dictionary.lastUpdateCheck?.checkedAt ?? null]);
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || updateCycleActive) return;
+  const state = changes[DICTIONARY_STATE_KEY];
+  // Update-settings writers reconcile explicitly after releasing the storage queue.
+  if (state && !sameJsonValue(
+    updateTiming(state.oldValue?.dictionaries), updateTiming(state.newValue?.dictionaries),
+  )) void refreshUpdateAlarm();
+});
 
 const UPDATE_HANDLERS = {
   async hd_updates_schedule(message) {
@@ -1081,12 +1132,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== UPDATE_ALARM) {
     return;
   }
-  void readUpdateSettings().then((settings) => {
-    if (settings.schedule !== "off") {
-      return queueManagedUpdate({ install: true });
-    }
-    return undefined;
-  }).catch((error) => {
+  void queueManagedUpdate({ install: true, dueOnly: true }).catch((error) => {
     console.error("hoshidicts: scheduled dictionary updates failed:", describe(error));
   });
 });

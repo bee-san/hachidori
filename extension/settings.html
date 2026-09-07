@@ -208,7 +208,7 @@
           </div>
           <div class="update-controls">
             <label class="field update-schedule-field">
-              <span class="field-label">Automatic updates</span>
+              <span class="field-label">Default automatic updates</span>
               <select id="update-schedule" disabled>
                 <option value="off">Off</option>
                 <option value="hourly">Every hour</option>
@@ -232,6 +232,7 @@
             </div>
           </div>
           <p class="section-note">
+            Choose a dictionary's own schedule in Library → Details.
             Check now finds updates without installing. Scheduled updates install automatically,
             including disabled dictionaries.
           </p>
@@ -798,6 +799,20 @@
           <summary class="dict-details-toggle">Details</summary>
           <div class="dict-footer">
             <span class="dict-metadata"></span>
+            <div class="dict-schedule" hidden>
+              <label>
+                <span class="cell-label">Automatic updates</span>
+                <select class="dict-update-schedule">
+                  <option value="inherit">Use default</option>
+                  <option value="off">Off</option>
+                  <option value="hourly">Every hour</option>
+                  <option value="daily">Every day</option>
+                  <option value="weekly">Every week</option>
+                  <option value="monthly">Every month</option>
+                </select>
+              </label>
+              <span class="dict-next-check"></span>
+            </div>
             <label class="dict-alias">
               <span class="cell-label">Display name</span>
               <input
