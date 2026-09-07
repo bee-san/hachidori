@@ -200,15 +200,20 @@ fire-and-forget `engine-progress` worker channel; the compatibility engine
 calls the sink directly. **Installed in X seconds** is reported only from the
 import reply, which follows the strict load, the CAS commit and generation
 cleanup. A run that meets another mutation's lock waits for the engine to go
-idle again instead of failing the row.
+idle again instead of failing the row, and rechecks the inventory after that
+wait: a source Settings committed meanwhile settles as **Already installed**
+rather than being downloaded and imported twice.
 
 The startup page attaches with `hd_setup_install`, relayed by the service
 worker for the exact startup page URL only, and receives the current run
 snapshot: an active run is returned to every requester, so a reconnecting page,
 a duplicate tab or a restarted worker cannot start a second batch. Live rows
 follow `hd_setup_progress` broadcasts that name the run and carry a sequence;
-the page adopts only newer events for the run it attached to. Untouched
-sources install by themselves; a failed or later removed source waits for
+the page adopts only newer events for the run it attached to. Every catalogue
+source without a recorded outcome is requested, so a missing one installs by
+itself and an installed one is recorded as already installed — which also gives
+a package whose commit outlived the installer that made it its durable outcome
+and its first-install selection. A failed or later removed source waits for
 **Retry missing dictionaries**, which requests only the missing ones; a request
 the worker does not answer is reported once with the same Retry, never
 re-requested on a timer. The installer records every outcome and each run's
@@ -222,7 +227,9 @@ committed Jitendex or Bee's entry settles its first-install selection once
 (`compactDefinitionSummaryDictionary` and the term-route
 `kanjiClickDictionary`) while that option is still Automatic, through the
 revisioned options write. **All dictionaries installed in X seconds** is
-rendered only when the current inventory holds every catalogue source; it
+rendered only when the current inventory holds every catalogue source and this
+setup installed at least one of them; a profile that already carried them all
+reads **All dictionaries are already installed**. Either result
 stays for five seconds with a labelled countdown that is not a live region,
 then the page advances to Anki. **Continue setup** with missing sources
 records `continued: true`. Only settled outcomes are announced, never bytes.

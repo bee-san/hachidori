@@ -142,8 +142,11 @@ function missingEntries() {
   return RECOMMENDED_DICTIONARIES.filter((entry) => !recommendedDictionaryInstalled(entry, dictionaries));
 }
 
+// Sources without a recorded outcome: missing ones install, installed ones are
+// recorded as already installed, including a package whose commit outlived the
+// installer that made it.
 function untouchedEntries() {
-  return missingEntries().filter((entry) => setupState.dictionaries.outcomes[entry.sourceId] === undefined);
+  return RECOMMENDED_DICTIONARIES.filter((entry) => setupState.dictionaries.outcomes[entry.sourceId] === undefined);
 }
 
 function runActive() {
@@ -357,21 +360,22 @@ function dictionariesView() {
     return installingView();
   }
   const missing = missingEntries();
-  if (missing.length === 0) {
-    const total = setupState.dictionaries.totalSeconds;
-    if (!advanceFailed) startCountdown();
-    return {
-      heading: total === null ? "All dictionaries are already installed" : `All dictionaries installed in ${formatSeconds(total)}`,
-      body: [importNote, rows, ...(advanceFailed ? [] : [countdownView()])],
-      actions: advanceFailed ? [button("setup-continue", "Continue setup", () => { void advance("anki"); })] : [],
-    };
-  }
-  cancelCountdown();
   const untouched = untouchedEntries();
   if (untouched.length > 0 && !installFailed) {
     void requestInstall(untouched.map((entry) => entry.sourceId));
     return installingView();
   }
+  if (missing.length === 0) {
+    const total = setupState.dictionaries.totalSeconds;
+    const installedBySetup = Object.values(setupState.dictionaries.outcomes).some((outcome) => outcome.status === "installed");
+    if (!advanceFailed) startCountdown();
+    return {
+      heading: installedBySetup && total !== null ? `All dictionaries installed in ${formatSeconds(total)}` : "All dictionaries are already installed",
+      body: [importNote, rows, ...(advanceFailed ? [] : [countdownView()])],
+      actions: advanceFailed ? [button("setup-continue", "Continue setup", () => { void advance("anki"); })] : [],
+    };
+  }
+  cancelCountdown();
   const failed = installFailed || missing.some((entry) => setupState.dictionaries.outcomes[entry.sourceId]?.status === "failed");
   return {
     heading: failed ? "Some dictionaries could not be installed" : "Some dictionaries are not installed",

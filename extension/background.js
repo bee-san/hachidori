@@ -755,14 +755,16 @@ const WORKER_HANDLERS = {
 };
 
 // Dictionary-dependent initial preferences follow the committed entry's exact
-// title. Each is consumed once; an option the user already changed is left alone.
+// title, whether setup installed it or found it installed. Each is consumed
+// once; an option the user already changed is left alone.
 function firstInstallSelections(current, outcomes, dictionaryState, storedOptions) {
   const dictionaries = dictionaryState?.dictionaries ?? [];
   const effective = normaliseOptions(storedOptions);
   const applied = [];
   const patch = {};
   for (const [sourceId, rule] of Object.entries(FIRST_INSTALL_SELECTIONS)) {
-    if (outcomes[sourceId]?.status !== "installed" || current.dictionaries.selectionsApplied.includes(sourceId)) continue;
+    if (!["installed", "already-installed"].includes(outcomes[sourceId]?.status)
+        || current.dictionaries.selectionsApplied.includes(sourceId)) continue;
     const committed = dictionaries.find((dictionary) => dictionary?.sourceId === sourceId);
     if (committed === undefined) continue;
     applied.push(sourceId);

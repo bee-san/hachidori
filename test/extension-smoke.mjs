@@ -1182,6 +1182,21 @@ async function firstRunBackgroundStage() {
   const failedRecorded = await record({ runId: "run-2", outcomes: { jiten: { status: "failed", seconds: 0.5, error: "HTTP 503" } }, runSeconds: 0.5 });
   const noRun = await record({ runId: "", runSeconds: 1 });
   const finalSetup = storage.raw.get("setupState");
+  // A package setup finds already installed — including one whose commit
+  // outlived the installer that made it — still settles its selection.
+  const reconcile = makeStorage();
+  const reconcileBus = makeBus();
+  const reconcileChrome = makeChrome("first-run-worker-reconcile", reconcileBus, reconcile);
+  reconcileChrome.tabs = { async create() { return { id: 1 }; } };
+  loadBackgroundScript({ ...sandbox(), chrome: reconcileChrome });
+  reconcileChrome.__events.onInstalled.fire({ reason: "install" });
+  await settle(() => reconcile.raw.get("setupState") !== undefined);
+  await reconcile.api().local.set({ dictionaryState: { schemaVersion: 1, revision: 1, groups: [],
+    dictionaries: [committed("bees-id", beesTitle, "bees-ultimate-kanji-dictionary")] } });
+  const reconciled = await reconcileBus.sendMessage("offscreen-installer", {
+    target: "hoshidicts-worker", type: "hd_setup_record", requestId: "setup-record", runId: "run-1",
+    outcomes: { "bees-ultimate-kanji-dictionary": { status: "already-installed", seconds: 3 } },
+  }, { id: reconcileChrome.runtime.id, url: reconcileChrome.runtime.getURL("offscreen.html") });
   check("installer outcomes are recorded from the engine host only and settle each dictionary selection once without overwriting edits",
     fromPage?.ok === false && fromPage.error.includes("engine host") && unknownSource?.ok === false && unknownSource.error.includes("unknown catalogue source")
       && jitendexRecorded?.ok === true && JSON.stringify(jitendexRecorded.state.dictionaries.outcomes) === JSON.stringify({ jitendex: { status: "installed", seconds: 2.5, error: null } })
@@ -1200,8 +1215,12 @@ async function firstRunBackgroundStage() {
       && JSON.stringify(finalSetup.dictionaries.recordedRuns) === JSON.stringify(["run-1", "run-2"])
       && noRun?.ok === false && noRun.error.includes("names no run")
       && JSON.stringify(finalSetup.dictionaries.outcomes.jiten) === JSON.stringify({ status: "failed", seconds: 0.5, error: "HTTP 503" })
-      && finalSetup.stage === "complete" && finalSetup.revision === completed.state.revision + 5,
-    JSON.stringify({ fromPage, unknownSource, jitendexRecorded, afterJitendex, jitendexAgain, beesRecorded, resentRun, failedRecorded, noRun, finalSetup, sets: storage.sets.slice(recordWritesBefore) }));
+      && finalSetup.stage === "complete" && finalSetup.revision === completed.state.revision + 5
+      && reconciled?.ok === true
+      && JSON.stringify(reconciled.state.dictionaries.outcomes) === JSON.stringify({ "bees-ultimate-kanji-dictionary": { status: "already-installed", seconds: null, error: null } })
+      && JSON.stringify(reconciled.state.dictionaries.selectionsApplied) === JSON.stringify(["bees-ultimate-kanji-dictionary"])
+      && JSON.stringify(reconcile.raw.get("options").kanjiClickDictionary) === JSON.stringify({ title: beesTitle, kind: "term" }),
+    JSON.stringify({ fromPage, unknownSource, jitendexRecorded, afterJitendex, jitendexAgain, beesRecorded, resentRun, failedRecorded, noRun, finalSetup, reconciled, reconcileOptions: reconcile.raw.get("options"), sets: storage.sets.slice(recordWritesBefore) }));
 }
 
 async function ankiBackgroundStage() {
@@ -5961,7 +5980,9 @@ async function startupPageStage() {
     installReply = () => runA(1, [entry("jitendex", "waiting"), entry("jiten", "waiting")]);
     document.getElementById("setup-retry").click();
     await until(() => heading() === "Installing default dictionaries…", "the installing view");
-    const attached = requestFailed && JSON.stringify(installs()) === JSON.stringify([["jitendex", "jiten"], ["jitendex", "jiten"]])
+    // Every source without a recorded outcome is requested; the installer settles installed ones itself.
+    const everySource = RECOMMENDED_CATALOGUE.map((entry) => entry.sourceId);
+    const attached = requestFailed && JSON.stringify(installs()) === JSON.stringify([everySource, ["jitendex", "jiten"]])
       && currentStep() === "dictionaries" && doneSteps() === 0
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Waiting"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Waiting"]])
@@ -5994,7 +6015,8 @@ async function startupPageStage() {
       { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true }] };
     storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
     setupState = { ...setupState, revision: 4, dictionaries: { ...emptyDictionaries, totalSeconds: 5,
-      outcomes: { jitendex: { status: "installed", seconds: 3.2, error: null }, jiten: { status: "failed", seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" } } } };
+      outcomes: { jitendex: { status: "installed", seconds: 3.2, error: null }, jiten: { status: "failed", seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" },
+        jmnedict: { status: "already-installed", seconds: null, error: null }, "bees-ultimate-kanji-dictionary": { status: "already-installed", seconds: null, error: null } } } };
     storage({ setupState: { newValue: structuredClone(setupState) } });
     event(runA(7, [entry("jitendex", "installed", { seconds: 3.2 }), entry("jiten", "failed", { seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" })], true));
     const failureView = heading() === "Some dictionaries could not be installed"
