@@ -26,13 +26,14 @@ function fixture(t) {
     refresh: async () => { throw new Error("refresh failed after commit"); },
   });
   t.after(() => window.close());
-  async function prepare() {
+  async function prepare(beforeReply = () => {}) {
     Object.defineProperty(el("backup-file"), "files", { configurable: true,
       value: [new window.File(["backup"], "my-backup.zip")] });
     el("backup-file").dispatchEvent(new window.Event("change"));
     await tick();
     const request = sent.at(-1);
     assert.equal(request.type, "hd_backup_prepare");
+    beforeReply();
     request.resolve({ ok: true, token: "prepared-token", createdAt: "2026-09-07T00:00:00.000Z",
       dictionaries: [{ title: "<b>private dictionary</b>", enabled: false }], customEntryCount: 2 });
     await tick();
@@ -72,4 +73,23 @@ test("cancelling a prepared restore remains possible with unrelated unsaved edit
   await tick();
   assert.equal(f.el("backup-preview").hidden, true);
   assert.match(f.statuses.at(-1)[0], /not changed/u);
+});
+
+test("leaving Settings cancels late preparation and does not revive a preview on Back", async t => {
+  for (const late of [false, true]) {
+    const f = fixture(t);
+    const leave = () => f.window.dispatchEvent(new f.window.Event("pagehide"));
+    if (late) await f.prepare(() => {
+      leave();
+      f.window.dispatchEvent(new f.window.Event("pageshow"));
+    });
+    else { await f.prepare(); leave(); }
+    assert.equal(f.sent.at(-1).type, "hd_backup_cancel");
+    assert.equal(f.sent.at(-1).token, "prepared-token");
+    f.sent.at(-1).resolve({ ok: true });
+    await tick();
+    assert.equal(f.el("backup-preview").hidden, true);
+    assert.equal(f.el("backup-restore").disabled, true);
+    assert.equal(f.el("backup-confirm").checked, false);
+  }
 });
