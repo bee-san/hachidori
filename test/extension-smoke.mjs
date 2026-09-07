@@ -9341,17 +9341,31 @@ async function contentNoteStage() {
       outcomes["Below blurs a zero count and disabling blur reveals without another play"] =
         belowBlurred && harness.blurState() === "revealed" && plays() === 2;
 
-      // A stale lookup's late count must not settle the current lookup's autoplay.
+      // A retained view replays the same request while its decision is pending:
+      // retiring the level must not spend the held first visit.
       harness.emitOptions({ ...blurOptions });
+      const replayed = await lookup("再生");
+      harness.callbacks().onBeforeResultsRendered();
+      const replayButton = harness.popup.ownerDocument.createElement("button");
+      harness.popup.append(replayButton);
+      harness.callbacks().onResultsRendered({ lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"),
+        audioButtons: [{ button: replayButton, result: harness.term("再生") }], miningActions: [] });
+      const replayHeld = plays() === 2;
+      answer(replayed, 1, 8);
+      await harness.settle();
+      outcomes["retiring a held view before its replay keeps the first visit for the decision"] =
+        replayHeld && harness.blurState() === "revealed" && plays() === 3;
+
+      // A stale lookup's late count must not settle the current lookup's autoplay.
       const stale = await lookup("古い");
       const current = await lookup("現在");
       answer(stale, 9, 9);
       await harness.settle();
-      const currentStillPending = harness.blurState() === "pending" && plays() === 2;
+      const currentStillPending = harness.blurState() === "pending" && plays() === 3;
       answer(current, 1, 10);
       await harness.settle();
       outcomes["a stale lookup's late qualifying count leaves the current lookup's autoplay to its own count"] =
-        currentStillPending && harness.blurState() === "revealed" && plays() === 3;
+        currentStillPending && harness.blurState() === "revealed" && plays() === 4;
     } finally { harness.close(); }
 
     const timed = await createHarness(undefined, { holdLookupStats: true,
