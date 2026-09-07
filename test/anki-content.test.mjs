@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import "../extension/reader-options.js";
 import "../extension/anki-content.js";
+import { createCaptureSession } from "../extension/capture-session.js";
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [resolve(homedir(), ".cache/hachidori-e2e")] }));
 const configured = { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS, anki: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki, model: "Basic" } };
@@ -288,4 +289,94 @@ test("capture encoding failure is safely retryable and never becomes an uncertai
   assert.equal(f.items[0].add.dataset.state, "addable");
   assert.equal(f.items[0].add.disabled, false);
   assert.equal(writes, 0);
+});
+
+function preparedCaptureFixture(t, submit) {
+  const owner = { tabId: 7, documentId: "original-reader" };
+  const mediaCapture = { ...globalThis.HDReaderOptions.DEFAULT_MEDIA_CAPTURE,
+    enabled: true, timingMode: "recent", includeCapturedAudio: false, clipSeconds: 5 };
+  let id = 0;
+  const session = createCaptureSession({ now: () => 10_000, wallNow: () => 1000,
+    randomId: () => `capture${++id}`, encodeAnimation: async () => new Uint8Array([1, 2, 3]) });
+  t.after(() => session.stop());
+  session.configure(mediaCapture);
+  session.start({ sourceName: "Shared tab", displaySurface: "browser", audioAvailable: false });
+  session.setLinkedPage(owner);
+  for (const timestampMs of [5000, 10_000]) {
+    session.addFrame({ timestampMs, width: 2, height: 2, data: new Uint8Array([1]) });
+  }
+  let pin = session.pinLookup({ lookupText: "猫" });
+  const captureCalls = [], jobs = [];
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true, capture: {
+      requirements: { includeAnimation: true, includeAudio: false }, sourceLabel: "Recent clip", partial: false,
+    } };
+    if (type === "hd_anki_submit") return submit(request);
+    throw new Error(`Unexpected ${type}`);
+  }, async (type, fields) => {
+    captureCalls.push(type);
+    if (type === "hd_capture_export") {
+      const job = session.beginExport(fields.token, fields.requirements, owner);
+      jobs.push(job.jobId);
+      return job;
+    }
+    if (type === "hd_capture_job_status") return session.jobStatus(fields.jobId, owner);
+    if (type === "hd_capture_cancel") return { cancelled: session.cancelExport(fields.jobId, owner) };
+    throw new Error(`Unexpected ${type}`);
+  }, tick);
+  f.context.getRequest = result => ({ term: result.term, capturePin: pin });
+  f.controller.update({ ...configured, mediaCapture });
+  f.controller.bind([f.items[0]], f.context);
+  return { ...f, session, captureCalls, jobs,
+    nextPin() { pin = session.pinLookup({ lookupText: "犬" }); return pin; } };
+}
+
+test("definitive duplicate and invalid submissions release ready capture jobs for the next lookup", async t => {
+  for (const state of ["duplicate", "invalid"]) {
+    await t.test(state, async t => {
+      let submissions = 0;
+      const f = preparedCaptureFixture(t, async () => { submissions++; return { state, error: state }; });
+      await until(() => f.items[0].add && !f.items[0].add.disabled);
+      f.items[0].add.click();
+      await until(() => submissions === 1 && !f.items[0].add.disabled);
+      assert.doesNotThrow(() => f.nextPin(), "a definitive rejection must not block every later captured lookup");
+      assert.throws(() => f.session.jobStatus(f.jobs[0]), /expired/u);
+      f.items[0].add.click();
+      await until(() => submissions === 2 && !f.items[0].add.disabled);
+      assert.equal(f.jobs.length, 2, "retrying with a new pin must create a fresh job");
+      assert.equal(f.captureCalls.filter(type => type === "hd_capture_cancel").length, 2);
+    });
+  }
+});
+
+test("a definitive rejection releases its admitted job after the popup retires and the reader relinks", async t => {
+  const held = Promise.withResolvers();
+  let sent = false;
+  const f = preparedCaptureFixture(t, async () => { sent = true; return held.promise; });
+  await until(() => f.items[0].add && !f.items[0].add.disabled);
+  f.items[0].add.click();
+  await until(() => sent);
+  f.controller.retire(f.context.owner);
+  f.session.setLinkedPage({ tabId: 8, documentId: "new-reader" });
+  held.resolve({ state: "duplicate" });
+  await until(() => f.captureCalls.includes("hd_capture_cancel"));
+  assert.doesNotThrow(() => f.nextPin());
+});
+
+test("uncertain replies and lost submission responses retain the prepared job and terminal write state", async t => {
+  for (const transportLost of [false, true]) {
+    await t.test(transportLost ? "lost response" : "uncertain reply", async t => {
+      const f = preparedCaptureFixture(t, async () => {
+        if (transportLost) throw new Error("response lost");
+        return { state: "uncertain", error: "Check Anki" };
+      });
+      await until(() => f.items[0].add && !f.items[0].add.disabled);
+      f.items[0].add.click();
+      await until(() => f.items[0].add.dataset.state === "uncertain");
+      assert.equal(f.items[0].add.disabled, true);
+      assert.equal(f.session.jobStatus(f.jobs[0]).state, "ready");
+      assert.equal(f.captureCalls.includes("hd_capture_cancel"), false);
+    });
+  }
 });

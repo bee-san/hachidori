@@ -125,6 +125,11 @@
     function refreshAll() {
       for (const group of owners.values()) refresh(group, true);
     }
+    async function cancelCapture(record) {
+      if (!record.captureJobId) return;
+      try { await capture("hd_capture_cancel", { jobId: record.captureJobId }); } catch { /* Stop/expiry already cleaned it up. */ }
+      record.captureJobId = null;
+    }
     function submitted(record, result) {
       if (result.state === "uncertain") { uncertain(record, result.error); return true; }
       if (result.state !== "added" && result.state !== "updated") return false;
@@ -156,8 +161,7 @@
         }
         if (status.state === "error") {
           const message = status.error || "Captured media could not be encoded.";
-          try { await capture("hd_capture_cancel", { jobId: record.captureJobId }); } catch { /* Stop/expiry already cleaned it up. */ }
-          record.captureJobId = null;
+          await cancelCapture(record);
           throw new Error(message);
         }
         if (owns()) captureProgress(record, status);
@@ -179,6 +183,9 @@
         if (owns()) text(record.output, "Saving to Anki…");
         writeSent = true;
         const result = await send("hd_anki_submit", { request: prepared });
+        // These replies confirm that no note was written. Release the export
+        // even if its popup retired while Anki was checking the submission.
+        if (["duplicate", "invalid"].includes(result.state)) await cancelCapture(record);
         if (!submitted(record, result) && owns()) { decision(record, { ...result, canAdd: false }); refreshAll(); }
       } catch (error) {
         if (writeSent && !error.responseReceived) uncertain(record, `The write could not be confirmed. Use View in Anki before trying again. ${error.message}`);
