@@ -349,6 +349,28 @@ button.danger:hover:not(:disabled) {
   border-color: var(--error);
 }
 
+.backup-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.backup-action > div { flex: 1 1 20rem; }
+.backup-action h2, .backup-preview h2 { margin: 0 0 .5rem; font-size: 1rem; }
+.backup-action p, .backup-preview p { margin: .4rem 0; color: var(--text-dim); }
+.backup-status { display: block; margin-top: 1.25rem; }
+.backup-status.is-error { color: var(--error); }
+.backup-preview { margin-top: 1.5rem; padding: 1.5rem; background: var(--surface-sunken); border: 1px solid var(--border); border-radius: .5rem; }
+.backup-preview .backup-file-name { color: var(--text); overflow-wrap: anywhere; }
+.backup-preview details { margin-top: 1rem; }
+.backup-preview li { overflow-wrap: anywhere; }
+.backup-confirm { display: flex; align-items: start; gap: .75rem; margin: 1.5rem 0 1rem; }
+.backup-confirm input { flex: none; margin-top: .25rem; }
+.backup-buttons { display: flex; gap: .75rem; flex-wrap: wrap; }
+
 .import-row,
 .update-actions,
 .custom-dictionary-actions,

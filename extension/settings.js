@@ -7,6 +7,7 @@
 import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
+import { createBackupSettingsController } from "./backup-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
 import {
   createDictionaryGroupController,
@@ -111,6 +112,8 @@ let statusTimer = null;
 let requestCounter = 0;
 let audioController;
 let ankiController;
+let backupController;
+let backingUp = false;
 
 const SECTION_STATUSES = {
   "import-state": { section: "add-dictionaries", label: "Import" },
@@ -118,6 +121,7 @@ const SECTION_STATUSES = {
   "custom-dictionary-status": { section: "custom-dictionary", label: "Personal dictionary" },
   "options-status": { section: "lookup", label: "Reading" },
   "dict-group-error": { section: "dictionary-groups", label: "Groups" },
+  "backup-status": { section: "backup", label: "Backup" },
 };
 let activeSection = "dictionaries";
 const unseenSectionCompletions = new Set();
@@ -131,6 +135,7 @@ function sectionHasPendingWork(id) {
     case "import-state": return importing;
     case "update-state": return updating || savingSchedule !== null || pendingSchedule !== null;
     case "custom-dictionary-status": return customLoading || customSaving || customDictionaryDirty();
+    case "backup-status": return backingUp;
     case "options-status": return savingOptions !== null || Object.keys(pendingOptions).length > 0;
     default: return false;
   }
@@ -180,6 +185,7 @@ function showSettingsSection(focus = false) {
   updateDesignPreview();
   updateAudioSettings();
   updateAnkiSettings();
+  updateBackupSettings();
   if (fragment === "settings-content") element("settings-content").focus();
   else if (focus) element(activeSection).querySelector("h1").focus();
 }
@@ -205,6 +211,34 @@ function updateAnkiSettings() {
     send: (type, fields) => send(type, fields, WORKER_TARGET),
   });
   ankiController.render();
+}
+
+function updateBackupSettings() {
+  if (activeSection !== "backup") return;
+  backupController ??= createBackupSettingsController({
+    document, send,
+    download: () => send("hd_backup_download", {}, WORKER_TARGET),
+    checkReady() {
+      if (importing || updating || removing || committing || customLoading || customSaving || pendingDictionaryCommits > 0) {
+        throw new Error("Wait for the current dictionary operation to finish, then try again.");
+      }
+      if (customDictionaryDirty() || savingOptions !== null || optionsEditRevision !== null
+          || Object.keys(pendingOptions).length > 0 || savingSchedule !== null || pendingSchedule !== null
+          || nameDrafts.hasPendingChanges()) {
+        throw new Error("Save or discard your pending changes before working with a backup.");
+      }
+    },
+    setBusy(value) { backingUp = value; setControlsDisabled(importing); },
+    status: (message, tone, completed) => setSectionStatus("backup-status", message, tone, completed),
+    async refresh() {
+      const stored = await chrome.storage.local.get(["options", "dictionaryUpdates", CUSTOM_DICTIONARY_SOURCE_KEY]);
+      adoptOptions(stored.options);
+      adoptUpdateSettings(stored.dictionaryUpdates);
+      adoptCustomDictionaryDocument(stored[CUSTOM_DICTIONARY_SOURCE_KEY]);
+      await reloadDictionaries();
+      await refreshStatus();
+    },
+  });
 }
 
 function updateDesignPreview() {
@@ -513,7 +547,7 @@ function customDictionaryDraftSource() {
 }
 
 function renderCustomDictionaryControls() {
-  const busy = importing || updating || removing || committing || customLoading || customSaving;
+  const busy = importing || updating || removing || committing || customLoading || customSaving || backingUp;
   const open = element("custom-dictionary-open");
   const source = element("custom-dictionary-source");
   open.disabled = busy;
@@ -730,7 +764,7 @@ function renderUpdateControls() {
   element("update-last-checked").textContent = checked !== null && !Number.isNaN(checked.getTime())
     ? `Last checked ${checked.toLocaleString()}.`
     : "Never checked.";
-  const busy = updating || importing || removing || committing || customSaving;
+  const busy = updating || importing || removing || committing || customSaving || backingUp;
   element("update-all").disabled = busy || availableUpdates().length === 0;
   element("update-check-now").disabled = busy;
   schedule.disabled = busy || updateSettings.revision < 0;
@@ -781,7 +815,7 @@ function renderRecommendedActions() {
 }
 
 function setControlsDisabled(disabled) {
-  const blocked = disabled || removing || updating || customSaving;
+  const blocked = disabled || removing || updating || customSaving || backingUp;
   element("import-file").disabled = blocked || committing;
   element("install-recommended").disabled = blocked || committing;
   element("retry-recommended").disabled = blocked || committing;
@@ -2267,7 +2301,7 @@ function attachHandlers() {
   });
 
   window.addEventListener("beforeunload", (event) => {
-    if (!importing && savingOptions === null && optionsEditRevision === null
+    if (!importing && !backingUp && savingOptions === null && optionsEditRevision === null
         && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null
         && !nameDrafts.hasPendingChanges()) {
       return;

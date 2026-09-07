@@ -78,11 +78,11 @@ assert.equal(runtimeListeners.length, 2);
 assert.equal(engineWorkers.length, 0);
 let relay = (...args) => runtimeListeners.some(listener => listener(...args) === true);
 
-function request(type, requestId) {
+function request(type, requestId, fields = {}) {
   const responses = [];
   const promise = new Promise((resolve, reject) => {
     const asynchronous = relay(
-      { target: "hoshidicts-offscreen", relayed: true, type, requestId },
+      { target: "hoshidicts-offscreen", relayed: true, type, requestId, ...fields },
       {},
       (response) => {
         responses.push(response);
@@ -120,6 +120,14 @@ assert.deepEqual(await queued[128], {
   ok: false,
   error: "the dictionary engine request queue is full",
 });
+const release = request("hd_backup_release", "saturated-release");
+await tick();
+assert.equal(engine.messages.at(-1).message.type, "hd_backup_release", "cleanup has one reserved slot");
+assert.match((await send("hd_backup_release", "release-overflow")).error, /queue is full/);
+engine.emit("message", { channel: "engine-response", id: engine.messages.at(-1).id,
+  response: { type: "hd_backup_release_result", ok: true } });
+assert.equal((await release.promise).ok, true);
+engine.messages.pop();
 const responseLimits = [["hd_lookup", 32 * 1024 * 1024], ["hd_media", 6 * 1024 * 1024]];
 for (const [type, limit] of responseLimits) {
   const fullQueueOversizedId = await send(type, "x".repeat(limit));
@@ -138,6 +146,37 @@ for (const message of engine.messages.splice(0)) {
 }
 await Promise.all(queued.slice(0, 128));
 
+for (const type of ["hd_backup_prepare", "hd_custom_save"]) {
+  const saturated = Array.from({ length: 127 }, (_, index) => request("hd_lookup", `before-cancel-${index}`));
+  const preparing = request(type, "leaving-prepare", { token: "leaving-page" });
+  await tick();
+  const prepareMessage = engine.messages.at(-1);
+  const cancelling = request("hd_backup_cancel", "leaving-cancel", { token: "leaving-page" });
+  await tick();
+  const cancelMessage = engine.messages.at(-1);
+  assert.equal(cancelMessage.message.type, "hd_backup_cancel", "the departing page can queue cancellation behind preparation or another mutation");
+  const cleanup = request("hd_backup_release", "cleanup-during-cancel");
+  await tick();
+  const cleanupMessage = engine.messages.at(-1);
+  assert.equal(cleanupMessage.message.type, "hd_backup_release");
+  assert.match((await send("hd_backup_release", "cleanup-overflow")).error, /queue is full/);
+  engine.emit("message", { channel: "engine-response", id: cleanupMessage.id,
+    response: { type: "hd_backup_release_result", ok: true } });
+  await cleanup.promise;
+  engine.emit("message", { channel: "engine-response", id: prepareMessage.id,
+    response: { type: "hd_backup_prepare_result", ok: true } });
+  await preparing.promise;
+  assert.match((await send("hd_lookup", "lookup-before-cancel")).error, /busy mutating/);
+  engine.emit("message", { channel: "engine-response", id: cancelMessage.id,
+    response: { type: "hd_backup_cancel_result", ok: true } });
+  await cancelling.promise;
+  for (const message of engine.messages.splice(0)) {
+    engine.emit("message", { channel: "engine-response", id: message.id,
+      response: { type: "hd_lookup_result", ok: true } });
+  }
+  await Promise.all(saturated.map(entry => entry.promise));
+}
+
 const mutationTypes = [
   "hd_import",
   "hd_apply_state",
@@ -145,6 +184,10 @@ const mutationTypes = [
   "hd_remove",
   "hd_custom_save",
   "hd_custom_append",
+  "hd_backup_export",
+  "hd_backup_prepare",
+  "hd_backup_restore",
+  "hd_backup_cancel",
 ];
 
 for (const [index, type] of mutationTypes.entries()) {
@@ -301,6 +344,12 @@ try {
   assert.equal(localRequests.length, 128);
   const overflow = await send("hd_lookup", "local-overflow");
   assert.match(overflow.error, /queue is full/);
+  const localRelease = request("hd_backup_release", "local-saturated-release");
+  await tick();
+  assert.equal(localRequests.at(-1).message.type, "hd_backup_release");
+  assert.match((await send("hd_backup_release", "local-release-overflow")).error, /queue is full/);
+  localRequests.pop().resolve({ type: "hd_backup_release_result", ok: true });
+  assert.equal((await localRelease.promise).ok, true);
   localRequests.shift().resolve({ type: "hd_lookup_result", ok: true });
   await loading[0].promise;
   const replacement = request("hd_lookup", "local-replacement");

@@ -24,6 +24,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
+import { assertBackupSnapshot, backupRevisions } from "../extension/backup-state.js";
+import { createBackupDownloads } from "../extension/backup-downloads.js";
+const nativeFetch = globalThis.fetch.bind(globalThis);
 
 // The trained fixture is built in memory rather than read out of test/fixtures:
 // the .zip on disk is only there for the browser test, which needs a real file to
@@ -524,6 +528,7 @@ function makeChrome(owner, bus, storage, alarms = makeAlarms()) {
   const onStartup = makeEvent();
   return {
     alarms: alarms.api,
+    downloads: { onChanged: makeEvent() },
     __events: { onInstalled, onStartup },
     runtime: {
       id: "hachidorismokeextensionid",
@@ -543,7 +548,10 @@ function makeChrome(owner, bus, storage, alarms = makeAlarms()) {
       onInstalled,
       onStartup,
       sendMessage(message, callback) {
-        const promise = bus.sendMessage(owner, message);
+        const promise = bus.sendMessage(owner, message, {
+          id: "hachidorismokeextensionid",
+          url: `${EXTENSION_ORIGIN}/${owner.includes("offscreen") ? "offscreen.html" : "settings.html"}`,
+        });
         if (typeof callback !== "function") {
           return promise;
         }
@@ -588,6 +596,7 @@ let nextBlobId = 0;
 function installFetch() {
   globalThis.fetch = async (input) => {
     const url = String(input);
+    if (url.startsWith("blob:nodedata:")) return nativeFetch(input);
     if (remoteResponses.has(url)) {
       return remoteResponses.get(url)(url);
     }
@@ -718,6 +727,7 @@ function loadClassicScript(file, sandbox) {
 }
 
 function loadBackgroundScript(sandbox) {
+  Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads });
   sandbox.createAnkiWorkerService = createAnkiWorkerService;
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -736,6 +746,7 @@ function loadBackgroundScript(sandbox) {
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
+    .replace(/^import .* from "\.\/backup-(?:state|downloads)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
@@ -869,6 +880,51 @@ async function ankiBackgroundStage() {
   check("Anki model and mappings commit together through the existing options CAS and reject stale edits",
     commit.ok && commit.options.anki.model === "Basic" && commit.options.anki.fields.expression === "Front"
       && !stale.ok && stale.options.anki.model === "Basic", JSON.stringify({ commit, stale }));
+}
+
+async function backupRelayStage() {
+  const results = [];
+  for (const retry of [false, true]) {
+    const bus = makeBus(), storage = makeStorage();
+    const chrome = makeChrome("backup-relay", bus, storage);
+    const sent = [], backoffs = [];
+    let releaseStartup, reachedStartup, releaseCancel, fail = retry;
+    const startup = new Promise(resolve => { reachedStartup = resolve; });
+    chrome.runtime.getContexts = async () => {
+      if (retry || releaseStartup) return [{}];
+      return new Promise(resolve => { releaseStartup = () => resolve([{}]); reachedStartup(); });
+    };
+    chrome.runtime.sendMessage = async message => {
+      sent.push(message.type);
+      if (message.type === "hd_backup_prepare" && fail) { fail = false; return undefined; }
+      if (message.type === "hd_backup_cancel" && !releaseCancel) {
+        return new Promise(resolve => { releaseCancel = () => resolve({ ok: true }); });
+      }
+      return { ok: true };
+    };
+    loadBackgroundScript({ chrome, console, clearTimeout, Promise, Error,
+      setTimeout: resolve => backoffs.push(resolve) });
+    const send = (type, token = "departed-page") => bus.sendMessage("backup-settings", { target: "hoshidicts-offscreen", type, token });
+    const pending = send("hd_backup_prepare");
+    if (retry) {
+      for (let i = 0; i < 20 && backoffs.length === 0; i++) await Promise.resolve();
+      if (backoffs.length === 0) throw new Error("Backup relay did not reach its retry");
+    } else await startup;
+    const cancelled = send("hd_backup_cancel");
+    const otherCancelled = send("hd_backup_cancel", "stale-preview");
+    for (let i = 0; i < 20 && !releaseCancel; i++) await Promise.resolve();
+    if (!releaseCancel) throw new Error("Backup cancellation did not reach the engine");
+    const serialized = sent.filter(type => type === "hd_backup_cancel").length === 1;
+    if (retry) backoffs.shift()();
+    else releaseStartup();
+    const reply = await pending;
+    releaseCancel();
+    await Promise.all([cancelled, otherCancelled]);
+    results.push(serialized && reply.status === "cancelled"
+      && sent.filter(type => type === "hd_backup_prepare").length === Number(retry)
+      && sent.filter(type => type === "hd_backup_cancel").length === 2);
+  }
+  check("backup cancellation retires delayed startup and lost-reply retries before they can recreate staging", results.every(Boolean));
 }
 
 async function audioRelayStage() {
@@ -1503,6 +1559,7 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8").replace(/^export\s+/gmu, "");
   const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -1527,6 +1584,7 @@ function loadSettingsScript(window) {
   const nameDrafts = readFileSync(resolve(EXTENSION, "dictionary-name-drafts.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
@@ -1537,7 +1595,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${settings}`,
+    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${settings}`,
   );
 }
 
@@ -2066,6 +2124,7 @@ async function main() {
 
   section("external dictionary links");
   await externalLinksBackgroundStage();
+  await backupRelayStage();
   await audioRelayStage();
   await ankiBackgroundStage();
 
@@ -5029,6 +5088,8 @@ async function main() {
     trainedLookup.results?.[0]?.term?.glossaries?.map((g) => [g.dictionary, g.glossary]),
     [[TRAINED_TITLE, JSON.stringify(trainedGlossary)]],
   );
+
+  await backupEngineScenarios({ request, pageChrome, hostChrome: offscreenChrome, storage, engine: observedEngine, check });
 
   const unreferencedTitle = "hachidori-unreferenced-restart-fixture";
   const unreferencedImport = await request("hd_import", {

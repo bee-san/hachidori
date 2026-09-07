@@ -50,6 +50,10 @@
             <a href="#dictionary-groups" aria-describedby="nav-status-dictionary-groups">Groups</a>
             <output class="nav-status" id="nav-status-dictionary-groups" aria-live="polite"></output>
           </div>
+          <div class="nav-item">
+            <a href="#backup" aria-describedby="nav-status-backup">Backup &amp; restore</a>
+            <output class="nav-status" id="nav-status-backup" aria-live="polite"></output>
+          </div>
         </nav>
         <output
           class="engine-status"
@@ -716,6 +720,39 @@
             <label class="field"><span class="field-label">API key</span><input id="opt-anki-api-key" type="password" autocomplete="off"><span class="field-hint">Leave blank unless you configured an API key in AnkiConnect. Stored locally in this browser.</span></label>
           </details>
           <div class="options-feedback-slot"></div>
+        </section>
+        <section class="card" id="backup" aria-labelledby="backup-heading" hidden>
+          <div class="card-head">
+            <h1 id="backup-heading" tabindex="-1">Backup &amp; restore</h1>
+            <p class="hint">A complete copy of this browser’s Hachidori data.</p>
+          </div>
+          <div class="backup-action">
+            <div>
+              <h2>Save a backup</h2>
+              <p>Includes every dictionary, media and styles, your personal source, groups, and all saved settings.</p>
+            </div>
+            <button id="backup-export" class="ghost" type="button">Export backup</button>
+          </div>
+          <p class="section-note">The archive is not encrypted. Keep it private: it includes custom URLs and your AnkiConnect API key, if configured. Unsaved edits are not included.</p>
+          <div class="backup-action">
+            <div>
+              <h2>Restore a backup</h2>
+              <p>Choose a Hachidori backup ZIP. You can review its contents before replacing anything.</p>
+            </div>
+            <label class="file-button"><span>Choose backup</span><input id="backup-file" type="file" accept=".zip,application/zip"></label>
+          </div>
+          <output id="backup-status" class="backup-status" aria-live="polite"></output>
+          <div id="backup-preview" class="backup-preview" hidden>
+            <h2 id="backup-preview-heading" tabindex="-1">Ready to restore</h2>
+            <p id="backup-file-name" class="backup-file-name"></p>
+            <p><time id="backup-created"></time> · <span id="backup-count"></span></p>
+            <details><summary>Included dictionaries</summary><ul id="backup-dictionaries"></ul></details>
+            <label class="backup-confirm"><input id="backup-confirm" type="checkbox"><span>Replace all current dictionaries, personal entries and settings with this backup. This cannot be undone without another backup.</span></label>
+            <div class="backup-buttons">
+              <button id="backup-restore" class="ghost danger" type="button" disabled>Replace and restore</button>
+              <button id="backup-cancel" class="ghost" type="button">Cancel</button>
+            </div>
+          </div>
         </section>
       </main>
     </div>

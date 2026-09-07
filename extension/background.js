@@ -1,6 +1,8 @@
 import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
+import { createBackupDownloads } from "./backup-downloads.js";
+import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
 import {
@@ -19,6 +21,8 @@ import {
   CUSTOM_DICTIONARY_SOURCE_KEY,
   CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION,
   CUSTOM_DICTIONARY_TITLE,
+  assertCustomDictionaryCommit,
+  assertCustomSourceState,
   customDictionarySemanticRevision,
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
@@ -60,6 +64,12 @@ const AUDIO_TARGET = "hachidori-audio";
 // engine's own request queue would then wait on itself.
 const WORKER_TARGET = "hoshidicts-worker";
 let ankiGateway, ankiMining;
+let backupDownloads;
+
+function getBackupDownloads() {
+  backupDownloads ??= createBackupDownloads(chrome, relay);
+  return backupDownloads;
+}
 
 const DICTIONARY_STATE_KEY = "dictionaryState";
 const LEGACY_DICTIONARIES_KEY = "dictionaries";
@@ -259,42 +269,6 @@ function assertOrdinaryCustomTransition(currentDictionaries, nextDictionaries) {
   }
 }
 
-function assertCustomDictionaryCommit(dictionaries) {
-  const customIndexes = dictionaries.flatMap((dictionary, index) =>
-    dictionary?.id === CUSTOM_DICTIONARY_ID ? [index] : []);
-  if (customIndexes.length > 1) {
-    throw new Error("the custom dictionary state contains duplicate managed packages");
-  }
-  if (customIndexes.length === 0) return;
-  const custom = dictionaries[customIndexes[0]];
-  if (customIndexes[0] !== 0
-      || custom?.title !== CUSTOM_DICTIONARY_TITLE
-      || custom?.enabled !== true) {
-    throw new Error("the managed custom dictionary must stay enabled and first");
-  }
-  if (dictionaries.some((dictionary, index) =>
-    index !== customIndexes[0] && dictionary?.title === CUSTOM_DICTIONARY_TITLE)) {
-    throw new Error(`a dictionary named ${CUSTOM_DICTIONARY_TITLE} is already installed`);
-  }
-}
-
-function assertCustomSourceState(dictionaries, semanticRevision, entryCount) {
-  const custom = dictionaries.filter((dictionary) => dictionary?.id === CUSTOM_DICTIONARY_ID);
-  if (entryCount === 0) {
-    if (custom.length !== 0) {
-      throw new Error("a zero-entry custom source cannot retain its managed package");
-    }
-    return;
-  }
-  assertCustomDictionaryCommit(dictionaries);
-  const entry = custom[0];
-  if (custom.length !== 1
-      || entry?.revision !== semanticRevision
-      || entry?.termCount !== entryCount) {
-    throw new Error("the custom dictionary package does not match its source semantics");
-  }
-}
-
 function assertCustomDictionaryCasRequest(message) {
   if (!Number.isInteger(message?.baseDocumentRevision)
       || message.baseDocumentRevision < 0) {
@@ -369,6 +343,58 @@ async function removeLegacyDictionaryRows(current, legacyDictionaries) {
 // message round trip later. A caller includes the revision it read so a stale
 // write cannot discard a change made by another extension context.
 const WORKER_HANDLERS = {
+  async hd_backup_download(message, sender) {
+    if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
+      throw new Error("Backup downloads are available only from Hachidori Settings.");
+    }
+    return getBackupDownloads().download();
+  },
+  async hd_backup_base_read() {
+    const stored = await chrome.storage.local.get([
+      DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_SOURCE_KEY, UPDATE_SETTINGS_KEY,
+    ]);
+    return { snapshot: {
+      state: stored[DICTIONARY_STATE_KEY] ?? null,
+      options: stored[OPTIONS_KEY] ?? null,
+      document: stored[CUSTOM_DICTIONARY_SOURCE_KEY] ?? null,
+      updates: stored[UPDATE_SETTINGS_KEY] ?? null,
+    } };
+  },
+
+  async hd_backup_read() {
+    const { snapshot } = await WORKER_HANDLERS.hd_backup_base_read();
+    return { snapshot: {
+      state: snapshot.state,
+      options: { ...projectStoredOptions(snapshot.options), revision: optionsRevision(snapshot.options) },
+      document: normaliseCustomDictionaryDocument(snapshot.document),
+      updates: normaliseUpdateSettings(snapshot.updates),
+    } };
+  },
+
+  async hd_backup_cas(message, sender) {
+    if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)) {
+      throw new Error("A backup restore must be prepared by the dictionary engine.");
+    }
+    const { snapshot: current } = await WORKER_HANDLERS.hd_backup_base_read();
+    if (!sameJsonValue(message.base, current)) {
+      return { ok: false, conflict: true, error: "Hachidori changed since this backup was prepared. Prepare it again before restoring." };
+    }
+    const snapshot = message.snapshot;
+    await assertBackupSnapshot(snapshot);
+    const expected = Object.fromEntries(Object.entries(backupRevisions(current)).map(([key, revision]) => [key, revision + 1]));
+    if (!sameJsonValue(backupRevisions(snapshot), expected)) throw new Error("Invalid backup restore revisions.");
+    if (!sameJsonValue(snapshot.options, normaliseDictionarySelections(snapshot.options, snapshot.state.dictionaries))) {
+      throw new Error("The backup reader settings refer to unavailable dictionaries.");
+    }
+    await chrome.storage.local.set({
+      [DICTIONARY_STATE_KEY]: snapshot.state,
+      [OPTIONS_KEY]: snapshot.options,
+      [CUSTOM_DICTIONARY_SOURCE_KEY]: snapshot.document,
+      [UPDATE_SETTINGS_KEY]: snapshot.updates,
+    });
+    return { snapshot };
+  },
+
   async hd_anki_discover(message, sender) {
     if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
       throw new Error("Anki discovery is available only from Hachidori Settings");
@@ -895,6 +921,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+const backupPreparations = new Map();
+let backupCancelTail = Promise.resolve();
+
+async function relayEngineRequest(message) {
+  if (message.type === "hd_backup_cancel") {
+    const preparation = backupPreparations.get(message.token);
+    if (preparation) preparation.cancelled = true;
+    // Retire startup/retries now, but admit only one cleanup request at a time.
+    // Cancel followed by pagehide must not consume the download-release slot.
+    const cancelled = backupCancelTail.then(() => relay(message), () => relay(message));
+    backupCancelTail = cancelled.catch(() => {});
+    return cancelled;
+  }
+  if (message.type !== "hd_backup_prepare") return relay(message);
+  const preparation = { cancelled: false };
+  backupPreparations.set(message.token, preparation);
+  try {
+    return await relay(message, () => !preparation.cancelled);
+  } finally {
+    if (backupPreparations.get(message.token) === preparation) backupPreparations.delete(message.token);
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || (message.target !== TARGET && message.target !== AUDIO_TARGET) || message.relayed === true) {
     return false;
@@ -924,7 +973,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   }
   const response = message.target === AUDIO_TARGET
-    ? prepareAudioRequest(message).then(prepared => relay(prepared, stillCurrent)) : relay(message);
+    ? prepareAudioRequest(message).then(prepared => relay(prepared, stillCurrent)) : relayEngineRequest(message);
   response.then(sendResponse, error => {
     sendResponse(failureReply(message, error));
   }).finally(() => { if (operation && latestAudioOperation === operation) latestAudioOperation = null; });
@@ -988,9 +1037,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   const invoke = () => WORKER_HANDLERS[type](message, sender);
   // Navigation and read-only Anki discovery must not hold up storage commits.
-  const operation = type === "hd_open_external" || type === "hd_anki_discover" ? invoke() : serialiseStorage(invoke);
+  const operation = ["hd_open_external", "hd_anki_discover", "hd_backup_download"].includes(type) ? invoke() : serialiseStorage(invoke);
   operation.then(
-    (result) => sendResponse(workerReply(message, result)),
+    async (result) => {
+      if (type === "hd_backup_cas" && result.ok !== false) {
+        try { await reconcileUpdateAlarm(); }
+        catch (error) { result.warning = `Restored successfully; update alarm could not be refreshed: ${describe(error)}`; }
+      }
+      sendResponse(workerReply(message, result));
+    },
     (error) => {
       sendResponse(failureReply(message, error));
     },
@@ -1033,6 +1088,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     return undefined;
   }).catch((error) => {
     console.error("hoshidicts: scheduled dictionary updates failed:", describe(error));
+  });
+});
+
+chrome.downloads.onChanged.addListener(delta => {
+  if (!delta.state || delta.state.current === "in_progress") return;
+  getBackupDownloads().changed(delta.id).catch(error => {
+    console.warn("hoshidicts: could not release a finished backup download:", describe(error));
   });
 });
 

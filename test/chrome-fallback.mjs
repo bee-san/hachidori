@@ -10,6 +10,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } 
 import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { backupChromeScenarios } from "./chrome-backup-scenarios.mjs";
 import {
   CUSTOM_DICTIONARY_ID,
   CUSTOM_DICTIONARY_SOURCE_KEY,
@@ -254,7 +255,10 @@ try {
   assert.equal(observed.customLookup?.results?.[0]?.term?.expression, "保存語");
   assert.match(JSON.stringify(observed.customLookup), /persisted by the custom dictionary/u);
   assert.deepEqual(observed.opfsEntries, []);
+  const restoredBackup = await backupChromeScenarios({ browser, page, directory: resolve(PROFILE, "backup-downloads") });
+  observed = await inspect(page);
   const customPath = observed.customDictionary.path;
+  const customRevision = restoredBackup.document.revision;
   await browser.close();
 
   browser = await launch();
@@ -277,7 +281,7 @@ try {
   assert.equal(observed.customDictionary?.termCount, 1);
   assert.equal(observed.customDictionary?.path, customPath);
   assert.equal(observed.customSource?.schemaVersion, CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION);
-  assert.equal(observed.customSource?.revision, 1);
+  assert.equal(observed.customSource?.revision, customRevision);
   assert.equal(observed.customSource?.text, CUSTOM_SOURCE);
   assert.equal(observed.customDictionary?.revision, observed.customSource?.semanticRevision);
   assert.equal(observed.customLookup?.results?.[0]?.term?.expression, "保存語");

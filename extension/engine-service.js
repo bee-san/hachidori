@@ -1,5 +1,6 @@
 import {
   httpsUrl,
+  assertRecommendedDictionary,
   MANAGED_DICTIONARY_CHANGED,
   managedDictionaryFingerprint,
   managedDictionaryMatches,
@@ -12,6 +13,7 @@ import {
   appendCustomDictionaryEntry,
   buildCustomDictionaryZip,
   customDictionarySemanticRevision,
+  customDictionaryMetadataMatches,
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
 } from "./custom-dictionary.js";
@@ -74,7 +76,7 @@ const MEDIA_TYPES = {
 
 // No engine call, so this must not queue behind a long import: the settings page
 // polls hd_status while one is running.
-const UNQUEUED = new Set(["hd_status"]);
+const UNQUEUED = new Set(["hd_status", "hd_backup_release"]);
 
 // A storage read-modify-write spans two messages, so another context can write
 // in between; the worker refuses the write when that happens and the change is
@@ -470,18 +472,7 @@ function withRecommendedSource(dictionary, source) {
 }
 
 function validateRecommendedImport(source, report, generated) {
-  if (!new RegExp(source.titlePattern, "u").test(report.title)) {
-    throw new Error(`${source.name} archive did not match its expected title`);
-  }
-  if (generated.indexUrl !== source.indexUrl) {
-    throw new Error(`${source.name} archive did not match its expected update source`);
-  }
-  if (generated.revision === "") {
-    throw new Error(`${source.name} archive did not declare a revision`);
-  }
-  if (!capabilities(report).includes(source.requiredCapability)) {
-    throw new Error(`${source.name} archive did not contain its expected capability`);
-  }
+  assertRecommendedDictionary(source, { ...report, indexUrl: generated.indexUrl, revision: generated.revision });
 }
 
 function installedAt(importDate, path) {
@@ -923,12 +914,14 @@ function publishLoadedDictionaries(loadedCount) {
   generation += 1;
 }
 
-async function restoreCommittedDictionaries(state = null) {
+async function restoreCommittedDictionaries(state = null, { publish = true } = {}) {
   const committed = state ?? (await readDictionaryStorage()).state;
   if (committed === null) {
     throw new Error("the committed dictionary state is unavailable");
   }
-  publishLoadedDictionaries(loadDictionaries(committed.dictionaries, { strict: true }));
+  const loadedCount = loadDictionaries(committed.dictionaries, { strict: true });
+  if (publish) publishLoadedDictionaries(loadedCount);
+  else dictionaryCount = loadedCount;
   reloadError = null;
   return committed;
 }
@@ -964,7 +957,7 @@ async function ensureLoaded() {
 let reloadRetry = null;
 
 function retryReload() {
-  if (reloadRetry !== null) {
+  if (reloadRetry !== null || preparedBackup !== null) {
     return;
   }
   // Through serialise(), or this would call hdw_reset underneath a running
@@ -1091,17 +1084,7 @@ async function customPackageSatisfies(state, semanticRevision, entryCount) {
   }
   try {
     const generated = await packageFromIndex(custom.path);
-    if (generated.title !== CUSTOM_DICTIONARY_TITLE
-        || generated.revision !== semanticRevision
-        || generated.termCount !== entryCount
-        || generated.frequencyCount !== 0
-        || generated.pitchCount !== 0
-        || generated.kanjiCount !== 0
-        || generated.mediaCount !== 0
-        || generated.isUpdatable !== false
-        || generated.indexUrl !== null
-        || generated.downloadUrl !== null
-        || generated.language !== "ja"
+    if (!customDictionaryMetadataMatches(generated, semanticRevision, entryCount)
         || !sameDictionaries(
           state.dictionaries,
           withCustomDictionary(state.dictionaries, generated),
@@ -1230,7 +1213,7 @@ async function commitImportedGeneration(
   return committed.state;
 }
 
-async function rollbackImportedGeneration(generationRoot, failure) {
+async function rollbackImportedGenerations(generationRoots, failure) {
   let committed = null;
   let restoreError = null;
   try {
@@ -1239,18 +1222,21 @@ async function rollbackImportedGeneration(generationRoot, failure) {
     restoreError = error;
     reloadError = asError(error);
   }
-  const retained = committed?.dictionaries.some((dictionary) =>
-    dictionaryRoot(dictionary) === generationRoot) === true;
-  if (committed !== null && !retained) {
+  const retained = new Set(committed?.dictionaries.map(dictionaryRoot));
+  if (committed !== null) {
     try {
-      await discardGeneration(generationRoot);
+      await discardGenerations(generationRoots.filter(root => !retained.has(root)));
     } catch (error) {
-      console.warn(`hoshidicts: could not discard ${generationRoot}: ${describe(error)}`);
+      console.warn(`hoshidicts: could not discard failed dictionary generations: ${describe(error)}`);
     }
   }
   if (restoreError !== null) {
     throw new Error(`${describe(failure)}; dictionary rollback failed: ${describe(restoreError)}`);
   }
+}
+
+function rollbackImportedGeneration(generationRoot, failure) {
+  return rollbackImportedGenerations([generationRoot], failure);
 }
 
 function toBase64(bytes) {
@@ -1668,6 +1654,155 @@ async function saveCustomDictionary(snapshot, source) {
   }
 }
 
+let preparedBackup = null;
+const backupUrls = new Set();
+
+async function readBackupSnapshot(raw = false) {
+  const reply = await ask(raw ? "hd_backup_base_read" : "hd_backup_read");
+  if (!reply.ok) throw new Error(reply.error || "Could not read the complete Hachidori state.");
+  return reply.snapshot;
+}
+
+function backupFileBlob(path, size) {
+  const FS = engine.FS;
+  const input = FS.open(path, "r");
+  const parts = [];
+  try {
+    let offset = 0;
+    while (offset < size) {
+      // Transfer-sized chunks, not a limit on files or archive size.
+      const bytes = new Uint8Array(Math.min(64 * 1024, size - offset));
+      const read = FS.read(input, bytes, 0, bytes.length);
+      if (read !== bytes.length) throw new Error(`Could not read the complete dictionary file: ${path}`);
+      parts.push(new Blob([bytes]));
+      offset += read;
+    }
+    return new Blob(parts);
+  } finally {
+    FS.close(input);
+  }
+}
+
+function collectBackupFiles(root, prefix, assertPath, output) {
+  const FS = engine.FS;
+  if (!isDirectory(FS.lstat(root))) throw new Error(`Dictionary generation is not a directory: ${root}`);
+  for (const name of FS.readdir(root).filter(name => name !== "." && name !== "..").sort()) {
+    const path = `${prefix}/${name}`;
+    assertPath(path);
+    const absolute = `${root}/${name}`;
+    const stat = FS.lstat(absolute);
+    if (isDirectory(stat)) collectBackupFiles(absolute, path, assertPath, output);
+    else if ((stat.mode & 0o170000) === 0o100000) output.push({ path, data: backupFileBlob(absolute, stat.size) });
+    else throw new Error(`Dictionary generation contains a non-file entry: ${path}`);
+  }
+}
+
+async function discardPreparedBackup() {
+  const previous = preparedBackup;
+  preparedBackup = null;
+  if (previous) await discardGenerations(previous.roots);
+}
+
+async function discardGenerations(roots) {
+  for (const root of roots) {
+    if (!isGenerationRoot(root)) throw new Error("Refusing to discard a path outside the dictionary generation namespace.");
+  }
+  let changed = false;
+  for (const root of roots) {
+    if (exists(root)) { removeTree(root); changed = true; }
+  }
+  if (changed) await persistFilesystem();
+}
+
+async function stageBackupFiles(prepared, roots) {
+  const archived = prepared.snapshot.state.dictionaries;
+  const dictionaries = archived.map(dictionary => {
+    const root = createGenerationRoot();
+    roots.push(root);
+    const next = { ...dictionary, path: `${root}/${dictionary.title}` };
+    if (dictionaryRoot(next) === null) throw new Error("The backup contains an invalid dictionary title.");
+    return next;
+  });
+  for (const file of prepared.files) {
+    const [, ordinal, ...relative] = file.path.split("/");
+    const dictionary = dictionaries[Number(ordinal)];
+    if (!dictionary) throw new Error(`The backup file has no dictionary: ${file.path}`);
+    const path = `${dictionary.path}/${relative.join("/")}`;
+    engine.FS.mkdirTree(path.slice(0, path.lastIndexOf("/")));
+    await streamResponseToFile(engine.FS, new Response(file.data), path);
+  }
+  for (const dictionary of dictionaries) await validateBackupDictionary(dictionary);
+  await persistFilesystem();
+  return dictionaries;
+}
+
+async function validateBackupDictionary(dictionary) {
+  const generated = await packageFromIndex(dictionary.path);
+  const keys = ["title", "revision", "termCount", "frequencyCount", "pitchCount", "kanjiCount", "mediaCount"];
+  if (keys.some(key => generated[key] !== dictionary[key]) || !hasDictionaryMarker(dictionary.path)) {
+    throw new Error(`The backup dictionary metadata does not match its files: ${dictionary.title}`);
+  }
+  const required = ["hash.table", "bloom.filter", "blobs.bin"];
+  if (dictionary.mediaCount > 0) required.push("media.idx", "media.bin");
+  for (const name of required) {
+    if (!exists(`${dictionary.path}/${name}`)) throw new Error(`The backup is missing ${dictionary.title}/${name}`);
+  }
+  const recommended = recommendedDictionarySource(dictionary.sourceId);
+  if (recommended) assertRecommendedDictionary(recommended, generated);
+  if (dictionary.id === CUSTOM_DICTIONARY_ID
+      && !customDictionaryMetadataMatches(generated, dictionary.revision, dictionary.termCount)) {
+    throw new Error("The backup custom dictionary files do not satisfy the managed package invariants.");
+  }
+}
+
+async function commitBackupSnapshot(current, snapshot) {
+  try {
+    return await ask("hd_backup_cas", { base: current, snapshot });
+  } catch (commitError) {
+    let readback;
+    try { readback = await readBackupSnapshot(true); }
+    catch (readError) { throw new UnknownDictionaryStateCommitError(commitError, readError, "backup restore"); }
+    if (sameJsonValue(readback, snapshot)) return { ok: true, snapshot };
+    if (!sameJsonValue(readback, current)) {
+      throw new UnknownDictionaryStateCommitError(commitError,
+        new Error("readback did not match the exact complete restore transaction"), "backup restore");
+    }
+    return { ok: false, error: describe(commitError) };
+  }
+}
+
+async function restoreBackup(message) {
+  requireEngine();
+  if (!preparedBackup || preparedBackup.token !== message.token) {
+    throw new Error("This prepared backup is no longer available. Choose the file again.");
+  }
+  const prepared = preparedBackup;
+  preparedBackup = null;
+  try {
+    const { restoredBackupSnapshot } = await import("./backup-state.js");
+    const current = await readBackupSnapshot(true);
+    if (!sameJsonValue(current, prepared.current)) {
+      throw new Error("Hachidori changed since this backup was prepared. Prepare it again before restoring.");
+    }
+    const loadedCount = loadDictionaries(prepared.dictionaries, { strict: true });
+    const snapshot = restoredBackupSnapshot(current, prepared.snapshot, prepared.dictionaries);
+    const reply = await commitBackupSnapshot(current, snapshot);
+    if (!reply.ok) throw new Error(reply.error || "Could not commit the backup restore.");
+    publishLoadedDictionaries(loadedCount);
+    reloadError = null;
+    await cleanupCommittedDictionaries();
+    return { restored: true, dictionaryCount, warning: reply.warning ?? null };
+  } catch (error) {
+    if (error instanceof UnknownDictionaryStateCommitError) {
+      reloadError = error;
+      throw error;
+    }
+    // Read authoritative state; never write an old snapshot over concurrent edits.
+    await rollbackImportedGenerations(prepared.roots, error);
+    throw error;
+  }
+}
+
 function removalTarget(dictionaries, id, title) {
   const target = dictionaries.find((dictionary) =>
     id === null ? text(dictionary?.title) === title : dictionary?.id === id);
@@ -1682,6 +1817,76 @@ function removalTarget(dictionaries, id, title) {
 }
 
 const HANDLERS = {
+  async hd_backup_export() {
+    await ensureLoaded();
+    const [{ createBackupArchive, assertBackupPath }, { assertBackupSnapshot }] = await Promise.all([
+      import("./backup-archive.js"), import("./backup-state.js"),
+    ]);
+    const snapshot = await readBackupSnapshot();
+    await assertBackupSnapshot(snapshot);
+    const files = [];
+    for (const [index, dictionary] of snapshot.state.dictionaries.entries()) {
+      if (dictionaryRoot(dictionary) === null) throw new Error("Cannot back up an invalid dictionary path.");
+      collectBackupFiles(dictionary.path, `dictionaries/${index}`, assertBackupPath, files);
+    }
+    const archive = await createBackupArchive(snapshot, files);
+    const blobUrl = URL.createObjectURL(archive);
+    backupUrls.add(blobUrl);
+    return { blobUrl, size: archive.size };
+  },
+
+  hd_backup_release(message) {
+    if (backupUrls.delete(message.blobUrl)) URL.revokeObjectURL(message.blobUrl);
+    return {};
+  },
+
+  async hd_backup_cancel(message) {
+    if (preparedBackup?.token === message.token) await discardPreparedBackup();
+    return {};
+  },
+
+  async hd_backup_prepare(message) {
+    requireEngine();
+    if (typeof message.token !== "string" || message.token === "") {
+      throw new Error("Backup preparation requires its Settings cancellation token.");
+    }
+    await discardPreparedBackup();
+    const current = await readBackupSnapshot(true);
+    const [{ openBackupArchive }, { assertBackupSnapshot }] = await Promise.all([
+      import("./backup-archive.js"), import("./backup-state.js"),
+    ]);
+    if (typeof message.blobUrl !== "string" || !message.blobUrl.startsWith("blob:")) {
+      throw new Error("Choose a local Hachidori backup archive.");
+    }
+    const response = await fetch(message.blobUrl);
+    if (!response.ok) throw new Error("Could not read the selected backup.");
+    const prepared = await openBackupArchive(await response.blob());
+    await assertBackupSnapshot(prepared.snapshot);
+    const roots = [];
+    try {
+      const dictionaries = await stageBackupFiles(prepared, roots);
+      loadDictionaries(dictionaries, { strict: true });
+      let warning = null;
+      try { await restoreCommittedDictionaries(null, { publish: false }); }
+      catch (error) {
+        reloadError = asError(error);
+        warning = "The current dictionaries cannot be loaded. This validated backup can replace them.";
+      }
+      const token = message.token;
+      preparedBackup = { token, current, roots, dictionaries, snapshot: prepared.snapshot };
+      return { token, warning, createdAt: prepared.createdAt, dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
+        customEntryCount: parseCustomDictionary(prepared.snapshot.document.text).entries.length };
+    } catch (error) {
+      try { await restoreCommittedDictionaries(null, { publish: false }); }
+      catch (restoreError) { reloadError = asError(restoreError); }
+      // Prepare never publishes these paths, even when the old state is broken.
+      await discardGenerations(roots);
+      throw error;
+    }
+  },
+
+  hd_backup_restore: restoreBackup,
+
   async hd_lookup(message) {
     await ensureLoaded();
     const json = engine.ccall(
