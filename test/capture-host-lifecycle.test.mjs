@@ -51,6 +51,66 @@ function sharedStream() {
   return { getTracks: () => [track], getVideoTracks: () => [track], getAudioTracks: () => [], track };
 }
 
+function delayedReaderLink(host, pauseAt = "metadata") {
+  const background = readFileSync(new URL("../extension/background.js", import.meta.url), "utf8");
+  const pauses = new Map();
+  const hold = step => {
+    let entered, release;
+    const waiting = new Promise(resolve => { entered = resolve; });
+    const gate = new Promise(resolve => { release = resolve; });
+    const queue = pauses.get(step) ?? [];
+    queue.push({ entered, gate });
+    pauses.set(step, queue);
+    return { waiting, release };
+  };
+  const firstPause = hold(pauseAt);
+  const readers = new Set();
+  const pause = async step => {
+    const next = pauses.get(step)?.shift();
+    if (next) { next.entered(); await next.gate; }
+  };
+  const context = vm.createContext({
+    OPTIONS_KEY: "options", CAPTURE_PAGE_TARGET: "hachidori-capture-page",
+    CAPTURE_CONTENT_TARGET: "hachidori-capture-content",
+    CAPTURE_CONTENT_TYPES: new Set(["hd_capture_content_identify"]),
+    capturePage: { documentId: "host-document" }, captureContentDocument: null, captureLink: null,
+    HDReaderOptions: { projectContentOptions: () => ({ mediaCapture: options }) },
+    assertCaptureTabId: tabId => assert.ok([7, 8].includes(tabId)), shortCaptureString: value => typeof value === "string" && value.length > 0,
+    chrome: { storage: { local: { get: async () => { await pause("storage"); return { options }; } } },
+      runtime: { id: "hachidori", sendMessage: message => host.command(message.type, message) },
+      tabs: {
+        get: async () => {
+          await pause("metadata");
+          return { title: "Reader", url: "https://reader.example" };
+        },
+        sendMessage: async (tabId, message, identity) => {
+          assert.equal(message.type, "hd_capture_unlink");
+          assert.equal(identity.documentId, `reader-document-${tabId}`);
+          readers.delete(tabId);
+        },
+      },
+    },
+    unlinkCaptureContent: async () => {
+      readers.delete(context.captureContentDocument?.tabId);
+      context.captureContentDocument = null;
+    },
+    commandCaptureContent: async (tabId, _type, fields) => {
+      await pause("identify");
+      await context.handleCaptureContent({ type: "hd_capture_content_identify", captureSessionId: fields.captureSessionId },
+        { id: "hachidori", tab: { id: tabId }, frameId: 0, documentId: `reader-document-${tabId}` });
+      readers.add(tabId);
+      return { videos: [] };
+    },
+    relayCapture: message => host.command(message.type, message),
+  });
+  vm.runInContext(background.slice(background.indexOf("function assertCurrentCaptureLink("),
+    background.indexOf("async function handleCaptureHostMessage(")) + "\n" +
+    background.slice(background.indexOf("async function handleCaptureContent("),
+      background.indexOf("function assertCaptureLookup(")), context);
+  return { ...firstPause, hold, context, readerLinked: tabId => readers.has(tabId),
+    link: (tabId = 7) => context.linkCapturePage({ tabId, requestId: "delayed-reader-link" }) };
+}
+
 test("Stop retires an outstanding picker and stops its late stream without starting a session", async () => {
   const f = await fixture();
   const pending = f.command("hd_capture_start");
@@ -88,6 +148,73 @@ test("settings changes cancel a pending picker and an older picker cannot replac
   await f.command("hd_capture_stop");
 });
 
+test("a reader link finishing after Stop cannot restore its binding or enter a replacement session", async () => {
+  for (const pauseAt of ["storage", "identify", "metadata"]) {
+    for (const replacement of ["none", "unlinked", "same-page", "different-page"]) {
+      const host = await fixture();
+      const starting = host.command("hd_capture_start");
+      host.requests[0].resolve(sharedStream());
+      await starting;
+      const reader = delayedReaderLink(host, pauseAt);
+      const pending = reader.link();
+      await reader.waiting;
+      await host.command("hd_capture_stop");
+      if (replacement !== "none") {
+        const restarting = host.command("hd_capture_start");
+        host.requests[1].resolve(sharedStream());
+        await restarting;
+      }
+      const replacementTab = replacement === "same-page" ? 7 : replacement === "different-page" ? 8 : null;
+      if (replacementTab) await reader.link(replacementTab);
+      reader.release();
+      await assert.rejects(pending, /capture session changed|not being linked/u);
+      const status = await host.command("hd_capture_status");
+      assert.equal(status.state, replacement === "none" ? "stopped" : "recording");
+      const replacementDocument = replacementTab ? `reader-document-${replacementTab}` : null;
+      assert.equal(status.linkedPage?.documentId ?? null, replacementDocument, `${pauseAt}/${replacement}: host`);
+      assert.equal(reader.context.captureContentDocument?.documentId ?? null, replacementDocument, `${pauseAt}/${replacement}: routing`);
+      assert.equal(reader.readerLinked(7), replacementTab === 7, `${pauseAt}/${replacement}: old collector`);
+      assert.equal(reader.readerLinked(8), replacementTab === 8, `${pauseAt}/${replacement}: new collector`);
+      await host.command("hd_capture_stop");
+    }
+    }
+});
+
+test("an older same-session link cannot unlink a newer same-page collector, even before host admission", async () => {
+  for (const pauseAt of [null, "storage", "identify", "metadata"]) {
+    const host = await fixture();
+    const starting = host.command("hd_capture_start");
+    host.requests[0].resolve(sharedStream());
+    await starting;
+    const reader = delayedReaderLink(host);
+    const first = reader.link();
+    await reader.waiting;
+    const gate = pauseAt ? reader.hold(pauseAt) : null;
+    const second = reader.link();
+    if (gate) await gate.waiting;
+    else await second;
+    reader.release();
+    await assert.rejects(first, /capture session changed/u);
+    if (!pauseAt || pauseAt === "metadata") {
+      assert.equal(reader.context.captureContentDocument?.documentId, "reader-document-7");
+      assert.equal(reader.readerLinked(7), true);
+    }
+    gate?.release();
+    await second;
+    assert.equal(reader.context.captureContentDocument?.documentId, "reader-document-7");
+    assert.equal(reader.readerLinked(7), true);
+    assert.equal((await host.command("hd_capture_status")).linkedPage.documentId, "reader-document-7");
+    await host.command("hd_capture_stop");
+  }
+});
+
+test("reader linking requires the active capture session before starting a collector", async () => {
+  const reader = delayedReaderLink(await fixture());
+  await assert.rejects(reader.link(), /Start capture before linking/u);
+  assert.equal(reader.readerLinked(7), false);
+  assert.equal(reader.context.captureContentDocument, null);
+});
+
 test("source loss closes host tracks and clears the linked reader without a controls page", async () => {
   const f = await fixture();
   const pending = f.command("hd_capture_start");
@@ -95,6 +222,7 @@ test("source loss closes host tracks and clears the linked reader without a cont
   f.requests[0].resolve(shared);
   const started = await pending;
   await f.command("hd_capture_linked", {
+    captureSessionId: (await f.command("hd_capture_status")).captureSessionId,
     page: { tabId: 7, documentId: "reader-document", title: "Reader", url: "https://reader.example", videos: [] },
   });
   shared.track.dispatchEvent(new Event("mute"));

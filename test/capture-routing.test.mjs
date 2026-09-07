@@ -21,7 +21,7 @@ function freshWorker({ readerDocument = reader.documentId, linked = true, status
   let readerLinked = linked;
   let optionsListener;
   const context = vm.createContext({
-    capturePage: null, captureRecovery: null, captureContentDocument: null, captureLinkTabId: null,
+    capturePage: null, captureRecovery: null, captureContentDocument: null, captureLink: null,
     OPTIONS_KEY: 'options', OFFSCREEN_DOCUMENT: 'offscreen.html',
     ensureOffscreen: async () => {}, HDReaderOptions: { normaliseOptions: value => value },
     CAPTURE_DOCUMENT: 'capture.html', CAPTURE_CONTENT_TARGET: 'hachidori-capture-content',
@@ -90,7 +90,8 @@ function routedCaptureSession() {
     catch (error) { return { ok: false, error: error.message }; }
   };
   const link = async page => {
-    await f.context.relayCapture({ type: 'hd_capture_linked', page });
+    await f.context.relayCapture({ type: 'hd_capture_linked', page,
+      captureSessionId: session.status().captureSessionId });
     f.context.captureContentDocument = page;
   };
   const fromReader = (message, sender = reader) => f.context.handleCaptureContent(message, sender);

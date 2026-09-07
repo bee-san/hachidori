@@ -52,8 +52,8 @@
     return reply;
   }
 
-  async function identify() {
-    return send("hd_capture_content_identify");
+  async function identify(captureSessionId) {
+    return send("hd_capture_content_identify", { captureSessionId });
   }
 
   function report(message, fields = {}) {
@@ -576,8 +576,12 @@
     report("Choose a bounded text area. Arrow Up selects its parent; Escape cancels.", { picking: true });
   }
 
-  async function link(mediaCapture) {
-    const identity = await identify();
+  async function link(mediaCapture, captureSessionId) {
+    const epoch = crypto.randomUUID();
+    documentEpoch = epoch;
+    linked = false;
+    const identity = await identify(captureSessionId);
+    if (documentEpoch !== epoch) throw new Error("The reading page link changed before its identity arrived.");
     if (!mediaCapture || typeof mediaCapture !== "object") {
       throw new Error("The capture service did not provide page timing settings.");
     }
@@ -590,7 +594,6 @@
     };
     linked = true;
     linkedDocumentId = identity.documentId;
-    documentEpoch = crypto.randomUUID();
     const available = videos();
     if (options.mediaCapture.timingMode !== "recent"
         && available.length === 1 && available[0].trackCount > 0
@@ -663,8 +666,11 @@
   }
 
   async function unlink() {
+    const epoch = crypto.randomUUID();
+    documentEpoch = epoch;
     linked = false;
     await release();
+    if (documentEpoch !== epoch) return { linked };
     pickerCleanup?.();
     selectedVideoCleanup?.();
     clearTrackedArea(false);
@@ -678,7 +684,7 @@
     if (message?.target !== CONTENT_TARGET) return false;
     Promise.resolve().then(async () => {
       switch (message.type) {
-        case "hd_capture_link": return link(message.mediaCapture);
+        case "hd_capture_link": return link(message.mediaCapture, message.captureSessionId);
         case "hd_capture_recover": return { linked, documentId: linkedDocumentId };
         case "hd_capture_video_select": {
           if (options?.mediaCapture.timingMode === "recent"

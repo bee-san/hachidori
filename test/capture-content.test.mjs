@@ -130,9 +130,53 @@ function fixture(t, {
   return { window, sent, command };
 }
 
+test("a delayed identity reply cannot restore an unlinked collector or replace a newer link", async t => {
+  for (const replacement of [false, true]) {
+    let entered, release;
+    const waiting = new Promise(resolve => { entered = resolve; });
+    const gate = new Promise(resolve => { release = resolve; });
+    const f = fixture(t, { transport(message) {
+      if (message.type === "hd_capture_content_identify" && message.captureSessionId === "old-session") {
+        entered();
+        return gate.then(() => ({ ok: true, documentId: "document-1", tabId: 7 }));
+      }
+    } });
+    const first = f.command("hd_capture_link", { captureSessionId: "old-session" });
+    await waiting;
+    await f.command("hd_capture_unlink");
+    if (replacement) await f.command("hd_capture_link", { captureSessionId: "new-session" });
+    const emitted = f.sent.length;
+    release();
+    await assert.rejects(first, /reading page link changed/u);
+    assert.equal((await f.command("hd_capture_recover")).linked, replacement);
+    assert.equal(f.sent.length, emitted);
+  }
+});
+
+test("an unlink waiting for pin release cannot clear a newer collector", async t => {
+  let entered, release;
+  const waiting = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  const f = fixture(t, { transport(message) {
+    if (message.type === "hd_capture_release") { entered(); return gate.then(() => ({ ok: true })); }
+  } });
+  await f.command("hd_capture_link", { captureSessionId: "old-session" });
+  const line = f.window.document.getElementById("line");
+  await f.window.HDCapture.rootLookup({ anchor: line.firstChild, sentence: "猫", query: "猫" });
+  const oldUnlink = f.command("hd_capture_unlink");
+  await waiting;
+  await f.command("hd_capture_link", { captureSessionId: "new-session" });
+  release();
+  await oldUnlink;
+  assert.equal((await f.command("hd_capture_recover")).linked, true);
+  assert.ok(await f.window.HDCapture.rootLookup({ anchor: line.firstChild, sentence: "猫", query: "猫" }));
+});
+
 test("root pins replace one another while DOM baseline, typewriter, replacement, hide and remount stay conservative", async t => {
   const f = fixture(t);
-  await f.command("hd_capture_link");
+  await f.command("hd_capture_link", { captureSessionId: "capture-session-1" });
+  assert.equal(f.sent.find(message => message.type === "hd_capture_content_identify").captureSessionId,
+    "capture-session-1");
   const line = f.window.document.getElementById("line");
   const candidate = sentence => ({ anchor: line.firstChild, sentence, query: sentence });
   const first = await f.window.HDCapture.rootLookup(candidate("猫"));

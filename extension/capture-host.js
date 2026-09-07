@@ -586,6 +586,19 @@ function beginCaptureExport(message) {
   return session.beginExport(message.token, message.requirements, captureJobOwner(message));
 }
 
+function linkCaptureReader(message) {
+  const status = session.status();
+  if (status.state !== "recording" || message.captureSessionId !== status.captureSessionId) {
+    throw new Error("The capture session changed before the reading page was linked.");
+  }
+  selectedTabId = message.page.tabId;
+  linkedDocumentId = message.page.documentId;
+  session.setLinkedPage(message.page);
+  pageStatus = message.page.message || "Reading page linked.";
+  pageVideos = message.page.videos;
+  return session.status();
+}
+
 function bytesToBase64(data) {
   let binary = "";
   for (let offset = 0; offset < data.length; offset += 0x8000) {
@@ -601,13 +614,7 @@ export async function handleCaptureMessage(message) {
     case "hd_capture_status": return captureStatus();
     case "hd_capture_start": await startCapture(); return captureStatus();
     case "hd_capture_stop": stopCapture(); return captureStatus();
-    case "hd_capture_linked":
-      selectedTabId = message.page.tabId;
-      linkedDocumentId = message.page.documentId;
-      session.setLinkedPage(message.page);
-      pageStatus = message.page.message || "Reading page linked.";
-      pageVideos = message.page.videos;
-      return session.status();
+    case "hd_capture_linked": return linkCaptureReader(message);
     case "hd_capture_unlinked":
       if (!linked(message)) return { ignored: true };
       selectedTabId = null;

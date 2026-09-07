@@ -106,7 +106,7 @@ let latestAudioOperation = null;
 let capturePage = null;
 let captureRecovery = null;
 let captureContentDocument = null;
-let captureLinkTabId = null;
+let captureLink = null;
 
 function describe(error) {
   if (error instanceof Error) {
@@ -172,7 +172,7 @@ async function sendCapture(message) {
 }
 
 async function recoverCaptureBinding(page) {
-  if (captureContentDocument || captureLinkTabId !== null || !page) return;
+  if (captureContentDocument || captureLink?.captureSessionId || !page) return;
   assertCaptureTabId(page.tabId);
   if (!shortCaptureString(page.documentId)) throw new Error("The linked document identity is invalid.");
   const owner = capturePage;
@@ -180,7 +180,7 @@ async function recoverCaptureBinding(page) {
   const reply = await chrome.tabs.sendMessage(page.tabId, {
     target: CAPTURE_CONTENT_TARGET, type: "hd_capture_recover",
   }, { documentId: page.documentId }).catch(() => null);
-  if (capturePage !== owner || captureContentDocument || captureLinkTabId !== null) return;
+  if (capturePage !== owner || captureContentDocument || captureLink?.captureSessionId) return;
   if (reply?.linked === true && reply.documentId === page.documentId) {
     captureContentDocument = identity;
   } else {
@@ -1322,42 +1322,71 @@ chrome.storage.onChanged.addListener((changes, area) => {
   });
 });
 
+function assertCurrentCaptureLink(link, status = null) {
+  if (captureLink !== link || (status && (status.state !== "recording"
+      || status.captureSessionId !== link.captureSessionId))) {
+    throw new Error("The capture session changed before the reading page was linked.");
+  }
+}
+
 async function linkCapturePage(message) {
-  await unlinkCaptureContent();
-  const stored = await chrome.storage.local.get(OPTIONS_KEY);
-  const mediaCapture = globalThis.HDReaderOptions.projectContentOptions(stored[OPTIONS_KEY]).mediaCapture;
-  captureLinkTabId = message.tabId;
-  let details;
+  const link = { tabId: message.tabId, captureSessionId: null, document: null };
+  captureLink = link;
+  let captureDocumentId;
   try {
-    details = await commandCaptureContent(message.tabId, "hd_capture_link", { mediaCapture });
-  } catch (error) {
+    const status = await relayCapture({ type: "hd_capture_status" });
+    assertCurrentCaptureLink(link);
+    if (status.state !== "recording" || !status.captureSessionId) {
+      await unlinkCaptureContent();
+      throw new Error("Start capture before linking a reading page.");
+    }
+    link.captureSessionId = status.captureSessionId;
+    captureDocumentId = capturePage.documentId;
     await unlinkCaptureContent();
+    const stored = await chrome.storage.local.get(OPTIONS_KEY);
+    assertCurrentCaptureLink(link);
+    const mediaCapture = globalThis.HDReaderOptions.projectContentOptions(stored[OPTIONS_KEY]).mediaCapture;
+    const details = await commandCaptureContent(message.tabId, "hd_capture_link", {
+      mediaCapture, captureSessionId: link.captureSessionId,
+    });
+    const document = link.document;
+    if (!document?.documentId) {
+      throw new Error("The linked page did not establish a document identity.");
+    }
+    const tab = await chrome.tabs.get(message.tabId);
+    assertCurrentCaptureLink(link);
+    const page = {
+      tabId: message.tabId,
+      documentId: document.documentId,
+      title: String(tab.title || "").slice(0, 200),
+      url: String(tab.url || "").slice(0, 2048),
+      videos: Array.isArray(details?.videos) ? details.videos : [],
+      message: details?.message || "",
+    };
+    await relayCapture({ type: "hd_capture_linked", requestId: message.requestId,
+      captureSessionId: link.captureSessionId, page });
+    return { page };
+  } catch (error) {
+    if (link.document) {
+      await unlinkRetiredCapture({ captureDocumentId, captureSessionId: link.captureSessionId,
+        linkedPage: link.document }, captureDocumentId, link);
+    }
     throw error;
   } finally {
-    captureLinkTabId = null;
+    if (captureLink === link) captureLink = null;
   }
-  const document = captureContentDocument;
-  if (document?.tabId !== message.tabId || !document.documentId) {
-    throw new Error("The linked page did not establish a document identity.");
-  }
-  const tab = await chrome.tabs.get(message.tabId);
-  const page = {
-    tabId: message.tabId,
-    documentId: document.documentId,
-    title: String(tab.title || "").slice(0, 200),
-    url: String(tab.url || "").slice(0, 2048),
-    videos: Array.isArray(details?.videos) ? details.videos : [],
-    message: details?.message || "",
-  };
-  await relayCapture({ type: "hd_capture_linked", requestId: message.requestId, page });
-  return { page };
 }
 
 function sameCapturePage(page, expected) {
   return page?.tabId === expected.tabId && page.documentId === expected.documentId;
 }
 
-async function unlinkRetiredCapture(message, documentId) {
+function replacementCaptureLink(link) {
+  if (captureLink && captureLink !== link && captureLink.tabId === link.tabId) return true;
+  return captureContentDocument !== link.document && sameCapturePage(captureContentDocument, link.document);
+}
+
+async function unlinkRetiredCapture(message, documentId, retiringLink = null) {
   if (message.captureDocumentId !== documentId) return;
   const page = message.linkedPage;
   assertCaptureTabId(page?.tabId);
@@ -1369,6 +1398,7 @@ async function unlinkRetiredCapture(message, documentId) {
   const status = await chrome.runtime.sendMessage({
     target: CAPTURE_PAGE_TARGET, type: "hd_capture_status", relayed: true, captureDocumentId: documentId,
   }).catch(() => null);
+  if (retiringLink && replacementCaptureLink(retiringLink)) return;
   if (status?.captureSessionId && status.captureSessionId !== message.captureSessionId
       && sameCapturePage(status.linkedPage, page)) return;
   await chrome.tabs.sendMessage(page.tabId, {
@@ -1471,13 +1501,14 @@ async function handleCaptureContent(message, sender) {
     throw new Error("Unknown or untrusted reading-page capture request.");
   }
   if (message.type === "hd_capture_content_identify") {
-    if (captureLinkTabId !== sender.tab.id) {
+    const link = captureLink;
+    if (link?.tabId !== sender.tab.id || link.captureSessionId !== message.captureSessionId) {
       throw new Error("This reading page is not being linked to the capture session.");
     }
-    captureContentDocument = {
-      tabId: sender.tab.id,
-      documentId: sender.documentId,
-    };
+    const status = await relayCapture({ type: "hd_capture_status" });
+    assertCurrentCaptureLink(link, status);
+    link.document = { tabId: sender.tab.id, documentId: sender.documentId };
+    captureContentDocument = link.document;
     return { documentId: sender.documentId, tabId: sender.tab.id };
   }
   if (!capturePage || captureRecovery) await recoverCaptureHost();
