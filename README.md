@@ -23,7 +23,7 @@
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
-Hachidori turns any Yomitan-compatible `.zip` dictionary into instant Japanese definitions on the page you are reading. Hover a word, see the matching entry, and keep reading. You do not need a native helper, local server, account, or network lookup.
+Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature rich and optionated.
 
 ## Install in 60 seconds
 
@@ -36,252 +36,51 @@ git clone https://github.com/bee-san/hachidori.git
 3. Choose **Load unpacked** and select the cloned `hachidori/extension` directory.
 4. Open Hachidori's **Options**, install the four recommended dictionaries or import your own Yomitan `.zip`, then hover Japanese text on any page.
 
-Hachidori requires Chrome 118 or newer. The WebAssembly bundle is committed, so using the extension needs no build step and no submodules.
+Hachidori will automatically open a new tab to install the reccomended dictionaries and auto-connect to Anki for you.
 
-## See it in action
+# Blazing Fast
 
-<p align="center">
-  <img src="docs/assets/demo.png" alt="Hachidori showing a Japanese dictionary definition while hovering text in Chrome" width="820">
-</p>
-
-Hachidori scans forward from the character under your pointer, deinflects forms such as `食べたかった` to `食べる`, ranks matches using your chosen dictionaries, and renders the result beside the text.
-
-Open the small `食べたかった → 食べる` disclosure below the headword to see
-the ordered deinflection steps. It starts closed and supports keyboard
-Enter/Space. [Expanded example](docs/assets/deinflection-disclosure.png).
-
-Select text to look up that exact selection instead. Selection lookup works
-without holding the hover key and is not restricted to Japanese text. In
-Settings, turn off **Japanese text only** to scan other languages automatically
-too. Page editors are excluded from text scanning.
-
-## Why Hachidori?
-
-- **Bring your own dictionaries.** Import the same open Yomitan `.zip` ecosystem used by established Japanese-learning tools.
-- **Stay on the page.** Definitions appear beside the word under your pointer, including structured content, images, frequencies, pitch accents, and kanji details.
-- **Keep lookups private.** The engine, your dictionaries, and every lookup stay inside Chrome.
-- **Keep the tool focused.** Hachidori does dictionary import and hover lookup instead of becoming a full study suite.
-
-## Use it
-
-<p align="center">
-  <img src="docs/assets/recommended-installer.png" alt="Hachidori Options showing local ZIP import and the one-click recommended dictionary installer" width="760">
-</p>
-
-Open Hachidori's options page to:
-
-- install Jitendex, JMnedict for Yomitan, Bee's Ultimate Kanji Dictionary, and Jiten Frequency Dictionary in one click;
-- import one or more Yomitan dictionaries;
-- enable or disable dictionaries without losing their place in your library;
-- search titles and aliases, select visible matches, and bulk enable, disable, favourite, or unfavourite them;
-- reorder dictionaries by dragging, with the arrow buttons, or by entering a position;
-- create ordered dictionary groups and arrange each group's dictionaries;
-- check managed dictionaries for updates or install them on one global schedule;
-- maintain a personal dictionary from editable source, and add entries from term or kanji popups;
-- configure the hover key, delay, scan length, result limit, frequency ranking, and the dictionary opened when you click a kanji.
-
-Selecting a frequency dictionary chooses its direction from the dictionary's
-metadata: ascending for ranks, descending for occurrence counts (or an
-undeclared mode). You can reverse it manually or use **Auto direction** to
-restore that choice. **Any** uses automatic ranking across all enabled frequency
-dictionaries; **Disabled** turns frequency sorting off.
-
-Settings opens with your library in lookup order. The navigation shows one task
-at a time: Library, Reading, Design, Audio, Personal dictionary, Import, Updates, or Groups.
-Drafts survive switching sections; pending work, errors, and unseen completion
-messages remain visible in the navigation. Both light and dark themes follow
-your system preference. Open a dictionary's **Details** for its display name,
-import metadata, exact position, or removal. Bulk actions appear when you select
-dictionaries; disabled dictionaries stay readable and editable.
-
-Lookup preferences save automatically after a short delay. The save status shows
-when changes are durable. If another Settings page changes them first, your draft
-stays visible: choose **Save my changes** to retry or **Use saved settings** to
-discard it. Already-open readers accept only newer committed settings, without
-reloading dictionaries. [Lookup settings screenshot](docs/assets/lookup-settings.png).
-
-**Design** puts appearance controls beside a live sample of the real popup.
-Choose from 42 grouped themes, adjust opacity, popup size and toolbar position, and try columns,
-compact summaries, clicked-kanji and image sources, frequency labels, pitch, tags,
-and source highlighting without importing a dictionary. **Scale to fit** keeps the sample in view;
-**Actual size** shows the popup at its normal size with scrolling when needed.
-The sample supports kanji/Back navigation, but its Note form never saves entries.
-The defaults are Hachidori's dark palette, 560 × 420 px, 85% background opacity,
-one column, Automatic toolbar placement, and source highlighting on. The toolbar
-normally stays near the word being read; choose **Top** or **Bottom** to keep a
-fixed edge, including in nested popups. **Reset Design to defaults** restores
-all Design controls without changing Reading preferences or your library.
-[Design preview screenshot](docs/assets/popup-toolbar-settings.png).
-
-**Audio** starts with text-to-speech enabled, pronouncing the reading when one is
-available. Add custom audio URL templates or Yomitan JSON sources, choose a system
-voice, and reorder, disable, or remove sources. Each row's **Test** plays 聞く / きく
-and reports completion, no result, or a provider/playback error. These settings
-autosave; an explicitly emptied list stays empty. Each term result has an **Audio**
-button. Shift-click, right-click or press Down on it to choose a pronunciation.
-**Automatically play the first lookup result** is optional and off by default;
-when enabled, it uses your configured sources as you look up words.
-Voice availability depends on Chrome and the operating system; some voices use
-online services. Warm pronunciations are cached for replay; changing the result
-or source settings stops obsolete playback.
-[Audio settings screenshot](docs/assets/audio-settings.png).
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/settings-dark.png">
-    <img src="docs/assets/settings.png" alt="Hachidori Settings with section navigation and the installed dictionary library first" width="960">
-  </picture>
-</p>
-
-Selected dictionaries import one at a time, with an outcome retained for every archive; a failure does not stop the rest. The starter installer behaves the same way and retries only recommendations that are still missing. Large dictionaries can take several minutes, so keep the page open until the batch finishes.
-
-The kanji dictionary chooser accepts both traditional Yomitan kanji dictionaries and term dictionaries with single-kanji entries.
-
-Popup tabs show All, each contributing dictionary, Favourites, and your saved
-groups. They filter the returned definitions without another lookup. Renaming or
-reordering groups updates open readers; a Note draft or linked child keeps its
-current definitions until it is safe to apply changed membership. **Design →
-Definition columns** lays out complete dictionary cards in one to four columns
-without replacing an open Note form.
-
-**Design → Compact summary** adds up to six brief snippets beside each
-headword, with a small leading image when available. Choose a preferred
-dictionary or let the current tab supply the first available definition.
-Summaries are off by default; full definitions and lookup order are unchanged.
-
-![Compact snippets and a leading thumbnail above complete definitions](docs/assets/compact-definition-summary.png)
-
-![Dictionary tabs with complete cards in two columns](docs/assets/dictionary-tabs-columns.png)
-
-Dictionary cross-reference links open beside their parent definition. Follow a
-chain without losing earlier entries; **Back** returns from kanji within the
-same pane, then closes that child. Each pane keeps its own Note draft. In
-**Reading**, **Maximum child popups** defaults to 10; set it to 0 to disable
-linked children. Ordinary glossary text is not scanned for nested lookups.
-
-![A chain of linked dictionary definitions](docs/assets/nested-definition-links.png)
-
-<p align="center">
-  <img src="docs/assets/managed-dictionary-updates.png" alt="Hachidori Settings showing the automatic update schedule and manual check and install controls" width="760">
-</p>
-
-Recommended dictionaries and imported dictionaries that declare complete HTTPS
-update sources are managed. **Check now** queries every managed dictionary,
-including disabled ones, and records availability without downloading an
-archive. Install one available update, install them all, or choose one global
-hourly, daily, weekly, or monthly schedule; scheduled checks install available
-updates automatically. Local archives without an update source remain
-local-only. Replacements keep the package's identity, position, alias,
-enabled/favourite state, and group memberships.
-
-### Custom dictionary and Note
-
-<p align="center">
-  <img src="docs/assets/custom-dictionary.png" alt="Hachidori Options showing the editable source for a managed custom dictionary" width="760">
-</p>
-
-Open **Custom dictionary** in Options to keep personal entries as readable text.
-Each entry is `term, reading, definition`; only the first two commas are
-separators, so a definition may contain commas. Blank lines and lines beginning
-with `#` are ignored. Use `\n` for a newline in a definition, `\\` for a literal
-backslash, and `\\n` for a literal backslash followed by `n`. Saving reports
-every malformed line and compiles all valid lines in their original order,
-including duplicates. Saving no valid entries removes the compiled custom
-dictionary while retaining the source.
-
-The compiled package is always enabled and first, while its alias and favourite
-state remain editable. The **Note** action in both term and kanji views prefills
-from the result currently shown; saving appends the entry and refreshes that
-exact popup view.
-
-## Benchmarks
-
-This directional smoke comparison uses the full **VNDB Characters by Bee** dictionary: 6,648,310 term rows, 146,570 media files, a 291.7 MB archive, and 4.46 GB expanded.
+Hachidori is 83 times faster than the worlds most popular Japanese dictionary app at importing dictionaries.
 
 <p align="center">
   <img src="docs/assets/benchmark-import.jpg" alt="Import-to-usable benchmark for the 6.65-million-row VNDB Characters by Bee dictionary: Hachidori 15 seconds, JL 4 minutes 6 seconds, and Yomitan 20 minutes 36 seconds" width="820">
 </p>
 
-<p align="center">
-  <img src="docs/assets/benchmark-hit-latency.jpg" alt="Shared-hit lookup latency benchmark: Hachidori 1.03 milliseconds, JL 4.84 milliseconds, and Yomitan 3.20 milliseconds" width="820">
-</p>
+It is even 4.5 times faster at looking up words.
 
 <p align="center">
   <img src="docs/assets/benchmark-throughput.jpg" alt="Two-query lookup throughput benchmark: Hachidori 1,108 lookups per second, JL 375, and Yomitan 317" width="820">
 </p>
 
-## Hachidori vs the alternatives
+# Recording Mode
 
-| | **Hachidori** | **Yomitan** | **hoshidicts CLI** |
-| --- | --- | --- | --- |
-| Best for | Focused hover lookups | A complete browser study workflow | Native and command-line integrations |
-| Runs in the browser | Yes, including the engine | Yes | No |
-| Imports Yomitan dictionaries | Yes | Yes | Yes |
-| Hover popup on ordinary pages | Yes | Yes | No built-in browser popup |
-| Native helper or local server needed | No | No | The native program itself |
-| Audio, Anki, and mining workflows | Popup audio, choices, optional autoplay and source settings; Anki pending | Built in or integrated | Build your own integration |
+Hachidori can record your screen and audio, and when you mine it will add the Sentence Audio and an animated gif of your game to your Anki card for you.
 
-Choose Hachidori when you want the shortest path from a Yomitan dictionary to a private hover definition. Choose Yomitan when you want the broader study ecosystem; choose the hoshidicts CLI when you want the native engine outside a browser.
+# Custom Dictionary
 
-## Privacy by default
+Do you keep on seeing a name pop up over & over again in a book, but it's not in the dictionary? 
 
-The bundled WebAssembly engine searches your dictionaries locally in Chrome.
-Definition lookup does not require a network service. Optional pronunciation is
-separate: Audio, its chooser, Settings Test, and enabled autoplay may contact
-your configured audio providers. URL templates can send the expression, reading
-and language; JSON sources also fetch their returned media URLs. Autoplay does
-this automatically for the first current result, and is off by default. Some
-system speech voices also use online services. Leave autoplay off and avoid
-online audio sources if you do not want looked-up words sent to a provider.
+With Hachidori, you can highlight the word and add it as a custom definition.
 
-Opening an external reference in a definition navigates to that HTTP(S) website
-in a new browser tab. This happens only when you activate the link; rendering a
-definition does not fetch its external links.
+# Optionated
 
-The optional starter action downloads its four named archives directly from the
-publishers linked on the Options page. Manual update checks and scheduled update
-runs request managed dictionaries' HTTPS indexes; installing an update also
-downloads its HTTPS archive. A generic index may select a new HTTPS archive URL,
-while recommended sources remain pinned to their built-in catalogue entries.
-Importing a local ZIP and dictionary searches remain local; pronunciation has
-the separate network behavior described above. Imported dictionaries are
-persisted in Chrome's extension storage.
+Hachidori is an optionated program. If it does not benefit me, the creator, personally than I will not add that feature.
 
-Custom-dictionary source and its generated indexes also stay in Chrome. Saving
-or appending a Note compiles them locally and makes no network request.
+For contributors, please try to imagine yourselves in my shoes as a Japanese learner. I mainly read visual novels and manga. Specifically what about your feature request will benefit me?
 
-Only import dictionaries you trust. Hachidori validates the archive title before the engine creates its on-disk directory, but dictionary-supplied content and CSS still come from the archive you choose.
+I do this because I am a pretty average learner, and if I make this tool great for myself than I am making it great for the average Japanese learner.
 
-## Documentation
+I will not mindlessly merge PRs that add nothing for me other than bloat.
 
-- [Architecture and WebAssembly build](docs/architecture.md)
-- [Test harness and guarantees](test/README.md)
-- [Contributing](CONTRIBUTING.md)
-- [Issues and support](https://github.com/bee-san/hachidori/issues)
+# AI Usage
 
-## Build and test
+This program was created with the assistance of AI. I used GPT 5.6 Ultra, and then GPT 6.0 Astra Ultra exclusively. 
 
-Building the bundled engine requires [Emscripten](https://emscripten.org/docs/getting_started/downloads.html) and CMake:
+I have reviewed all plans, I set the direction of how this program works. Most pull requests are reviewed. Large parts of the program such as the actual dictionary core are hand-written. 
 
-```sh
-git clone --recurse-submodules https://github.com/bee-san/hachidori.git
-cd hachidori
-. ./wasm/env.sh && ./wasm/build.sh
-```
+On top of this, there are countless tests. At some points I even had Astra Ultra work for 26 hours straight benchmarking & using every part of the program to ensure it was good (it found many bugs).
 
-The fast checks use the committed WebAssembly bundle:
-
-```sh
-node test/make-fixture.mjs
-node test/node-smoke.mjs
-node test/extension-smoke.mjs
-```
-
-The [test guide](test/README.md) explains the real-Chrome E2E test, dependencies, fixed assertion counts, and native baseline.
-
-## Contributing
-
-Bug reports, focused pull requests, and documentation improvements are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md); if you are unsure where a change belongs, [open an issue](https://github.com/bee-san/hachidori/issues/new).
+I also have personally been using this for months, and as I am the main user of this program I find bugs pretty often which I fix.
 
 ## Credits
 
