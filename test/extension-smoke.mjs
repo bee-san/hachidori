@@ -5183,6 +5183,9 @@ async function main() {
   for (const [name, passed] of Object.entries(noteContent?.lookupStatistics ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
+  for (const [name, passed] of Object.entries(noteContent?.definitionBlur ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   for (const [name, passed] of Object.entries(noteContent?.kanjiNavigation ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -8707,13 +8710,25 @@ async function contentNoteStage() {
         },
         renderResults(results, candidate, context) {
           recordRender({ kind: "terms", results, candidate, context });
-          callbacks.popup.querySelector(".gsm-hoshidicts-lookup-stats")?.remove();
+          view.setDefinitionBlurState(context.definitionBlurState);
+          for (const stale of callbacks.popup.querySelectorAll(
+            ".gsm-hoshidicts-lookup-stats, .gsm-hoshidicts-definitions, .gsm-hoshidicts-audio-button")) stale.remove();
           // Like the production renderer, the slot exists on every All view.
           const lookupStats = window.document.createElement("div");
           lookupStats.className = "gsm-hoshidicts-lookup-stats";
           lookupStats.hidden = true;
-          callbacks.popup.append(lookupStats);
-          callbacks.onResultsRendered({ lookupStats, audioButtons: [], miningActions: [] });
+          const definitions = window.document.createElement("ol");
+          definitions.className = "gsm-hoshidicts-definitions";
+          const audioButton = window.document.createElement("button");
+          audioButton.className = "gsm-hoshidicts-audio-button";
+          callbacks.popup.append(lookupStats, definitions, audioButton);
+          callbacks.onResultsRendered({ lookupStats,
+            audioButtons: [{ button: audioButton, result: results[0] }], miningActions: [] });
+        },
+        setDefinitionBlurState(state) {
+          record.blurState = ["pending", "blurred"].includes(state) ? state : "revealed";
+          callbacks.popup.dataset.definitionBlurState = record.blurState;
+          return record.blurState;
         },
         setLookupStats(element, payload) { record.lookupStatistics = payload; element.hidden = !payload; },
         setToolbarPosition(value) { callbacks.popup.dataset.toolbarPosition = value; },
@@ -8968,6 +8983,11 @@ async function contentNoteStage() {
         ...(row ? { [lookupStatsKey(descriptor, row)]: { newValue: row } } : {}),
       }, "local"); },
       lookupStatistics: (depth = 0) => popupRecord(depth)?.lookupStatistics,
+      blurState: (depth = 0) => popupRecord(depth)?.blurState,
+      hoverDefinitions(depth = 0) {
+        popupRecord(depth).callbacks.popup.querySelector(".gsm-hoshidicts-definitions")
+          .dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
+      },
       initialLookup,
       internalLink(link, depth = 0) {
         const record = popupRecord(depth);
@@ -9207,6 +9227,91 @@ async function contentNoteStage() {
         offVisit && Boolean(read) && hidden.lookupStatistics()?.lookupCount === 4 && slot()?.hidden === false
         && hidden.take("hd_lookup_stats_record") === null && hidden.renders.length === rendersBefore;
     } finally { hidden.close(); }
+    return outcomes;
+  }
+
+  async function definitionBlurCase() {
+    const outcomes = {};
+    const wait = ms => new Promise(done => setTimeout(done, ms));
+    const blurOptions = { showLookupCounts: true, definitionBlurEnabled: true, definitionBlurDirection: "atLeast",
+      definitionBlurThreshold: 5, definitionBlurReveal: "hover", definitionBlurDelayMs: 1000, audioAutoplay: true };
+    const harness = await createHarness(null, { holdLookupStats: true, options: blurOptions });
+    const plays = () => harness.sent.filter(request => request.type === "hd_audio_play").length;
+    const lookup = async expression => {
+      const operation = harness.driver.runLookup(harness.candidate);
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term(expression)] });
+      await operation;
+      return harness.take("hd_lookup_stats_record");
+    };
+    const answer = (item, lookupCount, revision = lookupCount) => harness.reply(item, {
+      descriptor: { generation: "statistics", revision },
+      statistics: { term: item.request.term, reading: item.request.reading, lookupCount, seenCount: null },
+    });
+    try {
+      const first = await lookup("五回");
+      const held = Boolean(first) && harness.blurState() === "pending" && plays() === 0
+        && harness.render().context.definitionBlurState === "pending";
+      answer(first, 5);
+      await harness.settle();
+      outcomes["a qualifying count blurs pending definitions and never auto-plays"] =
+        held && harness.blurState() === "blurred" && plays() === 0;
+      harness.hoverDefinitions();
+      const revealed = harness.blurState() === "revealed";
+      harness.emitLookupStats({ generation: "statistics", revision: 6 },
+        { term: first.request.term, reading: first.request.reading, lookupCount: 6 });
+      outcomes["hovering definitions reveals and a later count never reblurs or plays"] =
+        revealed && harness.blurState() === "revealed" && plays() === 0;
+
+      const second = await lookup("一回");
+      const heldAgain = harness.blurState() === "pending" && plays() === 0;
+      answer(second, 1);
+      await harness.settle();
+      outcomes["a non-qualifying count reveals and releases one held autoplay"] =
+        heldAgain && harness.blurState() === "revealed" && plays() === 1;
+
+      const third = await lookup("失敗");
+      harness.reply(third, { error: "lost committed reply" }, false);
+      await harness.settle();
+      outcomes["an unavailable count fails open and releases autoplay"] =
+        harness.blurState() === "revealed" && plays() === 2;
+
+      harness.emitOptions({ ...blurOptions, definitionBlurDirection: "below", definitionBlurThreshold: 3 });
+      const fourth = await lookup("零回");
+      answer(fourth, 0);
+      await harness.settle();
+      const belowBlurred = harness.blurState() === "blurred" && plays() === 2;
+      harness.emitOptions({ ...blurOptions, definitionBlurDirection: "below", definitionBlurThreshold: 3, definitionBlurEnabled: false });
+      outcomes["Below blurs a zero count and disabling blur reveals without another play"] =
+        belowBlurred && harness.blurState() === "revealed" && plays() === 2;
+    } finally { harness.close(); }
+
+    const timed = await createHarness(undefined, { holdLookupStats: true,
+      options: { ...blurOptions, definitionBlurReveal: "timed", audioAutoplay: false } });
+    try {
+      const shown = Date.now();
+      await timed.initialLookup();
+      const pending = timed.take("hd_lookup_stats_record");
+      timed.reply(pending, { descriptor: { generation: "statistics", revision: 1 },
+        statistics: { term: pending.request.term, reading: pending.request.reading, lookupCount: 9, seenCount: null } });
+      await timed.settle();
+      const blurred = timed.blurState() === "blurred";
+      // Navigate away and back: the original deadline continues, not a new one.
+      await wait(250);
+      const clicked = timed.driver.showKanji("食");
+      timed.reply(timed.take("hd_lookup_dictionary"), { dictionaryCount: 1, results: [timed.term("食")] });
+      await clicked;
+      const kanjiPending = timed.take("hd_lookup_stats_record");
+      if (kanjiPending) timed.reply(kanjiPending, { descriptor: { generation: "statistics", revision: 2 },
+        statistics: { term: "食", reading: "よみ", lookupCount: 0, seenCount: null } });
+      await timed.settle();
+      const clickedRevealed = timed.blurState() === "revealed";
+      await wait(250);
+      await timed.render().context.onBack();
+      const backBlurred = timed.blurState() === "blurred";
+      await wait(Math.max(0, shown + 1000 - Date.now()) + 300);
+      outcomes["timed reveal keeps one deadline from first display across Back"] =
+        blurred && clickedRevealed && backBlurred && timed.blurState() === "revealed";
+    } finally { timed.close(); }
     return outcomes;
   }
 
@@ -11925,6 +12030,7 @@ async function contentNoteStage() {
   return {
     callbacksWired,
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
+    definitionBlur: await definitionBlurCase(),
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
