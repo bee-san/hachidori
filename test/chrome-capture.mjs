@@ -628,7 +628,12 @@ async function main() {
       mkdirSync(dirname(resolve(SETTINGS_SCREENSHOT)), { recursive: true });
       const mediaSection = await settings.$("#media");
       assert.ok(mediaSection, "Settings exposes the media-capture section");
-      await mediaSection.screenshot({ path: resolve(SETTINGS_SCREENSHOT) });
+      await settings.$eval("#options-status", element => { element.style.visibility = "hidden"; });
+      try {
+        await mediaSection.screenshot({ path: resolve(SETTINGS_SCREENSHOT) });
+      } finally {
+        await settings.$eval("#options-status", element => { element.style.visibility = ""; });
+      }
     }
 
     const stoppedLookup = await lookupBenchmark(world);
