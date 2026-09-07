@@ -25,6 +25,10 @@ const COUNTDOWN_TICK_MS = 250;
 // A run reports at every phase change and about ten times a second while a body
 // arrives, so a longer silence means the offscreen document that owned it is gone.
 const RUN_SILENCE_MS = 4000;
+// A dictionary mutation refuses lookups while it holds the engine, so the
+// practice probe asks again rather than calling the sentence unanswerable.
+const PROBE_RETRY_MS = 400;
+const PROBE_ATTEMPTS = 5;
 const { normaliseOptions } = globalThis.HDReaderOptions;
 const STEP_STAGES = SETUP_STAGES.slice(0, 3);
 
@@ -62,6 +66,10 @@ const announced = new Map();
 
 function element(id) {
   return document.getElementById(id);
+}
+
+function wait(ms) {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
 }
 
 function describe(error) {
@@ -587,42 +595,48 @@ function practiceSignature() {
   return `${library}|${options.scanLength}|${options.frequencyDictionary}|${options.frequencyOrder}`;
 }
 
+// One pass over the sentence: "ready" at the first hit, "missing" when nothing
+// answers, "refused" when the engine would not answer, "gone" when a newer
+// signature has taken over.
+async function sweepPractice(signature) {
+  const characters = [...PRACTICE_SENTENCE];
+  for (let start = 0; start < characters.length; start += 1) {
+    let reply;
+    try {
+      // The reader's own hover payload: the configured scan length decides how
+      // far a lookup from this offset may reach. One result settles existence.
+      reply = await send("hd_lookup", { text: characters.slice(start).join(""), scanLength: options.scanLength, maxResults: 1,
+        options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder, primaryReading: "" },
+      }, ENGINE_TARGET);
+    } catch {
+      return "refused";
+    }
+    if (practiceProbed !== signature) return "gone";
+    if (reply?.ok === false) return "refused";
+    if (Array.isArray(reply?.results) && reply.results.some((result) => result?.term)) return "ready";
+  }
+  return "missing";
+}
+
 function probePractice() {
   const signature = practiceSignature();
   practiceProbed = signature;
   practiceOutcome = null;
   void (async () => {
-    // A newer inventory or option has its own probe; this one's answer is stale.
-    const settle = (found) => {
-      if (practiceProbed !== signature) return false;
-      practiceOutcome = found;
-      render();
-      return true;
-    };
-    const characters = [...PRACTICE_SENTENCE];
-    for (let start = 0; start < characters.length; start += 1) {
-      let reply;
-      try {
-        // The reader's own hover payload: the configured scan length decides how
-        // far a lookup from this offset may reach. One result settles existence.
-        reply = await send("hd_lookup", { text: characters.slice(start).join(""), scanLength: options.scanLength, maxResults: 1,
-          options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder, primaryReading: "" },
-        }, ENGINE_TARGET);
-      } catch {
-        settle("unavailable");
+    for (let attempt = 1; attempt <= PROBE_ATTEMPTS; attempt += 1) {
+      const found = await sweepPractice(signature);
+      // A newer inventory or option has its own probe; this one's answer is stale.
+      if (found === "gone" || practiceProbed !== signature) return;
+      if (found !== "refused") {
+        practiceOutcome = found;
+        render();
         return;
       }
+      await wait(PROBE_RETRY_MS);
       if (practiceProbed !== signature) return;
-      if (reply?.ok === false) {
-        settle("unavailable");
-        return;
-      }
-      if (Array.isArray(reply?.results) && reply.results.some((result) => result?.term)) {
-        settle("ready");
-        return;
-      }
     }
-    settle("missing");
+    practiceOutcome = "unavailable";
+    render();
   })();
 }
 

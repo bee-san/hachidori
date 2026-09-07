@@ -359,8 +359,10 @@ the lookup options the probe sends, so removing or disabling the package that an
 the scan length, retires it and the sentence is probed again, while a group-only
 or presentation write leaves a ready exercise alone. A library that holds no enabled term dictionary, one that
 cannot answer this sentence, or lookups switched off each get their own sentence
-and the matching Settings link, and none of them loads the reader. An engine that
-cannot answer at all falls back to the instruction that is true anywhere.
+and the matching Settings link, and none of them loads the reader. A dictionary mutation refuses lookups while it holds the
+engine, so a refused pass is asked again a few times before the step gives up;
+an engine that cannot answer at all then falls back to the instruction that is
+true anywhere.
 
 ![The practice step with a real lookup open, light palette](assets/startup-practice.png)
 

@@ -6517,8 +6517,17 @@ async function startupPracticeStage() {
   // The engine answers the sentence only from the verb onwards, the way a real
   // library that holds 食べる but not 朝ごはん would.
   let libraryAnswers = true;
-  const answersVerb = (message) => ({ generation: 3, dictionaryCount: 1,
-    results: libraryAnswers && message.text.startsWith("食べる") ? [{ term: "食べる", matched: "食べる" }] : [] });
+  // A dictionary mutation refuses the first pass, the way Settings publishing a
+  // reimport does; the sentence must be asked again rather than written off.
+  let busySweeps = 1;
+  const answersVerb = (message) => {
+    if (busySweeps > 0) {
+      busySweeps -= 1;
+      return { ok: false, error: "the dictionary engine is busy mutating" };
+    }
+    return { generation: 3, dictionaryCount: 1,
+      results: libraryAnswers && message.text.startsWith("食べる") ? [{ term: "食べる", matched: "食べる" }] : [] };
+  };
   const page = startupCase(jsdom, { setup, dictionaries: frequencyOnly, lookup: answersVerb,
     reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
   const { document } = page;
@@ -6534,8 +6543,10 @@ async function startupPracticeStage() {
     // A term dictionary arrives: the exercise appears and the reader is fetched once.
     page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }]);
     await page.until(() => page.heading() === "You’re ready. Try looking up a word below.", "the practice exercise");
-    // Every offset was tried until the verb answered, and none after it.
-    const probed = JSON.stringify(page.lookups()) === JSON.stringify(["朝ごはんを食べる。", "ごはんを食べる。", "はんを食べる。", "んを食べる。", "を食べる。", "食べる。"]);
+    // The refused pass stopped at once and was retried; then every offset was
+    // tried until the verb answered, and none after it.
+    const probed = JSON.stringify(page.lookups()) === JSON.stringify(["朝ごはんを食べる。",
+      "朝ごはんを食べる。", "ごはんを食べる。", "はんを食べる。", "んを食べる。", "を食べる。", "食べる。"]);
     const invited = withoutDictionary && probed && sample()?.textContent === "朝ごはんを食べる。" && sample().lang === "ja"
       && document.getElementById("setup-body").textContent.includes("Hover over the Japanese below to look it up.")
       && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
@@ -6589,8 +6600,9 @@ async function startupPracticeUnanswerable(jsdom, setup) {
     await offline.load();
     await offline.until(() => offline.document.getElementById("setup-body").textContent.includes("on any webpage"),
       "the unavailable engine");
+    // A refused engine is asked again before the step gives up on this page.
     const unavailable = offline.document.querySelector(".setup-practice-sample") === null
-      && readerScripts(offline.document).length === 0 && offline.lookups().length === 1;
+      && readerScripts(offline.document).length === 0 && offline.lookups().length > 1;
     return missing && unavailable;
   } finally {
     nothing.window.close();
