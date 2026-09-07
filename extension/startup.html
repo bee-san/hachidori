@@ -7,6 +7,7 @@
     <title>Set up Hachidori</title>
     <link rel="stylesheet" href="settings.css" />
     <link rel="stylesheet" href="startup.css" />
+    <link rel="stylesheet" href="content.css" />
   </head>
   <body class="startup-page">
     <a class="skip-link" href="#setup-heading">Skip to setup</a>
@@ -34,11 +35,18 @@
       </ol>
       <section class="setup-card" id="setup-card" aria-labelledby="setup-heading">
         <h2 id="setup-heading" tabindex="-1">Loading setup&hellip;</h2>
-        <div class="setup-body" id="setup-body"></div>
+        <div class="setup-body" id="setup-body"><p class="hint">Restoring your setup progress…</p></div>
         <div class="setup-actions" id="setup-actions"></div>
         <output class="setup-status" id="setup-status" aria-live="polite"></output>
       </section>
     </main>
+    <script defer src="dictionary-group-state.js"></script>
+    <script defer src="lookup-stats-identity.js"></script>
+    <script defer src="external-links.js"></script>
+    <script defer src="audio-content.js"></script>
+    <script defer src="anki-content.js"></script>
+    <script defer src="render/glossary.js"></script>
+    <script defer src="render/popup.js"></script>
     <script type="module" src="startup.js"></script>
   </body>
 </html>

@@ -7,7 +7,7 @@
   padding: 48px 16px 64px;
 }
 .startup-main {
-  width: min(100%, 560px);
+  width: min(100%, 640px);
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -46,7 +46,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 8px 10px;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface-sunken);
@@ -55,6 +56,7 @@
   font-weight: 500;
 }
 .setup-step-number {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -93,9 +95,11 @@
   border-radius: 8px;
   background: var(--surface);
 }
-.setup-card h2 {
+.setup-card > h2 {
   font-size: 20px;
+  line-height: 1.4;
 }
+.setup-card :is(p, a, h2, .setup-dictionary-status) { overflow-wrap: anywhere; }
 .setup-body {
   display: flex;
   flex-direction: column;
@@ -111,10 +115,10 @@
 }
 .setup-dictionary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   column-gap: 16px;
   row-gap: 2px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface-sunken);
@@ -129,13 +133,14 @@
   font-size: 13px;
 }
 .setup-dictionary-status {
-  grid-area: 1 / 2 / span 2;
-  align-self: center;
+  grid-area: 3 / 1;
+  margin-top: 5px;
   color: var(--text-dim);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  text-align: left;
 }
+.setup-dictionary.is-active { border-color: var(--accent); }
 .setup-dictionary-status.is-ok {
   color: var(--ok);
 }
@@ -181,8 +186,8 @@
 .setup-card .is-error {
   color: var(--error);
 }
-.setup-status:empty {
-  /* Empty live regions must remain available for their first announcement. */
+.setup-status:not(.is-error) {
+  /* Outcomes are announced once without duplicating the visible heading/rows. */
   position: absolute;
   width: 1px;
   height: 1px;
@@ -192,8 +197,20 @@
   clip-path: inset(50%);
 }
 @media (max-width: 480px) {
-  .setup-steps {
+  .startup-page {
+    padding: 24px 12px 32px;
+  }
+  .startup-main { gap: 18px; }
+  .startup-header { gap: 12px; }
+  .startup-brand { gap: 10px; }
+  .startup-brand img { width: 40px; height: 40px; }
+  .startup-tagline { font-size: 12px; }
+  .setup-steps { gap: 4px; }
+  .setup-step {
     flex-direction: column;
+    gap: 5px;
+    padding: 8px 2px;
+    font-size: 12px;
   }
   .setup-card {
     padding: 20px 16px;
@@ -205,6 +222,48 @@
     grid-area: 3 / 1;
     text-align: left;
   }
+}
+
+.setup-practice { display: grid; gap: 16px; min-width: 0; }
+.setup-practice-scene {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+}
+.setup-practice-scene img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.setup-practice-dialogue { padding: 16px 20px 20px; }
+.setup-practice-caption {
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.setup-practice-text {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.9;
+  line-break: strict;
+}
+.setup-practice-tools { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
+.setup-practice-tools .hint { font-size: 12px; }
+.setup-anki-outcome {
+  padding: 10px 12px;
+  border-left: 3px solid var(--border-strong);
+  background: var(--surface-sunken);
+}
+.setup-anki-outcome[data-status="configured"],
+.setup-anki-outcome[data-status="already-configured"] { border-color: var(--ok); }
+.setup-anki-outcome[data-status="needs-attention"] { border-color: var(--error); }
+.setup-practice [hidden], .setup-track[hidden] { display: none; }
+
+@media (max-width: 480px) {
+  .setup-practice-dialogue { padding: 12px 14px 16px; }
+  .setup-practice-text { font-size: 18px; }
+  .setup-actions { align-items: flex-start; flex-direction: column; }
 }
 
 @media (prefers-reduced-motion: reduce) {

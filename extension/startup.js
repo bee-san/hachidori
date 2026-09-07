@@ -14,6 +14,7 @@ import "./reader-options.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-state.js";
+import { createPracticeView } from "./startup-practice.js";
 
 const WORKER_TARGET = "hoshidicts-worker";
 const SETUP_TARGET = "hachidori-setup";
@@ -49,6 +50,8 @@ let ankiRequest = null;
 let ankiFailed = false;
 let ankiAdvancing = false;
 const announced = new Map();
+let dictionaryList;
+let practice;
 
 function element(id) {
   return document.getElementById(id);
@@ -221,11 +224,15 @@ function progressBar(progress, labelId) {
 }
 
 function dictionaryRows() {
+  if (dictionaryList) {
+    updateDictionaryRows();
+    return dictionaryList;
+  }
   const list = document.createElement("ul");
+  dictionaryList = list;
   list.className = "setup-dictionary-list";
   list.setAttribute("aria-label", "Default dictionaries");
   for (const entry of RECOMMENDED_DICTIONARIES) {
-    const state = rowState(entry);
     const row = document.createElement("li");
     row.className = "setup-dictionary";
     row.dataset.sourceId = entry.sourceId;
@@ -238,13 +245,44 @@ function dictionaryRows() {
     purpose.textContent = entry.description;
     const status = document.createElement("span");
     status.className = "setup-dictionary-status";
-    if (state.tone) status.classList.add(`is-${state.tone}`);
-    status.textContent = state.text;
+    status.id = `setup-dictionary-status-${entry.sourceId}`;
     row.append(name, purpose, status);
-    if (state.progress) row.appendChild(progressBar(state.progress, name.id));
+    const track = progressBar({ value: null }, name.id);
+    track.setAttribute("aria-describedby", status.id);
+    row.appendChild(track);
     list.appendChild(row);
   }
+  updateDictionaryRows();
   return list;
+}
+
+function updateDictionaryRows() {
+  for (const [index, entry] of RECOMMENDED_DICTIONARIES.entries()) {
+    const state = rowState(entry);
+    const row = dictionaryList.children[index];
+    const status = row.querySelector(".setup-dictionary-status");
+    if (status.textContent !== state.text) status.textContent = state.text;
+    status.classList.toggle("is-ok", state.tone === "ok");
+    status.classList.toggle("is-error", state.tone === "error");
+    row.classList.toggle("is-active", Boolean(state.progress));
+    const track = row.querySelector(".setup-track");
+    track.hidden = !state.progress;
+    const value = state.progress?.value;
+    const determinate = typeof value === "number";
+    track.classList.toggle("is-determinate", determinate);
+    if (determinate) {
+      track.removeAttribute("aria-valuetext");
+      track.setAttribute("aria-valuemin", "0");
+      track.setAttribute("aria-valuemax", "100");
+      track.setAttribute("aria-valuenow", String(Math.floor(value * 100)));
+      track.style.setProperty("--progress", `${value * 100}%`);
+    } else {
+      track.removeAttribute("aria-valuenow");
+      track.removeAttribute("aria-valuemin");
+      track.removeAttribute("aria-valuemax");
+      track.setAttribute("aria-valuetext", state.text);
+    }
+  }
 }
 
 // Announce outcomes, not bytes: one sentence when a dictionary settles.
@@ -406,7 +444,7 @@ function incompleteView(rows, importNote, missing) {
   const failed = installFailed || missing.some((entry) => setupState.dictionaries.outcomes[entry.sourceId]?.status === "failed");
   return {
     heading: failed ? "Some dictionaries could not be installed" : "Some dictionaries are not installed",
-    body: [rows, importNote],
+    body: [paragraph("Retry the missing dictionaries, or continue and add them later in Settings."), rows, importNote],
     actions: [
       button("setup-retry", "Retry missing dictionaries", () => { void requestInstall(missing.map((entry) => entry.sourceId)); }),
       button("setup-continue", "Continue setup", () => { void advance("anki", { continued: true }); }, "ghost"),
@@ -535,19 +573,18 @@ async function advanceAfterAnki() {
 const VIEWS = {
   dictionaries: dictionariesView,
   anki: ankiView,
-  practice: () => ({
-    heading: "You’re ready.",
-    body: [
-      ...(setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)]),
-      paragraph(options.lookupMode === "activation"
-        ? `Hold ${options.activationKey} and hover over Japanese text on any webpage to look it up.`
-        : "Hover over Japanese text on any webpage to look it up."),
-    ],
-    actions: [button("setup-finish", "Finish", () => { void finish(); })],
-  }),
+  practice: () => {
+    practice ??= createPracticeView({ document, onDismiss: () => { element("setup-finish")?.focus(); } });
+    practice.update(options, dictionaries);
+    return {
+      heading: "You’re ready.",
+      body: [...(setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)]), practice.node],
+      actions: [button("setup-finish", "Finish", () => { void finish(); }), paragraph("The exercise is optional. You can finish any time.")],
+    };
+  },
   complete: () => ({
     heading: "Setup is complete.",
-    body: [settingsNote("Change dictionaries, Anki and reading preferences any time in ", "settings.html")],
+    body: [paragraph("You can close this tab and start reading."), settingsNote("Change dictionaries, Anki and reading preferences any time in ", "settings.html")],
     actions: [],
   }),
 };
@@ -564,7 +601,7 @@ function failedView() {
   return {
     heading: "Setup could not be read.",
     body: [paragraph(setupError, "hint is-error"), settingsNote("Hachidori still works; manage it in ", "settings.html")],
-    actions: [],
+    actions: [button("setup-reload", "Reload setup", () => { location.reload(); })],
   };
 }
 
@@ -596,10 +633,22 @@ function render() {
   const view = currentView();
   renderSteps(stage);
   const heading = element("setup-heading");
-  heading.textContent = view.heading;
-  element("setup-body").replaceChildren(...view.body);
+  if (heading.textContent !== view.heading) heading.textContent = view.heading;
+  // Move only changed children. Retain the live dictionary rows and the
+  // practice scene in place, including reader selections and popup anchors.
+  const body = element("setup-body");
+  for (const child of [...body.children]) {
+    if (!view.body.includes(child)) child.remove();
+  }
+  for (const [index, child] of view.body.entries()) {
+    if (body.children[index] !== child) body.insertBefore(child, body.children[index] ?? null);
+  }
   element("setup-actions").replaceChildren(...view.actions);
   announceOutcomes();
+  if (heading.textContent !== lastAnnouncedHeading) {
+    lastAnnouncedHeading = heading.textContent;
+    if (!element("setup-status").classList.contains("is-error")) setStatus(view.heading);
+  }
   if (renderedStage !== undefined && renderedStage !== stage) {
     // The control that held focus belonged to the previous stage.
     heading.focus();
@@ -608,6 +657,8 @@ function render() {
   }
   renderedStage = stage;
 }
+
+let lastAnnouncedHeading;
 
 async function advance(stage, { continued = false } = {}) {
   if (saving || setupState === null) return false;
@@ -665,6 +716,12 @@ function handleRuntimeMessage(message) {
 }
 
 async function start() {
+  // Keep the exact startup URL used by the reader boundary when skipping the
+  // header with a keyboard; a fragment must not disable the later exercise.
+  document.querySelector(".skip-link").addEventListener("click", (event) => {
+    event.preventDefault();
+    element("setup-heading").focus();
+  });
   chrome.storage.onChanged.addListener(handleStorageChange);
   chrome.runtime.onMessage.addListener(handleRuntimeMessage);
   const stored = await chrome.storage.local.get([SETUP_STATE_KEY, "dictionaryState", "options"]);
@@ -678,4 +735,9 @@ async function start() {
   render();
 }
 
-await start();
+try {
+  await start();
+} catch (error) {
+  setupError = describe(error);
+  render();
+}

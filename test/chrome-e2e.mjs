@@ -17,8 +17,8 @@
 import { createServer } from "node:http";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, rmSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { existsSync, rmSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 
@@ -206,6 +206,10 @@ const PLANNED = [
   "the automatic installer continues after a mocked failure through real download and installation phases",
   "Retry installs only the missing dictionary and the committed entries settle their selections once",
   "the all-installed result stays five seconds before setup checks for Anki",
+  "startup practice uses the installed dictionaries through keyboard selection and the ordinary reader",
+  "the startup reader exception keeps Settings and the static preview excluded",
+  "saved-page setup rechecks Chrome file access and a local HTML file uses the real reader",
+  "startup practice without a usable dictionary retains recovery and completion controls",
   "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
   "first-run detection configures an existing Kiku mining setup read-only from the startup page",
   "a browser restart keeps completed setup closed and the edited first-install preference",
@@ -3757,6 +3761,187 @@ async function checkAnkiGlossaryExport(page) {
   } finally { page.off("request", observe); }
 }
 
+async function checkStartupPractice(startup, browser, startupUrl) {
+  await startup.bringToFront();
+  await startup.waitForSelector("#setup-practice-lookup:not([disabled])");
+  const popup = await popupReader(startup);
+  await startup.focus("#setup-heading");
+  // Reach the real control through the page's tab order, then activate it with
+  // Enter. The control selects prose; only the ordinary reader sends the lookup.
+  let keyboardReached = false;
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    await startup.keyboard.press("Tab");
+    keyboardReached = await startup.evaluate(() => document.activeElement?.id === "setup-practice-lookup");
+    if (keyboardReached) break;
+  }
+  if (!keyboardReached) throw new Error("The practice lookup control was not reachable through the tab order.");
+  await startup.keyboard.press("Enter");
+  const selected = await popup.waitForVisible();
+  const originalOpacity = await startup.evaluate(async () => {
+    window.__practiceScene = document.getElementById("setup-practice-scene");
+    window.__practiceRender = { events: 0, detached: false };
+    window.__practiceObserver = new MutationObserver(records => {
+      window.__practiceRender.events += records.length;
+      for (const record of records) {
+        if ([...record.removedNodes].some(node => node.contains(window.__practiceScene))) window.__practiceRender.detached = true;
+      }
+    });
+    window.__practiceObserver.observe(document.getElementById("setup-body"), { childList: true });
+    const { options } = await chrome.storage.local.get("options");
+    const opacity = options.popupOpacityPercent ?? 85;
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: { popupOpacityPercent: opacity === 85 ? 90 : 85 } });
+    if (!reply.ok) throw new Error(reply.error);
+    return opacity;
+  });
+  await startup.waitForFunction(() => window.__practiceRender.events > 0);
+  const source = await startup.evaluate(() => ({
+    selected: getSelection().toString(),
+    text: document.getElementById("setup-practice-text")?.textContent,
+    sameScene: document.getElementById("setup-practice-scene") === window.__practiceScene,
+    detached: window.__practiceRender.detached,
+    readerScripts: [...document.scripts].filter(script => script.src.endsWith("/content.js")).length,
+    finish: document.getElementById("setup-finish")?.disabled === false,
+    settings: document.querySelector('a[href="settings.html"]') !== null,
+  }));
+  await startup.keyboard.press("Escape");
+  const escaped = await popup.waitForHidden();
+  await startup.evaluate(() => getSelection().removeAllRanges());
+  const hovered = await hoverForPopup(startup, popup, "#setup-practice-word");
+  const genuine = state => state?.plain.includes("辞書")
+    && state.text.includes(`${RECOMMENDED_DICTIONARIES[0].title} term fixture`);
+  check("startup practice uses the installed dictionaries through keyboard selection and the ordinary reader",
+    keyboardReached && genuine(selected) && genuine(hovered) && escaped
+      && source.selected === "辞書" && source.text.includes("辞書") && source.sameScene && !source.detached
+      && source.readerScripts === 1 && source.finish && source.settings,
+    JSON.stringify({ keyboardReached, selected, hovered, source, escaped }));
+  await startup.keyboard.press("Escape");
+  await startup.mouse.move(2, 2);
+  await startup.evaluate(async popupOpacityPercent => {
+    window.__practiceObserver.disconnect();
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: { popupOpacityPercent } });
+    if (!reply.ok) throw new Error(reply.error);
+  }, originalOpacity);
+
+  // These pages do not normally load content.js. Inject the production script
+  // list explicitly so this checks its URL boundary, not just missing scripts.
+  const scriptPaths = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8")).content_scripts[0].js;
+  const restricted = [];
+  for (const relative of ["settings.html", "design-preview.html", "startup.html?reader-boundary"]) {
+    const internal = await browser.newPage();
+    try {
+      await internal.goto(new URL(relative, startupUrl).href, { waitUntil: "networkidle0" });
+      await internal.evaluate(() => {
+        window.__practiceLookupRequests = 0;
+        const send = chrome.runtime.sendMessage;
+        chrome.runtime.sendMessage = function (...args) {
+          if (args[0]?.type === "hd_lookup") window.__practiceLookupRequests += 1;
+          return send.apply(this, args);
+        };
+      });
+      for (const script of scriptPaths) await internal.addScriptTag({ url: new URL(script, startupUrl).href });
+      await internal.evaluate(() => {
+        const prose = document.createElement("p");
+        prose.textContent = "辞書";
+        document.body.append(prose);
+        getSelection().selectAllChildren(prose);
+      });
+      await new Promise(resolveWait => setTimeout(resolveWait, 300));
+      restricted.push(await internal.evaluate(() => ({
+        url: location.href,
+        requests: window.__practiceLookupRequests,
+        hosts: document.querySelectorAll("hachidori-host").length,
+        scripts: [...document.scripts].filter(script => script.src.endsWith("/content.js")).length,
+      })));
+    } finally { await internal.close(); }
+  }
+  check("the startup reader exception keeps Settings and the static preview excluded",
+    restricted.length === 3 && restricted.every(result => result.requests === 0 && result.hosts === 0 && result.scripts >= 1),
+    JSON.stringify(restricted));
+}
+
+async function checkStartupFileAccess(startup, browser, startupUrl) {
+  const detailsUrl = `chrome://extensions/?id=${new URL(startupUrl).host}`;
+  const readPrompt = () => ({
+    status: document.getElementById("local-file-status")?.textContent ?? "",
+    open: document.getElementById("local-file-open")?.checkVisibility() === true,
+    skip: document.getElementById("local-file-skip")?.checkVisibility() === true,
+    instruction: document.getElementById("local-file-instruction")?.textContent ?? "",
+    finish: document.getElementById("setup-finish")?.disabled === false,
+    settings: document.querySelector('a[href="settings.html"]')?.checkVisibility() === true,
+  });
+  const fileAllowed = () => startup.evaluate(() => new Promise(resolveAllowed => chrome.extension.isAllowedFileSchemeAccess(resolveAllowed)));
+  await startup.bringToFront();
+  await startup.waitForSelector("#local-file-open", { visible: true });
+  const before = await startup.evaluate(readPrompt);
+  const initiallyAllowed = await fileAllowed();
+  const [detailsTarget] = await Promise.all([
+    browser.waitForTarget(target => target.type() === "page" && target.url() === detailsUrl, { timeout: 10_000 }),
+    startup.click("#local-file-open"),
+  ]);
+  const details = await detailsTarget.page();
+  const toggleSelector = "pierce/#allow-on-file-urls";
+  const toggle = async (enabled) => {
+    await details.bringToFront();
+    await details.waitForSelector(toggleSelector);
+    const control = await details.$(toggleSelector);
+    await control.evaluate((row, checked) => {
+      if (row.checked !== checked) row.shadowRoot.querySelector("#crToggle").click();
+    }, enabled);
+    await startup.waitForFunction(async (expected) => new Promise(resolveAllowed => {
+      chrome.extension.isAllowedFileSchemeAccess(allowed => resolveAllowed(allowed === expected));
+    }), { timeout: 10_000 }, enabled);
+  };
+  let local = null;
+  let afterReturn, enabled, afterReload, localResult, skipped;
+  const localPath = resolve(PROFILE, "setup-saved-page.html");
+  try {
+    await details.waitForSelector(toggleSelector);
+    await startup.bringToFront();
+    await startup.waitForFunction(() => document.visibilityState === "visible");
+    afterReturn = await startup.evaluate(readPrompt);
+    await toggle(true);
+    await startup.bringToFront();
+    await startup.waitForFunction(() => document.getElementById("local-file-status")?.textContent === "Local-file lookups enabled");
+    enabled = await startup.evaluate(readPrompt);
+    await startup.reload({ waitUntil: "domcontentloaded" });
+    await startup.waitForFunction(() => document.getElementById("local-file-status")?.textContent === "Local-file lookups enabled");
+    afterReload = await startup.evaluate(readPrompt);
+    writeFileSync(localPath, PAGE_HTML.replace("食べたかった", "辞書"));
+    local = await browser.newPage();
+    await local.goto(pathToFileURL(localPath).href, { waitUntil: "domcontentloaded" });
+    const popup = await popupReader(local);
+    localResult = await hoverForPopup(local, popup, "#verb");
+    await local.close();
+    local = null;
+    // Turn access off again so Not now proves completion while access remains
+    // disabled. The preference belongs only to this suite's isolated profile.
+    await toggle(false);
+    await startup.bringToFront();
+    await startup.waitForSelector("#local-file-skip", { visible: true });
+    await startup.focus("#local-file-skip");
+    await startup.keyboard.press("Enter");
+    skipped = await startup.evaluate(readPrompt);
+  } finally {
+    if (local) await local.close();
+    await details.close();
+    rmSync(localPath, { force: true });
+  }
+  check("saved-page setup rechecks Chrome file access and a local HTML file uses the real reader",
+    initiallyAllowed === false && before.open && before.skip && before.finish && before.settings
+      && afterReturn.open && afterReturn.skip && !afterReturn.status.includes("enabled")
+      && afterReturn.instruction.includes("Allow access to file URLs")
+      && enabled.status === "Local-file lookups enabled" && !enabled.open && !enabled.skip
+      && afterReload.status === "Local-file lookups enabled" && afterReload.finish && afterReload.settings
+      && localResult?.plain.includes("辞書") && localResult.text.includes(`${RECOMMENDED_DICTIONARIES[0].title} term fixture`)
+      && skipped.open === false && skipped.skip === false && skipped.finish && skipped.settings
+      && await fileAllowed() === false && startup.url() === startupUrl,
+    JSON.stringify({ initiallyAllowed, before, detailsUrl, afterReturn, enabled, afterReload, localResult, skipped }));
+  return skipped?.open === false && skipped.skip === false && skipped.finish;
+}
+
 // First-run Anki detection against a mocked AnkiConnect on the real service
 // worker: the startup page asks once, the ranked note type and deck are saved
 // with the preset, and nothing in the collection is modified. Setup state and
@@ -3812,6 +3997,17 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
     const detected = await page.evaluate(async () => (await chrome.storage.local.get(["setupState", "options"])));
     const anki = detected.options?.anki ?? {};
     const templates = anki.fieldTemplates ?? {};
+    const recovery = await startup.evaluate(() => ({
+      link: document.querySelector("#setup-practice-recovery a")?.getAttribute("href"),
+      visible: document.getElementById("setup-practice-recovery")?.checkVisibility() === true,
+      exercise: document.getElementById("setup-practice-lookup")?.checkVisibility() === true,
+      finish: document.getElementById("setup-finish")?.disabled === false,
+      settings: document.querySelector('a[href="settings.html"]')?.checkVisibility() === true,
+    }));
+    check("startup practice without a usable dictionary retains recovery and completion controls",
+      recovery.link === "settings.html#add-dictionaries" && recovery.visible && recovery.exercise === false
+        && recovery.finish && recovery.settings,
+      JSON.stringify(recovery));
     if (process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT || process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT) {
       await startup.setViewport({ width: 900, height: 820 });
       for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT]]) {
@@ -3824,7 +4020,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
     check(
       "first-run detection configures an existing Kiku mining setup read-only from the startup page",
       JSON.stringify(headingLog.slice(0, 3)) === JSON.stringify(["Checking for Anki…", "Anki is set up", "You’re ready."])
-        && ready?.outcome === "configured" && ready.outcomeLink && ready.status === ""
+        && ready?.outcome === "configured" && ready.outcomeLink && ready.status === "You’re ready."
         && ready.outcomeText === "Automatically set up Kiku v2 for deck ‘Mining’. Change in Settings."
         && ready.done === 2
         // The durable outcome and the saved mapping name the same note type and deck.
@@ -5738,6 +5934,13 @@ async function main() {
   // The engine boots first; the held request means Jitendex sits in Downloading.
   const startupShell = startup === null ? null
     : await waitStartup((state) => state.rows[0]?.[1]?.startsWith("Downloading"), 120_000);
+  let skippedToSetup = null;
+  if (startup) {
+    await startup.bringToFront();
+    await startup.focus(".skip-link");
+    await startup.keyboard.press("Enter");
+    skippedToSetup = await startup.evaluate(() => ({ url: location.href, focused: document.activeElement?.id }));
+  }
   // The row turns to Downloading when the import is dispatched; the archive
   // request itself follows once the engine has validated the request.
   for (let attempt = 0; attempt < 200 && setupArchives.requests.length === 0; attempt += 1) {
@@ -5760,6 +5963,7 @@ async function main() {
   check(
     "a fresh install opens one startup tab at the dictionary stage with first-install preferences",
     startupTabs() === 1 && seededInSettings
+      && skippedToSetup?.url === startupUrl && skippedToSetup.focused === "setup-heading"
       && startupShell?.title === "Set up Hachidori"
       && startupShell.heading === "Installing default dictionaries…"
       && startupShell.currentStep === "dictionaries" && startupShell.done === 0
@@ -5771,7 +5975,7 @@ async function main() {
         ["jiten", "Waiting", null, null],
       ])
       && startupShell.importLink && startupShell.settingsLink && startupShell.actions.length === 0
-      && startupShell.status === "Installing default dictionaries."
+      && startupShell.status === "Installing default dictionaries…"
       && startupShell.background === settingsPalette.background
       && startupShell.cardBackground === settingsPalette.surface
       && firstInstallStorage.setupState?.stage === "dictionaries"
@@ -5792,7 +5996,7 @@ async function main() {
       && JSON.stringify(effective.audioSources?.map((source) => [source.type, source.enabled]))
         === JSON.stringify([["text-to-speech-reading", true]])
       && JSON.stringify(setupArchives.requests) === JSON.stringify(["jitendex"]),
-    JSON.stringify({ startupTabs: startupTabs(), seededInSettings, startupShell, settingsPalette, firstInstallStorage, requests: setupArchives.requests }),
+    JSON.stringify({ startupTabs: startupTabs(), skippedToSetup, seededInSettings, startupShell, settingsPalette, firstInstallStorage, requests: setupArchives.requests }),
   );
   if (startup && (process.env.HACHIDORI_STARTUP_SCREENSHOT || process.env.HACHIDORI_STARTUP_DARK_SCREENSHOT)) {
     await startup.setViewport({ width: 900, height: 820 });
@@ -6055,6 +6259,12 @@ async function main() {
     await startup.emulateMediaFeatures([]);
   }
 
+  let skippedFileAccess = false;
+  if (startup) {
+    await checkStartupPractice(startup, browser, startupUrl);
+    skippedFileAccess = await checkStartupFileAccess(startup, browser, startupUrl);
+  }
+
   // The dictionary-dependent selections were applied once; the user now returns
   // both to Automatic so the remaining assertions keep their historical options.
   await page.evaluate(async () => {
@@ -6093,11 +6303,12 @@ async function main() {
       && ankiStage.anki.detail.includes("Open Anki with the AnkiConnect add-on")
       // The outcome moved setup on by itself and stays readable on the final step.
       && practiceReached?.focused === "setup-heading" && practiceReached.currentStep === "practice"
-      && practiceReached.done === 2 && practiceReached.status === ""
+      && practiceReached.done === 2 && practiceReached.status === "You’re ready."
       && practiceReached.outcome === "unavailable" && practiceReached.outcomeLink
       && practiceReached.outcomeText === "No Anki found. Set up in Settings."
-      && practiceReached.body.includes("Hover over Japanese text on any webpage")
+      && practiceReached.body.includes("Try looking up a word below.")
       && JSON.stringify(practiceReached.actions) === JSON.stringify(["setup-finish"])
+      && skippedFileAccess
       && closedTab === true && startupTabs() === 0
       && typeof completedSetup?.completedAt === "string" && completedSetup.anki?.status === "unavailable"
       && JSON.stringify(Object.keys(completedSetup.dictionaries.outcomes).sort()) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId).sort())

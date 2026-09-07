@@ -2119,6 +2119,8 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  window.chrome.extension ??= { isAllowedFileSchemeAccess: async () => false };
+  const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8").replace(/^export\s+/gmu, "");
   const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8").replace(/^export\s+/gmu, "");
   const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
@@ -2146,6 +2148,7 @@ function loadSettingsScript(window) {
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
@@ -2158,7 +2161,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${settings}`,
+    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -6070,14 +6073,20 @@ function loadStartupScript(window) {
     .replace(/^export\s+/gmu, "");
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
+  const practice = readFileSync(resolve(EXTENSION, "startup-practice.js"), "utf8")
+    .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/local-file-access\.js";\s*/u, "")
+    .replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
+    .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/startup-practice\.js";\s*/u, "");
   // startup.js is a module with a top-level await; an async wrapper keeps that
   // legal in a classic-script eval and surfaces a load failure through its promise.
-  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${setupState}\n${startup}\n})()`);
+  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${setupState}\n${localFileAccess}\n${practice}\n${startup}\n})()`);
 }
 
 // The startup page renders the worker-owned setup state, mirrors the offscreen
@@ -6109,6 +6118,7 @@ async function startupPageStage() {
   const options = { revision: 2, lookupMode: "activation", activationKey: "Control" };
   const closedTabs = [];
   window.chrome = {
+    extension: { async isAllowedFileSchemeAccess() { return false; } },
     runtime: {
       async sendMessage(message) {
         requests.push(structuredClone(message));
@@ -6142,7 +6152,7 @@ async function startupPageStage() {
   const row = (sourceId) => document.querySelector(`.setup-dictionary[data-source-id="${sourceId}"]`);
   const rows = () => [...document.querySelectorAll(".setup-dictionary")].map((item) =>
     [item.dataset.sourceId, item.querySelector(".setup-dictionary-status").textContent]);
-  const bar = (sourceId) => row(sourceId)?.querySelector(".setup-track");
+  const bar = (sourceId) => row(sourceId)?.querySelector(".setup-track:not([hidden])");
   const actions = () => [...document.querySelectorAll("#setup-actions button")].map((control) => [control.id, control.textContent, control.className]);
   const installs = () => requests.filter((message) => message.type === "hd_setup_install").map((message) => message.sourceIds);
   const reply = (fields) => {
@@ -6183,7 +6193,7 @@ async function startupPageStage() {
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Waiting"]])
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelectorAll("#setup-actions button").length === 0
-      && status().textContent === "Installing default dictionaries.";
+      && status().textContent === "Installing default dictionaries…";
 
     // Live phases follow this run's events in order; older events and other runs cannot move the rows.
     event(runA(2, [entry("jitendex", "downloading", { receivedBytes: 1_048_576, totalBytes: 4_194_304 }), entry("jiten", "waiting")]));
@@ -6195,9 +6205,9 @@ async function startupPageStage() {
     const ordered = rows()[0][1] === "Downloading… 1.0 MB of 4.0 MB (25%)";
     event(runA(3, [entry("jitendex", "downloading", { receivedBytes: 2_097_152, totalBytes: null }), entry("jiten", "waiting")]));
     const indeterminate = rows()[0][1] === "Downloading… 2.0 MB" && !bar("jitendex").classList.contains("is-determinate")
-      && bar("jitendex").getAttribute("aria-valuetext") === "In progress" && bar("jitendex").getAttribute("aria-valuenow") === null;
+      && bar("jitendex").getAttribute("aria-valuetext") === "Downloading… 2.0 MB" && bar("jitendex").getAttribute("aria-valuenow") === null;
     event(runA(4, [entry("jitendex", "installing", { receivedBytes: 4_194_304, totalBytes: 4_194_304 }), entry("jiten", "waiting")]));
-    const installing = rows()[0][1] === "Installing…" && status().textContent === "Installing default dictionaries.";
+    const installing = rows()[0][1] === "Installing…" && status().textContent === "Installing default dictionaries…";
     event(runA(5, [entry("jitendex", "installed", { seconds: 3.2 }), entry("jiten", "downloading")]));
     const installed = rows()[0][1] === "Installed in 3.2 seconds" && status().textContent === "Jitendex installed in 3.2 seconds."
       && !status().classList.contains("is-error") && rows()[3][1] === "Downloading… 0 KB";
@@ -6207,7 +6217,7 @@ async function startupPageStage() {
       && status().classList.contains("is-error") && heading() === "Installing default dictionaries…";
     // The worker records outcomes before the run finishes; a complete inventory is what decides success.
     dictionaryState = { ...dictionaryState, revision: 7, dictionaries: [...dictionaryState.dictionaries,
-      { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true }] };
+      { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 1 }] };
     storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
     setupState = { ...setupState, revision: 4, dictionaries: { ...emptyDictionaries, totalSeconds: 5,
       outcomes: { jitendex: { status: "installed", seconds: 3.2, error: null }, jiten: { status: "failed", seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" },
@@ -6254,7 +6264,7 @@ async function startupPageStage() {
       && document.getElementById("setup-countdown-track")?.getAttribute("role") === "progressbar"
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelectorAll("#setup-actions button").length === 0
-      && status().textContent === "Jiten Frequency Dictionary installed in 2.5 seconds.";
+      && status().textContent === "All dictionaries installed in 7.5 seconds";
     // The result stays for five seconds; a conflicting write (the run total landed) is retried with the newer revision.
     await new Promise((done) => setTimeout(done, 3000));
     // The label ticks every 250 ms, so three seconds in it reads two or three.
@@ -6307,8 +6317,16 @@ async function startupPageStage() {
       && outcomeNote.textContent === "Automatically set up Kiku v2 for deck ‘Mining::Words’. Change in Settings."
       && outcomeNote.querySelector('a[href="settings.html#anki"]') !== null
       && document.getElementById("setup-body").textContent.includes("Hold Control and hover")
-      && status().textContent === "" && !status().classList.contains("is-error")
+      && status().textContent === "You’re ready." && !status().classList.contains("is-error")
       && document.getElementById("setup-finish") !== null && doneSteps() === 2;
+    const scene = document.getElementById("setup-practice-text");
+    const word = document.getElementById("setup-practice-word");
+    scene.focus();
+    window.getSelection().selectAllChildren(word);
+    storage({ options: { newValue: { ...options, revision: options.revision + 1, activationKey: "Shift" } } });
+    const practicePreserved = document.getElementById("setup-practice-text") === scene
+      && window.getSelection().toString() === "辞書" && document.activeElement === scene
+      && document.getElementById("setup-practice-instruction").textContent.includes("Hold Shift");
     document.getElementById("setup-finish").click();
     await until(() => pendingReply !== null, "the finish write");
     const finishRequest = reply({ state: { ...setupState, revision: 10, stage: "complete", completedAt: "2026-09-07T10:05:00.000Z" } });
@@ -6317,7 +6335,7 @@ async function startupPageStage() {
       && heading() === "Setup is complete." && currentStep() === null && doneSteps() === 3
       && document.getElementById("setup-actions").childElementCount === 0;
     return { requestFailed, attached, determinate, ordered, indeterminate, installing, installed, failedRow, failureView, focusKept, continued,
-      retried, oldRunIgnored, success, heldAtThree, advanced, practice, finished };
+      retried, oldRunIgnored, success, heldAtThree, advanced, practice, practicePreserved, finished };
   } finally {
     window.close();
   }

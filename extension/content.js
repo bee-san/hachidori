@@ -93,7 +93,7 @@
   ]);
 
   if (
-    location.protocol === "chrome-extension:" ||
+    (location.protocol === "chrome-extension:" && location.href !== chrome.runtime.getURL("startup.html")) ||
     typeof document.createTreeWalker !== "function"
   ) {
     return;
