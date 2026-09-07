@@ -37,6 +37,7 @@
     corpusSeenEnabled: false,
     corpusSeenUrl: "http://127.0.0.1:7275",
     definitionBlurEnabled: false,
+    definitionBlurAnkiMature: false,
     definitionBlurDirection: "atLeast",
     definitionBlurThreshold: 5,
     definitionBlurReveal: "timed",
@@ -88,7 +89,7 @@
   const DESIGN_OPTION_KEYS = [
     "popupTheme", "popupToolbarPosition", "customPopupCss", "popupWidthPx", "popupHeightPx", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
     "showLookupCounts", "corpusSeenEnabled", "corpusSeenUrl",
-    "definitionBlurEnabled", "definitionBlurDirection", "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs",
+    "definitionBlurEnabled", "definitionBlurAnkiMature", "definitionBlurDirection", "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs",
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags",
@@ -201,9 +202,10 @@
     }
   }
 
-  // Shared by the reader and the Design preview. A count that qualifies is
-  // blurred; a missing count fails open. Zero is a valid count for Below.
-  function definitionBlurQualifies(options, lookupCount) {
+  // Shared by the reader and the Design preview. Either enabled rule can
+  // qualify; missing values fail open. Zero is a valid count for Below.
+  function definitionBlurQualifies(options, lookupCount, ankiMature = false) {
+    if (options.definitionBlurAnkiMature && ankiMature === true) return true;
     if (!options.definitionBlurEnabled || !Number.isSafeInteger(lookupCount) || lookupCount < 0) return false;
     return options.definitionBlurDirection === "below"
       ? lookupCount < options.definitionBlurThreshold

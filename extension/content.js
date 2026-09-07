@@ -156,9 +156,10 @@
   let activeSelectionCandidate = null;
 
   let optionsStorageRevision = -1;
+  let ankiMaturityEpoch = 0;
   let dictionaryStateRevision = -1;
   let lookupStatsDescriptor = { generation: null, revision: -1 };
-  const DEFINITION_BLUR_KEYS = ["definitionBlurEnabled", "definitionBlurDirection", "definitionBlurThreshold",
+  const DEFINITION_BLUR_KEYS = ["definitionBlurEnabled", "definitionBlurAnkiMature", "definitionBlurDirection", "definitionBlurThreshold",
     "definitionBlurReveal", "definitionBlurDelayMs"];
 
   function extensionAlive() {
@@ -1369,7 +1370,7 @@
         && requestCanRender(token, level.activeCandidate, level),
     };
     // The primary result's autoplay waits for the blur decision, and a lookup
-    // whose count qualified never auto-plays, whichever tab or expansion binds.
+    // that qualified never auto-plays, whichever tab or expansion binds.
     audio.bind(rendered.audioButtons, {
       ...context,
       autoplaySuppressed: () => request?.blur?.autoplaySuppressed === true,
@@ -1493,6 +1494,37 @@
     // Back, tabs and Note refresh can read a replacement, but cannot increment.
     paintLookupStatistics(request, level);
     refreshLookupStatistics(request, level, firstVisit);
+    checkDefinitionBlurMaturity(request, level);
+  }
+
+  // The primary word owns one read-only Anki query per visit. It starts after
+  // rendering and never joins the lookup or storage queue. Back keeps its
+  // result; a changed Anki configuration discards the old evidence.
+  function checkDefinitionBlurMaturity(request, level) {
+    const blur = request.blur;
+    if (blur.awaitingOptions || !options.definitionBlurAnkiMature || blur.ankiCheck !== undefined) return;
+    const check = blur.ankiCheck = { epoch: ankiMaturityEpoch };
+    const { expression, reading } = level.activeTermRender.results[0].term;
+    void sendRequest("hd_anki_maturity", { request: { term: { expression, reading } } }, "hachidori-anki")
+      .then(payload => payload.mature === true, () => false).then(mature => {
+        if (blur.ankiCheck !== check) return;
+        blur.ankiMature = check.epoch === ankiMaturityEpoch && mature;
+        settleDefinitionBlur(request, level);
+      });
+  }
+
+  function definitionBlurActive() {
+    return (options.definitionBlurEnabled && options.showLookupCounts) || options.definitionBlurAnkiMature;
+  }
+
+  function discardStaleAnkiMaturity(request, level) {
+    const blur = request.blur;
+    if (!blur.ankiCheck || blur.ankiCheck.epoch === ankiMaturityEpoch) return;
+    blur.ankiCheck = null;
+    blur.ankiMature = false;
+    settleDefinitionBlur(request, level);
+    if (blur.state === "blurred" && !definitionBlurQualifies(options,
+      options.showLookupCounts ? currentLookupCount(request.lookupStats) : null)) revealDefinitions(request, level);
   }
 
   // Definition blur (issue #9 L5). The decision lives on the request, so tabs,
@@ -1540,23 +1572,22 @@
     if (!request) return;
     if (!request.blur) {
       const awaitingOptions = optionsStorageRevision < 0;
-      const active = awaitingOptions || (options.definitionBlurEnabled && options.showLookupCounts);
+      const active = awaitingOptions || definitionBlurActive();
       request.blur = { state: active ? "pending" : "revealed", displayedAt: Date.now(), awaitingOptions,
-        lookupCount: undefined, decided: false, autoplayHeld: active, autoplaySuppressed: false };
+        lookupCount: undefined, ankiMature: undefined, decided: false, autoplayHeld: active, autoplaySuppressed: false };
     }
-    if (!request.blur.awaitingOptions) armDefinitionBlurTimer(request, level);
+    if (!request.blur.awaitingOptions) {
+      discardStaleAnkiMaturity(request, level);
+      armDefinitionBlurTimer(request, level);
+    }
   }
 
   function resolveDefinitionBlurOptions(request, level) {
     const blur = request.blur;
     blur.awaitingOptions = false;
-    if (!options.definitionBlurEnabled || !options.showLookupCounts) {
-      releaseDefinitionBlurAutoplay(request, level, true);
-      revealDefinitions(request, level);
-      return;
-    }
+    checkDefinitionBlurMaturity(request, level);
     armDefinitionBlurTimer(request, level);
-    if (blur.lookupCount !== undefined) settleDefinitionBlur(request, level, blur.lookupCount);
+    settleDefinitionBlur(request, level);
   }
 
   function releaseDefinitionBlurAutoplay(request, level, play) {
@@ -1565,18 +1596,19 @@
     audio?.settleAutoplay(level, request, play);
   }
 
-  // A qualifying count blurs a pending view and never auto-plays; any other
-  // outcome, including an unavailable count, reveals and releases autoplay.
-  // The first count decides autoplay for the whole visit, even when a hover
-  // already revealed it; later counts never reblur or change that.
+  // Either enabled signal can qualify immediately. A negative decision waits
+  // for both; failures fail open. Retain the first count while Anki is pending
+  // so later row events cannot change this visit's autoplay decision. Hover and
+  // the absolute deadline can reveal before either reply, without reblurring.
   function settleDefinitionBlur(request, level, lookupCount) {
     const blur = request.blur;
     if (!blur) return;
-    if (blur.awaitingOptions) {
-      blur.lookupCount = lookupCount;
-      return;
-    }
-    const qualifies = definitionBlurQualifies(options, lookupCount);
+    if (blur.lookupCount === undefined && lookupCount !== undefined) blur.lookupCount = lookupCount;
+    if (blur.awaitingOptions) return;
+    const countEnabled = options.definitionBlurEnabled && options.showLookupCounts;
+    const qualifies = definitionBlurQualifies(options, countEnabled ? blur.lookupCount : null, blur.ankiMature);
+    if (!qualifies && ((countEnabled && blur.lookupCount === undefined)
+        || (options.definitionBlurAnkiMature && blur.ankiMature === undefined))) return;
     if (!blur.decided) {
       blur.decided = true;
       blur.autoplaySuppressed = qualifies;
@@ -2750,7 +2782,9 @@
     const corpusChanged = next.corpusSeenEnabled !== options.corpusSeenEnabled
       || next.corpusSeenUrl !== options.corpusSeenUrl;
     const countsChanged = next.showLookupCounts !== options.showLookupCounts || corpusChanged;
-    const blurChanged = next.showLookupCounts !== options.showLookupCounts || DEFINITION_BLUR_KEYS
+    const ankiChanged = JSON.stringify(next.anki) !== JSON.stringify(options.anki);
+    if (ankiChanged || next.definitionBlurAnkiMature !== options.definitionBlurAnkiMature) ankiMaturityEpoch++;
+    const blurChanged = ankiChanged || next.showLookupCounts !== options.showLookupCounts || DEFINITION_BLUR_KEYS
       .some(key => next[key] !== options[key]);
     const optionsArrived = optionsStorageRevision < 0;
     const adoption = { lookupChanged,
@@ -2781,13 +2815,17 @@
       for (const level of levels) {
         const request = level.currentViewRequest;
         const blur = request?.blur;
-        if (!blur || blur.state === "revealed") continue;
+        if (!blur) continue;
+        discardStaleAnkiMaturity(request, level);
+        if (blur.state === "pending") checkDefinitionBlurMaturity(request, level);
+        settleDefinitionBlur(request, level);
         // Disabling reveals at once; other edits apply to unrevealed views
         // from their original display time. Note drafts are untouched.
-        if (!next.definitionBlurEnabled || !next.showLookupCounts) {
+        if (!definitionBlurActive()) {
           releaseDefinitionBlurAutoplay(request, level, true);
           revealDefinitions(request, level);
-        } else if (blur.state === "blurred" && !definitionBlurQualifies(next, currentLookupCount(request.lookupStats))) {
+        } else if (blur.state === "blurred" && !definitionBlurQualifies(next,
+          next.showLookupCounts ? currentLookupCount(request.lookupStats) : null, blur.ankiMature)) {
           revealDefinitions(request, level);
         } else armDefinitionBlurTimer(request, level);
       }

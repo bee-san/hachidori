@@ -46,6 +46,9 @@ const fieldKey = value => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 const knownMarker = value => MARKERS.has(value) || DYNAMIC_PREFIXES.some(prefix => value.startsWith(prefix) && value.length > prefix.length);
 const blankTemplate = () => ({ value: "", overwriteMode: "coalesce" });
 
+export const escapeAnkiHtml = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#x27;");
+
 export function ankiFieldNames(fields) {
   return new Map(fields.map(field => [field.toLowerCase(), field]));
 }

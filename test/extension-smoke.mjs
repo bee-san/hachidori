@@ -6655,6 +6655,14 @@ async function designPreviewStage() {
     options = { ...options, definitionBlurEnabled: false };
     update();
     await settle();
+    options = { ...options, showLookupCounts: false, definitionBlurAnkiMature: true };
+    update();
+    await settle();
+    blur &&= blurState() === "blurred" && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    options = { ...options, showLookupCounts: true, definitionBlurAnkiMature: false };
+    update();
+    await settle();
+    blur &&= blurState() === "revealed";
     options = { ...options, popupTheme: "miku", popupWidthPx: 720, popupHeightPx: 500, popupOpacityPercent: 0,
       sourceHighlightEnabled: false };
     update();
@@ -7010,6 +7018,12 @@ async function settingsFrequencyStage() {
         .every(id => blurControl(id).disabled)
         && blurControl("opt-blur-direction").value === "atLeast" && blurControl("opt-blur-threshold").value === "5"
         && blurControl("opt-blur-reveal").value === "timed" && blurControl("opt-blur-delay").value === "5");
+      metadataDetails.push(blurControl("opt-blur-anki-mature").checked === false);
+      await editControl(blurControl("opt-blur-anki-mature"), true);
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurAnkiMature: true })
+        && blurControl("opt-blur-direction").disabled && blurControl("opt-blur-threshold").disabled
+        && !blurControl("opt-blur-reveal").disabled && !blurControl("opt-blur-delay").disabled);
+      await editControl(blurControl("opt-blur-anki-mature"), false);
       await editControl(blurControl("opt-lookup-counts"), true);
       metadataDetails.push(!blurControl("opt-blur-direction").disabled && !blurControl("opt-blur-delay").disabled);
       await editControl(blurControl("opt-blur-direction"), "below");
@@ -9774,8 +9788,12 @@ async function contentNoteStage() {
         harness.blurState() === "revealed" && plays() === 5;
     } finally { harness.close(); }
 
-    const early = await createHarness(null, { deferInitialStorage: true, options });
+    const early = await createHarness(null, { deferInitialStorage: true, options: { ...options,
+      frequencyDictionary: "", frequencyOrder: "auto", scanLength: 16, maxResults: 32, kanjiClickDictionary: "" } });
     try {
+      // Hydrate dictionary identity separately so the late options do not
+      // correctly retire this lookup for an unrelated dictionary/ranking edit.
+      early.emitState({ schemaVersion: 1, revision: 1, dictionaries: [genericPackage({ favorite: true })] });
       await early.initialLookup();
       const pending = early.blurState() === "pending" && !early.take("hd_anki_maturity");
       early.deliverInitialStorage();
@@ -9783,8 +9801,35 @@ async function contentNoteStage() {
       early.reply(early.take("hd_anki_maturity"), { mature: true });
       await early.settle();
       outcomes["a lookup before initial options waits for its Anki maturity setting"] =
-        pending && early.blurState() === "blurred" && !early.sent.some(request => request.type === "hd_audio_play");
+        pending && !!early.driver.viewRequest() && early.blurState() === "blurred"
+        && !early.sent.some(request => request.type === "hd_audio_play");
     } finally { early.close(); }
+
+    for (const held of [false, true]) {
+      const navigation = await createHarness({ title: "Generic", kind: "kanji" }, { options });
+      try {
+        await navigation.initialLookup();
+        const query = navigation.take("hd_anki_maturity");
+        if (!held) { navigation.reply(query, { mature: true }); await navigation.settle(); }
+        const showKanji = async () => {
+          const operation = navigation.driver.showKanji("食");
+          navigation.reply(navigation.take("hd_kanji"), {
+            kanji: { character: "食", entries: [{ dictionary: "Generic", meanings: ["eat"] }] } });
+          await operation;
+        };
+        await showKanji();
+        await navigation.render().context.onBack();
+        const retained = navigation.blurState() === (held ? "pending" : "blurred")
+          && !navigation.take("hd_anki_maturity");
+        await showKanji();
+        navigation.emitOptions({ ...options, kanjiClickDictionary: { title: "Generic", kind: "kanji" },
+          anki: { ...options.anki, model: "Other" } });
+        if (held) { navigation.reply(query, { mature: true }); await navigation.settle(); }
+        await navigation.render().context.onBack();
+        outcomes[`Back keeps the visit but rejects ${held ? "pending" : "completed"} Anki evidence after a parked mapping edit`] =
+          retained && navigation.blurState() === "revealed" && !navigation.take("hd_anki_maturity");
+      } finally { navigation.close(); }
+    }
     return outcomes;
   }
 
