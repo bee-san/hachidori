@@ -1376,7 +1376,7 @@
       if (level.lookupStatsElement) level.lookupStatsElement.hidden = true;
       return;
     }
-    if (request !== level.currentViewRequest || level.retainedView
+    if (request !== level.currentViewRequest
         || !requestCanRender(level.lookupToken, level.activeCandidate, level) || !level.lookupStatsElement?.isConnected) return;
     const payload = request?.lookupStats?.payload;
     level.view.setLookupStats(level.lookupStatsElement,
@@ -1385,15 +1385,20 @@
   }
 
   function adoptLookupStatsDescriptor(descriptor, changes = {}) {
-    if (!Number.isSafeInteger(descriptor?.revision) || descriptor.revision < lookupStatsDescriptor.revision) return;
+    if (!Number.isSafeInteger(descriptor?.revision) || descriptor.revision < 0
+        || (descriptor.generation !== null
+          && (typeof descriptor.generation !== "string" || descriptor.generation === ""))) return;
+    const sameGeneration = descriptor.generation === lookupStatsDescriptor.generation;
+    if (descriptor.revision < lookupStatsDescriptor.revision && !sameGeneration) return;
     const replaced = descriptor.generation !== lookupStatsDescriptor.generation;
-    lookupStatsDescriptor = descriptor;
+    if (descriptor.revision >= lookupStatsDescriptor.revision) lookupStatsDescriptor = descriptor;
     for (const level of levels) {
       const request = level.currentViewRequest;
       const entry = request?.lookupStats;
       if (!entry) continue;
       const row = changes[lookupStatsKey(descriptor, entry)]?.newValue;
-      if (row && (!entry.payload || entry.payload.descriptor.revision < descriptor.revision)) {
+      if (row && (!entry.payload || entry.payload.descriptor.generation !== descriptor.generation
+          || entry.payload.descriptor.revision < descriptor.revision)) {
         entry.payload = { descriptor, statistics: { ...row, seenCount: null } };
         entry.needsRefresh = false;
       } else if (replaced) entry.needsRefresh = true;
@@ -1406,7 +1411,7 @@
   function refreshLookupStatistics(request, level, record = false) {
     const entry = request.lookupStats;
     if (!options.showLookupCounts || entry.pending || (!record && !entry.needsRefresh)
-        || request !== level.currentViewRequest || level.retainedView
+        || request !== level.currentViewRequest
         || !requestCanRender(level.lookupToken, level.activeCandidate, level)) return;
     entry.pending = true;
     entry.needsRefresh = false;
