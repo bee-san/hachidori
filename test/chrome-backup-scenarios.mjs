@@ -164,7 +164,9 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
     await page.waitForFunction(async () => {
       const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
       return reply.ok && reply.ready && !reply.loading;
-    }, { timeout: 120_000 });
+    }, { timeout: 120_000 }).catch(async error => {
+      throw new Error(`${error.message}; backup cleanup status: ${JSON.stringify(await status())}`, { cause: error });
+    });
     const cleanupDeadline = Date.now() + 10_000;
     let closingRoots = await roots();
     while (JSON.stringify(closingRoots) !== JSON.stringify(stableRoots) && Date.now() < cleanupDeadline) {

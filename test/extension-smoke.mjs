@@ -888,7 +888,7 @@ async function backupRelayStage() {
     const bus = makeBus(), storage = makeStorage();
     const chrome = makeChrome("backup-relay", bus, storage);
     const sent = [], backoffs = [];
-    let releaseStartup, reachedStartup, fail = retry;
+    let releaseStartup, reachedStartup, releaseCancel, fail = retry;
     const startup = new Promise(resolve => { reachedStartup = resolve; });
     chrome.runtime.getContexts = async () => {
       if (retry || releaseStartup) return [{}];
@@ -897,23 +897,32 @@ async function backupRelayStage() {
     chrome.runtime.sendMessage = async message => {
       sent.push(message.type);
       if (message.type === "hd_backup_prepare" && fail) { fail = false; return undefined; }
+      if (message.type === "hd_backup_cancel" && !releaseCancel) {
+        return new Promise(resolve => { releaseCancel = () => resolve({ ok: true }); });
+      }
       return { ok: true };
     };
     loadBackgroundScript({ chrome, console, clearTimeout, Promise, Error,
       setTimeout: resolve => backoffs.push(resolve) });
-    const send = type => bus.sendMessage("backup-settings", { target: "hoshidicts-offscreen", type, token: "departed-page" });
+    const send = (type, token = "departed-page") => bus.sendMessage("backup-settings", { target: "hoshidicts-offscreen", type, token });
     const pending = send("hd_backup_prepare");
     if (retry) {
       for (let i = 0; i < 20 && backoffs.length === 0; i++) await Promise.resolve();
       if (backoffs.length === 0) throw new Error("Backup relay did not reach its retry");
     } else await startup;
-    await send("hd_backup_cancel");
+    const cancelled = send("hd_backup_cancel");
+    const otherCancelled = send("hd_backup_cancel", "stale-preview");
+    for (let i = 0; i < 20 && !releaseCancel; i++) await Promise.resolve();
+    if (!releaseCancel) throw new Error("Backup cancellation did not reach the engine");
+    const serialized = sent.filter(type => type === "hd_backup_cancel").length === 1;
     if (retry) backoffs.shift()();
     else releaseStartup();
     const reply = await pending;
-    results.push(reply.status === "cancelled"
+    releaseCancel();
+    await Promise.all([cancelled, otherCancelled]);
+    results.push(serialized && reply.status === "cancelled"
       && sent.filter(type => type === "hd_backup_prepare").length === Number(retry)
-      && sent.filter(type => type === "hd_backup_cancel").length === 1);
+      && sent.filter(type => type === "hd_backup_cancel").length === 2);
   }
   check("backup cancellation retires delayed startup and lost-reply retries before they can recreate staging", results.every(Boolean));
 }

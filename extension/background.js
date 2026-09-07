@@ -922,12 +922,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 const backupPreparations = new Map();
+let backupCancelTail = Promise.resolve();
 
 async function relayEngineRequest(message) {
   if (message.type === "hd_backup_cancel") {
     const preparation = backupPreparations.get(message.token);
     if (preparation) preparation.cancelled = true;
-    return relay(message);
+    // Retire startup/retries now, but admit only one cleanup request at a time.
+    // Cancel followed by pagehide must not consume the download-release slot.
+    const cancelled = backupCancelTail.then(() => relay(message), () => relay(message));
+    backupCancelTail = cancelled.catch(() => {});
+    return cancelled;
   }
   if (message.type !== "hd_backup_prepare") return relay(message);
   const preparation = { cancelled: false };

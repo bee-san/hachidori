@@ -7335,7 +7335,7 @@ async function main() {
       target: "hoshidicts-worker",
       type: "hd_state_read",
     }),
-    new Promise((resolveWake) => setTimeout(() => resolve({ timeout: true }), 10_000)),
+    new Promise((resolveWake) => setTimeout(() => resolveWake({ timeout: true }), 10_000)),
   ])).catch((error) => ({ error: String(error) }));
   const recreatedAlarm = await page.waitForFunction(async (alarmName) => {
     const alarms = await chrome.alarms.getAll();
