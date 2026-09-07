@@ -7,6 +7,7 @@ export const STARTUP_PAGE = "startup.html";
 // Setup advances through the first three stages; "complete" is terminal.
 export const SETUP_STAGES = Object.freeze(["dictionaries", "anki", "practice", "complete"]);
 export const SETUP_OUTCOME_STATUSES = Object.freeze(["installed", "already-installed", "failed"]);
+export const SETUP_ANKI_STATUSES = Object.freeze(["configured", "already-configured", "unavailable", "needs-attention"]);
 
 // Initial preferences for a new installation. They are written once into the
 // stored options, so an extension update never changes an existing user's
@@ -35,6 +36,32 @@ export function initialSetupState(startedAt) {
     stage: SETUP_STAGES[0],
     completedAt: null,
     dictionaries: emptySetupDictionaries(),
+    anki: null,
+  };
+}
+
+// The Anki stage settles once: configured automatically, already configured
+// by the user, ordinarily absent, or needing attention for a specific reason.
+// A configured outcome names the model and deck and carries no reason text; the
+// other two carry a reason and no names, so neither can be rendered empty.
+export function normaliseSetupAnki(value) {
+  if (value === undefined || value === null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)
+      || !SETUP_ANKI_STATUSES.includes(value.status)
+      || (value.detail !== null && typeof value.detail !== "string")
+      || (value.model !== null && typeof value.model !== "string")
+      || (value.deck !== null && typeof value.deck !== "string")) {
+    throw new Error("the setup Anki outcome is malformed");
+  }
+  const configured = value.status === "configured" || value.status === "already-configured";
+  if (configured ? (value.model === null || value.deck === null) : (typeof value.detail !== "string" || value.detail === "")) {
+    throw new Error("the setup Anki outcome is malformed");
+  }
+  return {
+    status: value.status,
+    detail: configured ? null : value.detail,
+    model: configured ? value.model : null,
+    deck: configured ? value.deck : null,
   };
 }
 
@@ -100,7 +127,14 @@ export function normaliseSetupState(value) {
     stage: value.stage,
     completedAt: value.completedAt,
     dictionaries: normaliseSetupDictionaries(value.dictionaries),
+    anki: normaliseSetupAnki(value.anki),
   };
+}
+
+export function recordSetupAnki(current, outcome) {
+  const anki = normaliseSetupAnki(outcome);
+  if (anki === null) throw new Error("the setup Anki outcome is malformed");
+  return { ...current, revision: current.revision + 1, anki };
 }
 
 export function setupIncomplete(state) {

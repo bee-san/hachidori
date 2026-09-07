@@ -4,7 +4,7 @@
 
 <h1 align="center">Hachidori</h1>
 
-<p align="center"><strong>Your Japanese dictionaries, on every webpage — fast, private, and entirely in Chrome.</strong></p>
+<p align="center"><strong>The fastest, most feature rich Japanese dictionary app in the world</strong></p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-7c3aed" alt="GPL-3.0-or-later license"></a>
@@ -40,7 +40,7 @@ git clone https://github.com/bee-san/hachidori.git
   <img src="docs/assets/startup-installing.png" alt="Hachidori's first-run setup tab installing the four recommended dictionaries with a download progress bar" width="720">
 </p>
 
-The setup tab uses the Settings theme in light and dark mode and walks through **Dictionaries → Anki → Try it**. Dictionaries download and install one after another with real download progress and an installation phase; a source that fails is reported with its reason while the others continue, and **Retry missing dictionaries** fetches only what is still missing. Once every source is installed, the result stays on screen for five seconds and setup moves on. Initial preferences are set once: three-line compact definition summaries, Jitendex as their source and Bee's Ultimate Kanji Dictionary for clicked kanji, each only while you have not chosen otherwise. The tab appears only for a fresh installation: updates and restarts never reopen it or reset your settings, and the installation continues even if you close the tab; Settings shows **Resume setup** until you finish.
+The setup tab uses the Settings theme in light and dark mode and walks through **Dictionaries → Anki → Try it**. Dictionaries download and install one after another with real download progress and an installation phase; a source that fails is reported with its reason while the others continue, and **Retry missing dictionaries** fetches only what is still missing. Once every source is installed, the result stays on screen for five seconds and setup moves on. Setup then looks for Anki: if you already mine with a Senren, Lapis or Kiku note type, Hachidori picks the one you use most, the deck you send it to, and fills in the matching field mapping for you — reading your collection only, never changing it. If Anki is not running, or your setup needs a choice only you can make, it says so and points at **Settings**; either way setup moves on by itself and keeps the result on the last screen. Initial preferences are set once: three-line compact definition summaries, Jitendex as their source and Bee's Ultimate Kanji Dictionary for clicked kanji, each only while you have not chosen otherwise. The tab appears only for a fresh installation: updates and restarts never reopen it or reset your settings, and the installation continues even if you close the tab; Settings shows **Resume setup** until you finish.
 
 # Blazing Fast
 
