@@ -774,6 +774,35 @@ function loadBackgroundScript(sandbox) {
   return context;
 }
 
+async function lookupStatsStage() {
+  const bus = makeBus(), storage = makeStorage();
+  const chrome = makeChrome("lookup-stats-worker", bus, storage);
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error });
+  const send = (type, fields = {}) => bus.sendMessage("lookup-page", { target: "hoshidicts-worker", type, ...fields });
+  const fields = { term: "  は\u3099 ", reading: " は\u3099 " };
+  const replies = await Promise.all(Array.from({ length: 25 }, () => send("hd_lookup_stats_record", fields)));
+  const current = await send("hd_lookup_stats_read", fields);
+  check("concurrent lookups increment one canonical row without scanning or rewriting the statistics collection",
+    replies.every(reply => reply.ok) && current.statistics?.lookupCount === 25 && current.statistics.term === "ば"
+      && current.statistics.reading === "ば" && current.statistics.seenCount === null
+      && storage.gets.every(query => query !== null) && storage.sets.length === 25
+      && storage.sets.every(keys => keys.length === 2 && keys.includes("lookupStats")), JSON.stringify(current));
+
+  const restartBus = makeBus();
+  const restartChrome = makeChrome("lookup-stats-restarted", restartBus, storage);
+  loadBackgroundScript({ chrome: restartChrome, console, setTimeout, clearTimeout, Promise, Error });
+  const restored = await restartBus.sendMessage("lookup-page", { target: "hoshidicts-worker", type: "hd_lookup_stats_read", ...fields });
+  const separate = await send("hd_lookup_stats_record", { term: "ば", reading: "" });
+  check("lookup counts survive worker restart and distinguish empty readings",
+    restored.statistics?.lookupCount === 25 && separate.statistics?.lookupCount === 1 && separate.statistics.reading === "");
+
+  await send("hd_options_write", { baseRevision: 0, options: { showLookupCounts: false } });
+  const beforeDisabled = storage.sets.length;
+  const disabled = await send("hd_lookup_stats_record", fields);
+  check("disabled lookup statistics do not record or claim a corpus count",
+    disabled.ok && disabled.statistics === null && storage.sets.length === beforeDisabled, JSON.stringify(disabled));
+}
+
 async function managedScheduleStage() {
   let now = Date.parse("2026-09-07T12:00:00Z");
   const hour = 3_600_000;
@@ -2237,6 +2266,7 @@ async function main() {
   await externalLinksBackgroundStage();
   await backupRelayStage();
   await managedScheduleStage();
+  await lookupStatsStage();
   await audioRelayStage();
   await ankiBackgroundStage();
 
