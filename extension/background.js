@@ -9,6 +9,7 @@ import "./dictionary-group-state.js";
 import {
   assertDictionaryUpdateSchedule,
   httpsUrl,
+  installedRecommendedDictionary,
   MANAGED_DICTIONARY_CHANGED,
   managedDictionaryFingerprint,
   managedDictionaryMatches,
@@ -765,8 +766,12 @@ function firstInstallSelections(current, outcomes, dictionaryState, storedOption
   for (const [sourceId, rule] of Object.entries(FIRST_INSTALL_SELECTIONS)) {
     if (!["installed", "already-installed"].includes(outcomes[sourceId]?.status)
         || current.dictionaries.selectionsApplied.includes(sourceId)) continue;
-    const committed = dictionaries.find((dictionary) => dictionary?.sourceId === sourceId);
-    if (committed === undefined) continue;
+    // The same catalogue identity the installer uses, so a package carried in
+    // or imported by hand, which is recognised by its exact update index, is
+    // the entry the selection follows.
+    const source = recommendedDictionarySource(sourceId);
+    const committed = source === null ? null : installedRecommendedDictionary(source, dictionaries);
+    if (committed === null) continue;
     applied.push(sourceId);
     if (effective[rule.option] === "") patch[rule.option] = rule.select(committed.title);
   }
