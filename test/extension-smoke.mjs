@@ -1191,8 +1191,11 @@ async function firstRunBackgroundStage() {
   loadBackgroundScript({ ...sandbox(), chrome: reconcileChrome });
   reconcileChrome.__events.onInstalled.fire({ reason: "install" });
   await settle(() => reconcile.raw.get("setupState") !== undefined);
+  // Recognised through its exact update index, the way a package imported by
+  // hand or carried in from another profile is: no stored catalogue source ID.
+  const beesIndexUrl = RECOMMENDED_CATALOGUE.find((entry) => entry.sourceId === "bees-ultimate-kanji-dictionary").indexUrl;
   await reconcile.api().local.set({ dictionaryState: { schemaVersion: 1, revision: 1, groups: [],
-    dictionaries: [committed("bees-id", beesTitle, "bees-ultimate-kanji-dictionary")] } });
+    dictionaries: [committed("bees-id", beesTitle, undefined, { indexUrl: beesIndexUrl })] } });
   const reconciled = await reconcileBus.sendMessage("offscreen-installer", {
     target: "hoshidicts-worker", type: "hd_setup_record", requestId: "setup-record", runId: "run-1",
     outcomes: { "bees-ultimate-kanji-dictionary": { status: "already-installed", seconds: 3 } },
@@ -5027,6 +5030,9 @@ async function main() {
   const startup = await startupPageStage();
   check("the startup page mirrors its own installer run, keeps focus, retries only missing dictionaries and advances after the five-second result",
     startup !== null && Object.values(startup).every((value) => value === true), JSON.stringify(startup));
+  const runRecovery = await startupRunRecoveryStage();
+  check("a startup page whose run went silent observes the installer again and restarts the unrecorded sources",
+    runRecovery !== null && Object.values(runRecovery).every((value) => value === true), JSON.stringify(runRecovery));
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
@@ -6096,6 +6102,71 @@ async function startupPageStage() {
       && document.getElementById("setup-actions").childElementCount === 0;
     return { requestFailed, attached, determinate, ordered, indeterminate, installing, installed, failedRow, failureView, focusKept, continued,
       retried, oldRunIgnored, success, heldAtThree, advanced, practice, finished };
+  } finally {
+    window.close();
+  }
+}
+
+// A run whose offscreen document disappeared stops reporting with the page
+// still holding an unfinished snapshot. After a silence longer than any phase
+// change the page observes the installer again: a live run keeps its progress,
+// and a replacement installer's empty snapshot restarts the sources that have
+// no recorded outcome.
+async function startupRunRecoveryStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
+    pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
+  });
+  const { window } = dom;
+  const { document } = window;
+  const requests = [];
+  const everySource = RECOMMENDED_CATALOGUE.map((entry) => entry.sourceId);
+  const setupState = { schemaVersion: 1, revision: 2, startedAt: "2026-09-07T10:00:00.000Z", stage: "dictionaries", completedAt: null,
+    dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] } };
+  const downloading = (runId) => ({ runId, sequence: 1, finished: false,
+    entries: [{ sourceId: "jitendex", phase: "downloading", receivedBytes: 1024, totalBytes: null, seconds: null, error: null }] });
+  let installReply = () => downloading("run-a");
+  window.chrome = {
+    runtime: {
+      async sendMessage(message) {
+        requests.push(structuredClone(message));
+        if (message.type !== "hd_setup_install") throw new Error(`Unexpected startup request ${message.type}`);
+        return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
+      },
+      onMessage: { addListener() {} },
+    },
+    storage: {
+      local: { async get() {
+        return { setupState: structuredClone(setupState), options: { revision: 1 },
+          dictionaryState: { schemaVersion: 1, revision: 1, groups: [], dictionaries: [] } };
+      } },
+      onChanged: { addListener() {} },
+    },
+    tabs: { async getCurrent() { return { id: 7 }; }, async remove() {} },
+  };
+  const installs = () => requests.filter((message) => message.type === "hd_setup_install").map((message) => message.sourceIds);
+  const heading = () => document.getElementById("setup-heading").textContent;
+  const jitendexRow = () => document.querySelector('.setup-dictionary[data-source-id="jitendex"] .setup-dictionary-status').textContent;
+  const until = async (predicate, what) => {
+    const deadline = Date.now() + 15_000;
+    while (!predicate() && Date.now() < deadline) await new Promise((done) => setTimeout(done, 25));
+    if (!predicate()) throw new Error(`the startup page did not reach ${what}`);
+  };
+  try {
+    await loadStartupScript(window);
+    await until(() => heading() === "Installing default dictionaries…", "the installing view");
+    const attached = JSON.stringify(installs()) === JSON.stringify([everySource]) && jitendexRow() === "Downloading… 1 KB";
+    // The silent run is still there: the observing request carries no source and changes nothing.
+    await until(() => installs().length === 2, "the first liveness check");
+    const observed = JSON.stringify(installs()[1]) === JSON.stringify([])
+      && heading() === "Installing default dictionaries…" && jitendexRow() === "Downloading… 1 KB";
+    // Now the offscreen document is gone and a replacement installer holds no run.
+    installReply = (message) => (message.sourceIds.length > 0 ? downloading("run-b") : { runId: null, sequence: 0, finished: true, entries: [] });
+    await until(() => installs().length >= 4, "the restarted run");
+    const recovered = JSON.stringify(installs()[2]) === JSON.stringify([]) && JSON.stringify(installs()[3]) === JSON.stringify(everySource)
+      && heading() === "Installing default dictionaries…" && jitendexRow() === "Downloading… 1 KB";
+    return { attached, observed, recovered };
   } finally {
     window.close();
   }

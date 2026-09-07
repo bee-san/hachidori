@@ -20,6 +20,9 @@ const SETUP_TARGET = "hachidori-setup";
 const SETUP_EVENTS_TARGET = "hachidori-setup-events";
 const SUCCESS_DISPLAY_MS = 5000;
 const COUNTDOWN_TICK_MS = 250;
+// A run reports at every phase change and about ten times a second while a body
+// arrives, so a longer silence means the offscreen document that owned it is gone.
+const RUN_SILENCE_MS = 4000;
 const { normaliseOptions } = globalThis.HDReaderOptions;
 const STEP_STAGES = SETUP_STAGES.slice(0, 3);
 
@@ -40,6 +43,7 @@ let countdown = null;
 let advanceFailed = false;
 // A failed install request is shown once with Retry; the page never re-requests on its own.
 let installFailed = false;
+let runSilenceTimer = null;
 const announced = new Map();
 
 function element(id) {
@@ -321,6 +325,33 @@ function adoptRun(snapshot) {
     finished: snapshot.finished !== false,
     entries: Array.isArray(snapshot.entries) ? snapshot.entries : [],
   };
+  watchRun();
+}
+
+// An offscreen document terminated mid-run stops reporting with this page still
+// holding an unfinished snapshot, which no event can ever complete. After a
+// silence longer than any phase change, the page observes the installer again
+// with an empty request: a live run answers with its own snapshot, and a
+// replacement installer answers with an empty, finished one, which lets the
+// sources that have no recorded outcome be requested once more.
+function watchRun() {
+  if (runSilenceTimer !== null) clearTimeout(runSilenceTimer);
+  runSilenceTimer = null;
+  if (!runActive()) return;
+  runSilenceTimer = setTimeout(() => {
+    runSilenceTimer = null;
+    if (!runActive() || attaching !== null) return;
+    void send("hd_setup_install", { sourceIds: [] }, SETUP_TARGET).then((reply) => {
+      // A live run keeps the progress this page already applied and is watched
+      // again; only a replaced or finished run changes the screen.
+      if (reply.ok !== true || (reply.runId === run?.runId && reply.finished !== true)) {
+        watchRun();
+        return;
+      }
+      adoptRun(reply);
+      render();
+    }).catch(() => { watchRun(); });
+  }, RUN_SILENCE_MS);
 }
 
 function requestInstall(sourceIds) {

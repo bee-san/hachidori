@@ -216,7 +216,14 @@ a package whose commit outlived the installer that made it its durable outcome
 and its first-install selection. A failed or later removed source waits for
 **Retry missing dictionaries**, which requests only the missing ones; a request
 the worker does not answer is reported once with the same Retry, never
-re-requested on a timer. The installer records every outcome and each run's
+re-requested on a timer. A run does report at every phase change and about ten
+times a second while a body arrives, so a longer silence means the offscreen
+document that owned it is gone: the page then observes the installer again with
+an empty request, which starts nothing. A live run answers with its own
+snapshot and keeps the progress the page already applied; a replacement
+installer answers with an empty, finished one, and the sources without a
+recorded outcome are requested once more instead of leaving a screen that can
+never change. The installer records every outcome and each run's
 duration through `hd_setup_record`, which the worker accepts from the offscreen
 document only, and a row settles only after that record is acknowledged: a lost
 reply or a restarting worker makes the installer resend the same record with
@@ -226,7 +233,10 @@ earlier ones, durations accumulate into `totalSeconds`, and a
 committed Jitendex or Bee's entry settles its first-install selection once
 (`compactDefinitionSummaryDictionary` and the term-route
 `kanjiClickDictionary`) while that option is still Automatic, through the
-revisioned options write. **All dictionaries installed in X seconds** is
+revisioned options write. That entry is located by the same catalogue identity
+the installer uses — stored source ID or exact update index — so a package
+imported by hand or carried in from another profile settles its selection from
+its own committed title. **All dictionaries installed in X seconds** is
 rendered only when the current inventory holds every catalogue source and this
 setup installed at least one of them; a profile that already carried them all
 reads **All dictionaries are already installed**. Either result
