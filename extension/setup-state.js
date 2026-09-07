@@ -6,6 +6,7 @@ export const SETUP_STATE_SCHEMA_VERSION = 1;
 export const STARTUP_PAGE = "startup.html";
 // Setup advances through the first three stages; "complete" is terminal.
 export const SETUP_STAGES = Object.freeze(["dictionaries", "anki", "practice", "complete"]);
+export const SETUP_OUTCOME_STATUSES = Object.freeze(["installed", "already-installed", "failed"]);
 
 // Initial preferences for a new installation. They are written once into the
 // stored options, so an extension update never changes an existing user's
@@ -15,6 +16,17 @@ export const FIRST_INSTALL_OPTIONS = Object.freeze({
   compactDefinitionSummaryCount: 3,
 });
 
+// Dictionary-dependent initial preferences, applied once from the committed
+// catalogue entry's exact title while the option is still Automatic.
+export const FIRST_INSTALL_SELECTIONS = Object.freeze({
+  jitendex: Object.freeze({ option: "compactDefinitionSummaryDictionary", select: (title) => title }),
+  "bees-ultimate-kanji-dictionary": Object.freeze({ option: "kanjiClickDictionary", select: (title) => ({ title, kind: "term" }) }),
+});
+
+function emptySetupDictionaries() {
+  return { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [] };
+}
+
 export function initialSetupState(startedAt) {
   return {
     schemaVersion: SETUP_STATE_SCHEMA_VERSION,
@@ -22,11 +34,50 @@ export function initialSetupState(startedAt) {
     startedAt,
     stage: SETUP_STAGES[0],
     completedAt: null,
+    dictionaries: emptySetupDictionaries(),
+  };
+}
+
+function validSeconds(value) {
+  return value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0);
+}
+
+export function normaliseSetupOutcome(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+      || !SETUP_OUTCOME_STATUSES.includes(value.status)
+      || !validSeconds(value.seconds ?? null)
+      || (value.error !== undefined && value.error !== null && typeof value.error !== "string")) {
+    throw new Error("the setup dictionary outcome is malformed");
+  }
+  return {
+    status: value.status,
+    seconds: value.status === "already-installed" ? null : value.seconds ?? null,
+    error: value.status === "failed" ? value.error ?? "" : null,
+  };
+}
+
+function normaliseSetupDictionaries(value) {
+  if (value === undefined) return emptySetupDictionaries();
+  if (!value || typeof value !== "object" || Array.isArray(value)
+      || !value.outcomes || typeof value.outcomes !== "object" || Array.isArray(value.outcomes)
+      || !validSeconds(value.totalSeconds)
+      || typeof value.continued !== "boolean"
+      || !Array.isArray(value.selectionsApplied)
+      || !value.selectionsApplied.every((sourceId) => Object.hasOwn(FIRST_INSTALL_SELECTIONS, sourceId))) {
+    throw new Error("the setup state is malformed");
+  }
+  return {
+    outcomes: Object.fromEntries(Object.entries(value.outcomes).map(([sourceId, outcome]) =>
+      [sourceId, normaliseSetupOutcome(outcome)])),
+    totalSeconds: value.totalSeconds,
+    continued: value.continued,
+    selectionsApplied: [...new Set(value.selectionsApplied)],
   };
 }
 
 /**
- * @returns {null | {schemaVersion: 1, revision: number, startedAt: string, stage: string, completedAt: string | null}}
+ * @returns {null | {schemaVersion: 1, revision: number, startedAt: string, stage: string, completedAt: string | null,
+ *   dictionaries: {outcomes: object, totalSeconds: number | null, continued: boolean, selectionsApplied: string[]}}}
  */
 export function normaliseSetupState(value) {
   if (value === undefined || value === null) return null;
@@ -45,6 +96,7 @@ export function normaliseSetupState(value) {
     startedAt: value.startedAt,
     stage: value.stage,
     completedAt: value.completedAt,
+    dictionaries: normaliseSetupDictionaries(value.dictionaries),
   };
 }
 
@@ -53,8 +105,9 @@ export function setupIncomplete(state) {
 }
 
 // Setup only moves forward: a stale or unexpected write can neither reopen a
-// finished setup nor return to an earlier stage.
-export function advanceSetupState(current, stage, now) {
+// finished setup nor return to an earlier stage. Leaving the dictionary stage
+// with `continued` records that the user accepted an incomplete dictionary set.
+export function advanceSetupState(current, stage, now, { continued = false } = {}) {
   if (!SETUP_STAGES.includes(stage)) throw new Error("the setup stage is invalid");
   if (SETUP_STAGES.indexOf(stage) <= SETUP_STAGES.indexOf(current.stage)) {
     throw new Error("the setup stage cannot move backwards");
@@ -64,5 +117,30 @@ export function advanceSetupState(current, stage, now) {
     revision: current.revision + 1,
     stage,
     completedAt: stage === "complete" ? now : null,
+    dictionaries: continued && current.stage === "dictionaries"
+      ? { ...current.dictionaries, continued: true }
+      : current.dictionaries,
+  };
+}
+
+// The installer reports one outcome per dictionary and one duration per run.
+// Retries accumulate into the stage total; a superseded outcome is replaced.
+export function recordSetupDictionaries(current, { outcomes = {}, runSeconds = null, selectionsApplied = [] }) {
+  if (!validSeconds(runSeconds)) throw new Error("the setup run duration is invalid");
+  const recorded = Object.fromEntries(Object.entries(outcomes).map(([sourceId, outcome]) =>
+    [sourceId, normaliseSetupOutcome(outcome)]));
+  if (!selectionsApplied.every((sourceId) => Object.hasOwn(FIRST_INSTALL_SELECTIONS, sourceId))) {
+    throw new Error("the setup selection is unknown");
+  }
+  const dictionaries = current.dictionaries;
+  return {
+    ...current,
+    revision: current.revision + 1,
+    dictionaries: {
+      ...dictionaries,
+      outcomes: { ...dictionaries.outcomes, ...recorded },
+      totalSeconds: runSeconds === null ? dictionaries.totalSeconds : (dictionaries.totalSeconds ?? 0) + runSeconds,
+      selectionsApplied: [...new Set([...dictionaries.selectionsApplied, ...selectionsApplied])],
+    },
   };
 }
