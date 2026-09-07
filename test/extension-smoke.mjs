@@ -1082,13 +1082,15 @@ async function firstRunBackgroundStage() {
     && JSON.stringify(seeded.options) === JSON.stringify({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3, revision: 1 })
     && JSON.stringify(storage.sets) === JSON.stringify([["options", "setupState"]]);
 
-  // The user edits a seeded preference; updates, browser starts and a restarted
-  // worker must neither reopen setup nor touch that edit.
+  // The user edits a seeded preference; updates, browser starts, a restarted
+  // worker and the repeated "install" reason Chrome reports for a command-line
+  // loaded extension must neither reopen setup nor touch that edit.
   const edited = { ...seeded.options, showCompactDefinitionSummary: false, revision: 2 };
   await storage.api().local.set({ options: edited });
   chrome.__events.onInstalled.fire({ reason: "update", previousVersion: "0.1.0" });
   chrome.__events.onStartup.fire();
   chrome.__events.onInstalled.fire({ reason: "chrome_update" });
+  chrome.__events.onInstalled.fire({ reason: "install" });
   // A restarted worker replaces the previous one, so it listens on its own bus.
   const restarted = makeChrome("first-run-worker-restart", makeBus(), storage);
   restarted.tabs = chrome.tabs;

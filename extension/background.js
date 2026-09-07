@@ -1285,9 +1285,12 @@ function warmUp() {
 
 // A fresh installation seeds its setup state and initial preferences once, then
 // opens one startup tab. Only values that are still absent are written, so a
-// profile that already carries settings keeps them.
+// profile that already carries settings keeps them. Chrome reports "install"
+// again on every launch for an unpacked extension loaded from the command line,
+// so the absence of a setup record, not the reason alone, identifies a new
+// installation.
 async function beginFirstRunSetup() {
-  await serialiseStorage(async () => {
+  const created = await serialiseStorage(async () => {
     const stored = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
     const values = {};
     if (stored[SETUP_STATE_KEY] === undefined) {
@@ -1297,8 +1300,9 @@ async function beginFirstRunSetup() {
       values[OPTIONS_KEY] = { ...validateOptionsPatch(FIRST_INSTALL_OPTIONS), revision: 1 };
     }
     if (Object.keys(values).length > 0) await chrome.storage.local.set(values);
+    return Object.hasOwn(values, SETUP_STATE_KEY);
   });
-  await chrome.tabs.create({ url: chrome.runtime.getURL(STARTUP_PAGE) });
+  if (created) await chrome.tabs.create({ url: chrome.runtime.getURL(STARTUP_PAGE) });
 }
 
 // Load the dictionaries before the first hover asks for them. Extension updates,
