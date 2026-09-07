@@ -6335,6 +6335,10 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, optio
           if (lookup === null) throw new Error("the dictionary engine is unavailable");
           return { type: "hd_lookup_result", requestId: message.requestId, ok: true, error: null, ...lookup(message) };
         }
+        // A refused lookup waits for the engine to go idle before asking again.
+        if (message.type === "hd_status") {
+          return { type: "hd_status_result", requestId: message.requestId, ok: true, error: null, ready: true, loading: false };
+        }
         if (message.type !== "hd_setup_install") throw new Error(`Unexpected startup request ${message.type}`);
         return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
       },
@@ -6558,11 +6562,13 @@ async function startupPracticeStage() {
     await page.until(() => sample() !== null, "the rerendered exercise");
     const loadedOnce = invited && JSON.stringify(readerScripts(document)) === JSON.stringify(MANIFEST_READER_SCRIPTS.slice(0, 1));
     // A group-only or presentation write advances the dictionary revision without
-    // changing what the engine can answer, so it must not disturb the exercise.
+    // changing what the engine can answer, so it must disturb neither the probe
+    // nor the sentence node a lookup in flight is anchored to.
+    const sampleNode = sample();
     const beforeGroups = page.lookups().length;
     page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 43 }]);
     await page.until(() => page.heading() === "You’re ready. Try looking up a word below.", "the undisturbed exercise");
-    const groupWriteIgnored = page.lookups().length === beforeGroups && sample() !== null;
+    const groupWriteIgnored = page.lookups().length === beforeGroups && sample() === sampleNode;
     // The answering package is removed while an unrelated term dictionary stays:
     // a previously successful probe must not keep the invitation standing.
     const beforeRetire = page.lookups().length;

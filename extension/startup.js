@@ -26,7 +26,9 @@ const COUNTDOWN_TICK_MS = 250;
 // arrives, so a longer silence means the offscreen document that owned it is gone.
 const RUN_SILENCE_MS = 4000;
 // A dictionary mutation refuses lookups while it holds the engine, so the
-// practice probe asks again rather than calling the sentence unanswerable.
+// practice probe waits for the engine to go idle and asks again rather than
+// calling the sentence unanswerable. Only an idle engine that still refuses is
+// counted, so a long generation cleanup cannot exhaust these attempts.
 const PROBE_RETRY_MS = 400;
 const PROBE_ATTEMPTS = 5;
 const { normaliseOptions } = globalThis.HDReaderOptions;
@@ -58,6 +60,9 @@ let readerLoading = null;
 // stale invitation standing.
 let practiceOutcome = null;
 let practiceProbed = "";
+// The sentence is one node for the life of the page: a rerender that moves the
+// same node keeps a lookup in flight anchored, where a fresh node would cancel it.
+let practiceSample = null;
 // Anki detection is asked for once per page; a failed request waits for Retry.
 let ankiRequest = null;
 let ankiFailed = false;
@@ -618,25 +623,49 @@ async function sweepPractice(signature) {
   return "missing";
 }
 
+// The engine reports ready after boot and loading while any mutation, including
+// a long generation cleanup, holds it. Waiting here is what keeps a refusal from
+// becoming a verdict; a newer signature or an unreachable engine ends the wait.
+async function awaitIdleEngine(signature) {
+  for (;;) {
+    let status;
+    try {
+      status = await send("hd_status", {}, ENGINE_TARGET);
+    } catch {
+      return false;
+    }
+    if (practiceProbed !== signature) return false;
+    if (status?.ok !== true) return false;
+    if (status.ready === true && status.loading !== true) return true;
+    await wait(PROBE_RETRY_MS);
+    if (practiceProbed !== signature) return false;
+  }
+}
+
 function probePractice() {
   const signature = practiceSignature();
   practiceProbed = signature;
   practiceOutcome = null;
   void (async () => {
-    for (let attempt = 1; attempt <= PROBE_ATTEMPTS; attempt += 1) {
+    const settle = (found) => {
+      if (practiceProbed !== signature) return;
+      practiceOutcome = found;
+      render();
+    };
+    for (let refusals = 0; refusals < PROBE_ATTEMPTS; refusals += 1) {
       const found = await sweepPractice(signature);
       // A newer inventory or option has its own probe; this one's answer is stale.
       if (found === "gone" || practiceProbed !== signature) return;
       if (found !== "refused") {
-        practiceOutcome = found;
-        render();
+        settle(found);
         return;
       }
-      await wait(PROBE_RETRY_MS);
-      if (practiceProbed !== signature) return;
+      if (!await awaitIdleEngine(signature)) {
+        settle("unavailable");
+        return;
+      }
     }
-    practiceOutcome = "unavailable";
-    render();
+    settle("unavailable");
   })();
 }
 
@@ -651,6 +680,14 @@ function lookupObstacle() {
     return { text: "Lookups are turned off, so there is nothing to try here yet.", before: "Turn them back on in ", href: "settings.html#lookup" };
   }
   return null;
+}
+
+// One instruction, whichever screen shows it: a lookup needs the activation key
+// when that is the configured mode, wherever the text is.
+function hoverInstruction(where) {
+  return options.lookupMode === "activation"
+    ? `Hold ${options.activationKey} and hover over ${where} to look it up.`
+    : `Hover over ${where} to look it up.`;
 }
 
 // The last step tries the real reader on this page: the packaged scripts, the
@@ -684,22 +721,23 @@ function practiceView() {
     return {
       heading: "You’re ready.",
       body: [...outcome, paragraph(practiceOutcome === "unavailable"
-        ? "Hover over Japanese text on any webpage to look it up."
+        ? hoverInstruction("Japanese text on any webpage")
         : "Checking what the installed dictionaries can answer…")],
       actions: finishAction,
     };
   }
   void loadReader();
-  const sample = document.createElement("p");
-  sample.className = "setup-practice-sample";
-  sample.lang = "ja";
-  sample.textContent = PRACTICE_SENTENCE;
+  practiceSample ??= (() => {
+    const node = document.createElement("p");
+    node.className = "setup-practice-sample";
+    node.lang = "ja";
+    node.textContent = PRACTICE_SENTENCE;
+    return node;
+  })();
   return {
     heading: "You’re ready. Try looking up a word below.",
-    body: [...outcome, paragraph(options.lookupMode === "activation"
-      ? `Hold ${options.activationKey} and hover over the Japanese below to look it up.`
-      : "Hover over the Japanese below to look it up."), sample,
-    paragraph("It works the same way on any webpage.")],
+    body: [...outcome, paragraph(hoverInstruction("the Japanese below")), practiceSample,
+      paragraph("It works the same way on any webpage.")],
     actions: finishAction,
   };
 }
