@@ -1,9 +1,10 @@
 // Focused complete-restore scenarios through the real engine and background.
 import assert from "node:assert/strict";
-import { buildTitledZip, makePng } from "./make-fixture.mjs";
+import { buildRecommendedZip, buildTitledZip, makePng } from "./make-fixture.mjs";
 import { createBackupArchive, openBackupArchive } from "../extension/backup-archive.js";
 import { backupRevisions } from "../extension/backup-state.js";
 import { emptyCustomDictionaryDocument } from "../extension/custom-dictionary.js";
+import { managedDictionarySource } from "../extension/managed-dictionary-source.js";
 
 export async function backupEngineScenarios({ request, pageChrome, hostChrome, storage, engine, check }) {
   const sendWorker = (type, fields = {}) => pageChrome.runtime.sendMessage({ target: "hoshidicts-worker", type, ...fields });
@@ -180,6 +181,44 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
     assert.equal(roots().length, 0);
   } finally { URL.revokeObjectURL(emptyUrl); }
   check("an empty backup resets settings, custom source and schedule rather than retaining unrelated live values", true);
+
+  // Yomitan's isUpdatable flag alone is not a managed source. Local imports
+  // with incomplete/non-HTTPS descriptors remain valid and not checkable.
+  for (const downloadUrl of [undefined, "http://example.com/local.zip", "https://example.com/managed.zip"]) {
+    const localUrl = URL.createObjectURL(new Blob([buildRecommendedZip({ title: "Backup source contract",
+      revision: "1", indexUrl: "https://example.com/index.json", downloadUrl, capabilities: ["term"] })]));
+    let saved;
+    try {
+      await accepted("hd_import", { blobUrl: localUrl, fileName: "source-contract.zip" });
+      if (downloadUrl?.startsWith("http:")) {
+        const replacement = URL.createObjectURL(new Blob([buildRecommendedZip({ title: "Backup source contract",
+          revision: "2", indexUrl: "https://example.com/index.json", downloadUrl: "https://example.com/updated.zip",
+          capabilities: ["term"] })]));
+        try { await accepted("hd_import", { blobUrl: replacement, fileName: "source-reimport.zip" }); }
+        finally { URL.revokeObjectURL(replacement); }
+      }
+      const before = (await read()).state.dictionaries.find(dictionary => dictionary.title === "Backup source contract");
+      assert.equal(before.isUpdatable, true);
+      assert.equal(managedDictionarySource(before)?.kind ?? null, downloadUrl?.startsWith("https:") ? "generic" : null);
+      saved = await accepted("hd_backup_export");
+      await restore(saved.blobUrl);
+      const after = (await read()).state.dictionaries.find(dictionary => dictionary.id === before.id);
+      const { path: beforePath, ...beforeMetadata } = before;
+      const { path: afterPath, ...afterMetadata } = after;
+      assert.notEqual(afterPath, beforePath);
+      assert.deepEqual(afterMetadata, beforeMetadata);
+      assert.deepEqual(managedDictionarySource(after), managedDictionarySource(before));
+    } finally {
+      URL.revokeObjectURL(localUrl);
+      if (saved) await accepted("hd_backup_release", { blobUrl: saved.blobUrl });
+      // Start each descriptor case from an empty library, not a reimport that
+      // deliberately preserves the earlier source metadata.
+      const state = (await read()).state;
+      const dictionary = state.dictionaries.find(entry => entry.title === "Backup source contract");
+      if (dictionary) await accepted("hd_remove", { id: dictionary.id, title: dictionary.title });
+    }
+  }
+  check("backup preserves local-only source descriptors and complete managed sources without changing update eligibility", true);
 
   await restore(initial.blobUrl);
   await accepted("hd_backup_release", { blobUrl: exported.blobUrl });

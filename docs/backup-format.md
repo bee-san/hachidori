@@ -15,6 +15,11 @@ unencrypted and can contain personal notes, custom URLs and API keys. Keep it
 private. It does not contain browser history, downloads, cached runtime results,
 or Anki's own collection/media database.
 
+Update eligibility is preserved, not inferred from Yomitan's `isUpdatable` flag
+alone. A local archive with incomplete or non-HTTPS source URLs remains local
+and not update-checkable; a complete managed source stays managed. Reimports
+retain the committed source metadata even when the newer native index differs.
+
 The `downloads` permission saves the engine-owned archive through Chrome's save
 dialog. Chrome owns progress and cancellation. Its download ID and temporary
 blob URL are tracked in session storage, surviving service-worker restarts;
