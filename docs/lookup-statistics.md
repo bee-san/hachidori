@@ -63,11 +63,13 @@ keeps the blur; any other outcome, including counts being unavailable or
 turned off, reveals immediately. Hovering a definition or the compact summary
 reveals in either mode. With the timed reveal, one deadline runs from the
 first display: navigating to a kanji entry or another word cancels the live
-timer, and Back continues with the remaining time rather than restarting. The
-decision belongs to that lookup, so tabs, Show more, a Note refresh and Back
-keep it; a later count for the same word never blurs a revealed view, and a
-different lookup starts fresh. Native kanji entries are outside term blur;
-term entries reached through a clicked kanji participate.
+timer, and Back continues with the remaining time rather than restarting, as
+does a page restored from the back/forward cache. The decision belongs to that
+lookup, so tabs, Show more, a Note refresh and Back keep it; a later count for
+the same word never blurs a revealed view, and a different lookup starts
+fresh. A lookup made before the saved settings have loaded waits for them.
+Native kanji entries are outside term blur; term entries reached through a
+clicked kanji participate.
 
 Automatic pronunciation waits for the decision. A blurred result never
 auto-plays, even after hover or the deadline reveals it, so the audio does not
