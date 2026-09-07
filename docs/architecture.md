@@ -184,8 +184,7 @@ event that arrives while a write is in flight renders once with the reply. A
 stage change moves focus to the card heading; an inventory or progress update
 keeps focus on the control that had it. Finish records completion and closes
 the tab. Settings shows **Resume setup** in its sidebar while
-`stage !== "complete"`, so closing the tab loses nothing. The lookup exercise
-attaches to the remaining stage separately.
+`stage !== "complete"`, so closing the tab loses nothing.
 
 ### Dictionary stage
 
@@ -325,6 +324,38 @@ on its own.
 ![The final step after an automatically configured Anki, light palette](assets/startup-anki.png)
 
 ![The final step after an automatically configured Anki, dark palette](assets/startup-anki-dark.png)
+
+### Practice step
+
+The last step is the real reader, on the startup page. When that step renders
+and the current inventory holds an enabled package that can answer a term
+lookup, the page appends the packaged reader scripts in the order the manifest
+gives an ordinary page — `dictionary-group-state.js`, `lookup-stats-identity.js`,
+`external-links.js`, `audio-content.js`, `anki-content.js`, `render/glossary.js`,
+`render/popup.js`, `content.js` — once per page, and `content.css` comes with the
+page itself. `reader-options.js` is already loaded by the startup module.
+Nothing is fetched before that step, so the installation and Anki screens are
+never scanned, and a script that fails to load leaves the sentence and its
+instructions readable with the reason in the card's live region.
+
+`content.js` is a content script everywhere except this extension's own pages,
+where Chrome does not inject it at all. Its own guard now permits exactly the
+startup page URL, so these scripts do nothing when they are loaded into
+Settings, the design preview or any other internal page. The exercise then uses
+the ordinary path: the same runtime lookup messages, the installed dictionaries,
+the real WebAssembly engine and the same closed-shadow popup, including its
+first-install dark appearance and compact summaries.
+
+The card shows the instruction that matches the current `lookupMode` — hover, or
+holding the configured activation key — and one sentence to try,
+**朝ごはんを食べる。** **Finish** and **Open Settings** stay available: the
+exercise is optional. When no enabled package can answer a lookup, the step says
+so and links to dictionary import instead of inviting a lookup that cannot
+answer.
+
+![The practice step with a real lookup open, light palette](assets/startup-practice.png)
+
+![The practice step with a real lookup open, dark palette](assets/startup-practice-dark.png)
 
 ## Hover activation and popup ownership
 
