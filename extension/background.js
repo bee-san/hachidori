@@ -1,6 +1,7 @@
 import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
 import { detectAnkiSetup } from "./anki-setup.js";
+import { ankiMappingComplete } from "./anki-templates.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
 import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
@@ -774,6 +775,17 @@ function startupSender(sender) {
   return sender.id === chrome.runtime.id && sender.url?.split(/[?#]/u)[0] === chrome.runtime.getURL(STARTUP_PAGE);
 }
 
+// A mapping the user already has is reported rather than replaced: a complete
+// one is already configured, and one whose note type is chosen but whose deck or
+// fields are not is theirs to finish. No saved choice means discovery may run.
+function savedAnkiOutcome(anki) {
+  if (ankiMappingComplete(anki)) {
+    return { status: "already-configured", detail: null, model: anki.model, deck: anki.deck };
+  }
+  if (anki.model === "") return null;
+  return { status: "needs-attention", detail: `Finish the Anki mapping for ${anki.model} in Settings.`, model: null, deck: null };
+}
+
 // Ordinary absence is a connection that never answered; an answer that refused
 // or failed keeps its specific reason.
 function ankiSetupFailure(error) {
@@ -789,8 +801,9 @@ async function detectFirstRunAnki() {
   const options = normaliseOptions(stored[OPTIONS_KEY]);
   let outcome;
   let proposal = null;
-  if (options.anki.model !== "") {
-    outcome = { status: "already-configured", detail: null, model: options.anki.model, deck: options.anki.deck };
+  const saved = savedAnkiOutcome(options.anki);
+  if (saved !== null) {
+    outcome = saved;
   } else {
     ankiGateway ??= createAnkiGateway();
     try {
@@ -811,8 +824,9 @@ async function detectFirstRunAnki() {
     // A choice the user made while discovery ran wins over whatever it found,
     // so a failed or absent discovery never reports a mapping the user has.
     const latest = normaliseOptions(current[OPTIONS_KEY]);
-    if (latest.anki.model !== "") {
-      outcome = { status: "already-configured", detail: null, model: latest.anki.model, deck: latest.anki.deck };
+    const chosen = savedAnkiOutcome(latest.anki);
+    if (chosen !== null) {
+      outcome = chosen;
     } else if (proposal?.status === "configured") {
       const revision = optionsRevision(current[OPTIONS_KEY]);
       const anki = { ...latest.anki, model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates };

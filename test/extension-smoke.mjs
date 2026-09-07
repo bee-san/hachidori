@@ -757,6 +757,7 @@ function loadBackgroundScript(sandbox) {
     .replace(/^import .* from "\.\/backup-(?:state|downloads)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ detectAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
+    .replace(/import \{ ankiMappingComplete \} from "\.\/anki-templates\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/external-links\.js";\s*/u, "")
@@ -1238,6 +1239,10 @@ async function firstRunAnkiStage() {
   const setupRecord = (patch = {}) => ({ schemaVersion: 1, revision: 4, startedAt: "2026-09-07T10:00:00.000Z", stage: "anki", completedAt: null,
     dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }, anki: null, ...patch });
   const defaultAnki = () => globalThis.HDReaderOptions.normaliseOptions({}).anki;
+  // A usable saved mapping: a note type, a deck and a mapped first field. Choosing
+  // only a note type in Settings leaves the fields blank, which is not one.
+  const configuredAnki = (model, deck) => ({ ...defaultAnki(), model, deck,
+    fields: { ...defaultAnki().fields, expression: "Front" } });
   function worldFor(name, { answer, options = null, setup = setupRecord() }) {
     const bus = makeBus();
     const storage = makeStorage();
@@ -1283,8 +1288,11 @@ async function firstRunAnkiStage() {
   const denied = worldFor("anki-denied", { answer: () => ({ status: 403 }) });
   const deniedReply = await denied.send();
   // A configuration the user already has is reported, not replaced.
-  const existing = worldFor("anki-existing", { answer: collection, options: { revision: 3, anki: { ...defaultAnki(), model: "Basic", deck: "Words" } } });
+  const existing = worldFor("anki-existing", { answer: collection, options: { revision: 3, anki: configuredAnki("Basic", "Words") } });
   const existingReply = await existing.send();
+  // A note type chosen in Settings without its fields is theirs to finish.
+  const partial = worldFor("anki-partial", { answer: collection, options: { revision: 3, anki: { ...defaultAnki(), model: "Basic", deck: "Words" } } });
+  const partialReply = await partial.send();
   check("first-run Anki detection is startup-only, records absence or a specific refusal once, and reports an existing setup without any call",
     fromSettings?.ok === false && fromSettings.error.includes("startup page")
       && unavailable?.ok === true && unavailable.state.anki?.status === "unavailable" && unavailable.state.anki.detail.includes("Open Anki")
@@ -1294,8 +1302,13 @@ async function firstRunAnkiStage() {
       && deniedReply?.ok === true && deniedReply.state.anki?.status === "needs-attention" && deniedReply.state.anki.detail.includes("denied permission")
       && existingReply?.ok === true && existingReply.state.anki?.status === "already-configured"
       && existingReply.state.anki.model === "Basic" && existingReply.state.anki.deck === "Words" && existing.requests.length === 0
-      && existing.storage.raw.get("options").revision === 3,
-    JSON.stringify({ fromSettings, unavailable, again, absentRequests: absent.requests, deniedReply, existingReply, existingRequests: existing.requests }));
+      && existing.storage.raw.get("options").revision === 3
+      && partialReply?.ok === true && partialReply.state.anki?.status === "needs-attention"
+      && partialReply.state.anki.detail === "Finish the Anki mapping for Basic in Settings."
+      && partialReply.state.anki.model === null && partial.requests.length === 0
+      && partial.storage.raw.get("options").revision === 3,
+    JSON.stringify({ fromSettings, unavailable, again, absentRequests: absent.requests, deniedReply, existingReply,
+      existingRequests: existing.requests, partialReply, partialRequests: partial.requests }));
 
   // A recognised setup: duplicate requests share one detection, the ranked
   // model and deck are saved with the preset through the options CAS, and the
@@ -1327,7 +1340,7 @@ async function firstRunAnkiStage() {
   const pendingDetection = racing.send();
   for (let attempt = 0; attempt < 100 && racing.held.length === 0; attempt += 1) await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
   const userChoice = await racing.bus.sendMessage("settings-page", { target: "hoshidicts-worker", type: "hd_options_write", requestId: "anki-user",
-    baseRevision: 1, options: { anki: { ...defaultAnki(), model: "Basic", deck: "Default" } } });
+    baseRevision: 1, options: { anki: configuredAnki("Basic", "Default") } });
   racing.held.forEach((release) => release());
   const raced = await pendingDetection;
   // The same choice wins when discovery finds nothing at all: a failure must not
@@ -1337,7 +1350,7 @@ async function firstRunAnkiStage() {
   const pendingFailure = failing.send();
   for (let attempt = 0; attempt < 100 && failing.held.length === 0; attempt += 1) await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
   const lateChoice = await failing.bus.sendMessage("settings-page", { target: "hoshidicts-worker", type: "hd_options_write", requestId: "anki-late",
-    baseRevision: 1, options: { anki: { ...defaultAnki(), model: "Kiku v2", deck: "Mining" } } });
+    baseRevision: 1, options: { anki: configuredAnki("Kiku v2", "Mining") } });
   failing.held.forEach((release) => release());
   const rescued = await pendingFailure;
   check("a note type chosen while first-run Anki detection runs is reported as already configured and never overwritten",

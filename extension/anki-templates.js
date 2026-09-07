@@ -101,6 +101,17 @@ function basicTemplates(config, fields) {
   return { templates: Object.fromEntries(rows), staleFields: [], errors };
 }
 
+// A saved mapping is usable once it names a note type and a deck and maps a
+// first field, either through explicit templates or the basic expression field.
+// Choosing a note type in Settings clears both, so a mapping half-made there is
+// not a configured setup.
+export function ankiMappingComplete(anki) {
+  if (anki.model === "" || anki.deck === "") return false;
+  return anki.fieldTemplates === null
+    ? anki.fields.expression !== ""
+    : Object.values(anki.fieldTemplates).some(template => template.value !== "");
+}
+
 // The core a mined card needs: the expression, its reading, the sentence and a
 // definition body. A note type that only shares a family name maps fewer than
 // these, so first-run detection can tell a real setup from a namesake.

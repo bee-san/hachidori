@@ -298,8 +298,11 @@ notes wins. No write action is ever issued: nothing in the collection changes.
 The worker records the outcome, and for a `configured` proposal it saves the
 model, deck and resolved field templates through the ordinary revisioned
 options write in the same storage write as the setup record. A mapping the user
-already had is reported as **already-configured** and never replaced, and the
-latest options are read again inside that write: a mapping the user chooses
+already had is reported as **already-configured** and never replaced — a saved
+mapping counts as one only when it names a note type and a deck and maps a first
+field (`ankiMappingComplete`), because choosing a note type in Settings clears
+the fields; a half-made one is **needs-attention** naming that note type, and
+discovery does not run. The latest options are read again inside that write: a mapping the user chooses
 while discovery runs wins over anything discovery found, including a failure or
 an absence. A connection that does not answer or
 times out is the ordinary **unavailable** outcome; any other failure keeps its
