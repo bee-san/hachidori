@@ -102,6 +102,7 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   const comparable = snapshot => Object.fromEntries(Object.entries(snapshot).map(([key, value]) => {
     const { revision, ...rest } = value;
     if (key === "state") rest.dictionaries = rest.dictionaries.map(({ path, ...dictionary }) => dictionary);
+    if (key === "lookupStats") delete rest.generation;
     return [key, rest];
   }));
   const paths = restored.state.dictionaries.every((entry, index) => entry.path !== before.state.dictionaries[index].path);

@@ -761,6 +761,7 @@ function loadBackgroundScript(sandbox) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
+  sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;
   sandbox.Uint8Array ??= Uint8Array;
   sandbox.Uint32Array ??= Uint32Array;
@@ -805,6 +806,72 @@ async function lookupStatsStage() {
   const disabled = await send("hd_lookup_stats_record", fields);
   check("disabled lookup statistics do not record or claim a corpus count",
     disabled.ok && disabled.statistics === null && storage.sets.length === beforeDisabled, JSON.stringify(disabled));
+
+  await chrome.storage.local.set({ options: { revision: 2, showLookupCounts: "false",
+    corpusSeenEnabled: 1, corpusSeenUrl: "https://example.com" } });
+  const beforeMalformed = storage.sets.length;
+  const malformedOptions = await send("hd_lookup_stats_record", { term: "既定", reading: "きてい" });
+  check("lookup statistics read scalar option defaults without normalizing unrelated settings",
+    malformedOptions.statistics?.lookupCount === 1 && malformedOptions.statistics.seenCount === null
+      && storage.sets.length === beforeMalformed + 1, JSON.stringify(malformedOptions));
+
+  const corpusBus = makeBus(), corpusStorage = makeStorage();
+  const corpusChrome = makeChrome("lookup-stats-corpus-worker", corpusBus, corpusStorage);
+  await corpusChrome.storage.local.set({ options: { revision: 1, showLookupCounts: true,
+    corpusSeenEnabled: true, corpusSeenUrl: "http://127.0.0.1:7275" } });
+  const corpusFetches = [];
+  let releaseFirstFetch;
+  let markFirstFetchStarted;
+  const firstFetchStarted = new Promise(resolvePromise => { markFirstFetchStarted = resolvePromise; });
+  loadBackgroundScript({
+    chrome: corpusChrome, console, setTimeout, clearTimeout, Promise, Error, AbortController,
+    fetch: async (url, init) => {
+      corpusFetches.push({ url, init });
+      if (url.endsWith(encodeURIComponent("本"))) {
+        markFirstFetchStarted();
+        await new Promise(resolvePromise => { releaseFirstFetch = resolvePromise; });
+        return { ok: true, status: 200, json: async () => ({ total_occurrences: 7 }) };
+      }
+      if (url.endsWith(encodeURIComponent("存在しない"))) {
+        return { ok: false, status: 404, json: async () => ({ error: "Word not found" }) };
+      }
+      return { ok: false, status: 503, json: async () => ({ error: "Tokenization unavailable" }) };
+    },
+  });
+  const sendCorpus = (type, fields = {}) =>
+    corpusBus.sendMessage("lookup-page", { target: "hoshidicts-worker", type, ...fields });
+  const pendingCorpus = sendCorpus("hd_lookup_stats_record", { term: "本", reading: "ほん" });
+  await firstFetchStarted;
+  let optionsReply = null;
+  const optionsWrite = sendCorpus("hd_options_write", { baseRevision: 1, options: { hoverDelayMs: 51 } })
+    .then(reply => { optionsReply = reply; return reply; });
+  await new Promise(resolvePromise => setTimeout(resolvePromise, 0));
+  const storageWriteFinishedDuringFetch = optionsReply?.ok === true;
+  releaseFirstFetch();
+  const corpus = await pendingCorpus;
+  await optionsWrite;
+  check("optional local GSM corpus reads Seen without holding storage writes",
+    storageWriteFinishedDuringFetch && corpus.statistics?.lookupCount === 1 && corpus.statistics.seenCount === 7
+      && corpusFetches[0]?.url === "http://127.0.0.1:7275/api/tokenization/word/%E6%9C%AC"
+      && corpusFetches[0]?.init.method === "GET" && corpusFetches[0]?.init.credentials === "omit",
+    JSON.stringify({ corpus, corpusFetches: corpusFetches.map(({ url, init }) => ({ url, method: init.method })) }));
+
+  const unseen = await sendCorpus("hd_lookup_stats_read", { term: "存在しない", reading: "" });
+  const unavailable = await sendCorpus("hd_lookup_stats_record", { term: "失敗", reading: "" });
+  check("only a confirmed corpus miss maps to zero while GSM failures remain unavailable",
+    unseen.statistics?.lookupCount === 0 && unseen.statistics.seenCount === 0
+      && unavailable.statistics?.lookupCount === 1 && unavailable.statistics.seenCount === null,
+    JSON.stringify({ unseen, unavailable }));
+
+  await sendCorpus("hd_options_write", {
+    baseRevision: optionsReply.options.revision,
+    options: { corpusSeenEnabled: false },
+  });
+  const beforeCorpusDisabled = corpusFetches.length;
+  const corpusDisabled = await sendCorpus("hd_lookup_stats_read", { term: "本", reading: "ほん" });
+  check("disabled corpus Seen integration performs no network request",
+    corpusDisabled.statistics?.lookupCount === 1 && corpusDisabled.statistics.seenCount === null
+      && corpusFetches.length === beforeCorpusDisabled, JSON.stringify(corpusDisabled));
 }
 
 async function managedScheduleStage() {
@@ -6203,6 +6270,7 @@ async function settingsFrequencyStage() {
     }
     const metadataFields = [
       ["opt-lookup-counts", "showLookupCounts", true],
+      ["opt-corpus-seen", "corpusSeenEnabled", false],
       ["opt-frequency-names", "showFrequencyDictionaryNames", true],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
@@ -6219,6 +6287,18 @@ async function settingsFrequencyStage() {
         metadataDetails.push(JSON.stringify(writes.at(-1).options)
           === JSON.stringify({ [key]: key === "hidePopupGrammarTags" ? checked : !checked }));
       }
+      const corpusUrl = window.document.getElementById("opt-corpus-url");
+      metadataDetails.push(corpusUrl && !corpusUrl.disabled
+        && corpusUrl.value === "http://127.0.0.1:7275");
+      await editControl(corpusUrl, "http://localhost:7275/");
+      metadataDetails.push(corpusUrl.value === "http://localhost:7275"
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ corpusSeenUrl: "http://localhost:7275" }));
+      const beforeInvalidCorpusUrl = writes.length;
+      corpusUrl.value = "https://example.com";
+      corpusUrl.dispatchEvent(new window.Event("change", { bubbles: true }));
+      metadataDetails.push(writes.length === beforeInvalidCorpusUrl
+        && corpusUrl.value === "http://localhost:7275"
+        && status().includes("loopback"));
       metadataDetails.push(pitch.disabled);
       await editControl(window.document.getElementById("opt-pitch-furigana"), true);
       emitDictionaries({ pitchCount: 2 });
@@ -8791,10 +8871,12 @@ async function contentNoteStage() {
       outcomes["delayed matching rows survive newer unrelated global revisions"] =
         harness.lookupStatistics()?.lookupCount === 3 && reads.length === 0;
       harness.edit(true);
+      const retainedLine = harness.popup.querySelector(".gsm-hoshidicts-lookup-stats");
       harness.emitState(harness.state(2, "Replacement"));
       harness.emitOptions({ showLookupCounts: false });
       outcomes["turning counts off hides the existing line even in a retained Note view"] =
-        harness.popup.querySelector(".gsm-hoshidicts-lookup-stats").hidden;
+        retainedLine === harness.popup.querySelector(".gsm-hoshidicts-lookup-stats")
+        && retainedLine.hidden;
     } finally { harness.close(); }
     const toggled = await createHarness(null, { holdLookupStats: true });
     try {
@@ -8812,6 +8894,18 @@ async function contentNoteStage() {
         Boolean(repair) && toggled.lookupStatistics()?.lookupCount === 0
         && toggled.sent.filter(request => request.type === "hd_lookup_stats_record").length === 1
         && toggled.sent.filter(request => request.type === "hd_lookup_stats_read").length === 1;
+      toggled.emitOptions({ corpusSeenEnabled: true, corpusSeenUrl: "http://127.0.0.1:7275" });
+      const corpusRead = toggled.take("hd_lookup_stats_read");
+      if (corpusRead) toggled.reply(corpusRead, {
+        descriptor: { generation: null, revision: 0 },
+        statistics: { term: pending.request.term, reading: pending.request.reading,
+          lookupCount: 0, seenCount: 8 },
+      });
+      await toggled.settle();
+      outcomes["changing the corpus source refreshes the retained count without another increment"] =
+        Boolean(corpusRead) && toggled.lookupStatistics()?.seenCount === 8
+        && toggled.sent.filter(request => request.type === "hd_lookup_stats_record").length === 1
+        && toggled.sent.filter(request => request.type === "hd_lookup_stats_read").length === 2;
     } finally { toggled.close(); }
     return outcomes;
   }
