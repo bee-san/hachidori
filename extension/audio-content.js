@@ -37,10 +37,13 @@
       return true;
     }
 
-    function cancelAutoplay(owner) {
+    // A retired hold keeps its visit: the same request may bind again and its
+    // decision still settles it, while a request that is gone has no key to
+    // spend. A manual play consumes every waiting result.
+    function cancelAutoplay(owner, consumeHeld = true) {
       for (const [key, record] of pendingAutoplay) {
         if (owner !== undefined && key !== owner) continue;
-        firstVisit(record);
+        if (consumeHeld || !record.autoplayHeld?.()) firstVisit(record);
         pendingAutoplay.delete(key);
       }
     }
@@ -100,7 +103,7 @@
     }
 
     function retire(owner) {
-      cancelAutoplay(owner);
+      cancelAutoplay(owner, false);
       if (menu && (owner === undefined || menu.record.owner === owner)) closeMenu(false);
       if (active && (owner === undefined || active.record.owner === owner)) stop();
     }

@@ -210,22 +210,27 @@
       : lookupCount >= options.definitionBlurThreshold;
   }
 
+  // Enumerated options fall back to their default outside the listed values.
+  const ENUMERATED_OPTIONS = {
+    lookupMode: new Set(LOOKUP_MODES),
+    popupTheme: POPUP_THEME_IDS,
+    popupToolbarPosition: POPUP_TOOLBAR_POSITIONS,
+    frequencyOrder: new Set(FREQUENCY_ORDERS),
+    definitionBlurDirection: new Set(DEFINITION_BLUR_DIRECTIONS),
+    definitionBlurReveal: new Set(DEFINITION_BLUR_REVEALS),
+  };
+
   function normaliseField(key, value) {
     if (Object.hasOwn(NUMBER_RANGES, key)) return clampOption(key, value);
     if (typeof DEFAULT_OPTIONS[key] === "boolean") {
       return typeof value === "boolean" ? value : DEFAULT_OPTIONS[key];
     }
+    if (Object.hasOwn(ENUMERATED_OPTIONS, key)) return ENUMERATED_OPTIONS[key].has(value) ? value : DEFAULT_OPTIONS[key];
     switch (key) {
-      case "lookupMode": return LOOKUP_MODES.includes(value) ? value : DEFAULT_OPTIONS.lookupMode;
-      case "popupTheme": return POPUP_THEME_IDS.has(value) ? value : DEFAULT_OPTIONS.popupTheme;
-      case "popupToolbarPosition": return POPUP_TOOLBAR_POSITIONS.has(value) ? value : DEFAULT_OPTIONS.popupToolbarPosition;
       case "activationKey": return normaliseActivationKey(value);
-      case "frequencyOrder": return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;
       case "kanjiClickDictionary": return normaliseKanjiSelection(value);
       case "popupImageSource": return normalisePopupImageSource(value);
       case "corpusSeenUrl": return normaliseCorpusSeenUrl(value) ?? DEFAULT_OPTIONS.corpusSeenUrl;
-      case "definitionBlurDirection": return DEFINITION_BLUR_DIRECTIONS.includes(value) ? value : DEFAULT_OPTIONS.definitionBlurDirection;
-      case "definitionBlurReveal": return DEFINITION_BLUR_REVEALS.includes(value) ? value : DEFAULT_OPTIONS.definitionBlurReveal;
       case "audioSources": return normaliseAudioSources(value);
       case "anki": return normaliseAnki(value);
       default: return typeof value === "string" ? value : "";
