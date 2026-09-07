@@ -5,6 +5,68 @@ prepare and validate an immutable archive, install fresh dictionary generations,
 publish the complete state transaction, then clean superseded generations.
 Desktop paths, profiles and application-backup plumbing are not portable.
 
+## Using a backup
+
+Settings → Backup & restore exports every installed dictionary, including
+disabled packages and generated media, plus dictionary order, aliases,
+favourites, groups, managed-source/update metadata, the personal source document,
+reader/Design/audio/Anki settings and the global update schedule. The archive is
+unencrypted and can contain personal notes, custom URLs and API keys. Keep it
+private. It does not contain browser history, downloads, cached runtime results,
+or Anki's own collection/media database.
+
+The `downloads` permission saves the engine-owned archive through Chrome's save
+dialog. Chrome owns progress and cancellation. Its download ID and temporary
+blob URL are tracked in session storage, surviving service-worker restarts;
+completion or interruption releases the URL. Those temporary records are not
+backup content.
+
+Choosing a backup validates and stages it before showing its date and dictionary
+list. Nothing is published until the replacement checkbox is selected and
+**Replace and restore** is pressed. This replaces the entire saved configuration,
+including empty/default values; it does not merge libraries. Cancel discards the
+prepared files. A concurrent saved edit requires preparing the backup again.
+Unsaved Settings drafts must be saved or discarded before starting an operation.
+
+![Backup preview and replacement confirmation in Settings](assets/backup-restore-settings.png)
+
+## Transaction and recovery
+
+Export, prepare, restore and cancellation use the existing engine mutation queue
+and offscreen admission lock. Export captures one complete storage snapshot and
+leases the committed generations while collecting their files. The ZIP module
+loads only when backup work is requested; ordinary lookup does not load it.
+
+Preparation validates archive entries and the complete persisted-state contract,
+writes fresh generation roots, persists them, and strict-loads all packages,
+including disabled ones. It then restores the working loaded set without
+publishing a new logical generation. A damaged current installation does not
+prevent restoring a valid backup.
+
+Confirmation checks the exact raw four-key preparation snapshot, strict-loads
+the candidate again, and publishes `dictionaryState`, `options`,
+`customDictionarySource` and `dictionaryUpdates` in one background storage write.
+Each local revision advances; archived revision numbers and generation paths are
+not adopted. The storage queue is never held while awaiting the engine.
+Schedule reconciliation runs after the storage commit.
+
+A lost commit reply is resolved by reading back the exact expected four-value
+transaction. Confirmed success publishes the new engine generation and cleans
+superseded roots. Confirmed failure restores authoritative state and removes
+unpublished roots. An uncertain commit retains both sets for restart recovery.
+Post-commit alarm or Settings-refresh errors are reported separately from restore
+success so they do not invite a duplicate operation.
+
+The focused archive/state/download/Settings unit tests cover format and control
+contracts. `test/backup-engine-scenarios.mjs`, included by extension smoke, covers
+four-way conflicts, disabled-package validation, lost replies, storage failures,
+uncertain commits, damaged-installation recovery and empty restores through real
+WASM. Four shared browser assertions in `test/chrome-backup-scenarios.mjs` exercise
+the actual Chrome download, immutable preview/conflict, complete restore and
+corrupt-archive cleanup in both OPFS and IDBFS suites, followed by browser restart.
+
+## Archive representation
+
 The extension format is a stored ZIP64 archive. Native dictionary data is already
 compressed; storing it avoids recompression and allows files and archives larger
 than classic ZIP's representation. `hachidori-backup.json` identifies format
