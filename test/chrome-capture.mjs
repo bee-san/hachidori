@@ -943,6 +943,10 @@ async function main() {
     assert.equal(recovered.captureSessionId, beforeClose.captureSessionId);
     assert.equal(recovered.linkedPage.documentId, beforeClose.linkedPage.documentId);
 
+    // Match the focused reading/source page used for the stopped baseline.
+    // Chrome can reduce a background canvas's capture cadence even while the
+    // recorder keeps consuming every delivered frame.
+    await source.bringToFront();
     const initialPin = await world.evaluate(`(async () => {
       const node = document.getElementById("subtitle").firstChild;
       const pin = await HDCapture.rootLookup({ anchor: node, sentence: node.nodeValue, query: node.nodeValue });
