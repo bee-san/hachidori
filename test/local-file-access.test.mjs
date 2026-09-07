@@ -55,12 +55,15 @@ test("details opens only this extension, retains manual instructions, and rechec
   const f = await fixture(t);
   await tick();
   const open = f.el("local-file-open");
+  assert.equal(f.el("local-file-recovery").hidden, true);
   open.focus();
   open.click();
   await tick();
   assert.deepEqual(f.tabs, [{ url: "chrome://extensions/?id=hachidori-test-extension" }]);
   assert.equal(f.el("local-file-instruction").hidden, false);
   assert.match(f.el("local-file-instruction").textContent, /Turn on.*then return/u);
+  assert.equal(f.el("local-file-recovery").hidden, false);
+  assert.match(f.el("local-file-recovery").textContent, /Extension options, then choose Resume setup/u);
   assert.equal(f.el("local-file-status").textContent, "");
   f.returnToTab();
   await tick();
@@ -73,6 +76,7 @@ test("details opens only this extension, retains manual instructions, and rechec
   await tick();
   assert.equal(f.el("local-file-actions").hidden, true);
   assert.equal(f.el("local-file-status").textContent, "Local-file lookups enabled");
+  assert.equal(f.el("local-file-recovery").hidden, true);
   assert.equal(f.document.activeElement, f.el("local-file-status"));
   const observer = new f.window.MutationObserver(() => {});
   observer.observe(f.el("local-file-status"), { subtree: true, childList: true, characterData: true });
@@ -101,6 +105,10 @@ test("Settings retains the shortcut, pageshow refreshes it, and stale checks can
   await tick();
   assert.equal(f.el("local-file-skip"), null);
   assert.equal(f.el("local-file-actions").hidden, false);
+  f.el("local-file-open").click();
+  await tick();
+  assert.match(f.el("local-file-recovery").textContent, /Extension options to return/u);
+  assert.doesNotMatch(f.el("local-file-recovery").textContent, /Resume setup/u);
   let resolveOld;
   f.access(new Promise(resolve => { resolveOld = resolve; }));
   const pending = f.controller.refresh();

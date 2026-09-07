@@ -15,6 +15,9 @@ export function createLocalFileAccessController({ document, container, chromeApi
     "To look up Japanese in HTML files opened from your computer, enable “Allow access to file URLs” in Hachidori’s extension settings.");
   const instruction = make("p", "local-file-instruction",
     "Turn on “Allow access to file URLs”, then return to this tab.");
+  const recovery = make("p", "local-file-recovery", onDismiss
+    ? "Chrome may close setup when it reloads Hachidori. On the extension details page, open Extension options, then choose Resume setup."
+    : "Chrome may close Settings when it reloads Hachidori. On the extension details page, open Extension options to return.");
   const status = make("output", "local-file-status", "");
   status.setAttribute("role", "status");
   status.tabIndex = -1;
@@ -30,7 +33,7 @@ export function createLocalFileAccessController({ document, container, chromeApi
   }
   container.classList.add("local-file-access");
   container.setAttribute("aria-labelledby", heading.id);
-  container.replaceChildren(heading, description, actions, instruction, status);
+  container.replaceChildren(heading, description, actions, instruction, recovery, status);
   container.hidden = true;
 
   let allowed = null, opened = false, error = "", dismissed = false, disposed = false;
@@ -44,6 +47,7 @@ export function createLocalFileAccessController({ document, container, chromeApi
     heading.hidden = enabled;
     description.hidden = enabled;
     instruction.hidden = !opened || enabled;
+    recovery.hidden = instruction.hidden;
     actions.hidden = hideActions;
     container.classList.toggle("is-enabled", enabled);
     const message = enabled ? "Local-file lookups enabled" : error;

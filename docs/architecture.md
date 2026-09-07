@@ -371,13 +371,21 @@ and shows **Local-file lookups enabled** only after Chrome reports access.
 instruction to turn on **Allow access to file URLs** and return. Opening the
 details page grants no permission. The controller rechecks on page load,
 visibility return and `pageshow`, ignoring superseded replies; returning with
-access still off leaves the request available. **Not now** dismisses it for the
+access still off leaves the request available. Chrome can close extension tabs
+when the switch reloads Hachidori. The instructions explain how to reopen
+**Extension options** from the details page and choose **Resume setup**; the
+existing persisted setup stage restores the exercise. This does not add another
+automatic activation route. **Not now** dismisses it for the
 current setup page and returns focus to Finish, without marking setup
 incomplete. The bundled extension-page exercise never needs file access.
 
-![Real dictionary practice and the optional saved-page prompt, light palette](assets/startup-practice-light.png)
+![Dictionary practice and the optional saved-page prompt, light palette](assets/startup-review-after-practice-desktop-light.png)
 
-![Real dictionary practice and the optional saved-page prompt, dark palette](assets/startup-practice-dark.png)
+![Dictionary practice and the optional saved-page prompt, dark palette](assets/startup-review-after-practice-desktop-dark.png)
+
+[The UI review](startup-ui-review.md) records before/after comparisons,
+narrow layouts and the distinction between controlled screenshot states and
+the real dictionary lookup checks.
 
 ## Hover activation and popup ownership
 
