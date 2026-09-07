@@ -24,6 +24,12 @@ function waitUntil(deadline, now, setTimer) {
   return new Promise(resolve => setTimer(resolve, remaining));
 }
 
+function assertJobOwner(job, owner) {
+  if (owner && (owner.tabId !== job.owner?.tabId || owner.documentId !== job.owner?.documentId)) {
+    throw new Error("This reading document does not own the media export job.");
+  }
+}
+
 export function createCaptureSession({
   now = () => performance.timeOrigin + performance.now(),
   wallNow = Date.now,
@@ -378,12 +384,6 @@ export function createCaptureSession({
       }
       jobs.delete(id);
       if (activeJobId === id) activeJobId = null;
-    }
-  }
-
-  function assertJobOwner(job, owner) {
-    if (owner && (owner.tabId !== job.owner?.tabId || owner.documentId !== job.owner?.documentId)) {
-      throw new Error("This reading document does not own the media export job.");
     }
   }
 

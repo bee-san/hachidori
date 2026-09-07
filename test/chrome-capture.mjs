@@ -840,9 +840,6 @@ async function main() {
     const audioHistory = await capture.$eval("#audio-history", element => element.textContent);
     assert.doesNotMatch(audioHistory, /unavailable/iu, "the selected tab supplies captured audio");
     await source.bringToFront();
-    console.log("SOURCE", await source.evaluate(() => ({ frame, visibility: document.visibilityState,
-      sceneTime: scene.currentTime,
-      viewport: [innerWidth, innerHeight], focused: document.hasFocus() })));
     const throughputStart = await captureControl(capture, "hd_capture_status");
     const throughputStartedAt = performance.now();
     const sustainedSeconds = Number(process.env.HACHIDORI_CAPTURE_SUSTAINED_SECONDS) || 5;
@@ -852,9 +849,6 @@ async function main() {
     await new Promise(done => setTimeout(done, throughputMeasurementSeconds * 1000));
     const throughputElapsedSeconds = (performance.now() - throughputStartedAt) / 1000;
     const throughputEnd = await captureControl(capture, "hd_capture_status");
-    console.log("SOURCE END", await source.evaluate(() => ({ frame, visibility: document.visibilityState,
-      sceneTime: scene.currentTime,
-      focused: document.hasFocus() })));
     const retentionEnd = throughputEnd;
     const captureThroughput = {
       seconds: throughputElapsedSeconds,
@@ -932,10 +926,8 @@ async function main() {
       }
       browser.on("targetdestroyed", destroyed);
     });
-    console.log("RESTART stopping service worker");
     await oldWorker.close();
     await workerStopped;
-    console.log("RESTART service worker stopped");
     routeAnkiEnabled = true;
     const recovered = await captureControl(settings, "hd_capture_status");
     const replacementWorker = await browser.waitForTarget(target => target.type() === "service_worker"
@@ -957,12 +949,7 @@ async function main() {
       globalThis.__capturePin = pin;
       return pin;
     })()`);
-    if (!initialPin) {
-      console.log("PIN DIAGNOSTIC", await world.evaluate(`chrome.runtime.sendMessage({target:"hachidori-capture",
-        type:"hd_capture_pin", requestId:"diagnostic", lookup:{lookupText:"最初の行",
-        lookupTimeMs:performance.timeOrigin+performance.now(),occurrenceId:"",occurrenceSourceKind:""}})`));
-      console.log("CAPTURE DIAGNOSTIC", await captureControl(capture, "hd_capture_status"));
-    }
+    assert.ok(initialPin, "the recovered reader can pin the retained capture history");
     assert.equal(initialPin.sourceLabel, "Recent clip",
       "the first learned DOM baseline has unknown onset and falls back");
     await resources.phase("full-export");
