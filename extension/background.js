@@ -827,7 +827,7 @@ async function runManagedUpdateCycle({ dictionaryIds = null, install = false, du
       : checked.outcome);
   }
 
-  if (outcomes.length === 0) return { outcomes, settings: await readUpdateSettings() };
+  if (dueOnly && outcomes.length === 0) return { outcomes, settings: await readUpdateSettings() };
   const { settings } = await writeUpdateSettings((current) => ({
     ...current,
     lastCheckedAt: new Date().toISOString(),

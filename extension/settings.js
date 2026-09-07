@@ -1241,7 +1241,14 @@ function bindDictionaryUpdate(row, entry) {
       }
       return value === (current.updateScheduleOverride ?? null) ? current : { ...current, updateScheduleOverride: value };
     }), false);
-    if (stale) setStatus("The dictionary schedule changed elsewhere. Review its current value before choosing again.", "error");
+    if (stale) {
+      const current = dictionaries.find(dictionary => dictionary.id === entry.id);
+      if (current) {
+        schedule.value = current.updateScheduleOverride ?? "inherit";
+        renderDictionarySchedule(row, current);
+      }
+      setStatus("The dictionary schedule changed elsewhere. Review its current value before choosing again.", "error");
+    }
   });
 }
 
