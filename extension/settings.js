@@ -2101,7 +2101,7 @@ function attachHandlers() {
     void runManagedUpdate("hd_updates_install", availableUpdates().map((dictionary) => dictionary.id));
   });
   element("update-schedule").addEventListener("change", (event) => {
-    void writeUpdateSchedule(event.target.value);
+    writeUpdateSchedule(event.target.value);
   });
   element("update-schedule-retry").addEventListener("click", () => {
     if (!pendingSchedule) return;

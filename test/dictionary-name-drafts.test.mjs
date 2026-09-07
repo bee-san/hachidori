@@ -26,9 +26,9 @@ function fixture(t, validate) {
       async save(baseName, name) {
         sent.push({ baseName, name });
         const result = renameWithBaseline(items, "one", "name", baseName, name, validate);
-        if (result.error) return { ok: false, ...result };
-        items = result.items;
+        if (!result.error) items = result.items;
         if (release) await new Promise(done => { release = done; });
+        if (result.error) return { ok: false, ...result };
         return { ok: true };
       },
     });
@@ -119,4 +119,16 @@ test("correcting a locally invalid name resumes autosave without rebasing an ext
   await pause(30);
   assert.equal(f.sent.length, before);
   assert.equal(f.read()[0].name, "Shared");
+});
+
+test("an obsolete validation reply cannot block a corrected queued name", async t => {
+  const f = fixture(t, (_items, name) => name === "All" ? "All is reserved." : "");
+  f.hold(); f.edit("All", "change");
+  await tick();
+  f.edit("All terms");
+  await pause(30);
+  f.release();
+  await tick(); await tick();
+  assert.equal(f.read()[0].name, "All terms");
+  assert.equal(f.drafts.hasPendingChanges(), false);
 });

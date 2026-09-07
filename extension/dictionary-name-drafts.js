@@ -93,7 +93,7 @@ export function createDictionaryNameDrafts({ delayMs, afterSave = () => {} }) {
       // own committed value can advance the queued draft's baseline.
       draft.baseName = name;
     } catch (error) {
-      draft.error = error.message;
+      if (draft.retryRequired || !draft.dirty) draft.error = error.message;
       draft.dirty = true;
     } finally {
       draft.saving = false;
