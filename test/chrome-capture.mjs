@@ -545,13 +545,24 @@ async function main() {
         `--load-extension=${EXTENSION}`,
       ],
     });
+    const id = await extensionId(browser);
+    const startupTarget = await browser.waitForTarget(
+      candidate => candidate.type() === "page"
+        && candidate.url() === `chrome-extension://${id}/startup.html`,
+      { timeout: 10_000 },
+    ).catch(() => null);
+    if (startupTarget) {
+      const startupPage = await startupTarget.page();
+      await startupPage?.close();
+    }
+
     const source = await browser.newPage();
     await source.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
     await source.goto("http://127.0.0.1:8765/fixture", { waitUntil: "domcontentloaded" });
+    await source.bringToFront();
     await source.click("#fixture-start");
     await source.waitForFunction(() => document.getElementById("fixture-start")?.disabled === true);
 
-    const id = await extensionId(browser);
     const world = await extensionWorld(source, id);
     const settings = await browser.newPage();
     await settings.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
@@ -610,8 +621,14 @@ async function main() {
     await settings.reload({ waitUntil: "domcontentloaded" });
     await settings.waitForSelector("#media:not([hidden])");
     if (SETTINGS_SCREENSHOT) {
+      await settings.waitForFunction(() => {
+        const status = (document.getElementById("options-status")?.textContent || "").trim();
+        return status === "Saved.";
+      }, { timeout: 10_000, polling: 100 });
       mkdirSync(dirname(resolve(SETTINGS_SCREENSHOT)), { recursive: true });
-      await settings.screenshot({ path: resolve(SETTINGS_SCREENSHOT), fullPage: true });
+      const mediaSection = await settings.$("#media");
+      assert.ok(mediaSection, "Settings exposes the media-capture section");
+      await mediaSection.screenshot({ path: resolve(SETTINGS_SCREENSHOT) });
     }
 
     const stoppedLookup = await lookupBenchmark(world);
@@ -619,31 +636,31 @@ async function main() {
     const capture = await browser.newPage();
     await capture.setViewport({ width: 1280, height: 960, deviceScaleFactor: 1 });
     await capture.goto(`chrome-extension://${id}/capture.html`, { waitUntil: "domcontentloaded" });
-    await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped");
+    await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped",
+      { polling: 100 });
     assert.equal(await capture.$eval("#capture-state", element => element.textContent), "Stopped",
       "saved settings never auto-arm capture");
     await capture.bringToFront();
     await capture.click("#capture-start");
-    await new Promise(done => setTimeout(done, 1000));
-    await capture.bringToFront();
     await capture.waitForFunction(() => {
       const state = document.getElementById("capture-state")?.textContent;
       const error = document.getElementById("capture-error")?.textContent;
       return state === "Recording" || Boolean(error);
-    }, { timeout: 30_000 });
+    }, { timeout: 30_000, polling: 100 });
     const startError = await capture.$eval("#capture-error", element => element.textContent);
     assert.equal(startError, "", `display capture starts without an error: ${startError}`);
+    await capture.bringToFront();
     await capture.waitForFunction(() =>
       (document.getElementById("texthooker-status")?.textContent || "").includes("waiting"),
-    { timeout: 10_000 });
+    { timeout: 10_000, polling: 100 });
     assert.equal(texthooker.connections.length, 1);
     assert.equal(texthooker.origins[0], `chrome-extension://${id}`);
     await capture.waitForFunction(() => /[1-9][0-9]* frames/u.test(
-      document.getElementById("video-history")?.textContent || ""));
+      document.getElementById("video-history")?.textContent || ""), { polling: 100 });
     await capture.waitForFunction(() => {
       const value = document.getElementById("audio-history")?.textContent || "";
       return /[1-9][0-9,]* samples/u.test(value) || value.includes("unavailable");
-    });
+    }, { polling: 100 });
     const audioHistory = await capture.$eval("#audio-history", element => element.textContent);
     assert.doesNotMatch(audioHistory, /unavailable/iu, "the selected tab supplies captured audio");
     const throughputStart = await captureControl(capture, "hd_capture_status");
@@ -690,14 +707,15 @@ async function main() {
       `capture should not materially delay dictionary lookup: ${JSON.stringify({ stoppedLookup, recordingLookup })}`);
 
     await capture.waitForFunction(title => [...document.querySelectorAll("#reading-tab option")]
-      .some(option => option.textContent === title), {}, SOURCE_TITLE);
+      .some(option => option.textContent === title), { polling: 100 }, SOURCE_TITLE);
     const sourceTab = await capture.$eval("#reading-tab", (select, title) =>
       [...select.options].find(option => option.textContent === title)?.value, SOURCE_TITLE);
     assert.ok(sourceTab, "capture controls list the reading tab");
     await capture.select("#reading-tab", sourceTab);
     await capture.click("#link-page");
     await capture.waitForFunction(title =>
-      document.getElementById("linked-page")?.textContent === title, {}, SOURCE_TITLE);
+      document.getElementById("linked-page")?.textContent === title,
+    { polling: 100 }, SOURCE_TITLE);
 
     const initialPin = await world.evaluate(`(async () => {
       const node = document.getElementById("subtitle").firstChild;
@@ -843,7 +861,8 @@ async function main() {
 
     texthooker.send("接続行");
     await capture.waitForFunction(() =>
-      document.getElementById("texthooker-status")?.textContent === "Active");
+      document.getElementById("texthooker-status")?.textContent === "Active",
+    { polling: 100 });
     await source.$eval("#subtitle", element => { element.textContent = "接続行"; });
     await new Promise(done => setTimeout(done, 250));
     const texthookerPin = await world.evaluate(`(async () => {
@@ -888,7 +907,7 @@ async function main() {
     assert.equal(texthooker.disconnect(), true, "the fixture closes the active texthooker socket");
     await capture.waitForFunction(() =>
       ["Disconnected", "Connecting"].includes(document.getElementById("texthooker-status")?.textContent),
-    { timeout: 5_000 }).catch(() => {});
+    { timeout: 5_000, polling: 100 }).catch(() => {});
     try {
       await capture.waitForFunction(() =>
         (document.getElementById("texthooker-status")?.textContent || "").includes("waiting"),
@@ -904,7 +923,8 @@ async function main() {
     assert.ok(texthooker.connections.length >= 2, "texthooker reconnects with a new connection epoch");
     texthooker.send("再接続");
     await capture.waitForFunction(() =>
-      document.getElementById("texthooker-status")?.textContent === "Active");
+      document.getElementById("texthooker-status")?.textContent === "Active",
+    { polling: 100 });
 
     await settings.bringToFront();
     const dismissed = new Promise(resolveDialog => settings.once("dialog", async dialog => {
@@ -922,7 +942,7 @@ async function main() {
     });
     await capture.waitForFunction(() =>
       document.getElementById("linked-page")?.textContent === "No reading page is linked.",
-    { timeout: 10_000 });
+    { timeout: 10_000, polling: 100 });
     assert.equal((await captureControl(settings, "hd_capture_status")).state, "recording",
       "reading-page navigation clears only the page binding");
 
@@ -937,7 +957,7 @@ async function main() {
       return stored.options?.mediaCapture?.historySeconds === 30;
     }, { timeout: 10_000 });
     await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped",
-      { timeout: 10_000 });
+      { timeout: 10_000, polling: 100 });
     const stopped = await captureControl(settings, "hd_capture_status");
     assert.equal(stopped.history.frameCount, 0);
     assert.equal(stopped.history.audioSamples, 0);
