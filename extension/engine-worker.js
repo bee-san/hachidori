@@ -41,6 +41,8 @@ configureEngineService(requestHost, {
   createHoshidicts,
   storageBackend: "opfs",
   lowRam: false,
+  // Fire-and-forget: import phases need no reply and must not wait on one.
+  reportProgress: (progress) => globalThis.postMessage({ channel: "engine-progress", progress }),
 });
 startEngine();
 
