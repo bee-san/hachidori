@@ -5476,9 +5476,14 @@ async function main() {
     });
     // The startup page re-renders its controls on every storage change, and
     // the options write above reaches it asynchronously. Click inside the page
-    // so a handle resolved before that re-render cannot go stale.
+    // so a handle resolved before that re-render cannot go stale, keeping the
+    // user-clickable requirement Puppeteer's handle click would have enforced.
+    const clickStartupControl = (id) => startup.$eval(`#${id}`, (control) => {
+      if (control.disabled || !control.checkVisibility()) throw new Error(`#${control.id} is not user-clickable`);
+      control.click();
+    });
     const stageAfter = async (id, heading) => {
-      await startup.$eval(`#${id}`, (control) => control.click());
+      await clickStartupControl(id);
       return startup.waitForFunction((expected) => {
         const text = document.getElementById("setup-heading")?.textContent ?? "";
         return text === expected ? {
@@ -5493,7 +5498,7 @@ async function main() {
     };
     const anki = await stageAfter("setup-continue", "Anki");
     const practice = await stageAfter("setup-continue", "You’re ready.");
-    await startup.$eval("#setup-finish", (control) => control.click());
+    await clickStartupControl("setup-finish");
     const closed = await startupClosed;
     startupFlow = { anki, practice, closed };
   }
