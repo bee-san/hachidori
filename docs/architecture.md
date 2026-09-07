@@ -182,10 +182,14 @@ state has already reached the requested stage — a second tab making the same
 move is the move this page asked for, not a failure — and a storage
 event that arrives while a write is in flight renders once with the reply. A
 stage change moves focus to the card heading; an inventory or progress update
-keeps focus on the control that had it. Finish records completion and closes
-the tab. Settings shows **Resume setup** in its sidebar while
-`stage !== "complete"`, so closing the tab loses nothing. The lookup exercise
-attaches to the remaining stage separately.
+keeps focus on the control that had it. Dictionary rows and their progress
+elements remain mounted while their text and values change. The practice scene
+also stays mounted across same-stage updates, preserving reader ranges, popup
+anchors and Note drafts. Heading changes and settled dictionary outcomes are
+announced; bytes and countdown ticks are not live announcements. Finish records
+completion and closes the tab; if closing fails, a completed view stays readable
+with its Settings link. Settings shows **Resume setup** in its sidebar while
+`stage !== "complete"`, so closing the tab loses nothing.
 
 ### Dictionary stage
 
@@ -325,6 +329,55 @@ on its own.
 ![The final step after an automatically configured Anki, light palette](assets/startup-anki.png)
 
 ![The final step after an automatically configured Anki, dark palette](assets/startup-anki-dark.png)
+
+### Practice and saved pages
+
+`startup-practice.js` supplies the **Try it** scene and a Japanese passage about
+the street shown in the background. The image is copied from GameSentenceMiner
+PR #549 with its embedded credits intact; its exact source and hash are recorded
+in [the asset attribution](../extension/assets/ATTRIBUTION.md).
+
+`startup.html` includes the reader’s packaged dependencies in their ordinary
+order. The practice view loads `content.js` once, when an enabled term dictionary
+and the reader setting make the exercise available. Hover instructions follow
+the active mode and activation key. The **Look up 辞書** button focuses the
+sentence and selects that word through the reader’s existing exact-selection
+route, so it also works from the keyboard. All exercise lookups use ordinary
+runtime messages, the installed dictionaries, WASM, popup renderer and styles.
+No sample result is substituted. The reader permits only this extension’s exact
+`chrome.runtime.getURL("startup.html")` URL among extension pages; Settings,
+the static design preview and other internal URLs remain excluded. The skip
+link focuses the heading without adding a URL fragment.
+
+Pronunciation uses the existing audio controller and offscreen player. The
+worker routes startup playback feedback through extension runtime messaging,
+since `tabs.sendMessage` targets content scripts. Before routing it, the worker
+checks the current operation, Chrome-supplied document owner and offscreen
+sender; the controller accepts only its active random request ID. Ordinary
+webpage playback keeps its document-directed tab route.
+
+The Anki outcome remains above the exercise. **Finish** and **Open Settings**
+are available without performing a lookup. If no enabled term dictionary is
+available, the page offers dictionary recovery; if lookups are disabled, it
+links to Reading settings. A reader load failure offers reload or Settings.
+These states do not prevent completing setup.
+
+`local-file-access.js` shares the optional **Read saved pages too** controls
+with **Settings → Reading**. It queries
+`chrome.extension.isAllowedFileSchemeAccess()` before displaying the request
+and shows **Local-file lookups enabled** only after Chrome reports access.
+**Open extension settings** opens only
+`chrome://extensions/?id=${chrome.runtime.id}` in a new tab and leaves the
+instruction to turn on **Allow access to file URLs** and return. Opening the
+details page grants no permission. The controller rechecks on page load,
+visibility return and `pageshow`, ignoring superseded replies; returning with
+access still off leaves the request available. **Not now** dismisses it for the
+current setup page and returns focus to Finish, without marking setup
+incomplete. The bundled extension-page exercise never needs file access.
+
+![Real dictionary practice and the optional saved-page prompt, light palette](assets/startup-practice-light.png)
+
+![Real dictionary practice and the optional saved-page prompt, dark palette](assets/startup-practice-dark.png)
 
 ## Hover activation and popup ownership
 
