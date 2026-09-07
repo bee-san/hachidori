@@ -653,7 +653,10 @@ function render() {
     // The control that held focus belonged to the previous stage.
     heading.focus();
   } else if (focusKey) {
-    [...card.querySelectorAll("[data-focus-key]")].find((node) => node.dataset.focusKey === focusKey)?.focus();
+    const replacement = [...card.querySelectorAll("[data-focus-key]")].find((node) => node.dataset.focusKey === focusKey);
+    // Retry removes its button while work runs; keep a keyboard user's place
+    // at the result heading when that action no longer exists.
+    (replacement ?? heading).focus();
   }
   renderedStage = stage;
 }

@@ -512,9 +512,9 @@ function fatal(message) {
   process.exit(1);
 }
 
-// A page served over http, because content scripts do not run on
-// chrome-extension:// or about:blank, and file:// needs a per-extension opt-in
-// that no command-line flag can grant.
+// The ordinary-webpage fixture. Startup exercises its narrow internal-page
+// exception separately, and the saved-page check serves this prose from file://
+// after verifying Chrome's per-extension file-access switch.
 const PAGE_HTML = `<!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><title>hachidori e2e</title>
 <style>
@@ -3777,6 +3777,9 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   if (!keyboardReached) throw new Error("The practice lookup control was not reachable through the tab order.");
   await startup.keyboard.press("Enter");
   const selected = await popup.waitForVisible();
+  if (process.env.HACHIDORI_STARTUP_LOOKUP_SCREENSHOT) {
+    await startup.screenshot({ path: process.env.HACHIDORI_STARTUP_LOOKUP_SCREENSHOT, fullPage: true });
+  }
   const originalOpacity = await startup.evaluate(async () => {
     window.__practiceScene = document.getElementById("setup-practice-scene");
     window.__practiceRender = { events: 0, detached: false };
@@ -3873,17 +3876,8 @@ async function checkStartupFileAccess(startup, browser, startupUrl) {
     settings: document.querySelector('a[href="settings.html"]')?.checkVisibility() === true,
   });
   const fileAllowed = () => startup.evaluate(() => new Promise(resolveAllowed => chrome.extension.isAllowedFileSchemeAccess(resolveAllowed)));
-  await startup.bringToFront();
-  await startup.waitForSelector("#local-file-open", { visible: true });
-  const before = await startup.evaluate(readPrompt);
-  const initiallyAllowed = await fileAllowed();
-  const [detailsTarget] = await Promise.all([
-    browser.waitForTarget(target => target.type() === "page" && target.url() === detailsUrl, { timeout: 10_000 }),
-    startup.click("#local-file-open"),
-  ]);
-  const details = await detailsTarget.page();
   const toggleSelector = "pierce/#allow-on-file-urls";
-  const toggle = async (enabled) => {
+  const toggle = async (details, enabled) => {
     await details.bringToFront();
     await details.waitForSelector(toggleSelector);
     const control = await details.$(toggleSelector);
@@ -3894,6 +3888,27 @@ async function checkStartupFileAccess(startup, browser, startupUrl) {
       chrome.extension.isAllowedFileSchemeAccess(allowed => resolveAllowed(allowed === expected));
     }), { timeout: 10_000 }, enabled);
   };
+  await startup.bringToFront();
+  await startup.waitForFunction(() => document.getElementById("local-file-open")?.checkVisibility()
+    || document.getElementById("local-file-status")?.textContent === "Local-file lookups enabled");
+  const initial = await startup.evaluate(readPrompt);
+  const initiallyAllowed = await fileAllowed();
+  // Chrome enables file access initially for unpacked extensions. Establish the
+  // disabled scenario through its real UI before testing setup's own shortcut.
+  const preparation = await browser.newPage();
+  try {
+    await preparation.goto(detailsUrl, { waitUntil: "domcontentloaded" });
+    await toggle(preparation, false);
+    await startup.bringToFront();
+    await startup.waitForSelector("#local-file-open", { visible: true });
+  } finally { await preparation.close(); }
+  const before = await startup.evaluate(readPrompt);
+  const disabledBefore = await fileAllowed();
+  const [detailsTarget] = await Promise.all([
+    browser.waitForTarget(target => target.type() === "page" && target.url() === detailsUrl, { timeout: 10_000 }),
+    startup.click("#local-file-open"),
+  ]);
+  const details = await detailsTarget.page();
   let local = null;
   let afterReturn, enabled, afterReload, localResult, skipped;
   const localPath = resolve(PROFILE, "setup-saved-page.html");
@@ -3902,7 +3917,7 @@ async function checkStartupFileAccess(startup, browser, startupUrl) {
     await startup.bringToFront();
     await startup.waitForFunction(() => document.visibilityState === "visible");
     afterReturn = await startup.evaluate(readPrompt);
-    await toggle(true);
+    await toggle(details, true);
     await startup.bringToFront();
     await startup.waitForFunction(() => document.getElementById("local-file-status")?.textContent === "Local-file lookups enabled");
     enabled = await startup.evaluate(readPrompt);
@@ -3918,7 +3933,7 @@ async function checkStartupFileAccess(startup, browser, startupUrl) {
     local = null;
     // Turn access off again so Not now proves completion while access remains
     // disabled. The preference belongs only to this suite's isolated profile.
-    await toggle(false);
+    await toggle(details, false);
     await startup.bringToFront();
     await startup.waitForSelector("#local-file-skip", { visible: true });
     await startup.focus("#local-file-skip");
@@ -3930,7 +3945,8 @@ async function checkStartupFileAccess(startup, browser, startupUrl) {
     rmSync(localPath, { force: true });
   }
   check("saved-page setup rechecks Chrome file access and a local HTML file uses the real reader",
-    initiallyAllowed === false && before.open && before.skip && before.finish && before.settings
+    (initiallyAllowed ? initial.status === "Local-file lookups enabled" && !initial.open && !initial.skip : initial.open && initial.skip)
+      && disabledBefore === false && before.open && before.skip && before.finish && before.settings
       && afterReturn.open && afterReturn.skip && !afterReturn.status.includes("enabled")
       && afterReturn.instruction.includes("Allow access to file URLs")
       && enabled.status === "Local-file lookups enabled" && !enabled.open && !enabled.skip
@@ -3938,7 +3954,7 @@ async function checkStartupFileAccess(startup, browser, startupUrl) {
       && localResult?.plain.includes("辞書") && localResult.text.includes(`${RECOMMENDED_DICTIONARIES[0].title} term fixture`)
       && skipped.open === false && skipped.skip === false && skipped.finish && skipped.settings
       && await fileAllowed() === false && startup.url() === startupUrl,
-    JSON.stringify({ initiallyAllowed, before, detailsUrl, afterReturn, enabled, afterReload, localResult, skipped }));
+    JSON.stringify({ initiallyAllowed, initial, disabledBefore, before, detailsUrl, afterReturn, enabled, afterReload, localResult, skipped }));
   return skipped?.open === false && skipped.skip === false && skipped.finish;
 }
 
@@ -5900,8 +5916,8 @@ async function main() {
     done: document.querySelectorAll(".setup-step.is-done").length,
     rows: [...document.querySelectorAll(".setup-dictionary")].map((row) => [row.dataset.sourceId,
       row.querySelector(".setup-dictionary-status")?.textContent ?? "",
-      row.querySelector(".setup-track")?.classList.contains("is-determinate") ?? null,
-      row.querySelector(".setup-track")?.getAttribute("aria-valuenow") ?? row.querySelector(".setup-track")?.getAttribute("aria-valuetext") ?? null]),
+      row.querySelector(".setup-track:not([hidden])")?.classList.contains("is-determinate") ?? null,
+      row.querySelector(".setup-track:not([hidden])")?.getAttribute("aria-valuenow") ?? row.querySelector(".setup-track:not([hidden])")?.getAttribute("aria-valuetext") ?? null]),
     importLink: document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null,
     settingsLink: document.querySelector('a[href="settings.html"]') !== null,
     actions: [...document.querySelectorAll("#setup-actions button")].map((control) => [control.id, control.textContent]),
@@ -5969,7 +5985,7 @@ async function main() {
       && startupShell.currentStep === "dictionaries" && startupShell.done === 0
       && JSON.stringify(startupShell.steps) === JSON.stringify(["Dictionaries", "Anki", "Try it"])
       && JSON.stringify(startupShell.rows) === JSON.stringify([
-        ["jitendex", "Downloading… 0 KB", false, "In progress"],
+        ["jitendex", "Downloading… 0 KB", false, "Downloading… 0 KB"],
         ["jmnedict", "Waiting", null, null],
         ["bees-ultimate-kanji-dictionary", "Waiting", null, null],
         ["jiten", "Waiting", null, null],
@@ -6043,7 +6059,7 @@ async function main() {
   check(
     "a reconnecting startup page rejoins the running installer whose held download stays indeterminate",
     reconnected?.heading === "Installing default dictionaries…"
-      && JSON.stringify(reconnected.rows[0]) === JSON.stringify(["jitendex", "Downloading… 0 KB", false, "In progress"])
+      && JSON.stringify(reconnected.rows[0]) === JSON.stringify(["jitendex", "Downloading… 0 KB", false, "Downloading… 0 KB"])
       && reconnected.rows.slice(1).every((row) => row[1] === "Waiting")
       && JSON.stringify(setupArchives.requests) === JSON.stringify(["jitendex"])
       && JSON.stringify(setupStateWhileHeld?.dictionaries?.outcomes) === JSON.stringify({})
@@ -6065,8 +6081,8 @@ async function main() {
       window.__rowLog = [];
       const rows = () => [...document.querySelectorAll(".setup-dictionary")].map((row) => [row.dataset.sourceId,
         row.querySelector(".setup-dictionary-status")?.textContent ?? "",
-        row.querySelector(".setup-track")?.classList.contains("is-determinate") ?? null,
-        row.querySelector(".setup-track")?.getAttribute("aria-valuenow") ?? row.querySelector(".setup-track")?.getAttribute("aria-valuetext") ?? null]);
+        row.querySelector(".setup-track:not([hidden])")?.classList.contains("is-determinate") ?? null,
+        row.querySelector(".setup-track:not([hidden])")?.getAttribute("aria-valuenow") ?? row.querySelector(".setup-track:not([hidden])")?.getAttribute("aria-valuetext") ?? null]);
       new MutationObserver(() => window.__rowLog.push(rows())).observe(document.getElementById("setup-body"), { childList: true, subtree: true, characterData: true });
     });
   }
@@ -6120,7 +6136,7 @@ async function main() {
       // The rows the user saw: a determinate percentage for Jitendex, received bytes only for Bee's.
       && seenPhase("jitendex", (row) => row[2] === true && /\(\d+%\)$/u.test(row[1]))
       && !seenPhase("bees-ultimate-kanji-dictionary", (row) => row[2] === true)
-      && seenPhase("bees-ultimate-kanji-dictionary", (row) => /^Downloading… [\d.]+ (KB|MB)$/u.test(row[1]) && row[3] === "In progress")
+      && seenPhase("bees-ultimate-kanji-dictionary", (row) => /^Downloading… [\d.]+ (KB|MB)$/u.test(row[1]) && row[3] === row[1])
       && JSON.stringify(setupArchives.requests) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
       && ["jitendex", "bees-ultimate-kanji-dictionary", "jiten"].every((sourceId) => runOutcomes[sourceId]?.status === "installed" && runOutcomes[sourceId].seconds > 0)
       && runOutcomes.jmnedict?.status === "failed" && runOutcomes.jmnedict.error === "could not read JMnedict.zip: HTTP 503"

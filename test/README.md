@@ -639,7 +639,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 171 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 175 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -714,6 +714,26 @@ result, `HACHIDORI_STARTUP_READY_SCREENSHOT`/`_DARK_SCREENSHOT` the final step
 after an absent Anki, and
 `HACHIDORI_STARTUP_ANKI_SCREENSHOT`/`_DARK_SCREENSHOT` the final step after an
 automatically configured one.
+
+Four further assertions cover the real practice and saved-page flow. The
+keyboard lookup button selects 辞書 from the scene and the ordinary reader
+returns the just-installed catalogue fixture's glossary; pointer lookup works
+too. An options update preserves the connected scene and selection. Using
+**Skip to setup** keeps the exact startup URL, while explicitly injecting the
+reader into Settings, the design preview or a query-suffixed startup URL still
+produces no lookup. The file-access control opens this extension's own Chrome
+details page; the suite returns without enabling, flips the real switch in its
+isolated profile, returns and reloads to confirm access, and looks up 辞書 in a
+local HTML fixture. Access is then disabled again and **Not now** is followed
+by the ordinary Finish assertion. The later Anki success screen, after fixture
+removal, proves dictionary recovery keeps Finish and Settings available.
+
+`node --test test/local-file-access.test.mjs test/startup-practice.test.mjs`
+covers the optional prompt's initial query, return/reload lifecycle, stale
+replies, skip and Settings shortcut, plus practice selection, retained nodes,
+reader load failure and missing/disabled-dictionary recovery. The startup
+extension-smoke assertion also checks selection and focus through a same-stage
+options event; audio routing covers startup document/request ownership.
 
 An in-memory external-reference fixture also passes through real WASM. Real Enter
 on its closed-shadow anchor must create exactly one worker-routed browser tab,
@@ -933,7 +953,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 171 assertions, and the summary line
+`PLANNED` at the top of the file names all 175 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

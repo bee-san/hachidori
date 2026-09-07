@@ -78,6 +78,8 @@ test("missing or disabled term dictionaries and disabled lookups give recovery w
     assert.equal(f.el("setup-practice-scene").hidden, true);
     assert.match(f.el("setup-practice-recovery").textContent, /Install or enable a term dictionary/u);
     assert.equal(f.el("setup-practice-tools").hidden, true);
+    assert.equal(f.el("setup-practice-recovery").querySelector("a").getAttribute("href"),
+      dictionaries.some(entry => entry.termCount > 0) ? "settings.html#dictionaries" : "settings.html#add-dictionaries");
     assert.equal(f.reader(), null);
     assert.equal(f.el("finish").disabled, false);
   }
@@ -93,6 +95,7 @@ test("missing or disabled term dictionaries and disabled lookups give recovery w
   assert.equal(f.document.activeElement, link);
   assert.equal(f.el("finish").disabled, false);
   f.update();
+  assert.equal(f.document.activeElement, f.el("setup-practice-text"));
   f.reader().dispatchEvent(new f.window.Event("load"));
   f.el("setup-practice-lookup").click();
   f.update({ ...OPTIONS, hoverEnabled: false });

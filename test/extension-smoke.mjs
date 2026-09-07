@@ -6183,11 +6183,13 @@ async function startupPageStage() {
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Not installed"]]);
 
     installReply = () => runA(1, [entry("jitendex", "waiting"), entry("jiten", "waiting")]);
+    document.getElementById("setup-retry").focus();
     document.getElementById("setup-retry").click();
     await until(() => heading() === "Installing default dictionaries…", "the installing view");
     // Every source without a recorded outcome is requested; the installer settles installed ones itself.
     const everySource = RECOMMENDED_CATALOGUE.map((entry) => entry.sourceId);
     const attached = requestFailed && JSON.stringify(installs()) === JSON.stringify([everySource, ["jitendex", "jiten"]])
+      && document.activeElement === document.getElementById("setup-heading")
       && currentStep() === "dictionaries" && doneSteps() === 0
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Waiting"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Waiting"]])

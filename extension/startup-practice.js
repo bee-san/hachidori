@@ -64,6 +64,7 @@ export function createPracticeView({ document, onDismiss }) {
     const available = dictionaries.some(entry => entry.enabled !== false && entry.termCount > 0);
     const enabled = available && options.hoverEnabled && !readerFailed;
     const practiceFocused = document.activeElement === lookup || document.activeElement === text;
+    const recoveryFocused = document.activeElement === recoveryLink;
     find("setup-practice-scene").hidden = !available;
     find("setup-practice-tools").hidden = !enabled;
     lookup.disabled = !readerReady;
@@ -73,9 +74,11 @@ export function createPracticeView({ document, onDismiss }) {
         ? `Try looking up a word below. Hold ${options.activationKey} and hover over Japanese text, or use the lookup button.`
         : "Try looking up a word below. Hover over Japanese text, or use the lookup button.";
       startReader();
+      if (recoveryFocused) text.focus({ preventScroll: true });
     } else {
       instruction.textContent = "You can finish setup now and try a lookup later.";
-      recoveryLink.href = available ? "settings.html#lookup" : "settings.html#add-dictionaries";
+      recoveryLink.href = available ? "settings.html#lookup"
+        : dictionaries.some(entry => entry.termCount > 0) ? "settings.html#dictionaries" : "settings.html#add-dictionaries";
       recoveryMessage.textContent = !available ? "Install or enable a term dictionary in "
         : readerFailed ? "The reader could not load. Reload this page or open " : "Lookups are turned off. Enable them in ";
       if (practiceFocused) recoveryLink.focus();
