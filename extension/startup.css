@@ -136,8 +136,33 @@
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
-.setup-dictionary-status.is-installed {
+.setup-dictionary-status.is-ok {
   color: var(--ok);
+}
+.setup-dictionary-status.is-error {
+  color: var(--error);
+  text-align: left;
+}
+.setup-dictionary .setup-track {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+}
+/* A known total fills the bar to --progress; an unknown one keeps the shared
+   indeterminate animation from settings.css. */
+.setup-track.is-determinate .track-fill {
+  width: var(--progress, 0%);
+  animation: none;
+  transition: width 120ms linear;
+}
+.setup-countdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.setup-countdown-label {
+  color: var(--text-dim);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 .setup-actions {
   display: flex;
@@ -179,5 +204,11 @@
   .setup-dictionary-status {
     grid-area: 3 / 1;
     text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-track.is-determinate .track-fill {
+    transition: none;
   }
 }

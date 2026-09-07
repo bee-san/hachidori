@@ -293,7 +293,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 428 checks, all of
+full request→reply round trip per contract-C message type. 433 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -535,15 +535,32 @@ What it proves, in order:
    context; a profile that already carries options keeps them. `hd_setup_cas`
    is answered only for the startup page URL, refuses a stale base revision with
    the current state, rejects invalid stages, missing revisions and any move
-   back to an earlier or finished stage, and records `completedAt`. A jsdom
-   `startup.html` renders **Already installed** only for trusted
-   `sourceId`/index identity, keeps focus on its id-less Settings link and its
-   Continue button through inventory events, ignores an older setup revision,
+   back to an earlier or finished stage, and records `completedAt` and
+   `continued`. `hd_setup_record` is answered for the offscreen document only:
+   it stores each outcome, accumulates run durations once per run (a resent
+   record confirms rather than recounts), and settles the Jitendex
+   summary source and Bee's clicked-kanji route once from the committed titles,
+   in one write with the setup record, without overwriting an option the user
+   already changed. A jsdom `startup.html` attaches to the installer with the
+   untouched sources, shows an unanswered request once with Retry instead of
+   re-requesting, renders **Already installed** only for trusted
+   `sourceId`/index identity, mirrors determinate and indeterminate download
+   rows, installation, installed and failed phases for its own run identity and
+   sequence only, announces settled outcomes but not bytes, shows Retry and
+   Continue on failure, requests only the missing source on retry, ignores the
+   superseded run, shows the all-installed result with a countdown for five
+   seconds and then advances with a conflict retry, keeps focus on its controls
+   through inventory events, ignores an older setup revision,
    defers rendering while a
    write is in flight, moves focus to the heading on a stage change, adopts a
    conflict reply's newer state, and closes its own tab after Finish. The
    Settings harness shows **Resume setup** only for an incomplete, readable
-   setup record.
+   setup record. The restarted fallback engine imports a recommended source
+   from its catalogue archive URL with no blob and no fingerprint, reporting
+   download bytes with no total (the fake response declares none) and one
+   installation phase under the request ID, and refuses a non-catalogue archive
+   URL, a URL-only request without a source, and an unexpected final URL;
+   `declaredResponseLength` ignores encoded, zero, and header-less responses.
 
 ### jsdom
 
@@ -622,7 +639,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 164 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 168 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -645,17 +662,35 @@ re-import — which is the only test that proves direct OPFS persistence through
 full Chrome restart.
 
 The clean profile also fires `chrome.runtime.onInstalled` with reason `install`,
-so the extension itself opens `startup.html`. Four assertions cover that tab:
-exactly one startup page at the dictionary stage with the Settings palette,
-four **Not installed** catalogue rows and the seeded first-install options
-(compact summaries on at three, TTS and the dark popup defaults untouched); the
-Settings sidebar's **Resume setup** link outside the section navigation; real
-clicks through Anki to **You’re ready.** with focus on each new heading, Finish
-closing the tab, and the completed record hiding the link; and, after the
+so the extension itself opens `startup.html`, whose installer immediately asks
+the engine for the first catalogue archive. Those downloads happen inside the
+offscreen engine worker, so the harness attaches a Fetch interception to the
+offscreen target as soon as that target is named (`targetcreated` and
+`targetchanged`), before the engine can boot: the first Jitendex request is
+held until the clean-profile Settings checks have run, jmnedict's publisher
+answers 503 once, Jitendex and Jiten declare `Content-Length`, and Bee's does
+not; the padded 4 MiB fixtures come from `buildRecommendedZip({ paddingBytes })`.
+Eight assertions cover the tab: exactly one startup page at the dictionary
+stage with the Settings palette, Jitendex held in an indeterminate
+**Downloading… 0 KB** row and the seeded first-install options (compact
+summaries on at three, TTS and the dark popup defaults untouched); the Settings
+sidebar's **Resume setup** link outside the section navigation; a reload that
+rejoins the same run without a second archive request; the released run, whose
+recorded broadcasts and every rendered row prove waiting → downloading →
+installing → installed for the declared-length and the indeterminate archive,
+the 503 failure with its reason beside three installed rows, Retry and
+Continue, durable outcomes and no all-installed claim; Retry fetching only
+jmnedict, the all-installed heading with the accumulated total, and the
+Jitendex summary source and Bee's clicked-kanji route settled once while the
+user's compact-summary edit stands; the result staying at least five seconds
+before Anki with focus on the new heading; real clicks to **You’re ready.**,
+Finish closing the tab and the completed record hiding the link; and, after the
 in-run service-worker restart and the full pass-2 relaunch, no reopened startup
-tab, the same completed record, and the user's earlier compact-summary edit
-still in force. `HACHIDORI_STARTUP_SCREENSHOT` and
-`HACHIDORI_STARTUP_DARK_SCREENSHOT` capture the dictionary stage in both themes.
+tab, no further archive request, the same completed record, and the earlier
+edit still in force. The four setup-installed packages are removed afterwards
+so the Settings installer below still starts from an empty library.
+`HACHIDORI_STARTUP_SCREENSHOT`/`_DARK_SCREENSHOT` capture the held download and
+`HACHIDORI_STARTUP_COMPLETE_SCREENSHOT`/`_DARK_SCREENSHOT` the countdown result.
 
 An in-memory external-reference fixture also passes through real WASM. Real Enter
 on its closed-shadow anchor must create exactly one worker-routed browser tab,
@@ -875,7 +910,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 164 assertions, and the summary line
+`PLANNED` at the top of the file names all 168 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -1035,7 +1070,12 @@ the production compiler and single-thread IDBFS bundle, closes Chrome, and
 launches the same fallback build against the retained profile. Both launches
 must report `storageBackend: "idbfs"` and `threaded: false`, return the expected
 fixture and custom-dictionary lookups, restore the revisioned source and fixed
-package, and leave OPFS empty.
+package, and leave OPFS empty. The fresh profile also starts the first-run
+dictionary run inside the fallback engine; its four catalogue downloads are
+answered 503 on the offscreen target so nothing reaches the network, the run
+must record one failed outcome per source before the fixture import shares the
+same engine lock, and the relaunch must neither reseed the setup record nor
+request an archive again.
 
 ---
 

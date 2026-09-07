@@ -81,9 +81,13 @@ export function recommendedDictionarySource(sourceId) {
 
 // A recommendation counts as installed through its validated catalogue identity
 // or its exact update index, never through a display name.
+export function installedRecommendedDictionary(entry, dictionaries) {
+  return dictionaries.find((dictionary) =>
+    dictionary.sourceId === entry.sourceId || dictionary.indexUrl === entry.indexUrl) ?? null;
+}
+
 export function recommendedDictionaryInstalled(entry, dictionaries) {
-  return dictionaries.some((dictionary) =>
-    dictionary.sourceId === entry.sourceId || dictionary.indexUrl === entry.indexUrl);
+  return installedRecommendedDictionary(entry, dictionaries) !== null;
 }
 
 export function assertRecommendedDictionary(source, dictionary) {
