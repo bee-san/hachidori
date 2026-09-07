@@ -7373,7 +7373,9 @@ async function main() {
 
   await editSettingsControls(page, { "opt-frequency-dictionary": "hachidori-fixture", "opt-frequency-order": "ascending",
     "opt-popup-columns": "2" });
-  await backupChromeScenarios({ browser, page, directory: resolve(PROFILE, "backup-downloads"), check });
+  const backupRestored = await backupChromeScenarios({ browser, page, directory: resolve(PROFILE, "backup-downloads"), check });
+  const restoredFixture = backupRestored.state.dictionaries.find(dictionary => dictionary.id === fixtureId);
+  const restoredFixtureGeneration = ownedGenerationRoot(restoredFixture.path, "hachidori-fixture");
   const optionsBeforeRestart = await page.evaluate(async () =>
     (await chrome.storage.local.get("options")).options);
   const chromeProcess = browser.process();
@@ -7423,13 +7425,13 @@ async function main() {
     return t.includes("hachidori-fixture") && dictionary?.path === expectedPath
       ? dictionary
       : false;
-  }, { timeout: 90_000, polling: 500 }, fixtureId, replacedPackage.path)
+  }, { timeout: 90_000, polling: 500 }, fixtureId, restoredFixture.path)
     .then(handle => handle.jsonValue())
     .catch(() => null);
   check("the settings page lists the dictionary again after a restart",
-    persistedPackage?.path === replacedPackage.path
-      && ownedGenerationRoot(persistedPackage.path, "hachidori-fixture") === replacedFixtureGeneration,
-    `expected path: ${JSON.stringify(replacedPackage.path)}; persisted package: ${JSON.stringify(persistedPackage)}`);
+    persistedPackage?.path === restoredFixture.path
+      && ownedGenerationRoot(persistedPackage.path, "hachidori-fixture") === restoredFixtureGeneration,
+    `expected path: ${JSON.stringify(restoredFixture.path)}; persisted package: ${JSON.stringify(persistedPackage)}`);
   await showSettingsSection(page, "add-dictionaries");
   const restartedSettingsUi = await page.evaluate(() => ({
     localInputVisible: document.getElementById("import-file")?.checkVisibility() === true,
@@ -7461,9 +7463,10 @@ async function main() {
   // fixture still restores all four of its native capabilities.
   check("the dictionary survives a browser restart via OPFS",
     reloadCount?.dictionaryCount === 4
-      && generationExists(opfsAfterRestart, replacedPackage.path)
-      && generationIsAbsent(opfsAfterRestart, firstFixtureGeneration),
-    `hd_status reply: ${JSON.stringify(reloadCount)}; latest path: ${JSON.stringify(replacedPackage.path)};`
+      && generationExists(opfsAfterRestart, restoredFixture.path)
+      && generationIsAbsent(opfsAfterRestart, firstFixtureGeneration)
+      && generationIsAbsent(opfsAfterRestart, replacedFixtureGeneration),
+    `hd_status reply: ${JSON.stringify(reloadCount)}; latest path: ${JSON.stringify(restoredFixture.path)};`
       + ` OPFS paths: ${JSON.stringify(opfsAfterRestart)}`);
 
   const tab2 = await browser.newPage();
