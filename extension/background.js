@@ -808,16 +808,15 @@ async function detectFirstRunAnki() {
     if (setup === null) throw new Error("Setup has not started on this installation.");
     if (setup.anki !== null) return { state: setup };
     const values = {};
-    if (proposal?.status === "configured") {
-      // A choice the user made while discovery ran wins over the automatic one.
-      const latest = normaliseOptions(current[OPTIONS_KEY]);
-      if (latest.anki.model !== "") {
-        outcome = { status: "already-configured", detail: null, model: latest.anki.model, deck: latest.anki.deck };
-      } else {
-        const revision = optionsRevision(current[OPTIONS_KEY]);
-        const anki = { ...latest.anki, model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates };
-        values[OPTIONS_KEY] = { ...projectStoredOptions(current[OPTIONS_KEY]), ...validateOptionsPatch({ anki }), revision: revision + 1 };
-      }
+    // A choice the user made while discovery ran wins over whatever it found,
+    // so a failed or absent discovery never reports a mapping the user has.
+    const latest = normaliseOptions(current[OPTIONS_KEY]);
+    if (latest.anki.model !== "") {
+      outcome = { status: "already-configured", detail: null, model: latest.anki.model, deck: latest.anki.deck };
+    } else if (proposal?.status === "configured") {
+      const revision = optionsRevision(current[OPTIONS_KEY]);
+      const anki = { ...latest.anki, model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates };
+      values[OPTIONS_KEY] = { ...projectStoredOptions(current[OPTIONS_KEY]), ...validateOptionsPatch({ anki }), revision: revision + 1 };
     }
     const state = recordSetupAnki(setup, outcome);
     values[SETUP_STATE_KEY] = state;

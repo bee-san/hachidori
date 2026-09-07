@@ -618,7 +618,10 @@ async function advance(stage, { continued = false } = {}) {
   try {
     const reply = await send("hd_setup_cas", { baseRevision: setupState.revision, stage, ...(continued ? { continued } : {}) });
     if (reply.state) adoptSetupState(reply.state);
-    if (!reply.ok) throw new Error(reply.error || "setup progress could not be saved");
+    // Another tab may have already made this exact move: the conflict it leaves
+    // behind is the move this page asked for, not a failure to report.
+    const reached = setupState !== null && SETUP_STAGES.indexOf(setupState.stage) >= SETUP_STAGES.indexOf(stage);
+    if (!reply.ok && !(reply.conflict === true && reached)) throw new Error(reply.error || "setup progress could not be saved");
     setStatus("");
     advanced = true;
   } catch (error) {

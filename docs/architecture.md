@@ -177,7 +177,9 @@ page reads `setupState`, `dictionaryState` and `options` from storage, adopts
 only newer revisions from storage events, and renders one card per stage under
 a **Dictionaries → Anki → Try it** indicator (`aria-current="step"`). Continue
 and Finish send `hd_setup_cas` with the revision the page rendered; a conflict
-adopts the newer state and reports it in the card's live region, and a storage
+adopts the newer state and reports it in the card's live region, unless that
+state has already reached the requested stage — a second tab making the same
+move is the move this page asked for, not a failure — and a storage
 event that arrives while a write is in flight renders once with the reply. A
 stage change moves focus to the card heading; an inventory or progress update
 keeps focus on the control that had it. Finish records completion and closes
@@ -296,8 +298,10 @@ notes wins. No write action is ever issued: nothing in the collection changes.
 The worker records the outcome, and for a `configured` proposal it saves the
 model, deck and resolved field templates through the ordinary revisioned
 options write in the same storage write as the setup record. A mapping the user
-already had, or one the user chooses while discovery runs, is reported as
-**already-configured** and never replaced. A connection that does not answer or
+already had is reported as **already-configured** and never replaced, and the
+latest options are read again inside that write: a mapping the user chooses
+while discovery runs wins over anything discovery found, including a failure or
+an absence. A connection that does not answer or
 times out is the ordinary **unavailable** outcome; any other failure keeps its
 own reason. The page renders the settled outcome as one sentence with a link to
 the Anki section of Settings, and that outcome moves setup to the last stage by

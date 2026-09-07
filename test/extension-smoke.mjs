@@ -1330,11 +1330,24 @@ async function firstRunAnkiStage() {
     baseRevision: 1, options: { anki: { ...defaultAnki(), model: "Basic", deck: "Default" } } });
   racing.held.forEach((release) => release());
   const raced = await pendingDetection;
+  // The same choice wins when discovery finds nothing at all: a failure must not
+  // be recorded over a mapping the user now has.
+  const failing = worldFor("anki-racing-absent", { answer: (action, params, count) => (count === 1 ? "hold" : new TypeError("Failed to fetch")),
+    options: { revision: 1 } });
+  const pendingFailure = failing.send();
+  for (let attempt = 0; attempt < 100 && failing.held.length === 0; attempt += 1) await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+  const lateChoice = await failing.bus.sendMessage("settings-page", { target: "hoshidicts-worker", type: "hd_options_write", requestId: "anki-late",
+    baseRevision: 1, options: { anki: { ...defaultAnki(), model: "Kiku v2", deck: "Mining" } } });
+  failing.held.forEach((release) => release());
+  const rescued = await pendingFailure;
   check("a note type chosen while first-run Anki detection runs is reported as already configured and never overwritten",
     racing.held.length === 1 && userChoice?.ok === true && raced?.ok === true && raced.state.anki?.status === "already-configured"
       && raced.state.anki.model === "Basic" && racing.storage.raw.get("options").anki.model === "Basic"
-      && racing.storage.raw.get("options").revision === 2,
-    JSON.stringify({ userChoice, raced, options: racing.storage.raw.get("options") }));
+      && racing.storage.raw.get("options").revision === 2
+      && lateChoice?.ok === true && rescued?.ok === true && rescued.state.anki?.status === "already-configured"
+      && rescued.state.anki.model === "Kiku v2" && rescued.state.anki.deck === "Mining" && rescued.state.anki.detail === null
+      && failing.storage.raw.get("options").revision === 2,
+    JSON.stringify({ userChoice, raced, options: racing.storage.raw.get("options"), lateChoice, rescued, failingOptions: failing.storage.raw.get("options") }));
 }
 
 async function ankiBackgroundStage() {
@@ -6232,8 +6245,10 @@ async function startupPageStage() {
     await until(() => pendingReply !== null, "the practice write");
     const practiceRequest = requests.at(-1);
     const checkedHeading = heading();
+    // A second startup tab made the same move first: the conflict it leaves is
+    // the move this page asked for, so the final step is not an error screen.
     setupState = { ...setupState, revision: 9, stage: "practice" };
-    reply({ state: structuredClone(setupState) });
+    reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
     await until(() => heading() === "You’re ready.", "the practice stage");
     const outcomeNote = document.querySelector(".setup-anki-outcome");
     const practice = emptyReplyShown && ankiRequests() === 3 && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
@@ -6242,6 +6257,7 @@ async function startupPageStage() {
       && outcomeNote.textContent === "Automatically set up Kiku v2 for deck ‘Mining::Words’. Change in Settings."
       && outcomeNote.querySelector('a[href="settings.html#anki"]') !== null
       && document.getElementById("setup-body").textContent.includes("Hold Control and hover")
+      && status().textContent === "" && !status().classList.contains("is-error")
       && document.getElementById("setup-finish") !== null && doneSteps() === 2;
     document.getElementById("setup-finish").click();
     await until(() => pendingReply !== null, "the finish write");
