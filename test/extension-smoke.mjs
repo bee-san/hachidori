@@ -4744,6 +4744,9 @@ async function main() {
     managedUpdateSettings?.lostReplyRetained === true && managedUpdateSettings.retryNoWrite === true
       && managedUpdateSettings.discarded === true,
     JSON.stringify(managedUpdateSettings));
+  check("managed schedule waits for its initial revision and exposes queued work outside Updates",
+    managedUpdateSettings?.initialReadBlocked === true && managedUpdateSettings.queuedNotice === true,
+    JSON.stringify(managedUpdateSettings));
   const staleKanjiRenders = await staleKanjiResponseStage("storage-change");
   check(
     "a storage change invalidates an in-flight clicked-kanji lookup",
@@ -6647,6 +6650,7 @@ async function settingsManagedUpdatesStage() {
   const updateRequests = [];
   let heldSchedule = null, activeSchedules = 0;
   let loseScheduleReply = false, firstRead = true;
+  let releaseInitialRead;
 
   const publishState = (dictionary) => {
     state = {
@@ -6740,6 +6744,7 @@ async function settingsManagedUpdatesStage() {
           const captured = structuredClone(updateSettings);
           if (firstRead) {
             firstRead = false;
+            await new Promise(done => { releaseInitialRead = done; });
             updateSettings = { ...updateSettings, revision: 1, schedule: "weekly" };
             storageListener({ dictionaryUpdates: { newValue: structuredClone(updateSettings) } }, "local");
             await new Promise(done => window.setTimeout(done, 0));
@@ -6759,6 +6764,9 @@ async function settingsManagedUpdatesStage() {
   };
   loadSettingsScript(window);
 
+  const initialReadBlocked = window.document.getElementById("update-schedule").disabled;
+  releaseInitialRead();
+
   const deadline = Date.now() + 2000;
   while (!window.document.getElementById("engine-status")?.textContent?.startsWith("Ready")
       && Date.now() < deadline) {
@@ -6768,6 +6776,7 @@ async function settingsManagedUpdatesStage() {
   const insecureRow = () => window.document.querySelector('[data-dictionary-id="insecure-id"]');
   const localRow = () => window.document.querySelector('[data-dictionary-id="local-id"]');
   const result = {
+    initialReadBlocked,
     initial: {
       schedule: window.document.getElementById("update-schedule")?.value,
       lastChecked: window.document.getElementById("update-last-checked")?.textContent ?? "",
@@ -6858,6 +6867,7 @@ async function settingsManagedUpdatesStage() {
 
   const beforeCoalescing = scheduleRequests().length;
   for (const value of ["off", "hourly", "daily"]) chooseSchedule(value);
+  result.queuedNotice = window.document.getElementById("nav-status-updates").textContent.includes("Unsaved schedule");
   await pause(250);
   result.coalesced = scheduleRequests().length === beforeCoalescing + 1 && updateSettings.schedule === "daily";
 
