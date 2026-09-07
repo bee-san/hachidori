@@ -718,8 +718,10 @@ automatically configured one, and
 a real lookup open.
 
 The jsdom stage for that step also requires the appended list to match the
-manifest's own `content_scripts` order, and covers the two states that must not
-invite a lookup: a frequency-only library, and lookups switched off.
+manifest's own `content_scripts` order, that the sentence is probed offset by
+offset until one lookup answers, and covers every state that must not invite a
+hover: a frequency-only library, a library that answers nothing, an engine that
+cannot answer, and lookups switched off.
 
 Two further checks cover that practice step. The first waits for the reader
 scripts the page appends for itself, aims the real mouse at the verb's own

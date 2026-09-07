@@ -349,10 +349,13 @@ first-install dark appearance and compact summaries.
 The card shows the instruction that matches the current `lookupMode` — hover, or
 holding the configured activation key — and one sentence to try,
 **朝ごはんを食べる。** **Finish** and **Open Settings** stay available: the
-exercise is optional. The invitation appears only when it can be answered: with
-no enabled package that can answer a term lookup the step links to dictionary
-import instead, and with lookups switched off it says so and links to that
-setting, in both cases without loading the reader.
+exercise is optional. The invitation appears only when it can be answered, and that is
+proved rather than assumed: the page runs an ordinary `hd_lookup` from every
+offset in the sentence, through the same engine the reader would use, and stops
+at the first hit. A library that holds no enabled term dictionary, one that
+cannot answer this sentence, or lookups switched off each get their own sentence
+and the matching Settings link, and none of them loads the reader. An engine that
+cannot answer at all falls back to the instruction that is true anywhere.
 
 ![The practice step with a real lookup open, light palette](assets/startup-practice.png)
 

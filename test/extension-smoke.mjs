@@ -6099,6 +6099,11 @@ async function startupPageStage() {
           return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
         }
         if (message.type === "hd_setup_anki") return ankiReply(message);
+        // The practice step proves the sample is answerable before inviting a hover.
+        if (message.type === "hd_lookup") {
+          return { type: "hd_lookup_result", requestId: message.requestId, ok: true, error: null, generation: 5, dictionaryCount: 1,
+            results: message.text.startsWith("食べる") ? [{ term: "食べる", matched: "食べる" }] : [] };
+        }
         if (message.type !== "hd_setup_cas") throw new Error(`Unexpected startup request ${message.type}`);
         return new Promise((resolveReply) => { pendingReply = resolveReply; });
       },
@@ -6309,7 +6314,7 @@ async function startupPageStage() {
 
 // One jsdom startup page with only the worker replies and stored values a
 // dictionary-stage case needs; the two stages below drive it from there.
-function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 } }) {
+function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null }) {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
     pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
   });
@@ -6326,6 +6331,10 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, optio
       async sendMessage(message) {
         requests.push(structuredClone(message));
         if (message.type === "hd_setup_cas" && cas !== null) return cas(message);
+        if (message.type === "hd_lookup") {
+          if (lookup === null) throw new Error("the dictionary engine is unavailable");
+          return { type: "hd_lookup_result", requestId: message.requestId, ok: true, error: null, ...lookup(message) };
+        }
         if (message.type !== "hd_setup_install") throw new Error(`Unexpected startup request ${message.type}`);
         return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
       },
@@ -6360,6 +6369,7 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, optio
       eventListener({ target: "hachidori-setup-events", type: "hd_setup_progress", ...snapshot });
     },
     installs: () => requests.filter((message) => message.type === "hd_setup_install").map((message) => message.sourceIds),
+    lookups: () => requests.filter((message) => message.type === "hd_lookup").map((message) => message.text),
     saves: () => requests.filter((message) => message.type === "hd_setup_cas"),
     heading: () => document.getElementById("setup-heading").textContent,
     rowText: (sourceId) => document.querySelector(`.setup-dictionary[data-source-id="${sourceId}"] .setup-dictionary-status`).textContent,
@@ -6502,7 +6512,12 @@ async function startupPracticeStage() {
     anki: { status: "unavailable", detail: "Open Anki with the AnkiConnect add-on installed, then retry.", model: null, deck: null } };
   // A frequency-only package cannot answer a term lookup.
   const frequencyOnly = [{ id: "jiten", title: "Jiten", sourceId: "jiten", enabled: true, termCount: 0, frequencyCount: 9 }];
-  const page = startupCase(jsdom, { setup, dictionaries: frequencyOnly, reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  // The engine answers the sentence only from the verb onwards, the way a real
+  // library that holds 食べる but not 朝ごはん would.
+  const answersVerb = (message) => ({ generation: 3, dictionaryCount: 1,
+    results: message.text.startsWith("食べる") ? [{ term: "食べる", matched: "食べる" }] : [] });
+  const page = startupCase(jsdom, { setup, dictionaries: frequencyOnly, lookup: answersVerb,
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
   const { document } = page;
   const sample = () => document.querySelector(".setup-practice-sample");
   try {
@@ -6516,7 +6531,9 @@ async function startupPracticeStage() {
     // A term dictionary arrives: the exercise appears and the reader is fetched once.
     page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }]);
     await page.until(() => page.heading() === "You’re ready. Try looking up a word below.", "the practice exercise");
-    const invited = withoutDictionary && sample()?.textContent === "朝ごはんを食べる。" && sample().lang === "ja"
+    // Every offset was tried until the verb answered, and none after it.
+    const probed = JSON.stringify(page.lookups()) === JSON.stringify(["朝ごはんを食べる。", "ごはんを食べる。", "はんを食べる。", "んを食べる。", "を食べる。", "食べる。"]);
+    const invited = withoutDictionary && probed && sample()?.textContent === "朝ごはんを食べる。" && sample().lang === "ja"
       && document.getElementById("setup-body").textContent.includes("Hover over the Japanese below to look it up.")
       && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
       && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"])
@@ -6527,9 +6544,39 @@ async function startupPracticeStage() {
     await page.until(() => sample() !== null, "the rerendered exercise");
     const loadedOnce = invited && JSON.stringify(readerScripts(document)) === JSON.stringify(MANIFEST_READER_SCRIPTS.slice(0, 1));
     const offHover = await startupPracticeWithoutHover(jsdom, setup);
-    return { withoutDictionary, invited, loadedOnce, offHover };
+    const unanswerable = await startupPracticeUnanswerable(jsdom, setup);
+    return { withoutDictionary, invited, loadedOnce, offHover, unanswerable };
   } finally {
     page.window.close();
+  }
+}
+
+// A library that cannot answer this sentence, and an engine that cannot answer
+// at all, must not advertise a hover: the first says what is missing, the second
+// falls back to the instruction that is true anywhere.
+async function startupPracticeUnanswerable(jsdom, setup) {
+  const library = [{ id: "other", title: "Unrelated", enabled: true, termCount: 1 }];
+  const nothing = startupCase(jsdom, { setup, dictionaries: library, lookup: () => ({ generation: 3, dictionaryCount: 1, results: [] }),
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  const offline = startupCase(jsdom, { setup, dictionaries: library,
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  try {
+    await nothing.load();
+    await nothing.until(() => nothing.document.getElementById("setup-body").textContent.includes("do not have the words in this sample"),
+      "the unanswerable sample");
+    const missing = nothing.document.querySelector(".setup-practice-sample") === null
+      && readerScripts(nothing.document).length === 0
+      && nothing.lookups().length === [..."朝ごはんを食べる。"].length
+      && nothing.document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null;
+    await offline.load();
+    await offline.until(() => offline.document.getElementById("setup-body").textContent.includes("on any webpage"),
+      "the unavailable engine");
+    const unavailable = offline.document.querySelector(".setup-practice-sample") === null
+      && readerScripts(offline.document).length === 0 && offline.lookups().length === 1;
+    return missing && unavailable;
+  } finally {
+    nothing.window.close();
+    offline.window.close();
   }
 }
 

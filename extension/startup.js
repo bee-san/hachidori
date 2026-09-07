@@ -18,6 +18,7 @@ import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-stat
 const WORKER_TARGET = "hoshidicts-worker";
 const SETUP_TARGET = "hachidori-setup";
 const SETUP_EVENTS_TARGET = "hachidori-setup-events";
+const ENGINE_TARGET = "hoshidicts-offscreen";
 const SUCCESS_DISPLAY_MS = 5000;
 const PRACTICE_SENTENCE = "朝ごはんを食べる。";
 const COUNTDOWN_TICK_MS = 250;
@@ -46,6 +47,11 @@ let advanceFailed = false;
 let installFailed = false;
 let runSilenceTimer = null;
 let readerLoading = null;
+// What a real lookup of the practice sentence found: unknown, "ready",
+// "missing" (nothing in the installed dictionaries) or "unavailable" (the engine
+// could not answer). Probed once per committed inventory.
+let practiceOutcome = null;
+let practiceProbed = -1;
 // Anki detection is asked for once per page; a failed request waits for Retry.
 let ankiRequest = null;
 let ankiFailed = false;
@@ -565,16 +571,55 @@ function loadReader() {
   return readerLoading;
 }
 
-// What the exercise needs to be possible at all, checked against the live
-// inventory and options rather than the setup record: a package that can answer
-// a term lookup, and lookups switched on. The reader answers nothing while
-// `hoverEnabled` is off, so the step must not invite a hover in that case.
+// The invitation is only made when this exact sentence can be answered, so the
+// page asks: an ordinary lookup from every offset in it, through the engine the
+// reader would use, stopping at the first hit. A partly installed library or an
+// unrelated dictionary therefore cannot advertise a hover that returns nothing.
+function probePractice() {
+  practiceProbed = dictionaryRevision;
+  void (async () => {
+    const characters = [...PRACTICE_SENTENCE];
+    for (let start = 0; start < characters.length; start += 1) {
+      const text = characters.slice(start).join("");
+      let reply;
+      try {
+        reply = await send("hd_lookup", { text, scanLength: characters.length - start, maxResults: 1,
+          options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder, primaryReading: "" },
+        }, ENGINE_TARGET);
+      } catch {
+        practiceOutcome = "unavailable";
+        render();
+        return;
+      }
+      if (reply?.ok === false) {
+        practiceOutcome = "unavailable";
+        render();
+        return;
+      }
+      if (Array.isArray(reply?.results) && reply.results.some((result) => result?.term)) {
+        practiceOutcome = "ready";
+        render();
+        return;
+      }
+    }
+    practiceOutcome = "missing";
+    render();
+  })();
+}
+
+// What the exercise needs before it can be offered at all, checked against the
+// live inventory and options rather than the setup record. The reader answers
+// nothing while `hoverEnabled` is off, so the step must not invite a hover then.
 function lookupObstacle() {
   if (!dictionaries.some((dictionary) => dictionary?.enabled !== false && (dictionary?.termCount ?? 0) > 0)) {
     return { text: "No enabled dictionary can answer a lookup yet.", before: "Install dictionaries in ", href: "settings.html#add-dictionaries" };
   }
   if (!options.hoverEnabled) {
     return { text: "Lookups are turned off, so there is nothing to try here yet.", before: "Turn them back on in ", href: "settings.html#lookup" };
+  }
+  if (practiceOutcome === "missing") {
+    return { text: "The installed dictionaries do not have the words in this sample yet.",
+      before: "Install dictionaries in ", href: "settings.html#add-dictionaries" };
   }
   return null;
 }
@@ -590,6 +635,18 @@ function practiceView() {
     return {
       heading: "You’re ready.",
       body: [...outcome, paragraph(obstacle.text), settingsNote(obstacle.before, obstacle.href)],
+      actions: finishAction,
+    };
+  }
+  if (practiceOutcome !== "ready") {
+    // The engine answers in milliseconds; until it has, the step stands on its
+    // own rather than promising a lookup this page has not proved.
+    if (practiceProbed !== dictionaryRevision) probePractice();
+    return {
+      heading: "You’re ready.",
+      body: [...outcome, paragraph(practiceOutcome === "unavailable"
+        ? "Hover over Japanese text on any webpage to look it up."
+        : "Checking what the installed dictionaries can answer…")],
       actions: finishAction,
     };
   }
