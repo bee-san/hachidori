@@ -1,6 +1,6 @@
 import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
-import { detectAnkiSetup } from "./anki-setup.js";
+import { detectAnkiSetup, verifyAnkiSetup } from "./anki-setup.js";
 import { ankiMappingComplete } from "./anki-templates.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
 import { createBackupDownloads } from "./backup-downloads.js";
@@ -775,10 +775,10 @@ function startupSender(sender) {
   return sender.id === chrome.runtime.id && sender.url?.split(/[?#]/u)[0] === chrome.runtime.getURL(STARTUP_PAGE);
 }
 
-// A mapping the user already has is reported rather than replaced: a complete
-// one is already configured, and one whose note type is chosen but whose deck or
-// fields are not is theirs to finish. No saved choice means discovery may run.
-function savedAnkiOutcome(anki) {
+// A mapping the user chose while a check was already running is reported from
+// what is stored, because the check cannot be repeated inside the storage write:
+// a complete one is already configured and a half-made one is theirs to finish.
+function chosenAnkiOutcome(anki) {
   if (ankiMappingComplete(anki)) {
     return { status: "already-configured", detail: null, model: anki.model, deck: anki.deck };
   }
@@ -801,19 +801,21 @@ async function detectFirstRunAnki() {
   const options = normaliseOptions(stored[OPTIONS_KEY]);
   let outcome;
   let proposal = null;
-  const saved = savedAnkiOutcome(options.anki);
-  if (saved !== null) {
-    outcome = saved;
-  } else {
-    ankiGateway ??= createAnkiGateway();
-    try {
-      proposal = await detectAnkiSetup(
-        (action, params) => ankiGateway.invoke(action, params, options.anki.apiKey), options.anki,
-      );
-      outcome = { status: proposal.status, detail: proposal.detail, model: proposal.model, deck: proposal.deck };
-    } catch (error) {
-      outcome = ankiSetupFailure(error);
-    }
+  ankiGateway ??= createAnkiGateway();
+  const invoke = (action, params) => ankiGateway.invoke(action, params, options.anki.apiKey);
+  try {
+    // A mapping the user already saved is verified the way Settings verifies it,
+    // never replaced; only an unconfigured profile is offered a proposal.
+    proposal = options.anki.model === ""
+      ? await detectAnkiSetup(invoke, options.anki)
+      : await verifyAnkiSetup(invoke, options.anki);
+    outcome = { status: proposal.status, detail: proposal.detail, model: proposal.model, deck: proposal.deck };
+  } catch (error) {
+    const failure = ankiSetupFailure(error);
+    // A saved mapping that could not be checked stands as the user left it.
+    outcome = failure.status === "unavailable" && options.anki.model !== ""
+      ? { status: "already-configured", detail: null, model: options.anki.model, deck: options.anki.deck }
+      : failure;
   }
   return serialiseStorage(async () => {
     const current = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
@@ -821,10 +823,10 @@ async function detectFirstRunAnki() {
     if (setup === null) throw new Error("Setup has not started on this installation.");
     if (setup.anki !== null) return { state: setup };
     const values = {};
-    // A choice the user made while discovery ran wins over whatever it found,
-    // so a failed or absent discovery never reports a mapping the user has.
+    // A mapping the user changed while the check ran wins over whatever it
+    // found, so a failed or absent check never reports over a fresh choice.
     const latest = normaliseOptions(current[OPTIONS_KEY]);
-    const chosen = savedAnkiOutcome(latest.anki);
+    const chosen = sameJsonValue(latest.anki, options.anki) ? null : chosenAnkiOutcome(latest.anki);
     if (chosen !== null) {
       outcome = chosen;
     } else if (proposal?.status === "configured") {

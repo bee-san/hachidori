@@ -298,13 +298,17 @@ notes wins. No write action is ever issued: nothing in the collection changes.
 The worker records the outcome, and for a `configured` proposal it saves the
 model, deck and resolved field templates through the ordinary revisioned
 options write in the same storage write as the setup record. A mapping the user
-already had is reported as **already-configured** and never replaced — a saved
-mapping counts as one only when it names a note type and a deck and maps a first
-field (`ankiMappingComplete`), because choosing a note type in Settings clears
-the fields; a half-made one is **needs-attention** naming that note type, and
-discovery does not run. The latest options are read again inside that write: a mapping the user chooses
-while discovery runs wins over anything discovery found, including a failure or
-an absence. A connection that does not answer or
+already had is never replaced and is checked rather than assumed: instead of
+proposing anything, `verifyAnkiSetup` reads the note types, the decks and that
+model's fields and applies the shared `ankiAvailability` rules, so a complete
+mapping is **already-configured** and a half-made one — choosing a note type in
+Settings clears its fields — is **needs-attention** carrying Anki's own reason
+(for example *Map the first field, “Front”, before adding notes.*). A saved
+mapping that could not be checked because nothing answered stands as the user
+left it. The latest options are read again inside that write: a mapping the user changes
+while the check runs wins over anything it found, including a failure or an
+absence, judged from what is stored (`ankiMappingComplete`) because the check
+cannot be repeated while the storage write is held. A connection that does not answer or
 times out is the ordinary **unavailable** outcome; any other failure keeps its
 own reason. The page renders the settled outcome as one sentence with a link to
 the Anki section of Settings, and that outcome moves setup to the last stage by

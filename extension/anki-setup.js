@@ -62,26 +62,60 @@ function attention(detail) {
   return { status: "needs-attention", detail, model: null, deck: null, fieldTemplates: null };
 }
 
-/**
- * @param {(action: string, params: object) => Promise<unknown>} invoke fixed read-only AnkiConnect call
- * @param {object} baseConfig the current (unconfigured) Anki options
- */
-export async function detectAnkiSetup(invoke, baseConfig) {
-  const models = await invoke("modelNamesAndIds", {});
-  if (!models || typeof models !== "object" || Array.isArray(models)) throw new Error("AnkiConnect returned an invalid note type list.");
+function modelMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("AnkiConnect returned an invalid note type list.");
+  return value;
+}
+
+function fieldList(value) {
+  if (!Array.isArray(value) || value.some((field) => typeof field !== "string" || field === "")) {
+    throw new Error("AnkiConnect returned an invalid field list.");
+  }
+  return value;
+}
+
+// Every note type whose name leads with a supported family and whose fields the
+// preset can map, with the distinct notes each one already holds.
+async function eligibleCandidates(invoke, baseConfig, models) {
   const eligible = [];
   for (const [model, id] of Object.entries(models)) {
     const family = ankiSetupFamily(model);
     if (family === null || !positiveId(id)) continue;
-    const fields = await invoke("modelFieldNames", { modelName: model });
-    if (!Array.isArray(fields) || fields.some((field) => typeof field !== "string" || field === "")) {
-      throw new Error("AnkiConnect returned an invalid field list.");
-    }
+    const fields = fieldList(await invoke("modelFieldNames", { modelName: model }));
     // Deck is settled later; the shape check only needs the fields.
     if (ankiSetupTemplates(family, model, "Default", fields, baseConfig) === null) continue;
     const notes = idList(await invoke("findNotes", { query: `mid:${id}` }), "note IDs");
     eligible.push({ model, id, family, fields, count: new Set(notes).size });
   }
+  return eligible;
+}
+
+/**
+ * The mapping the user already saved, checked the way Settings checks it: the
+ * note types, the decks and that model's fields are read and the shared
+ * availability rules decide. Nothing is written and nothing is proposed.
+ * @param {(action: string, params: object) => Promise<unknown>} invoke fixed read-only AnkiConnect call
+ * @param {object} config the saved Anki options
+ */
+export async function verifyAnkiSetup(invoke, config) {
+  const models = modelMap(await invoke("modelNamesAndIds", {}));
+  const decks = await invoke("deckNames", {});
+  if (!Array.isArray(decks) || decks.some((deck) => typeof deck !== "string")) {
+    throw new Error("AnkiConnect returned an invalid deck list.");
+  }
+  const fields = Object.hasOwn(models, config.model) ? fieldList(await invoke("modelFieldNames", { modelName: config.model })) : [];
+  const errors = ankiAvailability(config, { connected: true, model: config.model, models: Object.keys(models), decks, fields, errors: [] });
+  return errors.length === 0
+    ? { status: "already-configured", detail: null, model: config.model, deck: config.deck, fieldTemplates: null }
+    : attention(errors[0]);
+}
+
+/**
+ * @param {(action: string, params: object) => Promise<unknown>} invoke fixed read-only AnkiConnect call
+ * @param {object} baseConfig the current (unconfigured) Anki options
+ */
+export async function detectAnkiSetup(invoke, baseConfig) {
+  const eligible = await eligibleCandidates(invoke, baseConfig, modelMap(await invoke("modelNamesAndIds", {})));
   if (eligible.length === 0) return attention("No Senren, Lapis or Kiku note type with its expected fields was found.");
   const ranked = uniqueMaximum(eligible);
   if (ranked.best === null) return attention("The supported note types have no notes yet.");

@@ -101,15 +101,17 @@ function basicTemplates(config, fields) {
   return { templates: Object.fromEntries(rows), staleFields: [], errors };
 }
 
-// A saved mapping is usable once it names a note type and a deck and maps a
-// first field, either through explicit templates or the basic expression field.
-// Choosing a note type in Settings clears both, so a mapping half-made there is
-// not a configured setup.
+// A saved mapping looks usable when it names a note type and a deck and maps
+// the note type's first field — the templates are stored in that note type's
+// field order, and the basic mapping's first field is the expression. Choosing a
+// note type in Settings clears both, so a mapping half-made there is not one.
+// Anki itself decides through `ankiAvailability`; this is the local view for a
+// choice made while a check was already running.
 export function ankiMappingComplete(anki) {
   if (anki.model === "" || anki.deck === "") return false;
   return anki.fieldTemplates === null
     ? anki.fields.expression !== ""
-    : Object.values(anki.fieldTemplates).some(template => template.value !== "");
+    : (Object.values(anki.fieldTemplates)[0]?.value ?? "").trim() !== "";
 }
 
 // The core a mined card needs: the expression, its reading, the sentence and a

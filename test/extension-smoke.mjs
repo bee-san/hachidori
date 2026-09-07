@@ -1270,6 +1270,7 @@ async function firstRunAnkiStage() {
   const collection = (action, params) => {
     switch (action) {
       case "modelNamesAndIds": return { Basic: 1, "Kiku v2": 2, "My Kiku": 3 };
+      case "deckNames": return ["Default", "Words", "Mining", "Mining::Old"];
       case "modelFieldNames": return params.modelName === "Kiku v2" ? KIKU_FIELDS : ["Front", "Back"];
       case "findNotes": return [21, 22, 23];
       case "findCards": return [211, 212, 221, 231];
@@ -1287,12 +1288,18 @@ async function firstRunAnkiStage() {
   // A refusal keeps its reason.
   const denied = worldFor("anki-denied", { answer: () => ({ status: 403 }) });
   const deniedReply = await denied.send();
-  // A configuration the user already has is reported, not replaced.
+  // A configuration the user already has is verified the way Settings verifies
+  // it, then reported without proposing or writing anything.
   const existing = worldFor("anki-existing", { answer: collection, options: { revision: 3, anki: configuredAnki("Basic", "Words") } });
   const existingReply = await existing.send();
-  // A note type chosen in Settings without its fields is theirs to finish.
+  // A note type chosen in Settings without its fields is not a configured setup:
+  // Anki's own availability rules name what is missing.
   const partial = worldFor("anki-partial", { answer: collection, options: { revision: 3, anki: { ...defaultAnki(), model: "Basic", deck: "Words" } } });
   const partialReply = await partial.send();
+  // A saved mapping that cannot be checked stands as the user left it.
+  const offline = worldFor("anki-offline", { answer: () => new TypeError("Failed to fetch"),
+    options: { revision: 3, anki: configuredAnki("Basic", "Words") } });
+  const offlineReply = await offline.send();
   check("first-run Anki detection is startup-only, records absence or a specific refusal once, and reports an existing setup without any call",
     fromSettings?.ok === false && fromSettings.error.includes("startup page")
       && unavailable?.ok === true && unavailable.state.anki?.status === "unavailable" && unavailable.state.anki.detail.includes("Open Anki")
@@ -1301,14 +1308,19 @@ async function firstRunAnkiStage() {
       && absent.storage.raw.get("options") === undefined
       && deniedReply?.ok === true && deniedReply.state.anki?.status === "needs-attention" && deniedReply.state.anki.detail.includes("denied permission")
       && existingReply?.ok === true && existingReply.state.anki?.status === "already-configured"
-      && existingReply.state.anki.model === "Basic" && existingReply.state.anki.deck === "Words" && existing.requests.length === 0
+      && existingReply.state.anki.model === "Basic" && existingReply.state.anki.deck === "Words"
+      && JSON.stringify(existing.requests.map((request) => request.action)) === JSON.stringify(["modelNamesAndIds", "deckNames", "modelFieldNames"])
       && existing.storage.raw.get("options").revision === 3
       && partialReply?.ok === true && partialReply.state.anki?.status === "needs-attention"
-      && partialReply.state.anki.detail === "Finish the Anki mapping for Basic in Settings."
-      && partialReply.state.anki.model === null && partial.requests.length === 0
-      && partial.storage.raw.get("options").revision === 3,
+      && partialReply.state.anki.detail === "Map the first field, “Front”, before adding notes."
+      && partialReply.state.anki.model === null
+      && JSON.stringify(partial.requests.map((request) => request.action)) === JSON.stringify(["modelNamesAndIds", "deckNames", "modelFieldNames"])
+      && partial.storage.raw.get("options").revision === 3
+      && offlineReply?.ok === true && offlineReply.state.anki?.status === "already-configured"
+      && offlineReply.state.anki.model === "Basic" && offlineReply.state.anki.deck === "Words"
+      && offline.storage.raw.get("options").revision === 3,
     JSON.stringify({ fromSettings, unavailable, again, absentRequests: absent.requests, deniedReply, existingReply,
-      existingRequests: existing.requests, partialReply, partialRequests: partial.requests }));
+      existingRequests: existing.requests, partialReply, partialRequests: partial.requests, offlineReply }));
 
   // A recognised setup: duplicate requests share one detection, the ranked
   // model and deck are saved with the preset through the options CAS, and the
