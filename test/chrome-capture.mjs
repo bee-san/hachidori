@@ -947,6 +947,7 @@ async function main() {
     // Chrome can reduce a background canvas's capture cadence even while the
     // recorder keeps consuming every delivered frame.
     await source.bringToFront();
+    await source.mouse.move(1, 1); // Keep incidental hover lookups away from the explicit test pin.
     const initialPin = await world.evaluate(`(async () => {
       const node = document.getElementById("subtitle").firstChild;
       const pin = await HDCapture.rootLookup({ anchor: node, sentence: node.nodeValue, query: node.nodeValue });
