@@ -280,13 +280,24 @@ async function updateMediaSettings() {
 }
 
 async function editMediaCapture(mutator, { immediate = false } = {}) {
+  let recording = mediaRuntimeState === "recording";
+  if (!immediate) {
+    try {
+      const status = await send("hd_capture_status", {}, CAPTURE_TARGET);
+      recording = status.ok && status.state === "recording";
+      mediaRuntimeState = status.ok ? status.state : "unavailable";
+    } catch {
+      recording = false;
+      mediaRuntimeState = "unavailable";
+    }
+  }
   const next = {
     ...options.mediaCapture,
     texthooker: { ...options.mediaCapture.texthooker },
     page: { ...options.mediaCapture.page },
   };
   mutator(next);
-  if (!immediate && mediaRuntimeState === "recording"
+  if (!immediate && recording
       && !window.confirm("Changing media capture settings stops the current capture and clears unsubmitted clips. Apply this change?")) {
     renderMediaSettings();
     return false;

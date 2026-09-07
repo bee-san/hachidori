@@ -481,10 +481,18 @@
     report("Choose a bounded text area. Arrow Up selects its parent; Escape cancels.", { picking: true });
   }
 
-  async function link() {
+  async function link(mediaCapture) {
     await identify();
-    const stored = await chrome.storage.local.get("options");
-    options = globalThis.HDReaderOptions.normaliseOptions(stored.options);
+    if (!mediaCapture || typeof mediaCapture !== "object") {
+      throw new Error("The capture service did not provide page timing settings.");
+    }
+    options = {
+      mediaCapture: {
+        ...mediaCapture,
+        texthooker: { ...mediaCapture.texthooker },
+        page: { ...mediaCapture.page },
+      },
+    };
     linked = true;
     documentEpoch = crypto.randomUUID();
     const available = videos();
@@ -567,7 +575,7 @@
     if (message?.target !== CONTENT_TARGET) return false;
     Promise.resolve().then(async () => {
       switch (message.type) {
-        case "hd_capture_link": return link();
+        case "hd_capture_link": return link(message.mediaCapture);
         case "hd_capture_video_select": {
           if (options?.mediaCapture.timingMode === "recent"
               || !options?.mediaCapture.page.nativeCues) {

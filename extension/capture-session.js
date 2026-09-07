@@ -238,6 +238,9 @@ export function createCaptureSession({
     requireRecording();
     pruneJobs();
     if (activeJobId !== null) throw new Error("Another captured clip is still exporting. Finish or cancel it first.");
+    if (!config.includeAnimation && config.includeCapturedAudio && !capturedAudioAvailable) {
+      throw new Error("The shared source did not provide audio for media capture.");
+    }
     const availableStartMs = oldestRequiredTimestamp();
     if (!Number.isFinite(availableStartMs)) throw new Error("Capture history is still warming up.");
     const interval = resolveCaptureInterval({

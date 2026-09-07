@@ -90,6 +90,7 @@ function captureFixture({
   },
   duplicate = false,
   failFirstWrite = false,
+  failReadback = false,
   assets = {
     animation: { filename: "hachidori-abc123.avif", data: "AQI=", byteLength: 2 },
     audio: { filename: "hachidori-abc123.wav", data: "Aw==", byteLength: 1 },
@@ -131,6 +132,7 @@ function captureFixture({
         return null;
       }
       if (action === "notesInfo") {
+        if (failReadback) throw new Error("readback failed");
         const noteId = params.notes[0];
         return [{ noteId, modelName: "Basic", cards: [], fields: Object.fromEntries(
           Object.entries(fields).map(([field, value]) => [field, { value }]),
@@ -258,6 +260,22 @@ test("an uncertain note write retains confirmed capture uploads for an explicit 
   assert.equal(retry.state, "added");
   assert.equal(f.captureCalls.filter(call => call.type === "hd_capture_asset").length, 1);
   assert.equal(f.calls.filter(call => call === "storeMediaFile").length, 1);
+  assert.equal(f.captureCalls.filter(call => call.type === "hd_capture_complete").length, 1);
+});
+
+test("a confirmed note releases its capture job even when field readback fails", async () => {
+  const f = captureFixture({
+    failReadback: true,
+    templates: {
+      Front: { value: "{expression}", overwriteMode: "overwrite" },
+      Media: { value: "{capture-animation}", overwriteMode: "overwrite" },
+    },
+  });
+  f.request.configKey = (await f.service.status()).configKey;
+  f.request.captureJobId = "job-readback";
+  const result = await f.service.submit(f.request);
+  assert.equal(result.state, "added");
+  assert.match(result.warnings.join(" "), /readback failed/u);
   assert.equal(f.captureCalls.filter(call => call.type === "hd_capture_complete").length, 1);
 });
 

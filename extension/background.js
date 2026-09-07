@@ -1211,7 +1211,9 @@ async function handleCaptureControl(message, sender) {
   if (message.type === "hd_capture_status") return relayCapture(message);
   assertCaptureTabId(message.tabId);
   if (message.type === "hd_capture_link") {
-    const details = await commandCaptureContent(message.tabId, "hd_capture_link", {});
+    const stored = await chrome.storage.local.get(OPTIONS_KEY);
+    const mediaCapture = globalThis.HDReaderOptions.projectContentOptions(stored[OPTIONS_KEY]).mediaCapture;
+    const details = await commandCaptureContent(message.tabId, "hd_capture_link", { mediaCapture });
     const document = captureContentDocuments.get(message.tabId);
     if (!document?.documentId) throw new Error("The linked page did not establish a document identity.");
     const tab = await chrome.tabs.get(message.tabId);
@@ -1275,13 +1277,17 @@ async function handleCaptureContent(message, sender) {
       || typeof sender.documentId !== "string" || sender.documentId === "") {
     throw new Error("Unknown or untrusted reading-page capture request.");
   }
-  captureContentDocuments.set(sender.tab.id, {
-    documentId: sender.documentId,
-    url: String(sender.url || ""),
-    seenAt: Date.now(),
-  });
   if (message.type === "hd_capture_content_identify") {
+    captureContentDocuments.set(sender.tab.id, {
+      documentId: sender.documentId,
+      url: String(sender.url || ""),
+      seenAt: Date.now(),
+    });
     return { documentId: sender.documentId, tabId: sender.tab.id };
+  }
+  const document = captureContentDocuments.get(sender.tab.id);
+  if (document?.documentId !== sender.documentId) {
+    throw new Error("This reading document is not linked to the capture session.");
   }
   const authority = { tabId: sender.tab.id, documentId: sender.documentId };
   if (message.type === "hd_capture_text_begin") {
@@ -1342,6 +1348,28 @@ async function handleCaptureContent(message, sender) {
   }
   throw new Error("Unknown reading-page capture request.");
 }
+
+function clearNavigatedCaptureDocument(tabId, reason) {
+  const document = captureContentDocuments.get(tabId);
+  if (!document) return;
+  captureContentDocuments.delete(tabId);
+  void relayCapture({
+    type: "hd_capture_unlinked",
+    requestId: `capture-navigation-${crypto.randomUUID()}`,
+    tabId,
+    documentId: document.documentId,
+    reason,
+  }).catch(() => {});
+}
+
+chrome.tabs?.onUpdated?.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading") {
+    clearNavigatedCaptureDocument(tabId, "The reading page navigated. Link it again.");
+  }
+});
+chrome.tabs?.onRemoved?.addListener(tabId => {
+  clearNavigatedCaptureDocument(tabId, "The linked reading tab was closed.");
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== CAPTURE_TARGET || message.relayed === true) return false;

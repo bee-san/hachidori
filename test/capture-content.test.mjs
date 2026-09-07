@@ -85,16 +85,23 @@ function fixture(t, {
         addListener(value) { listener = value; },
       },
     },
-    storage: {
-      local: {
-        async get() { return { options: storedOptions }; },
-      },
-    },
   };
   window.eval(extension("reader-options.js"));
   window.eval(extension("capture-content.js"));
 
   function command(type, fields = {}) {
+    if (type === "hd_capture_link" && !fields.mediaCapture) {
+      fields = {
+        ...fields,
+        mediaCapture: {
+          ...structuredClone(storedOptions.mediaCapture),
+          texthooker: {
+            enabled: storedOptions.mediaCapture.texthooker.enabled,
+            format: storedOptions.mediaCapture.texthooker.format,
+          },
+        },
+      };
+    }
     return new Promise((resolve, reject) => {
       const handled = listener({ target: "hachidori-capture-content", type, ...fields }, {}, reply => {
         if (reply?.error) reject(new Error(reply.error));

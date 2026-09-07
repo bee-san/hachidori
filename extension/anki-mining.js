@@ -74,7 +74,7 @@ export function createAnkiMiningService({
   readConfig,
   buildFields,
   beforeWrite,
-  afterVerified = async () => {},
+  afterConfirmed = async () => {},
   validateCapture = async () => {},
   enrich,
   now = Date.now,
@@ -176,20 +176,21 @@ export function createAnkiMiningService({
     } catch (error) {
       warnings.push(error.message);
     }
+    try {
+      await afterConfirmed({
+        request,
+        ...prepared,
+        noteId,
+        existingFields: target?.fields,
+        appliedFields: fields,
+        capture,
+        writeResources,
+        verified,
+      });
+    } catch (error) {
+      warnings.push(`Captured media cleanup: ${error.message}`);
+    }
     if (verified) {
-      try {
-        await afterVerified({
-          request,
-          ...prepared,
-          noteId,
-          existingFields: target?.fields,
-          appliedFields: fields,
-          capture,
-          writeResources,
-        });
-      } catch (error) {
-        warnings.push(`Captured media cleanup: ${error.message}`);
-      }
       try {
         warnings.push(...await enrich({ request, ...prepared, noteId, existingFields: target?.fields, appliedFields: fields }));
       } catch (error) {

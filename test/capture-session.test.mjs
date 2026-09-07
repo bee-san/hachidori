@@ -136,6 +136,16 @@ test("an audio-only mapping reports unavailable source audio instead of inventin
   const pin = h.session.pinLookup({ lookupText: "猫", lookupTimeMs: h.now() });
   assert.throws(() => h.session.beginExport(pin.token, { includeAnimation: false, includeAudio: true }),
     /did not provide audio/u);
+
+  const audioOnly = harness({
+    enabled: true,
+    timingMode: "recent",
+    includeAnimation: false,
+    includeCapturedAudio: true,
+  });
+  audioOnly.session.start({ sourceName: "Window", displaySurface: "window", audioAvailable: false });
+  assert.throws(() => audioOnly.session.pinLookup({ lookupText: "猫", lookupTimeMs: audioOnly.now() }),
+    /did not provide audio/u);
 });
 
 test("Stop aborts an encoder job and oversized animation output becomes an explicit job error", async () => {

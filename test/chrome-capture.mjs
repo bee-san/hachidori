@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir, tmpdir } from "node:os";
@@ -26,6 +26,7 @@ const PROFILE = process.env.HACHIDORI_CAPTURE_PROFILE
   || resolve(tmpdir(), `hachidori-capture-profile-${process.pid}`);
 const SETTINGS_SCREENSHOT = process.env.HACHIDORI_MEDIA_SETTINGS_SCREENSHOT || "";
 const CAPTURE_SCREENSHOT = process.env.HACHIDORI_CAPTURE_SCREENSHOT || "";
+const ASSET_DIR = process.env.HACHIDORI_CAPTURE_ASSET_DIR || "";
 
 function cachedChrome() {
   const root = resolve(CACHE, "hachidori-browsers/chrome");
@@ -88,10 +89,25 @@ const FIXTURE_HTML = `<!doctype html>
         context.fillStyle = color;
         context.fillRect(0, 0, canvas.width, canvas.height);
       };
+      window.triggerSyncMarker = () => {
+        if (!window.fixtureAudio) throw new Error("fixture audio is not active");
+        const { audio } = window.fixtureAudio;
+        const start = audio.currentTime;
+        const end = start + 0.25;
+        painting = false;
+        context.fillStyle = "#fff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        const oscillator = new OscillatorNode(audio, { frequency: 1200 });
+        const gain = new GainNode(audio, { gain: 0.22 });
+        oscillator.connect(gain).connect(audio.destination);
+        oscillator.start(start);
+        oscillator.stop(end);
+        return { start, end };
+      };
       document.getElementById("fixture-start").addEventListener("click", async event => {
         const audio = new AudioContext({ sampleRate: 48000 });
         const oscillator = new OscillatorNode(audio, { frequency: 440 });
-        const gain = new GainNode(audio, { gain: 0.08 });
+        const gain = new GainNode(audio, { gain: 0 });
         oscillator.connect(gain).connect(audio.destination);
         oscillator.start();
         await audio.resume();
@@ -216,8 +232,10 @@ function attachTexthooker(server, state) {
     state.current.write(websocketTextFrame(value));
   };
   state.disconnect = () => {
-    state.current?.destroy();
-    state.current = null;
+    const socket = state.current;
+    if (!socket) return false;
+    socket.write(Buffer.from([0x88, 0x00]), () => socket.destroy());
+    return true;
   };
 }
 
@@ -375,17 +393,39 @@ async function writeOptions(page, patch) {
 }
 
 function avifSampleCount(bytes) {
+  return avifTiming(bytes).durations.length;
+}
+
+function avifTiming(bytes) {
   const type = bytes.indexOf(Buffer.from("stts"));
   assert.ok(type >= 4, "encoded AVIF has a sample timing box");
   const box = type - 4;
   const entries = bytes.readUInt32BE(box + 12);
   let offset = box + 16;
-  let samples = 0;
+  const durations = [];
   for (let index = 0; index < entries; index += 1) {
-    samples += bytes.readUInt32BE(offset);
+    const count = bytes.readUInt32BE(offset);
+    const duration = bytes.readUInt32BE(offset + 4);
+    for (let sample = 0; sample < count; sample += 1) durations.push(duration);
     offset += 8;
   }
-  return samples;
+  const mdhdType = bytes.indexOf(Buffer.from("mdhd"));
+  assert.ok(mdhdType >= 4, "encoded AVIF has a media timescale box");
+  const mdhd = mdhdType - 4;
+  const version = bytes[mdhd + 8];
+  const timescale = bytes.readUInt32BE(mdhd + (version === 1 ? 28 : 20));
+  assert.ok(timescale > 0);
+  return { durations, timescale };
+}
+
+function wavSignalOnsetSeconds(bytes, threshold = 1000) {
+  const sampleRate = bytes.readUInt32LE(24);
+  for (let offset = 44; offset + 1 < bytes.length; offset += 2) {
+    if (Math.abs(bytes.readInt16LE(offset)) >= threshold) {
+      return ((offset - 44) / 2) / sampleRate;
+    }
+  }
+  return null;
 }
 
 async function playbackHashes(page, base64) {
@@ -426,11 +466,12 @@ async function decodedFrameHashes(page, base64) {
     const frameCount = track.frameCount;
     const repetitionCount = Number.isFinite(track.repetitionCount)
       ? track.repetitionCount : String(track.repetitionCount);
-    const indexes = [...new Set([0, Math.floor((frameCount - 1) / 2), frameCount - 1])];
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d", { willReadFrequently: true });
     const hashes = [];
-    for (const frameIndex of indexes) {
+    const luminances = [];
+    const centerLuminances = [];
+    for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
       const decoded = await decoder.decode({ frameIndex, completeFramesOnly: true });
       const image = decoded.image;
       canvas.width = image.displayWidth;
@@ -438,11 +479,20 @@ async function decodedFrameHashes(page, base64) {
       context.drawImage(image, 0, 0);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
       let hash = 2166136261;
+      let luminance = 0;
+      let luminanceSamples = 0;
       for (let index = 0; index < pixels.length; index += 97) {
         hash ^= pixels[index];
         hash = Math.imul(hash, 16777619);
       }
+      for (let index = 0; index + 2 < pixels.length; index += 4 * 997) {
+        luminance += (pixels[index] + pixels[index + 1] + pixels[index + 2]) / 3;
+        luminanceSamples += 1;
+      }
       hashes.push(hash >>> 0);
+      luminances.push(luminance / luminanceSamples);
+      const center = (Math.floor(canvas.height / 2) * canvas.width + Math.floor(canvas.width / 2)) * 4;
+      centerLuminances.push((pixels[center] + pixels[center + 1] + pixels[center + 2]) / 3);
       image.close();
     }
     decoder.close();
@@ -452,6 +502,8 @@ async function decodedFrameHashes(page, base64) {
       width: canvas.width,
       height: canvas.height,
       hashes,
+      luminances,
+      centerLuminances,
     };
   }, base64);
 }
@@ -487,7 +539,6 @@ async function main() {
         "--no-sandbox",
         "--disable-dev-shm-usage",
         "--autoplay-policy=no-user-gesture-required",
-        "--use-fake-ui-for-media-stream",
         "--enable-usermedia-screen-capturing",
         `--auto-select-tab-capture-source-by-title=${SOURCE_TITLE}`,
         `--disable-extensions-except=${EXTENSION}`,
@@ -571,7 +622,10 @@ async function main() {
     await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped");
     assert.equal(await capture.$eval("#capture-state", element => element.textContent), "Stopped",
       "saved settings never auto-arm capture");
+    await capture.bringToFront();
     await capture.click("#capture-start");
+    await new Promise(done => setTimeout(done, 1000));
+    await capture.bringToFront();
     await capture.waitForFunction(() => {
       const state = document.getElementById("capture-state")?.textContent;
       const error = document.getElementById("capture-error")?.textContent;
@@ -699,12 +753,19 @@ async function main() {
       requirements: preflight.capture.requirements,
     });
     assert.equal(exported.state, "finishing");
+    await source.bringToFront();
+    await source.evaluate(() => window.triggerSyncMarker());
+    assert.deepEqual(await source.$eval("#scene", canvas => {
+      const pixel = canvas.getContext("2d").getImageData(10, 10, 1, 1).data;
+      return [...pixel];
+    }), [255, 255, 255, 255]);
+    await new Promise(done => setTimeout(done, 900));
     await source.evaluate(() => window.setFixtureFrame("#e11d48"));
-    await new Promise(done => setTimeout(done, 600));
+    await new Promise(done => setTimeout(done, 400));
     await source.evaluate(() => window.setFixtureFrame("#2563eb"));
-    await new Promise(done => setTimeout(done, 600));
+    await new Promise(done => setTimeout(done, 400));
     await source.evaluate(() => window.setFixtureFrame("#16a34a"));
-    await new Promise(done => setTimeout(done, 600));
+    await new Promise(done => setTimeout(done, 400));
     await source.$eval("#subtitle", element => { element.textContent = "終了"; });
 
     let job;
@@ -738,6 +799,11 @@ async function main() {
     assert.ok(audioBase64);
     const avif = Buffer.from(animationBase64, "base64");
     const wav = Buffer.from(audioBase64, "base64");
+    if (ASSET_DIR) {
+      mkdirSync(resolve(ASSET_DIR), { recursive: true });
+      writeFileSync(resolve(ASSET_DIR, "capture.avif"), avif);
+      writeFileSync(resolve(ASSET_DIR, "capture.wav"), wav);
+    }
     assert.equal(avif.subarray(4, 12).toString("ascii"), "ftypavis");
     assert.ok(avifSampleCount(avif) >= 2, "the captured AVIF contains changing timed frames");
     assert.equal(wav.subarray(0, 4).toString("ascii"), "RIFF");
@@ -758,6 +824,18 @@ async function main() {
     assert.equal(frameDecode.repetitionCount, "Infinity", "the AVIF loops indefinitely");
     assert.ok(new Set(frameDecode.hashes).size >= 2,
       `Chrome decodes changing AVIF frames (${frameDecode.hashes.join(", ")})`);
+    const brightFrame = frameDecode.centerLuminances.findIndex(value => value >= 240);
+    assert.ok(brightFrame >= 0,
+      `Chrome decodes the synchronization flash (${frameDecode.centerLuminances.join(", ")})`);
+    const timing = avifTiming(avif);
+    assert.equal(timing.durations.length, frameDecode.frameCount);
+    const videoMarkerSeconds = timing.durations.slice(0, brightFrame)
+      .reduce((total, duration) => total + duration, 0) / timing.timescale;
+    const audioMarkerSeconds = wavSignalOnsetSeconds(wav);
+    assert.ok(audioMarkerSeconds !== null, "the captured WAV contains the synchronization beep");
+    const syncOffsetMs = Math.abs(videoMarkerSeconds - audioMarkerSeconds) * 1000;
+    assert.ok(syncOffsetMs <= 300,
+      `decoded flash/beep alignment stays within 300 ms (${syncOffsetMs.toFixed(1)} ms)`);
     const decoded = await playbackHashes(source, animationBase64);
     assert.ok(decoded.width <= 640 && decoded.height <= 360);
     assert.ok(new Set(decoded.hashes).size >= 2,
@@ -807,24 +885,28 @@ async function main() {
       jobId: repeatedExport.jobId,
     })).cancelled, true);
 
-    texthooker.disconnect();
+    assert.equal(texthooker.disconnect(), true, "the fixture closes the active texthooker socket");
     await capture.waitForFunction(() =>
       ["Disconnected", "Connecting"].includes(document.getElementById("texthooker-status")?.textContent),
     { timeout: 5_000 }).catch(() => {});
-    await capture.waitForFunction(() =>
-      (document.getElementById("texthooker-status")?.textContent || "").includes("waiting"),
-    { timeout: 10_000 });
+    try {
+      await capture.waitForFunction(() =>
+        (document.getElementById("texthooker-status")?.textContent || "").includes("waiting"),
+      { timeout: 10_000, polling: 100 });
+    } catch (error) {
+      const status = await capture.$eval("#texthooker-status", element => element.textContent);
+      throw new Error(`texthooker did not reconnect: ${JSON.stringify({
+        status,
+        connections: texthooker.connections.length,
+        current: Boolean(texthooker.current && !texthooker.current.destroyed),
+      })}`, { cause: error });
+    }
     assert.ok(texthooker.connections.length >= 2, "texthooker reconnects with a new connection epoch");
     texthooker.send("再接続");
     await capture.waitForFunction(() =>
       document.getElementById("texthooker-status")?.textContent === "Active");
 
     await settings.bringToFront();
-    await settings.reload({ waitUntil: "domcontentloaded" });
-    await settings.waitForSelector("#media:not([hidden])");
-    await settings.waitForFunction(() =>
-      (document.getElementById("media-runtime-status")?.textContent || "").startsWith("Recording"),
-    { timeout: 10_000 });
     const dismissed = new Promise(resolveDialog => settings.once("dialog", async dialog => {
       assert.match(dialog.message(), /stops the current capture/u);
       await dialog.dismiss();
@@ -834,6 +916,15 @@ async function main() {
     await dismissed;
     assert.equal(await settings.$eval("#opt-media-history", element => element.value), "60");
     assert.equal((await captureControl(settings, "hd_capture_status")).state, "recording");
+
+    await source.goto("http://127.0.0.1:8765/fixture?navigation=1", {
+      waitUntil: "domcontentloaded",
+    });
+    await capture.waitForFunction(() =>
+      document.getElementById("linked-page")?.textContent === "No reading page is linked.",
+    { timeout: 10_000 });
+    assert.equal((await captureControl(settings, "hd_capture_status")).state, "recording",
+      "reading-page navigation clears only the page binding");
 
     const accepted = new Promise(resolveDialog => settings.once("dialog", async dialog => {
       await dialog.accept();
@@ -865,8 +956,10 @@ async function main() {
     console.log("PASS  learned DOM timing falls back first, then pins an observed line");
     console.log("PASS  animated AVIF and mono WAV upload through Anki one at a time");
     console.log("PASS  Chrome decodes changing AVIF frames and non-silent WAV samples");
+    console.log("PASS  decoded flash and beep stay aligned within 300 ms");
     console.log("PASS  live texthooker priority, active state and reconnect use the real loopback WebSocket");
     console.log("PASS  a second pinned interval encodes and cleans up independently");
+    console.log("PASS  reading-page navigation clears its binding without stopping capture");
     console.log("PASS  capture-setting confirmation stops and clears without auto-rearming");
     console.log(`BENCH ${JSON.stringify({
       stoppedLookup,
@@ -877,8 +970,9 @@ async function main() {
       animationBytes: job.assets.animation.byteLength,
       audioBytes: job.assets.audio.byteLength,
       avifFrames: frameDecode.frameCount,
+      syncOffsetMs,
     })}`);
-    console.log("7 passed, 0 failed");
+    console.log("9 passed, 0 failed");
   } finally {
     texthooker.disconnect?.();
     for (const socket of texthooker.connections) socket.destroy();

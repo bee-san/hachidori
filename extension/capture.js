@@ -273,10 +273,18 @@ async function startCapture() {
       audio: config.includeCapturedAudio,
       monitorTypeSurfaces: "exclude",
       selfBrowserSurface: "exclude",
-      surfaceSwitching: "include",
+      surfaceSwitching: "exclude",
     });
     const videoTrack = requested.getVideoTracks()[0];
-    if (!videoTrack) throw new Error("The selected source did not provide video.");
+    if (!videoTrack) {
+      requested.getTracks().forEach(track => track.stop());
+      throw new Error("The selected source did not provide video.");
+    }
+    if (!config.includeAnimation && config.includeCapturedAudio
+        && requested.getAudioTracks().length === 0) {
+      requested.getTracks().forEach(track => track.stop());
+      throw new Error("The selected source did not provide audio for media capture.");
+    }
     const settings = videoTrack.getSettings();
     if (settings.displaySurface === "monitor") {
       requested.getTracks().forEach(track => track.stop());
@@ -350,6 +358,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         elements["video-row"].hidden = message.page.videos.length < 2;
         elements["reading-video"].replaceChildren(...message.page.videos.map(video =>
           new Option(video.label, video.id)));
+        render();
+        return session.status();
+      case "hd_capture_unlinked":
+        if (!linked(message)) return { ignored: true };
+        selectedTabId = null;
+        linkedDocumentId = "";
+        session.setLinkedPage(null);
+        elements["page-status"].textContent = message.reason || "The reading page navigated. Link it again.";
+        elements["video-row"].hidden = true;
+        elements["reading-video"].replaceChildren();
         render();
         return session.status();
       case "hd_capture_text_begin":

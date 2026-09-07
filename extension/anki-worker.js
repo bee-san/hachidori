@@ -166,7 +166,7 @@ export function createAnkiWorkerService({
     },
     validateCapture,
     beforeWrite: prepareCapture,
-    afterVerified: completeCapture,
+    afterConfirmed: completeCapture,
     enrich: context => enrichAnkiNote(context, { audio, render, media: async (item, generation) => {
       const reply = await engine({ type: "hd_media", dictionary: item.dictionary, path: item.path, generation });
       if (!reply.dataUrl) throw new Error("The dictionary image is no longer available.");
