@@ -901,9 +901,10 @@ async function managedScheduleStage() {
   const base = (await bus.sendMessage("schedule-page", { target: "hoshidicts-worker", type: "hd_backup_base_read" })).snapshot;
   const snapshot = (await bus.sendMessage("schedule-page", { target: "hoshidicts-worker", type: "hd_backup_read" })).snapshot;
   for (const [key, revision] of Object.entries(backupRevisions(base))) snapshot[key].revision = revision + 1;
+  snapshot.lookupStats.generation = crypto.randomUUID();
   snapshot.updates.schedule = "weekly";
   const beforeRestoreReads = alarmReads;
-  const restored = await bus.sendMessage("schedule-offscreen", { target: "hoshidicts-worker", type: "hd_backup_cas", base, snapshot },
+  const restored = await bus.sendMessage("schedule-offscreen", { target: "hoshidicts-worker", type: "hd_backup_cas", base, snapshot, lookupStatsRows: [] },
     { id: chrome.runtime.id, url: chrome.runtime.getURL("offscreen.html") });
   await settleAlarm();
   check("backup schedule-only publication reconciles without relying on a settings storage event",
