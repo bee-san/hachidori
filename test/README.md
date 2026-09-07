@@ -1068,7 +1068,12 @@ the production compiler and single-thread IDBFS bundle, closes Chrome, and
 launches the same fallback build against the retained profile. Both launches
 must report `storageBackend: "idbfs"` and `threaded: false`, return the expected
 fixture and custom-dictionary lookups, restore the revisioned source and fixed
-package, and leave OPFS empty.
+package, and leave OPFS empty. The fresh profile also starts the first-run
+dictionary run inside the fallback engine; its four catalogue downloads are
+answered 503 on the offscreen target so nothing reaches the network, the run
+must record one failed outcome per source before the fixture import shares the
+same engine lock, and the relaunch must neither reseed the setup record nor
+request an archive again.
 
 ---
 
