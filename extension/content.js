@@ -1367,11 +1367,13 @@
       isCurrent: () => level.currentViewRequest === request && !level.retainedView
         && requestCanRender(token, level.activeCandidate, level),
     };
-    // The primary result's autoplay waits for the blur decision; Show more
-    // rebinds later controls after that decision.
-    audio.bind(rendered.audioButtons, "lookupStats" in rendered
-      ? { ...context, autoplayHeld: () => request?.blur?.autoplayHeld === true }
-      : context);
+    // The primary result's autoplay waits for the blur decision, and a lookup
+    // whose count qualified never auto-plays, whichever tab or expansion binds.
+    audio.bind(rendered.audioButtons, {
+      ...context,
+      autoplaySuppressed: () => request?.blur?.autoplaySuppressed === true,
+      ...("lookupStats" in rendered ? { autoplayHeld: () => request?.blur?.autoplayHeld === true } : {}),
+    });
     mining.bind(rendered.miningActions, { ...context, getRequest: result => {
       const candidate = level.activeCandidate;
       const selection = shadow.getSelection?.() ?? window.getSelection();
@@ -1534,7 +1536,8 @@
     if (!request) return;
     if (!request.blur) {
       const active = options.definitionBlurEnabled && options.showLookupCounts;
-      request.blur = { state: active ? "pending" : "revealed", displayedAt: Date.now(), autoplayHeld: active };
+      request.blur = { state: active ? "pending" : "revealed", displayedAt: Date.now(),
+        decided: false, autoplayHeld: active, autoplaySuppressed: false };
     }
     armDefinitionBlurTimer(request, level);
   }
@@ -1547,11 +1550,17 @@
 
   // A qualifying count blurs a pending view and never auto-plays; any other
   // outcome, including an unavailable count, reveals and releases autoplay.
+  // The first count decides autoplay for the whole visit, even when a hover
+  // already revealed it; later counts never reblur or change that.
   function settleDefinitionBlur(request, level, lookupCount) {
     const blur = request.blur;
     if (!blur) return;
     const qualifies = definitionBlurQualifies(options, lookupCount);
-    releaseDefinitionBlurAutoplay(request, level, !qualifies);
+    if (!blur.decided) {
+      blur.decided = true;
+      blur.autoplaySuppressed = qualifies;
+      releaseDefinitionBlurAutoplay(request, level, !qualifies);
+    }
     if (blur.state !== "pending") return;
     if (!qualifies) {
       revealDefinitions(request, level);

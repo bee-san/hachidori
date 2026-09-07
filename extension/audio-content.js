@@ -47,6 +47,12 @@
 
     function autoplay(record) {
       if (!current(record)) return;
+      // A suppressed first result consumes its visit silently, so no later
+      // rebind can start it either.
+      if (record.autoplaySuppressed?.()) {
+        firstVisit(record);
+        return;
+      }
       if (!optionsReady || record.autoplayHeld?.()) {
         const previous = pendingAutoplay.get(record.owner);
         if (previous && previous.autoplayKey !== record.autoplayKey) firstVisit(previous);
