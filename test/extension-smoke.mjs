@@ -8365,7 +8365,7 @@ async function contentNoteStage() {
   const { JSDOM } = jsdom;
   const settle = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
 
-  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false } = {}) {
+  async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {} } = {}) {
     const dom = new JSDOM(
       "<!doctype html><body><span id=anchor>\u98df\u3079\u305f</span></body>",
       {
@@ -8517,6 +8517,7 @@ async function contentNoteStage() {
                 maxResults: 7,
                 modifier: "none",
                 scanLength: 9,
+                ...optionOverrides,
               },
             });
           },
@@ -8860,16 +8861,18 @@ async function contentNoteStage() {
       const pending = harness.take("hd_lookup_stats_record");
       const row = { term: pending.request.term, reading: pending.request.reading, lookupCount: 2 };
       harness.emitLookupStats({ generation: "statistics", revision: 2 }, row);
-      harness.reply(pending, { descriptor: { generation: "statistics", revision: 1 }, statistics: { ...row, lookupCount: 1 } });
+      harness.reply(pending, { descriptor: { generation: "statistics", revision: 1 }, statistics: { ...row, lookupCount: 1, seenCount: 7 } });
       await harness.settle();
       const matchingEventWon = harness.lookupStatistics()?.lookupCount === 2;
       harness.emitLookupStats({ generation: "statistics", revision: 4 }, { ...row, term: "別の言葉", lookupCount: 1 });
       const reads = harness.sent.filter(request => request.type === "hd_lookup_stats_read");
       outcomes["matching row events outrank old count replies without refreshing unrelated terms"] =
         matchingEventWon && harness.lookupStatistics()?.lookupCount === 2 && reads.length === 0;
+      outcomes["an outranked reply still supplies its corpus Seen value"] =
+        harness.lookupStatistics()?.seenCount === 7;
       harness.emitLookupStats({ generation: "statistics", revision: 3 }, { ...row, lookupCount: 3 });
       outcomes["delayed matching rows survive newer unrelated global revisions"] =
-        harness.lookupStatistics()?.lookupCount === 3 && reads.length === 0;
+        harness.lookupStatistics()?.lookupCount === 3 && harness.lookupStatistics()?.seenCount === 7 && reads.length === 0;
       harness.edit(true);
       const retainedLine = harness.popup.querySelector(".gsm-hoshidicts-lookup-stats");
       harness.emitState(harness.state(2, "Replacement"));
@@ -8906,7 +8909,28 @@ async function contentNoteStage() {
         Boolean(corpusRead) && toggled.lookupStatistics()?.seenCount === 8
         && toggled.sent.filter(request => request.type === "hd_lookup_stats_record").length === 1
         && toggled.sent.filter(request => request.type === "hd_lookup_stats_read").length === 2;
+      // Another tab's lookup of the same term only changes the local count.
+      toggled.emitLookupStats({ generation: "statistics", revision: 1 },
+        { term: pending.request.term, reading: pending.request.reading, lookupCount: 1 });
+      outcomes["matching row events keep the displayed corpus Seen value without a corpus read"] =
+        toggled.lookupStatistics()?.lookupCount === 1 && toggled.lookupStatistics()?.seenCount === 8
+        && toggled.sent.filter(request => request.type === "hd_lookup_stats_read").length === 2;
     } finally { toggled.close(); }
+    const hidden = await createHarness(null, { holdLookupStats: true, options: { showLookupCounts: false } });
+    try {
+      await hidden.initialLookup();
+      const slot = () => hidden.popup.querySelector(".gsm-hoshidicts-lookup-stats");
+      const offVisit = hidden.take("hd_lookup_stats_record") === null && slot()?.hidden === true;
+      const rendersBefore = hidden.renders.length;
+      hidden.emitOptions({ showLookupCounts: true });
+      const read = hidden.take("hd_lookup_stats_read");
+      if (read) hidden.reply(read, { descriptor: { generation: "statistics", revision: 1 },
+        statistics: { term: read.request.term, reading: read.request.reading, lookupCount: 4, seenCount: null } });
+      await hidden.settle();
+      outcomes["enabling counts paints the open popup's hidden slot with one read and no rerender"] =
+        offVisit && Boolean(read) && hidden.lookupStatistics()?.lookupCount === 4 && slot()?.hidden === false
+        && hidden.take("hd_lookup_stats_record") === null && hidden.renders.length === rendersBefore;
+    } finally { hidden.close(); }
     return outcomes;
   }
 
@@ -12812,39 +12836,31 @@ function lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candid
   const popup = document.createElement("div");
   document.body.appendChild(popup);
   let renders = 0;
+  let showCounts = false;
   const view = HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
     appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
     parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
+    // The owner decides visibility; the renderer only provides the slot.
     onResultsRendered({ lookupStats }) {
       renders += 1;
-      if (lookupStats) view.setLookupStats(lookupStats, { lookupCount: 3, seenCount: null });
+      if (lookupStats) view.setLookupStats(lookupStats, showCounts ? { lookupCount: 3, seenCount: null } : null);
     },
   });
   const line = () => popup.querySelector(".gsm-hoshidicts-lookup-stats");
   try {
-    view.renderResults(results, candidate, { showLookupCounts: true });
-    const count = line()?.textContent === "Looked up 3 times" && !line().hidden;
+    view.renderResults(results, candidate, {});
+    const slotHidden = line() !== null && line().hidden;
+    showCounts = true;
+    if (line()) view.setLookupStats(line(), { lookupCount: 3, seenCount: null });
+    const painted = line()?.textContent === "Looked up 3 times" && !line().hidden && renders === 1;
     popup.querySelector('.gsm-hoshidicts-tab[data-dictionary]').click();
     const projected = !line();
     popup.querySelector('.gsm-hoshidicts-tab').click();
-    popup.querySelector('.gsm-hoshidicts-note-button').click();
-    const form = popup.querySelector('form');
-    form.elements.definition.value = "keep count-setting draft";
-    form.elements.definition.focus();
-    view.updateDictionaryPresentation({ showLookupCounts: false });
-    const protectedDraft = popup.querySelector('form') === form && document.activeElement === form.elements.definition
-      && form.elements.definition.value === "keep count-setting draft";
-    view.closeNoteForm();
-    view.flushDictionaryPresentation();
-    const disabled = !line();
-    view.updateDictionaryPresentation({ showLookupCounts: true });
-    const enabled = line()?.textContent === "Looked up 3 times" && !line().hidden;
-    const previous = renders;
-    view.updateDictionaryPresentation({ showLookupCounts: true });
-    check("lookup count display stays on All and live toggles preserve Note without rerendering unchanged options",
-      count && projected && protectedDraft && disabled && enabled && renders === previous,
-      JSON.stringify({ count, projected, protectedDraft, disabled, enabled, renders, previous }));
+    const restored = line()?.textContent === "Looked up 3 times" && !line().hidden;
+    check("the lookup count slot renders hidden on All only and its owner paints it without rerendering",
+      slotHidden && painted && projected && restored,
+      JSON.stringify({ slotHidden, painted, projected, restored, renders }));
   } finally { view.destroy(); popup.remove(); }
 }
 

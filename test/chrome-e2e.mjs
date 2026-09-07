@@ -3973,7 +3973,14 @@ async function checkLookupStatistics({ browser, settings, tab, popup, extensionI
     );
     const retainedDefinition = await popup.state();
     const disabledDefinition = await freshLookup();
+    await popup.lookupStatistics("remember");
     await updateSettingsControls(settings, { "opt-lookup-counts": true });
+    // Re-enabling paints the popup that rendered while counts were off, with
+    // one read: the same popup and panel, and no new hover or increment.
+    const reenabled = await waitForLookupStatistics(
+      popup,
+      value => value !== null && !value.hidden && value.text.includes("Looked up"),
+    );
     const afterPause = await readLookupStatistics(settings);
     const resumedDefinition = await freshLookup();
     const incrementedLine = await waitForLookupStatistics(
@@ -3988,12 +3995,16 @@ async function checkLookupStatistics({ browser, settings, tab, popup, extensionI
         && hidden.samePanel === true
         && retainedDefinition?.plain.includes("食べる")
         && disabledDefinition?.plain.includes("食べる")
+        && reenabled?.samePopup === true
+        && reenabled.sameLine === true
+        && reenabled.samePanel === true
+        && reenabled.text.includes(`Looked up ${afterPause.statistics?.lookupCount}`)
         && resumedDefinition?.plain.includes("食べる")
         && incrementedLine?.text.includes(`Looked up ${afterResume.statistics?.lookupCount}`)
         && afterPause.statistics?.lookupCount === after.statistics.lookupCount
         && afterResume.statistics?.lookupCount === afterPause.statistics.lookupCount + 1,
       JSON.stringify({
-        hidden, retainedDefinition, disabledDefinition, afterPause,
+        hidden, retainedDefinition, disabledDefinition, reenabled, afterPause,
         resumedDefinition, incrementedLine, afterResume,
       }),
     );
