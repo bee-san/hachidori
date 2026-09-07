@@ -80,8 +80,8 @@ test("a run installs requested sources in catalogue order, skips installed ones 
       return [sourceId, entry.downloadUrl, entry.archiveName, undefined];
     }));
   assert.ok(imports.every((message) => message.requestId.startsWith("setup:run-1:import:")));
-  // The inventory is rechecked before every import, and the engine must be idle first.
-  assert.equal(log.asked.length, 4);
+  // The inventory is rechecked before every import and again after waiting for the idle engine.
+  assert.equal(log.asked.length, 7);
   assert.ok(log.dispatched.filter((message) => message.type === "hd_status").length >= 3);
   // One durable record per outcome, then one for the run duration.
   assert.deepEqual(log.recorded.map((message) => [message.type, message.runId, Object.keys(message.outcomes ?? {})[0] ?? null, message.runSeconds ?? null]), [
@@ -132,6 +132,20 @@ test("download and installation phases are mirrored only for this run's own impo
   // Late progress for a settled entry is ignored.
   installer.progress({ requestId: importRequest.requestId, phase: "downloading", receivedBytes: 1, totalBytes: 1 });
   assert.equal(installer.snapshot().entries[0].receivedBytes, 4096);
+});
+
+test("a source committed elsewhere while the installer waited is settled as already installed, not reimported", async () => {
+  const installed = [];
+  const statuses = [{ ok: true, ready: true, loading: true }, { ok: true, ready: true, loading: false }];
+  const { installer, log } = harness({ installed, statuses });
+  installer.attach(["jiten"]);
+  // Settings commits Jiten while the engine reports loading.
+  for (let attempt = 0; attempt < 100 && log.dispatched.filter((message) => message.type === "hd_status").length < 1; attempt += 1) await settle();
+  installed.push({ sourceId: "jiten" });
+  await untilFinished(installer);
+  assert.equal(installer.snapshot().entries[0].phase, "already-installed");
+  assert.equal(log.dispatched.filter((message) => message.type === "hd_import").length, 0);
+  assert.deepEqual(log.recorded[0].outcomes.jiten, { status: "already-installed" });
 });
 
 test("the installer waits for a ready, idle engine and queues behind another mutation without failing the row", async () => {

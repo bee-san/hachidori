@@ -115,6 +115,12 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
     let reply;
     do {
       await awaitIdleEngine();
+      // The wait may have been another import of this very source, from
+      // Settings or an earlier run: an installed source is never reimported.
+      if (recommendedDictionaryInstalled(source, await inventory())) {
+        await settle(entry, { status: "already-installed" });
+        return;
+      }
       reply = await dispatch({
         target: ENGINE_TARGET,
         type: "hd_import",
@@ -154,7 +160,9 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
   return {
     snapshot,
     // Attaches to the active run, or starts one for the requested catalogue
-    // sources when none is active. An empty request only observes.
+    // sources when none is active. An empty request only observes. A source
+    // that is already installed settles as such, which also gives a package
+    // whose commit outlived an earlier installer its durable outcome.
     attach(sourceIds) {
       const sources = requestedSetupSources(sourceIds);
       if ((run === null || run.finished) && sources.length > 0) {
