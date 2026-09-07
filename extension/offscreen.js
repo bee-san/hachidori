@@ -12,7 +12,8 @@ import { boundResponseFailure } from "./response-limits.js";
 const TARGET = "hoshidicts-offscreen";
 const AUDIO_TARGET = "hachidori-audio";
 const ANKI_TARGET = "hachidori-anki-render";
-let audioService, ankiService, audioRepository;
+const SETUP_TARGET = "hachidori-setup";
+let audioService, ankiService, audioRepository, setupInstaller;
 
 function getAudioRepository() {
   audioRepository ??= import("./audio-repository.js").then(module => module.createAudioRepository({
@@ -177,9 +178,17 @@ function startWorkerEngine() {
       );
       return;
     }
+    if (data?.channel === "engine-progress") {
+      setupInstaller?.then((installer) => installer.progress(data.progress));
+      return;
+    }
     if (data?.channel !== "engine-response") return;
     finishRequest(data.id, data.response);
   };
+}
+
+function reportEngineProgress(progress) {
+  setupInstaller?.then((installer) => installer.progress(progress));
 }
 
 function startLocalEngine() {
@@ -193,6 +202,7 @@ function startLocalEngine() {
         createHoshidicts: module.default,
         storageBackend: "idbfs",
         lowRam: true,
+        reportProgress: reportEngineProgress,
       },
     );
     service.startEngine();
@@ -224,14 +234,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || message.target !== TARGET || message.relayed !== true) {
-    return false;
-  }
-
+// Admission and the mutation lock are shared by relayed runtime requests and the
+// first-run installer, so both see one engine queue.
+function dispatchEngine(message, sendResponse) {
   if (engineError !== null) {
     sendResponse(failedResponse(message, engineError));
-    return true;
+    return;
   }
   if (message.type === "hd_status"
       && (activeMutationRequestId !== null || pending.size >= MAX_PENDING_REQUESTS)) {
@@ -241,13 +249,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       ...lastEngineStatus,
       loading: activeMutationRequestId !== null || lastEngineStatus.loading,
     });
-    return true;
+    return;
   }
   const activeMutation = pending.get(activeMutationRequestId)?.message;
   const cancelsBackup = message.type === "hd_backup_cancel" && typeof message.token === "string" && message.token !== "";
   if (activeMutationRequestId !== null && message.type !== "hd_backup_release" && !cancelsBackup) {
     sendResponse(failedResponse(message, "the dictionary engine is busy mutating"));
-    return true;
+    return;
   }
   // One serialized download release and one token-scoped backup cancellation
   // must fit even if ordinary requests occupy all 128 slots. The cancellation
@@ -257,7 +265,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const limit = MAX_PENDING_REQUESTS + cleanupSlots;
   if (pending.size >= limit) {
     sendResponse(failedResponse(message, "the dictionary engine request queue is full"));
-    return true;
+    return;
   }
 
   // Reserve before engine selection or module loading can retain the payload.
@@ -272,5 +280,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     worker.postMessage({ channel: "engine-request", id, message });
     return undefined;
   }).catch((error) => finishRequest(id, failedResponse(message, describe(error))));
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || message.target !== TARGET || message.relayed !== true) {
+    return false;
+  }
+  dispatchEngine(message, sendResponse);
+  return true;
+});
+
+// The startup page asks this document, not the engine, to install recommended
+// dictionaries: the run must outlive the page and any service-worker restart.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== SETUP_TARGET || message.relayed !== true) return false;
+  setupInstaller ??= import("./setup-installer.js").then((module) => module.createSetupInstaller({
+    dispatch: (request) => new Promise((resolve) => dispatchEngine(request, resolve)),
+    ask: (request) => chrome.runtime.sendMessage(request),
+    notify: (request) => chrome.runtime.sendMessage(request),
+    broadcast: (event) => Promise.resolve(chrome.runtime.sendMessage(event)).catch(() => {}),
+  }));
+  setupInstaller.then((installer) => {
+    if (message.type !== "hd_setup_install") throw new Error(`unknown setup request type ${JSON.stringify(message.type)}`);
+    return installer.attach(message.sourceIds);
+  }).then(
+    (result) => sendResponse({ type: `${message.type}_result`, requestId: message.requestId ?? null, ok: true, error: null, ...result }),
+    (error) => sendResponse(failedResponse(message, describe(error))),
+  );
   return true;
 });

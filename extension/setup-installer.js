@@ -1,0 +1,183 @@
+/*
+ * Sequential first-run dictionary installer owned by the offscreen document.
+ *
+ * One run at a time downloads and imports requested recommended sources through
+ * the engine's ordinary import transaction. The run outlives the startup page
+ * and the service worker, so a reconnecting page or a restarted worker attaches
+ * to the same run instead of starting a duplicate batch. Outcomes are recorded
+ * by the service worker, which owns the durable setup state.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
+import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
+
+export const SETUP_EVENTS_TARGET = "hachidori-setup-events";
+const ENGINE_TARGET = "hoshidicts-offscreen";
+const WORKER_TARGET = "hoshidicts-worker";
+const ENGINE_BUSY = "the dictionary engine is busy mutating";
+const IDLE_POLL_MS = 250;
+
+function describe(error) {
+  return error instanceof Error ? error.message || String(error) : String(error);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
+export function requestedSetupSources(sourceIds) {
+  if (!Array.isArray(sourceIds) || !sourceIds.every((sourceId) => typeof sourceId === "string")) {
+    throw new TypeError("the setup install request carried no source list");
+  }
+  const requested = new Set(sourceIds);
+  return RECOMMENDED_DICTIONARIES.filter((entry) => requested.has(entry.sourceId));
+}
+
+export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = () => performance.now(),
+  randomId = () => crypto.randomUUID() }) {
+  let run = null;
+  let counter = 0;
+
+  function snapshot() {
+    if (run === null) return { runId: null, sequence: 0, finished: true, entries: [] };
+    return {
+      runId: run.runId,
+      sequence: run.sequence,
+      finished: run.finished,
+      entries: run.entries.map(({ sourceId, phase, receivedBytes, totalBytes, seconds, error }) =>
+        ({ sourceId, phase, receivedBytes, totalBytes, seconds, error })),
+    };
+  }
+
+  function emit() {
+    run.sequence += 1;
+    broadcast({ target: SETUP_EVENTS_TARGET, type: "hd_setup_progress", ...snapshot() });
+  }
+
+  function requestId(kind, sourceId = "") {
+    counter += 1;
+    return `setup:${run.runId}:${kind}:${sourceId}:${counter}`;
+  }
+
+  // The engine reports ready only after boot, and loading while any mutation
+  // (including a user's own import) holds its lock.
+  async function awaitIdleEngine() {
+    for (;;) {
+      const status = await dispatch({ target: ENGINE_TARGET, type: "hd_status", requestId: requestId("status") });
+      if (status?.ok !== true) throw new Error(status?.error || "the dictionary engine is unavailable");
+      if (status.ready === true && status.loading !== true) return;
+      await sleep(IDLE_POLL_MS);
+    }
+  }
+
+  async function inventory() {
+    const reply = await ask({ target: WORKER_TARGET, type: "hd_state_read", requestId: requestId("inventory") });
+    if (reply?.ok !== true) throw new Error(reply?.error || "the service worker could not read dictionary state");
+    return reply.state?.dictionaries ?? [];
+  }
+
+  async function record(patch) {
+    try {
+      const reply = await notify({ target: WORKER_TARGET, type: "hd_setup_record", requestId: requestId("record"), runId: run.runId, ...patch });
+      if (reply?.ok !== true) throw new Error(reply?.error || "no reply");
+    } catch (error) {
+      console.warn(`hoshidicts: could not record a setup outcome: ${describe(error)}`);
+    }
+  }
+
+  async function settle(entry, outcome) {
+    entry.phase = outcome.status;
+    entry.seconds = outcome.seconds ?? null;
+    entry.error = outcome.error ?? null;
+    await record({ outcomes: { [entry.sourceId]: outcome } });
+    emit();
+  }
+
+  async function importEntry(entry, source) {
+    entry.phase = "downloading";
+    entry.startedAt = now();
+    emit();
+    let reply;
+    do {
+      await awaitIdleEngine();
+      reply = await dispatch({
+        target: ENGINE_TARGET,
+        type: "hd_import",
+        requestId: requestId("import", entry.sourceId),
+        sourceId: source.sourceId,
+        archiveUrl: source.downloadUrl,
+        fileName: source.archiveName,
+      });
+    } while (reply?.ok !== true && reply?.error === ENGINE_BUSY);
+    const seconds = (now() - entry.startedAt) / 1000;
+    if (reply?.ok === true && reply.report?.success === true) {
+      await settle(entry, { status: "installed", seconds });
+    } else {
+      await settle(entry, { status: "failed", seconds, error: reply?.error || reply?.report?.error || "the import did not complete" });
+    }
+  }
+
+  async function execute() {
+    for (const entry of run.entries) {
+      const source = RECOMMENDED_DICTIONARIES.find((candidate) => candidate.sourceId === entry.sourceId);
+      try {
+        // Installed by Settings or an earlier run meanwhile: never import twice.
+        if (recommendedDictionaryInstalled(source, await inventory())) {
+          await settle(entry, { status: "already-installed" });
+          continue;
+        }
+        await importEntry(entry, source);
+      } catch (error) {
+        await settle(entry, { status: "failed", seconds: entry.startedAt === null ? null : (now() - entry.startedAt) / 1000, error: describe(error) });
+      }
+    }
+    run.finished = true;
+    await record({ runSeconds: (now() - run.startedAt) / 1000 });
+    emit();
+  }
+
+  return {
+    snapshot,
+    // Attaches to the active run, or starts one for the requested catalogue
+    // sources when none is active. An empty request only observes.
+    attach(sourceIds) {
+      const sources = requestedSetupSources(sourceIds);
+      if ((run === null || run.finished) && sources.length > 0) {
+        run = {
+          runId: randomId(),
+          sequence: 0,
+          finished: false,
+          startedAt: now(),
+          entries: sources.map((source) => ({
+            sourceId: source.sourceId, phase: "waiting", receivedBytes: 0, totalBytes: null,
+            seconds: null, error: null, startedAt: null,
+          })),
+        };
+        execute().catch((error) => {
+          console.error(`hoshidicts: the setup dictionary run stopped: ${describe(error)}`);
+        });
+      }
+      return snapshot();
+    },
+    // Download and installation phases reported by the engine for imports
+    // this installer issued; other requests' progress is not ours to show.
+    progress(event) {
+      if (run === null || run.finished) return;
+      const match = /^setup:([^:]+):import:([^:]+):/u.exec(String(event?.requestId ?? ""));
+      if (match === null || match[1] !== run.runId) return;
+      const entry = run.entries.find((candidate) => candidate.sourceId === match[2]);
+      if (entry === undefined || entry.phase !== "downloading" && entry.phase !== "installing") return;
+      if (event.phase === "installing") {
+        entry.phase = "installing";
+      } else if (event.phase === "downloading") {
+        entry.receivedBytes = Number(event.receivedBytes) || 0;
+        entry.totalBytes = Number.isSafeInteger(event.totalBytes) && event.totalBytes > 0 ? event.totalBytes : null;
+      } else {
+        return;
+      }
+      emit();
+    },
+  };
+}
