@@ -1378,10 +1378,11 @@
     }
     if (request !== level.currentViewRequest
         || !requestCanRender(level.lookupToken, level.activeCandidate, level) || !level.lookupStatsElement?.isConnected) return;
-    const payload = request?.lookupStats?.payload;
+    const entry = request?.lookupStats;
+    const statistics = entry?.payload?.descriptor.generation === lookupStatsDescriptor.generation
+      ? entry.payload.statistics : null;
     level.view.setLookupStats(level.lookupStatsElement,
-      payload?.descriptor.generation === lookupStatsDescriptor.generation
-        ? payload.statistics : null);
+      statistics && { ...statistics, seenCount: entry.seenCount });
   }
 
   function adoptLookupStatsDescriptor(descriptor, changes = {}) {
@@ -1399,7 +1400,7 @@
       const row = changes[lookupStatsKey(descriptor, entry)]?.newValue;
       if (row && (!entry.payload || entry.payload.descriptor.generation !== descriptor.generation
           || entry.payload.descriptor.revision < descriptor.revision)) {
-        entry.payload = { descriptor, statistics: { ...row, seenCount: null } };
+        entry.payload = { descriptor, statistics: row };
         entry.needsRefresh = false;
       } else if (replaced) entry.needsRefresh = true;
       else continue;
@@ -1426,14 +1427,16 @@
         entry.needsRefresh = true;
         return;
       }
-      if (entry.payload?.descriptor.revision > payload.descriptor.revision) return;
       const corpusChanged = requestedCorpusSeenEnabled !== options.corpusSeenEnabled
         || requestedCorpusSeenUrl !== options.corpusSeenUrl;
-      entry.payload = corpusChanged && payload.statistics
-        ? { ...payload, statistics: { ...payload.statistics, seenCount: null } }
-        : payload;
-      entry.needsRefresh = options.showLookupCounts && (corpusChanged
-        || (payload.statistics === null && requestedOptionsRevision !== optionsStorageRevision));
+      // Only replies carry the corpus value. A newer row event owns the local
+      // count, but the Seen value it lacks still belongs to this term.
+      if (payload.statistics !== null && !corpusChanged) entry.seenCount = payload.statistics.seenCount ?? null;
+      if (!(entry.payload?.descriptor.revision > payload.descriptor.revision)) {
+        entry.payload = payload;
+        entry.needsRefresh = options.showLookupCounts && (corpusChanged
+          || (payload.statistics === null && requestedOptionsRevision !== optionsStorageRevision));
+      }
       if (request.lookupStats === entry) paintLookupStatistics(request, level);
     }).catch(error => {
       // A lost reply may follow a committed increment. Never retry the write.
@@ -1449,7 +1452,7 @@
     const firstVisit = !request.lookupStats;
     let entry = request.lookupStats;
     if (!entry || entry.term !== term || entry.reading !== reading) {
-      entry = request.lookupStats = { term, reading, pending: false, payload: null, needsRefresh: true };
+      entry = request.lookupStats = { term, reading, pending: false, payload: null, seenCount: null, needsRefresh: true };
     } else if (entry.payload && entry.payload.descriptor.generation !== lookupStatsDescriptor.generation) {
       entry.needsRefresh = true;
     }
@@ -1660,7 +1663,6 @@
   function renderContextFor(level = rootLevel) {
     return {
       definitionBlurState: "revealed",
-      showLookupCounts: options.showLookupCounts,
       dictionaryPresentation: dictionaryPresentation(),
       dictionaryTabGroups: dictionaryTabGroups(),
       generation: currentGeneration,
@@ -2522,7 +2524,6 @@
 
   function updateDictionaryPresentation() {
     const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups(),
-      showLookupCounts: options.showLookupCounts,
       ...compactSummaryOptions(), ...imageSourceContext(), ...window.HDPopup.metadataOptions(options) };
     for (const level of levels) {
       if (level.popup && !level.popup.hidden) level.view.updateDictionaryPresentation(context);
@@ -2618,12 +2619,7 @@
         const request = level.currentViewRequest;
         const entry = request?.lookupStats;
         if (!entry) continue;
-        if (corpusChanged && entry.payload?.statistics) {
-          entry.payload = {
-            ...entry.payload,
-            statistics: { ...entry.payload.statistics, seenCount: null },
-          };
-        }
+        if (corpusChanged) entry.seenCount = null;
         if (corpusChanged || next.showLookupCounts) entry.needsRefresh = true;
         paintLookupStatistics(request, level);
         refreshLookupStatistics(request, level);

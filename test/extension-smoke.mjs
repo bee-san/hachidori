@@ -8436,12 +8436,11 @@ async function contentNoteStage() {
         renderResults(results, candidate, context) {
           recordRender({ kind: "terms", results, candidate, context });
           callbacks.popup.querySelector(".gsm-hoshidicts-lookup-stats")?.remove();
-          const lookupStats = context.showLookupCounts ? window.document.createElement("div") : null;
-          if (lookupStats) {
-            lookupStats.className = "gsm-hoshidicts-lookup-stats";
-            lookupStats.hidden = true;
-            callbacks.popup.append(lookupStats);
-          }
+          // Like the production renderer, the slot exists on every All view.
+          const lookupStats = window.document.createElement("div");
+          lookupStats.className = "gsm-hoshidicts-lookup-stats";
+          lookupStats.hidden = true;
+          callbacks.popup.append(lookupStats);
           callbacks.onResultsRendered({ lookupStats, audioButtons: [], miningActions: [] });
         },
         setLookupStats(element, payload) { record.lookupStatistics = payload; element.hidden = !payload; },

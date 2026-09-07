@@ -2861,7 +2861,7 @@
           entry.appendChild(renderedHeader.element);
         }
 
-        if (resultIndex === 0 && renderContext.showLookupCounts === true) {
+        if (resultIndex === 0 && renderContext.lookupStatsSlot === true) {
           lookupStats = documentRef.createElement("div");
           lookupStats.className = "gsm-hoshidicts-lookup-stats";
           lookupStats.setAttribute("role", "status");
@@ -3440,11 +3440,10 @@
             restoreScrollTop: !hasRendered ? renderContext.restoreScrollTop : undefined,
             restoreDisclosures: matchingDisclosures ? saved.states : undefined,
             // Lookup statistics describe the first unfiltered result. Keep the
-            // line on the All tab so a dictionary projection cannot attach the
-            // original term's count to a different expression.
-            showLookupCounts:
-              selectedDictionaries.size === 0
-              && renderContext.showLookupCounts === true,
+            // slot on the All tab so a dictionary projection cannot attach the
+            // original term's count to a different expression. The owner paints
+            // or hides it, so a count setting never reprojects definitions.
+            lookupStatsSlot: selectedDictionaries.size === 0,
           },
           {
             dictionaryDisplayNames,
@@ -3552,7 +3551,6 @@
         () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
           const summaryChanged = ["showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary"]
             .some(key => Object.hasOwn(context, key) && context[key] !== renderContext[key]);
-          const countsChanged = Object.hasOwn(context, "showLookupCounts") && context.showLookupCounts !== renderContext.showLookupCounts;
           // Image-only changes may proceed while Note, focus or a child keeps
           // the old tab/text projection mounted. Enter the same connected
           // request boundary before admitting new asynchronous image work.
@@ -3568,7 +3566,7 @@
           const sameMembers = sameTabMembers(previous[selectedIndex].dictionaries, next.tabs[index].dictionaries, dictionaries);
           const projectionDeferred = (summaryChanged && popup.contains(focused)
             && focused.closest(".gsm-hoshidicts-compact-definition-summary"))
-            || ((!sameMembers || countsChanged) && (!ownsView() || !canProjectPresentation()));
+            || (!sameMembers && (!ownsView() || !canProjectPresentation()));
           // New cards and summaries use the latest route. Only refresh handles
           // after replacing their owners, unless the projection is protected.
           for (const key of ["popupImageSources", "dictionaryPresentation", "resolveMedia", ...METADATA_OPTION_KEYS]) {
@@ -3588,7 +3586,7 @@
           if (selectedKey !== tabDescriptors[index].key) {
             renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
           }
-          if (sameMembers && !countsChanged) {
+          if (sameMembers) {
             const metadata = rendered.updateMetadata();
             changed = metadata.changed || changed;
             metadataDeferred = metadata.deferred;

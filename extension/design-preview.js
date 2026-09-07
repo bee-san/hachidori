@@ -55,7 +55,7 @@
     },
     onAddCustomEntry() { throw new Error("This is a preview. Notes are not saved."); },
     onResultsRendered({ lookupStats }) {
-      if (lookupStats) view.setLookupStats(lookupStats, { lookupCount: 3, seenCount: null });
+      if (lookupStats) view.setLookupStats(lookupStats, options.showLookupCounts ? { lookupCount: 3, seenCount: null } : null);
     },
   });
 
@@ -95,7 +95,6 @@
 
   function context() {
     return { ...HDPopup.metadataOptions(options),
-      showLookupCounts: options.showLookupCounts,
       showCompactDefinitionSummary: options.showCompactDefinitionSummary,
       compactDefinitionSummaryCount: options.compactDefinitionSummaryCount,
       compactDefinitionSummaryDictionary: options.compactDefinitionSummaryDictionary,
