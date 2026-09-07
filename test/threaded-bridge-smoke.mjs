@@ -78,11 +78,11 @@ assert.equal(runtimeListeners.length, 2);
 assert.equal(engineWorkers.length, 0);
 let relay = (...args) => runtimeListeners.some(listener => listener(...args) === true);
 
-function request(type, requestId) {
+function request(type, requestId, fields = {}) {
   const responses = [];
   const promise = new Promise((resolve, reject) => {
     const asynchronous = relay(
-      { target: "hoshidicts-offscreen", relayed: true, type, requestId },
+      { target: "hoshidicts-offscreen", relayed: true, type, requestId, ...fields },
       {},
       (response) => {
         responses.push(response);
@@ -145,6 +145,21 @@ for (const message of engine.messages.splice(0)) {
   });
 }
 await Promise.all(queued.slice(0, 128));
+
+const preparing = request("hd_backup_prepare", "leaving-prepare", { token: "leaving-page" });
+await tick();
+const prepareMessage = engine.messages.at(-1);
+const cancelling = request("hd_backup_cancel", "leaving-cancel", { token: "leaving-page" });
+await tick();
+const cancelMessage = engine.messages.at(-1);
+assert.equal(cancelMessage.message.type, "hd_backup_cancel", "the departing page can queue cancellation behind its own prepare");
+engine.emit("message", { channel: "engine-response", id: prepareMessage.id,
+  response: { type: "hd_backup_prepare_result", ok: true } });
+await preparing.promise;
+assert.match((await send("hd_lookup", "lookup-before-cancel")).error, /busy mutating/);
+engine.emit("message", { channel: "engine-response", id: cancelMessage.id,
+  response: { type: "hd_backup_cancel_result", ok: true } });
+await cancelling.promise;
 
 const mutationTypes = [
   "hd_import",

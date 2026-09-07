@@ -17,6 +17,7 @@ function fixture(t) {
   let blocked = false;
   window.URL.createObjectURL = () => "blob:selected-backup";
   window.URL.revokeObjectURL = url => revoked.push(url);
+  window.crypto.randomUUID = () => "prepared-token";
   const el = id => window.document.getElementById(id);
   createBackupSettingsController({ document: window.document,
     send: (type, fields) => new Promise(resolve => sent.push({ type, ...fields, resolve })),
@@ -81,6 +82,8 @@ test("leaving Settings cancels late preparation and does not revive a preview on
     const leave = () => f.window.dispatchEvent(new f.window.Event("pagehide"));
     if (late) await f.prepare(() => {
       leave();
+      assert.equal(f.sent.at(-1).type, "hd_backup_cancel", "cancel must be sent before the prepare reply, while the page still exists");
+      assert.equal(f.sent.at(-1).token, "prepared-token");
       f.window.dispatchEvent(new f.window.Event("pageshow"));
     });
     else { await f.prepare(); leave(); }
