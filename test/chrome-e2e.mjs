@@ -3123,6 +3123,7 @@ async function checkManagementAutosave(page, browser, settingsUrl) {
       stored: (await chrome.storage.local.get("dictionaryUpdates")).dictionaryUpdates,
       calls: window.__managementAutosave.calls,
     }));
+    await page.bringToFront();
     await page.click("#update-schedule-discard");
     await page.evaluate(() => { window.__managementAutosave.lose = true; });
     await edit(page, "#update-schedule", ["off"], "change");
@@ -3188,6 +3189,7 @@ async function checkManagementAutosave(page, browser, settingsUrl) {
     await page.click(`[data-group-id="${groupId}"] .name-draft-retry`);
     await waitName("Next");
     await page.waitForFunction(() => !document.querySelector(".name-draft-feedback"), { polling: 50 });
+    await page.waitForFunction(() => window.__managementAutosave.renders > 0, { polling: 50 });
     const renders = await page.evaluate(() => window.__managementAutosave.renders);
     check("Settings name autosave merges unrelated edits, rejects external renames and paints one completion",
       coalesced.calls === 1 && coalesced.focused && names.calls === 2 && names.draft === "Next"
