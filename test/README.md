@@ -562,6 +562,31 @@ What it proves, in order:
    URL, a URL-only request without a source, and an unexpected final URL;
    `declaredResponseLength` ignores encoded, zero, and header-less responses.
 
+### Definition blur and Anki maturity
+
+`node --test test/anki-maturity.test.mjs` exercises the production Anki worker
+with an injected gateway. It pins the single `findCards` query: the configured
+note type, exact expression field match, review state excluding relearning,
+and interval of at least 21 days across all decks. Basic and template field
+mappings, literal query escaping, unsupported mappings, malformed card IDs and
+Anki failures are covered without contacting an Anki collection.
+
+The extension smoke harness checks maturity blur with counts disabled, the OR
+decision when both criteria are enabled, held autoplay, silent hover reveal
+and later tab bindings, first-count retention, stale replies, mapping changes,
+lookup before initial options, and pending/completed evidence retained for Back
+across Anki mapping edits. Settings and the Design preview exercise
+the independent checkbox and shared reveal controls with fixed maturity data.
+The existing count-only tests retain timed reveal, navigation, Note and audio
+ownership coverage.
+
+The Chrome E2E suite intercepts the entire AnkiConnect endpoint on the service
+worker target, including the existing mining controls' requests. It checks
+option persistence, a visible local popup while maturity is held, mature and
+nonmature results, unavailable Anki, independent count blur and autoplay. These
+are fixtures, never the user's actual notes or scheduling data.
+`HACHIDORI_DEFINITION_BLUR_SCREENSHOT` captures the updated Settings controls.
+
 ### jsdom
 
 The renderer integration stage needs jsdom. It is not a repo dependency — it lives in the same
