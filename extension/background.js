@@ -36,11 +36,13 @@ import {
   boundResponseFailure, responseFits, responseLimitError, validResponseRequestId,
 } from "./response-limits.js";
 import {
-  FIRST_INSTALL_OPTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
-  advanceSetupState, initialSetupState, normaliseSetupState,
+  FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
+  advanceSetupState, initialSetupState, normaliseSetupState, recordSetupDictionaries,
 } from "./setup-state.js";
 
-const { DEFAULT_OPTIONS, normaliseCorpusSeenUrl, projectStoredOptions, validateOptionsPatch } = globalThis.HDReaderOptions;
+const {
+  DEFAULT_OPTIONS, normaliseCorpusSeenUrl, normaliseOptions, projectStoredOptions, validateOptionsPatch,
+} = globalThis.HDReaderOptions;
 const { normaliseExternalUrl } = globalThis.HDExternalLinks;
 const { pruneGroupMemberships } = globalThis.HDDictionaryGroups;
 
@@ -64,6 +66,7 @@ const OFFSCREEN_DOCUMENT = "offscreen.html";
 const TARGET = "hoshidicts-offscreen";
 const UPDATE_TARGET = "hachidori-updates";
 const AUDIO_TARGET = "hachidori-audio";
+const SETUP_TARGET = "hachidori-setup";
 
 // Requests the worker answers itself. A second target is what keeps them out of
 // the relay below: a message from the offscreen document carrying TARGET is
@@ -711,17 +714,67 @@ const WORKER_HANDLERS = {
     if (!Number.isInteger(message.baseRevision) || message.baseRevision < 0) {
       throw new Error("the setup write request carried no valid base revision");
     }
+    if (message.continued !== undefined && typeof message.continued !== "boolean") {
+      throw new TypeError("the setup write request carried an invalid continuation flag");
+    }
     const stored = await chrome.storage.local.get(SETUP_STATE_KEY);
     const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
     if (current === null) throw new Error("Setup has not started on this installation.");
     if (message.baseRevision !== current.revision) {
       return { ok: false, conflict: true, error: "Setup changed in another tab.", state: current };
     }
-    const state = advanceSetupState(current, message.stage, new Date().toISOString());
+    const state = advanceSetupState(current, message.stage, new Date().toISOString(), { continued: message.continued === true });
     await chrome.storage.local.set({ [SETUP_STATE_KEY]: state });
     return { state };
   },
+
+  // The offscreen installer reports each dictionary outcome and each run's
+  // duration; a committed catalogue entry also settles its first-install
+  // selection exactly once.
+  async hd_setup_record(message, sender) {
+    if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)) {
+      throw new Error("Setup outcomes are recorded only by the dictionary engine host.");
+    }
+    const outcomes = message.outcomes ?? {};
+    if (!outcomes || typeof outcomes !== "object" || Array.isArray(outcomes)
+        || !Object.keys(outcomes).every((sourceId) => recommendedDictionarySource(sourceId) !== null)) {
+      throw new TypeError("the setup record names an unknown catalogue source");
+    }
+    const stored = await chrome.storage.local.get([SETUP_STATE_KEY, DICTIONARY_STATE_KEY, OPTIONS_KEY]);
+    const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
+    if (current === null) throw new Error("Setup has not started on this installation.");
+    const selections = firstInstallSelections(current, outcomes, stored[DICTIONARY_STATE_KEY], stored[OPTIONS_KEY]);
+    const state = recordSetupDictionaries(current, {
+      outcomes, runSeconds: message.runSeconds ?? null, selectionsApplied: selections.applied,
+    });
+    const values = { [SETUP_STATE_KEY]: state };
+    if (selections.options !== null) values[OPTIONS_KEY] = selections.options;
+    await chrome.storage.local.set(values);
+    return { state };
+  },
 };
+
+// Dictionary-dependent initial preferences follow the committed entry's exact
+// title. Each is consumed once; an option the user already changed is left alone.
+function firstInstallSelections(current, outcomes, dictionaryState, storedOptions) {
+  const dictionaries = dictionaryState?.dictionaries ?? [];
+  const effective = normaliseOptions(storedOptions);
+  const applied = [];
+  const patch = {};
+  for (const [sourceId, rule] of Object.entries(FIRST_INSTALL_SELECTIONS)) {
+    if (outcomes[sourceId]?.status !== "installed" || current.dictionaries.selectionsApplied.includes(sourceId)) continue;
+    const committed = dictionaries.find((dictionary) => dictionary?.sourceId === sourceId);
+    if (committed === undefined) continue;
+    applied.push(sourceId);
+    if (effective[rule.option] === "") patch[rule.option] = rule.select(committed.title);
+  }
+  if (Object.keys(patch).length === 0) return { applied, options: null };
+  const revision = optionsRevision(storedOptions);
+  const options = normaliseDictionarySelections(
+    { ...projectStoredOptions(storedOptions), ...validateOptionsPatch(patch), revision }, dictionaries,
+  );
+  return { applied, options: sameJsonValue(options, { ...storedOptions, revision }) ? null : { ...options, revision: revision + 1 } };
+}
 
 // One read-then-write at a time, so the check above cannot be overtaken by
 // another worker-mediated write between its get and its set.
@@ -1121,6 +1174,18 @@ async function relayEngineRequest(message) {
     if (backupPreparations.get(message.token) === preparation) backupPreparations.delete(message.token);
   }
 }
+
+// Only the startup page may start or observe the offscreen dictionary run; the
+// run itself never touches the storage queue held here.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== SETUP_TARGET || message.relayed === true) return false;
+  if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL(STARTUP_PAGE)) {
+    sendResponse(failureReply(message, new Error("Setup installation is available only from the Hachidori startup page.")));
+    return false;
+  }
+  relay(message).then(sendResponse, (error) => sendResponse(failureReply(message, error)));
+  return true;
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || (message.target !== TARGET && message.target !== AUDIO_TARGET) || message.relayed === true) {
