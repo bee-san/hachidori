@@ -26,6 +26,7 @@
   let termView;
   let selectedDictionaryTab = null;
   let sampleMedia = null;
+  let sampleLookupStats = null;
   let clickedKanjiIndex = 0;
 
   function positionPopup(resetToolbar = false) {
@@ -55,9 +56,16 @@
     },
     onAddCustomEntry() { throw new Error("This is a preview. Notes are not saved."); },
     onResultsRendered({ lookupStats }) {
-      if (lookupStats) view.setLookupStats(lookupStats, options.showLookupCounts ? { lookupCount: 3, seenCount: null } : null);
+      sampleLookupStats = lookupStats;
+      paintSampleLookupStats();
     },
   });
+
+  // A static sample count; the switch only paints or hides the rendered slot.
+  function paintSampleLookupStats() {
+    if (!sampleLookupStats?.isConnected) return;
+    view.setLookupStats(sampleLookupStats, options.showLookupCounts ? { lookupCount: 3, seenCount: null } : null);
+  }
 
   function createSample() {
     const enabled = state.dictionaries.filter(entry => entry.enabled);
@@ -151,11 +159,12 @@
     }
     appearance.update(nextOptions);
     const cssChanged = customStyle.update(nextOptions.customPopupCss);
+    const countsChanged = !state || options.showLookupCounts !== nextOptions.showLookupCounts;
     options = { ...nextOptions };
     if (geometryChanged || toolbarChanged) positionPopup(toolbarChanged);
     if (geometryChanged || cssChanged) view.scheduleMasonry();
+    if (countsChanged) paintSampleLookupStats();
     const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
-      nextOptions.showLookupCounts,
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
       nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextOptions.kanjiClickDictionary, nextState.revision]);
     if (key === updateKey) return;

@@ -1347,8 +1347,12 @@
 
   function bindResultActions(rendered, level) {
     const token = level.lookupToken, request = level.currentViewRequest;
-    level.lookupStatsElement = rendered.lookupStats;
-    paintLookupStatistics(request, level);
+    // Show more rebinds only the newly revealed controls; the count element
+    // belongs to the initial render and stays until the next one.
+    if ("lookupStats" in rendered) {
+      level.lookupStatsElement = rendered.lookupStats;
+      paintLookupStatistics(request, level);
+    }
     const context = { owner: level, popup: level.popup, request,
       isCurrent: () => level.currentViewRequest === request && !level.retainedView
         && requestCanRender(token, level.activeCandidate, level),
