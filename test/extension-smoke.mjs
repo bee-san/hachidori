@@ -1516,8 +1516,9 @@ async function audioRelayStage() {
     return { ok: true, status: "cancelled" };
   };
   const term = { expression: "聞く", reading: "きく" };
-  const play = requestId => bus.sendMessage("reader", { target: "hachidori-audio", type: "hd_audio_play", requestId, term,
-    sources: [{ ...source, id: "forged" }] }, { id: chrome.runtime.id, documentId: "reader-document", tab: { id: 42 } });
+  const play = (requestId, sender = { id: chrome.runtime.id, documentId: "reader-document", tab: { id: 42 } }) =>
+    bus.sendMessage("reader", { target: "hachidori-audio", type: "hd_audio_play", requestId, term,
+      sources: [{ ...source, id: "forged" }] }, sender);
   const notify = (requestId, owner = "reader-document", url = chrome.runtime.getURL("offscreen.html")) => bus.sendMessage("audio-offscreen", {
     target: "hachidori-audio-events", type: "hd_audio_playing", requestId, owner, sourceId: source.id,
   }, { id: chrome.runtime.id, url });
@@ -1535,11 +1536,32 @@ async function audioRelayStage() {
   plays.get("owned-play")({ ok: true, status: "cancelled" });
   plays.get("newer-play")({ ok: true, status: "success" });
   await Promise.all([firstPlay, nextPlay]);
+
+  const startup = documentId => ({ id: chrome.runtime.id, documentId, url: chrome.runtime.getURL("startup.html") });
+  const firstStartup = play("startup-play", startup("startup-a"));
+  await new Promise(resolve => setImmediate(resolve));
+  await notify("startup-play", "startup-b");
+  await notify("startup-play", "startup-a");
+  const nextStartup = play("newer-startup-play", startup("startup-b"));
+  await new Promise(resolve => setImmediate(resolve));
+  await notify("startup-play", "startup-a");
+  await notify("newer-startup-play", "startup-b");
+  plays.get("startup-play")({ ok: true, status: "cancelled" });
+  plays.get("newer-startup-play")({ ok: true, status: "success" });
+  await Promise.all([firstStartup, nextStartup]);
+  const otherInternal = play("other-internal", { ...startup("other-internal"), url: chrome.runtime.getURL("startup.html-other") });
+  await new Promise(resolve => setImmediate(resolve));
+  await notify("other-internal", "other-internal");
+  plays.get("other-internal")({ ok: true, status: "success" });
+  await otherInternal;
+  const startupProgress = sent.filter(message => message.target === "hachidori-audio-content");
   check("popup audio uses authoritative enabled sources and routes progress only to its newest owning document",
     authoritative.length === 1 && authoritative[0].id === source.id && progress.length === 2
       && progress.every(value => value.tabId === 42 && value.options.documentId === "reader-document")
-      && progress[0].message.requestId === "owned-play" && progress[1].message.requestId === "newer-play",
-    JSON.stringify({ authoritative, progress }));
+      && progress[0].message.requestId === "owned-play" && progress[1].message.requestId === "newer-play"
+      && startupProgress.length === 2 && startupProgress[0].requestId === "startup-play" && startupProgress[0].owner === "startup-a"
+      && startupProgress[1].requestId === "newer-startup-play" && startupProgress[1].owner === "startup-b",
+    JSON.stringify({ authoritative, progress, startupProgress }));
 
   const read = chrome.storage.local.get;
   let releaseRead;

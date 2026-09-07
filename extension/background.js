@@ -1288,7 +1288,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // pronunciation subsequently started by a different document.
       message = { ...message, owner: sender.documentId };
       if (["hd_audio_test", "hd_audio_play", "hd_audio_candidates"].includes(message.type)) {
-        operation = { ...message, tabId: sender.tab?.id };
+        operation = { ...message, tabId: sender.tab?.id, startup: startupSender(sender) };
         latestAudioOperation = operation;
         stillCurrent = () => latestAudioOperation === operation;
       } else if (message.type === "hd_audio_stop"
@@ -1335,10 +1335,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== "hachidori-audio-events") return false;
   const operation = latestAudioOperation;
   if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)
-      || operation?.tabId === undefined || operation.owner !== message.owner
+      || !operation || (!operation.startup && operation.tabId === undefined) || operation.owner !== message.owner
       || operation.requestId !== message.requestId || message.type !== "hd_audio_playing") return false;
-  chrome.tabs.sendMessage(operation.tabId, { ...message, target: "hachidori-audio-content" }, { documentId: operation.owner })
-    .then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
+  const progress = { ...message, target: "hachidori-audio-content" };
+  // The packaged startup reader lives in an extension page, outside the
+  // content-script audience of tabs.sendMessage. Its controller accepts only
+  // its active random request ID; the worker already checked the document owner.
+  const delivery = operation.startup ? chrome.runtime.sendMessage(progress)
+    : chrome.tabs.sendMessage(operation.tabId, progress, { documentId: operation.owner });
+  delivery.then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
   return true;
 });
 
