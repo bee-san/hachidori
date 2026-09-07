@@ -4856,6 +4856,8 @@ async function main() {
     preview?.sample === true && preview.note === true && preview.back === true, JSON.stringify(preview));
   check("Design updates presentation without rebuilding cards and skips unchanged option echoes",
     preview?.incremental === true && preview.routing === true, JSON.stringify(preview));
+  check("Design repaints its sample count line on the count switch without rebuilding cards or the Note draft",
+    preview?.counts === true, JSON.stringify(preview));
   check("live preview appearance preserves cards and drafts while term and kanji highlights toggle exactly",
     preview?.appearance === true && preview.highlight === true, JSON.stringify(preview));
   check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
@@ -5962,6 +5964,17 @@ async function designPreviewStage() {
     await settle();
     incremental &&= mutations === 0;
     observer.disconnect();
+    const countLine = () => query(".gsm-hoshidicts-lookup-stats");
+    let counts = countLine()?.hidden === false && countLine().textContent === "Looked up 3 times";
+    options = { ...options, showLookupCounts: false };
+    update();
+    await settle();
+    counts &&= countLine()?.hidden === true && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    options = { ...options, showLookupCounts: true };
+    update();
+    await settle();
+    counts &&= countLine()?.hidden === false && countLine().textContent === "Looked up 3 times"
+      && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
     options = { ...options, popupTheme: "miku", popupWidthPx: 720, popupHeightPx: 500, popupOpacityPercent: 0,
       sourceHighlightEnabled: false };
     update();
@@ -6035,7 +6048,7 @@ async function designPreviewStage() {
     await settle();
     const routing = query(".gloss-image-link")?.dataset.imageLoadState === "load-error";
     highlight &&= highlightedText() === "食べる";
-    return { sample, note, back, incremental, routing, appearance, highlight, kanjiSource, earlyLoad, cssOwner, cssPreview };
+    return { sample, note, back, incremental, counts, routing, appearance, highlight, kanjiSource, earlyLoad, cssOwner, cssPreview };
   } finally { window.close(); }
 }
 
@@ -8872,6 +8885,11 @@ async function contentNoteStage() {
       harness.emitLookupStats({ generation: "statistics", revision: 3 }, { ...row, lookupCount: 3 });
       outcomes["delayed matching rows survive newer unrelated global revisions"] =
         harness.lookupStatistics()?.lookupCount === 3 && harness.lookupStatistics()?.seenCount === 7 && reads.length === 0;
+      // Show more rebinds only the newly revealed audio and mining controls.
+      harness.callbacks().onResultsExpanded({ audioButtons: [], miningActions: [] });
+      harness.emitLookupStats({ generation: "statistics", revision: 5 }, { ...row, lookupCount: 4 });
+      outcomes["expanding results keeps the count element for later row events"] =
+        harness.lookupStatistics()?.lookupCount === 4 && !harness.popup.querySelector(".gsm-hoshidicts-lookup-stats").hidden;
       harness.edit(true);
       const retainedLine = harness.popup.querySelector(".gsm-hoshidicts-lookup-stats");
       harness.emitState(harness.state(2, "Replacement"));
