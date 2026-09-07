@@ -19,7 +19,13 @@
   const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
 
-  const { DEFAULT_OPTIONS, clampOption, definitionBlurQualifies, normaliseActivationKey, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
+  const {
+    DEFAULT_OPTIONS,
+    clampOption,
+    definitionBlurQualifies,
+    normaliseActivationKey,
+    projectContentOptions,
+  } = globalThis.HDReaderOptions;
   const { normaliseDictionaryGroups } = globalThis.HDDictionaryGroups;
   const { normaliseLookupTerm, lookupStatsKey } = globalThis.HDLookupStats;
   const { normaliseDictionaryTab: normalizedDictionaryTab } = globalThis.HDPopup;
@@ -123,6 +129,8 @@
       retainedView: false,
       pendingViewReplay: null,
       blurTimer: null,
+      capturePin: null,
+      capturePinPromise: null,
     };
   }
 
@@ -731,10 +739,32 @@
     return matched;
   }
 
+  function releaseCapture(value) {
+    if (!value) return;
+    void Promise.resolve(value).then(pin => window.HDCapture?.release(pin)).catch(() => {});
+  }
+
+  function releaseProvisionalCapture(value, level) {
+    // Child requests borrow the root pin. A root replay also borrows the pin
+    // already adopted by the visible popup, even if that replay becomes stale.
+    if (level !== rootLevel) return;
+    void Promise.resolve(value).then(pin => {
+      if (pin !== rootLevel.capturePin) releaseCapture(pin);
+    }).catch(() => {});
+  }
+
+  function releaseRootCapture() {
+    const capture = rootLevel.capturePinPromise ?? rootLevel.capturePin;
+    rootLevel.capturePin = null;
+    rootLevel.capturePinPromise = null;
+    releaseCapture(capture);
+  }
+
   function teardown(reason) {
     if (disposed) {
       return;
     }
+    releaseRootCapture();
     audio?.dispose();
     mining?.retire();
     disposed = true;
@@ -787,6 +817,7 @@
   }
 
   function discardUi() {
+    releaseRootCapture();
     audio?.retire();
     mining?.retire();
     cancelPopupLayout();
@@ -1284,6 +1315,7 @@
   function buildLevelUi(level) {
     mining ??= window.HDAnki.createAnkiController({
       send: (type, fields) => sendRequest(type, fields, "hachidori-anki"),
+      capture: (type, fields) => sendRequest(type, fields, "hachidori-capture"),
       onChange: owner => positionPopup(owner),
     });
     mining.update(options, optionsStorageRevision >= 0);
@@ -1386,6 +1418,7 @@
         searchQuery: request?.payload?.text ?? request?.termPayload?.text ?? candidate.query,
         popupSelectionText: selection?.anchorNode && level.popup.contains(selection.anchorNode) ? selection.toString() : "",
         documentTitle: document.title, audioSelection: audio.selectionFor(result) ?? undefined,
+        capturePin: rootLevel.capturePin ?? undefined,
         dictionaryAliases: Object.fromEntries(dictionaries.filter(item => item.displayName).map(item => [item.title, item.displayName])),
         frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
       };
@@ -1677,6 +1710,7 @@
     clearTransferTimer();
     pointerLevel = null;
     pruneLevels(1, false);
+    releaseRootCapture();
     rootLevel.activeCandidate = null;
     rootLevel.activeSignature = null;
     rootLevel.activeHighlightText = "";
@@ -1951,55 +1985,65 @@
     return true;
   }
 
+  function handleTermMiss(request, dictionaryCount, token, level, replayOptions) {
+    if (retainProtectedReplay(request, token, level, replayOptions)) return false;
+    if (dictionaryCount === 0) {
+      show(request.candidate, level);
+      level.activeHighlightText = "";
+      level.activeTermRender = null;
+      clearDefinitionBlurTimer(level);
+      level.currentViewRequest = null;
+      level.view.renderNotice(
+        "No dictionaries loaded. Import a Yomitan .zip from the Hachidori options page.",
+        request.candidate
+      );
+      positionPopup(level);
+      return false;
+    }
+    hide(level);
+    // Retain an exact miss so subsequent pointer motion cannot turn it into
+    // a prefix lookup. Explicit dismissal or another selection resets it.
+    if (request.exactSelection && selectionIsUnchanged(request.candidate)) {
+      activeSelectionCandidate = request.candidate;
+    }
+    return false;
+  }
+
   async function executeTermRequest(request, level = rootLevel, replayOptions = null) {
     audio?.retire(level);
     mining?.retire(level);
     const token = (level.lookupToken += 1);
     level.retainedView = replayOptions?.preserveViewControls === true;
     level.view?.hideImagePreview();
-    let reply;
+    let reply, capturePin;
+    const capturePinPromise = request.capturePinPromise ?? Promise.resolve(rootLevel.capturePin);
     try {
       // The first hover pays for the popup host and the stylesheet fetch; run
       // them alongside the lookup instead of ahead of it.
-      [, reply] = await Promise.all([
+      [, reply, capturePin] = await Promise.all([
         ensureUi(),
         sendRequest("hd_lookup", request.payload),
+        capturePinPromise,
       ]);
     } catch (error) {
+      releaseProvisionalCapture(capturePinPromise, level);
       if (retainProtectedReplay(request, token, level, replayOptions)) return false;
       return handleLookupFailure(token, error, level);
     }
+    request.capturePin = capturePin;
     // Hover fires far faster than lookups return; anything but the newest reply
     // would repaint a word the pointer already left.
     if (!requestCanRender(token, request.candidate, level)) {
+      releaseProvisionalCapture(capturePin, level);
       return;
     }
+    if (level === rootLevel) rootLevel.capturePin = capturePin;
     noteGeneration(reply.generation, level);
     const results = (Array.isArray(reply.results) ? reply.results : [])
       .filter((result) => result && result.term
         && (!request.exactSelection || result.matched === request.payload.text));
     if (results.length === 0) {
-      if (retainProtectedReplay(request, token, level, replayOptions)) return false;
-      if (reply.dictionaryCount === 0) {
-        show(request.candidate, level);
-        level.activeHighlightText = "";
-        level.activeTermRender = null;
-        clearDefinitionBlurTimer(level);
-        level.currentViewRequest = null;
-        level.view.renderNotice(
-          "No dictionaries loaded. Import a Yomitan .zip from the Hachidori options page.",
-          request.candidate
-        );
-        positionPopup(level);
-        return false;
-      }
-      hide(level);
-      // Retain an exact miss so subsequent pointer motion cannot turn it into
-      // a prefix lookup. Explicit dismissal or another selection resets it.
-      if (request.exactSelection && selectionIsUnchanged(request.candidate)) {
-        activeSelectionCandidate = request.candidate;
-      }
-      return false;
+      return handleTermMiss(request, reply.dictionaryCount, token, level, replayOptions);
     }
     if (!replayOptions?.preserveViewControls) show(request.candidate, level);
     const matched = results[0].matched || results[0].term.expression;
@@ -2040,6 +2084,7 @@
       previous: overrides.previous ?? null,
       returnFocus: overrides.returnFocus ?? null,
       selectedDictionaryTab: normalizedDictionaryTab(overrides.selectedDictionaryTab),
+      capturePinPromise: level === rootLevel ? level.capturePinPromise : rootLevel.capturePinPromise,
     }, level);
   }
 
@@ -2294,6 +2339,8 @@
   }
 
   function lookupCandidate(candidate, signature = candidateSignature(candidate)) {
+    rootLevel.capturePin = null;
+    rootLevel.capturePinPromise = Promise.resolve(window.HDCapture?.rootLookup(candidate) ?? null);
     const lookup = runLookup(candidate);
     const pending = { token: rootLevel.lookupToken, candidate, signature };
     pendingCandidateLookup = pending;
@@ -2727,7 +2774,7 @@
   function adoptOptions(stored) {
     const revision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
     if (revision <= optionsStorageRevision) return { lookupChanged: false, presentationChanged: false };
-    const next = normalizeOptions(stored);
+    const next = projectContentOptions(stored);
     const lookupChanged = next.scanLength !== options.scanLength || next.maxResults !== options.maxResults
       || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
       || JSON.stringify(next.kanjiClickDictionary) !== JSON.stringify(options.kanjiClickDictionary);

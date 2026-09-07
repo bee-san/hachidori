@@ -31,6 +31,10 @@
             <output class="nav-status" id="nav-status-audio" aria-live="polite"></output>
           </div>
           <div class="nav-item">
+            <a href="#media" aria-describedby="nav-status-media">Media capture</a>
+            <output class="nav-status" id="nav-status-media" aria-live="polite"></output>
+          </div>
+          <div class="nav-item">
             <a href="#anki" aria-describedby="nav-status-anki">Anki</a>
             <output class="nav-status" id="nav-status-anki" aria-live="polite"></output>
           </div>
@@ -723,6 +727,123 @@
           <p id="audio-source-empty" class="hint" hidden>No audio sources. Add one to configure pronunciation.</p>
           <button id="audio-source-add" type="button" class="ghost">Add source</button>
           <p class="field-hint">Test plays 聞く / きく using this row, even if it is disabled. URL sources contact the configured provider; some system voices use an online service.</p>
+          <div class="options-feedback-slot"></div>
+        </section>
+        <section class="card" id="media" aria-labelledby="media-heading" hidden>
+          <div class="section-heading">
+            <div class="card-head">
+              <h1 id="media-heading" tabindex="-1">Media capture</h1>
+              <p class="hint">Optional local recording for Anki notes. Changes save automatically.</p>
+            </div>
+            <button id="media-open-capture" type="button" class="primary-button">Open capture controls</button>
+          </div>
+          <output id="media-runtime-status" class="anki-status" aria-live="polite">
+            Capture is stopped.
+          </output>
+          <p class="section-note">
+            Open the capture controls to choose a tab, window, or entire screen. Capture keeps running when you close
+            the controls. Hachidori never requests microphone access.
+          </p>
+          <fieldset class="lookup-group">
+            <legend>Recording</legend>
+            <label class="lookup-enable">
+              <span>Enable captured media mining</span>
+              <input id="opt-media-enabled" type="checkbox" />
+            </label>
+            <div class="fields">
+              <label class="lookup-enable">
+                <span>Animated AVIF</span>
+                <input id="opt-media-animation" type="checkbox" />
+              </label>
+              <label class="lookup-enable">
+                <span>Captured WAV audio</span>
+                <input id="opt-media-audio" type="checkbox" />
+              </label>
+              <label class="field">
+                <span class="field-label">History</span>
+                <select id="opt-media-history">
+                  <option value="30">30 seconds</option>
+                  <option value="60">60 seconds</option>
+                </select>
+                <span class="field-hint">Recorder history retained only in memory.</span>
+              </label>
+              <label class="field">
+                <span class="field-label">Maximum clip</span>
+                <select id="opt-media-clip">
+                  <option value="5">5 seconds</option>
+                  <option value="10">10 seconds</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label">Video preset</span>
+                <select id="opt-media-preset">
+                  <option value="standard">Standard · 640×360, 8 fps</option>
+                  <option value="compact">Compact · 480×270, 6 fps</option>
+                </select>
+                <span class="field-hint">Never upscales a smaller source.</span>
+              </label>
+            </div>
+          </fieldset>
+          <fieldset class="lookup-group">
+            <legend>Timing</legend>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">Mode</span>
+                <select id="opt-media-timing">
+                  <option value="auto">Automatic priority</option>
+                  <option value="page">Page cues and watched text</option>
+                  <option value="recent">Preceding recent clip</option>
+                </select>
+                <span class="field-hint">Automatic uses texthooker, native video cues, page text, then recent history.</span>
+              </label>
+              <label class="field">
+                <span class="field-label">Estimated text offset</span>
+                <span class="input-suffix">
+                  <input id="opt-media-offset" type="number" min="-2000" max="2000" step="50" />
+                  <span class="suffix">ms</span>
+                </span>
+                <span class="field-hint">Applied to texthooker and watched page text, not native cues.</span>
+              </label>
+            </div>
+            <label class="lookup-enable">
+              <span>Use accessible native video cues</span>
+              <input id="opt-media-native-cues" type="checkbox" />
+            </label>
+            <label class="lookup-enable">
+              <span>Watch text inside a bounded page area</span>
+              <input id="opt-media-dom-text" type="checkbox" />
+            </label>
+            <label class="lookup-enable">
+              <span>Learn that area from the first root lookup</span>
+              <input id="opt-media-auto-area" type="checkbox" />
+            </label>
+          </fieldset>
+          <fieldset class="lookup-group">
+            <legend>Texthooker</legend>
+            <label class="lookup-enable">
+              <span>Use a loopback WebSocket text feed</span>
+              <input id="opt-media-texthooker" type="checkbox" />
+            </label>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">WebSocket URL</span>
+                <input id="opt-media-texthooker-url" type="url" spellcheck="false"
+                  placeholder="ws://127.0.0.1:7275/ws/texthooker" />
+                <span class="field-hint">Only localhost, 127.0.0.1 or [::1] ws/wss endpoints are accepted.</span>
+              </label>
+              <label class="field">
+                <span class="field-label">Message format</span>
+                <select id="opt-media-texthooker-format">
+                  <option value="plain">Plain live text</option>
+                  <option value="gsm">GameSentenceMiner text_received</option>
+                </select>
+              </label>
+            </div>
+          </fieldset>
+          <p class="section-note">
+            Anki templates use <code>{capture-animation}</code> and <code>{capture-audio}</code>.
+            Captured media cannot be placed in the first Anki field.
+          </p>
           <div class="options-feedback-slot"></div>
         </section>
         <section class="card" id="anki" aria-labelledby="anki-heading" hidden>

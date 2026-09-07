@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { resolveAnkiTemplates } from "./anki-templates.js";
+import { ankiTemplateMarkerNames, resolveAnkiTemplates } from "./anki-templates.js";
 
 // GSM PR #549's API-v6 discovery, adapted to the MV3 worker. No engine or
 // storage queue is involved. Runtime messages never select an endpoint/action;
@@ -80,6 +80,12 @@ export function ankiAvailability(config, discovery, resolvedTemplates) {
   errors.push(...resolved.errors);
   if (discovery.fields.length > 0 && !resolved.templates[discovery.fields[0]].value.trim()) {
     errors.push(`Map the first field, “${discovery.fields[0]}”, before adding notes.`);
+  }
+  if (discovery.fields.length > 0) {
+    const markers = ankiTemplateMarkerNames(resolved.templates[discovery.fields[0]].value);
+    if (markers.includes("capture-animation") || markers.includes("capture-audio")) {
+      errors.push(`Captured media cannot be mapped to the first field, “${discovery.fields[0]}”.`);
+    }
   }
   if (config.model && discovery.fields.length === 0 && errors.length === 0) errors.push("The selected note type has no fields.");
   return errors;

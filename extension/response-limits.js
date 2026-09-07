@@ -5,7 +5,14 @@ const MAX_MEDIA_RESPONSE_BYTES = 6 * 1024 * 1024;
 // Browser adaptation of the source's 1 MiB control frame, only for reader
 // options messages. Dictionary state, custom source, and archives are separate.
 const MAX_OPTIONS_FRAME_BYTES = 1024 * 1024;
-const BOUNDED_REQUESTS = new Set(["hd_lookup", "hd_lookup_dictionary", "hd_kanji", "hd_media", "hd_options_write"]);
+const BOUNDED_REQUESTS = new Set([
+  "hd_lookup",
+  "hd_lookup_dictionary",
+  "hd_kanji",
+  "hd_media",
+  "hd_capture_asset",
+  "hd_options_write",
+]);
 const responseFrameEncoder = new TextEncoder();
 
 export function isBoundedRequest(type) {
@@ -16,7 +23,7 @@ export function responseLimitError(type) {
   if (type === "hd_options_write" || type === "hd_options_write_result") {
     return "reader options message exceeds the 1 MiB serialized limit";
   }
-  return type === "hd_media" || type === "hd_media_result"
+  return ["hd_media", "hd_media_result", "hd_capture_asset", "hd_capture_asset_result"].includes(type)
     ? "media response exceeds the 6 MiB serialized limit"
     : "lookup response exceeds the 32 MiB serialized limit";
 }
@@ -33,11 +40,12 @@ export function responseFits(reply, nativeJsonLength = 0) {
     return json.length * 3 <= MAX_OPTIONS_FRAME_BYTES
       || responseFrameEncoder.encode(json).byteLength <= MAX_OPTIONS_FRAME_BYTES;
   }
-  if (reply.type === "hd_media_result") {
+  if (reply.type === "hd_media_result" || reply.type === "hd_capture_asset_result") {
     // The producer constructs dataUrl only from fixed ASCII MIME strings and
     // base64. Count that payload exactly without serializing/copying it again.
-    const dataLength = typeof reply.dataUrl === "string" ? reply.dataUrl.length : 0;
-    const frame = JSON.stringify(dataLength ? { ...reply, dataUrl: "" } : reply);
+    const field = reply.type === "hd_media_result" ? "dataUrl" : "data";
+    const dataLength = typeof reply[field] === "string" ? reply[field].length : 0;
+    const frame = JSON.stringify(dataLength ? { ...reply, [field]: "" } : reply);
     return frame.length * 3 + dataLength <= MAX_MEDIA_RESPONSE_BYTES
       || responseFrameEncoder.encode(frame).byteLength + dataLength <= MAX_MEDIA_RESPONSE_BYTES;
   }

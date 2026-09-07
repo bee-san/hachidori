@@ -15,6 +15,17 @@
     if (value.state === "invalid" || value.state === "error") return "Cannot add";
     return "Add to Anki";
   }
+  function captureBadge(record, state = "") {
+    if (!record.badge) return;
+    const capture = record.decision?.capture;
+    record.badge.hidden = !capture;
+    if (!capture) {
+      text(record.badge, "");
+      return;
+    }
+    const labels = [capture.sourceLabel, capture.partial ? "Partial" : "", state].filter(Boolean);
+    text(record.badge, labels.join(" · "));
+  }
   function decision(record, value) {
     record.decision = value;
     if (!record.terminal && !record.busy) {
@@ -22,6 +33,7 @@
       text(record.add, decisionLabel(value));
       text(record.output, value.error || "");
     }
+    captureBadge(record);
     disabled(record);
   }
   function uncertain(record, error) {
@@ -30,7 +42,29 @@
     text(record.add, "Check Anki");
     text(record.output, error);
   }
-  function createAnkiController({ send, onChange }) {
+  function readyCaptureRequest(record, request, requirements, assets) {
+    captureBadge(record);
+    const unavailable = [];
+    if (requirements.includeAnimation && !assets?.animation) unavailable.push("animation");
+    if (requirements.includeAudio && !assets?.audio) unavailable.push("audio");
+    return { ...request, captureJobId: record.captureJobId, captureUnavailable: unavailable };
+  }
+  function captureProgress(record, status) {
+    if (status.state === "finishing") {
+      captureBadge(record, "Finishing clip");
+      text(record.output, "Finishing clip…");
+    } else {
+      captureBadge(record);
+      const progress = status.total > 0 ? ` ${status.progress}/${status.total}` : "";
+      text(record.output, `Encoding captured media${progress}…`);
+    }
+  }
+  function createAnkiController({
+    send,
+    capture = send,
+    onChange,
+    wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
+  }) {
     const owners = new Map(), bound = new WeakMap();
     let enabled = false, settingsKey = "", checks = Promise.resolve();
     const live = group => enabled && owners.get(group.owner) === group && !group.popup.hidden && group.isCurrent();
@@ -91,6 +125,11 @@
     function refreshAll() {
       for (const group of owners.values()) refresh(group, true);
     }
+    async function cancelCapture(record) {
+      if (!record.captureJobId) return;
+      try { await capture("hd_capture_cancel", { jobId: record.captureJobId }); } catch { /* Stop/expiry already cleaned it up. */ }
+      record.captureJobId = null;
+    }
     function submitted(record, result) {
       if (result.state === "uncertain") { uncertain(record, result.error); return true; }
       if (result.state !== "added" && result.state !== "updated") return false;
@@ -104,6 +143,31 @@
       refreshAll(); // Best-effort checks cannot turn a confirmed write into a retry.
       return true;
     }
+    async function prepareCapture(record, request, owns) {
+      const selected = record.decision?.capture;
+      if (!selected) return request;
+      if (!request.capturePin?.token) throw new Error("The capture pin expired. Look up the text again.");
+      if (!record.captureJobId) {
+        const started = await capture("hd_capture_export", {
+          token: request.capturePin.token,
+          requirements: selected.requirements,
+        });
+        record.captureJobId = started.jobId;
+      }
+      for (;;) {
+        const status = await capture("hd_capture_job_status", { jobId: record.captureJobId });
+        if (status.state === "ready") {
+          return readyCaptureRequest(record, request, selected.requirements, status.assets);
+        }
+        if (status.state === "error") {
+          const message = status.error || "Captured media could not be encoded.";
+          await cancelCapture(record);
+          throw new Error(message);
+        }
+        if (owns()) captureProgress(record, status);
+        await wait(100);
+      }
+    }
     async function submit(record, fromPointer) {
       if (!current(record) || record.add.disabled || record.busy || record.terminal) return;
       const group = record.group, epoch = group.epoch;
@@ -113,11 +177,18 @@
       record.busy = true;
       disabled(record);
       text(record.output, "Saving to Anki…");
+      let writeSent = false;
       try {
-        const result = await send("hd_anki_submit", { request });
+        const prepared = await prepareCapture(record, request, owns);
+        if (owns()) text(record.output, "Saving to Anki…");
+        writeSent = true;
+        const result = await send("hd_anki_submit", { request: prepared });
+        // These replies confirm that no note was written. Release the export
+        // even if its popup retired while Anki was checking the submission.
+        if (["duplicate", "invalid"].includes(result.state)) await cancelCapture(record);
         if (!submitted(record, result) && owns()) { decision(record, { ...result, canAdd: false }); refreshAll(); }
       } catch (error) {
-        if (!error.responseReceived) uncertain(record, `The write could not be confirmed. Use View in Anki before trying again. ${error.message}`);
+        if (writeSent && !error.responseReceived) uncertain(record, `The write could not be confirmed. Use View in Anki before trying again. ${error.message}`);
         else if (owns()) text(record.output, `Could not add: ${error.message}`);
       } finally {
         record.busy = false;
@@ -144,12 +215,15 @@
       view.textContent = "View";
       add.setAttribute("aria-label", `Add ${record.result.term.expression} to Anki`);
       view.setAttribute("aria-label", `View ${record.result.term.expression} in Anki`);
+      const badge = document.createElement("span");
+      badge.className = "gsm-hoshidicts-capture-badge";
+      badge.hidden = true;
       const output = document.createElement("output");
       output.className = "gsm-hoshidicts-anki-status";
       output.setAttribute("aria-live", "polite");
-      control.append(add, view, output);
+      control.append(badge, add, view, output);
       record.actions.prepend(control);
-      Object.assign(record, { control, add, view, output });
+      Object.assign(record, { control, add, view, badge, output });
       add.addEventListener("mousedown", event => { if (event.button === 0 && current(record)) record.pointerRequest = payload(record); });
       add.addEventListener("click", event => { void submit(record, event.detail > 0); });
       view.addEventListener("click", () => { void browse(record); });
@@ -165,7 +239,8 @@
         let record = bound.get(item.actions);
         if (record?.group === group && record.result === item.result) continue;
         record?.control?.remove();
-        record = { ...item, group, busy: false, terminal: false, decision: null, needsCheck: true };
+        record = { ...item, group, busy: false, terminal: false, decision: null, needsCheck: true,
+          captureJobId: null };
         bound.set(item.actions, record);
         records.push(record);
         disabled(record);
@@ -183,7 +258,7 @@
     return { bind, retire,
       refresh(owner) { const group = owners.get(owner); if (group) refresh(group, true); },
       update(options, ready = true) {
-        const key = JSON.stringify([ready, options.anki, options.audioSources]);
+        const key = JSON.stringify([ready, options.anki, options.audioSources, options.mediaCapture]);
         if (key === settingsKey) return;
         settingsKey = key;
         enabled = ready && Boolean(options.anki.model);
