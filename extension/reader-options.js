@@ -34,6 +34,8 @@
     sourceHighlightEnabled: true,
     popupColumns: 1,
     showLookupCounts: true,
+    corpusSeenEnabled: false,
+    corpusSeenUrl: "http://127.0.0.1:7275",
     showCompactDefinitionSummary: false,
     compactDefinitionSummaryCount: 3,
     compactDefinitionSummaryDictionary: "",
@@ -75,7 +77,8 @@
   const POPUP_THEME_IDS = new Set(POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id)));
   const DESIGN_OPTION_KEYS = [
     "popupTheme", "popupToolbarPosition", "customPopupCss", "popupWidthPx", "popupHeightPx", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
-    "showLookupCounts", "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
+    "showLookupCounts", "corpusSeenEnabled", "corpusSeenUrl",
+    "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags",
   ];
@@ -174,6 +177,19 @@
     return typeof value === "string" ? value : "";
   }
 
+  function normaliseCorpusSeenUrl(value) {
+    if (typeof value !== "string" || value === "") return null;
+    try {
+      const url = new URL(value);
+      if (!["http:", "https:"].includes(url.protocol)
+          || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
+          || url.username || url.password) return null;
+      return url.origin;
+    } catch {
+      return null;
+    }
+  }
+
   function normaliseField(key, value) {
     if (Object.hasOwn(NUMBER_RANGES, key)) return clampOption(key, value);
     if (typeof DEFAULT_OPTIONS[key] === "boolean") {
@@ -187,6 +203,7 @@
       case "frequencyOrder": return FREQUENCY_ORDERS.includes(value) ? value : DEFAULT_OPTIONS.frequencyOrder;
       case "kanjiClickDictionary": return normaliseKanjiSelection(value);
       case "popupImageSource": return normalisePopupImageSource(value);
+      case "corpusSeenUrl": return normaliseCorpusSeenUrl(value) ?? DEFAULT_OPTIONS.corpusSeenUrl;
       case "audioSources": return normaliseAudioSources(value);
       case "anki": return normaliseAnki(value);
       default: return typeof value === "string" ? value : "";
@@ -261,6 +278,7 @@
     if (key === "anki") return validAnki(raw, normalized);
     if (key === "kanjiClickDictionary") return typeof raw === "string" || typeof normalized === "object";
     if (key === "popupImageSource") return raw === null || normalized !== null;
+    if (key === "corpusSeenUrl") return normaliseCorpusSeenUrl(raw) === raw;
     if (key === "audioSources") return Array.isArray(raw) && raw.length === normalized.length
       && normalized.every((source, index) => Object.entries(source).every(([field, value]) => raw[index][field] === value));
     return typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
@@ -287,6 +305,7 @@
     POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
+    normaliseCorpusSeenUrl,
     projectStoredOptions, validateOptionsPatch,
     resolvePopupImageSources,
     resolveKanjiDictionary,

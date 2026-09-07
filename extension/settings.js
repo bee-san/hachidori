@@ -35,7 +35,7 @@ const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", a
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
-  clampOption, normaliseKanjiSelection, normaliseOptions,
+  clampOption, normaliseCorpusSeenUrl, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -56,6 +56,7 @@ const NUMBER_FIELDS = [
 ];
 const METADATA_FIELDS = [
   { key: "showLookupCounts", id: "opt-lookup-counts" },
+  { key: "corpusSeenEnabled", id: "opt-corpus-seen" },
   { key: "showFrequencyDictionaryNames", id: "opt-frequency-names" },
   { key: "averageFrequency", id: "opt-average-frequency" },
   { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },
@@ -978,6 +979,11 @@ function renderPreferredDictionary(id, preferred, kind, automaticLabel, enabled)
 function renderMetadataControls() {
   for (const field of METADATA_FIELDS) {
     element(field.id).checked = field.inverted ? !options[field.key] : options[field.key];
+  }
+  const corpusUrl = element("opt-corpus-url");
+  if (corpusUrl !== document.activeElement) {
+    corpusUrl.value = options.corpusSeenUrl;
+    corpusUrl.disabled = !options.corpusSeenEnabled;
   }
   renderPreferredDictionary("opt-pitch-dictionary", options.pitchAccentFuriganaDictionary,
     "pitch", "Automatic — first available pitch", options.showPitchAccentFurigana);
@@ -2257,6 +2263,17 @@ function attachHandlers() {
       writeOptions();
     });
   }
+  element("opt-corpus-url").addEventListener("change", (event) => {
+    const value = normaliseCorpusSeenUrl(event.target.value);
+    if (value === null) {
+      event.target.value = options.corpusSeenUrl;
+      setOptionsStatus("GameSentenceMiner must use a loopback HTTP or HTTPS URL.");
+      return;
+    }
+    options.corpusSeenUrl = value;
+    event.target.value = value;
+    writeOptions();
+  });
   element("opt-pitch-dictionary").addEventListener("change", (event) => {
     options.pitchAccentFuriganaDictionary = event.target.value;
     writeOptions();
@@ -2335,6 +2352,7 @@ function attachHandlers() {
       if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
       if (event.target.id === "opt-image-source") renderPopupImageSources();
       if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
+      if (event.target.id === "opt-corpus-url") renderMetadataControls();
       if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
       const choice = APPEARANCE_CHOICES.find(({ id }) => id === event.target.id);
       if (choice) event.target.value = options[choice.key];

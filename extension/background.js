@@ -36,7 +36,7 @@ import {
   boundResponseFailure, responseFits, responseLimitError, validResponseRequestId,
 } from "./response-limits.js";
 
-const { projectStoredOptions, validateOptionsPatch } = globalThis.HDReaderOptions;
+const { DEFAULT_OPTIONS, normaliseCorpusSeenUrl, projectStoredOptions, validateOptionsPatch } = globalThis.HDReaderOptions;
 const { normaliseExternalUrl } = globalThis.HDExternalLinks;
 const { pruneGroupMemberships } = globalThis.HDDictionaryGroups;
 
@@ -82,6 +82,7 @@ const UPDATE_SETTINGS_KEY = "dictionaryUpdates";
 const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
 const DICTIONARY_STATE_SCHEMA_VERSION = 1;
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
+const LOOKUP_STATS_CORPUS_TIMEOUT_MS = 2_000;
 // A relayed request can arrive in the window between createDocument() resolving
 // and offscreen.js running its module body, where nothing is listening yet.
 const RELAY_ATTEMPTS = 5;
@@ -347,12 +348,15 @@ async function removeLegacyDictionaryRows(current, legacyDictionaries) {
 // The engine or settings page reads state, changes it, and sends it back a
 // message round trip later. A caller includes the revision it read so a stale
 // write cannot discard a change made by another extension context.
-async function lookupStatistics(message, record) {
+async function lookupStatisticsStorage(message, record) {
   const term = normaliseLookupTerm(message.term, message.reading);
   const stored = await chrome.storage.local.get([LOOKUP_STATS_KEY, OPTIONS_KEY]);
   let descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
   assertLookupStatsDescriptor(descriptor);
-  if (projectStoredOptions(stored[OPTIONS_KEY]).showLookupCounts === false) return { descriptor, statistics: null };
+  const storedOptions = stored[OPTIONS_KEY];
+  if (storedOptions?.showLookupCounts === false) {
+    return { descriptor, statistics: null, term, corpusSeen: null };
+  }
   const key = lookupStatsKey(descriptor, term);
   let row = descriptor.generation === null ? undefined : (await chrome.storage.local.get(key))[key];
   if (record) {
@@ -364,7 +368,54 @@ async function lookupStatistics(message, record) {
     assertLookupStatsRows(descriptor, [row]);
     if (lookupStatsKey(descriptor, row) !== key) throw new Error("The lookup statistics row does not match its key.");
   }
-  return { descriptor, statistics: { ...(row ?? { ...term, lookupCount: 0 }), seenCount: null } };
+  return {
+    descriptor,
+    statistics: { ...(row ?? { ...term, lookupCount: 0 }), seenCount: null },
+    term,
+    corpusSeen: storedOptions?.corpusSeenEnabled === true
+      ? normaliseCorpusSeenUrl(storedOptions.corpusSeenUrl) ?? DEFAULT_OPTIONS.corpusSeenUrl
+      : null,
+  };
+}
+
+// Read-only: GSM's POST lookup-stats endpoint would also increment its own count.
+async function corpusSeenCount(baseUrl, term) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LOOKUP_STATS_CORPUS_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${baseUrl}/api/tokenization/word/${encodeURIComponent(term)}`, {
+      cache: "no-store",
+      credentials: "omit",
+      method: "GET",
+      redirect: "error",
+      signal: controller.signal,
+    });
+    let payload;
+    try {
+      payload = await response.json();
+    } catch {
+      return null;
+    }
+    if (response.status === 404 && payload?.error === "Word not found") return 0;
+    return response.ok && Number.isSafeInteger(payload?.total_occurrences) && payload.total_occurrences >= 0
+      ? payload.total_occurrences
+      : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function lookupStatistics(message, record) {
+  const { term, corpusSeen, ...local } = await serialiseStorage(
+    () => lookupStatisticsStorage(message, record),
+  );
+  if (local.statistics === null || corpusSeen === null) return local;
+  return {
+    ...local,
+    statistics: { ...local.statistics, seenCount: await corpusSeenCount(corpusSeen, term.term) },
+  };
 }
 
 function assertBackupEngineSender(sender) {
@@ -1142,7 +1193,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   const invoke = () => WORKER_HANDLERS[type](message, sender);
   // Navigation and read-only Anki discovery must not hold up storage commits.
-  const operation = ["hd_open_external", "hd_anki_discover", "hd_backup_download"].includes(type) ? invoke() : serialiseStorage(invoke);
+  const operation = [
+    "hd_open_external", "hd_anki_discover", "hd_backup_download",
+    "hd_lookup_stats_record", "hd_lookup_stats_read",
+  ].includes(type) ? invoke() : serialiseStorage(invoke);
   operation.then(
     async (result) => {
       if (type === "hd_backup_cas" && result.ok !== false) {

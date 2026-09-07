@@ -562,14 +562,22 @@
                   </label>
                 </div>
               </fieldset>
-              <fieldset class="lookup-group">
+              <fieldset class="lookup-group" id="lookup-history-settings">
                 <legend>Lookup history</legend>
                 <label class="lookup-enable">
                   <span>Record and show lookup counts</span>
                   <input id="opt-lookup-counts" type="checkbox" aria-describedby="lookup-counts-help" />
                 </label>
                 <p class="field-hint" id="lookup-counts-help">Counts stay in this browser and are included in backups. Turning this off pauses recording without erasing past counts. The All tab shows the primary word's count; other tabs may show a different word.</p>
-                <p class="field-hint">Corpus “Seen” counts are unavailable without a connected sentence corpus. Pages and browsing history are not collected.</p>
+                <label class="lookup-enable">
+                  <span>Show GameSentenceMiner corpus Seen counts</span>
+                  <input id="opt-corpus-seen" type="checkbox" aria-describedby="corpus-seen-help" />
+                </label>
+                <label class="field">
+                  <span class="field-label">GameSentenceMiner URL</span>
+                  <input id="opt-corpus-url" type="url" inputmode="url" spellcheck="false" value="http://127.0.0.1:7275" />
+                </label>
+                <p class="field-hint" id="corpus-seen-help">Optional and read-only. Hachidori asks the local GameSentenceMiner word-detail endpoint for the saved-corpus occurrence count. Only loopback URLs are accepted; pages and browsing history are not collected.</p>
               </fieldset>
               <fieldset class="lookup-group">
                 <legend>Frequency labels</legend>

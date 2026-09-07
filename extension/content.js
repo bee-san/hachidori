@@ -1416,6 +1416,8 @@
     entry.pending = true;
     entry.needsRefresh = false;
     const requestedOptionsRevision = optionsStorageRevision;
+    const requestedCorpusSeenEnabled = options.corpusSeenEnabled;
+    const requestedCorpusSeenUrl = options.corpusSeenUrl;
     void sendRequest(record ? "hd_lookup_stats_record" : "hd_lookup_stats_read", {
       term: entry.term, reading: entry.reading,
     }, "hoshidicts-worker").then(payload => {
@@ -1425,9 +1427,13 @@
         return;
       }
       if (entry.payload?.descriptor.revision > payload.descriptor.revision) return;
-      entry.payload = payload;
-      entry.needsRefresh = payload.statistics === null && options.showLookupCounts
-        && requestedOptionsRevision !== optionsStorageRevision;
+      const corpusChanged = requestedCorpusSeenEnabled !== options.corpusSeenEnabled
+        || requestedCorpusSeenUrl !== options.corpusSeenUrl;
+      entry.payload = corpusChanged && payload.statistics
+        ? { ...payload, statistics: { ...payload.statistics, seenCount: null } }
+        : payload;
+      entry.needsRefresh = options.showLookupCounts && (corpusChanged
+        || (payload.statistics === null && requestedOptionsRevision !== optionsStorageRevision));
       if (request.lookupStats === entry) paintLookupStatistics(request, level);
     }).catch(error => {
       // A lost reply may follow a committed increment. Never retry the write.
@@ -2596,8 +2602,11 @@
     const metadataChanged = Object.entries(window.HDPopup.metadataOptions(next)).some(([key, value]) => value !== options[key]);
     // The caller adopts the complete storage delivery before new summary work.
     // A simultaneous dictionary replacement must invalidate the old view first.
-    const countsChanged = next.showLookupCounts !== options.showLookupCounts;
-    const adoption = { lookupChanged, presentationChanged: (summaryChanged || imageSourceChanged || metadataChanged || countsChanged) && next.hoverEnabled };
+    const corpusChanged = next.corpusSeenEnabled !== options.corpusSeenEnabled
+      || next.corpusSeenUrl !== options.corpusSeenUrl;
+    const countsChanged = next.showLookupCounts !== options.showLookupCounts || corpusChanged;
+    const adoption = { lookupChanged,
+      presentationChanged: (summaryChanged || imageSourceChanged || metadataChanged) && next.hoverEnabled };
     if (activationChanged) {
       activationPressed = false;
       activationCode = null;
@@ -2606,10 +2615,18 @@
     options = next;
     if (countsChanged) {
       for (const level of levels) {
-        if (level.currentViewRequest?.lookupStats) {
-          paintLookupStatistics(level.currentViewRequest, level);
-          refreshLookupStatistics(level.currentViewRequest, level);
+        const request = level.currentViewRequest;
+        const entry = request?.lookupStats;
+        if (!entry) continue;
+        if (corpusChanged && entry.payload?.statistics) {
+          entry.payload = {
+            ...entry.payload,
+            statistics: { ...entry.payload.statistics, seenCount: null },
+          };
         }
+        if (corpusChanged || next.showLookupCounts) entry.needsRefresh = true;
+        paintLookupStatistics(request, level);
+        refreshLookupStatistics(request, level);
       }
     }
     audio?.update(options);
