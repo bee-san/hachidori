@@ -341,8 +341,36 @@ function requestInstall(sourceIds) {
   return promise;
 }
 
-// Untouched entries install on their own; failed or removed ones wait for an
-// explicit retry, and a complete inventory is rechecked before it is announced.
+// A complete inventory is announced with this setup's own install time only
+// when it installed something; a profile that already carried every source
+// reads as already installed. The result holds for five seconds.
+function installedView(rows, importNote) {
+  const total = setupState.dictionaries.totalSeconds;
+  const installedHere = Object.values(setupState.dictionaries.outcomes).some((outcome) => outcome.status === "installed");
+  if (!advanceFailed) startCountdown();
+  return {
+    heading: installedHere && total !== null ? `All dictionaries installed in ${formatSeconds(total)}` : "All dictionaries are already installed",
+    body: [importNote, rows, ...(advanceFailed ? [] : [countdownView()])],
+    actions: advanceFailed ? [button("setup-continue", "Continue setup", () => { void advance("anki"); })] : [],
+  };
+}
+
+// A failed or later removed source waits for an explicit retry of the missing
+// ones, and setup can be continued without them.
+function incompleteView(rows, importNote, missing) {
+  const failed = installFailed || missing.some((entry) => setupState.dictionaries.outcomes[entry.sourceId]?.status === "failed");
+  return {
+    heading: failed ? "Some dictionaries could not be installed" : "Some dictionaries are not installed",
+    body: [rows, importNote],
+    actions: [
+      button("setup-retry", "Retry missing dictionaries", () => { void requestInstall(missing.map((entry) => entry.sourceId)); }),
+      button("setup-continue", "Continue setup", () => { void advance("anki", { continued: true }); }, "ghost"),
+    ],
+  };
+}
+
+// Every source without a recorded outcome is requested on its own; the run's
+// live rows and the recorded result follow.
 function dictionariesView() {
   const rows = dictionaryRows();
   const importNote = settingsNote("Install custom dictionaries in ", "settings.html#add-dictionaries");
@@ -359,32 +387,15 @@ function dictionariesView() {
     cancelCountdown();
     return installingView();
   }
-  const missing = missingEntries();
   const untouched = untouchedEntries();
   if (untouched.length > 0 && !installFailed) {
     void requestInstall(untouched.map((entry) => entry.sourceId));
     return installingView();
   }
-  if (missing.length === 0) {
-    const total = setupState.dictionaries.totalSeconds;
-    const installedBySetup = Object.values(setupState.dictionaries.outcomes).some((outcome) => outcome.status === "installed");
-    if (!advanceFailed) startCountdown();
-    return {
-      heading: installedBySetup && total !== null ? `All dictionaries installed in ${formatSeconds(total)}` : "All dictionaries are already installed",
-      body: [importNote, rows, ...(advanceFailed ? [] : [countdownView()])],
-      actions: advanceFailed ? [button("setup-continue", "Continue setup", () => { void advance("anki"); })] : [],
-    };
-  }
+  const missing = missingEntries();
+  if (missing.length === 0) return installedView(rows, importNote);
   cancelCountdown();
-  const failed = installFailed || missing.some((entry) => setupState.dictionaries.outcomes[entry.sourceId]?.status === "failed");
-  return {
-    heading: failed ? "Some dictionaries could not be installed" : "Some dictionaries are not installed",
-    body: [rows, importNote],
-    actions: [
-      button("setup-retry", "Retry missing dictionaries", () => { void requestInstall(missing.map((entry) => entry.sourceId)); }),
-      button("setup-continue", "Continue setup", () => { void advance("anki", { continued: true }); }, "ghost"),
-    ],
-  };
+  return incompleteView(rows, importNote, missing);
 }
 
 const VIEWS = {
