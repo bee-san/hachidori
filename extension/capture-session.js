@@ -10,6 +10,7 @@ import { MAX_ANIMATED_AVIF_BYTES } from "./avif-sequence.js";
 import { createCaptureTimeline, resolveCaptureInterval } from "./capture-timeline.js";
 
 const JOB_LIFETIME_MS = 2 * 60 * 1000;
+export const MEDIA_DRAIN_MS = 250;
 
 function safeAssetId(value = crypto.randomUUID()) {
   const id = value.toLowerCase().replace(/[^a-z0-9]/gu, "");
@@ -27,6 +28,7 @@ export function createCaptureSession({
   now = () => performance.timeOrigin + performance.now(),
   wallNow = Date.now,
   setTimer = setTimeout,
+  clearTimer = clearTimeout,
   encodeAnimation = encodeCapturedAnimation,
   randomId = () => crypto.randomUUID(),
 } = {}) {
@@ -39,6 +41,8 @@ export function createCaptureSession({
   let linkedPage = null;
   let texthookerStatus = "Disabled";
   let texthookerActive = false;
+  let texthookerSource = null;
+  let videoDeliveredThroughMs = -Infinity;
   const timeline = createCaptureTimeline();
   let frameRing = null;
   let audioRing = null;
@@ -95,6 +99,8 @@ export function createCaptureSession({
     jobs.clear();
     activeJobId = null;
     texthookerActive = false;
+    texthookerSource = null;
+    videoDeliveredThroughMs = -Infinity;
     texthookerStatus = config.timingMode === "auto" && config.texthooker.enabled
       ? "Disconnected" : "Disabled";
     state = config.enabled ? "stopped" : "disabled";
@@ -103,7 +109,6 @@ export function createCaptureSession({
 
   function start({ sourceName = "Shared tab", displaySurface = "browser", audioAvailable = true } = {}) {
     if (!config?.enabled) throw new Error("Enable media capture in Settings first.");
-    if (displaySurface === "monitor") throw new Error("Whole-screen capture is not supported. Choose a tab or window.");
     captureSessionId = randomId();
     capturedAudioAvailable = audioAvailable === true;
     mediaSource = {
@@ -125,6 +130,8 @@ export function createCaptureSession({
     capturedAudioAvailable = false;
     linkedPage = null;
     texthookerActive = false;
+    texthookerSource = null;
+    videoDeliveredThroughMs = -Infinity;
     texthookerStatus = config?.timingMode === "auto" && config.texthooker.enabled
       ? "Disconnected" : "Disabled";
     frameRing?.clear();
@@ -141,16 +148,28 @@ export function createCaptureSession({
 
   function addFrame(frame) {
     requireRecording();
-    return frameRing.append(frame);
+    const added = frameRing.append(frame);
+    videoDelivered(added.timestampMs);
+    return added;
+  }
+
+  function videoDelivered(timestampMs) {
+    requireRecording();
+    videoDeliveredThroughMs = Math.max(videoDeliveredThroughMs, timestampMs);
+    currentPin()?.checkDrain?.();
   }
 
   function addAudio(block) {
     requireRecording();
-    return audioRing.append(block);
+    const added = audioRing.append(block);
+    currentPin()?.checkDrain?.();
+    return added;
   }
 
   function setLinkedPage(page) {
     const previous = linkedPage;
+    if (previous && (previous.tabId !== page?.tabId || previous.documentId !== page?.documentId)
+        && activePin) releasePin(activePin.token);
     if (previous) {
       const sourceId = `tab:${previous.tabId}`;
       const endMs = now();
@@ -170,7 +189,11 @@ export function createCaptureSession({
 
   function textBegin(record) {
     requireRecording();
-    return timeline.begin(record);
+    const begun = timeline.begin(record);
+    if (record.sourceKind === "texthooker") {
+      texthookerSource = { sourceId: record.sourceId, sourceEpoch: record.sourceEpoch };
+    }
+    return begun;
   }
 
   function textClose(identity, endMs = now()) {
@@ -188,6 +211,7 @@ export function createCaptureSession({
   function setTexthooker(nextStatus, active = false) {
     texthookerStatus = nextStatus;
     texthookerActive = active;
+    if (!active) texthookerSource = null;
   }
 
   function adjustOpenPin(closed) {
@@ -200,6 +224,7 @@ export function createCaptureSession({
     if (closedEnd > active.startMs && closedEnd < active.endMs) {
       active.endMs = closedEnd;
       active.deadlineVersion += 1;
+      active.finishDrain?.();
       void finalizeAtDeadline(active, active.deadlineVersion);
     }
   }
@@ -212,21 +237,58 @@ export function createCaptureSession({
 
   function cancelOwnedCapture(message) {
     const error = new Error(message);
-    if (activePin && !activePin.finalized) activePin.rejectReady(error);
+    if (activePin && !activePin.finalized) {
+      activePin.finishDrain?.();
+      activePin.rejectReady(error);
+    }
     activePin = null;
     for (const job of jobs.values()) {
       job.controller.abort();
-      if (!job.pin.finalized) job.pin.rejectReady(error);
+      if (!job.pin.finalized) {
+        job.pin.finishDrain?.();
+        job.pin.rejectReady(error);
+      }
     }
+  }
+
+  function mediaDelivered(pin) {
+    return (!config.includeAnimation || videoDeliveredThroughMs >= pin.endMs)
+      && (!config.includeCapturedAudio || !pin.audioAvailable
+        || audioRing.covers(pin.startMs, pin.endMs));
+  }
+
+  function drainMedia(pin) {
+    if (mediaDelivered(pin)) return Promise.resolve();
+    return new Promise(resolve => {
+      const timer = setTimer(finish, MEDIA_DRAIN_MS);
+      function finish() {
+        clearTimer(timer);
+        pin.finishDrain = null;
+        pin.checkDrain = null;
+        resolve();
+      }
+      pin.finishDrain = finish;
+      pin.checkDrain = () => { if (mediaDelivered(pin)) finish(); };
+    });
   }
 
   async function finalizeAtDeadline(pin, version) {
     await waitUntil(pin.endMs, now, setTimer);
     if (currentPin() !== pin || pin.deadlineVersion !== version || pin.finalized) return;
     try {
+      // Delivery can trail its timestamp (JPEG encoding and worklet batches).
+      // Wait for that delivery without moving the lookup's frozen interval.
+      await drainMedia(pin);
+      if (currentPin() !== pin || pin.deadlineVersion !== version || pin.finalized) return;
       pin.frames = config.includeAnimation ? frameRing.select(pin.startMs, pin.endMs) : [];
       pin.audio = config.includeCapturedAudio && pin.audioAvailable
         ? audioRing.select(pin.startMs, pin.endMs) : null;
+      pin.mediaErrors = {};
+      // A display-capture track can emit only changed frames. Once the bounded
+      // drain ends, its last pixels remain valid until source mute/loss stops us.
+      if (pin.audio?.partial) {
+        pin.mediaErrors.audio = "Captured audio is missing samples in this clip. Look up the text again.";
+      }
       if (config.includeCapturedAudio && !pin.audioAvailable) pin.partial = true;
       pin.partial ||= pin.audio?.partial === true;
       pin.finalized = true;
@@ -258,6 +320,7 @@ export function createCaptureSession({
       clipSeconds: config.clipSeconds,
       estimatedOffsetMs: config.estimatedOffsetMs,
       texthookerActive,
+      texthookerSource: texthookerActive ? texthookerSource : null,
     });
     if (!interval) throw new Error("No retained capture interval is available for this lookup.");
     const assetId = safeAssetId(randomId());
@@ -275,6 +338,7 @@ export function createCaptureSession({
       finalized: false,
       frames: null,
       audio: null,
+      mediaErrors: {},
       ready,
       resolveReady,
       rejectReady,
@@ -296,6 +360,7 @@ export function createCaptureSession({
   function releasePin(token) {
     const released = pins.release(token);
     if (released && activePin?.token === token) {
+      activePin.finishDrain?.();
       activePin.rejectReady(new Error("The capture pin was released."));
       activePin = null;
     }
@@ -307,7 +372,10 @@ export function createCaptureSession({
     for (const [id, job] of jobs) {
       if (job.updatedAt >= cutoff) continue;
       job.controller.abort();
-      if (!job.pin.finalized) job.pin.rejectReady(new Error("The media export job expired."));
+      if (!job.pin.finalized) {
+        job.pin.finishDrain?.();
+        job.pin.rejectReady(new Error("The media export job expired."));
+      }
       jobs.delete(id);
       if (activeJobId === id) activeJobId = null;
     }
@@ -324,7 +392,7 @@ export function createCaptureSession({
       throw new Error("Another captured clip is still exporting.");
     }
     const pin = pins.get(token);
-    if (!pin || pin.captureSessionId !== captureSessionId) throw new Error("The capture pin expired. Look up the text again.");
+    if (pin?.captureSessionId !== captureSessionId) throw new Error("The capture pin expired. Look up the text again.");
     const includeAnimation = requirements?.includeAnimation === true && config.includeAnimation;
     const includeAudio = requirements?.includeAudio === true && config.includeCapturedAudio && pin.audioAvailable;
     if (!includeAnimation && requirements?.includeAudio === true
@@ -334,7 +402,7 @@ export function createCaptureSession({
     if (!includeAnimation && !includeAudio) throw new Error("The selected Anki fields do not reference captured media.");
     const id = randomId();
     const controller = new AbortController();
-    const job = { id, token, state: "finishing", error: "", progress: 0, total: 0,
+    const job = { id, token, state: "finishing", error: "", progress: 0, total: 0, encoderHeapBytes: 0,
       sourceLabel: pin.sourceLabel, partial: pin.partial === true, assets: {}, updatedAt: wallNow(),
       controller, pin,
       warnings: requirements?.includeAudio === true && !pin.audioAvailable
@@ -347,6 +415,7 @@ export function createCaptureSession({
       try {
         await pin.ready;
         if (controller.signal.aborted) throw new Error("Media encoding was cancelled.");
+        if (includeAudio && pin.mediaErrors.audio) throw new Error(pin.mediaErrors.audio);
         job.state = "encoding";
         job.updatedAt = wallNow();
         if (includeAnimation) {
@@ -354,9 +423,12 @@ export function createCaptureSession({
             filename: pin.animationFilename,
             data: await encodeAnimation(pin.frames, { endMs: pin.endMs, videoPreset: config.videoPreset }, {
               signal: controller.signal,
-              onProgress(completed, total) {
+              onProgress(completed, total, heapBytes) {
                 job.progress = completed;
                 job.total = total;
+                if (Number.isSafeInteger(heapBytes) && heapBytes > job.encoderHeapBytes) {
+                  job.encoderHeapBytes = heapBytes;
+                }
                 job.updatedAt = wallNow();
               },
             }),
@@ -392,6 +464,7 @@ export function createCaptureSession({
       error: job.error,
       progress: job.progress,
       total: job.total,
+      encoderHeapBytes: job.encoderHeapBytes,
       sourceLabel: job.sourceLabel,
       partial: job.partial,
       warnings: [...job.warnings],
@@ -402,7 +475,7 @@ export function createCaptureSession({
 
   function jobAsset(id, kind) {
     const job = jobs.get(id);
-    if (!job || job.state !== "ready" || !["animation", "audio"].includes(kind) || !job.assets[kind]) {
+    if (job?.state !== "ready" || !["animation", "audio"].includes(kind) || !job.assets[kind]) {
       throw new Error("The requested captured media asset is unavailable.");
     }
     const asset = job.assets[kind];
@@ -421,7 +494,10 @@ export function createCaptureSession({
     const job = jobs.get(id);
     if (!job) return false;
     job.controller.abort();
-    if (!job.pin.finalized) job.pin.rejectReady(new Error("The media export job was cancelled."));
+    if (!job.pin.finalized) {
+      job.pin.finishDrain?.();
+      job.pin.rejectReady(new Error("The media export job was cancelled."));
+    }
     jobs.delete(id);
     if (activeJobId === id) activeJobId = null;
     return true;
@@ -433,6 +509,7 @@ export function createCaptureSession({
     stop,
     status,
     addFrame,
+    videoDelivered,
     addAudio,
     setLinkedPage,
     textBegin,

@@ -79,7 +79,7 @@ export function createCaptureTimeline({ limit = CAPTURE_RECORD_LIMIT, textLimit 
 
   function closeSource(sourceKind, sourceId, sourceEpoch, endMs) {
     const closed = [];
-    for (const record of [...current.values()]) {
+    for (const record of current.values()) {
       if (record.sourceKind !== sourceKind || record.sourceId !== sourceId
           || (sourceEpoch !== undefined && record.sourceEpoch !== sourceEpoch)) continue;
       const result = close(record, endMs);
@@ -106,10 +106,15 @@ function temporalMatches(record, lookupTimeMs) {
   return record.startMs <= lookupTimeMs && (record.endMs == null || lookupTimeMs <= record.endMs);
 }
 
-function matchingRecord(records, sourceKind, lookupText, occurrenceId, occurrenceSourceKind, lookupTimeMs) {
+function matchingRecord(records, sourceKind, lookupText, occurrenceId, occurrenceSourceKind, lookupTimeMs,
+  texthookerSource) {
   const normalized = normaliseCaptureText(lookupText);
   const matches = records.filter(record => record.sourceKind === sourceKind
-    && record.onsetKnown !== false && temporalMatches(record, lookupTimeMs)
+    && record.onsetKnown !== false
+    && (sourceKind === "texthooker"
+      ? record.sourceId === texthookerSource?.sourceId && record.sourceEpoch === texthookerSource?.sourceEpoch
+        && record.startMs <= lookupTimeMs
+      : temporalMatches(record, lookupTimeMs))
     && (occurrenceId && occurrenceSourceKind === sourceKind ? record.occurrenceId === occurrenceId
       : (record.normalizedText ?? normaliseCaptureText(record.text)) === normalized));
   return matches.length === 1 ? matches[0] : null;
@@ -140,21 +145,25 @@ export function resolveCaptureInterval({
   clipSeconds = 10,
   estimatedOffsetMs = -500,
   texthookerActive = false,
+  texthookerSource = null,
 }) {
   finiteTime(lookupTimeMs, "lookup time");
   finiteTime(availableStartMs, "available capture start");
   const clipMs = clipSeconds * 1000;
   if (![5000, 10000].includes(clipMs)) throw new Error("capture clip length is invalid");
-  const priorities = timingMode === "recent" ? []
-    : timingMode === "page" ? ["cue", "dom"]
-      : texthookerActive ? ["texthooker", "cue", "dom"] : ["cue", "dom"];
+  let priorities = [];
+  if (timingMode !== "recent") {
+    priorities = ["cue", "dom"];
+    if (timingMode !== "page" && texthookerActive) priorities.unshift("texthooker");
+  }
   const labels = {
     texthooker: "Texthooker estimate",
     cue: "Video cue",
     dom: "Page-text estimate",
   };
   for (const kind of priorities) {
-    const record = matchingRecord(records, kind, lookupText, occurrenceId, occurrenceSourceKind, lookupTimeMs);
+    const record = matchingRecord(records, kind, lookupText, occurrenceId, occurrenceSourceKind, lookupTimeMs,
+      texthookerSource);
     if (!record) continue;
     const interval = timedInterval(record, lookupTimeMs, clipMs, kind === "cue" ? 0 : estimatedOffsetMs);
     if (interval.startMs < availableStartMs || interval.endMs <= interval.startMs) continue;

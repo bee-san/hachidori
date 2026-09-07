@@ -4,7 +4,7 @@ export const MAX_LIVE_FRAME_BYTES = 64 * 1024 * 1024;
 export const MAX_PINNED_FRAME_BYTES = 32 * 1024 * 1024;
 export const MAX_FRAME_BYTES = 256 * 1024;
 export const MAX_WAV_BYTES = 1024 * 1024;
-const MAX_AUDIO_SAMPLE_RATE = 48_000;
+export const CAPTURE_SAMPLE_RATE = 48_000;
 
 function finiteTime(value, label) {
   if (!Number.isFinite(value)) throw new Error(`${label} must be finite`);
@@ -32,7 +32,9 @@ export function createFrameRing({
   let totalBytes = 0;
 
   function evict(nowMs) {
-    while (frames.length && (totalBytes > maxBytes || frames[0].timestampMs < nowMs - maxAgeMs)) {
+    // Keep the predecessor that is still displayed at the retention boundary.
+    while (frames.length && (totalBytes > maxBytes
+        || (frames.length > 1 && frames[1].timestampMs <= nowMs - maxAgeMs))) {
       totalBytes -= frames.shift().data.byteLength;
     }
   }
@@ -61,18 +63,21 @@ export function createFrameRing({
     finiteTime(startMs, "pin start");
     finiteTime(endMs, "pin end");
     if (endMs <= startMs) throw new Error("capture pin interval is empty");
-    const selected = frames.filter(frame => frame.timestampMs >= startMs && frame.timestampMs < endMs);
-    if (!selected.length) throw new Error("No retained video frames cover this lookup.");
+    const first = frames.findLastIndex(frame => frame.timestampMs <= startMs);
+    if (first < 0) throw new Error("No retained video frame covers the start of this lookup.");
+    const selected = frames.slice(first).filter(frame => frame.timestampMs < endMs);
     const size = selected.reduce((sum, frame) => sum + frame.data.byteLength, 0);
     if (size > pinnedLimit) throw new Error("The selected video exceeds the pinned-frame memory limit.");
-    return selected.map(frame => ({ ...frame, data: frame.data.slice() }));
+    return selected.map((frame, index) => ({ ...frame,
+      timestampMs: index === 0 ? startMs : frame.timestampMs, data: frame.data.slice() }));
   }
 
   return {
     append,
     select,
     clear() { frames.length = 0; totalBytes = 0; },
-    oldestTimestamp: () => frames[0]?.timestampMs ?? null,
+    oldestTimestamp: () => frames.length
+      ? Math.max(frames[0].timestampMs, frames.at(-1).timestampMs - maxAgeMs) : null,
     newestTimestamp: () => frames.at(-1)?.timestampMs ?? null,
     size: () => ({ count: frames.length, bytes: totalBytes }),
   };
@@ -99,33 +104,48 @@ export function createAudioRing({ maxAgeMs } = {}) {
     return { startMs, endMs, sampleRate, sampleCount: samples.length };
   }
 
-  function select(startMs, endMs, outputRate = MAX_AUDIO_SAMPLE_RATE) {
+  function sampleRange(block, startMs, endMs, length, rate) {
+    return {
+      first: Math.max(0, Math.round((block.startMs - startMs) * rate / 1000)),
+      last: block.endMs >= endMs ? length
+        : Math.min(length, Math.round((block.endMs - startMs) * rate / 1000)),
+    };
+  }
+
+  function covers(startMs, endMs, rate = CAPTURE_SAMPLE_RATE) {
+    const length = Math.ceil((endMs - startMs) * rate / 1000);
+    const ranges = blocks.map(block => sampleRange(block, startMs, endMs, length, rate))
+      .filter(range => range.last > range.first).sort((a, b) => a.first - b.first);
+    let coveredUntil = 0;
+    for (const range of ranges) {
+      if (range.first > coveredUntil) return false;
+      coveredUntil = Math.max(coveredUntil, range.last);
+    }
+    return coveredUntil >= length;
+  }
+
+  function select(startMs, endMs, outputRate = CAPTURE_SAMPLE_RATE) {
     finiteTime(startMs, "audio pin start");
     finiteTime(endMs, "audio pin end");
     if (endMs <= startMs) throw new Error("capture audio interval is empty");
-    const rate = Math.min(MAX_AUDIO_SAMPLE_RATE, Math.trunc(outputRate));
+    const rate = Math.min(CAPTURE_SAMPLE_RATE, Math.trunc(outputRate));
     const length = Math.ceil((endMs - startMs) * rate / 1000);
     const output = new Float32Array(length);
-    let copied = 0;
     for (const block of blocks) {
-      const overlapStart = Math.max(startMs, block.startMs);
-      const overlapEnd = Math.min(endMs, block.endMs);
-      if (overlapEnd <= overlapStart) continue;
-      const first = Math.max(0, Math.floor((overlapStart - startMs) * rate / 1000));
-      const last = Math.min(length, Math.ceil((overlapEnd - startMs) * rate / 1000));
+      const { first, last } = sampleRange(block, startMs, endMs, length, rate);
       for (let index = first; index < last; index += 1) {
         const sourceTime = startMs + index * 1000 / rate;
         const sourceIndex = Math.min(block.samples.length - 1,
           Math.max(0, Math.floor((sourceTime - block.startMs) * block.sampleRate / 1000)));
         output[index] = block.samples[sourceIndex];
       }
-      copied += last - first;
     }
-    return { samples: output, sampleRate: rate, partial: copied < length };
+    return { samples: output, sampleRate: rate, partial: !covers(startMs, endMs, rate) };
   }
 
   return {
     append,
+    covers,
     select,
     clear() { blocks.length = 0; },
     oldestTimestamp: () => blocks[0]?.startMs ?? null,
@@ -135,12 +155,12 @@ export function createAudioRing({ maxAgeMs } = {}) {
 }
 
 function setAscii(view, offset, value) {
-  for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index));
+  for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.codePointAt(index));
 }
 
 export function encodeMonoWav(samples, sampleRate, maxBytes = MAX_WAV_BYTES) {
   if (!(samples instanceof Float32Array)) throw new Error("WAV input must be mono Float32 samples");
-  if (!Number.isSafeInteger(sampleRate) || sampleRate < 8_000 || sampleRate > MAX_AUDIO_SAMPLE_RATE) {
+  if (!Number.isSafeInteger(sampleRate) || sampleRate < 8_000 || sampleRate > CAPTURE_SAMPLE_RATE) {
     throw new Error("WAV sample rate is invalid");
   }
   const byteLength = 44 + samples.length * 2;

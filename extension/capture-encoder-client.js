@@ -41,7 +41,7 @@ export function encodeCapturedAnimation(frames, options, {
       const response = event.data;
       if (response?.id !== id) return;
       if (response.type === "progress") {
-        onProgress(response.completed, response.total);
+        onProgress(response.completed, response.total, response.heapBytes);
         return;
       }
       if (response.type !== "result") return;

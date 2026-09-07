@@ -55,7 +55,8 @@ test("lookup timing follows texthooker, cue, DOM, then recent priority with sour
       occurrenceId: "ws", text: "猫", startMs: 2000 }),
   ];
   const common = { records, lookupText: "猫", lookupTimeMs: 4000, availableStartMs: 0,
-    clipSeconds: 5, estimatedOffsetMs: -500 };
+    clipSeconds: 5, estimatedOffsetMs: -500,
+    texthookerSource: { sourceId: "ws", sourceEpoch: "connection:1" } };
   assert.deepEqual(resolveCaptureInterval({ ...common, texthookerActive: true }), {
     sourceKind: "texthooker", sourceLabel: "Texthooker estimate", occurrenceId: "ws",
     sourceId: "ws", sourceEpoch: "connection:1",
@@ -90,7 +91,7 @@ test("active but unmatched texthooker falls through while word-only and cross-ep
       occurrenceId: "cue", text: "猫がいる", startMs: 1200 }),
   ];
   const common = { records, lookupTimeMs: 1500, availableStartMs: 0, clipSeconds: 5,
-    texthookerActive: true };
+    texthookerActive: true, texthookerSource: { sourceId: "ws", sourceEpoch: "connection:2" } };
   assert.equal(resolveCaptureInterval({ ...common, lookupText: "猫がいる" }).sourceKind, "cue");
   assert.equal(resolveCaptureInterval({ ...common, lookupText: "猫" }).sourceKind, "recent");
 
@@ -103,4 +104,28 @@ test("active but unmatched texthooker falls through while word-only and cross-ep
   assert.equal(resolveCaptureInterval({ records: duplicateEpochs, lookupText: "猫",
     occurrenceId: "same", occurrenceSourceKind: "dom", lookupTimeMs: 1500,
     availableStartMs: 0, clipSeconds: 5 }).sourceKind, "recent");
+});
+
+test("closed retained texthooker lines match only in the explicit live source epoch", () => {
+  const closed = record({ sourceKind: "texthooker", sourceId: "ws", sourceEpoch: "session:2",
+    occurrenceId: "earlier", text: "犬がいる。", startMs: 2000, endMs: 4000 });
+  const common = { records: [closed], lookupText: "犬がいる。", lookupTimeMs: 5000,
+    availableStartMs: 0, clipSeconds: 5, estimatedOffsetMs: 0, texthookerActive: true,
+    texthookerSource: { sourceId: "ws", sourceEpoch: "session:2" } };
+  assert.deepEqual(resolveCaptureInterval(common), {
+    sourceKind: "texthooker", sourceLabel: "Texthooker estimate", occurrenceId: "earlier",
+    sourceId: "ws", sourceEpoch: "session:2", startMs: 2000, endMs: 4000, pendingTail: false,
+  });
+  for (const patch of [
+    { texthookerActive: false },
+    { texthookerSource: null },
+    { texthookerSource: { sourceId: "other-ws", sourceEpoch: "session:2" } },
+    { texthookerSource: { sourceId: "ws", sourceEpoch: "session:3" } },
+    { availableStartMs: 2001 },
+    { lookupText: "犬" },
+    { records: [closed, { ...closed, occurrenceId: "repeated", startMs: 4100, endMs: null }] },
+  ]) assert.equal(resolveCaptureInterval({ ...common, ...patch }).sourceKind, "recent");
+  assert.equal(resolveCaptureInterval({ ...common,
+    records: [closed, { ...closed, sourceEpoch: "session:1" }],
+  }).sourceKind, "texthooker", "old epochs neither match nor create false ambiguity");
 });

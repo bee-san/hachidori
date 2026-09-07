@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { CAPTURE_SAMPLE_RATE } from "./capture-buffer.js";
 
 export const MAX_ANIMATED_AVIF_BYTES = 4 * 1024 * 1024;
-export const AVIF_TIMESCALE = 1000;
+export const AVIF_TIMESCALE = CAPTURE_SAMPLE_RATE;
 
 function encoderError(module, handle) {
   return module.UTF8ToString(module._hda_last_error(handle)) || "Animated AVIF encoding failed.";
@@ -19,10 +20,20 @@ export function frameDurations(frames, endMs, timescale = AVIF_TIMESCALE) {
       throw new Error("AVIF frame timestamps must increase");
     }
   }
+  const startMs = frames[0].timestampMs;
+  let previousTick = 0;
   return frames.map((frame, index) => {
     const nextMs = index + 1 < frames.length ? frames[index + 1].timestampMs : endMs;
     if (nextMs <= frame.timestampMs) throw new Error("AVIF frame duration is empty");
-    return Math.max(1, Math.round((nextMs - frame.timestampMs) * timescale / 1000));
+    // Quantize cumulative boundaries, so rounding never drifts across frames.
+    // The final ceil matches the WAV's exact number of PCM samples.
+    const nextTick = index + 1 === frames.length
+      ? Math.ceil((nextMs - startMs) * timescale / 1000)
+      : Math.round((nextMs - startMs) * timescale / 1000);
+    const duration = nextTick - previousTick;
+    if (duration < 1) throw new Error("AVIF frame duration is below the timebase precision");
+    previousTick = nextTick;
+    return duration;
   });
 }
 
