@@ -42,6 +42,23 @@
     text(record.add, "Check Anki");
     text(record.output, error);
   }
+  function readyCaptureRequest(record, request, requirements, assets) {
+    captureBadge(record);
+    const unavailable = [];
+    if (requirements.includeAnimation && !assets?.animation) unavailable.push("animation");
+    if (requirements.includeAudio && !assets?.audio) unavailable.push("audio");
+    return { ...request, captureJobId: record.captureJobId, captureUnavailable: unavailable };
+  }
+  function captureProgress(record, status) {
+    if (status.state === "finishing") {
+      captureBadge(record, "Finishing clip");
+      text(record.output, "Finishing clip…");
+    } else {
+      captureBadge(record);
+      const progress = status.total > 0 ? ` ${status.progress}/${status.total}` : "";
+      text(record.output, `Encoding captured media${progress}…`);
+    }
+  }
   function createAnkiController({
     send,
     capture = send,
@@ -120,23 +137,6 @@
       text(record.output, `${label} note ${result.noteId}. ${result.warnings.join(" ")}`.trim());
       refreshAll(); // Best-effort checks cannot turn a confirmed write into a retry.
       return true;
-    }
-    function readyCaptureRequest(record, request, requirements, assets) {
-      captureBadge(record);
-      const unavailable = [];
-      if (requirements.includeAnimation && !assets?.animation) unavailable.push("animation");
-      if (requirements.includeAudio && !assets?.audio) unavailable.push("audio");
-      return { ...request, captureJobId: record.captureJobId, captureUnavailable: unavailable };
-    }
-    function captureProgress(record, status) {
-      if (status.state === "finishing") {
-        captureBadge(record, "Finishing clip");
-        text(record.output, "Finishing clip…");
-      } else {
-        captureBadge(record);
-        const progress = status.total > 0 ? ` ${status.progress}/${status.total}` : "";
-        text(record.output, `Encoding captured media${progress}…`);
-      }
     }
     async function prepareCapture(record, request, owns) {
       const selected = record.decision?.capture;

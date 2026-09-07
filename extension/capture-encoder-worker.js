@@ -11,7 +11,9 @@ function encoderModule() {
   return modulePromise;
 }
 
-self.addEventListener("message", async event => {
+// A dedicated worker receives messages only from its owning Worker. Window
+// MessageEvent.origin checks do not form a security boundary in this context.
+self.addEventListener("message", async event => { // NOSONAR -- S2819 applies to Window messaging, not this worker.
   const request = event.data;
   if (request?.type !== "encode" || typeof request.id !== "string") return;
   try {

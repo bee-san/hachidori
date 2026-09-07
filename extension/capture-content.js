@@ -498,8 +498,7 @@
     // only part of a timed paragraph, and identical lines need their own identity.
     const range = candidate.anchorRange ?? document.createRange();
     if (!candidate.anchorRange) range.selectNodeContents(candidate.anchor);
-    const matches = trackedLines.filter(line => line.range
-      && line.range.comparePoint(range.startContainer, range.startOffset) === 0
+    const matches = trackedLines.filter(line => line.range?.comparePoint(range.startContainer, range.startOffset) === 0
       && line.range.comparePoint(range.endContainer, range.endOffset) === 0);
     return matches.length === 1 ? { occurrenceId: matches[0].id, occurrenceSourceKind: "dom" } : null;
   }

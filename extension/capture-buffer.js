@@ -83,6 +83,14 @@ export function createFrameRing({
   };
 }
 
+function sampleRange(block, startMs, endMs, length, rate) {
+  return {
+    first: Math.max(0, Math.round((block.startMs - startMs) * rate / 1000)),
+    last: block.endMs >= endMs ? length
+      : Math.min(length, Math.round((block.endMs - startMs) * rate / 1000)),
+  };
+}
+
 export function createAudioRing({ maxAgeMs } = {}) {
   if (!Number.isFinite(maxAgeMs) || maxAgeMs <= 0) throw new Error("audio ring age is invalid");
   const blocks = [];
@@ -102,14 +110,6 @@ export function createAudioRing({ maxAgeMs } = {}) {
     const cutoff = endMs - maxAgeMs;
     while (blocks.length && blocks[0].endMs < cutoff) blocks.shift();
     return { startMs, endMs, sampleRate, sampleCount: samples.length };
-  }
-
-  function sampleRange(block, startMs, endMs, length, rate) {
-    return {
-      first: Math.max(0, Math.round((block.startMs - startMs) * rate / 1000)),
-      last: block.endMs >= endMs ? length
-        : Math.min(length, Math.round((block.endMs - startMs) * rate / 1000)),
-    };
   }
 
   function covers(startMs, endMs, rate = CAPTURE_SAMPLE_RATE) {

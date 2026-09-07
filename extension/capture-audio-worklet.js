@@ -21,7 +21,9 @@ class HachidoriCaptureProcessor extends AudioWorkletProcessor {
     return false;
   }
 
-  process(inputs) {
+  // Empty input can precede the first active quantum. Returning false allows
+  // Chrome to permanently retire this processor before the source is ready.
+  process(inputs) { // NOSONAR -- S3516: the AudioWorklet lifetime contract requires true.
     if (this.interrupted) return true;
     const channels = inputs[0];
     const frameCount = channels?.[0]?.length ?? 0;
