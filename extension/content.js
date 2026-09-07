@@ -19,7 +19,7 @@
   const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
 
-  const { DEFAULT_OPTIONS, clampOption, normaliseActivationKey, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
+  const { DEFAULT_OPTIONS, clampOption, definitionBlurQualifies, normaliseActivationKey, normaliseOptions: normalizeOptions } = globalThis.HDReaderOptions;
   const { normaliseDictionaryGroups } = globalThis.HDDictionaryGroups;
   const { normaliseLookupTerm, lookupStatsKey } = globalThis.HDLookupStats;
   const { normaliseDictionaryTab: normalizedDictionaryTab } = globalThis.HDPopup;
@@ -122,6 +122,7 @@
       deferredRefresh: null, lookupToken: 0, pendingLink: null,
       retainedView: false,
       pendingViewReplay: null,
+      blurTimer: null,
     };
   }
 
@@ -157,6 +158,8 @@
   let optionsStorageRevision = -1;
   let dictionaryStateRevision = -1;
   let lookupStatsDescriptor = { generation: null, revision: -1 };
+  const DEFINITION_BLUR_KEYS = ["definitionBlurEnabled", "definitionBlurDirection", "definitionBlurThreshold",
+    "definitionBlurReveal", "definitionBlurDelayMs"];
 
   function extensionAlive() {
     try {
@@ -1304,6 +1307,13 @@
       if (child) positionPopup(child);
     }, { passive: true });
     popup.addEventListener("mouseenter", () => onPopupEnter(level));
+    popup.addEventListener("mouseover", (event) => {
+      const request = level.currentViewRequest;
+      if (request?.blur && request.blur.state !== "revealed" && event.target instanceof Element
+          && event.target.closest(".gsm-hoshidicts-definitions, .gsm-hoshidicts-compact-definition-summary")) {
+        revealDefinitions(request, level);
+      }
+    });
     shadow.appendChild(popup);
     level.popup = popup;
     level.highlighter = highlighter.scope(level);
@@ -1357,7 +1367,11 @@
       isCurrent: () => level.currentViewRequest === request && !level.retainedView
         && requestCanRender(token, level.activeCandidate, level),
     };
-    audio.bind(rendered.audioButtons, context);
+    // The primary result's autoplay waits for the blur decision; Show more
+    // rebinds later controls after that decision.
+    audio.bind(rendered.audioButtons, "lookupStats" in rendered
+      ? { ...context, autoplayHeld: () => request?.blur?.autoplayHeld === true }
+      : context);
     mining.bind(rendered.miningActions, { ...context, getRequest: result => {
       const candidate = level.activeCandidate;
       const selection = shadow.getSelection?.() ?? window.getSelection();
@@ -1409,8 +1423,16 @@
       } else if (replaced) entry.needsRefresh = true;
       else continue;
       paintLookupStatistics(request, level);
+      if (row) settleDefinitionBlur(request, level, currentLookupCount(entry));
       refreshLookupStatistics(request, level);
     }
+  }
+
+  // The count that decides definition blur: null while unknown or unavailable.
+  function currentLookupCount(entry) {
+    const payload = entry.payload;
+    if (!payload || payload.descriptor.generation !== lookupStatsDescriptor.generation) return null;
+    return payload.statistics?.lookupCount ?? null;
   }
 
   function refreshLookupStatistics(request, level, record = false) {
@@ -1441,10 +1463,14 @@
         entry.needsRefresh = options.showLookupCounts && (corpusChanged
           || (payload.statistics === null && requestedOptionsRevision !== optionsStorageRevision));
       }
-      if (request.lookupStats === entry) paintLookupStatistics(request, level);
+      if (request.lookupStats === entry) {
+        paintLookupStatistics(request, level);
+        settleDefinitionBlur(request, level, currentLookupCount(entry));
+      }
     }).catch(error => {
       // A lost reply may follow a committed increment. Never retry the write.
       console.debug("hachidori: lookup statistics unavailable", error);
+      if (request.lookupStats === entry) settleDefinitionBlur(request, level, null);
     }).finally(() => {
       entry.pending = false;
       if (request.lookupStats === entry && entry.needsRefresh) refreshLookupStatistics(request, level);
@@ -1464,6 +1490,75 @@
     // Back, tabs and Note refresh can read a replacement, but cannot increment.
     paintLookupStatistics(request, level);
     refreshLookupStatistics(request, level, firstVisit);
+  }
+
+  // Definition blur (issue #9 L5). The decision lives on the request, so tabs,
+  // expansion, Note refresh and Back keep it while a new request starts fresh.
+  // One absolute reveal deadline runs from the first display; a live timer
+  // exists only while that request is the level's current view.
+  function clearDefinitionBlurTimer(level) {
+    if (level.blurTimer === null) return;
+    clearTimeout(level.blurTimer);
+    level.blurTimer = null;
+  }
+
+  function applyDefinitionBlurState(request, level) {
+    if (level.currentViewRequest === request && level.view) level.view.setDefinitionBlurState(request.blur.state);
+  }
+
+  function revealDefinitions(request, level) {
+    const blur = request?.blur;
+    if (!blur || blur.state === "revealed") return;
+    blur.state = "revealed";
+    if (level.currentViewRequest === request) clearDefinitionBlurTimer(level);
+    applyDefinitionBlurState(request, level);
+  }
+
+  function armDefinitionBlurTimer(request, level) {
+    clearDefinitionBlurTimer(level);
+    const blur = request.blur;
+    if (blur.state === "revealed" || options.definitionBlurReveal !== "timed") return;
+    const remaining = blur.displayedAt + options.definitionBlurDelayMs - Date.now();
+    if (remaining <= 0) {
+      revealDefinitions(request, level);
+      return;
+    }
+    level.blurTimer = setTimeout(() => {
+      level.blurTimer = null;
+      if (level.currentViewRequest === request) revealDefinitions(request, level);
+    }, remaining);
+  }
+
+  function beginDefinitionBlur(request, level) {
+    clearDefinitionBlurTimer(level);
+    if (!request) return;
+    if (!request.blur) {
+      const active = options.definitionBlurEnabled && options.showLookupCounts;
+      request.blur = { state: active ? "pending" : "revealed", displayedAt: Date.now(), autoplayHeld: active };
+    }
+    armDefinitionBlurTimer(request, level);
+  }
+
+  function releaseDefinitionBlurAutoplay(request, level, play) {
+    if (!request.blur.autoplayHeld) return;
+    request.blur.autoplayHeld = false;
+    audio?.settleAutoplay(level, play);
+  }
+
+  // A qualifying count blurs a pending view and never auto-plays; any other
+  // outcome, including an unavailable count, reveals and releases autoplay.
+  function settleDefinitionBlur(request, level, lookupCount) {
+    const blur = request.blur;
+    if (!blur) return;
+    const qualifies = definitionBlurQualifies(options, lookupCount);
+    releaseDefinitionBlurAutoplay(request, level, !qualifies);
+    if (blur.state !== "pending") return;
+    if (!qualifies) {
+      revealDefinitions(request, level);
+      return;
+    }
+    blur.state = "blurred";
+    applyDefinitionBlurState(request, level);
   }
 
   function ensureUi() {
@@ -1517,6 +1612,7 @@
     for (const level of removed.reverse()) {
       audio?.retire(level);
       mining?.retire(level);
+      clearDefinitionBlurTimer(level);
       level.retired = true;
       level.lookupToken += 1;
       level.popup.hidden = true;
@@ -1533,6 +1629,7 @@
   function hide(level = rootLevel) {
     audio?.retire(level);
     mining?.retire(level);
+    clearDefinitionBlurTimer(level);
     if (level !== rootLevel) {
       if (!level.retired) {
         pruneLevels(level.depth);
@@ -1666,7 +1763,7 @@
 
   function renderContextFor(level = rootLevel) {
     return {
-      definitionBlurState: "revealed",
+      definitionBlurState: level.currentViewRequest?.blur?.state ?? "revealed",
       dictionaryPresentation: dictionaryPresentation(),
       dictionaryTabGroups: dictionaryTabGroups(),
       generation: currentGeneration,
@@ -1784,6 +1881,7 @@
     pruneLevels(level.depth + 1);
     const token = level.lookupToken;
     level.currentViewRequest = request ?? null;
+    beginDefinitionBlur(request, level);
     level.activeTermRender = {
       candidate,
       dictionaries,
@@ -1856,6 +1954,7 @@
         show(request.candidate, level);
         level.activeHighlightText = "";
         level.activeTermRender = null;
+        clearDefinitionBlurTimer(level);
         level.currentViewRequest = null;
         level.view.renderNotice(
           "No dictionaries loaded. Import a Yomitan .zip from the Hachidori options page.",
@@ -2012,6 +2111,7 @@
       ? kanji.entries.filter((entry) => entry.dictionary === capability.title)
       : kanji.entries;
     const entries = selectedEntries.length > 0 ? selectedEntries : kanji.entries;
+    clearDefinitionBlurTimer(level);
     level.currentViewRequest = request;
     level.deferredRefresh = null;
     level.deferredDictionaryInvalidationRevision = -1;
@@ -2468,6 +2568,7 @@
     // Retire while runtime messaging is alive; a BFCache return can reuse UI.
     audio?.retire();
     mining?.retire();
+    for (const level of levels) clearDefinitionBlurTimer(level);
   }
 
   function onScroll() {
@@ -2610,6 +2711,8 @@
     const corpusChanged = next.corpusSeenEnabled !== options.corpusSeenEnabled
       || next.corpusSeenUrl !== options.corpusSeenUrl;
     const countsChanged = next.showLookupCounts !== options.showLookupCounts || corpusChanged;
+    const blurChanged = next.showLookupCounts !== options.showLookupCounts || DEFINITION_BLUR_KEYS
+      .some(key => next[key] !== options[key]);
     const adoption = { lookupChanged,
       presentationChanged: (summaryChanged || imageSourceChanged || metadataChanged) && next.hoverEnabled };
     if (activationChanged) {
@@ -2627,6 +2730,21 @@
         if (corpusChanged || next.showLookupCounts) entry.needsRefresh = true;
         paintLookupStatistics(request, level);
         refreshLookupStatistics(request, level);
+      }
+    }
+    if (blurChanged) {
+      for (const level of levels) {
+        const request = level.currentViewRequest;
+        const blur = request?.blur;
+        if (!blur || blur.state === "revealed") continue;
+        // Disabling reveals at once; other edits apply to unrevealed views
+        // from their original display time. Note drafts are untouched.
+        if (!next.definitionBlurEnabled || !next.showLookupCounts) {
+          releaseDefinitionBlurAutoplay(request, level, true);
+          revealDefinitions(request, level);
+        } else if (blur.state === "blurred" && !definitionBlurQualifies(next, currentLookupCount(request.lookupStats))) {
+          revealDefinitions(request, level);
+        } else armDefinitionBlurTimer(request, level);
       }
     }
     audio?.update(options);
