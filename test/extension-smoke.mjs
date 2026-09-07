@@ -877,6 +877,12 @@ async function managedScheduleStage() {
   await settleAlarm();
   check("backup schedule-only publication reconciles without relying on a settings storage event",
     restored.ok && alarmReads === beforeRestoreReads + 1, JSON.stringify({ restored, alarmReads, beforeRestoreReads }));
+
+  await chrome.storage.local.set({ dictionaryState: { ...snapshot.state, revision: snapshot.state.revision + 1, dictionaries: [] },
+    dictionaryUpdates: { ...snapshot.updates, revision: snapshot.updates.revision + 1, lastCheckedAt: null } });
+  const manual = await bus.sendMessage("schedule-page", { target: "hachidori-updates", type: "hd_updates_check" });
+  check("manual Check now records completion even when no managed dictionary is installed",
+    manual.ok && manual.outcomes.length === 0 && manual.settings.lastCheckedAt === new Date(now).toISOString(), JSON.stringify(manual));
 }
 
 async function externalLinksBackgroundStage() {
@@ -7121,12 +7127,15 @@ async function settingsManagedUpdatesStage() {
       && stateRequests[0].target === "hoshidicts-worker" && policy().value === "hourly"
       && window.document.activeElement === policy();
     const stale = policy();
+    stale.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }));
     publishState({ ...saved, updateScheduleOverride: "weekly" });
     stale.value = "off";
     stale.dispatchEvent(new window.Event("change", { bubbles: true }));
     await pause(20);
     result.dictionarySchedule = initial && persisted && editBlockedDuringSave && stateRequests.length === 1
-      && state.dictionaries.find(entry => entry.id === "managed-id").updateScheduleOverride === "weekly";
+      && state.dictionaries.find(entry => entry.id === "managed-id").updateScheduleOverride === "weekly"
+      && stale.isConnected && policy().value === "weekly" && managedRow().querySelector(".dict-next-check").textContent.startsWith("Weekly");
+    window.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true }));
   }
   dom.window.close();
   return result;
