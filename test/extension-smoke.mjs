@@ -9297,6 +9297,21 @@ async function contentNoteStage() {
       await harness.settle();
       outcomes["a qualifying count blurs pending definitions and never auto-plays"] =
         held && harness.blurState() === "blurred" && plays() === 0;
+      // A dictionary tab rebinds the first result under a new autoplay key.
+      const retab = () => {
+        const button = harness.popup.ownerDocument.createElement("button");
+        harness.popup.append(button);
+        harness.callbacks().onResultsRendered({ lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"),
+          audioButtons: [{ button, result: harness.term("五回") }], miningActions: [] });
+      };
+      harness.render().context.onDictionaryTabSelected({ dictionary: "Generic" });
+      retab();
+      const blurredTabSilent = plays() === 0;
+      harness.hoverDefinitions();
+      harness.render().context.onDictionaryTabSelected(null);
+      retab();
+      outcomes["a blurred lookup stays silent across dictionary tabs, even after a hover reveal"] =
+        blurredTabSilent && plays() === 0;
       harness.hoverDefinitions();
       const revealed = harness.blurState() === "revealed";
       harness.emitLookupStats({ generation: "statistics", revision: 6 },
