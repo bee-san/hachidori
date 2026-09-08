@@ -2346,14 +2346,12 @@
     }
 
     function setLookupStats(element, payload) {
-      const seen = formatLookupCount("Seen", payload && payload.seenCount);
       const lookedUp = formatLookupCount(
         "Looked up",
         payload && payload.lookupCount
       );
-      const segments = [seen, lookedUp].filter(Boolean);
-      element.textContent = segments.join(" · ");
-      element.hidden = segments.length === 0;
+      element.textContent = lookedUp ?? "";
+      element.hidden = lookedUp === null;
       if (!element.hidden) {
         positionPopup();
       }
