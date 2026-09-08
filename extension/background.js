@@ -1330,8 +1330,7 @@ const CAPTURE_VISIBLE_RETRY_MS = 600;
 
 // Extension pages have no sender.tab and cannot answer tabs.sendMessage. Chrome's
 // live extension contexts bind startup to the same document before and after capture.
-async function screenshotOwnedTab(sender) {
-  const startup = startupSender(sender);
+async function screenshotOwnedTab(sender, startup) {
   let tabId = sender.tab?.id;
   if (startup) {
     const [context] = await chrome.runtime.getContexts({ contextTypes: ["TAB"], documentIds: [sender.documentId] });
@@ -1357,12 +1356,13 @@ async function screenshotOwnedTab(sender) {
 // captureVisibleTab takes the window's active tab. Both the active page and its
 // document owner are checked around every attempt, including a rate-limit retry.
 async function captureSenderViewport(sender) {
-  if (typeof sender.tab?.id !== "number" && !startupSender(sender)) {
+  const startup = typeof sender.tab?.id !== "number" && startupSender(sender);
+  if (typeof sender.tab?.id !== "number" && !startup) {
     throw new Error("Only a reading tab can be captured.");
   }
   if (!sender.documentId) throw new Error("The reading document identity is unavailable.");
   for (let attempt = 1; ; attempt += 1) {
-    const tab = await screenshotOwnedTab(sender);
+    const tab = await screenshotOwnedTab(sender, startup);
     let captured;
     try {
       captured = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
@@ -1373,7 +1373,7 @@ async function captureSenderViewport(sender) {
     }
     // Capturing stays bound to this window even if the active reading tab is
     // dragged to another one before the pixels return.
-    const afterCapture = await screenshotOwnedTab(sender);
+    const afterCapture = await screenshotOwnedTab(sender, startup);
     if (afterCapture.windowId !== tab.windowId) {
       throw new Error("The reading tab moved to another window during the screenshot.");
     }
