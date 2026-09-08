@@ -333,9 +333,9 @@ on its own.
 ### Practice and saved pages
 
 `startup-practice.js` supplies the **Try it** scene and a Japanese passage about
-the street shown in the background. The image is copied from GameSentenceMiner
-PR #549 with its embedded credits intact; its exact source and hash are recorded
-in [the asset attribution](../extension/assets/ATTRIBUTION.md).
+the street shown in the background. The illustration was generated for
+Hachidori without reference images; its prompt, processing and hash are recorded
+in [the asset provenance](../extension/assets/ATTRIBUTION.md).
 
 The practice view loads the reader once after proving the exercise can be
 answered. `startup.js` takes the complete dependency order from the manifest's
