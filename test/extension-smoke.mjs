@@ -6951,7 +6951,7 @@ async function sourceHighlightFallbackCase(window) {
 async function visualNovelStage() {
   const jsdom = await loadJsdom();
   if (!jsdom) return null;
-  const result = { randomStart: true, cycle: true, retained: true };
+  const result = { randomStart: true, cycle: true, retained: true, startupSurface: true };
   for (const [random, first] of [[0, 0], [0xffffffff, 3]]) {
     const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "design-preview.html"), "utf8"), {
       runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/design-preview.html`,
@@ -6965,6 +6965,10 @@ async function visualNovelStage() {
       const source = scene.querySelector("#preview-source");
       const text = source.firstChild;
       const dialogue = scene.querySelector(".vn-dialogue");
+      const style = window.document.createElement("style");
+      style.textContent = ["visual-novel.css", "startup.css"].map(file => readFileSync(resolve(EXTENSION, file), "utf8")).join("\n");
+      window.document.head.append(style);
+      dialogue.classList.add("setup-practice-dialogue");
       window.HDVisualNovel.initialize(scene);
       const next = scene.querySelector(".vn-next");
       const filename = index => `assets/preview-background${index === 0 ? "" : `-${index + 1}`}.png`;
@@ -6976,6 +6980,8 @@ async function visualNovelStage() {
         visited.add(scene.style.backgroundImage);
         result.cycle &&= scene.style.backgroundImage.includes(filename(index))
           && scene.classList.contains("vn-dark-dialogue") === [3, 5].includes(index);
+        result.startupSurface &&= window.getComputedStyle(dialogue).backgroundColor ===
+          ([3, 5].includes(index) ? "rgba(28, 20, 35, 0.94)" : "rgba(250, 247, 252, 0.94)");
         next?.click();
       }
       result.cycle &&= visited.size === 6 && scene.style.backgroundImage.includes(filename(first)) && randomCalls === 1;
