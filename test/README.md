@@ -571,27 +571,46 @@ What it proves, in order:
 
 ### Definition blur and Anki maturity
 
-`node --test test/anki-maturity.test.mjs` exercises the production Anki worker
-with an injected gateway. It pins the single `findCards` query: the configured
-note type, exact expression field match, review state excluding relearning,
-and interval of at least 21 days across all decks. Basic and template field
-mappings, literal query escaping, unsupported mappings, malformed card IDs and
-Anki failures are covered without contacting an Anki collection.
+`node --test test/anki-maturity.test.mjs` exercises the production snapshot
+extractor with an injected gateway. It pins one `notesInfo` query for the
+configured note type across all decks, review state excluding relearning,
+an interval of at least 21 days, and the 25-second refresh timeout. Cases cover
+eligible expression fields and source identity, exact stored HTML, ASCII-only
+case folding, Anki's default query NFC normalization, deduplication, empty
+results and rejection of malformed replies without publishing partial words.
+
+`node --test test/anki-maturity-cache.test.mjs` checks local worker membership
+without Anki calls, cold-cache behavior, retained snapshots during failed or
+pending refreshes, successful empty replacements, and failed persistence.
+Controlled clocks, alarms and serialized storage exercise the 30-minute
+schedule, worker restart, concurrent triggers, configuration changes and
+disable/re-enable publication rules. The offscreen service test also verifies
+refresh-worker termination after successful, failed and worker-error replies.
+These focused suites never contact an
+Anki collection.
 
 The extension smoke harness checks maturity blur with counts disabled, the OR
 decision when both criteria are enabled, held autoplay, silent hover reveal
 and later tab bindings, first-count retention, stale replies, mapping changes,
 lookup before initial options, and pending/completed evidence retained for Back
-across Anki mapping edits. Settings and the Design preview exercise
-the independent checkbox and shared reveal controls with fixed maturity data.
+across Anki mapping edits. Settings exercises the Off / Lookup count / Mature
+Anki cards / Either condition selector, its mapping to the existing booleans,
+conditional controls, paused-count explanation and revision-bound drafts.
+The Design preview uses fixed maturity data and the shared reveal behavior.
 The existing count-only tests retain timed reveal, navigation, Note and audio
 ownership coverage.
 
-The Chrome E2E suite intercepts the entire AnkiConnect endpoint on the service
-worker target, including the existing mining controls' requests. It checks
-option persistence, a visible local popup while maturity is held, mature and
-nonmature results, unavailable Anki, independent count blur and autoplay. These
-are fixtures, never the user's actual notes or scheduling data.
+The Chrome E2E suite intercepts the entire AnkiConnect endpoint on both the
+service-worker target (mining controls) and offscreen target (including its
+dedicated maturity refresh worker). It checks
+source persistence, a responsive cold-cache popup during a held refresh,
+cached mature results without repeated Anki calls, and silent hover reveal.
+Real alarm delivery verifies that a refresh changes new lookups while keeping
+the open popup intact; disable/re-enable refuses pending publication, and
+unavailable Anki retains the last successful snapshot. A real worker restart
+restores cached membership and a missing alarm without retrying a recent
+failure. Independent count blur and autoplay remain covered. These are
+fixtures, never the user's actual notes or scheduling data.
 `HACHIDORI_DEFINITION_BLUR_SCREENSHOT` captures the updated Settings controls.
 
 ### jsdom
