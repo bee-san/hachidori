@@ -90,6 +90,18 @@ test("document unlink and replacement release unsubmitted pins while an admitted
   assert.ok(h.session.pinLookup({ lookupText: "次", lookupTimeMs: h.now() }).token);
 });
 
+test("dismissing an expired pin releases its retained clip once after status prunes its token", async () => {
+  const h = harness({ enabled: true, timingMode: "recent", includeCapturedAudio: false, clipSeconds: 5 });
+  seed(h, { withText: false });
+  const pin = h.session.pinLookup({ lookupText: "猫", lookupTimeMs: h.now() });
+  await new Promise(resolve => setImmediate(resolve));
+  h.advance(2 * 60 * 1000);
+  assert.equal(h.session.status().pinActive, false);
+  assert.equal(h.session.releasePin("another-token"), false);
+  assert.equal(h.session.releasePin(pin.token), true, "the session still owns the expired clip until dismissal");
+  assert.equal(h.session.releasePin(pin.token), false, "dismissal retires that ownership exactly once");
+});
+
 test("root lookup pins once, shortens an unfinished DOM tail when the line closes, then exports one interval", async () => {
   const h = harness({ enabled: true, clipSeconds: 5, estimatedOffsetMs: 0 });
   seed(h);
