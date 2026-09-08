@@ -282,6 +282,37 @@ h2 {
   font-size: 12px;
   line-height: 1.6;
 }
+.local-file-access {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+}
+.local-file-access h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+.local-file-access p {
+  margin: 0;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+.local-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.local-file-actions button { min-height: 36px; }
+.local-file-access #local-file-instruction { margin-top: 12px; }
+.local-file-access output {
+  display: block;
+  color: var(--text-dim);
+}
+.local-file-access output:not(:empty) { margin-top: 12px; }
+.local-file-access.is-enabled .local-file-actions { margin-top: 0; }
+.local-file-access.is-enabled output { color: var(--ok); }
+.local-file-access.is-enabled:has(.local-file-actions[hidden]) output { margin-top: 0; }
 code {
   padding: 1px 4px;
   border-radius: 3px;

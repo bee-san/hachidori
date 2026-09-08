@@ -182,8 +182,13 @@ state has already reached the requested stage — a second tab making the same
 move is the move this page asked for, not a failure — and a storage
 event that arrives while a write is in flight renders once with the reply. A
 stage change moves focus to the card heading; an inventory or progress update
-keeps focus on the control that had it. Finish records completion and closes
-the tab. Settings shows **Resume setup** in its sidebar while
+keeps focus on the control that had it. Dictionary rows and their progress
+elements remain mounted while their text and values change. The practice scene
+also stays mounted across same-stage updates, preserving reader ranges, popup
+anchors and Note drafts. Heading changes and settled dictionary outcomes are
+announced; bytes and countdown ticks are not live announcements. Finish records
+completion and closes the tab; if closing fails, a completed view stays readable
+with its Settings link. Settings shows **Resume setup** in its sidebar while
 `stage !== "complete"`, so closing the tab loses nothing.
 
 ### Dictionary stage
@@ -325,55 +330,93 @@ on its own.
 
 ![The final step after an automatically configured Anki, dark palette](assets/startup-anki-dark.png)
 
-### Practice step
+### Practice and saved pages
 
-The last step is the real reader, on the startup page. When that step renders
-and the current inventory holds an enabled package that can answer a term
-lookup, the page appends the packaged reader scripts once, in the order the
-manifest itself lists them: it reads its own `content_scripts` entry through
-`chrome.runtime.getManifest()` and skips `reader-options.js`, which the startup
-module already loaded, so a reordered or extended reader cannot leave this step
-running a different one. `content.css` comes with the page.
-Nothing is fetched before that step, so the installation and Anki screens are
-never scanned, and a script that fails to load leaves the sentence and its
-instructions readable with the reason in the card's live region.
+`startup-practice.js` supplies the **Try it** scene and a Japanese passage about
+the street shown in the background. The illustration was generated for
+Hachidori without reference images; its prompt, processing and hash are recorded
+in [the asset provenance](../extension/assets/ATTRIBUTION.md).
 
-`content.js` is a content script everywhere except this extension's own pages,
-where Chrome does not inject it at all. Its own guard now permits exactly the
-startup page URL, so these scripts do nothing when they are loaded into
-Settings, the design preview or any other internal page. The exercise then uses
-the ordinary path: the same runtime lookup messages, the installed dictionaries,
-the real WebAssembly engine and the same closed-shadow popup, including its
-first-install dark appearance and compact summaries.
+The practice view loads the reader once after proving the exercise can be
+answered. `startup.js` takes the complete dependency order from the manifest's
+`content_scripts` entry through `chrome.runtime.getManifest()`, skipping only
+`reader-options.js`, which the startup module already loaded. This includes
+new reader dependencies such as the media-capture collector without maintaining
+a second static list. `content.css` comes with the page; no reader scripts load
+during the dictionary or Anki stages. Hover instructions follow
+the active mode and activation key. The **Look up 辞書** button focuses the
+sentence and selects that word through the reader’s existing exact-selection
+route, so it also works from the keyboard. It appears only when that exact
+selection can be answered. All exercise lookups use ordinary
+runtime messages, the installed dictionaries, WASM, popup renderer and styles.
+No sample result is substituted. Among extension pages the reader permits only
+this extension’s `startup.html`, with either no fragment or the native skip
+link's `#setup-heading`. Query variants, unknown fragments, Settings and the
+static design preview remain excluded. The skip handler focuses the heading
+directly; a fragment created before it attaches still works after reload.
 
-The card shows the instruction that matches the current `lookupMode` — hover, or
-holding the configured activation key — and one sentence to try,
-**朝ごはんを食べる。** **Finish** and **Open Settings** stay available: the
-exercise is optional. The invitation appears only when it can be answered, and that is
-proved rather than assumed: the page runs an ordinary `hd_lookup` from every
-offset in the sentence, through the same engine the reader would use and with the
-reader's own configured scan length, and stops at the first hit. The answer belongs to
-the engine-visible library it was made against — each package's identity,
-revision, persisted generation path, enabled state and term count — together with
-the lookup options the probe sends, so removing or disabling the package that answered, or shortening
-the scan length, retires it and the sentence is probed again, while a group-only
-or presentation write leaves a ready exercise alone. A library that holds no enabled term dictionary, one that
-cannot answer this sentence, or lookups switched off each get their own sentence
-and the matching Settings link, and none of them loads the reader. A dictionary mutation refuses lookups while it holds the
-engine — including a long generation cleanup — so a refused pass waits for
-`hd_status` to report a ready, idle engine and then asks again. A failed status is
-waited on too, because a status poll is what drives the engine's own reload
-recovery, so the next one can describe a repaired engine, and a failure that is
-itself loading is that recovery in progress rather than a verdict; only an engine
-that is unreachable, one whose status keeps failing while idle, or one that keeps
-refusing while idle, falls back to the
-instruction that is true anywhere, in the mode the user has configured. The
-sentence itself is one node for the life of the page, so a rerender moves it
-rather than replacing it and cannot cancel a lookup already in flight.
+Before inviting a lookup, the page probes **辞書** with the reader's selection
+payload: the word's length and a full matched-text result. If it misses, the
+page probes the actual displayed passage with ordinary `hd_lookup` requests
+from successive character offsets, using the reader's configured scan length
+and stopping at the first hit. A hit on another passage word keeps the exercise
+and reader available, while hiding the unanswered shortcut and omitting it
+from the instructions. No result is
+substituted into the popup. The answer belongs to the engine-visible library:
+each package's identity, title, revision, persisted generation path, enabled
+state and term count, together with the lookup options sent by the probe.
+Changing those retires the invitation and probes again; group-only and
+presentation writes preserve the result and the connected scene. Turning
+lookups off or removing every enabled term dictionary also retires an in-flight
+probe. A library that cannot answer any word in the passage gets a dictionary
+recovery link rather than an invitation.
 
-![The practice step with a real lookup open, light palette](assets/startup-practice.png)
+A dictionary mutation can refuse lookups while publishing or cleaning up a
+generation. The probe waits for `hd_status` to report a ready, idle engine and
+then retries. Recoverable status failures are polled too, since polling drives
+the engine's reload recovery. A failure that is still loading does not exhaust
+the retries. An unreachable engine, repeated idle status failures or repeated
+idle lookup refusals leave recovery and the mode-appropriate instruction for
+reading on another webpage. The optional file-access controls and Finish stay
+available while checking, after a miss and after an engine or reader failure.
 
-![The practice step with a real lookup open, dark palette](assets/startup-practice-dark.png)
+Pronunciation uses the existing audio controller and offscreen player. The
+worker routes startup playback feedback through extension runtime messaging,
+since `tabs.sendMessage` targets content scripts. Before routing it, the worker
+checks the current operation, Chrome-supplied document owner and offscreen
+sender; the controller accepts only its active random request ID. Ordinary
+webpage playback keeps its document-directed tab route.
+
+The Anki outcome remains above the exercise. **Finish** and **Open Settings**
+are available without performing a lookup. If no enabled term dictionary is
+available, the page offers dictionary recovery; if lookups are disabled, it
+links to Reading settings. A reader load failure offers reload or Settings.
+These states do not prevent completing setup.
+
+`local-file-access.js` shares the optional **Read saved pages too** controls
+with **Settings → Reading**. It queries
+`chrome.extension.isAllowedFileSchemeAccess()` before displaying the request
+and shows **Local-file lookups enabled** only after Chrome reports access.
+**Open extension settings** opens only
+`chrome://extensions/?id=${chrome.runtime.id}` in a new tab and leaves the
+instruction to turn on **Allow access to file URLs** and return. Opening the
+details page grants no permission. The controller rechecks on page load,
+visibility return and `pageshow`, ignoring superseded replies; returning with
+access still off leaves the request available. Chrome can close extension tabs
+when the switch reloads Hachidori. The instructions explain how to reopen
+**Extension options** from the details page and choose **Resume setup**; the
+existing persisted setup stage restores the exercise. This does not add another
+automatic activation route. **Not now** dismisses it for the
+current setup page and returns focus to Finish, without marking setup
+incomplete. The bundled extension-page exercise never needs file access.
+
+![Dictionary practice and the optional saved-page prompt, light palette](assets/startup-review-after-practice-desktop-light.png)
+
+![Dictionary practice and the optional saved-page prompt, dark palette](assets/startup-review-after-practice-desktop-dark.png)
+
+[The UI review](startup-ui-review.md) records before/after comparisons,
+narrow layouts and the distinction between controlled screenshot states and
+the real dictionary lookup checks.
 
 ## Hover activation and popup ownership
 
