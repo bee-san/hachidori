@@ -1300,6 +1300,34 @@ confirmed note mutation releases its capture job even if field readback later
 warns. An uncertain note mutation retains the job for an explicit retry and is
 neither automatically retried nor followed by automatic media deletion.
 
+### Page screenshot when mining
+
+`{screenshot}` is one viewport picture of the page a note is being made from,
+taken at the moment the user adds it. It is the same media path as any other Anki
+image, not a second one: nothing is captured during hover, preflight, first-run
+discovery or background reading.
+
+The reader takes it. Preflight reports `screenshot: true` only when the fields
+that will actually be applied map `{screenshot}` and the Settings switch is on,
+and the content script then hides Hachidori's own overlays — the popup, its image
+preview and everything else the reader draws live in one host element — waits two
+frames so the change has painted, asks the worker for the picture, and removes the
+declaration again whatever the outcome. The worker validates the request against
+its sender: `tabs.captureVisibleTab` takes the window's active tab, so the asking
+tab must still be that tab, and a top-level frame must still show the document
+that asked. Chrome's capture rate limit is honoured with one wait and retry. The
+picture is stored through the ordinary `storeMediaFile` gateway under its own
+`hachidori-screenshot-<uuid>.jpg` name, before the note, so duplicate checks,
+overwrite policies and existing values are untouched.
+
+A capture or upload that fails is a warning carried with the note's own outcome:
+the marker renders empty, the note is still added or updated, and nothing invites
+a duplicate retry. The Kiku and Lapis presets map their verified `Picture` field
+and Senren its `picture` field to this marker, and a first installation has the
+switch on, so a recognised mining setup gets screenshots without further
+configuration. A note type without a picture field maps nothing and captures
+nothing.
+
 ## Generic media capture
 
 Media capture is default-off and starts only through an explicit **Start

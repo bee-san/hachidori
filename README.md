@@ -71,6 +71,12 @@ you explicitly mine a note; raw media and incoming text are not persisted.
 
 ![Media capture controls recording a linked reading page](docs/assets/media-capture-controls.png)
 
+Notes can also carry a picture of the page itself. A note type with a picture
+field — Kiku, Lapis and Senren all have one, and Hachidori maps it for you — gets
+one screenshot of the visible page each time you add a note, taken with
+Hachidori's own popup hidden. Nothing is captured while you read or hover, and a
+screenshot that cannot be taken leaves a warning on a note that is still added.
+
 See [Media mining setup, limits, and verification](docs/media-capture.md).
 
 # Custom Dictionary

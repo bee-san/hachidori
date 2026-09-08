@@ -42,6 +42,30 @@ recorder or the shared source requires another **Start capture** click.
 
 ![Media capture settings](assets/media-capture-settings.png)
 
+## Page screenshot
+
+A note can also carry one picture of the page it was made from, without recording
+anything. It needs no share, no **Start capture**, and no session:
+
+1. Open **Settings → Anki**.
+2. Keep **Screenshot the page when mining** on, and give a field the
+   `{screenshot}` marker — the Kiku, Lapis and Senren presets already map their
+   picture field to it, and **Apply preset** does so for the fields your note
+   type actually has.
+3. Add a note as usual. One picture of the visible page is taken at that moment,
+   with Hachidori's popup and image preview hidden for it.
+
+The picture is stored through the same AnkiConnect media gateway as dictionary
+images and pronunciation audio, under its own `hachidori-screenshot-<uuid>.jpg`
+name, and the mapped field receives an ordinary `<img>` reference. Nothing is
+captured while you read, hover or during first-run setup, and only the tab that
+asked is captured: if it is no longer the active tab, or has moved to another
+page, the screenshot is skipped. A skipped or refused screenshot is a warning
+beside the note's own result — the note is still added or updated, its other
+fields intact, and no duplicate retry is invited.
+
+![The Anki settings section with the mining screenshot switch](assets/anki-screenshot-settings.png)
+
 ## Timing
 
 Auto mode resolves each root lookup independently:
