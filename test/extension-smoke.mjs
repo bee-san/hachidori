@@ -1448,8 +1448,9 @@ async function ankiScreenshotStage() {
   const switchedOff = await ask(reader);
   check("a mining screenshot captures the asking page once it is still the window's own, and never any other page",
     taken?.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(taken.filename)
-      && uploads.length === 2 && uploads.every(({ url, action, params }) => url === "http://127.0.0.1:8765"
-        && action === "storeMediaFile" && params.data === "c2hvdA==" && params.deleteExisting === false)
+      && /^[0-9a-f-]{36}$/u.test(taken.token ?? "")
+      // The picture waits for the note: capturing talks to nothing but the tab.
+      && uploads.length === 0
       && retried?.ok === true && captures.filter(({ windowId }) => windowId === 3).length === captures.length
       && captures.every(({ options }) => options.format === "jpeg")
       && switchedAway?.ok === false && switchedAway.error.includes("no longer the active tab")

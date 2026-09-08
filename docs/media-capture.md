@@ -57,7 +57,8 @@ anything. It needs no share, no **Start capture**, and no session:
 
 The picture is stored through the same AnkiConnect media gateway as dictionary
 images and pronunciation audio, under its own `hachidori-screenshot-<uuid>.jpg`
-name, and the mapped field receives an ordinary `<img>` reference. Nothing is
+name, and the mapped field receives an ordinary `<img>` reference. It is uploaded
+with the note rather than before it, so a note Anki rejects leaves no stray file. Nothing is
 captured while you read, hover or during first-run setup, and only the tab that
 asked is captured: if it is no longer the active tab, or has moved to another
 page, the screenshot is skipped. `{screenshot}` cannot go in the first field, which is the

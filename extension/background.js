@@ -1372,20 +1372,30 @@ const CAPTURE_VISIBLE_RETRY_MS = 600;
 async function captureSenderViewport(sender) {
   const tabId = sender.tab?.id;
   if (typeof tabId !== "number") throw new Error("Only a reading tab can be captured.");
-  for (let attempt = 1; ; attempt += 1) {
-    // Checked again before every attempt, because a wait is long enough for the
-    // user to switch tabs or navigate, and the API would then take that page.
+  // Checked before and after every attempt: a rate-limit wait, and the capture
+  // itself, are both long enough to switch tabs or navigate, and the API takes
+  // whichever tab is active when it runs.
+  const ownedTab = async () => {
     const tab = await chrome.tabs.get(tabId);
     if (tab?.active !== true) throw new Error("The reading tab is no longer the active tab.");
     if ((sender.frameId ?? 0) === 0 && tab.url !== sender.url) {
       throw new Error("The reading tab moved to another page before the screenshot.");
     }
+    return tab;
+  };
+  for (let attempt = 1; ; attempt += 1) {
+    const tab = await ownedTab();
+    let captured;
     try {
-      return await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
+      captured = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
     } catch (error) {
       if (attempt >= 2 || !/per second|too many|MAX_CAPTURE/iu.test(describe(error))) throw error;
       await sleep(CAPTURE_VISIBLE_RETRY_MS);
+      continue;
     }
+    // The picture is only this page's if the page is still the one showing.
+    await ownedTab();
+    return captured;
   }
 }
 

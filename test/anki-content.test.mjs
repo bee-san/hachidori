@@ -385,7 +385,7 @@ test("uncertain replies and lost submission responses retain the prepared job an
 test("a note that maps a screenshot captures one with the reader concealed and never fails the note for it", async t => {
   const calls = [];
   const concealed = [];
-  let capture = async () => ({ filename: "hachidori-screenshot-a.jpg" });
+  let capture = async () => ({ token: "token-a", filename: "hachidori-screenshot-a.jpg" });
   let submittedRequest = null;
   const f = fixture(t, async (type, { request } = {}) => {
     calls.push(type);
@@ -409,7 +409,7 @@ test("a note that maps a screenshot captures one with the reader concealed and n
   // The picture is requested once, between the preflights and the write.
   assert.deepEqual(calls.filter(type => ["hd_anki_screenshot", "hd_anki_submit"].includes(type)),
     ["hd_anki_screenshot", "hd_anki_submit"]);
-  assert.deepEqual(submittedRequest.screenshot, { filename: "hachidori-screenshot-a.jpg" });
+  assert.deepEqual(submittedRequest.screenshot, { token: "token-a", filename: "hachidori-screenshot-a.jpg" });
   assert.equal(submittedRequest.captureUnavailable, undefined);
 
   // A capture that fails is a warning on an otherwise ordinary note.

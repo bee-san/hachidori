@@ -336,32 +336,70 @@ test("missing captured audio writes the mapped animation only and returns the so
   assert.equal(f.captureCalls.filter(call => call.type === "hd_capture_asset").length, 1);
 });
 
-test("a mining screenshot is stored through the media gateway under its own name and honours the switch", async () => {
+test("a mining screenshot is held until the note is written, then stored under its own name", async () => {
   const uploads = [];
-  const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic", deck: "Default", apiKey: "local-key" } });
-  const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front"], models: ["Basic"], decks: ["Default"], errors: [] }),
+  let refuse = false;
+  const notes = new Map();
+  let fields = null;
+  const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic", deck: "Default", apiKey: "local-key",
+    fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+      Audio: { value: "{screenshot}", overwriteMode: "overwrite" } } } });
+  const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Audio"],
+    models: ["Basic"], decks: ["Default"], errors: [] }),
     async invoke(action, params, apiKey) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true }];
+      if (action === "addNote") { fields = params.note.fields; notes.set(12, fields); return 12; }
+      if (action === "notesInfo") return [{ noteId: 12, fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
       if (action !== "storeMediaFile") throw new Error(`Unexpected ${action}`);
       uploads.push({ ...params, apiKey });
-      return uploads.length === 1 ? params.filename : "renamed.jpg";
+      if (refuse) throw new Error("media folder is read-only");
+      return params.filename;
     } };
   const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
     readDictionaries: async () => [], engine: async () => ({ generation: 3, ready: true, loading: false }),
-    offscreen: async () => ({ fields: {}, media: [] }) });
+    offscreen: async message => (message.type === "hd_anki_audio" ? { filename: "", data: "" } : {
+      fields: Object.fromEntries(Object.entries(message.templates).map(([field, template]) =>
+        [field, template.value.replace("{expression}", "猫").replace("{screenshot}", message.request.screenshot
+          ? `<img src="${message.request.screenshot.filename}">` : "")])), media: [] }),
+  });
+  const request = { term: { expression: "猫", reading: "ねこ", rules: "", glossaries: [], frequencies: [], pitches: [] },
+    generation: 3, trace: [], sentence: "猫", matched: "猫", matchOffset: 0, popupSelectionText: "", searchQuery: "猫",
+    documentTitle: "Test", dictionaryAliases: {}, frequencyDictionaries: [] };
 
-  const stored = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
-  assert.match(stored.filename, /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u);
-  assert.deepEqual(uploads[0], { filename: stored.filename, data: "c2hvdA==", deleteExisting: false, apiKey: "local-key" });
+  // Capturing stores nothing: the picture waits for a note that is going ahead.
+  const taken = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+  assert.match(taken.filename, /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u);
+  assert.match(taken.token, /^[0-9a-f-]{36}$/u);
+  assert.equal(uploads.length, 0);
 
-  // Anki answering with another name means the reference would not resolve.
-  await assert.rejects(service.screenshot(async () => "data:image/jpeg;base64,c2hvdA=="), /under a different filename/u);
-  // Nothing but an image is uploaded, and the capture's own failure is the reason.
+  const status = await service.status();
+  const added = await service.submit({ ...request, configKey: status.configKey, screenshot: taken });
+  assert.equal(added.state, "added");
+  assert.deepEqual(added.warnings, []);
+  assert.deepEqual(uploads, [{ filename: taken.filename, data: "c2hvdA==", deleteExisting: false, apiKey: "local-key" }]);
+  assert.equal(notes.get(12).Audio, `<img src="${taken.filename}">`);
+
+  // A picture that is no longer the pending one, and a refused upload, are both
+  // warnings on a note that is still written without a broken reference.
+  const stale = await service.submit({ ...request, term: { ...request.term, expression: "犬" },
+    configKey: status.configKey, screenshot: taken });
+  assert.equal(stale.state, "added");
+  assert.match(stale.warnings.join(" "), /Screenshot: the captured picture was replaced/u);
+  assert.equal(notes.get(12).Audio, "");
+  assert.equal(uploads.length, 1);
+
+  refuse = true;
+  const retaken = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+  const refused = await service.submit({ ...request, term: { ...request.term, expression: "鳥" },
+    configKey: status.configKey, screenshot: retaken });
+  assert.equal(refused.state, "added");
+  assert.match(refused.warnings.join(" "), /Screenshot: media folder is read-only/u);
+  assert.equal(notes.get(12).Audio, "");
+
+  // The capture itself refuses when the switch is off or the page gives nothing.
   await assert.rejects(service.screenshot(async () => "not-an-image"), /no screenshot/u);
   await assert.rejects(service.screenshot(async () => { throw new Error("The reading tab is no longer the active tab."); }),
     /no longer the active tab/u);
-  assert.equal(uploads.length, 2);
-
   options.anki.captureScreenshot = false;
   await assert.rejects(service.screenshot(async () => "data:image/jpeg;base64,c2hvdA=="), /turned off in Settings/u);
-  assert.equal(uploads.length, 2);
 });

@@ -142,8 +142,8 @@
       if (owns()) text(record.output, "Taking the screenshot…");
       try {
         const taken = await conceal(() => send("hd_anki_screenshot", {}));
-        if (typeof taken?.filename !== "string" || !taken.filename) throw new Error("no screenshot was stored");
-        return { ...request, screenshot: { filename: taken.filename } };
+        if (typeof taken?.filename !== "string" || !taken.filename) throw new Error("no screenshot was taken");
+        return { ...request, screenshot: { token: taken.token, filename: taken.filename } };
       } catch (error) {
         record.screenshotWarning = `Screenshot: ${error.message}`;
         return { ...request, captureUnavailable: [...(request.captureUnavailable ?? []), "screenshot"] };

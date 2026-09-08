@@ -1323,8 +1323,9 @@ picture is stored through the ordinary `storeMediaFile` gateway under its own
 overwrite policies and existing values are untouched.
 
 A capture or upload that fails is a warning carried with the note's own outcome:
-the marker renders empty, the note is still added or updated, and nothing invites
-a duplicate retry. The Kiku and Lapis presets map their verified `Picture` field
+the marker renders empty — a refused upload also empties the fields that
+referenced the picture, so no note points at an image Anki does not have — the
+note is still added or updated, and nothing invites a duplicate retry. The Kiku and Lapis presets map their verified `Picture` field
 and Senren its `picture` field to this marker, and a first installation has the
 switch on, so a recognised mining setup gets screenshots without further
 configuration. A note type without a picture field maps nothing and captures

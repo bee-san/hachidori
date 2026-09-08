@@ -102,7 +102,47 @@ export function createAnkiWorkerService({
     confirmedCaptureUploads.set(uploadKey, expectedFilename);
   }
 
+  // One pending viewport picture at a time: a later capture supersedes an
+  // earlier one, and a note that is written consumes it. Nothing is uploaded
+  // until then, so a rejected note leaves no unreferenced media in Anki.
+  let pendingScreenshot = null;
+
+  // Stored inside the queued write, once the generation, configuration and
+  // duplicate decisions have been made. A refused upload is a warning, and the
+  // fields that referenced the picture are emptied so the note never points at
+  // an image Anki does not have.
+  async function storePendingScreenshot({ request, appliedFields, invoke }) {
+    const filename = request.screenshot?.filename;
+    if (typeof filename !== "string" || filename === "") return [];
+    const reference = `<img src="${filename}">`;
+    const fields = Object.keys(appliedFields).filter(field => appliedFields[field].includes(reference));
+    if (fields.length === 0) return [];
+    const pending = pendingScreenshot;
+    pendingScreenshot = null;
+    const withoutPicture = reason => {
+      for (const field of fields) appliedFields[field] = appliedFields[field].replaceAll(reference, "");
+      return [`Screenshot: ${reason}`];
+    };
+    if (pending === null || pending.token !== request.screenshot.token || pending.filename !== filename) {
+      return withoutPicture("the captured picture was replaced before this note was saved.");
+    }
+    try {
+      const stored = await invoke("storeMediaFile", { filename, data: pending.data, deleteExisting: false }, 30_000);
+      if (stored !== filename) throw new Error("Anki stored it under a different filename.");
+    } catch (error) {
+      return withoutPicture(error.message);
+    }
+    return [];
+  }
+
   async function prepareCapture(context) {
+    const screenshotWarnings = await storePendingScreenshot(context);
+    const clip = await prepareClipCapture(context);
+    if (clip === null) return screenshotWarnings.length === 0 ? null : { warnings: screenshotWarnings };
+    return { ...clip, warnings: [...clip.warnings, ...screenshotWarnings] };
+  }
+
+  async function prepareClipCapture(context) {
     const { appliedFields, capture: selected, request } = context;
     await currentGeneration(request);
     if (!selected) return null;
@@ -188,9 +228,10 @@ export function createAnkiWorkerService({
   });
 
   // One viewport screenshot for the mining action being taken now. The caller
-  // owns the capture itself, because only it knows which page asked; this stores
-  // the picture through the same media gateway a note's other images use and
-  // returns the filename a field may reference.
+  // owns the capture itself, because only it knows which page asked; the picture
+  // is held here under a name a field may reference and uploaded only when the
+  // note is written, so this reply is immediate and the reader can show itself
+  // again without waiting for Anki.
   async function screenshot(captureViewport) {
     const { anki } = await readOptions();
     if (anki.captureScreenshot !== true) throw new Error("Screenshots when mining are turned off in Settings.");
@@ -198,10 +239,8 @@ export function createAnkiWorkerService({
     const data = typeof dataUrl === "string" && dataUrl.startsWith("data:image/")
       ? dataUrl.slice(dataUrl.indexOf(",") + 1) : "";
     if (decodedBase64Length(data) === null) throw new Error("This page produced no screenshot.");
-    const filename = `hachidori-screenshot-${crypto.randomUUID()}.jpg`;
-    const stored = await gateway.invoke("storeMediaFile", { filename, data, deleteExisting: false }, anki.apiKey, 30_000);
-    if (stored !== filename) throw new Error("Anki stored the screenshot under a different filename.");
-    return { filename };
+    pendingScreenshot = { token: crypto.randomUUID(), filename: `hachidori-screenshot-${crypto.randomUUID()}.jpg`, data };
+    return { token: pendingScreenshot.token, filename: pendingScreenshot.filename };
   }
 
   return { ...mining, screenshot };
