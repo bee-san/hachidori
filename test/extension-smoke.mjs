@@ -6141,10 +6141,15 @@ async function settingsNavigationStage() {
     }
     const initial = active()[0].id === "lookup";
     const reading = document.getElementById("lookup");
+    const libraryNavigation = document.getElementById("library-navigation");
+    const initialLibraryContext = libraryNavigation?.hidden === true;
     const source = document.getElementById("custom-dictionary-source");
     const beforeNavigation = requests.length;
     await navigate("custom-dictionary");
     await until(() => !source.disabled);
+    const personalLibraryContext = libraryNavigation?.hidden === false
+      && document.querySelector('.settings-nav [aria-current="page"]')?.hash === "#dictionaries"
+      && libraryNavigation.querySelector('[aria-current="page"]')?.hash === "#custom-dictionary";
     const emptyEditor = !document.getElementById("custom-dictionary-form").hidden
       && source.value === "" && source.placeholder.split("\n").length === 3
       && parseCustomDictionary(source.value).entries.length === 0
@@ -6157,6 +6162,7 @@ async function settingsNavigationStage() {
     source.dispatchEvent(new window.Event("input", { bubbles: true }));
     await navigate("lookup");
     const navigation = initial && active().length === 1 && active()[0] === reading
+      && initialLibraryContext && personalLibraryContext && libraryNavigation.hidden
       && source === document.getElementById("custom-dictionary-source")
       && document.querySelector('.settings-nav [aria-current="page"]').hash === "#lookup"
       && requests.length === beforeNavigation + 1
@@ -8871,7 +8877,7 @@ async function settingsManagedUpdatesStage() {
 
   const beforeCoalescing = scheduleRequests().length;
   for (const value of ["off", "hourly", "daily"]) chooseSchedule(value);
-  result.queuedNotice = window.document.getElementById("nav-status-updates").textContent.includes("Unsaved schedule");
+  result.queuedNotice = window.document.getElementById("nav-status-dictionaries").textContent.includes("Updates: Unsaved schedule");
   await pause(250);
   result.coalesced = scheduleRequests().length === beforeCoalescing + 1 && updateSettings.schedule === "daily";
 
@@ -9099,13 +9105,13 @@ async function settingsCustomDictionaryStage() {
     formHidden: form.hidden,
     readCount: customReadRequests.length,
     saveDisabled: save.disabled,
-    unseenCompletion: window.document.getElementById("nav-status-custom-dictionary").textContent
+    unseenCompletion: window.document.getElementById("nav-status-dictionaries").textContent
       === "Personal dictionary: Loaded source revision 6.",
   };
   await navigateSettingsSection(window, "custom-dictionary");
   await navigateSettingsSection(window, "dictionaries");
   result.eventBeforeReadReply.completionClearedAfterVisit =
-    window.document.getElementById("nav-status-custom-dictionary").textContent === "";
+    window.document.getElementById("nav-status-dictionaries").textContent === "";
 
   const customRow = () => window.document.querySelector(`[data-dictionary-id="${CUSTOM_DICTIONARY_ID}"]`);
   const ordinaryRow = () => window.document.querySelector('[data-dictionary-id="ordinary-id"]');

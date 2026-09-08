@@ -15,12 +15,15 @@ export function createSettingsSearch({ document, navigate }) {
     results.replaceChildren();
   }
 
-  function appendResult(section, target, sectionName, group, label, hint) {
+  function appendResult(section, target, sectionName, sectionGroup, group, label, hint) {
     const item = document.createElement("li");
     const link = document.createElement("a");
     link.href = `#${section.id}`;
     const breadcrumb = document.createElement("small");
-    breadcrumb.textContent = group && group !== label ? `${sectionName} › ${group}` : sectionName;
+    const sectionPath = sectionGroup ? `${sectionGroup} › ${sectionName}` : sectionName;
+    let breadcrumbText = sectionGroup && label === sectionName ? sectionGroup : sectionPath;
+    if (group && group !== label) breadcrumbText = `${sectionPath} › ${group}`;
+    breadcrumb.textContent = breadcrumbText;
     const title = document.createElement("strong");
     title.textContent = label;
     link.append(breadcrumb, title);
@@ -52,7 +55,8 @@ export function createSettingsSearch({ document, navigate }) {
 
   function searchSection(section, words) {
     section.hidden = true;
-    const sectionName = text(section.querySelector("h1"));
+    const sectionName = section.dataset.settingsName || text(section.querySelector("h1"));
+    const sectionGroup = section.dataset.settingsGroup || "";
     // Read mounted labels on demand, including lazy controls once populated.
     const candidates = section.querySelectorAll("h1, h2, h3, legend, summary, label, button[id]");
     for (const target of candidates) {
@@ -62,9 +66,9 @@ export function createSettingsSearch({ document, navigate }) {
       if (!label) continue;
       const group = text(target.closest("fieldset")?.querySelector("legend"));
       const hint = text(target.querySelector(".field-hint"));
-      const searchable = normalise(`${sectionName} ${group} ${label} ${hint} ${target.dataset.searchKeywords || ""}`);
+      const searchable = normalise(`${sectionGroup} ${sectionName} ${group} ${label} ${hint} ${target.dataset.searchKeywords || ""}`);
       if (!words.every(word => searchable.includes(word))) continue;
-      appendResult(section, target, sectionName, group, label, hint);
+      appendResult(section, target, sectionName, sectionGroup, group, label, hint);
     }
   }
 
@@ -73,6 +77,7 @@ export function createSettingsSearch({ document, navigate }) {
     if (!words.length) { navigate(); return; }
     results.replaceChildren();
     panel.hidden = false;
+    document.getElementById("library-navigation").hidden = true;
     for (const section of document.querySelectorAll("main > section")) searchSection(section, words);
     const matches = results.childElementCount;
     const noun = matches === 1 ? "setting" : "settings";

@@ -63,6 +63,36 @@ test("global search finds inactive section controls and lazy Audio by its voice 
   assert.ok(f.match("Anki"), "flashcard settings are discoverable before lazy field mappings are mounted");
 });
 
+test("Library exposes its related views together and search reports that hierarchy", t => {
+  const f = fixture(t);
+  const expected = [
+    ["dictionaries", "Dictionaries"],
+    ["add-dictionaries", "Add"],
+    ["updates", "Updates"],
+    ["dictionary-groups", "Groups"],
+    ["custom-dictionary", "Personal dictionary"],
+  ];
+  const navigation = f.el("library-navigation");
+  assert.ok(navigation);
+  assert.deepEqual(
+    [...navigation.querySelectorAll("a")].map(link => [link.hash.slice(1), link.textContent.trim()]),
+    expected,
+  );
+  assert.deepEqual(
+    [...f.el("settings-section").querySelector('optgroup[label="Library"]').querySelectorAll("option")]
+      .map(option => [option.value, option.textContent.trim()]),
+    expected,
+  );
+  f.query("default automatic updates");
+  const result = f.match("Default automatic updates");
+  assert.ok(result);
+  assert.equal(result.querySelector("small").textContent, "Library › Updates");
+  f.query("dictionaries search");
+  const dictionarySearch = f.match("Search");
+  assert.ok(dictionarySearch);
+  assert.equal(dictionarySearch.querySelector("small").textContent, "Library › Dictionaries");
+});
+
 test("result opens collapsed details and focuses the existing textarea without touching its draft", t => {
   const f = fixture(t);
   const draft = f.el("opt-custom-popup-css");

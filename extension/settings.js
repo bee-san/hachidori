@@ -42,6 +42,7 @@ const UPDATE_TARGET = "hachidori-updates";
 const AUDIO_TARGET = "hachidori-audio";
 const CAPTURE_TARGET = "hachidori-capture";
 const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", media: "Media capture", anki: "Anki" };
+const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
@@ -164,20 +165,39 @@ function sectionHasPendingWork(id) {
   }
 }
 
-function syncNavigationStatus(id) {
-  const { section, label } = SECTION_STATUSES[id];
-  const source = element(id);
-  const notice = element(`nav-status-${section}`);
-  if (section === activeSection) unseenSectionCompletions.delete(id);
-  const attention = source.classList.contains("is-error") || unseenSectionCompletions.has(id) || sectionHasPendingWork(id);
-  const message = section !== activeSection && attention && source.textContent
-    ? `${label}: ${source.textContent}` : "";
-  if (notice.textContent !== message) notice.textContent = message;
-  notice.classList.toggle("is-error", source.classList.contains("is-error"));
-  notice.classList.toggle("is-ready", source.classList.contains("is-ready"));
+function primaryNavigationSection(section) {
+  return LIBRARY_SECTIONS.has(section) ? "dictionaries" : section;
+}
+
+function renderNavigationStatuses() {
+  const messages = new Map();
+  for (const [id, { section, label }] of Object.entries(SECTION_STATUSES)) {
+    const source = element(id);
+    const attention = source.classList.contains("is-error") || unseenSectionCompletions.has(id) || sectionHasPendingWork(id);
+    if (section === activeSection || !attention || !source.textContent) continue;
+    const navigationSection = primaryNavigationSection(section);
+    const status = messages.get(navigationSection) ?? { messages: [], error: false, ready: true };
+    status.messages.push(`${label}: ${source.textContent}`);
+    status.error ||= source.classList.contains("is-error");
+    status.ready &&= source.classList.contains("is-ready");
+    messages.set(navigationSection, status);
+  }
+  for (const notice of document.querySelectorAll(".nav-status")) {
+    const status = messages.get(notice.id.slice("nav-status-".length));
+    const message = status?.messages.join(" ") ?? "";
+    if (notice.textContent !== message) notice.textContent = message;
+    notice.classList.toggle("is-error", status?.error === true);
+    notice.classList.toggle("is-ready", status?.ready === true && status?.error !== true);
+  }
   const compact = element("settings-navigation-status");
-  const messages = [...document.querySelectorAll(".nav-status")].map(output => output.textContent).filter(Boolean).join(" ");
-  if (compact.textContent !== messages) compact.textContent = messages;
+  const message = [...document.querySelectorAll(".nav-status")].map(output => output.textContent).filter(Boolean).join(" ");
+  if (compact.textContent !== message) compact.textContent = message;
+}
+
+function syncNavigationStatus(id) {
+  const { section } = SECTION_STATUSES[id];
+  if (section === activeSection) unseenSectionCompletions.delete(id);
+  renderNavigationStatuses();
 }
 
 function setSectionStatus(id, message, tone, completed = false) {
@@ -198,17 +218,26 @@ function showSettingsSection(focus = false) {
   pendingManagementFocus = null;
   for (const section of sections) section.hidden = section.id !== activeSection;
   element("settings-section").value = activeSection;
+  const libraryActive = LIBRARY_SECTIONS.has(activeSection);
+  element("library-navigation").hidden = !libraryActive;
+  const primarySection = primaryNavigationSection(activeSection);
   for (const link of document.querySelectorAll(".settings-nav a")) {
-    if (link.hash === `#${activeSection}`) link.setAttribute("aria-current", "page");
+    if (link.hash === `#${primarySection}`) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+  for (const link of document.querySelectorAll("#library-navigation a")) {
+    if (libraryActive && link.hash === `#${activeSection}`) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
   if (Object.hasOwn(OPTION_SECTIONS, activeSection)) {
-    element(`nav-status-${SECTION_STATUSES["options-status"].section}`).textContent = "";
     SECTION_STATUSES["options-status"] = { section: activeSection, label: OPTION_SECTIONS[activeSection] };
     const slot = element(activeSection).querySelector(".options-feedback-slot");
     if (element("options-feedback").parentElement !== slot) slot.append(element("options-feedback"));
   }
-  for (const id of Object.keys(SECTION_STATUSES)) syncNavigationStatus(id);
+  for (const [id, { section }] of Object.entries(SECTION_STATUSES)) {
+    if (section === activeSection) unseenSectionCompletions.delete(id);
+  }
+  renderNavigationStatuses();
   renderThemeChoices();
   updateDesignPreview();
   updateAudioSettings();
@@ -410,7 +439,7 @@ function attachSettingsNavigation() {
     event.preventDefault();
     element("settings-content").focus();
   });
-  for (const link of document.querySelectorAll(".settings-nav a, .section-action")) {
+  for (const link of document.querySelectorAll(".settings-nav a, #library-navigation a, .section-action")) {
     link.addEventListener("click", (event) => {
       if (link.hash === window.location.hash
           && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
