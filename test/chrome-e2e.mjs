@@ -239,7 +239,7 @@ const PLANNED = [
   "custom CSS overrides built-in and late dictionary styles only inside the popup shadow tree and tolerates invalid CSS",
   "live custom CSS updates root and child without losing Notes, Back or making engine requests",
   "Audio Settings preserve ordered source edits and disabled rows through revisioned save and reload",
-  "Audio source Tests use encoded URLs and ordered JSON candidates with visible success, no-result and error feedback",
+  "Audio source Tests use encoded URLs and ordered JSON candidates with quiet success and visible errors",
   "Audio Tests cancel stale playback and preserve the dictionary engine after audio becomes idle",
   "Anki discovery is lazy and refresh recovers an offline connection through the real service worker",
   "Anki Settings reject stale model replies and preserve unavailable mappings without discovery writes",
@@ -282,6 +282,7 @@ const PLANNED = [
   "fallback source paint stays beneath page headers and overlays",
   "fallback source paint refreshes after stylesheet loading and CSSOM edits",
   "editable controls preserve normal editing and suppress pointer and selection lookups",
+  "autofocused search fields allow hover and stationary Shift lookup of Japanese example links",
   "Japanese-only preferences change automatic scanning in an already-open tab",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
@@ -1143,6 +1144,7 @@ async function popupReader(page, depth = 0) {
         const popupRect = this.getBoundingClientRect();
         const candidateRect = candidate?.getBoundingClientRect();
         return { text: this.textContent, button: button?.textContent, audioBusy: button?.getAttribute("aria-busy"),
+          audioState: button?.dataset.state, audioHidden: button?.hidden,
           feedback: [...this.querySelectorAll(".gsm-hoshidicts-audio-status")].map(node => node.textContent),
           choices: [...this.querySelectorAll(".gsm-hoshidicts-audio-choices div button")].map(node => node.textContent),
           menu: Boolean(this.querySelector(".gsm-hoshidicts-audio-choices")),
@@ -1215,7 +1217,7 @@ async function popupReader(page, depth = 0) {
           state: this.dataset.definitionBlurState ?? "revealed",
           definitionsState: definitions?.dataset.definitionBlurState ?? "revealed",
           definitionsPoint: rect && { x: rect.x + rect.width / 2, y: rect.y + Math.min(rect.height / 2, 12) },
-          audioFeedback: [...this.querySelectorAll(".gsm-hoshidicts-audio-status")].map(node => node.textContent),
+          audioAttempted: Boolean(this.querySelector('.gsm-hoshidicts-audio-button[aria-busy]')),
           countText: this.querySelector(".gsm-hoshidicts-lookup-stats")?.textContent ?? "",
         };
       }.toString(),
@@ -3393,7 +3395,8 @@ async function checkPopupAudio(settings, tab, popup, browser) {
     }
     throw new Error(`Popup audio state timed out: ${JSON.stringify(await popup.audio())}`);
   }
-  const completed = () => until(state => state?.button === "" && state.audioBusy === "false" && state.feedback[0].startsWith("Played"));
+  const completed = () => until(state => state?.button === "" && state.audioBusy === "false"
+    && !state.audioState && state.feedback.every(text => text === ""));
   const rehover = async () => {
     await tab.keyboard.press("Escape");
     await hoverForPopup(tab, popup, "#verb");
@@ -3405,7 +3408,8 @@ async function checkPopupAudio(settings, tab, popup, browser) {
     await popup.audio("play");
     const played = await completed();
     check("Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
-      silent && played.feedback[0] === "Played — Tokyo." && routes.get(base + "disabled").requests === 0
+      silent && played.feedback.every(text => text === "") && routes.get(base + "tokyo.wav").requests === 1
+        && routes.get(base + "disabled").requests === 0
         && routes.get(base + "failure").requests === 1 && routes.get(base + "bad.wav").requests === 1,
       JSON.stringify({ silent, played, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
 
@@ -3428,8 +3432,9 @@ async function checkPopupAudio(settings, tab, popup, browser) {
     const media = await evaluate("__e20Audio.map(audio => ({ ended: audio.ended, source: audio.getAttribute('src'), paused: audio.paused }))");
     check("Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
       choices.menuFits && choices.choices.join(",") === "Pronunciation 1,Unplayable,Tokyo,Osaka" && !escaped.menu
-        && escaped.focused === "gsm-hoshidicts-audio-button" && chosen.feedback[0] === "Played — Osaka."
-        && warm.feedback[0] === chosen.feedback[0] && count() === beforeWarm && media.length === 4
+        && escaped.focused === "gsm-hoshidicts-audio-button" && chosen.feedback.every(text => text === "")
+        && routes.get(base + "osaka.wav").requests === 1 && warm.feedback.every(text => text === "")
+        && count() === beforeWarm && media.length === 4
         && media.every(item => item.paused && item.source === null), JSON.stringify({ choices, escaped, chosen, warm, media }));
 
     await write({ audioSources: [source("auto", "custom", base + "tokyo.wav")], audioAutoplay: true });
@@ -3463,13 +3468,13 @@ async function checkPopupAudio(settings, tab, popup, browser) {
     await write({ audioSources: [source("current", "custom", base + "tokyo.wav")] });
     await rehover();
     await popup.audio("play");
-    await until(state => state?.feedback[0].startsWith("Playing"));
+    await until(state => state?.audioState === "playing");
     await write({ audioSources: [] });
-    await until(state => state?.feedback[0] === "Stopped.");
+    await until(state => state?.audioHidden && state.audioBusy === "false" && state.feedback.every(text => text === ""));
     const changed = await evaluate("__e20Audio.at(-1).paused && __e20Audio.at(-1).getAttribute('src') === null");
     await write({ audioSources: [source("current", "custom", base + "tokyo.wav")] });
     await popup.audio("play");
-    await until(state => state?.feedback[0].startsWith("Playing"));
+    await until(state => state?.audioState === "playing");
     await tab.reload({ waitUntil: "load" });
     const navigated = await evaluate("__e20Audio.at(-1).paused && __e20Audio.at(-1).getAttribute('src') === null");
     const status = await settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
@@ -3551,8 +3556,8 @@ async function checkAudioSettings(page, browser) {
     const empty = await testRow();
     await input(`${customRow} .audio-url`, "https://audio.example.test/failure");
     const failure = await testRow();
-    check("Audio source Tests use encoded URLs and ordered JSON candidates with visible success, no-result and error feedback",
-      obsoleteCleared && success === "Played 聞く / きく — Playable." && empty === "No pronunciation was returned."
+    check("Audio source Tests use encoded URLs and ordered JSON candidates with quiet success and visible errors",
+      obsoleteCleared && success === "" && empty === "No pronunciation was returned."
         && failure.includes("503") && [...routes.values()].every(route => route.requests === 1),
       JSON.stringify({ success, empty, failure, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
     await input(`${customRow} .audio-url`, template);
@@ -3583,7 +3588,7 @@ async function checkAudioSettings(page, browser) {
       feedback: document.querySelector(".audio-test-status").textContent,
     }));
     check("Audio Tests cancel stale playback and preserve the dictionary engine after audio becomes idle",
-      stopped === "Stopped." && after.feedback === stopped && after.status.ready
+      stopped === "" && after.feedback === stopped && after.status.ready
         && after.status.generation === original.status.generation && after.context === original.context, JSON.stringify(after));
   } finally {
     await session.detach();
@@ -4295,7 +4300,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
     const ready = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "Add a dictionary to try Hachidori"
       ? { outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
         outcomeText: document.querySelector(".setup-anki-outcome")?.textContent ?? "",
-        outcomeLink: document.querySelector('.setup-anki-outcome a[href="settings.html#anki"]') !== null,
+        outcomeLink: document.querySelector('.setup-anki-outcome a[href="https://apps.ankiweb.net/"]') !== null,
         done: document.querySelectorAll(".setup-step.is-done").length,
         status: document.getElementById("setup-status")?.textContent ?? "" } : false,
     { timeout: 30_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
@@ -4714,16 +4719,16 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
     await updateSettingsControls(settings, { "opt-blur-direction": "below" });
     const revealedDefinition = await freshLookup();
     const notQualifying = await decided();
-    const autoplayed = await waitForDefinitionBlur(popup, value => value?.audioFeedback.some(Boolean), 5_000);
+    const autoplayed = await waitForDefinitionBlur(popup, value => value?.audioAttempted, 5_000);
     check("definition blur follows real lookup counts and settings and holds autoplay for blurred results",
       qualifyingDefinition?.plain.includes("食べる")
         && qualifying?.state === "blurred" && qualifying.definitionsState === "blurred"
         && qualifying.countText.includes(`Looked up ${threshold}`)
-        && !pendingOrBlurred.audioFeedback.some(Boolean)
-        && hovered?.state === "revealed" && !hovered.audioFeedback.some(Boolean)
+        && !pendingOrBlurred.audioAttempted
+        && hovered?.state === "revealed" && !hovered.audioAttempted
         && revealedDefinition?.plain.includes("食べる")
         && notQualifying?.state === "revealed" && notQualifying.countText.includes(`Looked up ${threshold + 1}`)
-        && autoplayed?.audioFeedback.some(Boolean),
+        && autoplayed?.audioAttempted,
       JSON.stringify({ threshold, qualifying, pendingOrBlurred, hovered, notQualifying, autoplayed }));
 
     await updateSettingsControls(settings, {
@@ -4850,11 +4855,11 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     const before = await readLookupStatistics(settings);
     const coldDefinition = await freshLookup();
     const cold = await waitForDefinitionBlur(popup, value => releaseMaturity !== null
-      && value?.state === "revealed" && value.audioFeedback.some(Boolean), 5_000);
+      && value?.state === "revealed" && value.audioAttempted, 5_000);
     const coldCache = await readCache();
     check("a cold Anki maturity cache leaves the popup responsive while its first refresh is held",
       coldDefinition?.plain.includes("食べる") && popup.visible(coldDefinition)
-        && releaseMaturity !== null && cold?.state === "revealed" && cold.audioFeedback.some(Boolean)
+        && releaseMaturity !== null && cold?.state === "revealed" && cold.audioAttempted
         && !coldCache?.snapshot && refreshCalls() === 1,
       JSON.stringify({ cold, coldCache, calls }));
     releaseRefresh();
@@ -4869,7 +4874,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     const query = calls.find(call => call.action === "notesInfo")?.params.query ?? "";
     check("cached mature definitions reveal silently and repeated lookups make no Anki requests",
       matureDefinition?.plain.includes("食べる") && mature?.state === "blurred" && mature.definitionsState === "blurred"
-        && !mature.audioFeedback.some(Boolean) && hovered?.state === "revealed" && !hovered.audioFeedback.some(Boolean)
+        && !mature.audioAttempted && hovered?.state === "revealed" && !hovered.audioAttempted
         && repeated?.state === "blurred" && refreshCalls() === 1 && !calls.some(call => call.action === "findCards")
         && before.ok && after.ok && before.statistics === null && after.statistics === null
         && before.descriptor.generation === after.descriptor.generation && before.descriptor.revision === after.descriptor.revision
@@ -4887,12 +4892,12 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     const retained = await popup.lookupStatistics();
     const afterRefresh = await popup.definitionBlur();
     const nonmatureDefinition = await freshLookup();
-    const nonmature = await waitForDefinitionBlur(popup, value => value?.state === "revealed" && value.audioFeedback.some(Boolean), 5_000);
+    const nonmature = await waitForDefinitionBlur(popup, value => value?.state === "revealed" && value.audioAttempted, 5_000);
     check("a scheduled maturity refresh preserves the current popup and updates only new lookups",
-      refreshing?.state === "blurred" && !refreshing.audioFeedback.some(Boolean)
+      refreshing?.state === "blurred" && !refreshing.audioAttempted
         && retained?.samePopup && retained.samePanel && afterRefresh?.state === "blurred"
         && emptyCache.snapshot.words.length === 0 && nonmatureDefinition?.plain.includes("食べる")
-        && nonmature?.state === "revealed" && nonmature.audioFeedback.some(Boolean) && refreshCalls() === 2,
+        && nonmature?.state === "revealed" && nonmature.audioAttempted && refreshCalls() === 2,
       JSON.stringify({ refreshing, retained, afterRefresh, emptyCache, nonmature }));
 
     mode = "held-mature";
@@ -4980,9 +4985,9 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     await freshLookup();
     const countQualified = await waitForDefinitionBlur(popup, value => value?.state === "blurred" && value.countText.includes("Looked up"));
     check("an unavailable Anki refresh retains cached maturity and independent count blur",
-      offline?.state === "blurred" && !offline.audioFeedback.some(Boolean)
+      offline?.state === "blurred" && !offline.audioAttempted
         && JSON.stringify(retry.cache.snapshot) === JSON.stringify(reenabledCache.snapshot)
-        && cachedMiss.mature === false && countQualified?.state === "blurred" && !countQualified.audioFeedback.some(Boolean)
+        && cachedMiss.mature === false && countQualified?.state === "blurred" && !countQualified.audioAttempted
         && calls.every(call => ["notesInfo", "deckNames", "modelNames", "modelFieldNames", "canAddNotesWithErrorDetail"].includes(call.action)),
       JSON.stringify({ offline, retry, cachedMiss, countQualified, calls }));
 
@@ -5266,7 +5271,7 @@ async function readVisualNovelScene(page, sourceSelector) {
     const dialogue = scene?.querySelector(".vn-dialogue");
     const source = document.querySelector(selector);
     if (!scene || !dialogue || !source) return null;
-    const imageUrl = getComputedStyle(scene).backgroundImage.match(/url\(["']?([^"')]+)["']?\)/u)?.[1];
+    const imageUrl = getComputedStyle(scene, "::before").backgroundImage.match(/url\(["']?([^"')]+)["']?\)/u)?.[1];
     const image = new Image();
     image.src = imageUrl ?? "";
     await image.decode().catch(() => {});
@@ -5302,12 +5307,12 @@ async function cycleVisualNovelScene(page, sourceSelector, alsoClick = false) {
   const before = await page.evaluateHandle(selector => {
     const scene = document.querySelector(".vn-scene");
     const source = document.querySelector(selector);
-    return { scene, source, text: source.firstChild, textContent: source.textContent, background: getComputedStyle(scene).backgroundImage };
+    return { scene, source, text: source.firstChild, textContent: source.textContent, background: getComputedStyle(scene, "::before").backgroundImage };
   }, sourceSelector);
   try {
     const next = await page.$(".vn-next");
     const cycled = () => page.evaluate(snapshot => {
-      const background = getComputedStyle(snapshot.scene).backgroundImage;
+      const background = getComputedStyle(snapshot.scene, "::before").backgroundImage;
       const changed = background !== snapshot.background;
       snapshot.background = background;
       return document.activeElement === snapshot.scene.querySelector(".vn-next") && changed
@@ -5789,9 +5794,9 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       await pause();
       await dismiss();
     }
-    // A webpage cannot use the startup arrow's class to bypass focused-control suppression.
+    // A webpage cannot use the startup arrow's class to scan a button's text.
     await tab.focus("#verb .vn-next");
-    await moveTo("#duplicate");
+    await moveTo("#verb .vn-next");
     await dismiss();
     for (const tag of ["input", "div"]) {
       await editSettingsControls(settings, { "opt-lookup-mode": "activation", "opt-activation-key": "K" });
@@ -5810,8 +5815,6 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       await tab.keyboard.down("k");
       await pause();
       await tab.keyboard.up("k");
-      await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
-      await moveTo("#duplicate");
       edits.push(await tab.evaluate(() => {
         const host = document.getElementById("shadow-editor");
         const editor = host.shadowRoot.firstChild.shadowRoot.firstChild;
@@ -5822,6 +5825,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       }));
       await dismiss();
     }
+    await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
     // Neither range endpoint is editable: the interior control still excludes it.
     for (const editor of [
       '<button>べ</button>',
@@ -5852,6 +5856,37 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         hiddenPointerAccepted: hiddenPointerAccepted !== null }));
 
     await dismiss();
+    await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-activation-key": "Shift" });
+    await tab.$eval("#verb", (element) => {
+      element.innerHTML = '<input id="jisho-search" autofocus aria-label="Search Japanese">'
+        + '<span>Text reading assistance: <a href="/search/example">昨日すき焼きを'
+        + '<span id="jisho-example-word">食べました</span></a></span>';
+    });
+    await tab.focus("#jisho-search");
+    await moveTo("#jisho-example-word");
+    const hoveredLink = await popup.waitForVisible();
+    const hoverKeepsSearch = await tab.$eval("#jisho-search", element => document.activeElement === element);
+    await dismiss();
+    await editSettingsControls(settings, { "opt-lookup-mode": "activation" });
+    await tab.focus("#jisho-search");
+    const beforeModifier = (await lookups()).length;
+    await moveTo("#jisho-example-word");
+    const modifierGated = (await lookups()).length === beforeModifier;
+    let activatedLink;
+    try {
+      await tab.keyboard.down("Shift");
+      activatedLink = await popup.waitForVisible();
+    } finally { await tab.keyboard.up("Shift"); }
+    const modifierKeepsSearch = await tab.$eval("#jisho-search", element => document.activeElement === element);
+    check("autofocused search fields allow hover and stationary Shift lookup of Japanese example links",
+      hoveredLink?.plain.includes("食べる") && activatedLink?.plain.includes("食べる")
+        && modifierGated && hoverKeepsSearch && modifierKeepsSearch
+        && (await lookups()).at(-1)?.text === "食べました",
+      JSON.stringify({ hoveredLink: Boolean(hoveredLink), activatedLink: Boolean(activatedLink),
+        modifierGated, hoverKeepsSearch, modifierKeepsSearch }));
+
+    await dismiss();
+    await editSettingsControls(settings, { "opt-lookup-mode": "hover" });
     const latinStart = (await lookups()).length;
     await moveTo("#latin");
     const japaneseOnly = (await lookups()).length === latinStart;
@@ -6830,7 +6865,7 @@ async function main() {
 
   // Nothing answers AnkiConnect on this host, so the ordinary absence is
   // recorded once and the page moves on without asking the user anything.
-  const settledAnki = painted("Anki isn’t connected");
+  const settledAnki = painted("Could not find Anki");
   if (startup && (process.env.HACHIDORI_STARTUP_READY_SCREENSHOT || process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT)) {
     await startup.setViewport({ width: 1200, height: 1000 });
     for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_READY_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT]]) {
@@ -6944,7 +6979,7 @@ async function main() {
       && practiceReached?.focused === "setup-heading" && practiceReached.currentStep === "practice"
       && practiceReached.done === 2 && practiceReached.status === "You’re ready."
       && practiceReached.outcome === "unavailable" && practiceReached.outcomeLink
-      && practiceReached.outcomeText === "Anki isn’t connected. It’s optional — you can set it up later in Settings."
+      && practiceReached.outcomeText === "Could not find Anki. If you want to make flashcards out of words, I suggest Anki!"
       && practiceReached.body.includes("Try looking up a word below.")
       && practiceReached.body.includes("踏切の向こうから蝉の声が響く。")
       && JSON.stringify(practiceReached.actions) === JSON.stringify(["setup-finish"])

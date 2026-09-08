@@ -177,7 +177,8 @@ function trustedCaptureControl(sender) {
     const url = new URL(sender.url);
     if (url.search) return false;
     url.hash = "";
-    return [chrome.runtime.getURL("settings.html"), chrome.runtime.getURL(CAPTURE_DOCUMENT)].includes(url.href);
+    return ["settings.html", "toolbar.html", CAPTURE_DOCUMENT]
+      .some(document => url.href === chrome.runtime.getURL(document));
   } catch {
     return false;
   }

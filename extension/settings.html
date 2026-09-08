@@ -16,6 +16,10 @@
           <div><span>Hachidori</span><span class="brand-context">Settings</span></div>
         </div>
         <a class="setup-resume" id="setup-resume" href="startup.html" hidden>Resume setup</a>
+        <label class="settings-search" for="settings-search">
+          <span class="field-label">Search settings</span>
+          <input id="settings-search" type="search" placeholder="Find a setting…" autocomplete="off" aria-controls="settings-search-results" />
+        </label>
         <label class="settings-section-picker" for="settings-section">
           <span class="field-label">Section</span>
           <select id="settings-section">
@@ -89,6 +93,11 @@
         </output>
       </aside>
       <main class="page" id="settings-content" tabindex="-1">
+        <div id="settings-search-results" class="card settings-search-results" hidden>
+          <h1>Search settings</h1>
+          <p id="settings-search-count" class="hint" role="status"></p>
+          <ul id="settings-search-matches"></ul>
+        </div>
         <section
           class="card library"
           id="dictionaries"
@@ -415,7 +424,7 @@
               <label class="field">
                 <span class="field-label">Activation key</span>
                 <select id="opt-activation-key"></select>
-                <span class="field-hint">Some keys are reserved by your browser or operating system.</span>
+                <span class="field-hint">Used in Activation key + hover mode. Some keys are reserved by your browser or operating system.</span>
               </label>
             </div>
           </fieldset>
@@ -751,11 +760,12 @@
         </section>
         <section class="card" id="audio" aria-labelledby="audio-heading" hidden>
           <div class="card-head">
-            <h1 id="audio-heading" tabindex="-1">Audio</h1>
+            <h1 id="audio-heading" tabindex="-1" data-search-keywords="voice pronunciation text to speech TTS source provider URL">Audio</h1>
             <p class="hint">Choose where pronunciations come from, in priority order.</p>
           </div>
           <div class="options-feedback-slot"></div>
           <p class="section-note">Choose a voice for text-to-speech, or add an audio provider. Hachidori tries enabled sources from top to bottom.</p>
+          <p class="field-hint">Automatic Japanese chooses an available Japanese voice. You can try Google 日本語 if Chrome offers it, or choose another voice installed on your computer. For recorded pronunciation, add an audio provider.</p>
           <label class="lookup-enable"><span>Automatically play the first lookup result</span><input id="opt-audio-autoplay" type="checkbox"></label>
           <p class="field-hint">Off by default. You can always use Audio in the popup; Shift-click or right-click it to choose a pronunciation.</p>
           <p class="field-hint">Pronunciation sends the selected word and reading to your configured audio providers. Use HTTPS for remote sources; HTTP localhost services on this computer are supported.</p>
@@ -888,7 +898,7 @@
         <section class="card" id="anki" aria-labelledby="anki-heading" hidden>
           <div class="section-heading">
             <div class="card-head">
-              <h1 id="anki-heading" tabindex="-1">Anki</h1>
+              <h1 id="anki-heading" tabindex="-1" data-search-keywords="deck note type field mapping note templates tags API key flashcards">Anki</h1>
               <p class="hint">Optional flashcards for the words you want to keep. Changes save automatically.</p>
             </div>
             <button id="anki-refresh" type="button" class="ghost">Refresh connection</button>

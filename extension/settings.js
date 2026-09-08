@@ -9,6 +9,7 @@ import { createAudioSettingsController } from "./audio-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
+import { createSettingsSearch } from "./settings-search.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
 import {
   createDictionaryGroupController,
@@ -127,6 +128,7 @@ let backupController;
 let backingUp = false;
 let mediaStatusEpoch = 0;
 let mediaRuntimeState = "unavailable";
+let settingsSearch;
 
 const SECTION_STATUSES = {
   "import-state": { section: "add-dictionaries", label: "Import" },
@@ -180,6 +182,7 @@ function setSectionStatus(id, message, tone, completed = false) {
 }
 
 function showSettingsSection(focus = false) {
+  settingsSearch?.clear();
   const fragment = window.location.hash.slice(1);
   const requested = fragment === "settings-content" ? activeSection : fragment;
   const sections = [...document.querySelectorAll("main > section")];
@@ -373,6 +376,10 @@ function resizeDesignPreview() {
 }
 
 function attachSettingsNavigation() {
+  settingsSearch = createSettingsSearch({ document, navigate(section) {
+    if (section && window.location.hash !== `#${section}`) window.history.pushState(null, "", `#${section}`);
+    showSettingsSection();
+  } });
   element("design-preview-disclosure").open = window.innerWidth > 1100;
   const picker = element("settings-section");
   picker.addEventListener("change", (event) => {
@@ -1310,7 +1317,6 @@ function renderOptions() {
     for (const key of ACTIVATION_KEYS) activation.add(new Option(key, key));
   }
   if (activation !== document.activeElement) activation.value = options.activationKey;
-  activation.disabled = options.lookupMode !== "activation";
   renderFrequencyOrder();
   renderKanjiChoices();
   renderFrequencyChoices();
@@ -2478,7 +2484,6 @@ function attachHandlers() {
   });
   element("opt-lookup-mode").addEventListener("change", (event) => {
     options.lookupMode = LOOKUP_MODES.includes(event.target.value) ? event.target.value : "hover";
-    element("opt-activation-key").disabled = options.lookupMode !== "activation";
     writeOptions();
   });
   element("opt-activation-key").addEventListener("change", (event) => {

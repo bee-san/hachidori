@@ -501,8 +501,10 @@ full browser restart without reloading the engine.
 ## Page scanning and exact selections
 
 Automatic scanning crosses ordinary inline elements and stops at editing
-controls or contenteditable text. A focused page editor suppresses pointer and
-activation-key lookup without capturing typing. The live `onlyScanJapaneseText`
+controls or contenteditable text. A focused page editor keeps printable
+activation keys available for typing. Pointer lookups and modifier activation
+still work over separate page text, including example links beside an
+autofocused search field. The live `onlyScanJapaneseText`
 option defaults to true; disabling it permits other scripts in automatic scans.
 Repeated pointer events for one pending candidate share its lookup, while a
 changed anchor/query or failed request can start fresh work.
@@ -1162,6 +1164,9 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 ## Settings interface
 
 Settings is one document with native hash links and one visible task section.
+Global search matches settings across every section, opens a result's enclosing
+disclosures and focuses its control without changing values or discarding drafts.
+The activation-key selector remains editable in either lookup mode.
 All sections stay mounted, so navigation and browser history preserve reader
 drafts and the lazy custom editor without storage writes or engine requests.
 The rail becomes a compact section chooser in narrow windows; light and dark palettes
@@ -1171,6 +1176,13 @@ completion notice, not its source output or draft. The compact navigation mirror
 inactive notices, and shared options feedback stays near the section heading.
 Status setters own these
 notices; there are no observers or additional polling loops.
+
+The toolbar action opens a compact popup with a global lookup switch, recording
+shortcut and Settings. The switch uses the worker's existing revisioned option
+writes. The recording shortcut opens the existing capture controls, enabling
+captured-media mining if necessary; recording still requires Start capture and
+Chrome's source picker. The toolbar is a trusted capture-control sender and only
+polls capture status while open and captured-media mining is enabled.
 
 Dictionary Details expansion is kept by stable package ID across focus-aware
 rerenders and search filtering. Direct enabled/order controls remain visible;
@@ -1220,13 +1232,18 @@ imports the player; audio never acquires the dictionary mutation lock.
 The offscreen document declares DOM_SCRAPING and AUDIO_PLAYBACK together. Chrome
 keeps it while its dictionary-engine purpose remains active, including after
 audio's 30-second idle window. URL playback fetches without credentials.
-Candidate fallback includes actual decoding/playback failures. Speech uses the
-chosen native voice and expression or reading; unavailable browser voices are a
-visible error. Only natural completion reports success; the Settings Test has
+Candidate fallback includes actual decoding/playback failures. Speech waits for
+Chrome's asynchronously loaded voice list within the existing playback deadline.
+Automatic Japanese uses an available Google Japanese voice, then a Japanese
+default or the first Japanese voice; explicit choices remain unchanged. The
+picker lists the browser's actual voices with Japanese first. Missing voices are
+a visible error. Only natural completion reports success; the Settings Test has
 the reference's 15-second deadline. Leaving Audio, editing its tested source, or
 closing Settings stops its owned Test.
 
-Each term result has a fixed Audio control. Shift-click, right-click or Down opens
+Each term result shows Audio when an enabled speech or nonempty URL source is
+configured. Loading and playback use the button's icon state; only errors appear
+beside it, with no persistent success text. Shift-click, right-click or Down opens
 the source/name chooser; Escape closes it before dismissing the popup. A choice
 pins the source descriptor, term, candidate index, name and URL. The offscreen
 owner revalidates it against current discovery, including provider reordering

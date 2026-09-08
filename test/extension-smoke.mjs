@@ -2263,6 +2263,8 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  const searchSettings = readFileSync(resolve(EXTENSION, "settings-search.js"), "utf8").replace(/^export\s+/gmu, "");
+  window.eval(`{ ${searchSettings}; window.createSettingsSearch = createSettingsSearch; }`);
   window.chrome.extension ??= { isAllowedFileSchemeAccess: async () => false };
   const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8").replace(/^export\s+/gmu, "");
   const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8").replace(/^export\s+/gmu, "");
@@ -2292,6 +2294,7 @@ function loadSettingsScript(window) {
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/import \{ createSettingsSearch \} from "\.\/settings-search\.js";\s*/u, "")
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
@@ -5351,7 +5354,7 @@ async function main() {
   check("Settings shows Resume setup only while the first-run setup record is incomplete",
     navigationSettings?.resume === true, JSON.stringify(navigationSettings));
   const welcome = await startupWelcomeStage();
-  check("first-run setup discloses data use before any request, waits for a saved Start, resumes it and permits manual setup",
+  check("first-run setup links its privacy policy, waits for a saved Start, resumes it and permits manual setup",
     welcome !== null && Object.values(welcome).every((value) => value === true), JSON.stringify(welcome));
   const startup = await startupPageStage();
   check("the startup page mirrors its own installer run, keeps focus, retries only missing dictionaries and advances after the five-second result",
@@ -6432,6 +6435,11 @@ async function startupPageStage() {
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && JSON.stringify(actions().map(([id]) => id)) === JSON.stringify(["setup-continue", "setup-pause"])
       && status().textContent === "All dictionaries installed in 7.5 seconds";
+    const countdownTrack = document.getElementById("setup-countdown-track");
+    dictionaryState = { ...dictionaryState, revision: dictionaryState.revision + 1 };
+    storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
+    success &&= document.getElementById("setup-countdown-track") === countdownTrack
+      && countdownTrack.style.getPropertyValue("--countdown-duration") === "5000ms";
     document.getElementById("setup-pause").focus();
     document.getElementById("setup-pause").click();
     await new Promise((done) => setTimeout(done, 5100));
@@ -6620,14 +6628,13 @@ async function startupWelcomeStage() {
   let manual;
   try {
     await page.load();
-    const disclosure = page.document.getElementById("setup-body").textContent;
+    const introduction = page.document.getElementById("setup-body").textContent;
     const quiet = page.heading() === "Welcome to Hachidori" && page.requestTypes().length === 0
       && page.document.getElementById("setup-steps").hidden
-      && readerScripts(page.document).length === 0 && /page text/iu.test(disclosure)
-      && /counts/iu.test(disclosure) && /IP address/u.test(disclosure) && /card and note metadata/u.test(disclosure)
-      && /configured page screenshots/u.test(disclosure) && /Continuous recording stays off/u.test(disclosure)
+      && readerScripts(page.document).length === 0
+      && introduction === "Click Start Setup to automatically set up Hachidori"
       && page.document.querySelector('a[href="https://github.com/bee-san/hachidori/blob/main/docs/privacy.md"]') !== null;
-    // A failed save leaves the disclosure and no network work; a later click
+    // A failed save leaves the introduction and no network work; a later click
     // still must wait until the accepted stage is committed.
     page.document.getElementById("setup-start").click();
     await page.until(() => saveReply !== undefined, "the Start setup write");
@@ -6816,7 +6823,8 @@ async function startupContinueNowStage(jsdom, initialSetup, dictionaries, finish
     }
     await page.until(() => page.document.querySelector(".setup-anki-outcome") !== null, "the late Anki outcome");
     return checking && page.saves().length === 2 && setup.stage === "practice"
-      && page.document.querySelector(".setup-anki-outcome").textContent.includes("Anki isn’t connected")
+      && page.document.querySelector(".setup-anki-outcome").textContent === "Could not find Anki. If you want to make flashcards out of words, I suggest Anki!"
+      && page.document.querySelector('.setup-anki-outcome a[href="https://apps.ankiweb.net/"]')?.textContent === "Anki"
       && page.document.getElementById("setup-finish")?.disabled === false;
   } finally {
     page.window.close();
@@ -7298,19 +7306,19 @@ async function visualNovelStage() {
       window.HDVisualNovel.initialize(scene);
       const next = scene.querySelector(".vn-next");
       const filename = index => `assets/preview-background${index === 0 ? "" : `-${index + 1}`}.png`;
-      result.randomStart &&= scene.style.backgroundImage.includes(filename(first));
+      result.randomStart &&= scene.style.getPropertyValue("--vn-background").includes(filename(first));
       result.cycle &&= next?.tagName === "BUTTON" && next.type === "button" && next.getAttribute("aria-label") === "Next background";
       const visited = new Set();
       for (let step = 0; step < 6; step += 1) {
         const index = (first + step) % 6;
-        visited.add(scene.style.backgroundImage);
-        result.cycle &&= scene.style.backgroundImage.includes(filename(index))
+        visited.add(scene.style.getPropertyValue("--vn-background"));
+        result.cycle &&= scene.style.getPropertyValue("--vn-background").includes(filename(index))
           && scene.classList.contains("vn-dark-dialogue") === [3, 5].includes(index);
         result.startupSurface &&= window.getComputedStyle(dialogue).backgroundColor ===
-          ([3, 5].includes(index) ? "rgba(28, 20, 35, 0.94)" : "rgba(250, 247, 252, 0.94)");
+          ([3, 5].includes(index) ? "rgba(28, 20, 35, 0.88)" : "rgba(250, 247, 252, 0.88)");
         next?.click();
       }
-      result.cycle &&= visited.size === 6 && scene.style.backgroundImage.includes(filename(first)) && randomCalls === 1;
+      result.cycle &&= visited.size === 6 && scene.style.getPropertyValue("--vn-background").includes(filename(first)) && randomCalls === 1;
       result.retained &&= scene.querySelector("#preview-source") === source && source.firstChild === text
         && source.textContent === "朝ごはんを食べる。" && scene.querySelector(".vn-dialogue") === dialogue;
     } finally { window.close(); }
@@ -7396,6 +7404,14 @@ async function designPreviewStage() {
     let incremental = query(".gsm-hoshidicts-glossary-card") === card && query("form") === form
       && form.elements.definition.value === "A preview draft" && !query(".gsm-hoshidicts-tag-pitch")
       && !!query(".gsm-hoshidicts-compact-definition-summary");
+    const audioControl = query(".gsm-hoshidicts-audio-control");
+    options = { ...options, audioSources: [] };
+    update();
+    incremental &&= audioControl.hidden && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    options = { ...options, audioSources: window.HDReaderOptions.DEFAULT_OPTIONS.audioSources };
+    update();
+    await settle();
+    incremental &&= !audioControl.hidden && query(".gsm-hoshidicts-audio-control") === audioControl;
     let mutations = 0;
     const observer = new window.MutationObserver(records => { mutations += records.length; });
     observer.observe(popup, { subtree: true, childList: true, attributes: true, characterData: true });
@@ -12607,6 +12623,47 @@ async function contentNoteStage() {
     };
   }
 
+  async function autofocusedSearchCase() {
+    const outcomes = [];
+    for (const lookupMode of ["hover", "activation"]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      const document = window.document;
+      const search = document.createElement("input");
+      search.autofocus = true;
+      const example = document.createElement("p");
+      example.style.display = "block";
+      example.innerHTML = 'Text reading assistance: <a style="display:inline" href="/search/example">'
+        + '昨日すき焼きを<span style="display:inline">食べました</span></a>';
+      document.body.append(search, example);
+      const link = example.querySelector("a");
+      const range = document.createRange();
+      range.setStart(link.firstChild, 0);
+      range.collapse(true);
+      document.caretRangeFromPoint = () => range;
+      harness.emitOptions({ lookupMode, activationKey: "Shift", hoverDelayMs: 0, scanLength: 32 });
+      search.focus();
+      harness.driver.onMouseMove({ target: link, clientX: 200, clientY: 200 });
+      await harness.settle();
+      let request = harness.take("hd_lookup");
+      let gated = true;
+      const key = new window.KeyboardEvent("keydown", {
+        key: "Shift", code: "ShiftLeft", shiftKey: true, bubbles: true, cancelable: true,
+      });
+      if (lookupMode === "activation") {
+        gated = request === null;
+        search.dispatchEvent(key);
+        await harness.settle();
+        request = harness.take("hd_lookup");
+      }
+      outcomes.push(gated && request?.request.text === "昨日すき焼きを食べました"
+        && document.activeElement === search && !key.defaultPrevented);
+      harness.close();
+    }
+    return { "autofocused search fields allow hover and stationary modifier lookup of inline Japanese links":
+      outcomes.every(Boolean) || outcomes };
+  }
+
   async function focusedEditingCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
@@ -13513,7 +13570,7 @@ async function contentNoteStage() {
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
+    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
