@@ -43,7 +43,7 @@ service-worker and offscreen-document targets. The flow never opens Anki
 settings, plays audio or starts capture, and the browser profile is removed on
 exit. [capture.json](capture.json) records the browser version, dimensions,
 dictionary source, appearance choices and attempted blocked requests. The
-checked-in capture used **Chrome 150.0.7871.186** and made **zero** such requests.
+checked-in capture used **Chrome 152.0.7977.82** and made **zero** such requests.
 
 The short Japanese story, English definitions and example sentences were
 written for these assets; they contain no private user dictionaries, study
