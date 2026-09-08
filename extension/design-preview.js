@@ -2,6 +2,7 @@
 // Static, local sample data; the view itself is the production popup renderer.
 (function () {
   "use strict";
+  HDVisualNovel.initialize(document.querySelector(".vn-scene"));
   const host = document.getElementById("preview-host");
   const shadow = host.attachShadow({ mode: "open" });
   const appearance = HDPopup.createPopupAppearance(host);

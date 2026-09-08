@@ -2,6 +2,7 @@ import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
 import { detectAnkiSetup, verifyAnkiSetup } from "./anki-setup.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
+import { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache } from "./anki-maturity-cache.js";
 import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm } from "./lookup-stats.js";
@@ -80,7 +81,7 @@ const SETUP_TARGET = "hachidori-setup";
 // `relayed` and handed straight back to the offscreen document, where the
 // engine's own request queue would then wait on itself.
 const WORKER_TARGET = "hoshidicts-worker";
-let ankiGateway, ankiMining;
+let ankiGateway, ankiMining, ankiMaturityCache;
 let backupDownloads;
 // One first-run Anki detection at a time; duplicate startup pages share it.
 let ankiSetupDetection = null;
@@ -97,6 +98,47 @@ const UPDATE_SETTINGS_KEY = "dictionaryUpdates";
 const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
 const DICTIONARY_STATE_SCHEMA_VERSION = 1;
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
+
+async function readAnkiOptions() {
+  return normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
+}
+
+// Called within the background storage queue. Options and cache invalidation
+// share one write so a delayed storage event cannot publish an obsolete pull.
+async function writeLocalState(values) {
+  if (Object.hasOwn(values, OPTIONS_KEY)) {
+    const stored = await chrome.storage.local.get([OPTIONS_KEY, ANKI_MATURITY_CACHE_KEY]);
+    const cache = await ankiMaturityConfigurationChange(
+      normaliseOptions(stored[OPTIONS_KEY]), normaliseOptions(values[OPTIONS_KEY]), stored[ANKI_MATURITY_CACHE_KEY],
+    );
+    if (cache !== undefined) values = { ...values, [ANKI_MATURITY_CACHE_KEY]: cache };
+  }
+  await chrome.storage.local.set(values);
+}
+
+function getAnkiMaturityCache() {
+  ankiMaturityCache ??= createAnkiMaturityCache({
+    fetchWords: async source => {
+      const reply = await relay({ target: "hachidori-anki-render", type: "hd_anki_maturity_refresh",
+        requestId: `anki-maturity-${crypto.randomUUID()}`, source });
+      if (!reply.ok) throw new Error(reply.error);
+      return reply.words;
+    },
+    readOptions: readAnkiOptions,
+    readState: async () => (await chrome.storage.local.get(ANKI_MATURITY_CACHE_KEY))[ANKI_MATURITY_CACHE_KEY],
+    updateState: update => serialiseStorage(async () => {
+      const stored = await chrome.storage.local.get([OPTIONS_KEY, ANKI_MATURITY_CACHE_KEY]);
+      const state = stored[ANKI_MATURITY_CACHE_KEY];
+      const next = await update({ options: normaliseOptions(stored[OPTIONS_KEY]), state });
+      if (next !== undefined && !sameJsonValue(state, next)) {
+        await writeLocalState({ [ANKI_MATURITY_CACHE_KEY]: next });
+      }
+      return next ?? state;
+    }),
+    alarms: chrome.alarms,
+  });
+  return ankiMaturityCache;
+}
 // A relayed request can arrive in the window between createDocument() resolving
 // and offscreen.js running its module body, where nothing is listening yet.
 const RELAY_ATTEMPTS = 5;
@@ -519,7 +561,7 @@ async function lookupStatisticsStorage(message, record) {
     row = incrementLookupStats(row, term, Date.now());
     descriptor = { generation: descriptor.generation ?? crypto.randomUUID(), revision: descriptor.revision + 1 };
     assertLookupStatsDescriptor(descriptor);
-    await chrome.storage.local.set({ [LOOKUP_STATS_KEY]: descriptor, [lookupStatsKey(descriptor, term)]: row });
+    await writeLocalState({ [LOOKUP_STATS_KEY]: descriptor, [lookupStatsKey(descriptor, term)]: row });
   } else if (row !== undefined) {
     assertLookupStatsRows(descriptor, [row]);
     if (lookupStatsKey(descriptor, row) !== key) throw new Error("The lookup statistics row does not match its key.");
@@ -611,7 +653,7 @@ const WORKER_HANDLERS = {
     if (!sameJsonValue(snapshot.options, normaliseDictionarySelections(snapshot.options, snapshot.state.dictionaries))) {
       throw new Error("The backup reader settings refer to unavailable dictionaries.");
     }
-    await chrome.storage.local.set({
+    await writeLocalState({
       [DICTIONARY_STATE_KEY]: snapshot.state,
       [OPTIONS_KEY]: snapshot.options,
       [CUSTOM_DICTIONARY_SOURCE_KEY]: snapshot.document,
@@ -686,7 +728,7 @@ const WORKER_HANDLERS = {
       message.dictionaries,
       message.groups,
     );
-    await chrome.storage.local.set(values);
+    await writeLocalState(values);
     await removeLegacyDictionaryRows(current, legacyDictionaries);
     return { state };
   },
@@ -777,7 +819,7 @@ const WORKER_HANDLERS = {
       }
     }
     if (Object.keys(values).length > 0) {
-      await chrome.storage.local.set(values);
+      await writeLocalState(values);
       if (state !== current) {
         await removeLegacyDictionaryRows(current, legacyDictionaries);
       }
@@ -813,7 +855,7 @@ const WORKER_HANDLERS = {
     // committing. An oversized success must never become a post-commit error.
     const result = checkedOptionsResult(message, { options });
     if (changed) {
-      await chrome.storage.local.set({ [OPTIONS_KEY]: options });
+      await writeLocalState({ [OPTIONS_KEY]: options });
     }
     return result;
   },
@@ -835,7 +877,7 @@ const WORKER_HANDLERS = {
       return { ok: false, conflict: true, error: "Setup changed in another tab.", state: current };
     }
     const state = advanceSetupState(current, message.stage, new Date().toISOString(), { continued: message.continued === true });
-    await chrome.storage.local.set({ [SETUP_STATE_KEY]: state });
+    await writeLocalState({ [SETUP_STATE_KEY]: state });
     return { state };
   },
 
@@ -873,7 +915,7 @@ const WORKER_HANDLERS = {
     });
     const values = { [SETUP_STATE_KEY]: state };
     if (selections.options !== null) values[OPTIONS_KEY] = selections.options;
-    await chrome.storage.local.set(values);
+    await writeLocalState(values);
     return { state };
   },
 };
@@ -936,7 +978,7 @@ async function detectFirstRunAnki() {
         ? { status: "needs-attention", detail: ANKI_SETUP_CHANGED, model: null, deck: null }
         : outcome);
       values[SETUP_STATE_KEY] = state;
-      await chrome.storage.local.set(values);
+      await writeLocalState(values);
       return { state };
     });
     if (written !== null) return written;
@@ -991,7 +1033,7 @@ async function writeUpdateSettings(update) {
     if (next === null) return { ok: false, error: "The update settings changed elsewhere. Review the current schedule before retrying.", settings: current };
     if (sameJsonValue(next, current)) return { settings: current };
     const settings = { ...next, revision: current.revision + 1 };
-    await chrome.storage.local.set({ [UPDATE_SETTINGS_KEY]: settings });
+    await writeLocalState({ [UPDATE_SETTINGS_KEY]: settings });
     return { settings };
   });
 }
@@ -1275,6 +1317,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (state && !sameJsonValue(
     updateTiming(state.oldValue?.dictionaries), updateTiming(state.newValue?.dictionaries),
   )) void refreshUpdateAlarm();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes[OPTIONS_KEY]) return;
+  void getAnkiMaturityCache().reconcile();
 });
 
 const UPDATE_HANDLERS = {
@@ -1763,7 +1810,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       };
       ankiGateway ??= createAnkiGateway();
       ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
-        readOptions: async () => globalThis.HDReaderOptions.normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]),
+        readOptions: readAnkiOptions,
+        maturityCache: getAnkiMaturityCache(),
         readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
         engine: fields => send(TARGET, fields), offscreen: fields => send("hachidori-anki-render", fields),
         capture: fields => relayCapture({ ...fields, requestId: `anki-capture-${crypto.randomUUID()}` }),
@@ -1959,6 +2007,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ANKI_MATURITY_ALARM) {
+    void getAnkiMaturityCache().reconcile();
+    return;
+  }
   if (alarm.name !== UPDATE_ALARM) {
     return;
   }
@@ -1975,6 +2027,7 @@ chrome.downloads.onChanged.addListener(delta => {
 });
 
 function warmUp() {
+  void getAnkiMaturityCache().reconcile();
   ensureOffscreen().catch((error) => {
     console.error("hoshidicts: could not create the offscreen document:", describe(error));
   });
@@ -1999,7 +2052,7 @@ async function beginFirstRunSetup() {
     if (stored[OPTIONS_KEY] === undefined) {
       values[OPTIONS_KEY] = { ...validateOptionsPatch(FIRST_INSTALL_OPTIONS), revision: 1 };
     }
-    if (Object.keys(values).length > 0) await chrome.storage.local.set(values);
+    if (Object.keys(values).length > 0) await writeLocalState(values);
     return Object.hasOwn(values, SETUP_STATE_KEY);
   });
   if (created) await chrome.tabs.create({ url: chrome.runtime.getURL(STARTUP_PAGE) });
@@ -2029,3 +2082,4 @@ async function initialiseUpdateAlarm() {
 }
 
 void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
+void getAnkiMaturityCache().reconcile(); // NOSONAR -- initialize without delaying worker activation.

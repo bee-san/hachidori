@@ -371,3 +371,13 @@ node benchmark/run.mjs --config config.json --output output-dir
 Chrome's sandbox remains enabled by default. `allowNoSandbox: true` or
 `--allow-no-sandbox` is an explicit trusted-input-only escape hatch for hosts
 where sandboxed Chrome cannot start; do not use it for untrusted archives.
+
+
+## Anki maturity refresh contention
+
+The focused [maturity cache diagnostic](../docs/anki-maturity-cache-benchmark.md#dedicated-worker-regression-check)
+compares two unpacked extension revisions with an identical 138 MB synthetic
+Anki response, production scheduled refreshes and concurrent maturity requests.
+It uses the existing external Chrome/Puppeteer installation and never contacts
+the user's Anki collection. Run its dedicated driver as documented there; the
+dictionary-import benchmark above measures a different production path.

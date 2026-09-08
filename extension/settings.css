@@ -1132,6 +1132,10 @@ textarea {
   width: 8ch;
 }
 #opt-media-offset { width: 10ch; }
+#definition-blur-count-paused label {
+  cursor: pointer;
+  text-decoration: underline;
+}
 .field-hint,
 .suffix {
   color: var(--text-dim);

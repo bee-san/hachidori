@@ -385,7 +385,12 @@
 
   function pageEditorFocused() {
     for (let focused = document.activeElement; focused; focused = focused.shadowRoot?.activeElement) {
-      if (isEditingElement(focused)) return true;
+      if (isEditingElement(focused)) {
+        // Startup is the only extension page allowed above. Its scene arrow
+        // keeps keyboard focus without pausing the practice lookup.
+        if (location.protocol === "chrome-extension:" && focused.matches(".vn-next")) continue;
+        return true;
+      }
     }
     return false;
   }
@@ -1568,7 +1573,7 @@
     checkDefinitionBlurMaturity(request, level);
   }
 
-  // The primary word owns one read-only Anki query per visit. It starts after
+  // The primary word owns one local maturity-cache check per visit. It starts after
   // rendering and never joins the lookup or storage queue. Back keeps its
   // result; a changed Anki configuration discards the old evidence.
   function checkDefinitionBlurMaturity(request, level) {

@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache } from "../extension/anki-maturity-cache.js";
 import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
 import { assertBackupSnapshot, backupRevisions } from "../extension/backup-state.js";
 import { createBackupDownloads } from "../extension/backup-downloads.js";
@@ -759,6 +760,7 @@ function loadBackgroundScript(sandbox) {
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ detectAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
+    .replace(/^import .* from "\.\/anki-maturity-cache\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/external-links\.js";\s*/u, "")
     .replace(/import "\.\/dictionary-group-state\.js";\s*/u, "")
@@ -774,6 +776,7 @@ function loadBackgroundScript(sandbox) {
   sandbox.Uint32Array ??= Uint32Array;
   sandbox.DataView ??= DataView;
   sandbox.crypto ??= globalThis.crypto;
+  Object.assign(sandbox, { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache });
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
@@ -927,7 +930,7 @@ async function managedScheduleStage() {
   await settleAlarm();
   const originalGet = alarms.api.get;
   let alarmReads = 0;
-  alarms.api.get = (...args) => { alarmReads += 1; return originalGet(...args); };
+  alarms.api.get = (...args) => { if (args[0] === name) alarmReads += 1; return originalGet(...args); };
   const schedule = async value => bus.sendMessage("schedule-page", { target: "hachidori-updates", type: "hd_updates_schedule",
     baseRevision: (await chrome.storage.local.get("dictionaryUpdates")).dictionaryUpdates.revision, schedule: value });
   await schedule("daily");
@@ -1535,6 +1538,25 @@ async function ankiBackgroundStage() {
   check("Anki model and mappings commit together through the existing options CAS and reject stale edits",
     commit.ok && commit.options.anki.model === "Basic" && commit.options.anki.fields.expression === "Front"
       && !stale.ok && stale.options.anki.model === "Basic", JSON.stringify({ commit, stale }));
+
+  const cacheBus = makeBus(), cacheStorage = makeStorage();
+  const cacheChrome = makeChrome("anki-cache-worker", cacheBus, cacheStorage);
+  loadBackgroundScript({ chrome: cacheChrome, console, setTimeout, clearTimeout,
+    fetch: async () => ({ ok: true, json: async () => ({ result: [], error: null }) }),
+  });
+  const writeCacheOptions = (baseRevision, options) => cacheBus.sendMessage("anki-settings", {
+    target: "hoshidicts-worker", type: "hd_options_write", baseRevision, options,
+  });
+  const enabled = await writeCacheOptions(0, { definitionBlurAnkiMature: true, anki: commit.options.anki });
+  const enabledCache = structuredClone(cacheStorage.raw.get(ANKI_MATURITY_CACHE_KEY));
+  const disabled = await writeCacheOptions(enabled.options.revision, { definitionBlurAnkiMature: false });
+  const disabledCache = cacheStorage.raw.get(ANKI_MATURITY_CACHE_KEY);
+  const optionsCommits = cacheStorage.sets.filter(keys => keys.includes("options"));
+  check("Anki maturity options and their invalidation revision commit atomically before storage events",
+    enabled.ok && disabled.ok && enabledCache.configurationRevision === 1 && disabledCache.configurationRevision === 2
+      && disabledCache.attempt === null && optionsCommits.length === 2
+      && optionsCommits.every(keys => keys.length === 2 && keys.includes(ANKI_MATURITY_CACHE_KEY)),
+    JSON.stringify({ enabledCache, disabledCache, optionsCommits }));
 }
 
 async function backupRelayStage() {
@@ -1681,17 +1703,18 @@ async function audioRelayStage() {
     JSON.stringify({ authoritative, progress, startupProgress }));
 
   const read = chrome.storage.local.get;
-  let releaseRead;
+  const heldReads = [];
   chrome.storage.local.get = async key => {
-    if (key === "options") await new Promise(resolve => { releaseRead = resolve; });
+    // Maturity scheduling can read options concurrently with this audio request.
+    if (key === "options") await new Promise(resolve => { heldReads.push(resolve); });
     return read(key);
   };
   const retiredRead = play("retired-read");
   await new Promise(resolve => setImmediate(resolve));
   await send("hd_audio_stop", "retire-read", { playRequestId: "retired-read" }, "reader-document");
-  releaseRead();
-  const retiredReply = await retiredRead;
   chrome.storage.local.get = read;
+  for (const release of heldReads) release();
+  const retiredReply = await retiredRead;
   const invalid = await send("hd_audio_play", "invalid-choice", { term, selection: { index: "toString" } });
   check("Stop retires popup audio awaiting source storage and malformed choices never reach the offscreen player",
     retiredReply.status === "cancelled" && invalid.ok === false
@@ -5341,6 +5364,9 @@ async function main() {
   const practice = await startupPracticeStage();
   check("the practice step invites a lookup only when a dictionary can answer one and loads the reader once with that step",
     practice !== null && Object.values(practice).every((value) => value === true), JSON.stringify(practice));
+  const scenes = await visualNovelStage();
+  check("visual novel scenes start randomly and cycle all six backgrounds without replacing the dialogue",
+    scenes !== null && Object.values(scenes).every((value) => value === true), JSON.stringify(scenes));
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
@@ -6193,6 +6219,7 @@ async function settingsNavigationStage() {
 
 function loadStartupScript(window) {
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
+  window.eval(readFileSync(resolve(EXTENSION, "visual-novel.js"), "utf8"));
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
@@ -6207,6 +6234,7 @@ function loadStartupScript(window) {
     .replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
+    .replace(/import "\.\/visual-novel\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
@@ -6393,13 +6421,23 @@ async function startupPageStage() {
       outcomes: { ...setupState.dictionaries.outcomes, jiten: { status: "installed", seconds: 2.5, error: null } } } };
     storage({ setupState: { newValue: structuredClone(setupState) } });
     event({ runId: "run-b", sequence: 3, finished: true, entries: [entry("jiten", "installed", { seconds: 2.5 })] });
-    const successStarted = Date.now();
-    const success = heading() === "All dictionaries installed in 7.5 seconds"
+    let successStarted = Date.now();
+    let success = heading() === "All dictionaries installed in 7.5 seconds"
       && document.getElementById("setup-countdown-label")?.textContent === "Continuing to Anki in 5 seconds"
       && document.getElementById("setup-countdown-track")?.getAttribute("role") === "progressbar"
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
-      && document.querySelectorAll("#setup-actions button").length === 0
+      && JSON.stringify(actions().map(([id]) => id)) === JSON.stringify(["setup-continue", "setup-pause"])
       && status().textContent === "All dictionaries installed in 7.5 seconds";
+    document.getElementById("setup-pause").focus();
+    document.getElementById("setup-pause").click();
+    await new Promise((done) => setTimeout(done, 5100));
+    dictionaryState = { ...dictionaryState, revision: dictionaryState.revision + 1 };
+    storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
+    success &&= pendingReply === null && document.getElementById("setup-countdown-label") === null
+      && document.getElementById("setup-pause")?.textContent === "Resume countdown"
+      && document.activeElement?.id === "setup-pause";
+    document.getElementById("setup-pause").click();
+    successStarted = Date.now();
     // The result stays for five seconds; a conflicting write (the run total landed) is retried with the newer revision.
     await new Promise((done) => setTimeout(done, 3000));
     // The label ticks every 250 ms, so three seconds in it reads two or three.
@@ -6478,7 +6516,7 @@ async function startupPageStage() {
 
 // One jsdom startup page with only the worker replies and stored values a
 // dictionary-stage case needs; the two stages below drive it from there.
-function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null }) {
+function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null, anki = null }) {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
     pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
   });
@@ -6495,6 +6533,7 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, optio
       async sendMessage(message) {
         requests.push(structuredClone(message));
         if (message.type === "hd_setup_cas" && cas !== null) return cas(message);
+        if (message.type === "hd_setup_anki" && anki !== null) return anki(message);
         if (message.type === "hd_lookup") {
           if (lookup === null) throw new Error("the dictionary engine is unavailable");
           return { type: "hd_lookup_result", requestId: message.requestId, ok: true, error: null, ...lookup(message) };
@@ -6720,13 +6759,61 @@ async function startupAdvanceFailureStage() {
     await page.until(() => page.heading() === "All dictionaries installed in 4.0 seconds", "the complete result");
     const counting = label() !== null && page.saves().length === 0;
     // The five-second countdown elapses; both automatic writes are refused.
-    await page.until(() => page.actionIds().includes("setup-continue"), "the failed advance");
+    await page.until(() => page.saves().length === 2 && label() === null, "the failed advance");
     const failed = counting && page.saves().length === 2 && label() === null
       && page.heading() === "All dictionaries installed in 4.0 seconds";
     // Another display period passes without a further write of its own.
     await new Promise((done) => setTimeout(done, 6000));
     const quiet = page.saves().length === 2 && label() === null && page.actionIds().includes("setup-continue");
-    return { counting, failed, quiet };
+    const continuedNow = await startupContinueNowStage(jsdom, setup, dictionaries);
+    const completedWhileChecking = await startupContinueNowStage(jsdom, setup, dictionaries, true);
+    return { counting, failed, quiet, continuedNow, completedWhileChecking };
+  } finally {
+    page.window.close();
+  }
+}
+
+// Continue now advances the installed result and the optional pending Anki
+// check. Its late reply preserves the stage the user already reached.
+async function startupContinueNowStage(jsdom, initialSetup, dictionaries, finishBeforeReply = false) {
+  let setup = structuredClone(initialSetup);
+  let settleAnki;
+  const page = startupCase(jsdom, { setup, dictionaries,
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }),
+    cas: (message) => {
+      setup = { ...setup, revision: setup.revision + 1, stage: message.stage,
+        completedAt: message.stage === "complete" ? "2026-09-08T12:00:00Z" : null };
+      return { ok: true, state: structuredClone(setup) };
+    },
+    anki: () => new Promise(resolve => { settleAnki = resolve; }) });
+  try {
+    await page.load();
+    await page.until(() => page.document.getElementById("setup-countdown-label") !== null, "the installed result");
+    page.document.getElementById("setup-continue").click();
+    await page.until(() => typeof settleAnki === "function", "the optional Anki check");
+    const checking = page.heading() === "Connect Anki, if you use it"
+      && page.document.querySelector('[data-stage="anki"]')?.textContent.includes("Optional")
+      && page.document.getElementById("setup-continue")?.disabled === false
+      && page.document.getElementById("setup-countdown-label") === null
+      && page.saves().length === 1;
+    page.document.getElementById("setup-continue").click();
+    await page.until(() => page.document.getElementById("setup-finish") !== null, "practice while Anki is pending");
+    if (finishBeforeReply) {
+      page.document.getElementById("setup-finish").click();
+      await page.until(() => page.heading() === "Setup is complete.", "completion while Anki is pending");
+    }
+    setup = { ...setup, revision: setup.revision + 1,
+      anki: { status: "unavailable", detail: "AnkiConnect timed out", model: null, deck: null } };
+    settleAnki({ ok: true, state: structuredClone(setup) });
+    if (finishBeforeReply) {
+      await new Promise(setImmediate);
+      return checking && page.saves().length === 3 && page.heading() === "Setup is complete."
+        && page.actionIds().length === 0 && setup.completedAt === "2026-09-08T12:00:00Z";
+    }
+    await page.until(() => page.document.querySelector(".setup-anki-outcome") !== null, "the late Anki outcome");
+    return checking && page.saves().length === 2 && setup.stage === "practice"
+      && page.document.querySelector(".setup-anki-outcome").textContent.includes("Anki isn’t connected")
+      && page.document.getElementById("setup-finish")?.disabled === false;
   } finally {
     page.window.close();
   }
@@ -6772,9 +6859,9 @@ async function startupPracticeStage() {
   const sample = () => document.querySelector("#setup-practice-scene:not([hidden]) #setup-practice-text");
   try {
     await page.load();
-    await page.until(() => page.heading() === "You’re ready.", "the final step without a usable dictionary");
+    await page.until(() => page.heading() === "Add a dictionary to try Hachidori", "the final step without a usable dictionary");
     const withoutDictionary = sample() === null && readerScripts(document).length === 0
-      && document.getElementById("setup-body").textContent.includes("Install or enable a term dictionary")
+      && document.getElementById("setup-body").textContent.includes("Add a term dictionary")
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
       && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"]);
@@ -6842,7 +6929,8 @@ async function startupPracticePartial(jsdom, setup) {
     const scene = document.getElementById("setup-practice-scene");
     const lookup = document.getElementById("setup-practice-lookup");
     await page.until(() => !scene.hidden, "the passage-only exercise");
-    const partial = lookup.hidden && lookup.disabled && !document.getElementById("setup-practice-tools").hidden
+    const partial = page.heading() === "You’re ready."
+      && lookup.hidden && lookup.disabled && !document.getElementById("setup-practice-tools").hidden
       && document.getElementById("setup-practice-recovery").hidden
       && document.getElementById("setup-practice-instruction").textContent === "Try looking up a word below. Hover over Japanese text."
       && readerScripts(document).length === 1
@@ -6898,7 +6986,7 @@ async function startupPracticeWithoutHover(jsdom, setup) {
     reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
   try {
     await page.load();
-    await page.until(() => page.heading() === "You’re ready.", "the final step with lookups off");
+    await page.until(() => page.heading() === "Turn on lookups to try Hachidori", "the final step with lookups off");
     return page.document.querySelector("#setup-practice-tools").hidden === true
       && readerScripts(page.document).length === 0
       && page.document.getElementById("setup-body").textContent.includes("Lookups are turned off")
@@ -7182,6 +7270,50 @@ async function sourceHighlightFallbackCase(window) {
   }
 }
 
+async function visualNovelStage() {
+  const jsdom = await loadJsdom();
+  if (!jsdom) return null;
+  const result = { randomStart: true, cycle: true, retained: true, startupSurface: true };
+  for (const [random, first] of [[0, 0], [0xffffffff, 3]]) {
+    const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "design-preview.html"), "utf8"), {
+      runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/design-preview.html`,
+    });
+    const { window } = dom;
+    try {
+      let randomCalls = 0;
+      window.crypto.getRandomValues = values => { randomCalls += 1; values[0] = random; return values; };
+      window.eval(readFileSync(resolve(EXTENSION, "visual-novel.js"), "utf8"));
+      const scene = window.document.querySelector(".vn-scene");
+      const source = scene.querySelector("#preview-source");
+      const text = source.firstChild;
+      const dialogue = scene.querySelector(".vn-dialogue");
+      const style = window.document.createElement("style");
+      style.textContent = ["visual-novel.css", "startup.css"].map(file => readFileSync(resolve(EXTENSION, file), "utf8")).join("\n");
+      window.document.head.append(style);
+      dialogue.classList.add("setup-practice-dialogue");
+      window.HDVisualNovel.initialize(scene);
+      const next = scene.querySelector(".vn-next");
+      const filename = index => `assets/preview-background${index === 0 ? "" : `-${index + 1}`}.png`;
+      result.randomStart &&= scene.style.backgroundImage.includes(filename(first));
+      result.cycle &&= next?.tagName === "BUTTON" && next.type === "button" && next.getAttribute("aria-label") === "Next background";
+      const visited = new Set();
+      for (let step = 0; step < 6; step += 1) {
+        const index = (first + step) % 6;
+        visited.add(scene.style.backgroundImage);
+        result.cycle &&= scene.style.backgroundImage.includes(filename(index))
+          && scene.classList.contains("vn-dark-dialogue") === [3, 5].includes(index);
+        result.startupSurface &&= window.getComputedStyle(dialogue).backgroundColor ===
+          ([3, 5].includes(index) ? "rgba(28, 20, 35, 0.94)" : "rgba(250, 247, 252, 0.94)");
+        next?.click();
+      }
+      result.cycle &&= visited.size === 6 && scene.style.backgroundImage.includes(filename(first)) && randomCalls === 1;
+      result.retained &&= scene.querySelector("#preview-source") === source && source.firstChild === text
+        && source.textContent === "朝ごはんを食べる。" && scene.querySelector(".vn-dialogue") === dialogue;
+    } finally { window.close(); }
+  }
+  return result;
+}
+
 async function designPreviewStage() {
   const jsdom = await loadJsdom();
   if (!jsdom) return null;
@@ -7194,7 +7326,7 @@ async function designPreviewStage() {
     window.URL.createObjectURL = () => "blob:sample-meal";
     window.CSS = { highlights: new Map() };
     window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
-    for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "design-preview.js"]) {
+    for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "visual-novel.js", "design-preview.js"]) {
       window.eval(readFileSync(resolve(EXTENSION, file), "utf8"));
     }
     let earlyLoad = true;
@@ -7625,7 +7757,6 @@ async function settingsFrequencyStage() {
     }
     const metadataFields = [
       ["opt-lookup-counts", "showLookupCounts", true],
-      ["opt-blur-enabled", "definitionBlurEnabled", false],
       ["opt-frequency-names", "showFrequencyDictionaryNames", true],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
@@ -7644,20 +7775,80 @@ async function settingsFrequencyStage() {
       }
       metadataDetails.push(window.document.getElementById("opt-corpus-url") === null
         && window.document.getElementById("opt-lookup-counts").closest("section").id === "lookup"
-        && window.document.getElementById("opt-blur-enabled").closest("section").id === "lookup");
+        && window.document.getElementById("opt-blur-source").closest("section").id === "lookup");
       const blurControl = id => window.document.getElementById(id);
-      // Counts were switched off above, so blur controls are disabled even though blur is on.
-      metadataDetails.push(["opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay"]
+      const blurSource = blurControl("opt-blur-source");
+      metadataDetails.push(blurSource.value === "off"
+        && [...blurSource.options].map(option => option.value).join(",") === "off,count,anki,either"
+        && ["definition-blur-count-controls", "definition-blur-anki-help", "definition-blur-reveal-controls"]
+          .every(id => blurControl(id).hidden)
+        && ["opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay"]
         .every(id => blurControl(id).disabled)
         && blurControl("opt-blur-direction").value === "atLeast" && blurControl("opt-blur-threshold").value === "5"
         && blurControl("opt-blur-reveal").value === "timed" && blurControl("opt-blur-delay").value === "5");
-      metadataDetails.push(blurControl("opt-blur-anki-mature").checked === false);
-      await editControl(blurControl("opt-blur-anki-mature"), true);
+      await editControl(blurSource, "anki");
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurAnkiMature: true })
-        && blurControl("opt-blur-direction").disabled && blurControl("opt-blur-threshold").disabled
+        && blurControl("definition-blur-count-controls").hidden && !blurControl("definition-blur-anki-help").hidden
+        && blurControl("definition-blur-anki-help").textContent.includes("30 minutes")
+        && blurControl("definition-blur-anki-help").textContent.includes("Anki is closed")
+        && !blurControl("definition-blur-reveal-controls").hidden
         && !blurControl("opt-blur-reveal").disabled && !blurControl("opt-blur-delay").disabled);
-      await editControl(blurControl("opt-blur-anki-mature"), false);
-      await editControl(blurControl("opt-lookup-counts"), true);
+      await editControl(blurSource, "either");
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurEnabled: true })
+        && storedOptions.definitionBlurAnkiMature && !storedOptions.showLookupCounts
+        && !blurControl("definition-blur-either-help").hidden
+        && !blurControl("definition-blur-count-controls").hidden
+        && !blurControl("definition-blur-count-paused").hidden && !blurControl("opt-blur-threshold").disabled);
+      await editControl(blurSource, "count");
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurAnkiMature: false })
+        && blurControl("definition-blur-anki-help").hidden && blurControl("definition-blur-either-help").hidden);
+      const beforeEnableCounts = writes.length;
+      blurControl("definition-blur-count-paused").querySelector("label").click();
+      await until(() => writes.length === beforeEnableCounts + 1 && status() === "Saved.");
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ showLookupCounts: true })
+        && blurControl("definition-blur-count-paused").hidden);
+      await editControl(blurSource, "off");
+      metadataDetails.push(storedOptions.definitionBlurEnabled === false && storedOptions.definitionBlurAnkiMature === false
+        && blurControl("definition-blur-count-controls").hidden && blurControl("definition-blur-reveal-controls").hidden);
+      await editControl(blurSource, "either");
+      metadataDetails.push(storedOptions.definitionBlurEnabled === true && storedOptions.definitionBlurAnkiMature === true);
+      blurSource.focus();
+      blurSource.value = "count";
+      blurSource.dispatchEvent(new window.Event("input", { bubbles: true }));
+      const blurRevision = storedOptions.revision;
+      emitOptions({ definitionBlurEnabled: false, definitionBlurAnkiMature: true });
+      metadataDetails.push(blurSource.value === "count");
+      blurSource.dispatchEvent(new window.Event("change", { bubbles: true }));
+      await until(() => status().includes("Could not save"));
+      metadataDetails.push(writes.at(-1).baseRevision === blurRevision
+        && writes.at(-1).options.definitionBlurEnabled === true && writes.at(-1).options.definitionBlurAnkiMature === false);
+      blurSource.blur();
+      window.document.getElementById("options-use-saved").click();
+      metadataDetails.push(blurSource.value === "anki" && blurControl("definition-blur-count-controls").hidden);
+      await editControl(blurSource, "count");
+      for (const { control, group, draft, external, key, saved, restore } of [
+        { control: "opt-blur-threshold", group: "definition-blur-count-controls", draft: "7",
+          external: { definitionBlurEnabled: false }, key: "definitionBlurThreshold", saved: 7, restore: ["opt-blur-source", "count"] },
+        { control: "opt-blur-reveal", group: "definition-blur-reveal-controls", draft: "hover",
+          external: { definitionBlurEnabled: false }, key: "definitionBlurReveal", saved: "hover", restore: ["opt-blur-source", "count"] },
+        { control: "opt-blur-delay", group: "definition-blur-delay-control", draft: "2.5",
+          external: { definitionBlurReveal: "hover" }, key: "definitionBlurDelayMs", saved: 2500, restore: ["opt-blur-reveal", "timed"] },
+      ]) {
+        const focusedControl = blurControl(control);
+        focusedControl.focus();
+        focusedControl.value = draft;
+        focusedControl.dispatchEvent(new window.Event("input", { bubbles: true }));
+        const focusedRevision = storedOptions.revision;
+        emitOptions(external);
+        metadataDetails.push(!blurControl(group).hidden && !focusedControl.disabled && focusedControl.value === draft);
+        focusedControl.dispatchEvent(new window.Event("change", { bubbles: true }));
+        await until(() => status().includes("Could not save"));
+        metadataDetails.push(writes.at(-1).baseRevision === focusedRevision && writes.at(-1).options[key] === saved);
+        focusedControl.blur();
+        window.document.getElementById("options-use-saved").click();
+        metadataDetails.push(blurControl(group).hidden && focusedControl.disabled);
+        await editControl(blurControl(restore[0]), restore[1]);
+      }
       metadataDetails.push(!blurControl("opt-blur-direction").disabled && !blurControl("opt-blur-delay").disabled);
       await editControl(blurControl("opt-blur-direction"), "below");
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurDirection: "below" }));
@@ -7669,6 +7860,7 @@ async function settingsFrequencyStage() {
         && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurDelayMs: 2500 }));
       await editControl(blurControl("opt-blur-reveal"), "hover");
       metadataDetails.push(blurControl("opt-blur-delay").disabled
+        && blurControl("definition-blur-delay-control").hidden
         && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurReveal: "hover" }));
       metadataDetails.push(pitch.disabled);
       await editControl(window.document.getElementById("opt-pitch-furigana"), true);

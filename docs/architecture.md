@@ -187,7 +187,7 @@ part of a backup: it describes this installation's onboarding, not user data.
 focus rings and reduced-motion rules, and adds only layout in `startup.css`. The
 page reads `setupState`, `dictionaryState` and `options` from storage, adopts
 only newer revisions from storage events, and renders one card per stage under
-a **Dictionaries → Anki → Try it** indicator (`aria-current="step"`). Continue
+a **Dictionaries → Anki (optional) → Try it** indicator (`aria-current="step"`). Continue
 and Finish send `hd_setup_cas` with the revision the page rendered; a conflict
 adopts the newer state and reports it in the card's live region, unless that
 state has already reached the requested stage — a second tab making the same
@@ -273,8 +273,12 @@ rendered only when the current inventory holds every catalogue source and this
 setup installed at least one of them; a profile that already carried them all
 reads **All dictionaries are already installed**. Either result
 stays for five seconds with a labelled countdown that is not a live region,
-then the page advances to Anki. If both automatic writes are refused, the
-countdown is cancelled and the result keeps an explicit **Continue setup**
+then the page advances to Anki. **Continue now** advances immediately;
+**Pause countdown** leaves the result available until Continue or
+**Resume countdown**, which starts a fresh five seconds. The page explains
+that installation continues after closing the tab and can be resumed from
+Settings. If both automatic writes are refused, the
+countdown is cancelled and the result keeps an explicit **Continue now**
 instead of saving again on a timer. **Continue setup** with missing sources
 records `continued: true`. Only settled outcomes are announced, never bytes.
 
@@ -333,7 +337,10 @@ own reason. The page renders the settled outcome as one sentence with a link to
 the Anki section of Settings, and that outcome moves setup to the last stage by
 itself and stays readable there. A request the worker does not answer is
 reported once with **Retry** beside **Continue setup**; the page never re-asks
-on its own.
+on its own. Anki is explicitly optional. **Continue now** is available during
+the check; its eventual reply adopts the latest recorded stage without moving
+the user back. A failed connection says **Anki isn’t connected**, rather than
+claiming Anki is absent.
 
 ![The final step after an absent Anki, light palette](assets/startup-ready.png)
 
@@ -346,9 +353,9 @@ on its own.
 ### Practice and saved pages
 
 `startup-practice.js` supplies the **Try it** scene and a Japanese passage about
-the street shown in the background. The scene and Design preview share
+a street like those shown in the backgrounds. The scene and Design preview share
 `visual-novel.css` and the repository owner's supplied artwork, preserved
-unchanged. Its source and copyright declaration are recorded in
+unchanged. Its sources and copyright declaration are recorded in
 [asset ownership](asset-rights.md). The longer practice passage has a readable
 dialogue surface that grows with its text at narrow widths.
 
@@ -370,6 +377,19 @@ link's `#setup-heading`. Query variants, unknown fragments, Settings and the
 static design preview remain excluded. The skip handler focuses the heading
 directly; a fragment created before it attaches still works after reload.
 
+The shared `visual-novel.js` picks one of six local images at random when each
+scene is created. A small **Next background** arrow cycles through them and
+wraps to the first. It changes only the scene background and dialogue colors,
+keeping the passage and Design popup mounted; no selection is stored. Images
+load as selected. The startup arrow can retain keyboard focus while the reader
+looks up the dialogue; ordinary page controls still pause hover. Pointer clicks
+outside the real popup retain its usual dismissal behavior.
+
+The startup passage's opaque surface follows the light or dark scene palette
+so its text stays readable on every background.
+
+![The production practice scene with dark dialogue and its next-background arrow](assets/startup-carousel-dark.png)
+
 Before inviting a lookup, the page probes **辞書** with the reader's selection
 payload: the word's length and a full matched-text result. If it misses, the
 page probes the actual displayed passage with ordinary `hd_lookup` requests
@@ -384,7 +404,11 @@ Changing those retires the invitation and probes again; group-only and
 presentation writes preserve the result and the connected scene. Turning
 lookups off or removing every enabled term dictionary also retires an in-flight
 probe. A library that cannot answer any word in the passage gets a dictionary
-recovery link rather than an invitation.
+recovery link rather than an invitation. The heading reflects the current
+readiness: add a term dictionary, enable an installed term dictionary, turn on
+lookups, wait for the probe, or try the working exercise. Recovery uses a
+prominent action to the relevant Settings section; **Finish setup** stays
+available. The practice controller and page share this readiness decision.
 
 A dictionary mutation can refuse lookups while publishing or cleaning up a
 generation. The probe waits for `hd_status` to report a ready, idle engine and
@@ -592,19 +616,47 @@ rule. Its subject is the logical request's first canonical expression, retained
 through tab projections, Show more, Note refresh and Back. Native kanji entries
 remain outside term blur.
 
-The worker handles `hd_anki_maturity` separately from its Anki mutation queue,
-dictionary engine and storage-write queue. It reads the saved Anki note type
-and dedicated plain `{expression}` field, then makes one AnkiConnect
-`findCards` query across all decks for review cards with an interval of at least
-21 days, explicitly excluding relearning. This implements
-[Anki's mature-card definition](https://docs.ankiweb.net/getting-started.html#card-states).
-It uses the existing loopback gateway, API key and timeout. It does not perform
-discovery, render mining fields, fetch media, or write the collection. Missing
-or unsupported mappings, failed requests and malformed replies fail open.
-Fields named Anki search operators, such as `note` or `deck`, are skipped so
-their names cannot broaden the query beyond the exact expression.
-Maturity evidence belongs only to that request; there is no persistent cache or
-offline mirror of Anki's collection.
+The worker answers `hd_anki_maturity` from a local `Set`, independently of the
+Anki mutation queue and dictionary engine. The `ankiMaturityCache` storage key
+holds one compact snapshot, the last refresh attempt and a configuration revision.
+The worker hydrates the Set once; individual lookups never query Anki or scan
+the saved collection.
+The cache is derived state and is excluded from backups.
+
+The dedicated `hachidori-anki-maturity` alarm schedules a refresh when enabled
+or when the note type, eligible expression fields, or API key changes, then
+every 30 minutes while the feature is enabled. Recording the attempt and next
+alarm before network I/O prevents worker restarts from repeatedly retrying an
+unavailable Anki. Startup restores a missing alarm without resetting its due
+time; an overdue attempt runs once. Disabling clears the alarm and invalidates
+pending publication, while retaining the previous snapshot for re-enabling.
+Triggers share one in-flight refresh; a changed source waits for the old pull
+to settle before starting its own.
+
+Each refresh makes one read-only AnkiConnect `notesInfo` request, selecting the
+configured note type across all decks with `is:review -is:learn prop:ivl>=21`.
+This implements [Anki's mature-card definition](https://docs.ankiweb.net/getting-started.html#card-states).
+Only eligible dedicated plain `{expression}` fields enter the cache. Stored
+HTML stays literal, ASCII case is folded as in Anki's ordinary field search,
+and lookup expressions use Anki's default NFC query normalization. Custom
+Anki configurations with `normalize_note_text=false` are not mirrored by this
+bulk API. Operator-named fields remain excluded. Refresh requests have a
+25-second timeout; ordinary Anki operations keep their existing timeout.
+
+A short-lived dedicated worker launched by the existing Anki offscreen service
+fetches, parses and extracts the complete response. It returns only the compact
+word list, then terminates, keeping the large JSON allocation off both the
+service-worker request thread and the dictionary engine thread.
+The refresh builds a complete replacement outside the background storage queue,
+then rechecks the effective configuration, enablement and reserved configuration
+revision inside the queue before persisting and publishing it. All options writes
+bump that revision and clear the attempt in the same transaction when the enabled
+source changes. Delayed storage events only reconcile scheduling; they cannot
+invalidate a new pull or allow an old pull to publish after an off/on toggle.
+Failures retain the previous successful snapshot; before any successful refresh,
+the Anki criterion returns false promptly.
+A successful empty result clears the cached words. Current visits retain their
+original decision when a snapshot changes, including visits retained for Back.
 
 Each request owns one blur decision and the original first-display deadline.
 Pending rules hide definitions immediately, and qualifying evidence can settle
@@ -620,9 +672,12 @@ including requests retained for Back, so late replies cannot revive it or
 overwrite a current decision. The opt-in does not change the count-only path
 when disabled, and unavailable Anki never delays the local lookup.
 
-Settings uses the existing revisioned options queue. Count direction and
-threshold depend on the count criterion; either criterion enables the common
-reveal controls. The Design preview passes a fixed mature sample and a count of
+Settings uses the existing revisioned options queue. One source picker offers
+Off, Lookup count, Mature Anki cards and Either condition. It maps to the existing
+two booleans; there is no separate combination option. Count direction and threshold appear
+only for Lookup count or Either. A paused notice links to the count recording
+toggle when recording is disabled. Any active source shows the common reveal
+controls. The Design preview passes a fixed mature sample and a count of
 three through the same rule, hover and timer without making Anki requests.
 
 ## Lookup response boundary
@@ -1218,7 +1273,7 @@ alongside structured media, frequency, pitch, and kanji content. Selected
 installed sources are represented by sample entries, not real lookup results.
 The packaged SVG is fetched once and reused as a blob URL; the preview does not
 contact the engine, fetch dictionary data, or write personal notes. The same
-local street background as first-run practice makes popup opacity visible over
+local backgrounds as first-run practice make popup opacity visible over
 game artwork; the dialogue stays below the lookup as popup dimensions change.
 
 An unchanged presentation snapshot does no renderer work. Metadata, summary,

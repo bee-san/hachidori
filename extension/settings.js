@@ -61,8 +61,6 @@ const NUMBER_FIELDS = [
 ];
 const METADATA_FIELDS = [
   { key: "showLookupCounts", id: "opt-lookup-counts" },
-  { key: "definitionBlurEnabled", id: "opt-blur-enabled" },
-  { key: "definitionBlurAnkiMature", id: "opt-blur-anki-mature" },
   { key: "showFrequencyDictionaryNames", id: "opt-frequency-names" },
   { key: "averageFrequency", id: "opt-average-frequency" },
   { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },
@@ -1079,11 +1077,29 @@ function renderCompactSummaryControls() {
     "term", "Automatic — first available definition", enabled);
 }
 
+function definitionBlurSource() {
+  if (options.definitionBlurEnabled) return options.definitionBlurAnkiMature ? "either" : "count";
+  return options.definitionBlurAnkiMature ? "anki" : "off";
+}
+
 // Either blur rule uses the shared reveal controls. The delay field shows
 // seconds, fractions allowed, for the stored milliseconds.
 function renderDefinitionBlurControls() {
-  const countEnabled = options.definitionBlurEnabled && options.showLookupCounts;
+  const source = element("opt-blur-source");
+  if (source !== document.activeElement) source.value = definitionBlurSource();
+  const countEnabled = options.definitionBlurEnabled;
   const enabled = countEnabled || options.definitionBlurAnkiMature;
+  // Hiding a focused native control can emit blur before its pending change.
+  // Defer hiding until focusout so the change keeps its captured revision.
+  for (const [id, hidden] of [["definition-blur-count-controls", !countEnabled],
+    ["definition-blur-reveal-controls", !enabled], ["definition-blur-delay-control", options.definitionBlurReveal !== "timed"]]) {
+    const group = element(id);
+    if (!hidden || !group.contains(document.activeElement)) group.hidden = hidden;
+  }
+  element("definition-blur-count-paused").hidden = !countEnabled || options.showLookupCounts;
+  element("definition-blur-anki-help").hidden = !options.definitionBlurAnkiMature;
+  element("definition-blur-either-help").hidden = definitionBlurSource() !== "either";
+  element("definition-blur-help").hidden = !enabled;
   for (const [id, key, controlEnabled] of [["opt-blur-direction", "definitionBlurDirection", countEnabled],
     ["opt-blur-reveal", "definitionBlurReveal", enabled], ["opt-blur-threshold", "definitionBlurThreshold", countEnabled]]) {
     const control = element(id);
@@ -2394,6 +2410,12 @@ function attachHandlers() {
       writeOptions();
     });
   }
+  element("opt-blur-source").addEventListener("change", (event) => {
+    options.definitionBlurEnabled = ["count", "either"].includes(event.target.value);
+    options.definitionBlurAnkiMature = ["anki", "either"].includes(event.target.value);
+    renderDefinitionBlurControls();
+    writeOptions();
+  });
   element("opt-blur-delay").addEventListener("change", (event) => {
     options.definitionBlurDelayMs = clampOption("definitionBlurDelayMs", Math.round(Number(event.target.value) * 1000));
     event.target.value = String(options.definitionBlurDelayMs / 1000);
@@ -2571,7 +2593,10 @@ function attachHandlers() {
       if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
       if (event.target.id === "opt-image-source") renderPopupImageSources();
       if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
-      if (event.target.id === "opt-corpus-url" || event.target.id === "opt-blur-delay") renderMetadataControls();
+      if (event.target.closest("#definition-blur-settings")) {
+        if (event.target.id === "opt-blur-source") event.target.value = definitionBlurSource();
+        renderDefinitionBlurControls();
+      }
       if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
       const choice = APPEARANCE_CHOICES.find(({ id }) => id === event.target.id);
       if (choice) event.target.value = options[choice.key];
