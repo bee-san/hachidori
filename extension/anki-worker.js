@@ -113,33 +113,44 @@ export function createAnkiWorkerService({
   // an image Anki does not have.
   async function storePendingScreenshot({ request, appliedFields, invoke }) {
     const filename = request.screenshot?.filename;
-    if (typeof filename !== "string" || filename === "") return [];
+    if (typeof filename !== "string" || filename === "") return { warnings: [] };
     const reference = `<img src="${filename}">`;
     const fields = Object.keys(appliedFields).filter(field => appliedFields[field].includes(reference));
-    if (fields.length === 0) return [];
-    const pending = pendingScreenshot;
-    pendingScreenshot = null;
+    if (fields.length === 0) return { warnings: [] };
     const withoutPicture = reason => {
       for (const field of fields) appliedFields[field] = appliedFields[field].replaceAll(reference, "");
-      return [`Screenshot: ${reason}`];
+      return { warnings: [`Screenshot: ${reason}`] };
     };
+    const pending = pendingScreenshot;
+    // Only this note's own picture is consumed: another Add's newer capture is
+    // left where it is rather than taken away from it.
     if (pending === null || pending.token !== request.screenshot.token || pending.filename !== filename) {
       return withoutPicture("the captured picture was replaced before this note was saved.");
     }
+    pendingScreenshot = null;
     try {
       const stored = await invoke("storeMediaFile", { filename, data: pending.data, deleteExisting: false }, 30_000);
       if (stored !== filename) throw new Error("Anki stored it under a different filename.");
     } catch (error) {
       return withoutPicture(error.message);
     }
-    return [];
+    return { warnings: [], screenshotFilename: filename };
+  }
+
+  // A note that was definitively not written leaves no picture of its own behind.
+  async function releaseScreenshot({ writeResources, invoke }) {
+    const filename = writeResources?.screenshotFilename;
+    if (typeof filename !== "string" || filename === "") return;
+    await invoke("deleteMediaFile", { filename }, 10_000);
   }
 
   async function prepareCapture(context) {
-    const screenshotWarnings = await storePendingScreenshot(context);
+    const screenshot = await storePendingScreenshot(context);
     const clip = await prepareClipCapture(context);
-    if (clip === null) return screenshotWarnings.length === 0 ? null : { warnings: screenshotWarnings };
-    return { ...clip, warnings: [...clip.warnings, ...screenshotWarnings] };
+    if (clip === null) {
+      return screenshot.warnings.length === 0 && screenshot.screenshotFilename === undefined ? null : screenshot;
+    }
+    return { ...clip, ...screenshot, warnings: [...clip.warnings, ...screenshot.warnings] };
   }
 
   async function prepareClipCapture(context) {
@@ -220,6 +231,7 @@ export function createAnkiWorkerService({
     beforeWrite: prepareCapture,
     beforeMutation,
     afterConfirmed: completeCapture,
+    afterRejected: releaseScreenshot,
     enrich: context => enrichAnkiNote(context, { audio, render, media: async (item, generation) => {
       const reply = await engine({ type: "hd_media", dictionary: item.dictionary, path: item.path, generation });
       if (!reply.dataUrl) throw new Error("The dictionary image is no longer available.");

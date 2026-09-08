@@ -89,6 +89,7 @@ export function createAnkiMiningService({
   beforeWrite,
   beforeMutation = async () => {},
   afterConfirmed = async () => {},
+  afterRejected = async () => {},
   validateCapture = async () => {},
   enrich,
   now = Date.now,
@@ -169,15 +170,30 @@ export function createAnkiMiningService({
       appliedFields: fields,
       capture,
     });
-    if (JSON.stringify(await readConfig()) !== configJson) throw new Error(CONFIG_CHANGED);
+    // A definitive no-write releases whatever only this note would have used.
+    // An uncertain write keeps it: the note may exist in Anki after all.
+    const releaseRejected = () => afterRejected({ request, ...prepared, writeResources })
+      .catch(() => undefined);
+    if (JSON.stringify(await readConfig()) !== configJson) {
+      await releaseRejected();
+      throw new Error(CONFIG_CHANGED);
+    }
     // Uploads and configuration reads can outlive Stop. Validate the remaining
     // write ownership last, with no unrelated await before sending the mutation.
-    await beforeMutation({ request, capture, writeResources });
+    try {
+      await beforeMutation({ request, capture, writeResources });
+    } catch (error) {
+      await releaseRejected();
+      throw error;
+    }
     let noteId;
     try {
       noteId = await writeAnkiNote(invoke, note, target, fields);
     } catch (error) {
-      if (isAnkiDuplicateError(error.message)) return { state: "duplicate", error: "This note already exists in Anki." };
+      if (isAnkiDuplicateError(error.message)) {
+        await releaseRejected();
+        return { state: "duplicate", error: "This note already exists in Anki." };
+      }
       // A lost acknowledgement may follow a completed write. Neither this
       // worker nor the reader retries it automatically, including append modes.
       return { state: "uncertain", error: `The write could not be confirmed. Use View in Anki before trying again. ${error.message}` };

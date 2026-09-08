@@ -338,7 +338,8 @@ test("missing captured audio writes the mapped animation only and returns the so
 
 test("a mining screenshot is held until the note is written, then stored under its own name", async () => {
   const uploads = [];
-  let refuse = false;
+  const deletions = [];
+  let refuse = false, duplicate = false;
   const notes = new Map();
   let fields = null;
   const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic", deck: "Default", apiKey: "local-key",
@@ -348,7 +349,13 @@ test("a mining screenshot is held until the note is written, then stored under i
     models: ["Basic"], decks: ["Default"], errors: [] }),
     async invoke(action, params, apiKey) {
       if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true }];
-      if (action === "addNote") { fields = params.note.fields; notes.set(12, fields); return 12; }
+      if (action === "deleteMediaFile") { deletions.push(params.filename); return null; }
+      if (action === "addNote") {
+        if (duplicate) throw new Error("cannot create note because it is a duplicate");
+        fields = params.note.fields;
+        notes.set(12, fields);
+        return 12;
+      }
       if (action === "notesInfo") return [{ noteId: 12, fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
       if (action !== "storeMediaFile") throw new Error(`Unexpected ${action}`);
       uploads.push({ ...params, apiKey });
@@ -395,6 +402,17 @@ test("a mining screenshot is held until the note is written, then stored under i
   assert.equal(refused.state, "added");
   assert.match(refused.warnings.join(" "), /Screenshot: media folder is read-only/u);
   assert.equal(notes.get(12).Audio, "");
+
+  // A note Anki definitively refuses takes its own picture back out of the media
+  // folder rather than leaving it unreferenced.
+  refuse = false;
+  duplicate = true;
+  const orphan = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+  const rejected = await service.submit({ ...request, term: { ...request.term, expression: "馬" },
+    configKey: status.configKey, screenshot: orphan });
+  assert.equal(rejected.state, "duplicate");
+  assert.deepEqual(deletions, [orphan.filename]);
+  duplicate = false;
 
   // The capture itself refuses when the switch is off or the page gives nothing.
   await assert.rejects(service.screenshot(async () => "not-an-image"), /no screenshot/u);
