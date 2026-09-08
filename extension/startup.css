@@ -250,7 +250,7 @@
   height: auto;
 }
 .setup-practice-dialogue { padding: 16px 20px 20px; }
-.setup-practice-caption {
+.setup-card .setup-practice-caption {
   margin: 0 0 10px;
   color: var(--text-dim);
   font-size: 12px;
