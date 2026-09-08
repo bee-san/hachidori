@@ -1,11 +1,11 @@
 # Visual novel background
 
-`preview-background.webp` is copied unchanged from
-[GameSentenceMiner PR #549](https://github.com/bpwhelan/GameSentenceMiner/pull/549),
-at commit `524ed0b3b92decae87f65df02df9ef9e512f7674`:
-[`electron-src/renderer/hoshidicts-preview/preview-background.webp`](https://github.com/bpwhelan/GameSentenceMiner/blob/524ed0b3b92decae87f65df02df9ef9e512f7674/electron-src/renderer/hoshidicts-preview/preview-background.webp).
+Copyright © 2026 bee-san.
 
-The image credits **ArseniXC** for background art and **Soviet Games** for
-*Love, Money, Rock’n’Roll*. Those credits remain embedded in the original image.
-GSM supplies no separate license for this asset; Hachidori's code license does
-not assert ownership of the artwork.
+`preview-background.png` is the repository owner's supplied artwork, copied
+unchanged from `ChatGPT Image Sep 8, 2026, 06_29_20 AM.png`. On September 8, 2026,
+the owner confirmed that they own its copyright and requested its use in
+Hachidori, with ownership documented for Chrome publishing.
+
+See the [asset ownership and publishing record](../../docs/asset-rights.md) for
+the source identity, checksum, logo inventory and authorized project use.

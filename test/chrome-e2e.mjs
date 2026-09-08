@@ -4724,8 +4724,8 @@ async function readVisualNovelScene(page, sourceSelector) {
     const sourceRects = [...range.getClientRects()];
     const dialogueRect = dialogue.getBoundingClientRect();
     return {
-      backgroundLoaded: imageUrl === new URL("assets/preview-background.webp", location.href).href
-        && image.naturalWidth === 1080 && image.naturalHeight === 607,
+      backgroundLoaded: imageUrl === new URL("assets/preview-background.png", location.href).href
+        && image.naturalWidth === 1672 && image.naturalHeight === 941,
       dialogueVisible: dialogueRect.width > 0 && dialogueRect.height > 0
         && getComputedStyle(dialogue).visibility === "visible" && dialogue.querySelector(".vn-speaker")?.textContent.trim().length > 0,
       sourceAccessible: sourceRects.length > 0 && sourceRects.every(rect => rect.width > 0 && rect.height > 0

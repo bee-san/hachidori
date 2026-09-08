@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/hachidori.png" width="180" alt="Hachidori hummingbird logo">
+  <img src="docs/assets/hachidori.png" width="180" alt="Hachidori pink and lilac hummingbird logo">
 </p>
 
 <h1 align="center">Hachidori</h1>
@@ -110,6 +110,10 @@ On top of this, there are countless tests. At some points I even had Astra Ultra
 I also have personally been using this for months, and as I am the main user of this program I find bugs pretty often which I fix.
 
 ## Credits
+
+The logo pack and visual novel background were supplied by bee-san. See the
+[asset ownership and publishing record](docs/asset-rights.md) for the original
+assets and the background's copyright declaration.
 
 Hachidori is powered by [hoshidicts](https://github.com/Manhhao/hoshidicts) by Manhhao. Its popup renderer, structured-content renderer, furigana segmentation, and CSS are ported from [GameSentenceMiner PR #549](https://github.com/bpwhelan/GameSentenceMiner/pull/549), which adapts [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Yomitan](https://github.com/yomidevs/yomitan). See the full [renderer attribution](extension/render/ATTRIBUTION.md).
 

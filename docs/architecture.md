@@ -348,10 +348,10 @@ first-install dark appearance and compact summaries.
 
 The card shows the instruction that matches the current `lookupMode` — hover, or
 holding the configured activation key — and one sentence to try,
-**朝ごはんを食べる。** The sentence sits in a visual novel dialogue box over
-the street background from GSM PR #549. The scene and Design preview share
-`visual-novel.css` and the packaged, unchanged artwork; its original credits and
-[source attribution](../extension/assets/ATTRIBUTION.md) are retained. The
+**朝ごはんを食べる。** The sentence sits in the dialogue panel of the
+repository owner's visual novel artwork. The scene and Design preview share
+`visual-novel.css` and the packaged, unchanged image; its source and copyright
+declaration are recorded in [asset ownership](asset-rights.md). The
 practice scene uses ordinary selectable page text, so the real reader can
 highlight it and open a lookup above it. **Finish** and **Open Settings** stay available: the
 exercise is optional. The invitation appears only when it can be answered, and that is
