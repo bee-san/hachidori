@@ -92,6 +92,14 @@ include content below the viewport, so image heights differ. Both Settings
 palettes and reduced motion were selected through browser media emulation.
 Every image below was inspected and copied without editing.
 
+The four final practice comparison images and saved-page recovery image were
+recaptured on 2026-09-08 using Chromium 150.0.7871.186 on Arch Linux, after
+replacing the borrowed background with an illustration generated for Hachidori
+without reference images. They use the same viewport sizes and controlled
+startup state. The real lookup and ready-screen captures were refreshed by
+the complete real-Chrome suite on the same code. The original before and
+dictionary-failure comparisons retain their original capture environment.
+
 ## Dictionary failure and responsive layout
 
 The baseline’s desktop error column overlaps JMnedict’s name and description
@@ -125,7 +133,8 @@ with controlled storage, dictionary progress and Anki outcomes. Their background
 worker is inert: the displayed installation times and inventory are fixtures,
 and these images alone do not prove downloads, imports or lookup results.
 The capture driver and complete state matrix remain in ignored
-`test/tmp/ui-review/`; production-path checks are documented in
+`test/tmp/ui-review/`; the replacement-artwork capture driver is
+`test/tmp/merge-pr75/capture-artwork.mjs`. Production-path checks are documented in
 [the test guide](../test/README.md#chrome-e2emjs).
 
 The separate real-Chrome run imports the catalogue fixtures through the normal
@@ -144,8 +153,10 @@ announcements; this is DOM/browser validation, not a VoiceOver session.
 
 Chrome 152 closes extension tabs when the native file-access switch reloads
 Hachidori. The optional prompt now explains **Extension options → Resume
-setup** after opening the details page. This final narrow capture uses the
-retained real fixture profile, with access disabled:
+setup** after opening the details page. The native permission lifecycle is
+covered by the full Chrome test. This refreshed narrow screenshot uses
+controlled startup state with access disabled and the details shortcut already
+opened:
 
 ![Saved-page instructions and reload recovery at narrow width](assets/startup-file-access-recovery.png)
 
@@ -183,10 +194,10 @@ synchronous-update regression, with visible warmup/noise. They exclude layout,
 paint, asynchronous work, downloads, native import and lookup latency, and do
 not establish an end-to-end speedup.
 
-The scene uses the exact background from GameSentenceMiner PR #549, retaining
-the embedded SovietGames, *Love, Money, Rock’n’Roll* and ArseniXC credits.
-[Asset attribution](../extension/assets/ATTRIBUTION.md) records its immutable
-source, dimensions and SHA-256.
+The scene uses an illustration generated for Hachidori without reference
+images. [Asset provenance](../extension/assets/ATTRIBUTION.md) records the full
+prompt, generation date, WebP processing, dimensions and SHA-256. The former
+third-party background and the screenshots that showed it were replaced.
 
 Screenshot-only Anki mining remains a separate acceptance item in #58; this
 review does not claim that the entire issue is complete.
