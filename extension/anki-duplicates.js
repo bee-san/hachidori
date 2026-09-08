@@ -43,7 +43,10 @@ export function canonicalAnkiFields(fields, templates, existing) {
 
 export function overwriteAnkiFields(incoming, existing, templates, { includeAudio = false } = {}) {
   return Object.fromEntries(Object.entries(templates).filter(([, template]) => includeAudio || !isAnkiAudioOnlyTemplate(template.value))
-    .map(([field, template]) => [field, overwriteValue(existing[field] ?? "", incoming[field] ?? "", template.overwriteMode)]));
+    .map(([field, template]) => [field, overwriteValue(existing[field] ?? "", incoming[field] ?? "", template.overwriteMode)])
+    // Preserving a field means omitting it from Anki's update, so an edit made
+    // while preparing media cannot be replaced with the earlier snapshot.
+    .filter(([field, value]) => value !== existing[field]));
 }
 
 function checkResult(result, detailed) {

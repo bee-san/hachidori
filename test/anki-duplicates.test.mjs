@@ -26,17 +26,17 @@ test("browse searches encode literal HTML and neutralize Anki query syntax", () 
   assert.equal(ankiBrowseQuery('猫<&"*_:\\'), '"猫&lt;&amp;\\"\\*\\_\\:\\\\"');
 });
 
-test("all overwrite modes preserve empty values and defer audio-only fields until enrichment", () => {
+test("all overwrite modes omit unchanged fields and defer audio-only fields until enrichment", () => {
   const modes = globalThis.HDReaderOptions.ANKI_OVERWRITE_MODES;
   const templates = Object.fromEntries(modes.map(mode => [mode, { value: "{expression}", overwriteMode: mode }]));
   templates.Audio = { value: "{AUDIO}<br>{audio}", overwriteMode: "overwrite" };
   templates.Disabled = { value: "", overwriteMode: "overwrite" };
   const existing = Object.fromEntries([...modes, "Audio", "Disabled"].map(field => [field, "old"]));
   const incoming = Object.fromEntries(modes.map(field => [field, "new"]));
-  assert.deepEqual(overwriteAnkiFields(incoming, existing, templates), { coalesce: "old", "coalesce-new": "new",
-    skip: "old", append: "oldnew", prepend: "newold", overwrite: "new", Disabled: "" });
+  assert.deepEqual(overwriteAnkiFields(incoming, existing, templates), { "coalesce-new": "new",
+    append: "oldnew", prepend: "newold", overwrite: "new", Disabled: "" });
   assert.equal(overwriteAnkiFields({ coalesce: "new" }, { coalesce: "" }, templates).coalesce, "new");
-  assert.equal(overwriteAnkiFields({}, existing, templates)["coalesce-new"], "old");
+  assert.equal(Object.hasOwn(overwriteAnkiFields({}, existing, templates), "coalesce-new"), false);
 });
 
 test("preflight retains cloze fields while distinguishing duplicates from invalid notes and bypassing disabled checks", async () => {
