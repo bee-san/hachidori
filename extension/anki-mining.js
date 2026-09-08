@@ -35,6 +35,13 @@ async function decision(prepared) {
   return { state: "duplicate", canAdd: config.duplicateBehavior === "new", error: null };
 }
 
+function omitUnchangedFields(fields, existing) {
+  if (existing) for (const [field, value] of Object.entries(fields)) {
+    if (value === existing[field]) delete fields[field];
+  }
+  return fields;
+}
+
 function fieldsForDecision(prepared, checked) {
   const target = checked.target;
   if (!target) {
@@ -45,10 +52,9 @@ function fieldsForDecision(prepared, checked) {
     };
   }
   const canonical = canonicalAnkiFields(prepared.note.fields, prepared.resolved.templates, target.fields);
-  const desired = overwriteAnkiFields(canonical.fields, target.fields, canonical.templates);
   // Only the initial write omits unchanged values. Pronunciation enrichment
   // compares its complete desired value with the text-only write it replaces.
-  const fields = Object.fromEntries(Object.entries(desired).filter(([field, value]) => value !== target.fields[field]));
+  const fields = omitUnchangedFields(overwriteAnkiFields(canonical.fields, target.fields, canonical.templates), target.fields);
   return {
     fields,
     target,
@@ -91,6 +97,7 @@ export function createAnkiMiningService({
   beforeWrite,
   beforeMutation = async () => {},
   afterConfirmed = async () => {},
+  afterRejected = async () => {},
   validateCapture = async () => {},
   enrich,
   now = Date.now,
@@ -148,6 +155,13 @@ export function createAnkiMiningService({
       error: result.error,
       action: result.action,
       capture,
+      // A mapped {screenshot} that the user has left switched on: the reader
+      // takes the viewport picture itself, when it submits. The whole configured
+      // mapping decides, not the subset this preflight would apply, because the
+      // authoritative decision is made again inside the write and may then apply
+      // a field this one would have kept.
+      screenshot: prepared.config.captureScreenshot === true
+        && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot,
     };
   }
 
@@ -167,15 +181,33 @@ export function createAnkiMiningService({
       appliedFields: fields,
       capture,
     });
-    if (JSON.stringify(await readConfig()) !== configJson) throw new Error(CONFIG_CHANGED);
+    // Failed media can restore a field's original value after preparation.
+    // Leave it untouched instead of overwriting an intervening Anki edit.
+    omitUnchangedFields(fields, target?.fields);
+    // A definitive no-write releases whatever only this note would have used.
+    // An uncertain write keeps it: the note may exist in Anki after all.
+    const releaseRejected = () => afterRejected({ request, ...prepared, writeResources })
+      .catch(() => undefined);
+    if (JSON.stringify(await readConfig()) !== configJson) {
+      await releaseRejected();
+      throw new Error(CONFIG_CHANGED);
+    }
     // Uploads and configuration reads can outlive Stop. Validate the remaining
     // write ownership last, with no unrelated await before sending the mutation.
-    await beforeMutation({ request, capture, writeResources });
+    try {
+      await beforeMutation({ request, capture, writeResources });
+    } catch (error) {
+      await releaseRejected();
+      throw error;
+    }
     let noteId;
     try {
       noteId = await writeAnkiNote(invoke, note, target, fields);
     } catch (error) {
-      if (isAnkiDuplicateError(error.message)) return { state: "duplicate", error: "This note already exists in Anki." };
+      if (isAnkiDuplicateError(error.message)) {
+        await releaseRejected();
+        return { state: "duplicate", error: "This note already exists in Anki." };
+      }
       // A lost acknowledgement may follow a completed write. Neither this
       // worker nor the reader retries it automatically, including append modes.
       return { state: "uncertain", error: `The write could not be confirmed. Use View in Anki before trying again. ${error.message}` };

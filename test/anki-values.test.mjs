@@ -72,3 +72,15 @@ test("captured media markers use generated pinned filenames and can omit unavail
   assert.equal(await render(request({ capturePin, captureUnavailable: ["audio"] }),
     "{capture-animation}|{capture-audio}"), '<img src="hachidori-abc123.avif">|');
 });
+
+test("the screenshot marker references only a stored picture and escapes its filename", async () => {
+  assert.equal(await render(request({}), "{screenshot}"), "");
+  assert.equal(await render(request({ screenshot: { filename: "hachidori-screenshot-1.jpg" } }), "{screenshot}"),
+    '<img src="hachidori-screenshot-1.jpg">');
+  // A capture or upload that failed marks itself unavailable, so the field stays
+  // empty instead of pointing at a picture Anki does not have.
+  assert.equal(await render(request({ screenshot: { filename: "hachidori-screenshot-1.jpg" },
+    captureUnavailable: ["screenshot"] }), "{screenshot}"), "");
+  assert.equal(await render(request({ screenshot: { filename: '"><script>' } }), "{screenshot}"),
+    '<img src="&quot;&gt;&lt;script&gt;">');
+});
