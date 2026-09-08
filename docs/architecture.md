@@ -350,7 +350,7 @@ The card shows the instruction that matches the current `lookupMode` — hover, 
 holding the configured activation key — and one sentence to try,
 **朝ごはんを食べる。** The sentence sits in the dialogue panel of the
 repository owner's visual novel artwork. The scene and Design preview share
-`visual-novel.css` and the packaged, unchanged image; its source and copyright
+`visual-novel.css` and the packaged, unchanged images; their sources and copyright
 declaration are recorded in [asset ownership](asset-rights.md). The
 shared `visual-novel.js` picks one of six local images at random when each
 scene is created. A small **Next background** arrow cycles through them and
