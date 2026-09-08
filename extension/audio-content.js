@@ -7,9 +7,9 @@
   }
 
   function setBusy(record, busy) {
-    record.button.textContent = busy ? "Stop" : "Audio";
     record.button.setAttribute("aria-busy", String(busy));
     record.button.setAttribute("aria-label", `${busy ? "Stop" : "Play"} pronunciation for ${record.term.expression}`);
+    record.button.title = `${busy ? "Stop" : "Play"} pronunciation; Shift-click, right-click or press Down for choices`;
   }
 
   function candidateLabel(candidate) {

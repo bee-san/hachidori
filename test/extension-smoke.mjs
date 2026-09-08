@@ -13846,6 +13846,10 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   pass("renderResults accepts the engine's LookupResult verbatim");
   check("renderResults asked the caller to position the popup", positioned > 0, `positioned ${positioned}`);
   check("renderResults returned its lookupStats slot", stats !== undefined && "lookupStats" in stats, JSON.stringify(stats));
+  check("pronunciation buttons render as named icons without visible text",
+    stats.audioButtons.length > 0 && stats.audioButtons.every(({ button }) => button.textContent === ""
+      && button.getAttribute("aria-label")?.startsWith("Play pronunciation for ")
+      && button.title.includes("Down for choices")));
 
   const headword = popup.querySelector(".gsm-hoshidicts-headword");
   check(

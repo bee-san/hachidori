@@ -1760,10 +1760,6 @@ html,
 }
 
 .gsm-hoshidicts-audio-button {
-  flex-basis: auto;
-  width: auto;
-  gap: 5px;
-  padding: 0 8px;
   border: 1px solid var(--hoshidicts-border-strong);
   color: var(--text-color);
   font-family: inherit;
@@ -1890,7 +1886,6 @@ html,
 .gsm-hoshidicts-note-button {
   border: 1px solid var(--hoshidicts-border-strong);
   color: var(--text-color);
-  font: 600 18px/34px "Segoe UI Symbol", "Segoe UI", sans-serif;
 }
 
 .gsm-hoshidicts-note-button:hover,
@@ -1902,8 +1897,11 @@ html,
 }
 
 .gsm-hoshidicts-note-icon {
-  font-size: 18px;
-  line-height: 1;
+  width: 12px;
+  height: 12px;
+  background:
+    linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat;
 }
 
 .gsm-hoshidicts-text-action-button {

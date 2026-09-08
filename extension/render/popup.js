@@ -2185,7 +2185,6 @@
       const icon = documentRef.createElement("span");
       icon.className = "gsm-hoshidicts-note-icon";
       icon.setAttribute("aria-hidden", "true");
-      icon.textContent = "+";
       button.appendChild(icon);
 
       const actions = documentRef.createElement("div");
@@ -2728,7 +2727,6 @@
       const button = documentRef.createElement("button");
       button.type = "button";
       button.className = "gsm-hoshidicts-audio-button";
-      button.textContent = "Audio";
       button.title = "Play pronunciation; Shift-click, right-click or press Down for choices";
       button.setAttribute("aria-label", `Play pronunciation for ${expressionText}`);
       button.setAttribute("aria-haspopup", "dialog");
