@@ -6906,14 +6906,14 @@ async function visualNovelStage() {
   const jsdom = await loadJsdom();
   if (!jsdom) return null;
   const result = { randomStart: true, cycle: true, retained: true };
-  for (const [random, first] of [[0, 0], [0.999999, 5]]) {
+  for (const [random, first] of [[0, 0], [0xffffffff, 3]]) {
     const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "design-preview.html"), "utf8"), {
       runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/design-preview.html`,
     });
     const { window } = dom;
     try {
       let randomCalls = 0;
-      window.Math.random = () => { randomCalls += 1; return random; };
+      window.crypto.getRandomValues = values => { randomCalls += 1; values[0] = random; return values; };
       window.eval(readFileSync(resolve(EXTENSION, "visual-novel.js"), "utf8"));
       const scene = window.document.querySelector(".vn-scene");
       const source = scene.querySelector("#preview-source");
