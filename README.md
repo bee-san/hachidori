@@ -9,7 +9,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-7c3aed" alt="GPL-3.0-or-later license"></a>
   <a href="#install-in-60-seconds"><img src="https://img.shields.io/badge/Chrome-118%2B-4285F4?logo=googlechrome&logoColor=white" alt="Chrome 118 or newer"></a>
-  <a href="#privacy-by-default"><img src="https://img.shields.io/badge/dictionary_engine-local-0f766e" alt="Dictionary engine runs locally"></a>
+  <a href="docs/privacy.md"><img src="https://img.shields.io/badge/dictionary_engine-local-0f766e" alt="Dictionary engine runs locally"></a>
   <a href="https://sonarcloud.io/summary/new_code?id=bee-san_hachidori"><img src="https://sonarcloud.io/api/project_badges/measure?project=bee-san_hachidori&metric=alert_status" alt="SonarQube Cloud quality gate"></a>
   <a href="https://github.com/bee-san/hachidori"><img src="https://img.shields.io/github/stars/bee-san/hachidori?style=flat&logo=github&color=f59e0b" alt="GitHub stars"></a>
 </p>
@@ -21,6 +21,7 @@
   <a href="#hachidori-vs-the-alternatives">Compare</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
   <a href="docs/chrome-web-store.md">Chrome Web Store guide</a> ·
+  <a href="docs/privacy.md">Privacy</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
@@ -35,7 +36,7 @@ git clone https://github.com/bee-san/hachidori.git
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked** and select the cloned `hachidori/extension` directory.
-4. Hachidori opens a short setup tab on its first install and starts installing the four recommended dictionaries by itself. Open **Settings** from it any time to import your own Yomitan `.zip`, then hover Japanese text on any page.
+4. Hachidori opens a short welcome on its first install. Choose **Start setup** to install the four recommended dictionaries automatically, or **Set up manually** to use your own. Open **Settings** from it any time to import your own Yomitan `.zip`, then hover Japanese text on any page.
 
 <p align="center">
   <img src="docs/assets/startup-installing.png" alt="Hachidori's first-run setup tab installing the four recommended dictionaries with a download progress bar" width="720">
