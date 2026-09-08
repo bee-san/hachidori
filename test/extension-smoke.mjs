@@ -1384,7 +1384,9 @@ async function ankiScreenshotStage() {
   chrome.tabs = {
     async get(id) {
       if (id !== tab.id) throw new Error("No tab with id");
-      return { ...tab };
+      const result = { ...tab };
+      if (result.url.startsWith("chrome-extension:")) delete result.url;
+      return result;
     },
     async sendMessage(id, message, options) {
       documentChecks.push({ id, message, options });
