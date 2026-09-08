@@ -44,7 +44,7 @@
   }
   function readyCaptureRequest(record, request, requirements, assets) {
     captureBadge(record);
-    const unavailable = [];
+    const unavailable = [...(request.captureUnavailable ?? [])];
     if (requirements.includeAnimation && !assets?.animation) unavailable.push("animation");
     if (requirements.includeAudio && !assets?.audio) unavailable.push("audio");
     return { ...request, captureJobId: record.captureJobId, captureUnavailable: unavailable };

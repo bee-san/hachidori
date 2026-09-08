@@ -1357,7 +1357,11 @@ discovery or background reading.
 
 The reader takes it. Preflight reports `screenshot: true` only when the fields
 that will actually be applied map `{screenshot}` and the Settings switch is on,
-and the content script then hides Hachidori's own overlays: the popup, its image
+and the queued write checks that requirement again. If an overwrite target has
+disappeared or its coalesced picture was removed, a newly required screenshot
+refreshes preflight before any upload or note write; the next Add takes it.
+A screenshot already attempted but unavailable still permits the note to be saved.
+The content script hides Hachidori's own overlays: the popup, its image
 preview and the fallback highlight paint all live in one host element, and the
 document-registered source highlight is suspended beside it — the highlighter
 stops publishing for the whole interval, so a lookup that settles while the

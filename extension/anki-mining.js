@@ -160,6 +160,12 @@ export function createAnkiMiningService({
     if (!checked.canAdd) return { state: checked.state, error: checked.error };
     const { configJson, note, invoke } = prepared;
     const { fields, target, templates } = fieldsForDecision(prepared, checked);
+    // An overwrite target may disappear or lose its coalesced picture after
+    // preflight. Refresh before writing if the newly applied mapping needs one.
+    if (prepared.config.captureScreenshot === true && ankiCaptureRequirements(templates).includeScreenshot
+        && !request.screenshot && !request.captureUnavailable?.includes("screenshot")) {
+      return { state: "invalid", error: "This note now needs a screenshot. Add it again after the result refreshes." };
+    }
     const capture = captureForApplication(request, templates);
     if (capture) await validateCapture({ request, prepared, capture });
     if (JSON.stringify(await readConfig()) !== configJson) throw new Error(CONFIG_CHANGED);
