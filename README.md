@@ -81,6 +81,10 @@ Hachidori records how many times you have looked up a word and can blur it for y
 
 It can even use anki.
 
+<p align="center">
+  <img src="docs/assets/lookup-blur.gif" alt="Animated demonstration of Hachidori blurring repeated lookups before revealing their definitions" width="720">
+</p>
+
 # Optionated
 
 Hachidori is an optionated program. If it does not benefit me, the creator, personally than I will not add that feature.
