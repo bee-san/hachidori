@@ -40,10 +40,6 @@ git clone https://github.com/bee-san/hachidori.git
   <img src="docs/assets/startup-installing.png" alt="Hachidori's first-run setup tab installing the four recommended dictionaries with a download progress bar" width="720">
 </p>
 
-The setup tab uses the Settings theme in light and dark mode and walks through **Dictionaries → Anki → Try it**. Dictionaries download and install one after another with real download progress and an installation phase; a source that fails is reported with its reason while the others continue, and **Retry missing dictionaries** fetches only what is still missing. Once every source is installed, the result stays on screen for five seconds and setup moves on. Setup then looks for Anki: if you already mine with a Senren, Lapis or Kiku note type, Hachidori picks the one you use most, the deck you send it to, and fills in the matching field mapping for you — reading your collection only, never changing it. If Anki is not running, or your setup needs a choice only you can make, it says so and points at **Settings**; either way setup moves on by itself and keeps the result on the last screen. The last step is a real lookup: hover the Japanese sentence on the page and the ordinary popup answers from the dictionaries setup just installed — the same behaviour you get on any webpage. Finishing is one click away whether or not you try it. Initial preferences are set once: three-line compact definition summaries, Jitendex as their source and Bee's Ultimate Kanji Dictionary for clicked kanji, each only while you have not chosen otherwise. The tab appears only for a fresh installation: updates and restarts never reopen it or reset your settings, and the installation continues even if you close the tab; Settings shows **Resume setup** until you finish.
-
-**Try it** offers a Japanese street scene with a real lookup from your installed dictionaries. Hover, hold your configured activation key, or use the keyboard-accessible **Look up 辞書** button. **Finish** and **Open Settings** stay available even if you skip the exercise or need to install a dictionary. Beneath it, **Read saved pages too** optionally opens Hachidori’s Chrome extension details: turn on **Allow access to file URLs** yourself, then return to setup for confirmation. If Chrome closes setup during the extension reload, open **Extension options** from the details page and choose **Resume setup**. **Not now** skips this choice; the same shortcut stays in **Settings → Reading**. The bundled exercise works without file access.
-
 # Blazing Fast
 
 Hachidori is 83 times faster than the worlds most popular Japanese dictionary app at importing dictionaries.
@@ -60,16 +56,6 @@ It is even 3.5 times faster at looking up words.
 
 # Media mining
 
-Hachidori can optionally keep a bounded local history of one shared browser tab,
-application window, or monitor, then attach an animated AVIF and captured-source
-WAV to a mined Anki note. Source audio availability depends on the browser and
-chosen share. Capture is off by default and requires an explicit **Start
-capture** click; the controls may then be closed while recording continues.
-
-Timing prefers a matching live texthooker event, then accessible video cues,
-then changes in a linked webpage text area. If none is usable, Hachidori uses
-the recent history pinned when the root lookup began. Capture stays local until
-you explicitly mine a note; raw media and incoming text are not persisted.
 
 ![Media capture controls recording a linked reading page](docs/assets/media-capture-controls.png)
 
@@ -87,9 +73,7 @@ Sometimes we fall into a trap of looking up a word over & over again, but never 
 
 Hachidori records how many times you have looked up a word and can blur it for you for a few seconds to force you to remember it.
 
-In **Settings → Design → Definition blur**, you can also enable **Blur definitions for mature Anki words**. It works independently of lookup counts; either enabled rule can blur the definitions. A word qualifies when its first lookup result matches your configured Anki note type and a dedicated plain expression field, in any deck, with at least one review card whose interval is 21 days or more. This follows [Anki's mature-card definition](https://docs.ankiweb.net/getting-started.html#card-states).
-
-Both rules use the same hover or timed reveal and suppress automatic pronunciation for qualifying results. The Anki check is read-only and runs after the dictionary result appears. Closing Anki never prevents lookup; the count rule keeps working offline. See [lookup statistics and definition blur](docs/lookup-statistics.md#definition-blur) for field mapping and behavior details.
+It can even use anki.
 
 # Optionated
 
@@ -110,6 +94,8 @@ I have reviewed all plans, I set the direction of how this program works. Most p
 On top of this, there are countless tests. At some points I even had Astra Ultra work for 26 hours straight benchmarking & using every part of the program to ensure it was good (it found many bugs).
 
 I also have personally been using this for months, and as I am the main user of this program I find bugs pretty often which I fix.
+
+The assets used are AI generated. If you are an artist and want to contribute to open source, please feel free to make a real logo or a visual novel style background.
 
 ## Credits
 
