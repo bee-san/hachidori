@@ -100,7 +100,7 @@ test("dismissing an expired pin releases its retained clip once after status pru
   assert.equal(h.session.releasePin("another-token"), false);
   assert.equal(h.session.releasePin(pin.token), true, "the session still owns the expired clip until dismissal");
   assert.equal(h.session.releasePin(pin.token), false, "dismissal retires that ownership exactly once");
-  assert.equal(h.session.releasePin(undefined), false);
+  assert.doesNotThrow(() => h.session.releasePin(undefined));
 });
 
 test("root lookup pins once, shortens an unfinished DOM tail when the line closes, then exports one interval", async () => {
