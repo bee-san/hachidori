@@ -139,6 +139,9 @@ export function createAnkiWorkerService({
       const stored = await invoke("storeMediaFile", { filename, data: pending.data, deleteExisting: false }, 30_000);
       if (stored !== filename) throw new Error("Anki stored it under a different filename.");
     } catch (error) {
+      // The store may have happened even though its answer did not arrive, and
+      // the note is about to be written without the picture: take it back out.
+      await releaseScreenshot({ writeResources: { screenshotFilename: filename }, invoke }).catch(() => undefined);
       return withoutPicture(error.message);
     }
     return { warnings: [], screenshotFilename: filename };
@@ -263,5 +266,12 @@ export function createAnkiWorkerService({
     return { token: pendingScreenshot.token, filename: pendingScreenshot.filename };
   }
 
-  return { ...mining, screenshot };
+  // A submission that is abandoned before it is sent releases its picture, so a
+  // capture nobody will use does not sit in the worker until the next one.
+  function discardScreenshot(request) {
+    if (pendingScreenshot !== null && pendingScreenshot.token === request?.token) pendingScreenshot = null;
+    return { discarded: true };
+  }
+
+  return { ...mining, screenshot, discardScreenshot };
 }

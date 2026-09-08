@@ -412,6 +412,27 @@ test("a note that maps a screenshot captures one with the reader concealed and n
   assert.deepEqual(submittedRequest.screenshot, { token: "token-a", filename: "hachidori-screenshot-a.jpg" });
   assert.equal(submittedRequest.captureUnavailable, undefined);
 
+  // A submission abandoned before it is sent — here because the clip pin it also
+  // needs has expired — releases the picture it already took.
+  const discards = [];
+  let submits = 0;
+  const abandoned = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_screenshot") return { token: "token-b", filename: "hachidori-screenshot-b.jpg" };
+    if (type === "hd_anki_screenshot_discard") { discards.push(request.token); return { discarded: true }; }
+    if (type === "hd_anki_submit") { submits += 1; return { state: "added", noteId: 13, warnings: [] }; }
+    return { state: "addable", canAdd: true, screenshot: true,
+      capture: { requirements: { includeAnimation: true, includeAudio: false } } };
+  });
+  abandoned.controller.update(configured);
+  abandoned.controller.bind(abandoned.items, abandoned.context);
+  await until(() => abandoned.items[0].add && !abandoned.items[0].add.disabled);
+  abandoned.items[0].add.click();
+  await until(() => abandoned.items[0].output.textContent.includes("Could not add"));
+  await tick();
+  assert.deepEqual(discards, ["token-b"]);
+  assert.equal(submits, 0);
+
   // A capture that fails is a warning on an otherwise ordinary note.
   capture = async () => { throw new Error("The reading tab is no longer the active tab."); };
   f.items[1].add.click();

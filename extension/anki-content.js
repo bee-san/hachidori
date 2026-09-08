@@ -128,6 +128,12 @@
     function refreshAll() {
       for (const group of owners.values()) refresh(group, true);
     }
+    async function discardScreenshot(record) {
+      if (!record.screenshot) return;
+      const { token } = record.screenshot;
+      record.screenshot = null;
+      try { await send("hd_anki_screenshot_discard", { request: { token } }); } catch { /* A restarted worker holds nothing. */ }
+    }
     async function cancelCapture(record) {
       if (!record.captureJobId) return;
       try { await capture("hd_capture_cancel", { jobId: record.captureJobId }); } catch { /* Stop/expiry already cleaned it up. */ }
@@ -138,12 +144,14 @@
     // the note's outcome: the field renders empty and the note still goes in.
     async function prepareScreenshot(record, request, owns) {
       record.screenshotWarning = "";
+      record.screenshot = null;
       if (record.decision?.screenshot !== true) return request;
       if (owns()) text(record.output, "Taking the screenshot…");
       try {
         const taken = await conceal(() => send("hd_anki_screenshot", {}));
         if (typeof taken?.filename !== "string" || !taken.filename) throw new Error("no screenshot was taken");
-        return { ...request, screenshot: { token: taken.token, filename: taken.filename } };
+        record.screenshot = { token: taken.token, filename: taken.filename };
+        return { ...request, screenshot: record.screenshot };
       } catch (error) {
         record.screenshotWarning = `Screenshot: ${error.message}`;
         return { ...request, captureUnavailable: [...(request.captureUnavailable ?? []), "screenshot"] };
@@ -208,6 +216,8 @@
         if (["duplicate", "invalid"].includes(result.state)) await cancelCapture(record);
         if (!submitted(record, result) && owns()) { decision(record, { ...result, canAdd: false }); refreshAll(); }
       } catch (error) {
+        // Nothing was sent, so the picture this submission took is nobody's.
+        if (!writeSent) await discardScreenshot(record);
         if (writeSent && !error.responseReceived) uncertain(record, `The write could not be confirmed. Use View in Anki before trying again. ${error.message}`);
         else if (owns()) text(record.output, `Could not add: ${error.message}`);
       } finally {

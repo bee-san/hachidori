@@ -402,6 +402,22 @@ test("a mining screenshot is held until the note is written, then stored under i
   assert.equal(refused.state, "added");
   assert.match(refused.warnings.join(" "), /Screenshot: media folder is read-only/u);
   assert.equal(notes.get(12).Audio, "");
+  // The store may have happened even though its answer was lost, so the note that
+  // goes in without the picture takes that picture back out.
+  assert.deepEqual(deletions, [retaken.filename]);
+  deletions.length = 0;
+
+  // A submission that is abandoned releases its picture, so a later note that
+  // still names it is told the picture was replaced.
+  refuse = false;
+  const abandoned = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+  assert.deepEqual(service.discardScreenshot({ token: "someone-else" }), { discarded: true });
+  service.discardScreenshot({ token: abandoned.token });
+  const withoutHeld = await service.submit({ ...request, term: { ...request.term, expression: "牛" },
+    configKey: status.configKey, screenshot: abandoned });
+  assert.equal(withoutHeld.state, "added");
+  assert.match(withoutHeld.warnings.join(" "), /Screenshot: the captured picture was replaced/u);
+  assert.deepEqual(deletions, []);
 
   // A note Anki definitively refuses takes its own picture back out of the media
   // folder rather than leaving it unreferenced.
