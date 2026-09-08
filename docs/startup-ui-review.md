@@ -94,13 +94,12 @@ include content below the viewport, so image heights differ. Both Settings
 palettes and reduced motion were selected through browser media emulation.
 Every image below was inspected and copied without editing.
 
-The four final practice comparison images and saved-page recovery image were
-recaptured on 2026-09-08 using Chromium 150.0.7871.186 on Arch Linux, after
-replacing the borrowed background with an illustration generated for Hachidori
-without reference images. They use the same viewport sizes and controlled
-startup state. The real lookup and ready-screen captures were refreshed by
-the complete real-Chrome suite on the same code. The original before and
-dictionary-failure comparisons retain their original capture environment.
+The final “After” comparisons and saved-page recovery image were recaptured
+on 2026-09-08 using Chromium 150.0.7871.186 on Arch Linux, after integrating
+the project owner's supplied artwork and branding from #79. They use the same
+viewport sizes and controlled startup state. The real lookup and ready-screen
+captures come from the combined #75/#76 real-Chrome run. The historical “Before”
+images retain their original capture environment.
 
 ## Dictionary failure and responsive layout
 
@@ -118,8 +117,9 @@ continuation controls.
 ## Practice and optional saved pages
 
 The previous final screen only explained how to hover on another webpage.
-The new screen supplies a street scene, a longer Japanese passage, a keyboard
-lookup control, retained Anki feedback and the optional saved-HTML prompt.
+The new screen supplies the shared visual novel scene, a longer Japanese
+passage, a keyboard lookup control, retained Anki feedback and the optional
+saved-HTML prompt.
 Finish remains available, and missing dictionaries or disabled lookups lead to
 the appropriate Settings recovery section.
 
@@ -135,8 +135,10 @@ with controlled storage, dictionary progress and Anki outcomes. Their background
 worker is inert: the displayed installation times and inventory are fixtures,
 and these images alone do not prove downloads, imports or lookup results.
 The capture driver and complete state matrix remain in ignored
-`test/tmp/ui-review/`; the replacement-artwork capture driver is
-`test/tmp/merge-pr75/capture-artwork.mjs`. Production-path checks are documented in
+`test/tmp/ui-review/` in the original Mac checkout; final supplied-artwork
+and failure captures use `test/tmp/merge-pr75/capture-artwork.mjs` and
+`capture-failure.mjs` in the integration checkout. Production-path checks are
+documented in
 [the test guide](../test/README.md#chrome-e2emjs).
 
 A partial dictionary can answer a passage word while lacking **辞書**. In that
@@ -151,7 +153,7 @@ overflow. The actual page and CSS were captured without editing the image.
 The separate real-Chrome run imports the catalogue fixtures through the normal
 WASM engine. Pressing Enter on **Look up 辞書** returns their actual glossary
 content in the ordinary popup; pointer lookup is checked too. This viewport
-capture shows that result and the still-available Finish control:
+capture shows the result anchored above the selected passage:
 
 ![Actual installed-fixture lookup on the practice scene](assets/startup-practice-lookup.png)
 
@@ -230,10 +232,13 @@ short, noisy timings establish no latency improvement or consistent regression.
 They exclude Chrome, messaging IPC, native dictionary lookup, paint and reader
 loading. The raw samples remain in `test/tmp/merge-pr75/probe-timing.json`.
 
-The scene uses an illustration generated for Hachidori without reference
-images. [Asset provenance](../extension/assets/ATTRIBUTION.md) records the full
-prompt, generation date, WebP processing, dimensions and SHA-256. The former
-third-party background and the screenshots that showed it were replaced.
+The scene uses the project owner's supplied 1672 × 941 PNG and the shared
+visual novel styles introduced by #79. [Asset provenance](../extension/assets/ATTRIBUTION.md)
+and the [ownership record](asset-rights.md) retain the original filename,
+authorization and SHA-256. The earlier practice-only asset is removed; the
+runtime and current screenshots use the same supplied artwork as Design.
+The long paragraph has its own readable dialogue surface and fits the scene
+at 320px without horizontal overflow.
 
 Screenshot-only Anki mining remains a separate acceptance item in #58; this
 review does not claim that the entire issue is complete.

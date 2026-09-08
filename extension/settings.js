@@ -39,7 +39,7 @@ const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", m
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
-  clampOption, normaliseCorpusSeenUrl, normaliseKanjiSelection, normaliseOptions, normaliseTexthookerUrl,
+  clampOption, normaliseKanjiSelection, normaliseOptions, normaliseTexthookerUrl,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -61,7 +61,6 @@ const NUMBER_FIELDS = [
 ];
 const METADATA_FIELDS = [
   { key: "showLookupCounts", id: "opt-lookup-counts" },
-  { key: "corpusSeenEnabled", id: "opt-corpus-seen" },
   { key: "definitionBlurEnabled", id: "opt-blur-enabled" },
   { key: "definitionBlurAnkiMature", id: "opt-blur-anki-mature" },
   { key: "showFrequencyDictionaryNames", id: "opt-frequency-names" },
@@ -122,6 +121,7 @@ const selectedDictionaryIds = new Set();
 const expandedDictionaryIds = new Set();
 let draggedDictionaryId = null;
 let statusTimer = null;
+let lastEngineStatus = null;
 let requestCounter = 0;
 let audioController;
 let ankiController;
@@ -167,6 +167,9 @@ function syncNavigationStatus(id) {
   if (notice.textContent !== message) notice.textContent = message;
   notice.classList.toggle("is-error", source.classList.contains("is-error"));
   notice.classList.toggle("is-ready", source.classList.contains("is-ready"));
+  const compact = element("settings-navigation-status");
+  const messages = [...document.querySelectorAll(".nav-status")].map(output => output.textContent).filter(Boolean).join(" ");
+  if (compact.textContent !== messages) compact.textContent = messages;
 }
 
 function setSectionStatus(id, message, tone, completed = false) {
@@ -185,6 +188,7 @@ function showSettingsSection(focus = false) {
   activeSection = sections.some((section) => section.id === requested) ? requested : "dictionaries";
   pendingManagementFocus = null;
   for (const section of sections) section.hidden = section.id !== activeSection;
+  element("settings-section").value = activeSection;
   for (const link of document.querySelectorAll(".settings-nav a")) {
     if (link.hash === `#${activeSection}`) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
@@ -353,7 +357,7 @@ function updateDesignPreview() {
     }
   }
   if (frame.style.width !== `${options.popupWidthPx + 96}px`
-      || frame.style.height !== `${options.popupHeightPx + 136}px`) resizeDesignPreview();
+      || frame.style.height !== `${options.popupHeightPx + 216}px`) resizeDesignPreview();
   frame.contentWindow.HDDesignPreview?.update(options, dictionaryState);
 }
 
@@ -361,7 +365,7 @@ function resizeDesignPreview() {
   const viewport = element("preview-viewport");
   const frame = element("design-preview");
   const width = options.popupWidthPx + 96;
-  const height = options.popupHeightPx + 136;
+  const height = options.popupHeightPx + 216;
   const scale = element("preview-size").value === "actual" ? 1 : Math.min(1, viewport.clientWidth / width);
   frame.style.width = `${width}px`;
   frame.style.height = `${height}px`;
@@ -371,7 +375,16 @@ function resizeDesignPreview() {
 }
 
 function attachSettingsNavigation() {
-  window.addEventListener("hashchange", () => showSettingsSection(true));
+  element("design-preview-disclosure").open = window.innerWidth > 1100;
+  const picker = element("settings-section");
+  picker.addEventListener("change", (event) => {
+    const fragment = `#${event.target.value}`;
+    // Native fragment navigation moves focus off the select before hashchange.
+    // Preserve arrow-key selection while adding the section to browser history.
+    if (window.location.hash !== fragment) window.history.pushState(null, "", fragment);
+    showSettingsSection();
+  });
+  window.addEventListener("hashchange", () => showSettingsSection(document.activeElement !== picker));
   document.querySelector(".skip-link").addEventListener("click", (event) => {
     event.preventDefault();
     element("settings-content").focus();
@@ -914,7 +927,8 @@ function missingRecommendedDictionaries() {
 
 function renderRecommendedActions() {
   const missing = missingRecommendedDictionaries();
-  element("recommended-starter").hidden = dictionaries.length > 0;
+  element("recommended-starter").hidden = missing.length === 0;
+  element("install-recommended").hidden = missing.length < RECOMMENDED_DICTIONARIES.length;
   element("recommended-retry").hidden =
     missing.length === 0 || missing.length === RECOMMENDED_DICTIONARIES.length;
 }
@@ -924,6 +938,8 @@ function setControlsDisabled(disabled) {
   element("import-file").disabled = blocked || committing;
   element("install-recommended").disabled = blocked || committing;
   element("retry-recommended").disabled = blocked || committing;
+  element("empty-install-recommended").disabled = blocked || committing;
+  element("empty-import-dictionaries").disabled = blocked || committing;
   for (const control of document.querySelectorAll(".dict-row select, .dict-row input, .dict-row button")) {
     control.disabled = blocked || control.dataset.pinnedDisabled === "true"
       || (committing && control.classList.contains("dict-update-schedule"));
@@ -967,6 +983,7 @@ async function refreshStatus() {
   try {
     reply = await send("hd_status");
   } catch (error) {
+    lastEngineStatus = null;
     // A poll can fail transiently: the service worker can be torn down mid-relay,
     // or the offscreen document can be recreated faster than background.js's
     // retries. Keep polling, or one blip freezes this line on a stale error while
@@ -976,6 +993,7 @@ async function refreshStatus() {
     return;
   }
   if (!reply.ok) {
+    lastEngineStatus = null;
     // Either a boot failure or background.js's relay giving up, and the two are
     // not distinguishable from here, so retry both: a boot error survives the
     // retry and keeps saying so.
@@ -983,15 +1001,27 @@ async function refreshStatus() {
     scheduleStatusPoll(STATUS_RETRY_MS);
     return;
   }
-  const count = dictionaries.filter((entry) => entry.enabled !== false).length;
-  if (reply.ready) {
-    const enabled = count === 1 ? "1 dictionary enabled" : `${numberFormat.format(count)} dictionaries enabled`;
-    setStatus(reply.loading ? `Ready, ${enabled}, working…` : `Ready, ${enabled}.`, "ready");
-  } else {
-    setStatus("Starting the engine and loading dictionaries…");
-  }
+  lastEngineStatus = reply;
+  renderEngineStatus();
   if (!reply.ready || reply.loading) {
     scheduleStatusPoll();
+  }
+}
+
+function renderEngineStatus() {
+  if (lastEngineStatus === null) return;
+  const count = dictionaries.filter((entry) => entry.enabled !== false).length;
+  if (lastEngineStatus.ready) {
+    if (count === 0 && !lastEngineStatus.loading) {
+      setStatus(dictionaries.length === 0
+        ? "Ready to add your first dictionary."
+        : "Ready. Enable a dictionary in Library to start reading.");
+      return;
+    }
+    const enabled = count === 1 ? "1 dictionary enabled" : `${numberFormat.format(count)} dictionaries enabled`;
+    setStatus(lastEngineStatus.loading ? `Ready, ${enabled}, working…` : `Ready, ${enabled}.`, "ready");
+  } else {
+    setStatus("Starting the engine and loading dictionaries…");
   }
 }
 
@@ -1088,11 +1118,6 @@ function renderPreferredDictionary(id, preferred, kind, automaticLabel, enabled)
 function renderMetadataControls() {
   for (const field of METADATA_FIELDS) {
     element(field.id).checked = field.inverted ? !options[field.key] : options[field.key];
-  }
-  const corpusUrl = element("opt-corpus-url");
-  if (corpusUrl !== document.activeElement) {
-    corpusUrl.value = options.corpusSeenUrl;
-    corpusUrl.disabled = !options.corpusSeenEnabled;
   }
   renderDefinitionBlurControls();
   renderPreferredDictionary("opt-pitch-dictionary", options.pitchAccentFuriganaDictionary,
@@ -1727,8 +1752,16 @@ function renderDictionaries(reuseRows = false) {
 
   element("dict-controls").hidden = dictionaries.length === 0;
   const empty = element("dict-empty");
-  empty.textContent = dictionaries.length === 0 ? "Nothing imported yet." : "No dictionaries match your search.";
+  const isEmpty = dictionaries.length === 0;
+  element("dict-empty-heading").textContent = isEmpty ? "Your Japanese library starts here" : "No dictionaries found";
+  element("dict-empty-description").textContent = isEmpty
+    ? "Install the recommended set, or bring your own Yomitan ZIP files."
+    : "Try a different title or display name.";
+  element("dict-empty-actions").hidden = !isEmpty;
+  element("empty-clear-search").hidden = isEmpty;
+  element("dict-reorder-help").hidden = isEmpty;
   empty.hidden = visible.length > 0;
+  if (!element("engine-status").classList.contains("is-error")) renderEngineStatus();
   renderDictionarySelection(visible);
   setControlsDisabled(importing);
 }
@@ -2302,6 +2335,20 @@ function attachHandlers() {
   window.addEventListener("pointercancel", finishManagementPointer, true);
 
   element("install-recommended").addEventListener("click", installMissingRecommendedDictionaries);
+  element("empty-install-recommended").addEventListener("click", () => {
+    window.location.hash = "add-dictionaries";
+    installMissingRecommendedDictionaries();
+  });
+  element("empty-import-dictionaries").addEventListener("click", () => {
+    window.location.hash = "add-dictionaries";
+    element("import-file").click();
+  });
+  element("empty-clear-search").addEventListener("click", () => {
+    const search = element("dict-search");
+    search.value = "";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    search.focus();
+  });
   element("retry-recommended").addEventListener("click", installMissingRecommendedDictionaries);
   element("update-check-now").addEventListener("click", () => {
     void runManagedUpdate("hd_updates_check");
@@ -2381,17 +2428,6 @@ function attachHandlers() {
       writeOptions();
     });
   }
-  element("opt-corpus-url").addEventListener("change", (event) => {
-    const value = normaliseCorpusSeenUrl(event.target.value);
-    if (value === null) {
-      event.target.value = options.corpusSeenUrl;
-      setOptionsStatus("GameSentenceMiner must use a loopback HTTP or HTTPS URL.");
-      return;
-    }
-    options.corpusSeenUrl = value;
-    event.target.value = value;
-    writeOptions();
-  });
   element("opt-pitch-dictionary").addEventListener("change", (event) => {
     options.pitchAccentFuriganaDictionary = event.target.value;
     writeOptions();
@@ -2659,7 +2695,9 @@ function handleStorageChange(changes, area) {
 }
 
 function setOptionsStatus(message, completed = false) {
-  setSectionStatus("options-status", message, optionsSaveFailed ? "error" : "", completed);
+  let tone = message === "Saved." ? "ready" : "";
+  if (optionsSaveFailed) tone = "error";
+  setSectionStatus("options-status", message, tone, completed);
   element("options-conflict-actions").hidden = !optionsSaveFailed;
 }
 

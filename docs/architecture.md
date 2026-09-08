@@ -340,9 +340,11 @@ claiming Anki is absent.
 ### Practice and saved pages
 
 `startup-practice.js` supplies the **Try it** scene and a Japanese passage about
-the street shown in the background. The illustration was generated for
-Hachidori without reference images; its prompt, processing and hash are recorded
-in [the asset provenance](../extension/assets/ATTRIBUTION.md).
+the street shown in the background. The scene and Design preview share
+`visual-novel.css` and the repository owner's supplied artwork, preserved
+unchanged. Its source and copyright declaration are recorded in
+[asset ownership](asset-rights.md). The longer practice passage has a readable
+dialogue surface that grows with its text at narrow widths.
 
 The practice view loads the reader once after proving the exercise can be
 answered. `startup.js` takes the complete dependency order from the manifest's
@@ -578,7 +580,8 @@ The reader displays a result before dispatching its independent statistics and
 optional Anki maturity requests. Lookup statistics retain their serialized
 descriptor-plus-term/reading-row transaction; neither the reader nor the worker
 scans the statistics collection. See [lookup statistics](lookup-statistics.md)
-for recording, corpus Seen, revision adoption and backup behavior.
+for local recording, revision adoption and backup behavior. Lookup counts never
+contact an external application; retired corpus connection settings are ignored.
 
 `definitionBlurEnabled` remains the count criterion and requires
 `showLookupCounts`. The independent, default-off `definitionBlurAnkiMature`
@@ -1104,10 +1107,12 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 Settings is one document with native hash links and one visible task section.
 All sections stay mounted, so navigation and browser history preserve reader
 drafts and the lazy custom editor without storage writes or engine requests.
-The rail becomes wrapping navigation in narrow windows; light and dark palettes
+The rail becomes a compact section chooser in narrow windows; light and dark palettes
 follow the system preference. Inactive sections mirror pending work, errors, and
 unseen operation completions next to their links. Visiting a section clears its
-completion notice, not its source output or draft. Status setters own these
+completion notice, not its source output or draft. The compact navigation mirrors
+inactive notices, and shared options feedback stays near the section heading.
+Status setters own these
 notices; there are no observers or additional polling loops.
 
 Dictionary Details expansion is kept by stable package ID across focus-aware
@@ -1116,6 +1121,12 @@ alias, full metadata, exact position, and removal are inside the disclosure.
 Bulk actions appear when a selection exists, including selections outside the
 current search. Source editing remains lazy, and lookup preferences apply
 immediately; custom source still requires Save.
+
+Reading owns local lookup history and definition blur. Design contains appearance
+and displayed-content controls; its reset leaves reading behaviour and history
+preferences untouched. The preview and advanced CSS use native disclosures.
+Recommended sources remain reachable while any are missing, including after a
+local ZIP import; the empty Library offers both installation and import actions.
 
 Reader options carry a worker-owned monotonic `revision` in the existing
 `options` storage value. Legacy values start at revision zero. Settings coalesces
@@ -1188,7 +1199,7 @@ recording-duration limit.
 
 ### Live Design preview
 
-![Appearance controls beside the production popup preview](assets/popup-toolbar-settings.png)
+![Appearance controls beside the visual novel popup preview](assets/design-preview.png)
 
 Design moves the existing appearance controls out of Reading, without a second
 options store or save queue. Both sections capture the same revision-bound
@@ -1198,14 +1209,15 @@ or a failed save. Other sections do not load or update the preview.
 
 The same-origin iframe and its resize observer are created only on first
 visiting Design; Library startup does not create even a blank browsing context.
-It contains a neutral
-sample webpage and a shadow root using `render/popup.js`, `render/glossary.js`,
+It contains a visual novel scene with Japanese dialogue and a shadow root using `render/popup.js`, `render/glossary.js`,
 and `render/reader.css`; the page uses the production `content.css` highlight.
 Four deterministic glossary cards demonstrate all retained column choices,
 alongside structured media, frequency, pitch, and kanji content. Selected
 installed sources are represented by sample entries, not real lookup results.
 The packaged SVG is fetched once and reused as a blob URL; the preview does not
-contact the engine, fetch dictionary data, or write personal notes.
+contact the engine, fetch dictionary data, or write personal notes. The same
+local street background as first-run practice makes popup opacity visible over
+game artwork; the dialogue stays below the lookup as popup dimensions change.
 
 An unchanged presentation snapshot does no renderer work. Metadata, summary,
 and image-route changes use the production incremental projection; a changed

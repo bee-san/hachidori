@@ -56,13 +56,12 @@ export function createPracticeView({ document, onDismiss, loadReader, onReaderSe
   node.className = "setup-practice";
   node.innerHTML = `
     <p class="hint" id="setup-practice-instruction"></p>
-    <div class="setup-practice-scene" id="setup-practice-scene">
-      <img src="assets/practice-street.webp" width="1080" height="607" alt="A quiet Japanese residential street with garden walls, trees and distant hills." />
-      <div class="setup-practice-dialogue">
-        <p class="setup-practice-caption">A quiet moment on the way home</p>
-        <p class="setup-practice-text" id="setup-practice-text" lang="ja" tabindex="-1">踏切の向こうから蝉の声が響く。喧騒を離れて路地に佇むと、古びた<span id="setup-practice-word">辞書</span>で見つけた言葉が、目の前の景色と少しずつ結びついていく。</p>
+    <section class="setup-practice-scene vn-scene" id="setup-practice-scene" aria-label="Visual novel practice scene">
+      <div class="setup-practice-dialogue vn-dialogue" lang="ja">
+        <p class="vn-speaker">ひなた</p>
+        <p class="setup-practice-text vn-line" id="setup-practice-text" lang="ja" tabindex="-1">踏切の向こうから蝉の声が響く。喧騒を離れて路地に佇むと、古びた<span id="setup-practice-word">辞書</span>で見つけた言葉が、目の前の景色と少しずつ結びついていく。</p>
       </div>
-    </div>
+    </section>
     <div class="setup-practice-tools" id="setup-practice-tools">
       <button type="button" class="ghost" id="setup-practice-lookup">Look up <span lang="ja">辞書</span></button>
       <span class="hint">You can also select text to look it up.</span>
