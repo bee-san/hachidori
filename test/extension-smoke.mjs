@@ -1401,7 +1401,7 @@ async function ankiScreenshotStage() {
     async sendMessage(id, message, options) {
       documentChecks.push({ id, message, options });
       if (id !== tab.id || options.documentId !== documentId) throw new Error("The document was removed.");
-      return { visible: true };
+      return { present: true };
     },
     async captureVisibleTab(windowId, options) {
       captures.push({ windowId, options });

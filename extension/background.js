@@ -1384,11 +1384,11 @@ async function captureSenderViewport(sender) {
       throw new Error("The reading tab moved to another page before the screenshot.");
     }
     // Chrome addresses this exact document, so a reload at the same URL cannot
-    // answer on its predecessor's behalf. Hidden cached documents cannot own it.
+    // answer on its predecessor's behalf.
     const document = await chrome.tabs.sendMessage(tabId, {
       target: CAPTURE_CONTENT_TARGET, type: "hd_capture_document",
     }, { documentId: sender.documentId }).catch(() => null);
-    if (document?.visible !== true) throw new Error("The reading document changed before the screenshot.");
+    if (document?.present !== true) throw new Error("The reading document changed before the screenshot.");
     return tab;
   };
   for (let attempt = 1; ; attempt += 1) {
