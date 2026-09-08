@@ -2,8 +2,9 @@
 
 ## Readiness and continuation refinement
 
-This refinement includes PR #75’s passage and shortcut probes through `918d947`; the refreshed screenshots
-use the page sources at `c9cbd46`, including its original practice artwork.
+This refinement retains PR #75’s passage and shortcut probes, the standalone
+Settings layout, screenshot mining, the six-scene carousel and cached Anki
+maturity. The refreshed captures use the integrated page runtime at `f22c387`.
 The final step now names the next action when the library is empty, its term
 dictionaries are disabled, or lookups are switched off. **Add dictionaries**, **Open Library** and
 **Open Reading** lead directly to the relevant Settings section. **You’re
@@ -24,15 +25,17 @@ The card has clearer heading and action spacing, less competing Anki feedback
 on the practice screen, and full-width dictionary status text. Existing light
 and dark colours, the scene, real reader and saved-page controls are retained.
 
-These captures use the actual unpacked extension in Chromium 150.0.7871.186
-on Linux, at 1024 × 900 desktop and 375 × 900 narrow widths (the failure image
-uses 500 × 800). Publisher downloads were replaced with the repository’s small
-catalogue ZIP fixtures, imported through the production engine. One archive
-received HTTP 503 before retrying; AnkiConnect was held or refused locally.
-Disabled dictionaries and lookups were changed through Settings. Only the empty
-library screenshot uses a temporary controlled storage inventory, restored
-afterward. No image was edited. The disabled-dictionary page has a 375px
-viewport and 375px document width, with its heading at y=265.5px.
+The captures were refreshed on 2026-09-08 with Chrome for Testing
+152.0.7977.82 on a MacBook Air M2, at 1024 × 900 desktop and 375 × 900
+narrow widths (failure uses 500 × 800; real practice uses 1200 × 900). The first five render the
+actual packaged page, scripts and styles with controlled setup records,
+dictionary inventories and Anki replies; the background worker is inert.
+They show the UI states and do not prove downloads or lookups. The practice
+capture comes from the full extension browser test, with catalogue fixtures
+imported through the production engine. All images were inspected without
+editing. The capture driver and state/overflow report remain in the local
+`hachidori-merge-prs-20260908` run directory as `pr85-capture.mjs` and
+`pr85-captures.json`.
 
 | Paused successful installation | Empty library recovery |
 | --- | --- |
@@ -50,7 +53,8 @@ probe precondition in `practiceReadiness`, retained the existing setup CAS and
 countdown timers, reused the mounted practice controls, and removed unused
 sample CSS and duplicate narrow dictionary rules. Background-install guidance
 uses the existing introduction paragraph, so progress updates create no extra
-paragraph nodes.
+paragraph nodes. The generic paragraph reset excludes the shared scene speaker,
+preserving its existing label-to-passage spacing after carousel integration.
 
 ### Follow-up progress measurements
 
