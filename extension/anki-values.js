@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import "./render/glossary.js";
-import { ankiTemplateMarkerNames, renderAnkiTemplate } from "./anki-templates.js";
+import { ankiTemplateMarkerNames, renderAnkiTemplate, escapeAnkiHtml as escape } from "./anki-templates.js";
 
 // Browser-native port of GSM PR #549's hoshidicts_mining.py marker values.
 // DOM glossary rendering and resource preparation remain separate; only values
 // actually used by the selected templates are built here.
-const escape = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
-  .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#x27;");
 const uniqueTokens = values => [...new Set(values.flatMap(value => value.split(/[\s,]+/u).filter(Boolean)))];
 const dictionaryMarker = name => name.replace(/[_\s]/gu, "-").replace(/[^\p{L}\p{N}-]/gu, "")
   .replace(/-+/gu, "-").replace(/^-|-$/gu, "").toLowerCase();

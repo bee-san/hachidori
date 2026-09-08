@@ -49,18 +49,42 @@ sent to GameSentenceMiner.
 ## Definition blur
 
 Settings → Design → Definition blur hides definitions, compact summaries and
-reading furigana behind a blur until you recall the word. It is off by default
-and needs lookup counts. GSM PR #549 blurs a word once it has been looked up
+reading furigana behind a blur until you recall the word. Both rules are off by
+default and can be enabled independently; a match from either rule qualifies.
+**Blur definitions by lookup count** needs lookup counts. GSM PR #549 blurs a word once it has been looked up
 **at least** the threshold number of times (default 5); **Below** is the issue #9
 adaptation for words looked up fewer times than the threshold, and zero is a
 valid Below count. The decision uses the same count the popup displays, after
 the current lookup is recorded.
 
-![Definition blur controls](assets/definition-blur-settings.png)
+**Blur definitions for mature Anki words** works even with lookup counts off.
+It checks the first result's canonical expression against the configured Anki
+note type across all decks. A word qualifies if at least one matching card is
+in review with an interval of **21 days or more**, following
+[Anki's card states](https://docs.ankiweb.net/getting-started.html#card-states).
+New, learning and relearning cards do not qualify. The mining deck and duplicate
+scope do not restrict this check; the reading and inflected search text do not
+form part of the match.
 
-A new lookup renders blurred while its count is unknown. A qualifying count
-keeps the blur; any other outcome, including counts being unavailable or
-turned off, reveals immediately. Hovering a definition or the compact summary
+In Settings → Anki, map **Expression** to a dedicated field, or use a field
+template containing only `{expression}`. Templates that combine the expression
+with other text, readings or markup cannot identify the word through this check.
+A missing or unsupported mapping leaves maturity unavailable without changing
+the mapping. The Design preview uses a fixed mature sample with three lookups,
+without contacting Anki or recording history.
+
+The check makes one read-only AnkiConnect `findCards` request after the result
+renders. It does not add or edit notes, cards or scheduling data. The existing
+AnkiConnect timeout bounds the wait; Anki being closed, denied access, malformed
+responses and other errors leave this rule unqualified. There is no persistent
+known-word cache: each new lookup checks again, and only the count rule remains
+available offline. Dictionary lookup never waits for Anki.
+
+![Lookup-count and mature-Anki definition blur controls](assets/anki-mature-blur-settings.png)
+
+A new lookup renders blurred while an enabled rule is undecided. A qualifying
+rule keeps the blur; when neither qualifies, including unavailable checks,
+definitions reveal. Hovering a definition or the compact summary
 reveals in either mode. With the timed reveal, one deadline runs from the
 first display: navigating to a kanji entry or another word cancels the live
 timer, and Back continues with the remaining time rather than restarting, as
@@ -71,12 +95,16 @@ fresh. A lookup made before the saved settings have loaded waits for them.
 Native kanji entries are outside term blur; term entries reached through a
 clicked kanji participate.
 
-Automatic pronunciation waits for the decision. A blurred result never
+Automatic pronunciation waits for the combined decision. The first count
+snapshot and Anki result decide once for the whole visit. A qualifying result never
 auto-plays, even after hover or the deadline reveals it, so the audio does not
 give the reading away; a revealed result plays once as usual, and the Audio
 button always works manually.
 
-Turning blur or lookup counts off reveals open popups without touching a Note
-draft. Other live edits apply to unrevealed popups from their original display
-time. The Design preview uses its fixed sample count of 3 with the same rule,
-hover and delay, and records nothing.
+Turning both rules off reveals open popups without touching a Note draft.
+Disabling lookup counts removes only the count rule. Changes to Anki settings
+invalidate pending and completed maturity evidence, including a word retained
+for Back; old replies cannot blur the current view.
+Revealed definitions never become blurred again during the same lookup. Other
+live edits apply to unrevealed popups from their original display time. With
+Anki blur off, the original count behavior and lookup path are unchanged.

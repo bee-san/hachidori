@@ -28,18 +28,18 @@
   let sampleMedia = null;
   let sampleLookupStats = null;
   let clickedKanjiIndex = 0;
-  // The sample count is 3; the shared rule, real hover and the real delay
-  // decide the preview's blur. Nothing is recorded.
+  // Fixed mature word and count of 3; the shared rule, real hover and the real
+  // delay decide the preview's blur. Nothing is recorded or sent to Anki.
   const SAMPLE_LOOKUP_COUNT = 3;
   let sampleRevealed = false;
   let sampleBlurTimer = null;
   let sampleTermView = false;
-  const DEFINITION_BLUR_KEYS = ["showLookupCounts", "definitionBlurEnabled", "definitionBlurDirection",
+  const DEFINITION_BLUR_KEYS = ["showLookupCounts", "definitionBlurEnabled", "definitionBlurAnkiMature", "definitionBlurDirection",
     "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs"];
 
   function sampleBlurState() {
-    return !sampleRevealed && options.showLookupCounts
-      && HDReaderOptions.definitionBlurQualifies(options, SAMPLE_LOOKUP_COUNT) ? "blurred" : "revealed";
+    const count = options.showLookupCounts ? SAMPLE_LOOKUP_COUNT : null;
+    return !sampleRevealed && HDReaderOptions.definitionBlurQualifies(options, count, true) ? "blurred" : "revealed";
   }
 
   function clearSampleBlurTimer() {
