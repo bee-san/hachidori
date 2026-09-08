@@ -133,6 +133,12 @@ test("the screenshot requirement follows the applied mapping and the Settings sw
   f.dependencies.buildFields = async () => ({ fields: { Front: "猫", Back: "" }, templates });
   assert.equal((await preflight()).screenshot, true);
 
+  // The whole configured mapping decides, not the subset this preflight applies:
+  // the authoritative decision inside the write may apply that field after all.
+  f.dependencies.buildFields = async () => ({ fields: { Front: "猫", Back: "" },
+    templates: { Front: { value: "{expression}", overwriteMode: "overwrite" } } });
+  assert.equal((await preflight()).screenshot, true);
+
   // The switch is the user's, so a mapped screenshot they turned off is not taken.
   f.change({ captureScreenshot: false });
   assert.equal((await preflight()).screenshot, false);

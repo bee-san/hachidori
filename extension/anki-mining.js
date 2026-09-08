@@ -148,9 +148,12 @@ export function createAnkiMiningService({
       action: result.action,
       capture,
       // A mapped {screenshot} that the user has left switched on: the reader
-      // takes the viewport picture itself, when it submits.
-      screenshot: applied !== null && prepared.config.captureScreenshot === true
-        && ankiCaptureRequirements(applied.templates).includeScreenshot,
+      // takes the viewport picture itself, when it submits. The whole configured
+      // mapping decides, not the subset this preflight would apply, because the
+      // authoritative decision is made again inside the write and may then apply
+      // a field this one would have kept.
+      screenshot: prepared.config.captureScreenshot === true
+        && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot,
     };
   }
 

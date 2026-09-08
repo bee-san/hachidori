@@ -1307,8 +1307,10 @@ taken at the moment the user adds it. It is the same media path as any other Ank
 image, not a second one: nothing is captured during hover, preflight, first-run
 discovery or background reading.
 
-The reader takes it. Preflight reports `screenshot: true` only when the fields
-that will actually be applied map `{screenshot}` and the Settings switch is on,
+The reader takes it. Preflight reports `screenshot: true` when the configured
+mapping contains `{screenshot}` and the Settings switch is on — the whole mapping,
+not the subset that preflight would apply, because the authoritative decision is
+made again inside the write and may apply a field this one would have kept —
 and the content script then hides Hachidori's own overlays: the popup, its image
 preview and the fallback highlight paint all live in one host element, and the
 document-registered source highlight is suspended beside it — the highlighter
@@ -1325,9 +1327,21 @@ active tab, so the asking tab must still be that tab, and a top-level frame must
 still show the document that asked. Chrome's capture rate limit is honoured with
 one wait and retry, and that wait is long enough to switch tabs, so ownership is
 checked again after it rather than once at the start. The
-picture is stored through the ordinary `storeMediaFile` gateway under its own
-`hachidori-screenshot-<uuid>.jpg` name, before the note, so duplicate checks,
-overwrite policies and existing values are untouched.
+reply is the picture's name, not its upload, so the reader shows itself again as
+soon as the pixels are taken. The worker holds that one pending picture and stores
+it through the ordinary `storeMediaFile` gateway under its own
+`hachidori-screenshot-<uuid>.jpg` name inside the queued write, once the
+generation, configuration and duplicate decisions have been made, so duplicate
+checks, overwrite policies and existing values are untouched and a note that is
+rejected uploads nothing at all. Only that note's own picture is consumed, so a
+second Add's newer capture is never taken from it, and a picture that the applied
+fields turn out not to use — a coalescing field that keeps its existing image — is
+released rather than held. A note the final checks or Anki then refuse definitively
+— a configuration change, a lost write ownership, a duplicate, or a clip
+preparation that fails after the picture was stored — has its stored picture
+deleted again, as does a note that goes in without the picture because the store's
+own answer was lost; an uncertain note write keeps it, because the note may exist.
+A submission the reader abandons before sending it releases the picture it took.
 
 A capture or upload that fails is a warning carried with the note's own outcome:
 the marker renders empty — a refused upload also empties the fields that
