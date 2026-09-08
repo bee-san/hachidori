@@ -109,7 +109,7 @@
   line-height: 1.4;
   letter-spacing: -0.025em;
 }
-.setup-card p { margin: 0; }
+.setup-card p:not(.vn-speaker) { margin: 0; }
 .setup-card :is(p, a, h2, .setup-dictionary-status) { overflow-wrap: anywhere; }
 .setup-body {
   display: flex;
