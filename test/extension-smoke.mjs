@@ -1319,7 +1319,7 @@ async function firstRunAnkiStage() {
       && found.requests.find((request) => request.action === "findNotes").params.query === "mid:2"
       && found.requests.find((request) => request.action === "findCards").params.query === "mid:2 -deck:filtered"
       && savedOptions.revision === 3 && savedOptions.anki.model === "Kiku v2" && savedOptions.anki.deck === "Mining" && savedOptions.anki.apiKey === "local-key"
-      && savedOptions.anki.fieldTemplates.Expression.value === "{expression}" && savedOptions.anki.fieldTemplates.Picture.value === ""
+      && savedOptions.anki.fieldTemplates.Expression.value === "{expression}" && savedOptions.anki.fieldTemplates.Picture.value === "{screenshot}"
       && Object.keys(savedOptions.anki.fieldTemplates).length === KIKU_FIELDS.length
       && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([["options", "setupState"]])
       && first.state.revision === 5,
@@ -1354,6 +1354,145 @@ async function firstRunAnkiStage() {
       && failing.storage.raw.get("options").anki.model === "Kiku v2"
       && failing.storage.raw.get("options").revision === 2,
     JSON.stringify({ userChoice, raced, options: racing.storage.raw.get("options"), lateChoice, rescued, failingOptions: failing.storage.raw.get("options") }));
+}
+
+// A mining screenshot is captured from the page that asked, and only while that
+// page is still what the window shows.
+async function ankiScreenshotStage() {
+  const bus = makeBus();
+  const storage = makeStorage();
+  const chrome = makeChrome("anki-screenshot", bus, storage);
+  const uploads = [];
+  const captures = [];
+  let tab = { id: 7, active: true, url: "https://reader.test/page", windowId: 3 };
+  let captureFailures = 0;
+  let moveDuringCapture = false;
+  let documentId = "reading-document";
+  let reloadDuringCapture = false;
+  const documentChecks = [];
+  const contextChecks = [];
+  const getContexts = chrome.runtime.getContexts;
+  chrome.runtime.getContexts = async filter => {
+    if (!filter.documentIds) return getContexts(filter);
+    contextChecks.push(filter);
+    return filter.documentIds.includes(documentId)
+      ? [{ documentId, tabId: tab.id, documentUrl: tab.url, contextType: "TAB" }] : [];
+  };
+  chrome.tabs = {
+    async get(id) {
+      if (id !== tab.id) throw new Error("No tab with id");
+      return { ...tab };
+    },
+    async sendMessage(id, message, options) {
+      documentChecks.push({ id, message, options });
+      if (id !== tab.id || options.documentId !== documentId) throw new Error("The document was removed.");
+      return { present: true };
+    },
+    async captureVisibleTab(windowId, options) {
+      captures.push({ windowId, options });
+      if (captureFailures > 0) {
+        captureFailures -= 1;
+        throw new Error("MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND quota exceeded");
+      }
+      if (moveDuringCapture) tab = { ...tab, windowId: 4 };
+      if (reloadDuringCapture) documentId = "replacement-document";
+      return "data:image/jpeg;base64,c2hvdA==";
+    },
+  };
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController, crypto, Error, Promise,
+    fetch(url, options) {
+      const body = JSON.parse(options.body);
+      uploads.push({ url, action: body.action, params: body.params, key: body.key ?? null });
+      return Promise.resolve({ ok: true, async json() { return { result: body.params.filename, error: null }; } });
+    },
+  });
+  await storage.api().local.set({ options: { revision: 1, anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" } } });
+  const ask = (sender) => bus.sendMessage("reader", { target: "hachidori-anki", type: "hd_anki_screenshot",
+    requestId: "anki-screenshot", request: {} }, sender);
+  const reader = { id: chrome.runtime.id, url: tab.url, frameId: 0, documentId, tab: { id: tab.id } };
+
+  const taken = await ask(reader);
+  // Chrome rate-limits captures, so one wait is worth a screenshot.
+  captureFailures = 1;
+  const retried = await ask(reader);
+  // A rate-limited attempt is retried, but the tab it belongs to is checked
+  // again first: a switch during the wait takes no picture at all.
+  captureFailures = 1;
+  const capturesBeforeSwitch = captures.length;
+  const switchedAway = await (async () => {
+    const pending = ask(reader);
+    for (let attempt = 0; attempt < 200 && captures.length === capturesBeforeSwitch; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    tab = { ...tab, active: false };
+    const reply = await pending;
+    tab = { ...tab, active: true };
+    return reply;
+  })();
+  const capturesAfterSwitch = captures.length;
+  captureFailures = 3;
+  const givenUp = await ask(reader);
+  captureFailures = 0;
+  // Dragging the active reading tab to another window leaves it active with the
+  // same URL, but the capture was bound to the old window's replacement tab.
+  moveDuringCapture = true;
+  const movedWindow = await ask(reader);
+  moveDuringCapture = false;
+  tab = { ...tab, windowId: 3 };
+  // A reload can replace the document while its tab, URL and window all stay
+  // the same. It must fail both before capture and after pixels return.
+  reloadDuringCapture = true;
+  const reloadedDuring = await ask(reader);
+  reloadDuringCapture = false;
+  const capturesBeforeReload = captures.length;
+  const alreadyReloaded = await ask(reader);
+  const capturesAfterReload = captures.length;
+  documentId = reader.documentId;
+  tab = { ...tab, active: false };
+  const background = await ask(reader);
+  tab = { ...tab, active: true, url: "https://reader.test/elsewhere" };
+  const navigated = await ask(reader);
+  const fromExtensionPage = await ask({ id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") });
+  tab = { ...tab, url: chrome.runtime.getURL("startup.html#setup-heading") };
+  const startup = { id: chrome.runtime.id, url: tab.url, documentId };
+  const startupTaken = await ask(startup);
+  reloadDuringCapture = true;
+  const startupReloaded = await ask(startup);
+  reloadDuringCapture = false;
+  const capturesBeforeStartupReload = captures.length;
+  const startupGone = await ask(startup);
+  const capturesAfterStartupReload = captures.length;
+  await storage.api().local.set({ options: { revision: 2,
+    anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", captureScreenshot: false } } });
+  tab = { ...tab, url: "https://reader.test/page" };
+  const switchedOff = await ask(reader);
+  check("a mining screenshot captures the asking page once it is still the window's own, and never any other page",
+    taken?.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(taken.filename)
+      && /^[0-9a-f-]{36}$/u.test(taken.token ?? "")
+      // The picture waits for the note: capturing talks to nothing but the tab.
+      && uploads.length === 0
+      && retried?.ok === true && captures.filter(({ windowId }) => windowId === 3).length === captures.length
+      && captures.every(({ options }) => options.format === "jpeg")
+      && switchedAway?.ok === false && switchedAway.error.includes("no longer the active tab")
+      && capturesAfterSwitch === capturesBeforeSwitch + 1
+      && givenUp?.ok === false && givenUp.error.includes("quota")
+      && movedWindow?.ok === false && movedWindow.error.includes("moved to another window")
+      && reloadedDuring?.ok === false && reloadedDuring.error.includes("document")
+      && alreadyReloaded?.ok === false && alreadyReloaded.error.includes("document")
+      && capturesBeforeReload === capturesAfterReload
+      && documentChecks.length > 0 && documentChecks.every(value => value.id === tab.id
+        && value.options.documentId === reader.documentId
+        && value.message.target === "hachidori-capture-content" && value.message.type === "hd_capture_document")
+      && background?.ok === false && background.error.includes("no longer the active tab")
+      && navigated?.ok === false && navigated.error.includes("moved to another page")
+      && fromExtensionPage?.ok === false && fromExtensionPage.error.includes("reading tab")
+      && startupTaken?.ok === true && contextChecks.length > 0
+      && startupReloaded?.ok === false && startupReloaded.error.includes("document")
+      && startupGone?.ok === false && startupGone.error.includes("document")
+      && capturesBeforeStartupReload === capturesAfterStartupReload
+      && switchedOff?.ok === false && switchedOff.error.includes("turned off in Settings"),
+    JSON.stringify({ taken, retried, switchedAway, givenUp, movedWindow, reloadedDuring, alreadyReloaded,
+      background, navigated, fromExtensionPage, startupTaken, startupReloaded, startupGone, switchedOff, uploads, captures, documentChecks, contextChecks }));
 }
 
 async function ankiBackgroundStage() {
@@ -1494,8 +1633,9 @@ async function audioRelayStage() {
     return { ok: true, status: "cancelled" };
   };
   const term = { expression: "聞く", reading: "きく" };
-  const play = requestId => bus.sendMessage("reader", { target: "hachidori-audio", type: "hd_audio_play", requestId, term,
-    sources: [{ ...source, id: "forged" }] }, { id: chrome.runtime.id, documentId: "reader-document", tab: { id: 42 } });
+  const play = (requestId, sender = { id: chrome.runtime.id, documentId: "reader-document", tab: { id: 42 } }) =>
+    bus.sendMessage("reader", { target: "hachidori-audio", type: "hd_audio_play", requestId, term,
+      sources: [{ ...source, id: "forged" }] }, sender);
   const notify = (requestId, owner = "reader-document", url = chrome.runtime.getURL("offscreen.html")) => bus.sendMessage("audio-offscreen", {
     target: "hachidori-audio-events", type: "hd_audio_playing", requestId, owner, sourceId: source.id,
   }, { id: chrome.runtime.id, url });
@@ -1513,11 +1653,32 @@ async function audioRelayStage() {
   plays.get("owned-play")({ ok: true, status: "cancelled" });
   plays.get("newer-play")({ ok: true, status: "success" });
   await Promise.all([firstPlay, nextPlay]);
+
+  const startup = documentId => ({ id: chrome.runtime.id, documentId, url: chrome.runtime.getURL("startup.html") });
+  const firstStartup = play("startup-play", startup("startup-a"));
+  await new Promise(resolve => setImmediate(resolve));
+  await notify("startup-play", "startup-b");
+  await notify("startup-play", "startup-a");
+  const nextStartup = play("newer-startup-play", startup("startup-b"));
+  await new Promise(resolve => setImmediate(resolve));
+  await notify("startup-play", "startup-a");
+  await notify("newer-startup-play", "startup-b");
+  plays.get("startup-play")({ ok: true, status: "cancelled" });
+  plays.get("newer-startup-play")({ ok: true, status: "success" });
+  await Promise.all([firstStartup, nextStartup]);
+  const otherInternal = play("other-internal", { ...startup("other-internal"), url: chrome.runtime.getURL("startup.html-other") });
+  await new Promise(resolve => setImmediate(resolve));
+  await notify("other-internal", "other-internal");
+  plays.get("other-internal")({ ok: true, status: "success" });
+  await otherInternal;
+  const startupProgress = sent.filter(message => message.target === "hachidori-audio-content");
   check("popup audio uses authoritative enabled sources and routes progress only to its newest owning document",
     authoritative.length === 1 && authoritative[0].id === source.id && progress.length === 2
       && progress.every(value => value.tabId === 42 && value.options.documentId === "reader-document")
-      && progress[0].message.requestId === "owned-play" && progress[1].message.requestId === "newer-play",
-    JSON.stringify({ authoritative, progress }));
+      && progress[0].message.requestId === "owned-play" && progress[1].message.requestId === "newer-play"
+      && startupProgress.length === 2 && startupProgress[0].requestId === "startup-play" && startupProgress[0].owner === "startup-a"
+      && startupProgress[1].requestId === "newer-startup-play" && startupProgress[1].owner === "startup-b",
+    JSON.stringify({ authoritative, progress, startupProgress }));
 
   const read = chrome.storage.local.get;
   let releaseRead;
@@ -2075,6 +2236,8 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  window.chrome.extension ??= { isAllowedFileSchemeAccess: async () => false };
+  const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8").replace(/^export\s+/gmu, "");
   const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8").replace(/^export\s+/gmu, "");
   const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
@@ -2102,6 +2265,7 @@ function loadSettingsScript(window) {
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
@@ -2114,7 +2278,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${settings}`,
+    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -2650,6 +2814,7 @@ async function main() {
   await lookupStatsStage();
   await audioRelayStage();
   await ankiBackgroundStage();
+  await ankiScreenshotStage();
 
   section("custom dictionary storage ownership");
   const customBackground = await customBackgroundStage();
@@ -5205,6 +5370,8 @@ async function main() {
     sourceHighlight?.mutations === true, JSON.stringify(sourceHighlight));
   check("source fallback paints exact Range bounds in its own layer without editing page text, classes or selection",
     sourceHighlight?.fallback === true, JSON.stringify(sourceHighlight));
+  check("a suspended source highlight publishes nothing, ignores matches meanwhile and repaints its exact ranges",
+    sourceHighlight?.restored === true, JSON.stringify(sourceHighlight));
   check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
     frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
   check("Design resets only its shared appearance and content keys through one sparse options write",
@@ -6033,14 +6200,20 @@ function loadStartupScript(window) {
     .replace(/^export\s+/gmu, "");
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
+  const practice = readFileSync(resolve(EXTENSION, "startup-practice.js"), "utf8")
+    .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/local-file-access\.js";\s*/u, "")
+    .replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
+    .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/startup-practice\.js";\s*/u, "");
   // startup.js is a module with a top-level await; an async wrapper keeps that
   // legal in a classic-script eval and surfaces a load failure through its promise.
-  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${setupState}\n${startup}\n})()`);
+  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${setupState}\n${localFileAccess}\n${practice}\n${startup}\n})()`);
 }
 
 // The startup page renders the worker-owned setup state, mirrors the offscreen
@@ -6072,6 +6245,7 @@ async function startupPageStage() {
   const options = { revision: 2, lookupMode: "activation", activationKey: "Control" };
   const closedTabs = [];
   window.chrome = {
+    extension: { async isAllowedFileSchemeAccess() { return false; } },
     runtime: {
       getManifest: () => structuredClone(EXTENSION_MANIFEST),
       async sendMessage(message) {
@@ -6083,7 +6257,7 @@ async function startupPageStage() {
         // The practice step proves the sample is answerable before inviting a hover.
         if (message.type === "hd_lookup") {
           return { type: "hd_lookup_result", requestId: message.requestId, ok: true, error: null, generation: 5, dictionaryCount: 1,
-            results: message.text.startsWith("食べる") ? [{ term: "食べる", matched: "食べる" }] : [] };
+            results: message.text.startsWith("辞書") ? [{ term: "辞書", matched: "辞書" }] : [] };
         }
         if (message.type !== "hd_setup_cas") throw new Error(`Unexpected startup request ${message.type}`);
         return new Promise((resolveReply) => { pendingReply = resolveReply; });
@@ -6111,7 +6285,7 @@ async function startupPageStage() {
   const row = (sourceId) => document.querySelector(`.setup-dictionary[data-source-id="${sourceId}"]`);
   const rows = () => [...document.querySelectorAll(".setup-dictionary")].map((item) =>
     [item.dataset.sourceId, item.querySelector(".setup-dictionary-status").textContent]);
-  const bar = (sourceId) => row(sourceId)?.querySelector(".setup-track");
+  const bar = (sourceId) => row(sourceId)?.querySelector(".setup-track:not([hidden])");
   const actions = () => [...document.querySelectorAll("#setup-actions button")].map((control) => [control.id, control.textContent, control.className]);
   const installs = () => requests.filter((message) => message.type === "hd_setup_install").map((message) => message.sourceIds);
   const reply = (fields) => {
@@ -6142,17 +6316,19 @@ async function startupPageStage() {
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Not installed"]]);
 
     installReply = () => runA(1, [entry("jitendex", "waiting"), entry("jiten", "waiting")]);
+    document.getElementById("setup-retry").focus();
     document.getElementById("setup-retry").click();
     await until(() => heading() === "Installing default dictionaries…", "the installing view");
     // Every source without a recorded outcome is requested; the installer settles installed ones itself.
     const everySource = RECOMMENDED_CATALOGUE.map((entry) => entry.sourceId);
     const attached = requestFailed && JSON.stringify(installs()) === JSON.stringify([everySource, ["jitendex", "jiten"]])
+      && document.activeElement === document.getElementById("setup-heading")
       && currentStep() === "dictionaries" && doneSteps() === 0
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Waiting"], ["jmnedict", "Already installed"],
         ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Waiting"]])
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelectorAll("#setup-actions button").length === 0
-      && status().textContent === "Installing default dictionaries.";
+      && status().textContent === "Installing default dictionaries…";
 
     // Live phases follow this run's events in order; older events and other runs cannot move the rows.
     event(runA(2, [entry("jitendex", "downloading", { receivedBytes: 1_048_576, totalBytes: 4_194_304 }), entry("jiten", "waiting")]));
@@ -6164,9 +6340,9 @@ async function startupPageStage() {
     const ordered = rows()[0][1] === "Downloading… 1.0 MB of 4.0 MB (25%)";
     event(runA(3, [entry("jitendex", "downloading", { receivedBytes: 2_097_152, totalBytes: null }), entry("jiten", "waiting")]));
     const indeterminate = rows()[0][1] === "Downloading… 2.0 MB" && !bar("jitendex").classList.contains("is-determinate")
-      && bar("jitendex").getAttribute("aria-valuetext") === "In progress" && bar("jitendex").getAttribute("aria-valuenow") === null;
+      && bar("jitendex").getAttribute("aria-valuetext") === "Downloading… 2.0 MB" && bar("jitendex").getAttribute("aria-valuenow") === null;
     event(runA(4, [entry("jitendex", "installing", { receivedBytes: 4_194_304, totalBytes: 4_194_304 }), entry("jiten", "waiting")]));
-    const installing = rows()[0][1] === "Installing…" && status().textContent === "Installing default dictionaries.";
+    const installing = rows()[0][1] === "Installing…" && status().textContent === "Installing default dictionaries…";
     event(runA(5, [entry("jitendex", "installed", { seconds: 3.2 }), entry("jiten", "downloading")]));
     const installed = rows()[0][1] === "Installed in 3.2 seconds" && status().textContent === "Jitendex installed in 3.2 seconds."
       && !status().classList.contains("is-error") && rows()[3][1] === "Downloading… 0 KB";
@@ -6176,7 +6352,7 @@ async function startupPageStage() {
       && status().classList.contains("is-error") && heading() === "Installing default dictionaries…";
     // The worker records outcomes before the run finishes; a complete inventory is what decides success.
     dictionaryState = { ...dictionaryState, revision: 7, dictionaries: [...dictionaryState.dictionaries,
-      { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }] };
+      { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 1 }] };
     storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
     setupState = { ...setupState, revision: 4, dictionaries: { ...emptyDictionaries, totalSeconds: 5,
       outcomes: { jitendex: { status: "installed", seconds: 3.2, error: null }, jiten: { status: "failed", seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" },
@@ -6223,7 +6399,7 @@ async function startupPageStage() {
       && document.getElementById("setup-countdown-track")?.getAttribute("role") === "progressbar"
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelectorAll("#setup-actions button").length === 0
-      && status().textContent === "Jiten Frequency Dictionary installed in 2.5 seconds.";
+      && status().textContent === "All dictionaries installed in 7.5 seconds";
     // The result stays for five seconds; a conflicting write (the run total landed) is retried with the newer revision.
     await new Promise((done) => setTimeout(done, 3000));
     // The label ticks every 250 ms, so three seconds in it reads two or three.
@@ -6268,17 +6444,24 @@ async function startupPageStage() {
     // the move this page asked for, so the final step is not an error screen.
     setupState = { ...setupState, revision: 9, stage: "practice" };
     reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
-    await until(() => heading() === "You’re ready. Try looking up a word below.", "the practice stage");
+    await until(() => document.getElementById("setup-practice-instruction")?.textContent.startsWith("Try looking up a word below."), "the practice stage");
     const outcomeNote = document.querySelector(".setup-anki-outcome");
     const practice = emptyReplyShown && ankiRequests() === 3 && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
       && checkedHeading === "Anki is set up"
       && outcomeNote?.dataset.status === "configured"
       && outcomeNote.textContent === "Automatically set up Kiku v2 for deck ‘Mining::Words’. Change in Settings."
       && outcomeNote.querySelector('a[href="settings.html#anki"]') !== null
-      && document.getElementById("setup-body").textContent.includes("Hold Control and hover over the Japanese below")
-      && document.querySelector(".setup-practice-sample")?.textContent === "朝ごはんを食べる。"
-      && status().textContent === "" && !status().classList.contains("is-error")
+      && document.getElementById("setup-body").textContent.includes("Hold Control and hover")
+      && status().textContent === "You’re ready." && !status().classList.contains("is-error")
       && document.getElementById("setup-finish") !== null && doneSteps() === 2;
+    const scene = document.getElementById("setup-practice-text");
+    const word = document.getElementById("setup-practice-word");
+    scene.focus();
+    window.getSelection().selectAllChildren(word);
+    storage({ options: { newValue: { ...options, revision: options.revision + 1, activationKey: "Shift" } } });
+    const practicePreserved = document.getElementById("setup-practice-text") === scene
+      && window.getSelection().toString() === "辞書" && document.activeElement === scene
+      && document.getElementById("setup-practice-instruction").textContent.includes("Hold Shift");
     document.getElementById("setup-finish").click();
     await until(() => pendingReply !== null, "the finish write");
     const finishRequest = reply({ state: { ...setupState, revision: 10, stage: "complete", completedAt: "2026-09-07T10:05:00.000Z" } });
@@ -6287,7 +6470,7 @@ async function startupPageStage() {
       && heading() === "Setup is complete." && currentStep() === null && doneSteps() === 3
       && document.getElementById("setup-actions").childElementCount === 0;
     return { requestFailed, attached, determinate, ordered, indeterminate, installing, installed, failedRow, failureView, focusKept, continued,
-      retried, oldRunIgnored, success, heldAtThree, advanced, practice, finished };
+      retried, oldRunIgnored, success, heldAtThree, advanced, practice, practicePreserved, finished };
   } finally {
     window.close();
   }
@@ -6370,7 +6553,7 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, optio
   };
 }
 
-const PRACTICE_SENTENCE_TEXT = "朝ごはんを食べる。";
+const PRACTICE_SENTENCE_TEXT = "踏切の向こうから蝉の声が響く。喧騒を離れて路地に佇むと、古びた辞書で見つけた言葉が、目の前の景色と少しずつ結びついていく。";
 
 // The reader scripts the practice step appends, in order, and the order the
 // manifest itself gives them: the page must follow that list, not a copy.
@@ -6558,8 +6741,7 @@ async function startupPracticeStage() {
     anki: { status: "unavailable", detail: "Open Anki with the AnkiConnect add-on installed, then retry.", model: null, deck: null } };
   // A frequency-only package cannot answer a term lookup.
   const frequencyOnly = [{ id: "jiten", title: "Jiten", sourceId: "jiten", enabled: true, termCount: 0, frequencyCount: 9 }];
-  // The engine answers the sentence only from the verb onwards, the way a real
-  // library that holds 食べる but not 朝ごはん would.
+  // The engine answers only from 辞書 onwards, inside the actual scene passage.
   let libraryAnswers = true;
   // A dictionary mutation refuses the first pass, the way Settings publishing a
   // reimport does; the sentence must be asked again rather than written off.
@@ -6581,30 +6763,30 @@ async function startupPracticeStage() {
       return { ok: false, error: "the dictionary engine is busy mutating" };
     }
     return { generation: 3, dictionaryCount: 1,
-      results: libraryAnswers && message.text.startsWith("食べる") ? [{ term: "食べる", matched: "食べる" }] : [] };
+      results: libraryAnswers && message.text.startsWith("辞書") ? [{ term: "辞書", matched: "辞書" }] : [] };
   };
   const page = startupCase(jsdom, { setup, dictionaries: frequencyOnly, lookup: answersVerb,
     status: () => recovering.shift() ?? {},
     reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
   const { document } = page;
-  const sample = () => document.querySelector(".setup-practice-sample");
+  const sample = () => document.querySelector("#setup-practice-scene:not([hidden]) #setup-practice-text");
   try {
     await page.load();
     await page.until(() => page.heading() === "You’re ready.", "the final step without a usable dictionary");
     const withoutDictionary = sample() === null && readerScripts(document).length === 0
-      && document.getElementById("setup-body").textContent.includes("No enabled dictionary can answer a lookup yet")
+      && document.getElementById("setup-body").textContent.includes("Install or enable a term dictionary")
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
       && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"]);
     // A term dictionary arrives: the exercise appears and the reader is fetched once.
     page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }]);
-    await page.until(() => page.heading() === "You’re ready. Try looking up a word below.", "the practice exercise");
-    // The refused pass stopped at once and was retried; then every offset was
-    // tried until the verb answered, and none after it.
-    const probed = JSON.stringify(page.lookups()) === JSON.stringify(["朝ごはんを食べる。",
-      "朝ごはんを食べる。", "ごはんを食べる。", "はんを食べる。", "んを食べる。", "を食べる。", "食べる。"]);
-    const invited = withoutDictionary && probed && sample()?.textContent === "朝ごはんを食べる。" && sample().lang === "ja"
-      && document.getElementById("setup-body").textContent.includes("Hover over the Japanese below to look it up.")
+    await page.until(() => sample() !== null, "the practice exercise");
+    // The refused exact-selection query is retried once; its hit settles the
+    // exercise without a second sweep over the passage.
+    const expected = ["辞書", "辞書"];
+    const probed = JSON.stringify(page.lookups()) === JSON.stringify(expected);
+    const invited = withoutDictionary && probed && sample()?.textContent === PRACTICE_SENTENCE_TEXT && sample().lang === "ja"
+      && document.getElementById("setup-body").textContent.includes("Hover over Japanese text, or use the lookup button.")
       && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
       && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"])
       // jsdom does not run appended scripts, so the chain stops at the first one.
@@ -6619,7 +6801,7 @@ async function startupPracticeStage() {
     const sampleNode = sample();
     const beforeGroups = page.lookups().length;
     page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 43 }]);
-    await page.until(() => page.heading() === "You’re ready. Try looking up a word below.", "the undisturbed exercise");
+    await page.until(() => sample() !== null, "the undisturbed exercise");
     const groupWriteIgnored = page.lookups().length === beforeGroups && sample() === sampleNode;
     // The answering package is removed while an unrelated term dictionary stays:
     // a previously successful probe must not keep the invitation standing.
@@ -6629,10 +6811,50 @@ async function startupPracticeStage() {
     await page.until(() => page.document.getElementById("setup-body").textContent.includes("do not have the words in this sample"),
       "the retired invitation");
     const reprobed = loadedOnce && groupWriteIgnored && sample() === null
-      && page.lookups().length === beforeRetire + [...PRACTICE_SENTENCE_TEXT].length;
+      && page.lookups().length === beforeRetire + [...PRACTICE_SENTENCE_TEXT].length + 1;
+    const partial = await startupPracticePartial(jsdom, setup);
     const offHover = await startupPracticeWithoutHover(jsdom, setup);
     const unanswerable = await startupPracticeUnanswerable(jsdom, setup);
-    return { withoutDictionary, invited, loadedOnce, reprobed, offHover, unanswerable };
+    return { withoutDictionary, invited, loadedOnce, reprobed, partial, offHover, unanswerable };
+  } finally {
+    page.window.close();
+  }
+}
+
+// A prefix hit cannot answer the button's exact selection. Other passage words
+// remain useful, even with a hover scan shorter than the selected button word.
+async function startupPracticePartial(jsdom, setup) {
+  const requests = [];
+  let shortcutAnswers = false;
+  const library = [{ id: "partial", title: "Partial", enabled: true, termCount: 1 }];
+  const page = startupCase(jsdom, { setup, dictionaries: library,
+    options: { revision: 1, scanLength: 1, maxResults: 7 },
+    lookup: (message) => {
+      requests.push(message);
+      let matched = "踏";
+      if (message.text === "辞書") matched = shortcutAnswers ? "辞書" : "辞";
+      return { results: [{ term: matched, matched }] };
+    },
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  const { document } = page;
+  try {
+    await page.load();
+    const scene = document.getElementById("setup-practice-scene");
+    const lookup = document.getElementById("setup-practice-lookup");
+    await page.until(() => !scene.hidden, "the passage-only exercise");
+    const partial = lookup.hidden && lookup.disabled && !document.getElementById("setup-practice-tools").hidden
+      && document.getElementById("setup-practice-recovery").hidden
+      && document.getElementById("setup-practice-instruction").textContent === "Try looking up a word below. Hover over Japanese text."
+      && readerScripts(document).length === 1
+      && JSON.stringify(requests.map(({ text, scanLength, maxResults }) => [text, scanLength, maxResults]))
+        === JSON.stringify([["辞書", 2, 7], [PRACTICE_SENTENCE_TEXT, 1, 1]]);
+    shortcutAnswers = true;
+    page.library([{ ...library[0], revision: "with-shortcut" }]);
+    await page.until(() => !lookup.hidden, "the newly answerable shortcut");
+    return partial && requests.length === 3 && requests[2].text === "辞書"
+      && document.getElementById("setup-practice-scene") === scene
+      && document.getElementById("setup-practice-instruction").textContent.includes("lookup button")
+      && readerScripts(document).length === 1;
   } finally {
     page.window.close();
   }
@@ -6651,15 +6873,15 @@ async function startupPracticeUnanswerable(jsdom, setup) {
     await nothing.load();
     await nothing.until(() => nothing.document.getElementById("setup-body").textContent.includes("do not have the words in this sample"),
       "the unanswerable sample");
-    const missing = nothing.document.querySelector(".setup-practice-sample") === null
+    const missing = nothing.document.querySelector("#setup-practice-tools").hidden === true
       && readerScripts(nothing.document).length === 0
-      && nothing.lookups().length === [..."朝ごはんを食べる。"].length
+      && nothing.lookups().length === [...PRACTICE_SENTENCE_TEXT].length + 1
       && nothing.document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null;
     await offline.load();
     await offline.until(() => offline.document.getElementById("setup-body").textContent.includes("on any webpage"),
       "the unavailable engine");
     // A refused engine is asked again before the step gives up on this page.
-    const unavailable = offline.document.querySelector(".setup-practice-sample") === null
+    const unavailable = offline.document.querySelector("#setup-practice-tools").hidden === true
       && readerScripts(offline.document).length === 0 && offline.lookups().length > 1;
     return missing && unavailable;
   } finally {
@@ -6677,7 +6899,7 @@ async function startupPracticeWithoutHover(jsdom, setup) {
   try {
     await page.load();
     await page.until(() => page.heading() === "You’re ready.", "the final step with lookups off");
-    return page.document.querySelector(".setup-practice-sample") === null
+    return page.document.querySelector("#setup-practice-tools").hidden === true
       && readerScripts(page.document).length === 0
       && page.document.getElementById("setup-body").textContent.includes("Lookups are turned off")
       && page.document.querySelector('#setup-body a[href="settings.html#lookup"]') !== null
@@ -6754,8 +6976,32 @@ async function sourceHighlightStage() {
     disposableView.destroy();
     const mutations = replacement && stale && detached && shadowDetached && ranges().length === 0
       && window.CSS.highlights.get("page-owned") === unrelated && window.getSelection().toString() === "Keep selection";
+    // A screenshot must not contain the highlight: publication stops for as long
+    // as it is suspended, including for a match that arrives meanwhile, and the
+    // exact ranges come back when it is released.
+    highlighter.clearAll();
+    const suspendSource = document.createElement("p");
+    suspendSource.textContent = "食べる";
+    document.body.append(suspendSource);
+    const suspendScope = highlighter.scope("suspend");
+    const suspendCandidate = { sourceElements: [suspendSource], sentence: suspendSource.textContent, matchOffset: 0 };
+    suspendScope.apply(suspendCandidate, "食べる");
+    const publishedBefore = texts() === "食べる";
+    const releaseFirst = highlighter.suspend();
+    const releaseSecond = highlighter.suspend();
+    const suspendedEmpty = ranges().length === 0;
+    suspendScope.clear();
+    suspendScope.apply(suspendCandidate, "食べる");
+    const suspendedQuiet = ranges().length === 0;
+    releaseFirst();
+    releaseFirst();
+    const heldBySecond = ranges().length === 0;
+    releaseSecond();
+    const restored = publishedBefore && suspendedEmpty && suspendedQuiet && heldBySecond && texts() === "食べる";
+    highlighter.clearAll();
+    suspendSource.remove();
     const fallback = await sourceHighlightFallbackCase(window);
-    return { ownership, mutations, fallback, visits, replacement, stale };
+    return { ownership, restored, mutations, fallback, visits, replacement, stale };
   } finally {
     highlighter.clearAll();
     window.close();

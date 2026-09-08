@@ -194,8 +194,13 @@ state has already reached the requested stage — a second tab making the same
 move is the move this page asked for, not a failure — and a storage
 event that arrives while a write is in flight renders once with the reply. A
 stage change moves focus to the card heading; an inventory or progress update
-keeps focus on the control that had it. Finish records completion and closes
-the tab. Settings shows **Resume setup** in its sidebar while
+keeps focus on the control that had it. Dictionary rows and their progress
+elements remain mounted while their text and values change. The practice scene
+also stays mounted across same-stage updates, preserving reader ranges, popup
+anchors and Note drafts. Heading changes and settled dictionary outcomes are
+announced; bytes and countdown ticks are not live announcements. Finish records
+completion and closes the tab; if closing fails, a completed view stays readable
+with its Settings link. Settings shows **Resume setup** in its sidebar while
 `stage !== "complete"`, so closing the tab loses nothing.
 
 ### Dictionary stage
@@ -338,60 +343,95 @@ on its own.
 
 ![The final step after an automatically configured Anki, dark palette](assets/startup-anki-dark.png)
 
-### Practice step
+### Practice and saved pages
 
-The last step is the real reader, on the startup page. When that step renders
-and the current inventory holds an enabled package that can answer a term
-lookup, the page appends the packaged reader scripts once, in the order the
-manifest itself lists them: it reads its own `content_scripts` entry through
-`chrome.runtime.getManifest()` and skips `reader-options.js`, which the startup
-module already loaded, so a reordered or extended reader cannot leave this step
-running a different one. `content.css` comes with the page.
-Nothing is fetched before that step, so the installation and Anki screens are
-never scanned, and a script that fails to load leaves the sentence and its
-instructions readable with the reason in the card's live region.
+`startup-practice.js` supplies the **Try it** scene and a Japanese passage about
+the street shown in the background. The scene and Design preview share
+`visual-novel.css` and the repository owner's supplied artwork, preserved
+unchanged. Its source and copyright declaration are recorded in
+[asset ownership](asset-rights.md). The longer practice passage has a readable
+dialogue surface that grows with its text at narrow widths.
 
-`content.js` is a content script everywhere except this extension's own pages,
-where Chrome does not inject it at all. Its own guard now permits exactly the
-startup page URL, so these scripts do nothing when they are loaded into
-Settings, the design preview or any other internal page. The exercise then uses
-the ordinary path: the same runtime lookup messages, the installed dictionaries,
-the real WebAssembly engine and the same closed-shadow popup, including its
-first-install dark appearance and compact summaries.
+The practice view loads the reader once after proving the exercise can be
+answered. `startup.js` takes the complete dependency order from the manifest's
+`content_scripts` entry through `chrome.runtime.getManifest()`, skipping only
+`reader-options.js`, which the startup module already loaded. This includes
+new reader dependencies such as the media-capture collector without maintaining
+a second static list. `content.css` comes with the page; no reader scripts load
+during the dictionary or Anki stages. Hover instructions follow
+the active mode and activation key. The **Look up 辞書** button focuses the
+sentence and selects that word through the reader’s existing exact-selection
+route, so it also works from the keyboard. It appears only when that exact
+selection can be answered. All exercise lookups use ordinary
+runtime messages, the installed dictionaries, WASM, popup renderer and styles.
+No sample result is substituted. Among extension pages the reader permits only
+this extension’s `startup.html`, with either no fragment or the native skip
+link's `#setup-heading`. Query variants, unknown fragments, Settings and the
+static design preview remain excluded. The skip handler focuses the heading
+directly; a fragment created before it attaches still works after reload.
 
-The card shows the instruction that matches the current `lookupMode` — hover, or
-holding the configured activation key — and one sentence to try,
-**朝ごはんを食べる。** The sentence sits in the dialogue panel of the
-repository owner's visual novel artwork. The scene and Design preview share
-`visual-novel.css` and the packaged, unchanged image; its source and copyright
-declaration are recorded in [asset ownership](asset-rights.md). The
-practice scene uses ordinary selectable page text, so the real reader can
-highlight it and open a lookup above it. **Finish** and **Open Settings** stay available: the
-exercise is optional. The invitation appears only when it can be answered, and that is
-proved rather than assumed: the page runs an ordinary `hd_lookup` from every
-offset in the sentence, through the same engine the reader would use and with the
-reader's own configured scan length, and stops at the first hit. The answer belongs to
-the engine-visible library it was made against — each package's identity,
-revision, persisted generation path, enabled state and term count — together with
-the lookup options the probe sends, so removing or disabling the package that answered, or shortening
-the scan length, retires it and the sentence is probed again, while a group-only
-or presentation write leaves a ready exercise alone. A library that holds no enabled term dictionary, one that
-cannot answer this sentence, or lookups switched off each get their own sentence
-and the matching Settings link, and none of them loads the reader. A dictionary mutation refuses lookups while it holds the
-engine — including a long generation cleanup — so a refused pass waits for
-`hd_status` to report a ready, idle engine and then asks again. A failed status is
-waited on too, because a status poll is what drives the engine's own reload
-recovery, so the next one can describe a repaired engine, and a failure that is
-itself loading is that recovery in progress rather than a verdict; only an engine
-that is unreachable, one whose status keeps failing while idle, or one that keeps
-refusing while idle, falls back to the
-instruction that is true anywhere, in the mode the user has configured. The
-sentence itself is one node for the life of the page, so a rerender moves it
-rather than replacing it and cannot cancel a lookup already in flight.
+Before inviting a lookup, the page probes **辞書** with the reader's selection
+payload: the word's length and a full matched-text result. If it misses, the
+page probes the actual displayed passage with ordinary `hd_lookup` requests
+from successive character offsets, using the reader's configured scan length
+and stopping at the first hit. A hit on another passage word keeps the exercise
+and reader available, while hiding the unanswered shortcut and omitting it
+from the instructions. No result is
+substituted into the popup. The answer belongs to the engine-visible library:
+each package's identity, title, revision, persisted generation path, enabled
+state and term count, together with the lookup options sent by the probe.
+Changing those retires the invitation and probes again; group-only and
+presentation writes preserve the result and the connected scene. Turning
+lookups off or removing every enabled term dictionary also retires an in-flight
+probe. A library that cannot answer any word in the passage gets a dictionary
+recovery link rather than an invitation.
 
-![The practice step with a real lookup open, light palette](assets/startup-practice.png)
+A dictionary mutation can refuse lookups while publishing or cleaning up a
+generation. The probe waits for `hd_status` to report a ready, idle engine and
+then retries. Recoverable status failures are polled too, since polling drives
+the engine's reload recovery. A failure that is still loading does not exhaust
+the retries. An unreachable engine, repeated idle status failures or repeated
+idle lookup refusals leave recovery and the mode-appropriate instruction for
+reading on another webpage. The optional file-access controls and Finish stay
+available while checking, after a miss and after an engine or reader failure.
 
-![The practice step with a real lookup open, dark palette](assets/startup-practice-dark.png)
+Pronunciation uses the existing audio controller and offscreen player. The
+worker routes startup playback feedback through extension runtime messaging,
+since `tabs.sendMessage` targets content scripts. Before routing it, the worker
+checks the current operation, Chrome-supplied document owner and offscreen
+sender; the controller accepts only its active random request ID. Ordinary
+webpage playback keeps its document-directed tab route.
+
+The Anki outcome remains above the exercise. **Finish** and **Open Settings**
+are available without performing a lookup. If no enabled term dictionary is
+available, the page offers dictionary recovery; if lookups are disabled, it
+links to Reading settings. A reader load failure offers reload or Settings.
+These states do not prevent completing setup.
+
+`local-file-access.js` shares the optional **Read saved pages too** controls
+with **Settings → Reading**. It queries
+`chrome.extension.isAllowedFileSchemeAccess()` before displaying the request
+and shows **Local-file lookups enabled** only after Chrome reports access.
+**Open extension settings** opens only
+`chrome://extensions/?id=${chrome.runtime.id}` in a new tab and leaves the
+instruction to turn on **Allow access to file URLs** and return. Opening the
+details page grants no permission. The controller rechecks on page load,
+visibility return and `pageshow`, ignoring superseded replies; returning with
+access still off leaves the request available. Chrome can close extension tabs
+when the switch reloads Hachidori. The instructions explain how to reopen
+**Extension options** from the details page and choose **Resume setup**; the
+existing persisted setup stage restores the exercise. This does not add another
+automatic activation route. **Not now** dismisses it for the
+current setup page and returns focus to Finish, without marking setup
+incomplete. The bundled extension-page exercise never needs file access.
+
+![Dictionary practice and the optional saved-page prompt, light palette](assets/startup-review-after-practice-desktop-light.png)
+
+![Dictionary practice and the optional saved-page prompt, dark palette](assets/startup-review-after-practice-desktop-dark.png)
+
+[The UI review](startup-ui-review.md) records before/after comparisons,
+narrow layouts and the distinction between controlled screenshot states and
+the real dictionary lookup checks.
 
 ## Hover activation and popup ownership
 
@@ -1351,7 +1391,8 @@ it never holds the dictionary storage queue. Native Anki duplicate search select
 same-model overwrite targets inside the configured deck scope. The six field
 overwrite modes use authoritative field spellings. The initial write sends only
 changed fields; preserved values are omitted instead of written back from the
-earlier snapshot. Pronunciation enrichment compares its complete desired values
+earlier snapshot, including fields restored to that value by a failed media
+upload. Pronunciation enrichment compares its complete desired values
 against the applied text-only write and the current note.
 A lost write acknowledgement is not retried; confirmed note IDs stay successful
 even if readback, enrichment, or subsequent reader refresh fails, including
@@ -1379,6 +1420,80 @@ may still succeed. `{audio}` remains pronunciation audio;
 confirmed note mutation releases its capture job even if field readback later
 warns. An uncertain note mutation retains the job for an explicit retry and is
 neither automatically retried nor followed by automatic media deletion.
+
+### Page screenshot when mining
+
+`{screenshot}` is one viewport picture of the page a note is being made from,
+taken at the moment the user adds it. It is the same media path as any other Anki
+image, not a second one: nothing is captured during hover, preflight, first-run
+discovery or background reading.
+
+The reader takes it. Preflight reports `screenshot: true` when the configured
+mapping contains `{screenshot}` and the Settings switch is on — the whole mapping,
+not the subset that preflight would apply, because the authoritative decision is
+made again inside the write and may apply a field this one would have kept —
+and the content script then hides Hachidori's own overlays: the popup, its image
+preview and the fallback highlight paint all live in one host element, and the
+document-registered source highlight is suspended beside it — the highlighter
+stops publishing for the whole interval, so a lookup that settles while the
+picture is being taken cannot paint into it either, and releasing repaints the
+exact ranges. It waits two frames
+so the change has painted, asks the worker for the picture, and restores
+everything whatever the outcome. The host uses `opacity: 0 !important` so even
+masonry cards with explicit `visibility: visible` remain concealed; its previous
+inline opacity and priority are restored when the last capture finishes.
+The picture is taken before any clip export is
+prepared, so it is of the moment the user clicked rather than of whatever the page
+shows minutes later. Concealment is counted, so one capture cannot
+reveal the reader while another still owns it. The worker validates the request against
+its sender before every attempt: `tabs.captureVisibleTab` takes the window's
+active tab, so the asking tab must still be that tab, and a top-level frame must
+still show the document that asked. The post-capture check also requires the
+same window ID: dragging the reading tab to another window can otherwise leave
+it active while the original window captures a different tab.
+Before and after each attempt, a read-only message addressed to the original
+sender's Chrome document ID must also receive a presence reply. The packaged
+startup reader instead resolves that document ID through Chrome's live TAB
+extension contexts, which supplies its tab ID and confirms the same document
+without content-script messaging. Reloading the
+same URL or retaining an old document in the back/forward cache cannot pass as
+the document that requested the picture.
+Chrome's capture rate limit is honoured with
+one wait and retry, and that wait is long enough to switch tabs, so ownership is
+checked again after it rather than once at the start. The
+reply is the picture's name, not its upload, so the reader shows itself again as
+soon as the pixels are taken. The worker holds that one pending picture and stores
+it through the ordinary `storeMediaFile` gateway under its own
+`hachidori-screenshot-<uuid>.jpg` name inside the queued write, once the
+generation, configuration and duplicate decisions have been made, so duplicate
+checks, overwrite policies and existing values are untouched; preflight and an
+initial rejection upload nothing. Only that note's own picture is consumed, so a
+second Add's newer capture is never taken from it. The worker allocates the request
+token before awaiting capture; a superseded capture completion is refused instead
+of replacing the newer pending bytes. A picture that the applied
+fields turn out not to use — a coalescing field that keeps its existing image — is
+released rather than held. The worker also discards that request's pending bytes
+after an authoritative duplicate, invalid note or preparation error, even when
+the reader has closed before receiving the outcome. A note the final checks or Anki then refuse definitively
+— a configuration change, a lost write ownership, a duplicate, or a clip
+preparation that fails after the picture was stored — has its stored picture
+deleted again, as does a note that goes in without the picture because the store's
+own answer was lost; an uncertain note write keeps it, because the note may exist.
+A submission the reader abandons before sending it releases the picture it took.
+
+A failed or replaced picture stays marked unavailable on the mining request, so
+later pronunciation enrichment cannot restore its image reference in a mixed
+`{screenshot}{audio}` field; valid pronunciation audio still enriches the note.
+A capture or upload that fails is a warning carried with the note's own outcome:
+the marker renders empty — a refused upload also empties the fields that
+referenced the picture, so no note points at an image Anki does not have — the
+note is still added or updated, and nothing invites a duplicate retry. The Kiku and Lapis presets map their verified `Picture` field
+and Senren its `picture` field to this marker, and a first installation has the
+switch on, so a recognised mining setup gets screenshots without further
+configuration. A note type without a picture field maps nothing and captures
+nothing, and `{screenshot}` is refused in the first Anki field for the same
+reason as the other captured media: a note's identity cannot be a fresh picture
+name.
 
 ## Generic media capture
 

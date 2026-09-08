@@ -117,6 +117,65 @@ test("overwrite mode still prevents an external duplicate created after prefligh
   assert.equal((await f.service.submit({ expression: "猫", configKey })).state, "duplicate");
 });
 
+test("the screenshot requirement follows the configured mapping and the Settings switch", async () => {
+  const f = fixture();
+  const term = { expression: "猫", reading: "" };
+  const preflight = async () => {
+    const { configKey } = await f.service.status();
+    return f.service.preflight({ term, expression: "猫", generation: 3, configKey });
+  };
+  // Nothing maps {screenshot}: the reader is not asked to take one.
+  assert.equal((await preflight()).screenshot, false);
+
+  const templates = { Front: { value: "{expression}", overwriteMode: "overwrite" },
+    Back: { value: "{screenshot}", overwriteMode: "overwrite" } };
+  f.change({ fieldTemplates: templates });
+  f.dependencies.buildFields = async () => ({ fields: { Front: "猫", Back: "" }, templates });
+  assert.equal((await preflight()).screenshot, true);
+
+  // The switch is the user's, so a mapped screenshot they turned off is not taken.
+  f.change({ captureScreenshot: false });
+  assert.equal((await preflight()).screenshot, false);
+});
+
+test("a coalesced screenshot remains prepared when the overwrite target disappears before writing", async () => {
+  for (const unavailable of [false, true]) {
+    const f = fixture();
+    f.change({ duplicateBehavior: "overwrite", duplicateScope: "collection", fieldTemplates: {
+      Front: { value: "{expression}", overwriteMode: "overwrite" },
+      Back: { value: "{screenshot}", overwriteMode: "coalesce" },
+    } });
+    let targetPresent = true, preparations = 0, saved;
+    const invoke = f.gateway.invoke;
+    f.gateway.invoke = async (action, params) => {
+      if (action === "canAddNotesWithErrorDetail" && targetPresent) {
+        return [{ canAdd: false, error: "cannot create note because it is a duplicate" }];
+      }
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "findNotes") return [42];
+      if (action === "notesInfo" && targetPresent) return [{ noteId: 42, modelName: "Basic",
+        fields: { Front: { value: "猫" }, Back: { value: '<img src="existing.jpg">' } } }];
+      if (action === "addNote") saved = params.note.fields;
+      return invoke(action, params);
+    };
+    const service = createAnkiMiningService({ ...f.dependencies,
+      buildFields: async request => ({ fields: { Front: "猫", Back: request.screenshot
+        ? `<img src="${request.screenshot.filename}">` : "" } }),
+      beforeWrite: async () => { preparations++; } });
+    const { configKey } = await service.status();
+    const request = { expression: "猫", configKey };
+    assert.equal((await service.preflight(request)).screenshot, true);
+    assert.equal(preparations, 0, "preflight must not upload media");
+    assert.equal(f.calls.includes("addNote"), false);
+    targetPresent = false;
+    const attempted = unavailable ? { captureUnavailable: ["screenshot"] }
+      : { screenshot: { token: "picture", filename: "picture.jpg" } };
+    assert.equal((await service.submit({ ...request, ...attempted })).state, "added");
+    assert.equal(preparations, 1, "a captured or explicitly unavailable picture permits the write");
+    assert.equal(saved.Back, unavailable ? "" : '<img src="picture.jpg">');
+  }
+});
+
 test("overwrite leaves preserved fields out of the mutation when Anki changes during preparation", async () => {
   const f = fixture();
   const fieldTemplates = {

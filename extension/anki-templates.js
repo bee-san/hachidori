@@ -9,7 +9,7 @@ const CORE_MARKERS = ["expression", "reading", "furigana", "furigana-plain", "di
   "sentence", "sentence-furigana", "sentence-furigana-plain", "cloze-prefix", "cloze-body", "cloze-suffix",
   "frequency", "frequencies", "frequency-harmonic-rank", "frequency-harmonic-occurrence", "frequency-average-rank",
   "frequency-average-occurrence", "pitch", "pitch-position", "pitch-accent-positions", "pitch-categories",
-  "pitch-accent-categories", "audio", "capture-animation", "capture-audio"];
+  "pitch-accent-categories", "audio", "capture-animation", "capture-audio", "screenshot"];
 export const ANKI_TEMPLATE_MARKERS = CORE_MARKERS;
 const MARKER_ALIASES = new Map([["pitch-accent", "pitch"], ["pitch-accents", "pitch"],
   ["pitch-accent-graphs", "pitch"], ["pitch-accent-graphs-jj", "pitch"]]);
@@ -29,6 +29,7 @@ const genericAliases = {
 // donkuri/lapis f4eb29bd build/anki_fields.yaml; non-mining fields stay blank.
 const KIKU = {
   Expression: "{expression}", ExpressionFurigana: "{furigana-plain}", ExpressionReading: "{reading}", ExpressionAudio: "{audio}",
+  Picture: "{screenshot}",
   SelectionText: "{popup-selection-text}", MainDefinition: "{main-definition}", Glossary: "{glossary}",
   Sentence: "{cloze-prefix}<b>{cloze-body}</b>{cloze-suffix}", SentenceFurigana: "{sentence-furigana-plain}",
   PitchPosition: "{pitch-accent-positions}", PitchCategories: "{pitch-accent-categories}", Frequency: "{frequencies}",
@@ -44,6 +45,7 @@ const SENREN = {
   selectionText: "{popup-selection-text}", definition: "{main-definition}", wordAudio: "{audio}", glossary: "{glossary}",
   pitchAccents: "{pitch}", pitchPositions: "{pitch-accent-positions}", pitchCategories: "{pitch-accent-categories}",
   frequencies: "{frequencies}", freqSort: "{frequency-harmonic-rank}", miscInfo: "{document-title}",
+  picture: "{screenshot}",
 };
 const fieldKey = value => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 const knownMarker = value => MARKERS.has(value) || DYNAMIC_PREFIXES.some(prefix => value.startsWith(prefix) && value.length > prefix.length);
@@ -69,6 +71,7 @@ export function ankiCaptureRequirements(templates) {
   return {
     includeAnimation: markers.has("capture-animation"),
     includeAudio: markers.has("capture-audio"),
+    includeScreenshot: markers.has("screenshot"),
   };
 }
 

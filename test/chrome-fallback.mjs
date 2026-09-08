@@ -220,8 +220,24 @@ async function inspect(page) {
   });
 }
 
+// The default window is narrow, so Settings shows its section picker instead of
+// the sidebar links; either route must reach the section.
+async function showSection(page, id) {
+  await page.evaluate(section => {
+    const picker = document.getElementById("settings-section");
+    if (picker.checkVisibility()) {
+      picker.value = section;
+      picker.dispatchEvent(new Event("change", { bubbles: true }));
+    } else document.querySelector(`.settings-nav a[href="#${section}"]`).click();
+  }, id);
+  await page.waitForFunction(section => {
+    const visible = [...document.querySelectorAll("main > section")].filter(node => !node.hidden);
+    return visible.length === 1 && visible[0].id === section;
+  }, { timeout: 30_000, polling: 100 }, id);
+}
+
 async function saveCustomDictionary(page) {
-  await page.evaluate(() => { location.hash = "#custom-dictionary"; });
+  await showSection(page, "custom-dictionary");
   await page.waitForSelector("#custom-dictionary-open", { visible: true });
   await page.click("#custom-dictionary-open");
   await page.waitForFunction(() => {
@@ -273,7 +289,7 @@ try {
     return expected.every((sourceId) => outcomes[sourceId]?.status === "failed") && setupState.dictionaries.totalSeconds !== null;
   }, { timeout: 120_000, polling: 100 }, RECOMMENDED_DICTIONARIES.map((entry) => entry.sourceId));
   assert.deepEqual([...setupArchiveRequests].sort(), RECOMMENDED_DICTIONARIES.map((entry) => entry.sourceId).sort());
-  await page.evaluate(() => { location.hash = "#add-dictionaries"; });
+  await showSection(page, "add-dictionaries");
   await page.waitForSelector("#import-file", { visible: true });
   const input = await page.$("#import-file");
   await input.uploadFile(FIXTURE);
