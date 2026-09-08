@@ -375,12 +375,13 @@ function resizeDesignPreview() {
 
 function attachSettingsNavigation() {
   element("design-preview-disclosure").open = window.innerWidth > 1100;
-  element("settings-section").addEventListener("change", (event) => {
+  const picker = element("settings-section");
+  picker.addEventListener("change", (event) => {
     const fragment = `#${event.target.value}`;
-    if (window.location.hash === fragment) showSettingsSection(true);
+    if (window.location.hash === fragment) showSettingsSection();
     else window.location.hash = fragment;
   });
-  window.addEventListener("hashchange", () => showSettingsSection(true));
+  window.addEventListener("hashchange", () => showSettingsSection(document.activeElement !== picker));
   document.querySelector(".skip-link").addEventListener("click", (event) => {
     event.preventDefault();
     element("settings-content").focus();
@@ -1757,7 +1758,7 @@ function renderDictionaries(reuseRows = false) {
   element("empty-clear-search").hidden = isEmpty;
   element("dict-reorder-help").hidden = isEmpty;
   empty.hidden = visible.length > 0;
-  renderEngineStatus();
+  if (!element("engine-status").classList.contains("is-error")) renderEngineStatus();
   renderDictionarySelection(visible);
   setControlsDisabled(importing);
 }

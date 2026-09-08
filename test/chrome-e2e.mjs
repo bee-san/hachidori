@@ -6832,7 +6832,7 @@ async function main() {
     await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
     narrowThemes.push(await page.evaluate(() => {
       const width = document.documentElement.clientWidth;
-      const inputs = [...document.querySelectorAll("#lookup input, #lookup select")];
+      const inputs = [...document.querySelectorAll("#lookup input, #lookup select")].filter(input => input.checkVisibility());
       return {
         noOverflow: document.documentElement.scrollWidth <= width,
         fieldsFit: inputs.every((input) => {

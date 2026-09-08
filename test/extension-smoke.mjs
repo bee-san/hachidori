@@ -5285,7 +5285,8 @@ async function main() {
   const recommendedSettings = await settingsRecommendedImportStage();
   check(
     "settings install the trusted catalogue sequentially and retry only missing entries",
-    recommendedSettings?.clean.starterHidden === false
+    recommendedSettings?.initialActionsHidden === true
+      && recommendedSettings.clean.starterHidden === false
       && recommendedSettings.clean.installHidden === false
       && recommendedSettings.clean.retryHidden === true
       && recommendedSettings.clean.localImportVisible === true
@@ -7884,6 +7885,8 @@ async function settingsRecommendedImportStage() {
     },
   };
   loadSettingsScript(window);
+  const initialActionsHidden = window.document.getElementById("dict-empty").hidden
+    && window.document.getElementById("recommended-starter").hidden;
 
   const deadline = Date.now() + 2000;
   while (!window.document.getElementById("engine-status")?.textContent?.startsWith("Ready")
@@ -7929,6 +7932,7 @@ async function settingsRecommendedImportStage() {
     await new Promise((done) => window.setTimeout(done, 5));
   }
   const result = {
+    initialActionsHidden,
     clean,
     fetches,
     imports,
@@ -8140,7 +8144,7 @@ async function settingsManagedUpdatesStage() {
   const initialReadBlocked = window.document.getElementById("update-schedule").disabled;
   releaseInitialRead();
 
-  await waitSchedule(() => !(!window.document.getElementById("engine-status")?.textContent?.startsWith("Ready")));
+  await waitSchedule(() => window.document.getElementById("engine-status")?.textContent?.startsWith("Ready"));
   const managedRow = () => window.document.querySelector('[data-dictionary-id="managed-id"]');
   const insecureRow = () => window.document.querySelector('[data-dictionary-id="insecure-id"]');
   const localRow = () => window.document.querySelector('[data-dictionary-id="local-id"]');
@@ -8160,14 +8164,14 @@ async function settingsManagedUpdatesStage() {
   };
 
   window.document.getElementById("update-check-now")?.click();
-  await waitSchedule(() => !(!updateRequests.some((request) => request.type === "hd_updates_check")));
-  await waitSchedule(() => !(window.document.getElementById("update-check-now")?.disabled));
+  await waitSchedule(() => updateRequests.some((request) => request.type === "hd_updates_check"));
+  await waitSchedule(() => !window.document.getElementById("update-check-now")?.disabled);
   result.checkRequest = updateRequests.find((request) => request.type === "hd_updates_check");
   result.checkedState = window.document.getElementById("update-state")?.textContent ?? "";
 
   managedRow()?.querySelector(".dict-update")?.click();
-  await waitSchedule(() => !(updateRequests.filter((request) => request.type === "hd_updates_install").length < 1));
-  await waitSchedule(() => !(managedRow()?.querySelector(".dict-update-status")?.textContent?.includes("Update available")));
+  await waitSchedule(() => updateRequests.filter((request) => request.type === "hd_updates_install").length >= 1);
+  await waitSchedule(() => managedRow()?.querySelector(".dict-update-status")?.textContent?.startsWith("Up to date"));
   result.oneRequest = updateRequests.find((request) => request.type === "hd_updates_install");
   result.afterOneStatus = managedRow()?.querySelector(".dict-update-status")?.textContent ?? "";
 
@@ -8184,8 +8188,8 @@ async function settingsManagedUpdatesStage() {
   });
   await new Promise((done) => window.setTimeout(done, 0));
   window.document.getElementById("update-all")?.click();
-  await waitSchedule(() => !(updateRequests.filter((request) => request.type === "hd_updates_install").length < 2));
-  await waitSchedule(() => !(window.document.getElementById("update-check-now")?.disabled));
+  await waitSchedule(() => updateRequests.filter((request) => request.type === "hd_updates_install").length >= 2);
+  await waitSchedule(() => !window.document.getElementById("update-check-now")?.disabled);
   result.allRequest = updateRequests.filter((request) => request.type === "hd_updates_install")[1];
 
   const schedule = window.document.getElementById("update-schedule");
@@ -8193,7 +8197,7 @@ async function settingsManagedUpdatesStage() {
     schedule.value = "daily";
     schedule.dispatchEvent(new window.Event("change", { bubbles: true }));
   }
-  await waitSchedule(() => !(!updateRequests.some((request) => request.type === "hd_updates_schedule")));
+  await waitSchedule(() => updateRequests.some((request) => request.type === "hd_updates_schedule"));
   await new Promise((done) => window.setTimeout(done, 0));
   result.scheduleRequest = updateRequests.find((request) => request.type === "hd_updates_schedule");
 
