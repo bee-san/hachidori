@@ -3940,6 +3940,23 @@ async function checkAnkiGlossaryExport(page) {
   } finally { page.off("request", observe); }
 }
 
+async function hoverPracticeCharacter(startup, index) {
+  const point = await startup.evaluate((at) => {
+    const source = document.getElementById("setup-practice-word");
+    source?.scrollIntoView({ block: "nearest" });
+    const text = source?.firstChild;
+    if (!text) return null;
+    const range = document.createRange();
+    range.setStart(text, at);
+    range.setEnd(text, at + 1);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  }, index);
+  if (point === null) return;
+  await startup.mouse.move(2, 2);
+  await startup.mouse.move(point.x, point.y);
+}
+
 async function checkStartupPractice(startup, browser, startupUrl) {
   // Native skip navigation can precede startup.js's click handler. Reload that
   // exact URL so a fresh reader must accept the fragment, not an earlier reader
@@ -3995,7 +4012,10 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   await startup.keyboard.press("Escape");
   const escaped = await popup.waitForHidden();
   await startup.evaluate(() => getSelection().removeAllRanges());
-  const hovered = await hoverForPopup(startup, popup, "#setup-practice-word");
+  // The two-character word may wrap; its aggregate span box includes other
+  // text between the end of one line and the beginning of the next.
+  await hoverPracticeCharacter(startup, 0);
+  const hovered = await popup.waitForVisible();
   const genuine = state => state?.plain.includes("辞書")
     && state.text.includes(`${RECOMMENDED_DICTIONARIES[0].title} term fixture`);
   check("startup practice uses the installed dictionaries through keyboard selection and the ordinary reader",
@@ -6721,26 +6741,10 @@ async function main() {
     // Reuse the reviewed scene's dictionary word, aiming at its own rectangle.
     await startup.keyboard.press("Escape");
     await startup.evaluate(() => window.getSelection().removeAllRanges());
-    const hoverCharacter = async (index) => {
-      const point = await startup.evaluate((at) => {
-        const source = document.getElementById("setup-practice-word");
-        source?.scrollIntoView({ block: "nearest" });
-        const text = source?.firstChild;
-        if (!text) return null;
-        const range = document.createRange();
-        range.setStart(text, at);
-        range.setEnd(text, at + 1);
-        const rect = range.getBoundingClientRect();
-        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-      }, index);
-      if (point === null) return;
-      await startup.mouse.move(2, 2);
-      await startup.mouse.move(point.x, point.y);
-    };
     let looked = null;
     const startedLookup = Date.now();
     for (let attempt = 0; attempt < 12 && looked === null; attempt += 1) {
-      await hoverCharacter(0);
+      await hoverPracticeCharacter(startup, 0);
       looked = await startupPopup.waitForVisible(2000);
     }
     // Chrome reports no Resource Timing for extension-scheme subresources, so
@@ -6753,7 +6757,7 @@ async function main() {
       for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_PRACTICE_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_PRACTICE_DARK_SCREENSHOT]]) {
         if (!path) continue;
         await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
-        await hoverCharacter(0);
+        await hoverPracticeCharacter(startup, 0);
         await startupPopup.waitForVisible(2000);
         await startup.screenshot({ path, fullPage: true });
       }
