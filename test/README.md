@@ -321,7 +321,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 460 checks, all of
+full request→reply round trip per contract-C message type. 470 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -356,6 +356,9 @@ What it proves, in order:
    stationary keydown, physical-code release and repeats, transfer/Note ownership,
    interaction-only resource retention, focused-control pointer protection, and
    cancellation of the first pending popup on departure/click/Escape/blur/scroll.
+   A successful hover expands its initial one-glyph placement range to the
+   complete matched word before rendering. Text moved outside the source during
+   a pending lookup retains the original glyph anchor.
    Hidden cleanup skips scroll writes; visible term, kanji and notice renders
    reset scrolling. Master disable cancels scans and
    stale replies without rolling back or refreshing a successful Note append.
@@ -717,7 +720,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 183 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 191 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -735,7 +738,9 @@ pointer drag, keyboard position movement, capability-aware chooser migration,
 and clicked-kanji navigation, and hovers real
 text with a real mouse on a page served over `http://127.0.0.1` (content scripts do not run on
 `chrome-extension://`, `about:blank`, or `file://` without a per-extension
-opt-in), then relaunches against the same profile and hovers again with no
+opt-in). A wrapped cross-inline match proves the popup sits outside the complete
+matched range rather than positioning against only the hovered glyph. The test
+then relaunches against the same profile and hovers again with no
 re-import — which is the only test that proves direct OPFS persistence through a
 full Chrome restart.
 
