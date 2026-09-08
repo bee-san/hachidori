@@ -518,6 +518,54 @@ and Show more; an unchanged delivery performs no metadata rebuild.
 
 ![Independent pitch contour and IPA with typed frequency averages](assets/metadata-popup.png)
 
+## Lookup statistics and definition blur
+
+The reader displays a result before dispatching its independent statistics and
+optional Anki maturity requests. Lookup statistics retain their serialized
+descriptor-plus-term/reading-row transaction; neither the reader nor the worker
+scans the statistics collection. See [lookup statistics](lookup-statistics.md)
+for recording, corpus Seen, revision adoption and backup behavior.
+
+`definitionBlurEnabled` remains the count criterion and requires
+`showLookupCounts`. The independent, default-off `definitionBlurAnkiMature`
+criterion combines with it through the shared `definitionBlurQualifies` OR
+rule. Its subject is the logical request's first canonical expression, retained
+through tab projections, Show more, Note refresh and Back. Native kanji entries
+remain outside term blur.
+
+The worker handles `hd_anki_maturity` separately from its Anki mutation queue,
+dictionary engine and storage-write queue. It reads the saved Anki note type
+and dedicated plain `{expression}` field, then makes one AnkiConnect
+`findCards` query across all decks for review cards with an interval of at least
+21 days, explicitly excluding relearning. This implements
+[Anki's mature-card definition](https://docs.ankiweb.net/getting-started.html#card-states).
+It uses the existing loopback gateway, API key and timeout. It does not perform
+discovery, render mining fields, fetch media, or write the collection. Missing
+or unsupported mappings, failed requests and malformed replies fail open.
+Fields named Anki search operators, such as `note` or `deck`, are skipped so
+their names cannot broaden the query beyond the exact expression.
+Maturity evidence belongs only to that request; there is no persistent cache or
+offline mirror of Anki's collection.
+
+Each request owns one blur decision and the original first-display deadline.
+Pending rules hide definitions immediately, and qualifying evidence can settle
+the combined decision without waiting for the other rule. Otherwise both
+enabled rules must finish before releasing the held first audio result.
+The first count snapshot controls that visit's autoplay; later statistics rows
+cannot reverse it. A qualifying visit suppresses every later autoplay bind,
+even after hover or timed reveal. Manual pronunciation remains available.
+Navigating away cancels only the live timer; Back and persisted `pageshow`
+re-arm its remaining time. Revealed requests never reblur. Anki option changes
+invalidate pending and completed maturity evidence through an options epoch,
+including requests retained for Back, so late replies cannot revive it or
+overwrite a current decision. The opt-in does not change the count-only path
+when disabled, and unavailable Anki never delays the local lookup.
+
+Settings uses the existing revisioned options queue. Count direction and
+threshold depend on the count criterion; either criterion enables the common
+reveal controls. The Design preview passes a fixed mature sample and a count of
+three through the same rule, hover and timer without making Anki requests.
+
 ## Lookup response boundary
 
 The native bridge rejects lookup text, primary reading, and frequency-dictionary
@@ -1575,6 +1623,7 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_import` | Import one Yomitan ZIP and return an exact report; optionally validate a built-in catalogue source in the same transaction |
 | `hd_apply_state` | Load an engine-affecting package change, then compare-and-set it atomically |
 | `hd_lookup` | Run a bounded scan/deinflection lookup |
+| `hd_anki_maturity` | Read whether the first term's expression has a mature card in the configured Anki note type; independent of engine and mutation queues |
 | `hd_open_external` | Validate and open a user-activated HTTP(S) dictionary link in a browser tab, outside storage and engine queues |
 | `hd_status` | Report readiness, loading state, dictionary count, generation, storage backend, and threading mode |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |

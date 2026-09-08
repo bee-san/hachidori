@@ -52,6 +52,9 @@ const knownMarker = value => MARKERS.has(value) || DYNAMIC_PREFIXES.some(prefix 
 const blankTemplate = () => ({ value: "", overwriteMode: "coalesce" });
 const semanticMarker = semantic => ({ captureAnimation: "capture-animation", captureAudio: "capture-audio" })[semantic] ?? semantic;
 
+export const escapeAnkiHtml = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#x27;");
+
 export function ankiFieldNames(fields) {
   return new Map(fields.map(field => [field.toLowerCase(), field]));
 }

@@ -255,6 +255,9 @@ const PLANNED = [
   "optional GSM Seen counts use the configured loopback corpus and fail open",
   "definition blur follows real lookup counts and settings and holds autoplay for blurred results",
   "blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
+  "Anki maturity blur is opt-in and persists independently of lookup counts",
+  "held Anki maturity keeps the first local popup responsive and mature definitions reveal silently",
+  "nonmature and unavailable Anki fail open while qualifying lookup counts still blur independently",
   "lookup counts survive a full browser restart",
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
@@ -4462,21 +4465,6 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
     await updateSettingsControls(settings, { "opt-blur-enabled": false });
     const disabled = await waitForDefinitionBlur(popup, value => value?.state === "revealed", 5_000);
     const retained = await popup.lookupStatistics();
-    if (process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT) {
-      await updateSettingsControls(settings, { "opt-blur-enabled": true, "opt-blur-threshold": "5", "opt-blur-delay": "5" });
-      await settings.bringToFront();
-      await settings.setViewport({ width: 960, height: 900 });
-      await showSettingsSection(settings, "design");
-      // Puppeteer intersects a clip with the visual viewport in page coordinates.
-      const clip = await settings.$eval("#definition-blur-settings", (element) => {
-        element.scrollIntoView({ block: "center" });
-        const rect = element.getBoundingClientRect();
-        const padding = 12;
-        return { x: Math.max(0, rect.x - padding) + scrollX, y: Math.max(0, rect.y - padding) + scrollY,
-          width: rect.width + (2 * padding), height: rect.height + (2 * padding) };
-      });
-      await settings.screenshot({ captureBeyondViewport: false, clip, path: process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT });
-    }
     check("blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
       hovered?.state === "revealed"
         && timedBlurred?.state === "blurred" && timedRevealed?.state === "revealed"
@@ -4489,6 +4477,136 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
     await updateSettingsControls(settings, original).catch(error => {
       diagnostics.push(`[definition blur restore] ${error?.stack ?? error}`);
     });
+    await tab.bringToFront();
+    if (!popup.visible(await popup.state())) await hoverForPopup(tab, popup, "#verb");
+  }
+}
+
+async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup }) {
+  const original = await readSettingsControls(settings, ["opt-lookup-counts", "opt-blur-enabled", "opt-blur-anki-mature",
+    "opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"]);
+  const originalAnki = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options.anki);
+  const calls = [];
+  let mode = "nonmature", releaseMaturity = null;
+  // Match the entire fixed AnkiConnect endpoint, including mining discovery and
+  // preflight: no action in this block may reach the user's running Anki.
+  const route = { requests: 0, async respond(request) {
+    const { action, params } = JSON.parse(request.postData);
+    calls.push({ action, params });
+    if (mode === "offline") return { body: "Anki unavailable", status: 503, contentType: "text/plain" };
+    let result;
+    if (action === "findCards") {
+      const mature = mode === "mature";
+      if (mature) await new Promise(resolve => { releaseMaturity = resolve; });
+      result = mature ? [70] : [];
+    } else if (action === "deckNames") result = ["Default"];
+    else if (action === "modelNames") result = ["Basic"];
+    else if (action === "modelFieldNames") result = ["Front", "Back"];
+    else if (action === "canAddNotesWithErrorDetail") result = params.notes.map(() => ({ canAdd: true, error: null }));
+    else throw new Error(`Unexpected Anki maturity action ${action}`);
+    return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
+  } };
+  const worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
+  const session = await interceptFetches(worker, new Map([["http://127.0.0.1:8765/", route]]), "anki-maturity");
+  const freshLookup = async () => {
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    return hoverForPopup(tab, popup, "#verb");
+  };
+  try {
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    await updateSettingsControls(settings, {
+      "opt-lookup-counts": false, "opt-blur-enabled": false, "opt-audio-autoplay": true, "opt-blur-reveal": "hover",
+    });
+    await settings.evaluate(async () => {
+      const { options } = await chrome.storage.local.get("options");
+      const defaults = HDReaderOptions.normaliseOptions({}).anki;
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
+        options: { anki: { ...defaults, model: "Basic", fields: { ...defaults.fields, expression: "Front" } } } });
+      if (!reply.ok) throw new Error(reply.error);
+    });
+    await updateSettingsControls(settings, { "opt-blur-anki-mature": true });
+    // Keep the main Settings page's already-open custom source editor alive for
+    // the later Note adoption contract while independently proving a reload.
+    const reloadedSettings = await browser.newPage();
+    let persisted;
+    try {
+      await reloadedSettings.goto(settings.url(), { waitUntil: "domcontentloaded" });
+      await reloadedSettings.reload({ waitUntil: "domcontentloaded" });
+      await reloadedSettings.waitForFunction(() => document.getElementById("opt-blur-anki-mature").checked);
+      persisted = await reloadedSettings.evaluate(async () => {
+        const { options } = await chrome.storage.local.get("options");
+        return { enabled: options.definitionBlurAnkiMature, counts: options.showLookupCounts, countBlur: options.definitionBlurEnabled,
+          checked: document.getElementById("opt-blur-anki-mature").checked,
+          revealDisabled: document.getElementById("opt-blur-reveal").disabled };
+      });
+    } finally { await reloadedSettings.close(); }
+    check("Anki maturity blur is opt-in and persists independently of lookup counts",
+      original["opt-blur-anki-mature"] === false && persisted.enabled && persisted.checked
+        && !persisted.counts && !persisted.countBlur && !persisted.revealDisabled,
+      JSON.stringify({ original, persisted }));
+
+    const before = await readLookupStatistics(settings);
+    mode = "mature";
+    const definition = await freshLookup();
+    const pending = await waitForDefinitionBlur(popup, value => releaseMaturity !== null && value?.state === "pending", 800);
+    const respondedAfterDisplay = releaseMaturity !== null && popup.visible(definition);
+    releaseMaturity?.();
+    releaseMaturity = null;
+    mode = "nonmature";
+    const mature = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
+    await tab.mouse.move(mature.definitionsPoint.x, mature.definitionsPoint.y);
+    const hovered = await waitForDefinitionBlur(popup, value => value?.state === "revealed");
+    const after = await readLookupStatistics(settings);
+    const query = calls.find(call => call.action === "findCards")?.params.query ?? "";
+    check("held Anki maturity keeps the first local popup responsive and mature definitions reveal silently",
+      definition?.plain.includes("食べる") && respondedAfterDisplay
+        && pending?.state === "pending" && !pending.audioFeedback.some(Boolean)
+        && mature?.state === "blurred" && mature.definitionsState === "blurred" && !mature.audioFeedback.some(Boolean)
+        && hovered?.state === "revealed" && !hovered.audioFeedback.some(Boolean)
+        && before.ok && after.ok && before.statistics === null && after.statistics === null
+        && before.descriptor.generation === after.descriptor.generation && before.descriptor.revision === after.descriptor.revision
+        && query.includes("is:review") && query.includes("-is:learn") && query.includes("prop:ivl>=21")
+        && query.includes("note:Basic") && query.includes("Front:食べる") && !query.includes("deck:"),
+      JSON.stringify({ respondedAfterDisplay, pending, mature, hovered, before, after, query }));
+
+    const nonmatureDefinition = await freshLookup();
+    const nonmature = await waitForDefinitionBlur(popup, value => value?.state === "revealed" && value.audioFeedback.some(Boolean), 5_000);
+    mode = "offline";
+    const offlineDefinition = await freshLookup();
+    const offline = await waitForDefinitionBlur(popup, value => value?.state === "revealed" && value.audioFeedback.some(Boolean), 5_000);
+    mode = "nonmature";
+    await updateSettingsControls(settings, { "opt-lookup-counts": true, "opt-blur-enabled": true,
+      "opt-blur-direction": "atLeast", "opt-blur-threshold": "1" });
+    await freshLookup();
+    const countQualified = await waitForDefinitionBlur(popup, value => value?.state === "blurred" && value.countText.includes("Looked up"));
+    check("nonmature and unavailable Anki fail open while qualifying lookup counts still blur independently",
+      nonmatureDefinition?.plain.includes("食べる") && nonmature?.state === "revealed" && nonmature.audioFeedback.some(Boolean)
+        && offlineDefinition?.plain.includes("食べる") && offline?.state === "revealed" && offline.audioFeedback.some(Boolean)
+        && countQualified?.state === "blurred" && !countQualified.audioFeedback.some(Boolean)
+        && calls.every(call => ["findCards", "deckNames", "modelNames", "modelFieldNames", "canAddNotesWithErrorDetail"].includes(call.action)),
+      JSON.stringify({ nonmature, offline, countQualified, calls }));
+    if (process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT) {
+      await updateSettingsControls(settings, { "opt-blur-threshold": "5", "opt-blur-reveal": "timed", "opt-blur-delay": "5" });
+      await settings.bringToFront();
+      await settings.setViewport({ width: 960, height: 900 });
+      await showSettingsSection(settings, "design");
+      const card = await settings.$("#definition-blur-settings");
+      await card.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
+      await settings.evaluate(() => new Promise(requestAnimationFrame));
+      await card.screenshot({ path: process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT });
+    }
+  } finally {
+    releaseMaturity?.();
+    await updateSettingsControls(settings, original);
+    await settings.evaluate(async anki => {
+      const { options } = await chrome.storage.local.get("options");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision, options: { anki } });
+      if (!reply.ok) throw new Error(reply.error);
+    }, originalAnki);
+    await session.detach();
     await tab.bringToFront();
     if (!popup.visible(await popup.state())) await hoverForPopup(tab, popup, "#verb");
   }
@@ -7664,6 +7782,7 @@ async function main() {
     extensionId,
   });
   await checkDefinitionBlur({ settings: page, tab, popup });
+  await checkAnkiMatureDefinitionBlur({ browser, settings: page, tab, popup });
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);

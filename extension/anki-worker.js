@@ -2,6 +2,7 @@
 import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
 import { ankiTemplateMarkerNames } from "./anki-templates.js";
+import { findAnkiMatureWord } from "./anki-maturity.js";
 import { MAX_ANIMATED_AVIF_BYTES } from "./avif-sequence.js";
 import { MAX_WAV_BYTES } from "./capture-buffer.js";
 
@@ -273,5 +274,14 @@ export function createAnkiWorkerService({
     return { discarded: true };
   }
 
-  return { ...mining, screenshot, discardScreenshot };
+  return { ...mining, screenshot, discardScreenshot, async maturity(request) {
+    try {
+      const options = await readOptions();
+      return { mature: options.definitionBlurAnkiMature === true
+        && await findAnkiMatureWord(gateway, options.anki, request?.term?.expression) };
+    } catch {
+      // Optional read-only knowledge must fail open when Anki is unavailable.
+      return { mature: false };
+    }
+  } };
 }

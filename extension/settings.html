@@ -590,6 +590,11 @@
                   <span>Blur definitions by lookup count</span>
                   <input id="opt-blur-enabled" type="checkbox" aria-describedby="definition-blur-help" />
                 </label>
+                <label class="lookup-enable">
+                  <span>Blur definitions for mature Anki words</span>
+                  <input id="opt-blur-anki-mature" type="checkbox" aria-describedby="definition-blur-anki-help definition-blur-help" />
+                </label>
+                <p class="field-hint" id="definition-blur-anki-help">Mature means a matching word has a review card with an interval of at least 21 days. Uses the first result and your configured Anki note type across all decks. Map Expression to a dedicated field, or use a field template containing only <code>{expression}</code>. Read-only; works independently of lookup counts.</p>
                 <div class="fields">
                   <label class="field">
                     <span class="field-label">Blur when looked up</span>
@@ -614,7 +619,7 @@
                     <input id="opt-blur-delay" type="number" min="1" max="3600" step="0.5" inputmode="decimal" />
                   </label>
                 </div>
-                <p class="field-hint" id="definition-blur-help">Needs lookup counts; the count is unknown for a moment, so definitions start blurred and clear when it does not qualify. Hovering a definition or the compact summary reveals in either mode. Pronunciation does not auto-play for blurred results.</p>
+                <p class="field-hint" id="definition-blur-help">Either enabled rule can blur. Count blur needs lookup counts. Definitions start blurred while checking; unavailable checks do not qualify, and Anki being closed never prevents lookup. Hovering a definition or the compact summary reveals in either mode. Pronunciation does not auto-play for blurred results. Preview: 3 lookups and a mature word.</p>
               </fieldset>
               <fieldset class="lookup-group">
                 <legend>Frequency labels</legend>

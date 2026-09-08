@@ -91,6 +91,10 @@ Sometimes we fall into a trap of looking up a word over & over again, but never 
 
 Hachidori records how many times you have looked up a word and can blur it for you for a few seconds to force you to remember it.
 
+In **Settings → Design → Definition blur**, you can also enable **Blur definitions for mature Anki words**. It works independently of lookup counts; either enabled rule can blur the definitions. A word qualifies when its first lookup result matches your configured Anki note type and a dedicated plain expression field, in any deck, with at least one review card whose interval is 21 days or more. This follows [Anki's mature-card definition](https://docs.ankiweb.net/getting-started.html#card-states).
+
+Both rules use the same hover or timed reveal and suppress automatic pronunciation for qualifying results. The Anki check is read-only and runs after the dictionary result appears. Closing Anki never prevents lookup; the count rule keeps working offline. See [lookup statistics and definition blur](docs/lookup-statistics.md#definition-blur) for field mapping and behavior details.
+
 # Optionated
 
 Hachidori is an optionated program. If it does not benefit me, the creator, personally than I will not add that feature.
