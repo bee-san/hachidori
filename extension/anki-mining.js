@@ -45,7 +45,10 @@ function fieldsForDecision(prepared, checked) {
     };
   }
   const canonical = canonicalAnkiFields(prepared.note.fields, prepared.resolved.templates, target.fields);
-  const fields = overwriteAnkiFields(canonical.fields, target.fields, canonical.templates);
+  const desired = overwriteAnkiFields(canonical.fields, target.fields, canonical.templates);
+  // Only the initial write omits unchanged values. Pronunciation enrichment
+  // compares its complete desired value with the text-only write it replaces.
+  const fields = Object.fromEntries(Object.entries(desired).filter(([field, value]) => value !== target.fields[field]));
   return {
     fields,
     target,

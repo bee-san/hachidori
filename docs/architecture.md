@@ -1321,8 +1321,10 @@ Fixed background handlers own a separate Anki mutation queue. Submission freshly
 validates configuration, fields, dictionary generation and duplicate identity;
 it never holds the dictionary storage queue. Native Anki duplicate search selects
 same-model overwrite targets inside the configured deck scope. The six field
-overwrite modes use authoritative field spellings and send only changed fields;
-preserved values are omitted instead of written back from the earlier snapshot.
+overwrite modes use authoritative field spellings. The initial write sends only
+changed fields; preserved values are omitted instead of written back from the
+earlier snapshot. Pronunciation enrichment compares its complete desired values
+against the applied text-only write and the current note.
 A lost write acknowledgement is not retried; confirmed note IDs stay successful
 even if readback, enrichment, or subsequent reader refresh fails, including
 across a settings change.
