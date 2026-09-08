@@ -98,9 +98,16 @@
     "break-spaces",
   ]);
 
+  if (typeof document.createTreeWalker !== "function") {
+    return;
+  }
+  // The reader belongs to ordinary pages. First-run setup loads these same
+  // scripts into its own startup page for the practice step, so that exact URL
+  // is the one extension page it may run on; Settings, the design preview and
+  // every other internal page stay excluded.
   if (
-    location.protocol === "chrome-extension:" ||
-    typeof document.createTreeWalker !== "function"
+    location.protocol === "chrome-extension:" &&
+    location.href.split(/[?#]/u)[0] !== chrome.runtime.getURL("startup.html")
   ) {
     return;
   }

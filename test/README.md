@@ -294,7 +294,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 448 checks, all of
+full request→reply round trip per contract-C message type. 449 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -640,7 +640,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 171 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 173 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -714,7 +714,29 @@ connection and an unconfigured mapping.
 result, `HACHIDORI_STARTUP_READY_SCREENSHOT`/`_DARK_SCREENSHOT` the final step
 after an absent Anki, and
 `HACHIDORI_STARTUP_ANKI_SCREENSHOT`/`_DARK_SCREENSHOT` the final step after an
-automatically configured one.
+automatically configured one, and
+`HACHIDORI_STARTUP_PRACTICE_SCREENSHOT`/`_DARK_SCREENSHOT` the practice step with
+a real lookup open.
+
+The jsdom stage for that step also requires the appended list to match the
+manifest's own `content_scripts` order, that the sentence is probed offset by
+offset until one lookup answers, that removing the package which answered retires
+the invitation and probes again while a group-only revision does not, and covers every state that must not invite a
+hover: a frequency-only library, a library that answers nothing, an engine that
+refuses the first pass and is retried after a failed status, a long loading
+recovery and then an idle engine, an engine that
+never answers, and lookups switched off. The group-only step also requires the
+sentence to be the same node afterwards, which is what keeps an in-flight lookup
+anchored.
+
+Two further checks cover that practice step. The first waits for the reader
+scripts the page appends for itself, aims the real mouse at the verb's own
+character rectangle inside **朝ごはんを食べる。**, and requires the closed-shadow
+popup to show 食べる with the definition from the Jitendex fixture this run
+installed, then to close on leave. The second loads those same scripts into
+Settings, hovers Japanese text there with the real mouse, and requires the
+renderer to be present but no reader host to exist, which is what proves the
+page restriction rather than the absence of an injection.
 
 An in-memory external-reference fixture also passes through real WASM. Real Enter
 on its closed-shadow anchor must create exactly one worker-routed browser tab,
@@ -934,7 +956,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 171 assertions, and the summary line
+`PLANNED` at the top of the file names all 173 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

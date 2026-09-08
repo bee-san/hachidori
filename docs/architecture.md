@@ -184,8 +184,7 @@ event that arrives while a write is in flight renders once with the reply. A
 stage change moves focus to the card heading; an inventory or progress update
 keeps focus on the control that had it. Finish records completion and closes
 the tab. Settings shows **Resume setup** in its sidebar while
-`stage !== "complete"`, so closing the tab loses nothing. The lookup exercise
-attaches to the remaining stage separately.
+`stage !== "complete"`, so closing the tab loses nothing.
 
 ### Dictionary stage
 
@@ -325,6 +324,56 @@ on its own.
 ![The final step after an automatically configured Anki, light palette](assets/startup-anki.png)
 
 ![The final step after an automatically configured Anki, dark palette](assets/startup-anki-dark.png)
+
+### Practice step
+
+The last step is the real reader, on the startup page. When that step renders
+and the current inventory holds an enabled package that can answer a term
+lookup, the page appends the packaged reader scripts once, in the order the
+manifest itself lists them: it reads its own `content_scripts` entry through
+`chrome.runtime.getManifest()` and skips `reader-options.js`, which the startup
+module already loaded, so a reordered or extended reader cannot leave this step
+running a different one. `content.css` comes with the page.
+Nothing is fetched before that step, so the installation and Anki screens are
+never scanned, and a script that fails to load leaves the sentence and its
+instructions readable with the reason in the card's live region.
+
+`content.js` is a content script everywhere except this extension's own pages,
+where Chrome does not inject it at all. Its own guard now permits exactly the
+startup page URL, so these scripts do nothing when they are loaded into
+Settings, the design preview or any other internal page. The exercise then uses
+the ordinary path: the same runtime lookup messages, the installed dictionaries,
+the real WebAssembly engine and the same closed-shadow popup, including its
+first-install dark appearance and compact summaries.
+
+The card shows the instruction that matches the current `lookupMode` — hover, or
+holding the configured activation key — and one sentence to try,
+**朝ごはんを食べる。** **Finish** and **Open Settings** stay available: the
+exercise is optional. The invitation appears only when it can be answered, and that is
+proved rather than assumed: the page runs an ordinary `hd_lookup` from every
+offset in the sentence, through the same engine the reader would use and with the
+reader's own configured scan length, and stops at the first hit. The answer belongs to
+the engine-visible library it was made against — each package's identity,
+revision, persisted generation path, enabled state and term count — together with
+the lookup options the probe sends, so removing or disabling the package that answered, or shortening
+the scan length, retires it and the sentence is probed again, while a group-only
+or presentation write leaves a ready exercise alone. A library that holds no enabled term dictionary, one that
+cannot answer this sentence, or lookups switched off each get their own sentence
+and the matching Settings link, and none of them loads the reader. A dictionary mutation refuses lookups while it holds the
+engine — including a long generation cleanup — so a refused pass waits for
+`hd_status` to report a ready, idle engine and then asks again. A failed status is
+waited on too, because a status poll is what drives the engine's own reload
+recovery, so the next one can describe a repaired engine, and a failure that is
+itself loading is that recovery in progress rather than a verdict; only an engine
+that is unreachable, one whose status keeps failing while idle, or one that keeps
+refusing while idle, falls back to the
+instruction that is true anywhere, in the mode the user has configured. The
+sentence itself is one node for the life of the page, so a rerender moves it
+rather than replacing it and cannot cancel a lookup already in flight.
+
+![The practice step with a real lookup open, light palette](assets/startup-practice.png)
+
+![The practice step with a real lookup open, dark palette](assets/startup-practice-dark.png)
 
 ## Hover activation and popup ownership
 

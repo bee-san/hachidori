@@ -704,6 +704,8 @@ export function buildRecommendedZip({
   if (supported.has('term')) {
     entries.push(zipEntry('term_bank_1.json', JSON.stringify([
       ['辞書', 'じしょ', 'n', '', 1, [`${title} term fixture`], 1, ''],
+      // The word the first-run practice sentence invites a real lookup of.
+      ['食べる', 'たべる', 'v1', 'v1', 1, [`${title} verb fixture`], 2, ''],
     ])));
   }
   if (supported.has('freq')) {

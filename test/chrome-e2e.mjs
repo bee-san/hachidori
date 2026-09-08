@@ -193,6 +193,12 @@ const RECOMMENDED_LINKS = RECOMMENDED_DICTIONARIES.map(({ name, publisherUrl }) 
 // Every assertion this run makes, named up front. The denominator is this list,
 // not the number of checks that happened to execute: a suite that skips an
 // assertion under a regression prints "23/24 passed" and reads like success.
+// The reader as the manifest injects it into a page, minus `reader-options.js`,
+// which the startup page's own module already provides. Read from the manifest
+// so a reordered or extended reader cannot pass against a stale copy.
+const READER_SCRIPTS = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"))
+  .content_scripts[0].js.filter((src) => src !== "reader-options.js");
+
 const PLANNED = [
   ...BACKUP_CHROME_CHECKS,
   "extension loads and its service worker starts",
@@ -206,6 +212,8 @@ const PLANNED = [
   "the automatic installer continues after a mocked failure through real download and installation phases",
   "Retry installs only the missing dictionary and the committed entries settle their selections once",
   "the all-installed result stays five seconds before setup checks for Anki",
+  "the practice step looks a word up on the startup page through the real reader and the installed dictionaries",
+  "the reader refuses to run on Settings even when its own scripts are loaded there",
   "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
   "first-run detection configures an existing Kiku mining setup read-only from the startup page",
   "a browser restart keeps completed setup closed and the edited first-install preference",
@@ -6021,7 +6029,7 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, successShownAt + 3500 - Date.now())));
     heldResult = await startup.evaluate(readStartup).catch(() => null);
     // The final step waits for Finish, so it is the one stable state to poll for.
-    practiceReached = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "You’re ready."
+    practiceReached = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "You’re ready. Try looking up a word below."
       ? { at: Date.now(), focused: document.activeElement?.id ?? "",
         currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
         done: document.querySelectorAll(".setup-step.is-done").length,
@@ -6071,6 +6079,67 @@ async function main() {
     if (!reply.ok) throw new Error(reply.error);
   });
 
+  // The final step runs the real reader on the startup page: its own packaged
+  // scripts, the dictionaries this setup just installed, the ordinary runtime
+  // lookup and the same closed-shadow popup a webpage gets.
+  let exercise = null;
+  if (startup !== null) {
+    await startup.bringToFront();
+    const startupPopup = await popupReader(startup);
+    const injected = await startup.waitForFunction(() => {
+      const sources = [...document.querySelectorAll("script[data-setup-reader]")].map((script) => script.getAttribute("src"));
+      return sources.includes("content.js") ? sources : false;
+    }, { timeout: 30_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
+    // The verb sits in the middle of the sentence, so the pointer aims at that
+    // character's own rectangle rather than at a fraction of the paragraph.
+    const hoverCharacter = async (index) => {
+      const point = await startup.evaluate((at) => {
+        const text = document.querySelector(".setup-practice-sample")?.firstChild;
+        if (!text) return null;
+        const range = document.createRange();
+        range.setStart(text, at);
+        range.setEnd(text, at + 1);
+        const rect = range.getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      }, index);
+      if (point === null) return;
+      await startup.mouse.move(2, 2);
+      await startup.mouse.move(point.x, point.y);
+    };
+    let looked = null;
+    const startedLookup = Date.now();
+    for (let attempt = 0; attempt < 12 && looked === null; attempt += 1) {
+      await hoverCharacter("朝ごはんを".length);
+      looked = await startupPopup.waitForVisible(2000);
+    }
+    // Chrome reports no Resource Timing for extension-scheme subresources, so
+    // what the step costs is measured where it is visible: the hover that answers.
+    console.log(`     practice lookup answered in ${Date.now() - startedLookup} ms`);
+    if (looked !== null && (process.env.HACHIDORI_STARTUP_PRACTICE_SCREENSHOT || process.env.HACHIDORI_STARTUP_PRACTICE_DARK_SCREENSHOT)) {
+      await startup.setViewport({ width: 900, height: 820 });
+      for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_PRACTICE_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_PRACTICE_DARK_SCREENSHOT]]) {
+        if (!path) continue;
+        await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+        await hoverCharacter("朝ごはんを".length);
+        await startupPopup.waitForVisible(2000);
+        await startup.screenshot({ path });
+      }
+      await startup.emulateMediaFeatures([]);
+    }
+    await startup.mouse.move(2, 2);
+    const hidden = looked === null ? null : await startupPopup.waitForHidden(6000);
+    exercise = { injected, looked, hidden };
+  }
+  const jitendexFixtureTitle = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "jitendex").title;
+  check(
+    "the practice step looks a word up on the startup page through the real reader and the installed dictionaries",
+    JSON.stringify(exercise?.injected) === JSON.stringify(READER_SCRIPTS)
+      && exercise.looked !== null && exercise.looked.plain.includes("食べる")
+      && exercise.looked.text.includes(`${jitendexFixtureTitle} verb fixture`)
+      && exercise.hidden === true,
+    JSON.stringify({ injected: exercise?.injected, looked: exercise?.looked, hidden: exercise?.hidden }),
+  );
+
   let closedTab = null;
   if (startup !== null) {
     await startup.bringToFront();
@@ -6102,7 +6171,8 @@ async function main() {
       && practiceReached.done === 2 && practiceReached.status === ""
       && practiceReached.outcome === "unavailable" && practiceReached.outcomeLink
       && practiceReached.outcomeText === "No Anki found. Set up in Settings."
-      && practiceReached.body.includes("Hover over Japanese text on any webpage")
+      && practiceReached.body.includes("Hover over the Japanese below to look it up.")
+      && practiceReached.body.includes("朝ごはんを食べる。")
       && JSON.stringify(practiceReached.actions) === JSON.stringify(["setup-finish"])
       && closedTab === true && startupTabs() === 0
       && typeof completedSetup?.completedAt === "string" && completedSetup.anki?.status === "unavailable"
@@ -6113,6 +6183,48 @@ async function main() {
   );
   await ankiOffline.detach().catch(() => {});
   await page.bringToFront();
+
+  // Only the startup page may run the reader. Loading the very same scripts into
+  // Settings must leave it inert, so no internal page starts scanning text.
+  const guarded = await (async () => {
+    const other = await browser.newPage();
+    try {
+      await other.goto(settingsUrl, { waitUntil: "domcontentloaded" });
+      const loaded = await other.evaluate(async (scripts) => {
+        const sample = document.createElement("p");
+        sample.id = "e2e-japanese";
+        sample.style.cssText = "font: 32px/2 serif; padding: 40px";
+        sample.textContent = "食べる";
+        document.body.prepend(sample);
+        for (const src of scripts) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = src;
+            script.addEventListener("load", () => { resolve(); });
+            script.addEventListener("error", () => { reject(new Error(`${src} did not load`)); });
+            document.head.appendChild(script);
+          });
+        }
+        return true;
+      }, READER_SCRIPTS).catch((error) => `${error?.message ?? error}`);
+      const box = await (await other.$("#e2e-japanese")).boundingBox();
+      await other.mouse.move(2, 2);
+      await other.mouse.move(box.x + 20, box.y + box.height / 2);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return {
+        loaded,
+        popupHost: await other.evaluate(() => document.querySelector("hachidori-host") !== null),
+        rendererLoaded: await other.evaluate(() => typeof window.HDPopup === "object"),
+      };
+    } finally {
+      await other.close().catch(() => {});
+    }
+  })();
+  check(
+    "the reader refuses to run on Settings even when its own scripts are loaded there",
+    guarded.loaded === true && guarded.rendererLoaded === true && guarded.popupHost === false,
+    JSON.stringify(guarded),
+  );
 
   // Clear the mocked catalogue packages so the Settings installer below starts
   // from the same clean library it always did; the setup mock stays attached so
