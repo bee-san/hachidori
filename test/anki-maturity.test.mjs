@@ -100,3 +100,14 @@ test("failed or partially malformed bulk replies reject instead of publishing pa
   }
   await assert.rejects(fetchAnkiMatureWords({ invoke: async () => { throw new Error("AnkiConnect timed out"); } }, source), /timed out/u);
 });
+
+
+test("canonically equivalent Unicode expression field names resolve without normalizing their values", async () => {
+  for (const configured of ["ば", "は\u3099"]) {
+    const source = await ankiMaturitySource(config({ fields: { expression: configured } }));
+    for (const returned of ["ば", "は\u3099"]) {
+      const words = await fetchAnkiMatureWords({ invoke: async () => [note({ [returned]: "か\u3099" })] }, source);
+      assert.deepEqual(words, ["か\u3099"]);
+    }
+  }
+});
