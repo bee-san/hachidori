@@ -1,0 +1,30 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Shared game scene for first-run practice and the Design preview.
+   Background ownership and source: assets/ATTRIBUTION.md. */
+.vn-scene {
+  position: relative;
+  background: #614657 url("assets/preview-background.png") center bottom / cover no-repeat;
+  color: #f6f5ef;
+}
+.vn-dialogue {
+  position: absolute;
+  inset: auto 7% 7%;
+  color: #382d40;
+  font-family: "Noto Sans CJK JP", "Yu Gothic", Meiryo, sans-serif;
+}
+.vn-speaker {
+  margin: 0 0 8px;
+  color: #5a3a59;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.vn-line {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.7;
+}
+
+@media (max-width: 480px) {
+  .vn-line { font-size: 22px; }
+}
