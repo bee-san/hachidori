@@ -584,7 +584,9 @@ without Anki calls, cold-cache behavior, retained snapshots during failed or
 pending refreshes, successful empty replacements, and failed persistence.
 Controlled clocks, alarms and serialized storage exercise the 30-minute
 schedule, worker restart, concurrent triggers, configuration changes and
-disable/re-enable publication rules. These focused suites never contact an
+disable/re-enable publication rules. The offscreen service test also verifies
+refresh-worker termination after successful, failed and worker-error replies.
+These focused suites never contact an
 Anki collection.
 
 The extension smoke harness checks maturity blur with counts disabled, the OR
@@ -598,8 +600,9 @@ The Design preview uses fixed maturity data and the shared reveal behavior.
 The existing count-only tests retain timed reveal, navigation, Note and audio
 ownership coverage.
 
-The Chrome E2E suite intercepts the entire AnkiConnect endpoint on the service
-worker target, including the existing mining controls' requests. It checks
+The Chrome E2E suite intercepts the entire AnkiConnect endpoint on both the
+service-worker target (mining controls) and offscreen target (including its
+dedicated maturity refresh worker). It checks
 source persistence, a responsive cold-cache popup during a held refresh,
 cached mature results without repeated Anki calls, and silent hover reveal.
 Real alarm delivery verifies that a refresh changes new lookups while keeping
