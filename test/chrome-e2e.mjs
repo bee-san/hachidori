@@ -603,6 +603,23 @@ async function popupReader(page, depth = 0) {
         const flat = node => (node.textContent || "").replace(/\\s+/g, " ").trim();
         const view = this.ownerDocument.defaultView;
         const noteForm = this.querySelector(".gsm-hoshidicts-note-form");
+        const noteActions = noteForm?.querySelector(".gsm-hoshidicts-note-actions");
+        const noteFormRect = noteForm?.getBoundingClientRect();
+        const noteActionsRect = noteActions?.getBoundingClientRect();
+        const pitchRuby = this.querySelector(".gsm-hoshidicts-pitch-ruby");
+        const pitchContour = pitchRuby?.querySelector(".gsm-hoshidicts-pitch-contour");
+        const firstBase = pitchRuby && [...pitchRuby.childNodes]
+          .find(node => node.nodeType !== Node.ELEMENT_NODE || node.tagName !== "RT");
+        let firstBaseRect = null;
+        if (firstBase instanceof Element) {
+          firstBaseRect = firstBase.getBoundingClientRect();
+        } else if (firstBase?.nodeType === Node.TEXT_NODE && firstBase.length > 0) {
+          const range = this.ownerDocument.createRange();
+          range.setStart(firstBase, 0);
+          range.setEnd(firstBase, 1);
+          firstBaseRect = range.getBoundingClientRect();
+        }
+        const pitchContourRect = pitchContour?.getBoundingClientRect();
         return {
           hidden: this.hasAttribute("hidden"),
           height: this.getBoundingClientRect().height,
@@ -638,6 +655,15 @@ async function popupReader(page, depth = 0) {
           noteReading: noteForm?.querySelector('[name="reading"]')?.value ?? null,
           noteDefinition: noteForm?.querySelector('[name="definition"]')?.value ?? null,
           noteError: noteForm?.querySelector(".gsm-hoshidicts-note-error")?.textContent ?? "",
+          noteFits: noteForm === null || noteForm.hidden
+            || (noteForm.scrollHeight <= noteForm.clientHeight + 1
+              && noteActionsRect.top >= noteFormRect.top - 1
+              && noteActionsRect.bottom <= noteFormRect.bottom + 1),
+          furiganaAlignment: pitchContourRect && firstBaseRect ? {
+            readingLeft: pitchContourRect.left,
+            wordLeft: firstBaseRect.left,
+            difference: Math.abs(pitchContourRect.left - firstBaseRect.left),
+          } : null,
         };
       }`,
     });
@@ -1020,6 +1046,10 @@ async function popupReader(page, depth = 0) {
           images: new Map([...this.querySelectorAll("img")].map(image => [image, image.closest(".gloss-image-link")])),
         };
         const saved = this.__dictionaryTabs;
+        const metadataCapsule = this.querySelector(".gsm-hoshidicts-primary-metadata-capsule");
+        const primaryHeader = this.querySelector(".gsm-hoshidicts-primary-header");
+        const capsuleRect = metadataCapsule?.getBoundingClientRect();
+        const headerRect = primaryHeader?.getBoundingClientRect();
         const entries = [...this.querySelectorAll(".gsm-hoshidicts-entry")].map((entry, index) => ({
           expression: entry.dataset.expression,
           aria: (index === 0 ? this.querySelector(".gsm-hoshidicts-primary-header") : entry)
@@ -1095,6 +1125,12 @@ async function popupReader(page, depth = 0) {
             ipaTitles: [...this.querySelectorAll(".gsm-hoshidicts-tag-ipa")].map(node => node.title),
             grammar: this.querySelectorAll(".gsm-hoshidicts-primary-grammar-tag").length,
             definitionTags: this.querySelectorAll(".gsm-hoshidicts-definition-tags").length,
+            capsuleAria: metadataCapsule?.getAttribute("aria-label") ?? null,
+            frequencyInsideCapsule: [...this.querySelectorAll(".gsm-hoshidicts-primary-frequencies")]
+              .every(node => node.parentElement === metadataCapsule),
+            grammarInsideCapsule: [...this.querySelectorAll(".gsm-hoshidicts-primary-grammar")]
+              .every(node => node.parentElement === metadataCapsule),
+            capsuleBelowToolbar: Boolean(capsuleRect && headerRect && capsuleRect.top >= headerRect.bottom - 1),
           },
           rect: this.getBoundingClientRect().toJSON(), viewport: { width: innerWidth, height: innerHeight },
           grids: [...this.querySelectorAll(".gsm-hoshidicts-glossary-grid")].map(grid => ({
@@ -1168,12 +1204,33 @@ async function popupReader(page, depth = 0) {
     const reply = await cdp.send("Runtime.callFunctionOn", {
       objectId: object.objectId, returnByValue: true,
       functionDeclaration: function () {
+        const feedback = this.querySelector(".gsm-hoshidicts-mining-feedback");
+        const controls = [...this.querySelectorAll(".gsm-hoshidicts-anki-control")];
+        const adds = [...this.querySelectorAll(".gsm-hoshidicts-mine-button")];
+        const views = [...this.querySelectorAll(".gsm-hoshidicts-anki-view")];
+        const primaryActions = this.querySelector(".gsm-hoshidicts-primary-header .gsm-hoshidicts-entry-actions");
+        const actionKind = node => {
+          if (node.classList.contains("gsm-hoshidicts-mine-button")) return "add";
+          if (node.classList.contains("gsm-hoshidicts-audio-control")) return "audio";
+          if (node.classList.contains("gsm-hoshidicts-note-button")) return "note";
+          if (node.classList.contains("gsm-hoshidicts-anki-view")) return "view";
+          if (node.classList.contains("gsm-hoshidicts-external-link-button")) return "external";
+          return node.className;
+        };
         return { rect: this.getBoundingClientRect().toJSON(), hidden: this.hidden,
-          controls: [...this.querySelectorAll(".gsm-hoshidicts-anki-control")].map(control => {
-            const add = control.querySelector(".gsm-hoshidicts-mine-button");
-            const view = control.querySelector(".gsm-hoshidicts-anki-view");
-            return { hidden: control.hidden, text: add.textContent, state: add.dataset.state, disabled: add.disabled,
-              output: control.querySelector("output").textContent, viewDisabled: view.disabled, rect: add.getBoundingClientRect().toJSON() };
+          order: primaryActions ? [...primaryActions.children].map(actionKind) : [],
+          feedback: feedback ? { hidden: feedback.hidden, text: feedback.textContent, kind: feedback.dataset.kind ?? null } : null,
+          controls: adds.map((add, index) => {
+            const control = controls[index];
+            const view = views[index];
+            const icon = add.querySelector(".gsm-hoshidicts-mine-icon");
+            return { hidden: add.hidden, text: add.textContent,
+              title: add.title, icon: icon?.dataset.icon ?? icon?.textContent ?? "",
+              state: add.dataset.state, disabled: add.disabled,
+              output: control?.querySelector("output")?.textContent ?? "",
+              viewDisabled: view?.disabled ?? true,
+              viewClass: view?.className ?? "",
+              rect: add.getBoundingClientRect().toJSON() };
           }) };
       }.toString(),
     });
@@ -2470,7 +2527,8 @@ async function checkRetainedLinkControls(browser, settings, tab, popup, child, f
       await waitHeld();
       await release();
       const keyboard = await refreshed();
-      evidence.push(keyboard?.sameForm && keyboard.mounted && keyboard.tabFocused && keyboard.draft === before.draft);
+      evidence.push(keyboard?.sameForm && keyboard.mounted && keyboard.tabFocused && keyboard.draft === before.draft
+        || { position, phase: "keyboard", before, after: keyboard });
       await tab.keyboard.press("Escape");
       await tab.keyboard.press("Escape");
     }
@@ -2944,6 +3002,16 @@ async function checkDictionaryStyles(page) {
   try {
     evidence = await page.evaluate(async () => {
       const host = document.createElement("div");
+      host.style.cssText = [
+        "all:initial!important",
+        "position:fixed!important",
+        "top:0!important",
+        "left:0!important",
+        "width:440px!important",
+        "height:340px!important",
+        "pointer-events:auto!important",
+        "z-index:2147483647!important",
+      ].join(";");
       host.style.setProperty("--external", 'url("https://dictionary-style.invalid/inherited.png")');
       for (const suffix of [" evil", ")evil", ",evil"]) {
         host.style.setProperty(`--fg${suffix}`, 'url("https://dictionary-style.invalid/escaped-var.png")');
@@ -3045,6 +3113,8 @@ async function checkDictionaryStyles(page) {
         paint: getComputedStyle(card).contain,
         withinCard: overlayRect.left >= cardRect.left && overlayRect.top >= cardRect.top
           && overlayRect.right <= cardRect.right && overlayRect.bottom <= cardRect.bottom,
+        controlClear: overlayRect.right <= controlRect.left || overlayRect.left >= controlRect.right
+          || overlayRect.bottom <= controlRect.top || overlayRect.top >= controlRect.bottom,
         control: shadow.elementFromPoint(controlRect.left + 2, controlRect.top + 2)?.className,
         farPoint: shadow.elementFromPoint(700, 500)?.className ?? "",
       };
@@ -3069,7 +3139,8 @@ async function checkDictionaryStyles(page) {
       && evidence.globalRules.every((name) => name === "CSSScopeRule"), JSON.stringify({ evidence, requests }));
   check("dictionary CSS cannot paint or intercept input outside its glossary card",
     evidence.containment.paint === "paint" && evidence.containment.withinCard
-      && evidence.containment.control === "outside" && evidence.containment.farPoint !== "overlay",
+      && evidence.containment.controlClear
+      && evidence.containment.control !== "overlay" && evidence.containment.farPoint !== "overlay",
     JSON.stringify(evidence.containment));
 }
 
@@ -3758,6 +3829,10 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     await configure(false, { fieldTemplates: { Front: template("{expression}"),
       Back: template("{cloze-body}|{cloze-suffix}|{sentence}"), Audio: template("") } });
     const ready = await settled(state => state?.controls.some(control => !control.hidden && !control.disabled));
+    if (process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT) {
+      const { x, y, width, height } = ready.rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT, clip: { x, y, width, height } });
+    }
     const addCount = calls.filter(call => call.action === "addNote").length;
     const rect = ready.controls[0].rect;
     await tab.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2, { clickCount: 2 });
@@ -3769,14 +3844,19 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     const note = [...notes.values()].at(-1);
     const browse = calls.filter(call => call.action === "guiBrowse").at(-1);
     check("Anki reader controls stay absent until configured and preserve raw ruby context through one confirmed Add and View",
-      quiet && saved.controls[0].disabled && note.Front === "食べる"
+      quiet
+        && JSON.stringify(ready.order.slice(0, 4)) === JSON.stringify(["add", "audio", "note", "view"])
+        && ready.order.slice(4).every(kind => kind === "external")
+        && ready.controls[0].icon === "big-circle"
+        && ready.controls[0].viewClass.includes("gsm-hoshidicts-view-in-anki-button")
+        && saved.controls[0].disabled && saved.controls[0].icon === "✓"
+        && saved.feedback?.hidden === false && saved.feedback.kind === "success"
+        && saved.controls[0].output.startsWith("Added note ")
+        && saved.feedback.text.includes(saved.controls[0].output)
+        && note.Front === "食べる"
         && note.Back === "食たべる|。|<b>食たべる</b>。"
         && calls.filter(call => call.action === "addNote").length === addCount + 1 && browse.params.query === '"食べる"',
       JSON.stringify({ quiet, saved, note, browse }));
-    if (process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT) {
-      const { x, y, width, height } = (await popup.anki()).rect;
-      await tab.screenshot({ path: process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT, clip: { x, y, width, height } });
-    }
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
   } finally {
     await tab.keyboard.press("Escape");
@@ -4058,6 +4138,7 @@ async function checkStartupPractice(startup, browser, startupUrl) {
       && source.readerScripts === 1 && source.finish && source.settings,
     JSON.stringify({ keyboardReached, selected, hovered, source, escaped }));
   await startup.keyboard.press("Escape");
+  await popup.waitForHidden();
   await startup.mouse.move(2, 2);
   await startup.evaluate(async popupOpacityPercent => {
     window.__practiceObserver.disconnect();
@@ -4293,20 +4374,53 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
     startup = await browser.newPage();
     startup.on("console", (message) => diagnostics.push(`[startup anki] ${message.type()}: ${message.text()}`));
     startup.on("pageerror", (error) => diagnostics.push(`[startup anki] pageerror: ${error.message}`));
+    await startup.setViewport({ width: 900, height: 820 });
     await startup.goto(startupUrl, { waitUntil: "domcontentloaded" });
     await startup.evaluate(() => {
       window.__headingLog = [];
       const record = () => {
         const text = document.getElementById("setup-heading")?.textContent ?? "";
-        if (window.__headingLog.at(-1) !== text) window.__headingLog.push(text);
+        const progress = [...document.querySelectorAll(".setup-anki-progress-step")].map(row => ({
+          step: row.dataset.step,
+          title: row.querySelector("strong")?.textContent ?? "",
+          detail: row.querySelector("small")?.textContent ?? "",
+          current: row.getAttribute("aria-current") === "step",
+          done: row.classList.contains("is-done"),
+        }));
+        const signature = JSON.stringify([text, progress]);
+        if (window.__headingLog.at(-1)?.signature === signature) return;
+        window.__headingLog.push({ signature, text, progress, at: Date.now() });
       };
       record();
       new MutationObserver(record).observe(document.getElementById("setup-card"), { childList: true, subtree: true, characterData: true });
     });
+    const configured = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "Anki is set up"
+      ? {
+          at: Date.now(),
+          outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
+          outcomeText: document.querySelector(".setup-anki-outcome")?.textContent ?? "",
+          outcomeLink: document.querySelector('.setup-anki-outcome a[href="settings.html#anki"]') !== null,
+          progress: [...document.querySelectorAll(".setup-anki-progress-step")].map(row => ({
+            title: row.querySelector("strong")?.textContent ?? "",
+            detail: row.querySelector("small")?.textContent ?? "",
+            done: row.classList.contains("is-done"),
+          })),
+          countdown: document.getElementById("setup-countdown-label")?.textContent ?? null,
+          actions: [...document.querySelectorAll("#setup-actions button")].map(control => control.id),
+        } : false,
+    { timeout: 30_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
+    if (configured && (process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT || process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT)) {
+      for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT]]) {
+        if (!path) continue;
+        await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+        await startup.screenshot({ path, fullPage: true });
+      }
+      await startup.emulateMediaFeatures([]);
+    }
     const ready = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "Add a dictionary to try Hachidori"
-      ? { outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
+      ? { at: Date.now(), outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
         outcomeText: document.querySelector(".setup-anki-outcome")?.textContent ?? "",
-        outcomeLink: document.querySelector('.setup-anki-outcome a[href="https://apps.ankiweb.net/"]') !== null,
+        outcomeLink: document.querySelector('.setup-anki-outcome a[href="settings.html#anki"]') !== null,
         done: document.querySelectorAll(".setup-step.is-done").length,
         status: document.getElementById("setup-status")?.textContent ?? "" } : false,
     { timeout: 30_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
@@ -4325,21 +4439,25 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
       recovery.link === "settings.html#add-dictionaries" && recovery.visible && recovery.exercise === false
         && recovery.finish && recovery.settings,
       JSON.stringify(recovery));
-    if (process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT || process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT) {
-      await startup.setViewport({ width: 900, height: 820 });
-      for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT]]) {
-        if (!path) continue;
-        await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
-        await startup.screenshot({ path });
-      }
-      await startup.emulateMediaFeatures([]);
-    }
+    const headingSequence = [...new Set(headingLog.map(entry => entry.text))];
+    const pendingSteps = headingLog.filter(entry => entry.text === "Finding your Anki setup…")
+      .flatMap(entry => entry.progress.filter(step => step.current).map(step => step.step));
     check(
       "first-run detection configures an existing Kiku mining setup read-only from the startup page",
-      JSON.stringify(headingLog.slice(0, 3)) === JSON.stringify(["Connect Anki, if you use it", "Anki is set up", "Add a dictionary to try Hachidori"])
+      JSON.stringify(headingSequence.slice(0, 3)) === JSON.stringify(["Finding your Anki setup…", "Anki is set up", "Add a dictionary to try Hachidori"])
+        && JSON.stringify([...new Set(pendingSteps)]) === JSON.stringify(["1", "2", "3"])
+        && configured?.outcome === "configured" && configured.outcomeLink
+        && configured.outcomeText === "Automatically set up Kiku v2 for deck ‘Mining’. Change in Settings."
+        && JSON.stringify(configured.progress) === JSON.stringify([
+          { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: true },
+          { title: "Looking for the most popular deck", detail: "Selected Mining", done: true },
+          { title: "Setting Hachidori to use them", detail: "Ready for future mining", done: true },
+        ])
+        && configured.countdown === "Continuing to practice in 5 seconds"
+        && JSON.stringify(configured.actions) === JSON.stringify(["setup-continue", "setup-pause"])
         && ready?.outcome === "configured" && ready.outcomeLink && ready.status === "Add a dictionary to try Hachidori"
         && ready.outcomeText === "Automatically set up Kiku v2 for deck ‘Mining’. Change in Settings."
-        && ready.done === 2
+        && ready.done === 2 && ready.at - configured.at >= 4800
         // The durable outcome and the saved mapping name the same note type and deck.
         && detected.setupState?.anki?.status === "configured" && detected.setupState.anki.detail === null
         && detected.setupState.anki.model === "Kiku v2" && detected.setupState.anki.deck === "Mining"
@@ -4354,7 +4472,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && calls.every(({ version }) => version === 6)
         && calls.find(({ action }) => action === "findNotes").params.query === "mid:2"
         && calls.find(({ action }) => action === "findCards").params.query === "mid:2 -deck:filtered",
-      JSON.stringify({ headingLog, ready, detected, calls }),
+      JSON.stringify({ headingLog, configured, ready, detected, calls }),
     );
   } finally {
     if (startup !== null) await startup.close().catch(() => {});
@@ -5036,7 +5154,13 @@ async function checkToolbarPreview(page, frame) {
     input.value = "A toolbar draft";
     input.focus();
     input.setSelectionRange(2, 7);
-    const proof = { form, input, cards: [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")], removed: false, blurs: 0 };
+    const actions = form.querySelector(".gsm-hoshidicts-note-actions");
+    const formRect = form.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    const proof = { form, input, cards: [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")],
+      formFits: form.scrollHeight <= form.clientHeight + 1
+        && actionsRect.top >= formRect.top - 1 && actionsRect.bottom <= formRect.bottom + 1,
+      removed: false, blurs: 0 };
     input.addEventListener("blur", () => { proof.blurs += 1; });
     proof.observer = new MutationObserver(records => {
       proof.removed ||= records.some(record => [...record.removedNodes].some(node => node.contains(input)));
@@ -5059,6 +5183,7 @@ async function checkToolbarPreview(page, frame) {
         return popup.dataset.toolbarPosition === (edge === "auto" ? "bottom" : edge)
           && root.activeElement === proof.input && proof.input.value === "A toolbar draft"
           && proof.input.selectionStart === 2 && proof.input.selectionEnd === 7 && !proof.removed && proof.blurs === 0
+          && proof.formFits
           && proof.form === popup.querySelector("form") && cards.length === proof.cards.length
           && cards.every((card, index) => card === proof.cards[index]);
       }, edge));
@@ -5612,6 +5737,9 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       && value.ruby.length === 0 && value.grammar === 0);
     const retained = await popup.retainedControls();
     evidence.push(hidden.metadata.ipa.includes("tabeɾɯ") && hidden.metadata.definitionTags === before.metadata.definitionTags
+      && before.metadata.capsuleAria === "Entry metadata"
+      && before.metadata.frequencyInsideCapsule && before.metadata.grammarInsideCapsule
+      && before.metadata.capsuleBelowToolbar
       && hidden.sameCards && hidden.samePanel && await popup.dictionaryTabs("matches", before.entries)
       && retained.sameForm && retained.mounted && retained.inputFocused && retained.draft === "Keep the metadata draft"
       && JSON.stringify(retained.selection) === "[2,7]");
@@ -5622,7 +5750,9 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       && averaged.sameCards && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     await editSettingsControls(settings, { "opt-pitch-furigana": true, "opt-pitch-dictionary": "hachidori-fixture" });
     const contour = await expectMetadata(value => value.ruby.includes("hachidori-fixture") && value.pitch === 0);
+    const contourState = await popup.state();
     evidence.push(contour.metadata.grammar === 0 && contour.metadata.ipa.includes("tabeɾɯ")
+      && contourState?.furiganaAlignment?.difference <= 1
       && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     if (process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT) {
       await popup.click(".gsm-hoshidicts-note-cancel");
@@ -6566,6 +6696,15 @@ async function main() {
     status: document.getElementById("setup-status")?.textContent ?? "",
     countdown: document.getElementById("setup-countdown-label")?.textContent ?? null,
     focused: document.activeElement?.id ?? "",
+    tagline: document.querySelector(".startup-tagline")?.textContent ?? "",
+    credit: document.querySelector(".startup-footer p")?.textContent?.replace(/\s+/gu, " ").trim() ?? "",
+    creditLinks: [...document.querySelectorAll(".startup-footer p a")].map(link => [link.textContent, link.href]),
+    star: {
+      text: document.querySelector(".startup-star-link")?.textContent?.replace(/\s+/gu, " ").trim() ?? "",
+      href: document.querySelector(".startup-star-link")?.href ?? "",
+      visible: document.querySelector(".startup-star-link")?.checkVisibility() === true,
+    },
+    privacy: document.querySelector('a[href*="privacy"]') !== null,
     background: getComputedStyle(document.body).backgroundColor,
     cardBackground: getComputedStyle(document.getElementById("setup-card")).backgroundColor,
   });
@@ -6596,11 +6735,19 @@ async function main() {
     dictionaries: await chrome.runtime.sendMessage({ target: "hachidori-setup", type: "hd_setup_install",
       sourceIds: ["jitendex"], requestId: "before-start-dictionaries" }),
     setup: (await chrome.storage.local.get("setupState")).setupState,
-    privacy: document.querySelector('a[href="https://github.com/bee-san/hachidori/blob/main/docs/privacy.md"]') !== null,
+    privacy: document.querySelector('a[href*="privacy"]') !== null,
   }));
   check("a fresh install waits for Start setup before dictionary downloads or Anki discovery",
     startupTabs() === 1 && welcome?.rows.length === 0 && refusedBeforeStart?.setup.stage === "welcome"
-      && refusedBeforeStart.setup.revision === 1 && refusedBeforeStart.privacy
+      && refusedBeforeStart.setup.revision === 1 && !refusedBeforeStart.privacy && !welcome.privacy
+      && welcome.tagline === "Blazing fast, feature rich Japanese dictionary by Bee"
+      && welcome.credit === "Made by Bee · bee-san on GitHub · skerritt.blog"
+      && JSON.stringify(welcome.creditLinks) === JSON.stringify([
+        ["bee-san on GitHub", "https://github.com/bee-san"],
+        ["skerritt.blog", "https://skerritt.blog/"],
+      ])
+      && welcome.star.text === "★ Star Hachidori on GitHub"
+      && welcome.star.href === "https://github.com/bee-san/hachidori" && welcome.star.visible
       && refusedBeforeStart.anki.error === "Start setup before checking Anki."
       && refusedBeforeStart.dictionaries.error === "Start setup before downloading dictionaries."
       && setupArchives.requests.length === 0,
@@ -6891,6 +7038,7 @@ async function main() {
           actions: [...document.querySelectorAll("#setup-actions button")].map((control) => control.id),
           outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
           ankiLink: document.querySelector('#setup-body a[href="settings.html#anki"]') !== null,
+          countdown: document.getElementById("setup-countdown-label")?.textContent ?? null,
         });
       };
       record();
@@ -6911,14 +7059,14 @@ async function main() {
         body: document.getElementById("setup-body")?.textContent ?? "",
         outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
         outcomeText: document.querySelector(".setup-anki-outcome")?.textContent ?? "",
-        outcomeLink: document.querySelector('.setup-anki-outcome a[href="settings.html#anki"]') !== null,
+        outcomeLink: document.querySelector('.setup-anki-outcome a[href="https://apps.ankiweb.net/"]') !== null,
         status: document.getElementById("setup-status")?.textContent ?? "",
         actions: [...document.querySelectorAll("#setup-actions button")].map((control) => control.id) } : false,
     { timeout: 30_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
   }
   const headingLog = startup === null ? [] : await startup.evaluate(() => window.__headingLog ?? []);
   const painted = (text) => headingLog.find((entry) => entry.text === text) ?? null;
-  const checkingAnki = painted("Connect Anki, if you use it");
+  const checkingAnki = painted("Finding your Anki setup…");
   const ankiStage = await page.evaluate(async () => (await chrome.storage.local.get("setupState")).setupState);
   check(
     "the all-installed result stays five seconds before setup checks for Anki",
@@ -6932,7 +7080,7 @@ async function main() {
   );
 
   // Nothing answers AnkiConnect on this host, so the ordinary absence is
-  // recorded once and the page moves on without asking the user anything.
+  // recorded once, held long enough to read, then setup continues.
   const settledAnki = painted("Could not find Anki");
   if (startup && (process.env.HACHIDORI_STARTUP_READY_SCREENSHOT || process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT)) {
     await startup.setViewport({ width: 1200, height: 1000 });
@@ -6963,7 +7111,13 @@ async function main() {
   if (startup !== null) {
     await startup.bringToFront();
     await startup.setViewport({ width: 320, height: 900 });
-    await startup.$eval("#setup-practice-text", source => source.scrollIntoView({ block: "center" }));
+    await startup.$eval("#setup-practice-scene", scene => scene.scrollIntoView({ block: "center" }));
+    await startup.waitForFunction(() => {
+      const next = document.querySelector(".vn-next");
+      const rect = next?.getBoundingClientRect();
+      return rect?.width > 0 && rect.height > 0
+        && next.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+    }, { timeout: 6000, polling: 50 });
     const narrowScene = await readVisualNovelScene(startup, "#setup-practice-text");
     const cycled = await cycleVisualNovelScene(startup, "#setup-practice-text", true);
     await startup.setViewport({ width: 1200, height: 1000 });
@@ -7038,13 +7192,16 @@ async function main() {
   check(
     "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
     settledAnki !== null && settledAnki.step === "anki" && settledAnki.done === 1
-      && settledAnki.outcome === "unavailable" && JSON.stringify(settledAnki.actions) === JSON.stringify([])
+      && settledAnki.outcome === "unavailable"
+      && JSON.stringify(settledAnki.actions) === JSON.stringify(["setup-continue", "setup-pause"])
+      && settledAnki.countdown === "Continuing to practice in 5 seconds"
       // Exactly one AnkiConnect attempt, and the absence is not asked about twice.
       && ankiRefused.requests === 1
       && ankiStage?.anki?.status === "unavailable" && ankiStage.anki.model === null && ankiStage.anki.deck === null
       && ankiStage.anki.detail.includes("Open Anki with the AnkiConnect add-on")
       // The outcome moved setup on by itself and stays readable on the final step.
       && practiceReached?.focused === "setup-heading" && practiceReached.currentStep === "practice"
+      && practiceReached.at - settledAnki.at >= 4800
       && practiceReached.done === 2 && practiceReached.status === "You’re ready."
       && practiceReached.outcome === "unavailable" && practiceReached.outcomeLink
       && practiceReached.outcomeText === "Could not find Anki. If you want to make flashcards out of words, I suggest Anki!"
@@ -7285,13 +7442,14 @@ async function main() {
   }, { timeout: 120_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => "(never settled)");
   const recommendedFirst = await page.evaluate(() => ({
     state: document.getElementById("import-state")?.textContent?.trim() ?? "",
-    progressHidden: document.getElementById("import-progress")?.hidden,
+    sharedRows: document.querySelector("#import-progress .setup-dictionary-list")
+      ?.getAttribute("aria-label") === "Dictionary import progress",
     starterHidden: document.getElementById("recommended-starter")?.hidden,
     retryHidden: document.getElementById("recommended-retry")?.hidden,
     localInputVisible: document.getElementById("import-file")?.closest(".file-button")?.hidden !== true,
-    outcomes: [...document.querySelectorAll("#import-detail .import-result")].map((item) => ({
-      text: item.textContent.trim(),
-      error: item.classList.contains("is-error"),
+    outcomes: [...document.querySelectorAll("#import-progress .setup-dictionary")].map((item) => ({
+      text: item.querySelector(".setup-dictionary-status")?.textContent?.trim() ?? "",
+      error: item.querySelector(".setup-dictionary-status")?.classList.contains("is-error") === true,
     })),
   }));
   const recommendedFirstStorage = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
@@ -7302,13 +7460,14 @@ async function main() {
       && JSON.stringify(recommendedRequests) === JSON.stringify(
         RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId),
       )
-      && recommendedFirst.progressHidden === true
+      && recommendedFirst.sharedRows === true
       && recommendedFirst.starterHidden === false
       && recommendedFirst.retryHidden === false
       && recommendedFirst.localInputVisible === true
       && recommendedFirst.outcomes.length === 4
       && JSON.stringify(recommendedFirst.outcomes.map(({ error }) => error))
         === JSON.stringify([false, true, false, false])
+      && recommendedFirst.outcomes.every(({ text }) => /\d+(?:\.\d)? seconds/u.test(text))
       && firstRecommendedPackages.length === 3
       && firstRecommendedPackages.every((dictionary) => {
         const entry = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === dictionary.sourceId);
@@ -7349,7 +7508,10 @@ async function main() {
     return text.startsWith("Finished 1 of 1 recommended dictionary") ? text : false;
   }, { timeout: 120_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => "(never settled)");
   const recommendedRetry = await page.evaluate(() => ({
-    outcomes: [...document.querySelectorAll("#import-detail .import-result")].map((item) => item.textContent.trim()),
+    outcomes: [...document.querySelectorAll("#import-progress .setup-dictionary")].map((item) => ({
+      name: item.querySelector(".setup-dictionary-name")?.textContent?.trim() ?? "",
+      text: item.querySelector(".setup-dictionary-status")?.textContent?.trim() ?? "",
+    })),
     retryHidden: document.getElementById("recommended-retry")?.hidden,
     state: document.getElementById("import-state")?.textContent?.trim() ?? "",
   }));
@@ -7360,7 +7522,9 @@ async function main() {
     recommendedRetryState === "Finished 1 of 1 recommended dictionary — 1 imported, 0 failed."
       && JSON.stringify(recommendedRequests.slice(requestsBeforeRetry)) === JSON.stringify(["jmnedict"])
       && recommendedRetry.outcomes.length === 1
-      && recommendedRetry.outcomes[0].includes("JMnedict for Yomitan")
+      && recommendedRetry.outcomes[0].name
+        === RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "jmnedict").name
+      && /^Imported JMnedict .+ in \d+(?:\.\d)? seconds: /u.test(recommendedRetry.outcomes[0].text)
       && recommendedRetry.retryHidden === true
       && allRecommendedPackages.length === RECOMMENDED_DICTIONARIES.length
       && RECOMMENDED_DICTIONARIES.every((entry) => allRecommendedPackages.some((dictionary) =>
@@ -7437,13 +7601,20 @@ async function main() {
     const t = (document.getElementById("import-state")?.textContent || "").trim();
     return t.startsWith("Finished 1 of 1 archive") ? t : false;
   }, { timeout: 120_000, polling: 500 }).then(h => h.jsonValue()).catch(() => "(never settled)");
-  const importDetail = await page.evaluate(() =>
-    (document.getElementById("import-detail")?.textContent || "").trim());
+  const importDetail = await page.evaluate(() => {
+    const row = document.querySelector("#import-progress .setup-dictionary");
+    return {
+      name: row?.querySelector(".setup-dictionary-name")?.textContent ?? "",
+      status: row?.querySelector(".setup-dictionary-status")?.textContent ?? "",
+      trackHidden: row?.querySelector(".setup-track")?.hidden === true,
+    };
+  });
   const importOk = importState === "Finished 1 of 1 archive — 1 imported, 0 failed."
-    && importDetail.includes("hachidori-fixture.zip")
-    && importDetail.includes("Imported hachidori-fixture");
+    && importDetail.name === "hachidori-fixture.zip"
+    && /^Imported hachidori-fixture in \d+(?:\.\d)? seconds: /u.test(importDetail.status)
+    && importDetail.trackHidden;
   check("importing a Yomitan .zip from the settings page succeeds", importOk,
-    `#import-state: ${importState}\n       #import-detail: ${importDetail}`);
+    `#import-state: ${importState}\n       import progress: ${JSON.stringify(importDetail)}`);
 
   const opfsFiles = await listOpfsPaths(page);
 
@@ -7507,19 +7678,51 @@ async function main() {
   });
 
   await showSettingsSection(page, "add-dictionaries");
-  const batchInput = await page.$("#import-file");
-  await batchInput.uploadFile(GENERIC_KANJI_FIXTURE, INVALID_FIXTURE, FIXTURE);
+  const dropProof = await page.evaluate((archives) => {
+    const zone = document.getElementById("import-drop-zone");
+    const transfer = new DataTransfer();
+    for (const archive of archives) {
+      const bytes = Uint8Array.from(atob(archive.base64), (character) => character.charCodeAt(0));
+      transfer.items.add(new File([bytes], archive.name, { type: "application/zip" }));
+    }
+    const dispatch = (type) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "dataTransfer", { value: transfer });
+      zone.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    const dragEnterPrevented = dispatch("dragenter");
+    const dragOverPrevented = dispatch("dragover");
+    const highlighted = zone.classList.contains("is-dragging");
+    const dropEffect = transfer.dropEffect;
+    const dropPrevented = dispatch("drop");
+    return {
+      dragEnterPrevented,
+      dragOverPrevented,
+      highlighted,
+      dropEffect,
+      dropPrevented,
+      cleared: !zone.classList.contains("is-dragging"),
+    };
+  }, [
+    { name: "hachidori-generic-kanji-fixture.zip", base64: readFileSync(GENERIC_KANJI_FIXTURE).toString("base64") },
+    { name: "malformed-index.zip", base64: readFileSync(INVALID_FIXTURE).toString("base64") },
+    { name: "hachidori-fixture.zip", base64: readFileSync(FIXTURE).toString("base64") },
+  ]);
   const batchState = await page.waitForFunction(() => {
     const text = (document.getElementById("import-state")?.textContent || "").trim();
     return text.startsWith("Finished 3 of 3 archives") ? text : false;
   }, { timeout: 180_000, polling: 250 }).then(handle => handle.jsonValue()).catch(() => "(never settled)");
   const batchUi = await page.evaluate(() => ({
     pickerValue: document.getElementById("import-file")?.value ?? "missing",
-    progressHidden: document.getElementById("import-progress")?.hidden,
+    sharedRows: document.querySelector("#import-progress .setup-dictionary-list")
+      ?.getAttribute("aria-label") === "Dictionary import progress",
     stateError: document.getElementById("import-state")?.classList.contains("is-error"),
-    outcomes: [...document.querySelectorAll("#import-detail .import-result")].map((result) => ({
-      text: result.textContent.trim(),
-      error: result.classList.contains("is-error"),
+    outcomes: [...document.querySelectorAll("#import-progress .setup-dictionary")].map((result) => ({
+      name: result.querySelector(".setup-dictionary-name")?.textContent ?? "",
+      text: result.querySelector(".setup-dictionary-status")?.textContent ?? "",
+      error: result.querySelector(".setup-dictionary-status")?.classList.contains("is-error") === true,
+      trackHidden: result.querySelector(".setup-track")?.hidden === true,
     })),
   }));
   const replacedState = await page.evaluate(() => chrome.storage.local.get("dictionaryState"));
@@ -7539,19 +7742,23 @@ async function main() {
   check("the import batch continues after failure and retains every archive outcome",
     batchState === "Finished 3 of 3 archives — 2 imported, 1 failed."
       && batchUi.pickerValue === ""
-      && batchUi.progressHidden === true
+      && dropProof.dragEnterPrevented && dropProof.dragOverPrevented
+      && dropProof.highlighted && dropProof.dropPrevented && dropProof.cleared
+      && batchUi.sharedRows === true
       && batchUi.stateError === true
       && batchUi.outcomes.length === 3
       && batchUi.outcomes[0].error === false
-      && batchUi.outcomes[0].text.includes("hachidori-generic-kanji-fixture.zip")
       && batchUi.outcomes[0].text.includes(`Imported ${GENERIC_KANJI_TITLE}`)
+      && /\d+(?:\.\d)? seconds/u.test(batchUi.outcomes[0].text)
       && batchUi.outcomes[1].error === true
-      && batchUi.outcomes[1].text.includes("malformed-index.zip")
-      && batchUi.outcomes[1].text.includes("Could not be imported")
+      && batchUi.outcomes[1].text.includes("Failed after")
       && batchUi.outcomes[2].error === false
-      && batchUi.outcomes[2].text.includes("hachidori-fixture.zip")
-      && batchUi.outcomes[2].text.includes("Imported hachidori-fixture"),
-    `#import-state: ${batchState}; batch UI: ${JSON.stringify(batchUi)}`);
+      && batchUi.outcomes[2].text.includes("Imported hachidori-fixture")
+      && JSON.stringify(batchUi.outcomes.map(({ name }) => name)) === JSON.stringify([
+        "hachidori-generic-kanji-fixture.zip", "malformed-index.zip", "hachidori-fixture.zip",
+      ])
+      && batchUi.outcomes.every(({ text, trackHidden }) => /\d+(?:\.\d)? seconds/u.test(text) && trackHidden),
+    `#import-state: ${batchState}; drop: ${JSON.stringify(dropProof)}; batch UI: ${JSON.stringify(batchUi)}`);
   check("batch re-import preserves presentation, source, and order while clearing stale check state",
     aliasChanged?.settled?.id === FIXTURE_ID
       && stateBeforeReimport?.ok === true
@@ -7573,6 +7780,11 @@ async function main() {
       && replacedPackage?.lastUpdateCheck === null,
     `alias change: ${JSON.stringify(aliasChanged)}; state before reimport: ${JSON.stringify(stateBeforeReimport)};`
       + ` dictionaryState: ${JSON.stringify(replacedState?.dictionaryState)}; OPFS paths: ${JSON.stringify(opfsAfterBatch)}`);
+
+  if (process.env.HACHIDORI_IMPORT_SCREENSHOT) {
+    const importCard = await page.$('section[aria-labelledby="import-heading"]');
+    await importCard.screenshot({ path: process.env.HACHIDORI_IMPORT_SCREENSHOT });
+  }
 
   await page.waitForFunction((alias) => {
     const row = document.querySelector("#dict-list .dict-row");

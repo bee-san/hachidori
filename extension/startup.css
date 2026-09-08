@@ -35,6 +35,40 @@
   margin: 2px 0 0;
   color: var(--text-dim);
 }
+.startup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.startup-footer p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+}
+.startup-footer a {
+  font-weight: 600;
+}
+.startup-star-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  text-decoration: none;
+}
+.startup-star-link:hover,
+.startup-star-link:focus-visible {
+  border-color: var(--accent);
+}
 
 .setup-steps {
   display: flex;
@@ -116,60 +150,6 @@
   flex-direction: column;
   gap: 14px;
 }
-.setup-dictionary-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.setup-dictionary {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  column-gap: 16px;
-  row-gap: 2px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-sunken);
-}
-.setup-dictionary-name {
-  grid-area: 1 / 1;
-  font-weight: 600;
-}
-.setup-dictionary-purpose {
-  grid-area: 2 / 1;
-  color: var(--text-dim);
-  font-size: 13px;
-}
-.setup-dictionary-status {
-  grid-area: 3 / 1;
-  margin-top: 5px;
-  color: var(--text-dim);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  text-align: left;
-}
-.setup-dictionary.is-active { border-color: var(--accent); }
-.setup-dictionary-status.is-ok {
-  color: var(--ok);
-}
-.setup-dictionary-status.is-error {
-  color: var(--error);
-  text-align: left;
-}
-.setup-dictionary .setup-track {
-  grid-column: 1 / -1;
-  margin-top: 6px;
-}
-/* A known total fills the bar to --progress; an unknown one keeps the shared
-   indeterminate animation from settings.css. */
-.setup-track.is-determinate .track-fill {
-  width: var(--progress, 0%);
-  animation: none;
-  transition: width 120ms linear;
-}
 .setup-countdown {
   display: flex;
   flex-direction: column;
@@ -189,6 +169,75 @@
 @keyframes setup-countdown-fill {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
+}
+.setup-anki-progress {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-anki-progress-step {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-sunken);
+  color: var(--text-dim);
+}
+.setup-anki-progress-step.is-current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.setup-anki-progress-step.is-done {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--border));
+  color: var(--text);
+}
+.setup-anki-progress-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+}
+.setup-anki-progress-step.is-current .setup-anki-progress-marker {
+  border: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  color: transparent;
+  animation: setup-anki-spin 800ms linear infinite;
+}
+.setup-anki-progress-step.is-done .setup-anki-progress-marker {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: var(--surface);
+}
+.setup-anki-progress-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.setup-anki-progress-copy strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+.setup-anki-progress-copy small {
+  color: var(--text-dim);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+@keyframes setup-anki-spin {
+  to { transform: rotate(360deg); }
 }
 .setup-actions {
   display: flex;
@@ -277,11 +326,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .setup-track.is-determinate .track-fill {
-    transition: none;
-  }
   .setup-countdown .setup-track.is-determinate .track-fill {
     width: var(--progress, 0%);
+    animation: none;
+  }
+  .setup-anki-progress-step.is-current .setup-anki-progress-marker {
     animation: none;
   }
 }

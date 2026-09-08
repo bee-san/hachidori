@@ -65,7 +65,11 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "render/reader.css"
+        "render/reader.css",
+        "render/icons/big-circle.svg",
+        "render/icons/add-duplicate-big-circle.svg",
+        "render/icons/overwrite-big-circle.svg",
+        "render/icons/view-note.svg"
       ],
       "matches": [
         "<all_urls>"

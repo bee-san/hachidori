@@ -7,6 +7,7 @@
     <title>Hachidori settings</title>
     <link rel="stylesheet" href="render/reader.css" />
     <link rel="stylesheet" href="settings.css" />
+    <link rel="stylesheet" href="dictionary-progress.css" />
   </head>
   <body>
     <a class="skip-link" href="#settings-content">Skip to settings</a>
@@ -182,31 +183,32 @@
             <h1 id="import-heading" tabindex="-1">Import dictionaries</h1>
             <p class="hint">Yomitan ZIP files, stored on this device.</p>
           </div>
-          <div class="import-row">
-            <label class="file-button">
-              <span>Choose ZIP files</span>
-              <input
-                id="import-file"
-                type="file"
-                accept=".zip,application/zip"
-                multiple
-              />
-            </label>
-            <output
-              class="import-state"
-              id="import-state"
-              aria-live="polite"
-            ></output>
+          <div
+            class="import-drop-zone"
+            id="import-drop-zone"
+            aria-describedby="import-drop-hint"
+          >
+            <div class="import-row">
+              <label class="file-button">
+                <span>Choose ZIP files</span>
+                <input
+                  id="import-file"
+                  type="file"
+                  accept=".zip,application/zip"
+                  multiple
+                />
+              </label>
+              <output
+                class="import-state"
+                id="import-state"
+                aria-live="polite"
+              ></output>
+            </div>
+            <p class="import-drop-hint" id="import-drop-hint">
+              Or drag and drop Yomitan ZIP files here.
+            </p>
           </div>
-          <div class="track" id="import-progress" hidden>
-            <div class="track-fill"></div>
-          </div>
-          <ol
-            class="import-detail"
-            id="import-detail"
-            aria-label="Import results"
-            hidden
-          ></ol>
+          <div id="import-progress"></div>
           <p class="section-note">
             Files import one at a time. Large dictionaries can take a few
             minutes. Keep this page open until the import finishes.

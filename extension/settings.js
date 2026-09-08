@@ -13,6 +13,10 @@ import { createSettingsSearch } from "./settings-search.js";
 import { createCustomLinkSettings } from "./custom-link-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
 import {
+  createDictionaryProgressList,
+  formatSeconds,
+} from "./dictionary-progress.js";
+import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
 } from "./dictionary-groups.js";
@@ -131,6 +135,8 @@ let backingUp = false;
 let mediaStatusEpoch = 0;
 let mediaRuntimeState = "unavailable";
 let settingsSearch;
+let importProgress;
+let importDragDepth = 0;
 
 const SECTION_STATUSES = {
   "import-state": { section: "add-dictionaries", label: "Import" },
@@ -631,7 +637,6 @@ function setStatus(message, tone) {
 
 function setImportState(message, tone) {
   setSectionStatus("import-state", message, tone, tone === "ready");
-  element("import-progress").hidden = tone !== "busy";
 }
 
 function setUpdateState(message, tone = "") {
@@ -895,18 +900,30 @@ function refreshDictionarySchedules() {
 }
 
 function clearImportResults() {
-  const detail = element("import-detail");
-  detail.textContent = "";
-  detail.hidden = true;
+  importProgressView().clear();
 }
 
-function appendImportResult(fileName, message, tone) {
-  const detail = element("import-detail");
-  const result = document.createElement("li");
-  result.className = `import-result is-${tone}`;
-  result.textContent = `${fileName} — ${message}`;
-  detail.appendChild(result);
-  detail.hidden = false;
+function importProgressView() {
+  if (importProgress) return importProgress;
+  importProgress = createDictionaryProgressList({
+    document,
+    ariaLabel: "Dictionary import progress",
+    idPrefix: "settings-import",
+  });
+  element("import-progress").appendChild(importProgress.element);
+  return importProgress;
+}
+
+function setImportEntries(entries) {
+  importProgressView().setEntries(entries);
+}
+
+function updateImportResult(index, state) {
+  importProgressView().update(String(index), state);
+}
+
+function importDuration(started) {
+  return formatSeconds(Math.max(0, (Date.now() - started) / 1000));
 }
 
 function renderRecommendedCatalogue() {
@@ -940,7 +957,13 @@ function renderRecommendedActions() {
 
 function setControlsDisabled(disabled) {
   const blocked = disabled || removing || updating || customSaving || backingUp;
-  element("import-file").disabled = blocked || committing;
+  const importBlocked = blocked || committing;
+  element("import-file").disabled = importBlocked;
+  element("import-drop-zone").setAttribute("aria-disabled", String(importBlocked));
+  if (importBlocked) {
+    importDragDepth = 0;
+    element("import-drop-zone").classList.remove("is-dragging");
+  }
   element("install-recommended").disabled = blocked || committing;
   element("retry-recommended").disabled = blocked || committing;
   element("empty-install-recommended").disabled = blocked || committing;
@@ -2071,10 +2094,12 @@ function summariseReport(report) {
 async function importFile(file, index, total, request = {}, label = file.name, started = Date.now()) {
   const blobUrl = URL.createObjectURL(file);
   const tick = () => {
+    const elapsed = elapsedSince(started);
     setImportState(
-      `Importing ${label} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsedSince(started)} elapsed`,
+      `Importing ${label} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsed} elapsed`,
       "busy",
     );
+    updateImportResult(index, { text: `Importing… ${elapsed} elapsed`, progress: { value: null } });
   };
   tick();
   const ticker = setInterval(tick, 1000);
@@ -2083,13 +2108,22 @@ async function importFile(file, index, total, request = {}, label = file.name, s
     const reply = await send("hd_import", { blobUrl, fileName: file.name, ...request });
     const report = reply.report ?? {};
     if (reply.ok && report.success) {
-      appendImportResult(label, `Imported ${report.title}: ${summariseReport(report)}.`, "ready");
+      updateImportResult(index, {
+        text: `Imported ${report.title} in ${importDuration(started)}: ${summariseReport(report)}.`,
+        tone: "ok",
+      });
       return true;
     }
     const reason = reply.error ?? report.error ?? "The engine gave no reason.";
-    appendImportResult(label, `Could not be imported: ${reason}`, "error");
+    updateImportResult(index, {
+      text: `Failed after ${importDuration(started)}: ${reason}`,
+      tone: "error",
+    });
   } catch (error) {
-    appendImportResult(label, `Could not be imported: ${describe(error)}`, "error");
+    updateImportResult(index, {
+      text: `Failed after ${importDuration(started)}: ${describe(error)}`,
+      tone: "error",
+    });
   } finally {
     clearInterval(ticker);
     // The offscreen document has read the bytes by now; holding the URL any
@@ -2102,10 +2136,12 @@ async function importFile(file, index, total, request = {}, label = file.name, s
 async function importRecommendedDictionary(entry, index, total) {
   const started = Date.now();
   const tick = () => {
+    const elapsed = elapsedSince(started);
     setImportState(
-      `Downloading ${entry.name} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsedSince(started)} elapsed`,
+      `Downloading ${entry.name} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsed} elapsed`,
       "busy",
     );
+    updateImportResult(index, { text: `Downloading… ${elapsed} elapsed`, progress: { value: null } });
   };
   tick();
   const ticker = setInterval(tick, 1000);
@@ -2125,20 +2161,27 @@ async function importRecommendedDictionary(entry, index, total) {
       started,
     );
   } catch (error) {
-    appendImportResult(entry.name, `Could not be downloaded: ${describe(error)}`, "error");
+    updateImportResult(index, {
+      text: `Download failed after ${importDuration(started)}: ${describe(error)}`,
+      tone: "error",
+    });
     return false;
   } finally {
     clearInterval(ticker);
   }
 }
 
-async function runImportBatch(items, importOne, singular, plural) {
+async function runImportBatch(items, importOne, singular, plural, describeItem) {
   if (importing) {
     return;
   }
   importing = true;
   setControlsDisabled(true);
   clearImportResults();
+  setImportEntries(items.map((item, index) => ({
+    id: String(index),
+    ...describeItem(item),
+  })));
 
   let imported = 0;
   try {
@@ -2163,7 +2206,53 @@ async function runImportBatch(items, importOne, singular, plural) {
 }
 
 function runImports(files) {
-  return runImportBatch(files, importFile, "archive", "archives");
+  return runImportBatch(files, importFile, "archive", "archives", (file) => ({
+    name: file.name,
+    purpose: "Yomitan ZIP file",
+  }));
+}
+
+function hasDroppedFiles(event) {
+  const transfer = event.dataTransfer;
+  return (transfer?.files?.length ?? 0) > 0 || Array.from(transfer?.types ?? []).includes("Files");
+}
+
+function clearImportDropState() {
+  importDragDepth = 0;
+  element("import-drop-zone").classList.remove("is-dragging");
+}
+
+function bindImportDropZone(file) {
+  const zone = element("import-drop-zone");
+  zone.setAttribute("aria-disabled", String(file.disabled));
+  zone.addEventListener("dragenter", (event) => {
+    if (!hasDroppedFiles(event)) return;
+    event.preventDefault();
+    if (file.disabled || importing) return;
+    importDragDepth += 1;
+    zone.classList.add("is-dragging");
+  });
+  zone.addEventListener("dragover", (event) => {
+    if (!hasDroppedFiles(event)) return;
+    event.preventDefault();
+    if (file.disabled || importing) return;
+    event.dataTransfer.dropEffect = "copy";
+    zone.classList.add("is-dragging");
+  });
+  zone.addEventListener("dragleave", () => {
+    if (importDragDepth === 0) return;
+    importDragDepth -= 1;
+    if (importDragDepth === 0) zone.classList.remove("is-dragging");
+  });
+  zone.addEventListener("drop", (event) => {
+    if (!hasDroppedFiles(event)) return;
+    event.preventDefault();
+    const dropped = [...(event.dataTransfer?.files ?? [])];
+    clearImportDropState();
+    if (!file.disabled && !importing && dropped.length > 0) {
+      void runImports(dropped);
+    }
+  });
 }
 
 function installMissingRecommendedDictionaries() {
@@ -2174,6 +2263,7 @@ function installMissingRecommendedDictionaries() {
       importRecommendedDictionary,
       "recommended dictionary",
       "recommended dictionaries",
+      (entry) => ({ name: entry.name, purpose: entry.description }),
     );
   }
 }
@@ -2300,6 +2390,7 @@ function attachHandlers() {
       void runImports(picked);
     }
   });
+  bindImportDropZone(file);
 
   element("dict-search").addEventListener("input", (event) => {
     dictionarySearch = event.target.value;

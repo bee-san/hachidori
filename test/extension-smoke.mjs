@@ -2296,6 +2296,8 @@ function loadSettingsScript(window) {
     .replace(/^export\s+/gmu, "");
   const nameDrafts = readFileSync(resolve(EXTENSION, "dictionary-name-drafts.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const dictionaryProgress = readFileSync(resolve(EXTENSION, "dictionary-progress.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
@@ -2304,6 +2306,7 @@ function loadSettingsScript(window) {
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
     .replace(/import \{ createAnkiSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{ createAudioSettingsController \}\s*from\s*"\.\/audio-settings\.js";\s*/u, "")
@@ -2314,7 +2317,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${externalLinks}\n${customLinkSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customLinkSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -2413,7 +2416,8 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && /--hoshidicts-chrome-background: color-mix\([^;]+var\(--hoshidicts-background-opacity\)[^;]+transparent\s*\)/u.test(frameRule)
         && [scrollRule, toolbarRule, noteRule].every(rule => /min-height: 0;/u.test(rule) && /overflow-y: auto;/u.test(rule))
         && /flex: 1 1 0;/u.test(scrollRule) && /max-height: 50%;/u.test(toolbarRule)
-        && /max-height: 60%;/u.test(noteRule) && !/position: sticky;/u.test(toolbarRule));
+        && /flex: 0 0 auto;/u.test(noteRule) && /max-height: 80%;/u.test(noteRule)
+        && !/position: sticky;/u.test(toolbarRule));
     const tagRule = readerCss.match(/^\.gsm-hoshidicts-tag \{([^}]+)\}/mu)?.[1];
     const definitionTagRule = readerCss.match(/^\.gsm-hoshidicts-tag-definition \{([^}]+)\}/mu)?.[1];
     const metadataValueRules = ["frequency", "pitch"].map(kind => readerCss
@@ -2782,6 +2786,13 @@ function checkRecommendedDictionaries() {
     "the extension requests the browser alarm permission for managed updates",
     manifest.permissions?.includes("alarms") === true,
     JSON.stringify(manifest.permissions),
+  );
+  const webResources = new Set(manifest.web_accessible_resources?.flatMap(({ resources }) => resources) ?? []);
+  check(
+    "the popup exposes the copied GSM toolbar icons to content-script shadow roots",
+    ["big-circle", "add-duplicate-big-circle", "overwrite-big-circle", "view-note"]
+      .every((name) => webResources.has(`render/icons/${name}.svg`)),
+    JSON.stringify([...webResources]),
   );
   const catalogueContract = (entry) => ({
     sourceId: entry.sourceId,
@@ -5349,9 +5360,11 @@ async function main() {
   );
   const settingsBatch = await settingsBatchImportStage();
   check(
-    "settings import every selected archive sequentially and retain each outcome",
+    "settings imports dropped archives sequentially through the shared progress rows and retains each timed outcome",
     settingsBatch?.multiple === true
       && settingsBatch.pickerValue === ""
+      && Object.values(settingsBatch.drop ?? {}).every(Boolean)
+      && settingsBatch.sharedRows === true
       && JSON.stringify(settingsBatch.importRequests?.map(({ fileName }) => fileName))
         === JSON.stringify(["first.zip", "broken.zip", "replacement.zip"])
       && settingsBatch.importRequests?.every(({ state, completed }, index) =>
@@ -5362,11 +5375,12 @@ async function main() {
       && JSON.stringify(settingsBatch.revokedUrls) === JSON.stringify(settingsBatch.createdUrls)
       && JSON.stringify(settingsBatch.outcomes?.map(({ error }) => error))
         === JSON.stringify([false, true, false])
-      && settingsBatch.outcomes?.[0]?.text.includes("first.zip")
+      && JSON.stringify(settingsBatch.outcomes?.map(({ name }) => name))
+        === JSON.stringify(["first.zip", "broken.zip", "replacement.zip"])
+      && settingsBatch.outcomes.every(({ text, trackHidden }) =>
+        /\d+(?:\.\d)? seconds/u.test(text) && trackHidden)
       && settingsBatch.outcomes[0].text.includes("Imported First")
-      && settingsBatch.outcomes?.[1]?.text.includes("broken.zip")
       && settingsBatch.outcomes[1].text.includes("broken archive")
-      && settingsBatch.outcomes?.[2]?.text.includes("replacement.zip")
       && settingsBatch.outcomes[2].text.includes("Imported First")
       && settingsBatch.finalState === "Finished 3 of 3 archives — 2 imported, 1 failed."
       && settingsBatch.controlsRestored === true
@@ -5385,7 +5399,7 @@ async function main() {
   check("Settings shows Resume setup only while the first-run setup record is incomplete",
     navigationSettings?.resume === true, JSON.stringify(navigationSettings));
   const welcome = await startupWelcomeStage();
-  check("first-run setup links its privacy policy, waits for a saved Start, resumes it and permits manual setup",
+  check("first-run setup waits for a saved Start, resumes it and permits manual setup",
     welcome !== null && Object.values(welcome).every((value) => value === true), JSON.stringify(welcome));
   const startup = await startupPageStage();
   check("the startup page mirrors its own installer run, keeps focus, retries only missing dictionaries and advances after the five-second result",
@@ -6286,16 +6300,19 @@ function loadStartupScript(window) {
   const practice = readFileSync(resolve(EXTENSION, "startup-practice.js"), "utf8")
     .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/local-file-access\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
+  const dictionaryProgress = readFileSync(resolve(EXTENSION, "dictionary-progress.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/visual-novel\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
     .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/startup-practice\.js";\s*/u, "");
   // startup.js is a module with a top-level await; an async wrapper keeps that
   // legal in a classic-script eval and surfaces a load failure through its promise.
-  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${setupState}\n${localFileAccess}\n${practice}\n${startup}\n})()`);
+  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${dictionaryProgress}\n${setupState}\n${localFileAccess}\n${practice}\n${startup}\n})()`);
 }
 
 // The startup page renders the worker-owned setup state, mirrors the offscreen
@@ -6533,10 +6550,23 @@ async function startupPageStage() {
       setupState = { ...setupState, revision: 8, anki: { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" } };
       return { type: "hd_setup_anki_result", requestId: message.requestId, ok: true, error: null, state: structuredClone(setupState) };
     };
+    const ankiStarted = Date.now();
     document.getElementById("setup-retry").click();
-    await until(() => pendingReply !== null, "the practice write");
-    const practiceRequest = requests.at(-1);
+    await until(() => heading() === "Anki is set up"
+      && document.getElementById("setup-countdown-label")?.textContent === "Continuing to practice in 5 seconds",
+    "the configured Anki result");
     const checkedHeading = heading();
+    const automaticProgress = [...document.querySelectorAll(".setup-anki-progress-step")].map((row) => ({
+      title: row.querySelector("strong")?.textContent,
+      detail: row.querySelector("small")?.textContent,
+      done: row.classList.contains("is-done"),
+    }));
+    await new Promise((done) => setTimeout(done, 3000));
+    const ankiHeld = heading() === "Anki is set up" && pendingReply === null
+      && /Continuing to practice in [123] seconds?/u.test(document.getElementById("setup-countdown-label")?.textContent ?? "");
+    await until(() => pendingReply !== null, "the practice write");
+    const ankiElapsed = Date.now() - ankiStarted;
+    const practiceRequest = requests.at(-1);
     // A second startup tab made the same move first: the conflict it leaves is
     // the move this page asked for, so the final step is not an error screen.
     setupState = { ...setupState, revision: 9, stage: "practice" };
@@ -6544,7 +6574,12 @@ async function startupPageStage() {
     await until(() => document.getElementById("setup-practice-instruction")?.textContent.startsWith("Try looking up a word below."), "the practice stage");
     const outcomeNote = document.querySelector(".setup-anki-outcome");
     const practice = emptyReplyShown && ankiRequests() === 3 && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
-      && checkedHeading === "Anki is set up"
+      && checkedHeading === "Anki is set up" && ankiHeld && ankiElapsed >= 4900
+      && JSON.stringify(automaticProgress) === JSON.stringify([
+        { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: true },
+        { title: "Looking for the most popular deck", detail: "Selected Mining::Words", done: true },
+        { title: "Setting Hachidori to use them", detail: "Ready for future mining", done: true },
+      ])
       && outcomeNote?.dataset.status === "configured"
       && outcomeNote.textContent === "Automatically set up Kiku v2 for deck ‘Mining::Words’. Change in Settings."
       && outcomeNote.querySelector('a[href="settings.html#anki"]') !== null
@@ -6680,7 +6715,9 @@ async function startupWelcomeStage() {
       && page.document.getElementById("setup-steps").hidden
       && readerScripts(page.document).length === 0
       && introduction === "Click Start Setup to automatically set up Hachidori"
-      && page.document.querySelector('a[href="https://github.com/bee-san/hachidori/blob/main/docs/privacy.md"]') !== null;
+      && page.document.querySelector('.startup-star-link[href="https://github.com/bee-san/hachidori"]')
+        ?.textContent.replace(/\s+/gu, " ").trim() === "★ Star Hachidori on GitHub"
+      && page.document.querySelector('a[href*="privacy"]') === null;
     // A failed save leaves the introduction and no network work; a later click
     // still must wait until the accepted stage is committed.
     page.document.getElementById("setup-start").click();
@@ -6849,8 +6886,13 @@ async function startupContinueNowStage(jsdom, initialSetup, dictionaries, finish
     await page.until(() => page.document.getElementById("setup-countdown-label") !== null, "the installed result");
     page.document.getElementById("setup-continue").click();
     await page.until(() => typeof settleAnki === "function", "the optional Anki check");
-    const checking = page.heading() === "Connect Anki, if you use it"
+    const progress = [...page.document.querySelectorAll(".setup-anki-progress-step")];
+    const checking = page.heading() === "Finding your Anki setup…"
       && page.document.querySelector('[data-stage="anki"]')?.textContent.includes("Optional")
+      && progress.length === 3
+      && progress.map((row) => row.querySelector("strong")?.textContent).join("|")
+        === "Looking for the most popular mining card|Looking for the most popular deck|Setting Hachidori to use them"
+      && progress[0].classList.contains("is-current")
       && page.document.getElementById("setup-continue")?.disabled === false
       && page.document.getElementById("setup-countdown-label") === null
       && page.saves().length === 1;
@@ -8280,7 +8322,9 @@ async function settingsBatchImportStage() {
           importRequests.push({
             fileName: message.fileName,
             state: window.document.getElementById("import-state")?.textContent ?? "",
-            completed: window.document.querySelectorAll("#import-detail .import-result").length,
+            completed: window.document.querySelectorAll(
+              "#import-progress .setup-dictionary-status.is-ok, #import-progress .setup-dictionary-status.is-error",
+            ).length,
           });
           await new Promise((done) => window.setTimeout(done, 0));
           activeImports -= 1;
@@ -8314,20 +8358,36 @@ async function settingsBatchImportStage() {
     new window.File(["broken"], "broken.zip", { type: "application/zip" }),
     new window.File(["replacement"], "replacement.zip", { type: "application/zip" }),
   ];
-  Object.defineProperty(input, "files", { configurable: true, value: files });
-  input.dispatchEvent(new window.Event("change", { bubbles: true }));
+  const zone = window.document.getElementById("import-drop-zone");
+  const transfer = { files, types: ["Files"], dropEffect: "none" };
+  const dispatch = (type) => {
+    const event = new window.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: transfer });
+    zone.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  const dragEnterPrevented = dispatch("dragenter");
+  const dragOverPrevented = dispatch("dragover");
+  const highlighted = zone.classList.contains("is-dragging") && transfer.dropEffect === "copy";
+  const dropPrevented = dispatch("drop");
+  const cleared = !zone.classList.contains("is-dragging");
 
   const batchDeadline = Date.now() + 2000;
   while ((importRequests.length < files.length || input.disabled) && Date.now() < batchDeadline) {
     await new Promise((done) => window.setTimeout(done, 5));
   }
-  const outcomes = [...window.document.querySelectorAll("#import-detail .import-result")].map((item) => ({
-    text: item.textContent,
-    error: item.classList.contains("is-error"),
+  const outcomes = [...window.document.querySelectorAll("#import-progress .setup-dictionary")].map((item) => ({
+    name: item.querySelector(".setup-dictionary-name")?.textContent ?? "",
+    text: item.querySelector(".setup-dictionary-status")?.textContent ?? "",
+    error: item.querySelector(".setup-dictionary-status")?.classList.contains("is-error") === true,
+    trackHidden: item.querySelector(".setup-track")?.hidden === true,
   }));
   const result = {
     multiple: input.multiple,
     pickerValue: input.value,
+    drop: { dragEnterPrevented, dragOverPrevented, highlighted, dropPrevented, cleared },
+    sharedRows: window.document.querySelector("#import-progress .setup-dictionary-list")
+      ?.getAttribute("aria-label") === "Dictionary import progress",
     importRequests,
     maxActiveImports,
     createdUrls,
@@ -8503,9 +8563,9 @@ async function settingsRecommendedImportStage() {
   ) && Date.now() < deadline) {
     await new Promise((done) => window.setTimeout(done, 5));
   }
-  const firstOutcomes = [...window.document.querySelectorAll("#import-detail .import-result")].map((item) => ({
-    text: item.textContent,
-    error: item.classList.contains("is-error"),
+  const firstOutcomes = [...window.document.querySelectorAll("#import-progress .setup-dictionary")].map((item) => ({
+    text: item.querySelector(".setup-dictionary-status")?.textContent ?? "",
+    error: item.querySelector(".setup-dictionary-status")?.classList.contains("is-error") === true,
   }));
   const partial = {
     state: window.document.getElementById("import-state")?.textContent ?? "",
@@ -14218,22 +14278,26 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   popup.addEventListener("focus", () => { scrollAtNoteFocus = view.scrollElement.scrollTop; }, { capture: true, once: true });
   termNoteButton?.click();
   const bottomNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
+  const miningFeedback = popup.querySelector(".gsm-hoshidicts-mining-feedback");
   const bottomChildren = [...popup.children];
   const openedAtBottom = view.scrollElement.scrollTop;
   view.setToolbarPosition("top");
   check(
     "the bottom Note form stays outside scrolling definitions and opens without moving their viewport",
     termFormWasLazy
-      && bottomChildren.at(-2) === bottomNoteForm
+      && bottomChildren.at(-3) === bottomNoteForm
+      && bottomChildren.at(-2) === miningFeedback
       && bottomChildren.at(-1) === resultToolbar
       && openedAtBottom === 120
       && scrollAtNoteFocus === 120
       && bottomNoteForm.scrollTop === 0
       && view.scrollElement.parentNode === popup
       && view.scrollElement.contains(popup.querySelector(".gsm-hoshidicts-tab-panel"))
-      && !view.scrollElement.contains(bottomNoteForm) && !view.scrollElement.contains(resultToolbar)
+      && !view.scrollElement.contains(bottomNoteForm) && !view.scrollElement.contains(miningFeedback)
+      && !view.scrollElement.contains(resultToolbar)
       && popup.children[0] === resultToolbar
-      && popup.children[1] === bottomNoteForm,
+      && popup.children[1] === miningFeedback
+      && popup.children[2] === bottomNoteForm,
     JSON.stringify({
       bottomOrder: bottomChildren.map(({ className }) => className),
       openedAtBottom,

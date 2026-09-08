@@ -59,7 +59,7 @@ test("the default Jiten capsule shows compact numbers with source and kana detai
   for (const options of [undefined, f.options.normaliseOptions({})]) {
     const capsule = f.render(options);
     assert.equal(capsule.textContent, "14.2k · 191");
-    assert.equal(capsule.getAttribute("aria-label"), "Frequency");
+    assert.equal(capsule.getAttribute("aria-label"), "Entry metadata");
     assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-grammar"), null);
     assert.equal(capsule.querySelector(".gsm-hoshidicts-frequency-source"), null);
     const frequency = capsule.querySelector(".gsm-hoshidicts-tag-frequency");
@@ -70,7 +70,7 @@ test("the default Jiten capsule shows compact numbers with source and kana detai
   }
 });
 
-test("live display choices keep grammar outside the frequency capsule and preserve the definition and draft", t => {
+test("live display choices keep frequency and grammar together in the metadata capsule and preserve the definition and draft", t => {
   const f = fixture(t);
   const defaults = f.options.normaliseOptions({});
   const capsule = f.render(defaults);
@@ -79,9 +79,8 @@ test("live display choices keep grammar outside the frequency capsule and preser
   const form = f.popup.querySelector("form");
   form.elements.definition.value = "keep my draft";
   f.view.updateDictionaryPresentation({ ...defaults, showFrequencyDictionaryNames: true, hidePopupGrammarTags: false });
-  assert.equal(capsule.textContent, "Jiten14.2k㋕ · 191");
-  assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-grammar"), null);
-  assert.equal(capsule.nextElementSibling?.textContent, "-た-ますv1");
+  assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-frequencies").textContent, "Jiten14.2k㋕ · 191");
+  assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-grammar")?.textContent, "-た-ますv1");
   f.view.updateDictionaryPresentation(defaults);
   assert.equal(capsule.textContent, "14.2k · 191");
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-grammar"), null);
@@ -96,9 +95,10 @@ test("opt-in grammar stays visible without frequency or dictionary tabs and hide
   const result = { ...RESULT, term: { ...RESULT.term, glossaries: [], frequencies: [] } };
   const capsule = f.render({ ...defaults, hidePopupGrammarTags: false }, result);
   const strip = capsule.parentElement;
-  assert.equal(capsule.hidden, true);
+  assert.equal(capsule.hidden, false);
   assert.equal(strip.hidden, false);
-  assert.equal(capsule.nextElementSibling?.textContent, "-た-ますv1");
+  assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-grammar")?.textContent, "-た-ますv1");
   f.view.updateDictionaryPresentation(defaults);
+  assert.equal(capsule.hidden, true);
   assert.equal(strip.hidden, true);
 });

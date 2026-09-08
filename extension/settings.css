@@ -245,7 +245,6 @@ button,
 .engine-status.is-ready,
 .nav-status.is-ready,
 .import-state.is-ready,
-.import-result.is-ready,
 .custom-dictionary-status.is-ready,
 .update-state.is-ready,
 .dict-update-status.is-ready {
@@ -255,7 +254,6 @@ button,
 .engine-status.is-error,
 .nav-status.is-error,
 .import-state.is-error,
-.import-result.is-error,
 .custom-dictionary-status.is-error,
 .update-state.is-error,
 .dict-update-status.is-error {
@@ -539,6 +537,31 @@ button.danger:hover:not(:disabled) {
 .import-row {
   gap: 12px;
 }
+.import-drop-zone {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-sunken);
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.import-drop-zone.is-dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.import-drop-zone[aria-disabled="true"] {
+  color: var(--text-dim);
+}
+.import-drop-hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
 .import-state,
 .update-last-checked,
 .update-state,
@@ -564,7 +587,6 @@ button.danger:hover:not(:disabled) {
   overflow: hidden;
   clip-path: inset(50%);
 }
-.import-detail,
 .custom-dictionary-errors {
   margin: 0;
   padding: 12px 16px 12px 34px;
@@ -577,7 +599,6 @@ button.danger:hover:not(:disabled) {
   border-color: var(--error);
   color: var(--error);
 }
-.import-result + .import-result,
 .custom-dictionary-errors li + li {
   margin-top: 6px;
 }
