@@ -1372,7 +1372,10 @@ shows minutes later. Concealment is counted, so one capture cannot
 reveal the reader while another still owns it. The worker validates the request against
 its sender before every attempt: `tabs.captureVisibleTab` takes the window's
 active tab, so the asking tab must still be that tab, and a top-level frame must
-still show the document that asked. Chrome's capture rate limit is honoured with
+still show the document that asked. The post-capture check also requires the
+same window ID: dragging the reading tab to another window can otherwise leave
+it active while the original window captures a different tab.
+Chrome's capture rate limit is honoured with
 one wait and retry, and that wait is long enough to switch tabs, so ownership is
 checked again after it rather than once at the start. The
 reply is the picture's name, not its upload, so the reader shows itself again as

@@ -1394,8 +1394,12 @@ async function captureSenderViewport(sender) {
       await sleep(CAPTURE_VISIBLE_RETRY_MS);
       continue;
     }
-    // The picture is only this page's if the page is still the one showing.
-    await ownedTab();
+    // Capturing stays bound to this window even if the active reading tab is
+    // dragged to another one before the pixels return.
+    const afterCapture = await ownedTab();
+    if (afterCapture.windowId !== tab.windowId) {
+      throw new Error("The reading tab moved to another window during the screenshot.");
+    }
     return captured;
   }
 }
