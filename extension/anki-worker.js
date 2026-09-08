@@ -124,7 +124,12 @@ export function createAnkiWorkerService({
     if (typeof filename !== "string" || filename === "") return { warnings: [] };
     const reference = `<img src="${filename}">`;
     const fields = Object.keys(appliedFields).filter(field => appliedFields[field].includes(reference));
-    if (fields.length === 0) return { warnings: [] };
+    if (fields.length === 0) {
+      // The fields this note actually applies keep their existing picture, so the
+      // one that was captured for it is released rather than left held.
+      if (pendingScreenshot?.token === request.screenshot.token) pendingScreenshot = null;
+      return { warnings: [] };
+    }
     const withoutPicture = reason => {
       for (const field of fields) appliedFields[field] = appliedFields[field].replaceAll(reference, "");
       return { warnings: [`Screenshot: ${reason}`] };
