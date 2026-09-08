@@ -11,6 +11,7 @@
  */
 
 import "./reader-options.js";
+import "./visual-novel.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-state.js";
@@ -746,6 +747,7 @@ function practiceView() {
     node.textContent = PRACTICE_SENTENCE;
     dialogue.append(speaker, node);
     scene.append(dialogue);
+    globalThis.HDVisualNovel.initialize(scene);
     return scene;
   })();
   return {

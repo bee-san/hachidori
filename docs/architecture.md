@@ -352,6 +352,13 @@ holding the configured activation key — and one sentence to try,
 repository owner's visual novel artwork. The scene and Design preview share
 `visual-novel.css` and the packaged, unchanged image; its source and copyright
 declaration are recorded in [asset ownership](asset-rights.md). The
+shared `visual-novel.js` picks one of six local images at random when each
+scene is created. A small **Next background** arrow cycles through them and
+wraps to the first. It changes only the background and dialogue text color,
+keeping the sentence and Design popup mounted; no selection is stored. Images
+load as selected. The startup arrow can retain keyboard focus while the reader
+looks up the dialogue; ordinary page controls still pause hover. Pointer clicks
+outside the real popup retain its usual dismissal behavior. The
 practice scene uses ordinary selectable page text, so the real reader can
 highlight it and open a lookup above it. **Finish** and **Open Settings** stay available: the
 exercise is optional. The invitation appears only when it can be answered, and that is

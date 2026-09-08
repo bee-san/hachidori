@@ -384,7 +384,12 @@
 
   function pageEditorFocused() {
     for (let focused = document.activeElement; focused; focused = focused.shadowRoot?.activeElement) {
-      if (isEditingElement(focused)) return true;
+      if (isEditingElement(focused)) {
+        // Startup is the only extension page allowed above. Its scene arrow
+        // keeps keyboard focus without pausing the practice lookup.
+        if (location.protocol === "chrome-extension:" && focused.matches(".vn-next")) continue;
+        return true;
+      }
     }
     return false;
   }

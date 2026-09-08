@@ -5196,6 +5196,9 @@ async function main() {
   const practice = await startupPracticeStage();
   check("the practice step invites a lookup only when a dictionary can answer one and loads the reader once with that step",
     practice !== null && Object.values(practice).every((value) => value === true), JSON.stringify(practice));
+  const scenes = await visualNovelStage();
+  check("visual novel scenes start randomly and cycle all six backgrounds without replacing the dialogue",
+    scenes !== null && Object.values(scenes).every((value) => value === true), JSON.stringify(scenes));
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
@@ -6045,6 +6048,7 @@ async function settingsNavigationStage() {
 
 function loadStartupScript(window) {
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
+  window.eval(readFileSync(resolve(EXTENSION, "visual-novel.js"), "utf8"));
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
@@ -6054,6 +6058,7 @@ function loadStartupScript(window) {
     .replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
+    .replace(/import "\.\/visual-novel\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
@@ -6897,6 +6902,44 @@ async function sourceHighlightFallbackCase(window) {
   }
 }
 
+async function visualNovelStage() {
+  const jsdom = await loadJsdom();
+  if (!jsdom) return null;
+  const result = { randomStart: true, cycle: true, retained: true };
+  for (const [random, first] of [[0, 0], [0.999999, 5]]) {
+    const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "design-preview.html"), "utf8"), {
+      runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/design-preview.html`,
+    });
+    const { window } = dom;
+    try {
+      let randomCalls = 0;
+      window.Math.random = () => { randomCalls += 1; return random; };
+      window.eval(readFileSync(resolve(EXTENSION, "visual-novel.js"), "utf8"));
+      const scene = window.document.querySelector(".vn-scene");
+      const source = scene.querySelector("#preview-source");
+      const text = source.firstChild;
+      const dialogue = scene.querySelector(".vn-dialogue");
+      window.HDVisualNovel.initialize(scene);
+      const next = scene.querySelector(".vn-next");
+      const filename = index => `assets/preview-background${index === 0 ? "" : `-${index + 1}`}.png`;
+      result.randomStart &&= scene.style.backgroundImage.includes(filename(first));
+      result.cycle &&= next?.tagName === "BUTTON" && next.type === "button" && next.getAttribute("aria-label") === "Next background";
+      const visited = new Set();
+      for (let step = 0; step < 6; step += 1) {
+        const index = (first + step) % 6;
+        visited.add(scene.style.backgroundImage);
+        result.cycle &&= scene.style.backgroundImage.includes(filename(index))
+          && scene.classList.contains("vn-dark-dialogue") === [3, 5].includes(index);
+        next?.click();
+      }
+      result.cycle &&= visited.size === 6 && scene.style.backgroundImage.includes(filename(first)) && randomCalls === 1;
+      result.retained &&= scene.querySelector("#preview-source") === source && source.firstChild === text
+        && source.textContent === "朝ごはんを食べる。" && scene.querySelector(".vn-dialogue") === dialogue;
+    } finally { window.close(); }
+  }
+  return result;
+}
+
 async function designPreviewStage() {
   const jsdom = await loadJsdom();
   if (!jsdom) return null;
@@ -6909,7 +6952,7 @@ async function designPreviewStage() {
     window.URL.createObjectURL = () => "blob:sample-meal";
     window.CSS = { highlights: new Map() };
     window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
-    for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "design-preview.js"]) {
+    for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "visual-novel.js", "design-preview.js"]) {
       window.eval(readFileSync(resolve(EXTENSION, file), "utf8"));
     }
     let earlyLoad = true;

@@ -4723,9 +4723,15 @@ async function readVisualNovelScene(page, sourceSelector) {
     range.selectNodeContents(source);
     const sourceRects = [...range.getClientRects()];
     const dialogueRect = dialogue.getBoundingClientRect();
+    const next = scene.querySelector(".vn-next");
+    const nextRect = next?.getBoundingClientRect();
     return {
-      backgroundLoaded: imageUrl === new URL("assets/preview-background.png", location.href).href
+      backgroundLoaded: Array.from({ length: 6 }, (_, index) =>
+        new URL(`assets/preview-background${index === 0 ? "" : `-${index + 1}`}.png`, location.href).href).includes(imageUrl)
         && image.naturalWidth === 1672 && image.naturalHeight === 941,
+      nextVisible: next?.tagName === "BUTTON" && next.type === "button" && next.tabIndex >= 0
+        && next.getAttribute("aria-label") === "Next background" && nextRect.width > 0 && nextRect.height > 0
+        && next.contains(document.elementFromPoint(nextRect.x + nextRect.width / 2, nextRect.y + nextRect.height / 2)),
       dialogueVisible: dialogueRect.width > 0 && dialogueRect.height > 0
         && getComputedStyle(dialogue).visibility === "visible" && dialogue.querySelector(".vn-speaker")?.textContent.trim().length > 0,
       sourceAccessible: sourceRects.length > 0 && sourceRects.every(rect => rect.width > 0 && rect.height > 0
@@ -4739,6 +4745,30 @@ async function readVisualNovelScene(page, sourceSelector) {
       overflow: document.documentElement.scrollWidth > innerWidth,
     };
   }, sourceSelector, HIGHLIGHT_NAME);
+}
+
+async function cycleVisualNovelScene(page, sourceSelector, alsoClick = false) {
+  const before = await page.evaluateHandle(selector => {
+    const scene = document.querySelector(".vn-scene");
+    const source = document.querySelector(selector);
+    return { scene, source, text: source.firstChild, background: getComputedStyle(scene).backgroundImage };
+  }, sourceSelector);
+  try {
+    const next = await page.$(".vn-next");
+    const cycled = () => page.evaluate(snapshot => {
+      const background = getComputedStyle(snapshot.scene).backgroundImage;
+      const changed = background !== snapshot.background;
+      snapshot.background = background;
+      return document.activeElement === snapshot.scene.querySelector(".vn-next") && changed
+        && snapshot.source.isConnected && snapshot.source.firstChild === snapshot.text
+        && snapshot.source.textContent === "朝ごはんを食べる。";
+    }, before);
+    await next.press("Enter");
+    const keyboard = await cycled();
+    if (!alsoClick) return keyboard;
+    await next.click();
+    return await cycled() && keyboard;
+  } finally { await before.dispose(); }
 }
 
 async function checkDesignPreview(page) {
@@ -4779,7 +4809,7 @@ async function checkDesignPreview(page) {
     const back = await frame.evaluate(() => document.getElementById("preview-host").shadowRoot
       .activeElement?.classList.contains("gsm-hoshidicts-kanji-link"));
     check("Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup",
-      before.lazy && sample && kanji && back && scene?.backgroundLoaded && scene.dialogueVisible && scene.sourceAccessible
+      before.lazy && sample && kanji && back && scene?.backgroundLoaded && scene.nextVisible && scene.dialogueVisible && scene.sourceAccessible
         && scene.highlighted === "食べる" && popupRect.bottom <= scene.sourceTop && popupRect.top < scene.dialogueTop,
       JSON.stringify({ lazy: before.lazy, sample, kanji, back, scene, popupRect }));
     await frame.evaluate(() => {
@@ -4789,6 +4819,7 @@ async function checkDesignPreview(page) {
       window.previewForm = popup.querySelector("form");
       window.previewForm.elements.definition.value = "Preview only";
     });
+    const cycled = await cycleVisualNovelScene(frame, "#preview-source");
     await editSettingsControls(page, { "opt-popup-columns": "2", "opt-compact-summary": true, "opt-frequency-names": false });
     const live = await frame.evaluate(async () => {
       const popup = document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
@@ -4801,7 +4832,7 @@ async function checkDesignPreview(page) {
     });
     const after = await page.evaluate(sourceKey => chrome.storage.local.get(["dictionaryState", sourceKey]), CUSTOM_DICTIONARY_SOURCE_KEY);
     check("Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries",
-      live && JSON.stringify(before.stored) === JSON.stringify(after));
+      cycled && live && JSON.stringify(before.stored) === JSON.stringify(after));
     await frame.evaluate(() => window.previewForm.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     const geometry = () => page.evaluate(() => {
       const frame = document.getElementById("design-preview");
@@ -5189,7 +5220,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16" });
     await tab.$eval("#verb", (element) => {
       element.innerHTML = '<input value="食べたかった"><textarea>食べたかった</textarea>'
-        + '<b contenteditable="true"><i>食べたかった</i></b>';
+        + '<b contenteditable="true"><i>食べたかった</i></b><button class="vn-next" type="button">→</button>';
     });
     const editingStart = (await lookups()).length;
     const edits = [];
@@ -5206,6 +5237,10 @@ async function checkReaderSelection(browser, settings, tab, popup) {
       await pause();
       await dismiss();
     }
+    // A webpage cannot use the startup arrow's class to bypass focused-control suppression.
+    await tab.focus("#verb .vn-next");
+    await moveTo("#duplicate");
+    await dismiss();
     for (const tag of ["input", "div"]) {
       await editSettingsControls(settings, { "opt-lookup-mode": "activation", "opt-activation-key": "K" });
       await tab.evaluate((name) => {
@@ -6248,6 +6283,7 @@ async function main() {
     await startup.setViewport({ width: 320, height: 900 });
     await startup.$eval(".setup-practice-sample", source => source.scrollIntoView({ block: "center" }));
     const narrowScene = await readVisualNovelScene(startup, ".setup-practice-sample");
+    const cycled = await cycleVisualNovelScene(startup, ".setup-practice-sample", true);
     await startup.setViewport({ width: 1200, height: 1000 });
     const startupPopup = await popupReader(startup);
     const injected = await startup.waitForFunction(() => {
@@ -6296,7 +6332,7 @@ async function main() {
     }
     await startup.mouse.move(2, 2);
     const hidden = looked === null ? null : await startupPopup.waitForHidden(6000);
-    exercise = { injected, looked, hidden, scene, narrowScene, popupRect };
+    exercise = { injected, looked, hidden, scene, narrowScene, popupRect, cycled };
   }
   const jitendexFixtureTitle = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "jitendex").title;
   check(
@@ -6304,8 +6340,8 @@ async function main() {
     JSON.stringify(exercise?.injected) === JSON.stringify(READER_SCRIPTS)
       && exercise.looked !== null && exercise.looked.plain.includes("食べる")
       && exercise.looked.text.includes(`${jitendexFixtureTitle} verb fixture`)
-      && exercise.hidden === true
-      && [exercise.scene, exercise.narrowScene].every(scene => scene?.backgroundLoaded && scene.dialogueVisible
+      && exercise.hidden === true && exercise.cycled
+      && [exercise.scene, exercise.narrowScene].every(scene => scene?.backgroundLoaded && scene.nextVisible && scene.dialogueVisible
         && scene.sourceAccessible && !scene.overflow)
       && exercise.scene.highlighted === "食べる" && exercise.popupRect?.bottom <= exercise.scene.sourceTop
       && exercise.popupRect.top < exercise.scene.dialogueTop,
