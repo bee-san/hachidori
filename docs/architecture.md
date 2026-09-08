@@ -356,10 +356,11 @@ sentence and selects that word through the reader’s existing exact-selection
 route, so it also works from the keyboard. It appears only when that exact
 selection can be answered. All exercise lookups use ordinary
 runtime messages, the installed dictionaries, WASM, popup renderer and styles.
-No sample result is substituted. The reader permits only this extension’s exact
-`chrome.runtime.getURL("startup.html")` URL among extension pages; Settings,
-the static design preview and other internal URLs remain excluded. The skip
-link focuses the heading without adding a URL fragment.
+No sample result is substituted. Among extension pages the reader permits only
+this extension’s `startup.html`, with either no fragment or the native skip
+link's `#setup-heading`. Query variants, unknown fragments, Settings and the
+static design preview remain excluded. The skip handler focuses the heading
+directly; a fragment created before it attaches still works after reload.
 
 Before inviting a lookup, the page probes **辞書** with the reader's selection
 payload: the word's length and a full matched-text result. If it misses, the

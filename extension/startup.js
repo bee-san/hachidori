@@ -896,8 +896,8 @@ function handleRuntimeMessage(message) {
 }
 
 async function start() {
-  // Keep the exact startup URL used by the reader boundary when skipping the
-  // header with a keyboard; a fragment must not disable the later exercise.
+  // Focus directly without a new history entry. The reader also permits the
+  // native heading fragment if the link ran before this handler was attached.
   document.querySelector(".skip-link").addEventListener("click", (event) => {
     event.preventDefault();
     element("setup-heading").focus();
