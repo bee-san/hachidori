@@ -733,7 +733,7 @@ async function main() {
       return value.startsWith("Finished 1 of 1 archive") ? value : false;
     }, { timeout: 120_000, polling: 250 }).then(handle => handle.jsonValue());
     assert.equal(importState, "Finished 1 of 1 archive — 1 imported, 0 failed.",
-      await settings.$eval("#import-detail", element => element.textContent));
+      await settings.$eval("#import-progress", element => element.textContent));
     await settings.goto(`chrome-extension://${id}/settings.html#media`, { waitUntil: "domcontentloaded" });
     await settings.waitForSelector("#media:not([hidden])");
 

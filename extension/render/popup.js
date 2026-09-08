@@ -1855,6 +1855,7 @@
     let currentSourceHighlight = null;
     let toolbarPosition = options.toolbarPosition === "bottom" ? "bottom" : "top";
     let currentToolbar = null;
+    let currentFeedback = null;
     let customLinks = options.customLinks || [];
     let currentNoteControls = null;
     let renderRevision = 0;
@@ -2012,35 +2013,38 @@
       if (!currentToolbar) return;
       const noteForm = currentNoteControls?.form ?? null;
       const bottom = toolbarPosition === "bottom";
-      const atEdge = bottom ? popup.lastElementChild === currentToolbar
-        && (!noteForm || currentToolbar.previousElementSibling === noteForm)
-        : popup.firstElementChild === currentToolbar && (!noteForm || currentToolbar.nextElementSibling === noteForm);
+      const controls = (bottom
+        ? [noteForm, currentFeedback, currentToolbar]
+        : [currentToolbar, currentFeedback, noteForm]).filter(Boolean);
+      const atEdge = controls.every((node, index) => !controls[index + 1]
+        || node.nextElementSibling === controls[index + 1])
+        && (bottom ? popup.lastElementChild === currentToolbar : popup.firstElementChild === currentToolbar);
       if (atEdge) return;
       const focused = popup.getRootNode().activeElement;
       const children = [...popup.children];
       const focusedOwner = children.find(child => child.contains(focused));
-      if (focusedOwner) {
-        // Move siblings around the focused subtree: removing and refocusing
-        // a tab, Note field or glossary link interrupts keyboard interaction.
-        const content = children.filter(child => child !== currentToolbar && child !== noteForm);
-        const controls = noteForm ? [currentToolbar, noteForm] : [currentToolbar];
-        const ordered = bottom ? [...content, ...controls.reverse()] : [...controls, ...content];
-        const focusIndex = ordered.indexOf(focusedOwner);
+      const retainedForm = noteForm?.parentNode === popup ? noteForm : null;
+      const anchor = focusedOwner || retainedForm;
+      if (anchor) {
+        // Move siblings around the focused subtree or retained Note form:
+        // detaching either interrupts keyboard interaction and draft ownership.
+        const controlSet = new Set(controls);
+        const content = children.filter(child => !controlSet.has(child));
+        const ordered = bottom ? [...content, ...controls] : [...controls, ...content];
+        const anchorIndex = ordered.indexOf(anchor);
         ordered.forEach((child, index) => {
-          if (index < focusIndex) popup.insertBefore(child, focusedOwner);
-          else if (index > focusIndex) popup.append(child);
+          if (index < anchorIndex) popup.insertBefore(child, anchor);
+          else if (index > anchorIndex) popup.append(child);
         });
-      } else if (bottom) {
-        if (noteForm) popup.append(noteForm, currentToolbar);
-        else popup.append(currentToolbar);
       } else {
-        if (noteForm) popup.prepend(currentToolbar, noteForm);
-        else popup.prepend(currentToolbar);
+        if (bottom) popup.append(...controls);
+        else popup.prepend(...controls);
       }
     }
 
-    function setRenderedToolbar(toolbar) {
+    function setRenderedToolbar(toolbar, feedback = null) {
       currentToolbar = toolbar;
+      currentFeedback = feedback && feedback.parentNode === popup ? feedback : null;
       applyToolbarLayout();
     }
 
@@ -2088,6 +2092,7 @@
       sourceHighlighter.clear();
       currentSourceHighlight = null;
       currentToolbar = null;
+      currentFeedback = null;
       masonryObserver?.disconnect();
       const retainedForm = currentNoteControls?.form;
       // Keep the scroller mounted so a retained repaint does not discard its
@@ -2101,11 +2106,12 @@
       setDefinitionBlurState("revealed");
     }
 
-    function mountResultChrome(toolbar, content) {
+    function mountResultChrome(toolbar, content, feedback = null) {
       contentScroll.append(content);
       if (contentScroll.parentNode !== popup) popup.append(contentScroll);
+      if (feedback) popup.append(feedback);
       popup.append(toolbar);
-      setRenderedToolbar(toolbar);
+      setRenderedToolbar(toolbar, feedback);
     }
 
     function retainedFocus(preserveViewControls) {
@@ -2610,7 +2616,7 @@
         }
       }
       if (grammarChanged) {
-        capsule.parentElement.querySelector(".gsm-hoshidicts-primary-grammar")?.remove();
+        capsule.querySelector(".gsm-hoshidicts-primary-grammar")?.remove();
         if (!hideGrammarTags) {
           const grammarMetadata = collectGrammarMetadata(result);
           if (grammarMetadata.length > 0) {
@@ -2627,7 +2633,7 @@
               }
               grammar.appendChild(tag);
             }
-            capsule.after(grammar);
+            capsule.appendChild(grammar);
           }
         }
       }
@@ -2635,7 +2641,7 @@
     }
 
     function updateMetadataStripVisibility(strip, tabList, capsule) {
-      strip.hidden = !tabList && capsule.hidden && !strip.querySelector(".gsm-hoshidicts-primary-grammar");
+      strip.hidden = !tabList && capsule.hidden;
     }
 
     function updateCompactSummary(headword, result, context, media) {
@@ -2703,6 +2709,7 @@
         pitchAccentFuriganaDictionary = null,
         onBack = null,
         noteControls = null,
+        feedback = null,
         onDeinflectionToggle = null,
       } = {}
     ) {
@@ -2779,7 +2786,7 @@
       audio.append(button);
       actions.prepend(audio);
       header.append(actions);
-      return { element: header, audio: { button, result }, mining: { actions, result },
+      return { element: header, audio: { button, result }, mining: { actions, feedback, result },
         updateRuby(context) {
           const enabled = context.showPitchAccentFurigana !== false;
           const dictionary = typeof context.pitchAccentFuriganaDictionary === "string"
@@ -2828,6 +2835,7 @@
       {
         dictionaryDisplayNames,
         imageContext,
+        feedback,
         metadataStrip,
         primaryHeader,
         primaryMetadataCapsule,
@@ -2847,6 +2855,11 @@
       hideImagePreview();
       renderedImages.clear();
       panel.replaceChildren();
+      if (feedback) {
+        feedback.hidden = true;
+        feedback.textContent = "";
+        delete feedback.dataset.kind;
+      }
       const deferredGlossaryFills = [];
       const entryMetadata = [];
       const audioButtons = [];
@@ -2911,6 +2924,7 @@
               : null,
           onBack: resultIndex === 0 ? renderContext.onBack : null,
           noteControls: resultIndex === 0 ? renderContext.noteControls : null,
+          feedback,
           onDeinflectionToggle: positionIfCurrent,
         });
         audioButtons.push(renderedHeader.audio);
@@ -3393,8 +3407,13 @@
         "gsm-hoshidicts-primary-metadata-capsule";
       primaryMetadataCapsule.hidden = true;
       primaryMetadataCapsule.setAttribute("role", "group");
-      primaryMetadataCapsule.setAttribute("aria-label", "Frequency");
+      primaryMetadataCapsule.setAttribute("aria-label", "Entry metadata");
       metadataStrip.appendChild(primaryMetadataCapsule);
+      const feedback = documentRef.createElement("div");
+      feedback.className = "gsm-hoshidicts-mining-feedback";
+      feedback.setAttribute("role", "status");
+      feedback.setAttribute("aria-live", "polite");
+      feedback.hidden = true;
       const panel = documentRef.createElement("div");
       currentResultPanel = panel;
       const ownsView = () => ownsResultPanel(panel, renderContext);
@@ -3416,7 +3435,7 @@
       }), renderContext);
       currentNoteControls = noteControls;
       const toolbar = createResultChrome(primaryHeader, metadataStrip);
-      mountResultChrome(toolbar, panel);
+      mountResultChrome(toolbar, panel, feedback);
 
       let tabButtons = [];
       let nextTabId = 0;
@@ -3511,6 +3530,7 @@
           },
           {
             dictionaryDisplayNames,
+            feedback,
             imageContext,
             metadataStrip,
             primaryHeader,

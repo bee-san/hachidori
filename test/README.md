@@ -572,8 +572,9 @@ What it proves, in order:
    record confirms rather than recounts), and settles the Jitendex
    summary source and Bee's clicked-kanji route once from the committed titles,
    in one write with the setup record, without overwriting an option the user
-   already changed. A fresh jsdom `startup.html` shows its short setup invitation
-   and privacy-policy link without any runtime request, keeps them after a failed Start save, and begins
+   already changed. A fresh jsdom `startup.html` shows its short setup invitation,
+   Bee credit and GitHub-star call to action without any runtime request, contains
+   no privacy-policy link, keeps the welcome screen after a failed Start save, and begins
    installation only after that stage write succeeds. Reopening the accepted
    stage resumes installation, while **Set up manually** reaches practice
    without dictionary or Anki requests. An accepted startup page attaches to the installer with the
@@ -731,9 +732,10 @@ It launches Chrome with `--load-extension`, intercepts the four production
 recommendation URLs with deterministic ZIP fixtures, proves failure continuation,
 trusted source metadata, reload/restart hiding, and missing-only retry, then clears those
 fixtures. It next uses the real `#import-file` on `settings.html` for a valid
-archive and a three-file batch containing a term-only kanji dictionary, a
-malformed ZIP, and a same-title reimport. It verifies the ordered per-file
-outcomes and failure continuation, exercises filtered bulk management, a real
+archive and drops a three-file batch containing a term-only kanji dictionary, a
+malformed ZIP, and a same-title reimport. It verifies the drop target feedback,
+the shared startup-style progress rows, elapsed import times, ordered per-file
+outcomes and failure continuation, then exercises filtered bulk management, a real
 pointer drag, keyboard position movement, capability-aware chooser migration,
 and clicked-kanji navigation, and hovers real
 text with a real mouse on a page served over `http://127.0.0.1` (content scripts do not run on
@@ -766,9 +768,9 @@ Continue, durable outcomes and no all-installed claim; Retry fetching only
 jmnedict, the all-installed heading with the accumulated total, and the
 Jitendex summary source and Bee's clicked-kanji route settled once while the
 user's compact-summary edit stands; the result staying at least five seconds
-before **Connect Anki, if you use it** with focus on the new heading; the
-unavailable Anki connection settling by itself into **Anki isn’t connected**
-after exactly one AnkiConnect
+before **Finding your Anki setup…** with focus on the new heading; the
+unavailable Anki connection settling into **Could not find Anki** for five
+seconds after exactly one AnkiConnect
 attempt, which the harness refuses on the worker target for that stage so a
 real Anki or another suite's mock server on port 8765 cannot decide the
 outcome, and whose recorded outcome carries the gateway's reason and moves
@@ -789,6 +791,9 @@ startup page must detect the busiest of three note types (`Kiku v2` beside
 its distinct notes, save that model, deck and the resolved preset templates
 through the revisioned options write, record the `configured` outcome, and
 issue only the fixed read-only actions in ranking order at protocol version 6.
+The page visibly advances through finding the most popular mining card, finding
+its most popular deck and applying both, then shows the selected names for five
+seconds before practice.
 The mock is detached and the previous setup record and Anki options are
 restored, so the Anki Settings checks below still begin with a lazy, offline
 connection and an unconfigured mapping.
@@ -796,10 +801,12 @@ connection and an unconfigured mapping.
 `HACHIDORI_STARTUP_COMPLETE_SCREENSHOT`/`_DARK_SCREENSHOT` the countdown
 result, `HACHIDORI_STARTUP_READY_SCREENSHOT`/`_DARK_SCREENSHOT` the final step
 after an absent Anki, and
-`HACHIDORI_STARTUP_ANKI_SCREENSHOT`/`_DARK_SCREENSHOT` the final step after an
-automatically configured one, and
+`HACHIDORI_STARTUP_ANKI_SCREENSHOT`/`_DARK_SCREENSHOT` the held automatic Anki
+result with all three selection steps, and
 `HACHIDORI_STARTUP_PRACTICE_SCREENSHOT`/`_DARK_SCREENSHOT` the practice step with
-a real lookup open.
+a real lookup open. `HACHIDORI_SETTINGS_SCREENSHOT` captures the empty import
+drop target and `HACHIDORI_IMPORT_SCREENSHOT` captures its completed shared
+progress rows.
 
 The jsdom stage for that step also requires the appended list to match the
 manifest's own `content_scripts` order, that the exact **辞書** selection is
