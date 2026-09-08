@@ -1366,7 +1366,10 @@ stops publishing for the whole interval, so a lookup that settles while the
 picture is being taken cannot paint into it either, and releasing repaints the
 exact ranges. It waits two frames
 so the change has painted, asks the worker for the picture, and restores
-everything whatever the outcome. The picture is taken before any clip export is
+everything whatever the outcome. The host uses `opacity: 0 !important` so even
+masonry cards with explicit `visibility: visible` remain concealed; its previous
+inline opacity and priority are restored when the last capture finishes.
+The picture is taken before any clip export is
 prepared, so it is of the moment the user clicked rather than of whatever the page
 shows minutes later. Concealment is counted, so one capture cannot
 reveal the reader while another still owns it. The worker validates the request against
@@ -1394,6 +1397,9 @@ deleted again, as does a note that goes in without the picture because the store
 own answer was lost; an uncertain note write keeps it, because the note may exist.
 A submission the reader abandons before sending it releases the picture it took.
 
+A failed or replaced picture stays marked unavailable on the mining request, so
+later pronunciation enrichment cannot restore its image reference in a mixed
+`{screenshot}{audio}` field; valid pronunciation audio still enriches the note.
 A capture or upload that fails is a warning carried with the note's own outcome:
 the marker renders empty — a refused upload also empties the fields that
 referenced the picture, so no note points at an image Anki does not have — the

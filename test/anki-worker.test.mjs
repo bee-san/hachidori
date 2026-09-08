@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { buildAnkiFields } from "../extension/anki-values.js";
 
 function fixture(firstAudio = false) {
   const calls = [];
@@ -436,4 +437,42 @@ test("a mining screenshot is held until the note is written, then stored under i
     /no longer the active tab/u);
   options.anki.captureScreenshot = false;
   await assert.rejects(service.screenshot(async () => "data:image/jpeg;base64,c2hvdA=="), /turned off in Settings/u);
+});
+
+test("pronunciation enrichment keeps a failed or replaced screenshot unavailable", async t => {
+  for (const outcome of ["stored", "replaced", "refused"]) await t.test(outcome, async () => {
+    let fields;
+    const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic",
+      fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+        Back: { value: "{screenshot}{audio}", overwriteMode: "overwrite" } } } });
+    const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
+      models: ["Basic"], decks: ["Default"], errors: [] }), async invoke(action, params) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true }];
+      if (action === "storeMediaFile") {
+        if (outcome === "refused" && params.filename.startsWith("hachidori-screenshot-")) {
+          throw new Error("Screenshot upload acknowledgement lost");
+        }
+        return params.filename;
+      }
+      if (action === "deleteMediaFile") return null;
+      if (action === "addNote") { fields = { ...params.note.fields }; return 12; }
+      if (action === "notesInfo") return [{ noteId: 12,
+        fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
+      if (action === "updateNoteFields") { Object.assign(fields, params.note.fields); return null; }
+      throw new Error(`Unexpected ${action}`);
+    } };
+    const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+      readDictionaries: async () => [], engine: async () => ({ generation: 3, ready: true, loading: false }),
+      offscreen: async message => message.type === "hd_anki_audio" ? { filename: "checked.wav", data: "YXVkaW8=" }
+        : { fields: await buildAnkiFields(message.request, message.templates, { audio: message.audio }), media: [] },
+    });
+    const screenshot = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+    if (outcome === "replaced") await service.screenshot(async () => "data:image/jpeg;base64,bmV3");
+    const result = await service.submit({ term: { expression: "猫", reading: "ねこ" }, generation: 3,
+      configKey: (await service.status()).configKey, screenshot, captureUnavailable: ["animation"] });
+    assert.equal(result.state, "added");
+    assert.equal(fields.Back, `${outcome === "stored" ? `<img src="${screenshot.filename}">` : ""}[sound:checked.wav]`);
+    if (outcome === "stored") assert.deepEqual(result.warnings, []);
+    else assert.match(result.warnings.join(" "), /Screenshot: /u);
+  });
 });

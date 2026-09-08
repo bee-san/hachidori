@@ -1271,21 +1271,29 @@
   // whatever the captures did.
   let concealing = 0;
   let restoreMatchHighlight = null;
+  let hostOpacity = "";
+  let hostOpacityPriority = "";
   async function concealReader(during) {
     if (host === null) return during();
     // The source-term highlight is painted by the document, not by the shadow
     // tree, so the highlighter stops publishing for as long as this lasts —
     // including for a lookup that settles while the picture is being taken.
-    if (concealing === 0) restoreMatchHighlight = highlighter?.suspend() ?? null;
+    if (concealing === 0) {
+      restoreMatchHighlight = highlighter?.suspend() ?? null;
+      hostOpacity = host.style.getPropertyValue("opacity");
+      hostOpacityPriority = host.style.getPropertyPriority("opacity");
+      // Descendants can override inherited visibility, including masonry cards.
+      // Opacity composites the whole host without changing its layout.
+      host.style.setProperty("opacity", "0", "important");
+    }
     concealing += 1;
-    host.style.setProperty("visibility", "hidden", "important");
     try {
       await new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
       return await during();
     } finally {
       concealing -= 1;
       if (concealing === 0) {
-        host.style.removeProperty("visibility");
+        host.style.setProperty("opacity", hostOpacity, hostOpacityPriority);
         restoreMatchHighlight?.();
         restoreMatchHighlight = null;
       }

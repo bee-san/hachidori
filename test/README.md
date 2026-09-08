@@ -1250,8 +1250,10 @@ decodes the picture Anki received inside the page: it must be the whole viewport
 its samples across the area the popup occupied must be the page's own light
 background, the page's dark text must still be somewhere in it, and every pixel
 of the hovered word must be dark and neutral rather than carrying the reader's
-coloured source highlight — with the host element's observed visibility going
-`hidden` then `visible` around the capture. The second makes AnkiConnect refuse the screenshot upload and requires
+coloured source highlight. Two installed dictionaries exercise real masonry
+cards with explicit `visibility: visible`; the host's observed opacity becomes
+`0 !important` for the capture, then restores its prior `0.9 !important` value.
+The second makes AnkiConnect refuse the screenshot upload and requires
 the note to be added anyway, with an empty picture field and the reason beside
 its result. The suite prints `screenshot mining answered in N ms` for the timed
 production path, and `HACHIDORI_ANKI_SETTINGS_SCREENSHOT` captures the Anki

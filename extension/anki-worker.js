@@ -131,6 +131,9 @@ export function createAnkiWorkerService({
       return { warnings: [] };
     }
     const withoutPicture = reason => {
+      // Pronunciation enrichment renders this request again after the note is
+      // saved; keep that render from restoring a picture that was not stored.
+      request.captureUnavailable = [...(request.captureUnavailable ?? []), "screenshot"];
       for (const field of fields) appliedFields[field] = appliedFields[field].replaceAll(reference, "");
       return { warnings: [`Screenshot: ${reason}`] };
     };
