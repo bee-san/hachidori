@@ -744,9 +744,13 @@ automatically configured one, and
 a real lookup open.
 
 The jsdom stage for that step also requires the appended list to match the
-manifest's own `content_scripts` order, that the sentence is probed offset by
-offset until one lookup answers, that removing the package which answered retires
-the invitation and probes again while a group-only revision does not, and covers every state that must not invite a
+manifest's own `content_scripts` order, that the exact **辞書** selection is
+probed first and the sentence is then probed offset by offset only if needed,
+that a prefix-only shortcut hit keeps the button hidden while another passage
+word can still enable the exercise, and that the exact-selection length remains
+two when the hover scan length is one. It also checks that removing the package
+which answered retires the invitation and probes again while a group-only
+revision does not, and covers every state that must not invite a
 hover: a frequency-only library, a library that answers nothing, an engine that
 refuses the first pass and is retried after a failed status, a long loading
 recovery and then an idle engine, an engine that

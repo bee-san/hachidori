@@ -6600,11 +6600,9 @@ async function startupPracticeStage() {
     // A term dictionary arrives: the exercise appears and the reader is fetched once.
     page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }]);
     await page.until(() => sample() !== null, "the practice exercise");
-    // The refused pass stopped at once and was retried; then every offset was
-    // tried until 辞書 answered, and none after it.
-    const characters = [...PRACTICE_SENTENCE_TEXT];
-    const expected = [PRACTICE_SENTENCE_TEXT, ...characters.slice(0, characters.indexOf("辞") + 1)
-      .map((_, index) => characters.slice(index).join(""))];
+    // The refused exact-selection query is retried once; its hit settles the
+    // exercise without a second sweep over the passage.
+    const expected = ["辞書", "辞書"];
     const probed = JSON.stringify(page.lookups()) === JSON.stringify(expected);
     const invited = withoutDictionary && probed && sample()?.textContent === PRACTICE_SENTENCE_TEXT && sample().lang === "ja"
       && document.getElementById("setup-body").textContent.includes("Hover over Japanese text, or use the lookup button.")
@@ -6632,10 +6630,50 @@ async function startupPracticeStage() {
     await page.until(() => page.document.getElementById("setup-body").textContent.includes("do not have the words in this sample"),
       "the retired invitation");
     const reprobed = loadedOnce && groupWriteIgnored && sample() === null
-      && page.lookups().length === beforeRetire + [...PRACTICE_SENTENCE_TEXT].length;
+      && page.lookups().length === beforeRetire + [...PRACTICE_SENTENCE_TEXT].length + 1;
+    const partial = await startupPracticePartial(jsdom, setup);
     const offHover = await startupPracticeWithoutHover(jsdom, setup);
     const unanswerable = await startupPracticeUnanswerable(jsdom, setup);
-    return { withoutDictionary, invited, loadedOnce, reprobed, offHover, unanswerable };
+    return { withoutDictionary, invited, loadedOnce, reprobed, partial, offHover, unanswerable };
+  } finally {
+    page.window.close();
+  }
+}
+
+// A prefix hit cannot answer the button's exact selection. Other passage words
+// remain useful, even with a hover scan shorter than the selected button word.
+async function startupPracticePartial(jsdom, setup) {
+  const requests = [];
+  let shortcutAnswers = false;
+  const library = [{ id: "partial", title: "Partial", enabled: true, termCount: 1 }];
+  const page = startupCase(jsdom, { setup, dictionaries: library,
+    options: { revision: 1, scanLength: 1, maxResults: 7 },
+    lookup: (message) => {
+      requests.push(message);
+      let matched = "踏";
+      if (message.text === "辞書") matched = shortcutAnswers ? "辞書" : "辞";
+      return { results: [{ term: matched, matched }] };
+    },
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  const { document } = page;
+  try {
+    await page.load();
+    const scene = document.getElementById("setup-practice-scene");
+    const lookup = document.getElementById("setup-practice-lookup");
+    await page.until(() => !scene.hidden, "the passage-only exercise");
+    const partial = lookup.hidden && lookup.disabled && !document.getElementById("setup-practice-tools").hidden
+      && document.getElementById("setup-practice-recovery").hidden
+      && document.getElementById("setup-practice-instruction").textContent === "Try looking up a word below. Hover over Japanese text."
+      && readerScripts(document).length === 1
+      && JSON.stringify(requests.map(({ text, scanLength, maxResults }) => [text, scanLength, maxResults]))
+        === JSON.stringify([["辞書", 2, 7], [PRACTICE_SENTENCE_TEXT, 1, 1]]);
+    shortcutAnswers = true;
+    page.library([{ ...library[0], revision: "with-shortcut" }]);
+    await page.until(() => !lookup.hidden, "the newly answerable shortcut");
+    return partial && requests.length === 3 && requests[2].text === "辞書"
+      && document.getElementById("setup-practice-scene") === scene
+      && document.getElementById("setup-practice-instruction").textContent.includes("lookup button")
+      && readerScripts(document).length === 1;
   } finally {
     page.window.close();
   }
@@ -6656,7 +6694,7 @@ async function startupPracticeUnanswerable(jsdom, setup) {
       "the unanswerable sample");
     const missing = nothing.document.querySelector("#setup-practice-tools").hidden === true
       && readerScripts(nothing.document).length === 0
-      && nothing.lookups().length === [...PRACTICE_SENTENCE_TEXT].length
+      && nothing.lookups().length === [...PRACTICE_SENTENCE_TEXT].length + 1
       && nothing.document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null;
     await offline.load();
     await offline.until(() => offline.document.getElementById("setup-body").textContent.includes("on any webpage"),

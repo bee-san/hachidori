@@ -53,7 +53,8 @@ let advanceFailed = false;
 let installFailed = false;
 let runSilenceTimer = null;
 let readerLoading = null;
-// What a real lookup of the practice sentence found: unknown, "ready",
+// What a real lookup of the practice sentence found: unknown, "ready" (the
+// exact-selection shortcut answers), "passage" (another passage lookup answers),
 // "missing" (nothing in the installed dictionaries) or "unavailable" (the engine
 // could not answer). Probed again whenever the inventory or the options it
 // depends on change, so a removed dictionary or a shortened scan cannot leave a
@@ -622,9 +623,9 @@ function loadReader() {
 }
 
 // The invitation is only made when this exact sentence can be answered, so the
-// page asks: an ordinary lookup from every offset in it, through the engine the
-// reader would use, stopping at the first hit. A partly installed library or an
-// unrelated dictionary therefore cannot advertise a hover that returns nothing.
+// page asks the exact-selection shortcut first, then ordinary lookups from the
+// passage offsets if needed, stopping at the first hit. A partly installed or
+// unrelated library therefore cannot advertise an exercise that returns nothing.
 // What the answer depends on, rather than the whole revision: the engine-visible
 // library and the lookup options the probe sends. A group-only or presentation
 // write leaves this unchanged, so it cannot invalidate a ready exercise.
@@ -632,28 +633,40 @@ function practiceSignature() {
   const library = dictionaries.map((dictionary) => [dictionary?.id ?? "", dictionary?.title ?? "",
     dictionary?.revision ?? "", dictionary?.path ?? "", dictionary?.enabled !== false,
     dictionary?.termCount ?? 0].join("\u001f")).join("\u001e");
-  return `${library}|${options.scanLength}|${options.frequencyDictionary}|${options.frequencyOrder}`;
+  return `${library}|${options.scanLength}|${options.maxResults}|${options.frequencyDictionary}|${options.frequencyOrder}`;
 }
 
-// One pass over the sentence: "ready" at the first hit, "missing" when nothing
-// answers, "refused" when the engine would not answer, "gone" when a newer
-// signature has taken over.
+async function probePracticeText(signature, text, exact = false) {
+  let reply;
+  try {
+    // Selection uses the selected word's length and ignores prefix-only hits;
+    // hover uses the configured scan length and needs just one term result.
+    reply = await send("hd_lookup", { text,
+      scanLength: exact ? [...text].length : options.scanLength,
+      maxResults: exact ? options.maxResults : 1,
+      options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder, primaryReading: "" },
+    }, ENGINE_TARGET);
+  } catch {
+    return "refused";
+  }
+  if (practiceProbed !== signature) return "gone";
+  if (reply?.ok === false) return "refused";
+  const found = Array.isArray(reply?.results) && reply.results.some((result) => result?.term
+    && (!exact || result.matched === text));
+  return found ? "ready" : "missing";
+}
+
+// Prove the fixed shortcut first. If it misses, one passage sweep can still
+// enable ordinary hover/selection without advertising that unanswered button.
 async function sweepPractice(signature) {
+  const word = practice.node.querySelector("#setup-practice-word").textContent;
+  const shortcut = await probePracticeText(signature, word, true);
+  if (shortcut !== "missing") return shortcut;
   const characters = [...practice.node.querySelector("#setup-practice-text").textContent];
   for (let start = 0; start < characters.length; start += 1) {
-    let reply;
-    try {
-      // The reader's own hover payload: the configured scan length decides how
-      // far a lookup from this offset may reach. One result settles existence.
-      reply = await send("hd_lookup", { text: characters.slice(start).join(""), scanLength: options.scanLength, maxResults: 1,
-        options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder, primaryReading: "" },
-      }, ENGINE_TARGET);
-    } catch {
-      return "refused";
-    }
-    if (practiceProbed !== signature) return "gone";
-    if (reply?.ok === false) return "refused";
-    if (Array.isArray(reply?.results) && reply.results.some((result) => result?.term)) return "ready";
+    const found = await probePracticeText(signature, characters.slice(start).join(""));
+    if (found === "ready") return "passage";
+    if (found !== "missing") return found;
   }
   return "missing";
 }

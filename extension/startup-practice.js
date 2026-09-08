@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 import { createLocalFileAccessController } from "./local-file-access.js";
 
-function practiceInstruction(options, enabled, probing, unavailable) {
+function practiceInstruction(options, enabled, probing, unavailable, shortcut) {
   if (enabled) {
+    const ending = shortcut ? ", or use the lookup button." : ".";
     return options.lookupMode === "activation"
-      ? `Try looking up a word below. Hold ${options.activationKey} and hover over Japanese text, or use the lookup button.`
-      : "Try looking up a word below. Hover over Japanese text, or use the lookup button.";
+      ? `Try looking up a word below. Hold ${options.activationKey} and hover over Japanese text${ending}`
+      : `Try looking up a word below. Hover over Japanese text${ending}`;
   }
   if (probing) return "Checking what the installed dictionaries can answer…";
   if (unavailable) {
@@ -100,18 +101,21 @@ export function createPracticeView({ document, onDismiss, loadReader }) {
     currentOutcome = outcome;
     const available = dictionaries.some(entry => entry.enabled !== false && entry.termCount > 0);
     const probing = available && options.hoverEnabled && outcome === null;
-    const enabled = available && options.hoverEnabled && outcome === "ready" && !readerFailed;
-    const practiceFocused = document.activeElement === lookup || document.activeElement === text;
+    const answerable = outcome === "ready" || outcome === "passage";
+    const enabled = available && options.hoverEnabled && answerable && !readerFailed;
+    const lookupFocused = document.activeElement === lookup;
+    const practiceFocused = lookupFocused || document.activeElement === text;
     const recoveryFocused = document.activeElement === recoveryLink;
-    find("setup-practice-scene").hidden = !available || (options.hoverEnabled && outcome !== "ready");
+    find("setup-practice-scene").hidden = !available || (options.hoverEnabled && !answerable);
     find("setup-practice-tools").hidden = !enabled;
-    lookup.disabled = !readerReady;
+    lookup.hidden = outcome !== "ready";
+    lookup.disabled = !readerReady || lookup.hidden;
     recovery.hidden = enabled || probing;
     instruction.textContent = practiceInstruction(options, enabled, probing,
-      available && options.hoverEnabled && outcome === "unavailable");
+      available && options.hoverEnabled && outcome === "unavailable", !lookup.hidden);
     if (enabled) {
       startReader();
-      if (recoveryFocused) text.focus({ preventScroll: true });
+      if (recoveryFocused || (lookupFocused && lookup.hidden)) text.focus({ preventScroll: true });
     } else {
       updateRecovery(available, dictionaries, outcome);
       if (practiceFocused && !probing) recoveryLink.focus();
