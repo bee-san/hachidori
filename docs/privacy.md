@@ -16,8 +16,9 @@ advertising or remote lookup service.
 Your browser profile stores imported dictionaries and their indexes, personal
 dictionary entries, preferences, dictionary update settings, and local lookup
 statistics. Statistics contain each looked-up term and reading, its count, and
-first/last lookup times. Hiding the count display does not stop these local
-statistics. Statistics do not contain a list of visited page URLs.
+first/last lookup times. Turning off lookup counts in Reading settings pauses
+new recording and keeps your existing history. Statistics do not contain a list
+of visited page URLs.
 
 Settings can contain custom service URLs, CSS, Anki field templates and an
 optional AnkiConnect API key. Hachidori does not add application-level encryption
