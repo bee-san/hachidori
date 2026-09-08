@@ -6827,6 +6827,7 @@ async function main() {
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => location.hash === "#lookup" && !document.getElementById("lookup").hidden
     && document.querySelector('.settings-nav [aria-current="page"]')?.hash === "#lookup");
+  const pickerKeepsFocus = await page.evaluate(() => document.activeElement.id === "settings-section");
   const narrowThemes = [];
   for (const theme of ["light", "dark"]) {
     await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
@@ -6862,9 +6863,9 @@ async function main() {
   const sameHashFocus = await page.evaluate(() => document.activeElement.id === "updates-heading");
   check(
     "Settings puts the library first and supports keyboard navigation at 320px",
-    libraryFirst && selectionActions && skipFocusedMain && shortWindowNavigation && historyRetainedView && sameHashFocus
+    libraryFirst && selectionActions && skipFocusedMain && pickerKeepsFocus && shortWindowNavigation && historyRetainedView && sameHashFocus
       && narrowThemes.every((theme) => theme.noOverflow && theme.fieldsFit && theme.statusExposed),
-    JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, shortWindowNavigation, historyRetainedView, sameHashFocus, narrowThemes }),
+    JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, pickerKeepsFocus, shortWindowNavigation, historyRetainedView, sameHashFocus, narrowThemes }),
   );
   const themeLayouts = [];
   for (const width of [320, 1280]) {
@@ -7294,7 +7295,8 @@ async function main() {
   const externalFocus = await page.evaluate(async (groupId) => {
     const before = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
     const input = document.querySelector(`[data-group-id="${groupId}"] .dict-group-name`);
-    const outsideControl = document.querySelector('.settings-nav a[href="#lookup"]');
+    const picker = document.getElementById("settings-section");
+    const outsideControl = picker.checkVisibility() ? picker : document.querySelector('.settings-nav a[href="#lookup"]');
     input.focus();
     input.value = "Externally focused reading";
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -7309,13 +7311,13 @@ async function main() {
     } while (Date.now() < deadline);
     await new Promise((resolveWait) => setTimeout(resolveWait, 50));
     return {
-      focusedHref: document.activeElement?.getAttribute("href"),
+      preserved: document.activeElement === outsideControl,
       name: current.groups.find((group) => group.id === groupId)?.name,
     };
   }, groupManagement.studyGroupId);
   check(
     "a newer external focus survives a group rerender",
-    externalFocus.focusedHref === "#lookup"
+    externalFocus.preserved
       && externalFocus.name === "Externally focused reading",
     JSON.stringify(externalFocus),
   );

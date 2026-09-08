@@ -21,7 +21,8 @@ dictionaries or invalidate lookup results.
 
 Lookup history belongs to Hachidori and stays in this browser. Recording and
 reading a count never contacts another application or service. Old external
-corpus connection settings are ignored.
+corpus connection settings are ignored; restoring an older backup discards those
+retired fields while preserving its other preferences and lookup history.
 
 The service worker serializes updates. Each lookup reads a descriptor and one
 term/reading row, then writes that row and the advanced descriptor together;

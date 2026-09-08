@@ -378,8 +378,10 @@ function attachSettingsNavigation() {
   const picker = element("settings-section");
   picker.addEventListener("change", (event) => {
     const fragment = `#${event.target.value}`;
-    if (window.location.hash === fragment) showSettingsSection();
-    else window.location.hash = fragment;
+    // Native fragment navigation moves focus off the select before hashchange.
+    // Preserve arrow-key selection while adding the section to browser history.
+    if (window.location.hash !== fragment) window.history.pushState(null, "", fragment);
+    showSettingsSection();
   });
   window.addEventListener("hashchange", () => showSettingsSection(document.activeElement !== picker));
   document.querySelector(".skip-link").addEventListener("click", (event) => {
