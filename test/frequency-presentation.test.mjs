@@ -54,26 +54,34 @@ test("fresh and partial stored options default to numeric frequencies while expl
   assert.equal(chosen.hidePopupGrammarTags, false);
 });
 
-test("the default Jiten capsule shows compact numbers with source and kana detail available on hover", t => {
+test("the default Jiten frequency is quiet inline headword metadata with detail available on hover", t => {
   const f = fixture(t);
   for (const options of [undefined, f.options.normaliseOptions({})]) {
     const capsule = f.render(options);
     assert.equal(capsule.textContent, "14.2k · 191");
     assert.equal(capsule.getAttribute("aria-label"), "Entry metadata");
+    assert.ok(capsule.parentElement.classList.contains("gsm-hoshidicts-headword"));
+    assert.equal(f.popup.querySelector(".gsm-hoshidicts-metadata-strip"), null);
     assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-grammar"), null);
     assert.equal(capsule.querySelector(".gsm-hoshidicts-frequency-source"), null);
     const frequency = capsule.querySelector(".gsm-hoshidicts-tag-frequency");
     assert.equal(frequency.title, "Jiten");
     assert.match(frequency.getAttribute("aria-label"), /Jiten:.*Kana frequency: 14200.*191/u);
     assert.equal(capsule.querySelector(".gsm-hoshidicts-frequency-value").title, "Kana frequency: 14200");
-    assert.ok(f.popup.querySelector(".gsm-hoshidicts-deinflection"), "the full explanation stays available");
+    const deinflection = f.popup.querySelector(".gsm-hoshidicts-deinflection");
+    assert.ok(deinflection, "the full explanation stays available");
+    assert.ok(
+      capsule.compareDocumentPosition(deinflection) & capsule.DOCUMENT_POSITION_FOLLOWING,
+      "inline metadata precedes the full deinflection row"
+    );
   }
 });
 
-test("live display choices keep frequency and grammar together in the metadata capsule and preserve the definition and draft", t => {
+test("live display choices keep frequency and grammar together beside the headword and preserve the definition and draft", t => {
   const f = fixture(t);
   const defaults = f.options.normaliseOptions({});
   const capsule = f.render(defaults);
+  const headword = capsule.parentElement;
   const card = f.popup.querySelector(".gsm-hoshidicts-glossary-card");
   f.popup.querySelector(".gsm-hoshidicts-note-button").click();
   const form = f.popup.querySelector("form");
@@ -84,9 +92,39 @@ test("live display choices keep frequency and grammar together in the metadata c
   f.view.updateDictionaryPresentation(defaults);
   assert.equal(capsule.textContent, "14.2k · 191");
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-grammar"), null);
+  assert.equal(capsule.parentElement, headword);
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-glossary-card"), card);
   assert.equal(f.popup.querySelector("form"), form);
   assert.equal(form.elements.definition.value, "keep my draft");
+});
+
+test("harmonic averages use concise typed labels without individual dictionary names", t => {
+  const f = fixture(t);
+  const defaults = f.options.normaliseOptions({});
+  const result = { ...RESULT, term: { ...RESULT.term, frequencies: [
+    { dictionary: "RankDict", frequencies: [{ value: 142, displayValue: "142" }] },
+    { dictionary: "CountDict", frequencies: [{ value: 12400, displayValue: "12,400" }] },
+  ] } };
+  const capsule = f.render({
+    ...defaults,
+    averageFrequency: true,
+    showFrequencyDictionaryNames: true,
+    dictionaryPresentation: [
+      { title: "RankDict", frequencyMode: "rank-based" },
+      { title: "CountDict", frequencyMode: "occurrence-based" },
+    ],
+  }, result);
+  assert.deepEqual(
+    [...capsule.querySelectorAll(".gsm-hoshidicts-frequency-source")].map(node => node.textContent),
+    ["Avg rank", "Avg count"]
+  );
+  assert.equal(capsule.textContent, "Avg rank142Avg count12.4k");
+  assert.equal(capsule.textContent.includes("RankDict"), false);
+  assert.equal(capsule.textContent.includes("CountDict"), false);
+  assert.deepEqual(
+    [...capsule.querySelectorAll(".gsm-hoshidicts-tag-frequency")].map(node => node.title),
+    ["Rank average", "Occurrence average"]
+  );
 });
 
 test("opt-in grammar stays visible without frequency or dictionary tabs and hides again when disabled", t => {
@@ -94,11 +132,31 @@ test("opt-in grammar stays visible without frequency or dictionary tabs and hide
   const defaults = f.options.normaliseOptions({});
   const result = { ...RESULT, term: { ...RESULT.term, glossaries: [], frequencies: [] } };
   const capsule = f.render({ ...defaults, hidePopupGrammarTags: false }, result);
-  const strip = capsule.parentElement;
   assert.equal(capsule.hidden, false);
-  assert.equal(strip.hidden, false);
+  assert.ok(capsule.parentElement.classList.contains("gsm-hoshidicts-headword"));
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-metadata-strip"), null);
   assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-grammar")?.textContent, "-た-ますv1");
   f.view.updateDictionaryPresentation(defaults);
   assert.equal(capsule.hidden, true);
-  assert.equal(strip.hidden, true);
+});
+
+test("the lower metadata strip exists only for dictionary tabs", t => {
+  const f = fixture(t);
+  const result = { ...RESULT, term: { ...RESULT.term, glossaries: [
+    ...RESULT.term.glossaries,
+    { dictionary: "Second dictionary", glossary: JSON.stringify(["another meaning"]), termTags: "" },
+  ] } };
+  const capsule = f.render({
+    ...f.options.normaliseOptions({}),
+    dictionaryPresentation: [
+      { title: "Jitendex", favorite: true },
+      { title: "Second dictionary", favorite: true },
+    ],
+  }, result);
+  const strip = f.popup.querySelector(".gsm-hoshidicts-metadata-strip");
+  assert.ok(strip);
+  assert.equal(strip.children.length, 1);
+  assert.ok(strip.firstElementChild.classList.contains("gsm-hoshidicts-tab-list"));
+  assert.equal(strip.contains(capsule), false);
+  assert.ok(capsule.parentElement.classList.contains("gsm-hoshidicts-headword"));
 });

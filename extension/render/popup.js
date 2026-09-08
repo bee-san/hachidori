@@ -427,23 +427,27 @@
           const value = frequencyNumberForAverage(frequency);
           if (value !== null) {
             const mode = modes.get(group.dictionary);
-            const label = mode === "rank-based" ? "Rank average"
-              : mode === "occurrence-based" ? "Occurrence average" : "Frequency average (unspecified)";
-            const aggregate = aggregates.get(label) || { count: 0, reciprocalSum: 0 };
+            const label = mode === "rank-based"
+              ? { accessible: "Rank average", display: "Avg rank" }
+              : mode === "occurrence-based"
+                ? { accessible: "Occurrence average", display: "Avg count" }
+                : { accessible: "Frequency average (unspecified)", display: "Avg frequency" };
+            const aggregate = aggregates.get(label.accessible)
+              || { count: 0, reciprocalSum: 0, display: label.display };
             aggregate.count += 1;
             aggregate.reciprocalSum += 1 / value;
-            aggregates.set(label, aggregate);
+            aggregates.set(label.accessible, aggregate);
             seen.add(group.dictionary);
             break;
           }
         }
       }
-      return Array.from(aggregates, ([label, { count, reciprocalSum }]) => {
+      return Array.from(aggregates, ([label, { count, reciprocalSum, display }]) => {
         const value = Math.floor(count / reciprocalSum);
         return createFrequencyTag(
           documentRef,
           { dictionary: label },
-          label,
+          display,
           [{ display: formatCompactFrequencyNumber(value), frequency: { value, displayValue: null } }],
           // These labels identify units, not a source dictionary.
           true
@@ -2642,10 +2646,6 @@
       capsule.hidden = capsule.childNodes.length === 0;
     }
 
-    function updateMetadataStripVisibility(strip, tabList, capsule) {
-      strip.hidden = !tabList && capsule.hidden;
-    }
-
     function updateCompactSummary(headword, result, context, media) {
       const previous = headword.querySelector(".gsm-hoshidicts-compact-definition-summary");
       if (previous) {
@@ -2707,6 +2707,7 @@
           DEFAULT_COMPACT_DEFINITION_SUMMARY_COUNT,
         compactDefinitionSummaryDictionary = null,
         summaryMedia = null,
+        inlineMetadata = null,
         showPitchAccentFurigana = true,
         pitchAccentFuriganaDictionary = null,
         onBack = null,
@@ -2753,6 +2754,9 @@
       if (showCompactDefinitionSummary === true) {
         updateCompactSummary(headword, result, { showCompactDefinitionSummary,
           compactDefinitionSummaryCount, compactDefinitionSummaryDictionary }, summaryMedia);
+      }
+      if (inlineMetadata) {
+        headword.appendChild(inlineMetadata);
       }
       const deinflection = buildDeinflectionDisclosure(documentRef, result, windowRef.navigator.language);
       if (deinflection) {
@@ -2838,10 +2842,8 @@
         dictionaryDisplayNames,
         imageContext,
         feedback,
-        metadataStrip,
         primaryHeader,
         primaryMetadataCapsule,
-        tabList,
       } = {}
     ) {
       const revision = ++renderRevision;
@@ -2918,6 +2920,7 @@
               ? renderContext.compactDefinitionSummaryDictionary
               : null,
           summaryMedia,
+          inlineMetadata: resultIndex === 0 ? primaryMetadataCapsule : null,
           showPitchAccentFurigana:
             renderContext.showPitchAccentFurigana !== false,
           pitchAccentFuriganaDictionary:
@@ -2955,13 +2958,6 @@
             renderContext.averageFrequency === true,
             renderContext.showFrequencyDictionaryNames === true
           );
-          if (metadataStrip) {
-            updateMetadataStripVisibility(
-              metadataStrip,
-              tabList,
-              primaryMetadataCapsule
-            );
-          }
         }
 
         const metadata = appendMetadata(
@@ -3169,7 +3165,6 @@
             renderPrimaryMetadataCapsule(primaryMetadataCapsule, results[0], imageContext.dictionaryPresentation || [],
               imageContext.hidePopupGrammarTags !== false, imageContext.averageFrequency === true,
               imageContext.showFrequencyDictionaryNames === true, { frequencyChanged, grammarChanged });
-            updateMetadataStripVisibility(metadataStrip, tabList, primaryMetadataCapsule);
             changed = true;
           }
           entryMetadata.forEach(({ header, metadata, grammarRow }, index) => {
@@ -3398,10 +3393,11 @@
         tabList.setAttribute("aria-label", "Dictionaries");
         tabList.setAttribute("aria-orientation", "horizontal");
       }
-      const metadataStrip = documentRef.createElement("div");
-      metadataStrip.className = "gsm-hoshidicts-metadata-strip";
-      metadataStrip.hidden = true;
-      if (tabList) {
+      const metadataStrip = tabList
+        ? documentRef.createElement("div")
+        : null;
+      if (metadataStrip) {
+        metadataStrip.className = "gsm-hoshidicts-metadata-strip";
         metadataStrip.appendChild(tabList);
       }
       const primaryMetadataCapsule = documentRef.createElement("div");
@@ -3410,7 +3406,6 @@
       primaryMetadataCapsule.hidden = true;
       primaryMetadataCapsule.setAttribute("role", "group");
       primaryMetadataCapsule.setAttribute("aria-label", "Entry metadata");
-      metadataStrip.appendChild(primaryMetadataCapsule);
       const feedback = documentRef.createElement("div");
       feedback.className = "gsm-hoshidicts-mining-feedback";
       feedback.setAttribute("role", "status");
@@ -3534,10 +3529,8 @@
             dictionaryDisplayNames,
             feedback,
             imageContext,
-            metadataStrip,
             primaryHeader,
             primaryMetadataCapsule,
-            tabList,
           }
         );
         onResultsRendered(rendered);
