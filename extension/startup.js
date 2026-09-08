@@ -833,14 +833,10 @@ function practiceView() {
   }
   const readiness = practice.update(options, dictionaries, practiceOutcome);
   if (!practiceLookupShown && practiceOutcome === "ready") {
-    // Let this render mount the final step and move focus to its heading first.
-    // The ordinary reader then observes the same precise selection as the
-    // visible lookup button, without a synthetic result path.
-    practiceLookupShown = true;
-    queueMicrotask(() => {
-      if (setupState?.stage === "practice" && practiceOutcome === "ready" && practice.lookup()) return;
-      practiceLookupShown = false;
-    });
+    // The first render mounts the practice node while the reader loads. As soon
+    // as its real lookup control becomes enabled, select before the ready render
+    // returns so the final page cannot paint ahead of its demonstration.
+    practiceLookupShown = practice.lookup();
   }
   return {
     heading: readiness.heading,
