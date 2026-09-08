@@ -759,7 +759,7 @@ function welcomeView() {
     body: [
       paragraph("Japanese page text is looked up on this computer. Words, readings, counts and lookup times are saved locally. You can pause recording in Reading settings without erasing your history."),
       paragraph("Start setup downloads four starter dictionaries from their publishers, who receive your IP address. It also reads deck, note-type, card and note metadata from local AnkiConnect to configure an existing mining setup. No Anki notes are changed."),
-      paragraph("Optional pronunciation sends words and readings to your audio provider or browser voice service. Mining sends selected study content to local Anki. Capture stays off until you start it and choose a source in Chrome."),
+      paragraph("Optional pronunciation sends words and readings to your audio provider or browser voice service. Mining sends selected study content and configured page screenshots to local Anki. Continuous recording stays off until you start it and choose a source in Chrome."),
     ],
     actions: [
       button("setup-start", "Start setup", () => { void advance("dictionaries"); }),

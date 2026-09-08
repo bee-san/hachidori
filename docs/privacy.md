@@ -70,9 +70,15 @@ by that dictionary. Custom CSS you enter can load resources from URLs it
 contains. Those destination services receive ordinary browser requests. Their
 own privacy practices govern their handling of those requests.
 
-## Screen and source-audio capture
+## Page screenshots and continuous capture
 
-Media capture is off by default. It starts only when you enable it, click
+**Page screenshots.** When **Screenshot the page when mining** is enabled and
+a field maps `{screenshot}`, choosing Add or Overwrite takes one picture of the
+whole visible reading page. The switch is on by default. This single screenshot
+uses the active reading tab directly. The picture stays in temporary memory and
+is sent to local Anki with the note.
+
+**Continuous media capture** is off by default. It starts only when you enable it, click
 **Start capture** and select a tab, window or screen in Chrome's picker. Capture
 can include everything visible on that source and its audio when available.
 Hachidori does not request microphone recording.

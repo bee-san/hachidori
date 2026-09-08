@@ -48,11 +48,15 @@ The welcome and settings copy provide the relevant
 - **One purpose:** describe reading Japanese and saving study material. Capture
   supports that workflow; avoid presenting it as an unrelated general recorder.
   See [extension quality guidelines](https://developer.chrome.com/docs/webstore/program-policies/quality-guidelines).
-- **Capture:** it is off by default, requires Start capture and Chrome's source
+- **Continuous capture:** it is off by default, requires Start capture and Chrome's source
   picker, retains temporary local history, and sends final assets to local Anki
   only when mining. Explain that closing controls continues recording and how
   to stop it. There is no microphone recording, OCR or DRM bypass in the audited
   implementation. See [media capture](media-capture.md#privacy-and-limitations).
+  Separately, the enabled-by-default **Screenshot the page when mining** switch
+  takes one picture of the whole visible reading page when a field maps
+  `{screenshot}` and the user chooses Add or Overwrite. It uses the active tab
+  directly and sends the picture to local Anki with the note.
 - **Content and claims:** use material you have permission to show in store
   screenshots and verify rights for recommended dictionary distribution and
   audio sources. Describe capture for authorized study material; do not promise
@@ -72,7 +76,7 @@ Google requires [a justification for each permission](https://developer.chrome.c
 | `offscreen` | Run the local dictionary engine and pronunciation playback, and retain an explicitly started capture session when its controls close. [The worker](../extension/background.js) requests `DOM_SCRAPING`, `AUDIO_PLAYBACK` and `DISPLAY_MEDIA`. |
 | `alarms` | Run the user's configured dictionary update schedules and refresh the optional local mature-word cache every 30 minutes while enabled. Scheduled runs can install dictionary data updates; they do not replace extension code. |
 | `downloads` | Save an explicitly requested local backup ZIP and monitor that export's completion. [The implementation](../extension/backup-downloads.js) tracks its own export IDs. |
-| `<all_urls>` host access | Fetch dictionaries and updates from configured HTTPS sources, pronunciation from configured sources, and communicate with local Anki. Explain arbitrary source support and why a fixed allowlist does not cover the shipped feature. |
+| `<all_urls>` host access | Fetch dictionaries and updates from configured HTTPS sources, pronunciation from configured sources, communicate with local Anki, and capture the visible reading page for mapped mining screenshots. Explain arbitrary source support and why a fixed allowlist does not cover the shipped feature. |
 | `<all_urls>` content-script matching | Read Japanese text near the pointer/selection and display dictionary results on the user's reading pages. A fixed website list cannot cover where users read. User-enabled local-file access can support local reading pages. |
 | `tabs` | Removed. Host permissions supply reading-page titles/URLs. `chrome.runtime.getContexts()` locates the extension’s own capture controls. |
 
@@ -108,7 +112,8 @@ The policy covers the paths below; use this mapping when completing the dashboar
 | Pronunciation | Configured custom audio providers receive the expression/reading substituted into their URLs. Built-in speech uses the browser/OS voice; the code does not require a `localService` voice, so do not promise every voice works offline. | [Sources](../extension/audio-sources.js), [player](../extension/audio-player.js) |
 | Anki | Requests go to `http://127.0.0.1:8765`. After Start setup, Anki discovery reads deck/model/card/note metadata; enabled mature-word blur retrieves mature expressions from the configured note type for a local cache every 30 minutes. The cache retains expressions, refresh times and a configuration identifier when disabled. Explicit mining can send selected text, definitions, page title, audio, images and captured media according to field mappings. Anki controls any subsequent sync. | [Gateway](../extension/anki.js), [setup](../extension/anki-setup.js), [maturity](../extension/anki-maturity.js), [mining](../extension/anki-mining.js) |
 | Lookup counts / texthooker | Lookup counts stay in this browser and never contact an external service. Optional capture texthooker receives timing/text over a loopback WebSocket. | [Statistics](lookup-statistics.md), [capture](media-capture.md) |
-| Shared media | User-selected tab/window/monitor frames and available source audio stay in transient capture history. Stop clears it; explicitly mined final clips are sent to local Anki. Reading-page titles/URLs identify the linked source. | [Capture privacy](media-capture.md#privacy-and-limitations) |
+| Page screenshots | With Screenshot the page when mining enabled and a field mapping `{screenshot}`, Add or Overwrite takes one picture of the whole visible reading page directly from the active tab. The switch is on by default. The picture stays in temporary memory and is sent to local Anki with the note. | [Mining](../extension/anki-content.js), [screenshot ownership](../extension/background.js) |
+| Continuous capture | User-selected tab/window/monitor frames and available source audio stay in transient capture history after Start capture and Chrome's picker. Stop clears it; explicitly mined final clips are sent to local Anki. Reading-page titles/URLs identify the linked source. | [Capture privacy](media-capture.md#privacy-and-limitations) |
 | Other external resources | Explicit external dictionary links open dictionary-supplied HTTP(S) URLs, which may contain terms or other parameters. User-written popup CSS may fetch URL resources. Their destination hosts may receive request metadata; dictionary CSS has separate restrictions. | [Renderer](../extension/render/glossary.js), [links](../extension/external-links.js), [custom CSS](architecture.md#custom-popup-css) |
 | Backups and deletion | User-requested backup ZIPs include settings, dictionaries, custom entries and statistics, and may include API keys. They are unencrypted and exclude the derived mature-word cache. Uninstalling the extension does not delete downloaded backups or already-created Anki notes; those need separate deletion. | [Backup format](backup-format.md) |
 

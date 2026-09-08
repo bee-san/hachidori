@@ -6623,7 +6623,7 @@ async function startupWelcomeStage() {
       && page.document.getElementById("setup-steps").hidden
       && readerScripts(page.document).length === 0 && /page text/iu.test(disclosure)
       && /counts/iu.test(disclosure) && /IP address/u.test(disclosure) && /card and note metadata/u.test(disclosure)
-      && /Capture stays off/u.test(disclosure)
+      && /configured page screenshots/u.test(disclosure) && /Continuous recording stays off/u.test(disclosure)
       && page.document.querySelector('a[href="https://github.com/bee-san/hachidori/blob/main/docs/privacy.md"]') !== null;
     // A failed save leaves the disclosure and no network work; a later click
     // still must wait until the accepted stage is committed.
