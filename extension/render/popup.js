@@ -1798,6 +1798,8 @@
     const documentRef = options.document;
     const windowRef = options.window;
     const popup = options.popup;
+    const contentScroll = documentRef.createElement("div");
+    contentScroll.className = "gsm-hoshidicts-content-scroll";
     const appendExpressionRuby = options.appendExpressionRuby;
     const appendTextOnlyGlossary = options.appendTextOnlyGlossary;
     const appendStructuredImage = options.appendStructuredImage;
@@ -1932,7 +1934,7 @@
         return;
       }
       const anchorRect = image.getBoundingClientRect();
-      const bounds = popup.getBoundingClientRect();
+      const bounds = (contentScroll.contains(image) ? contentScroll : currentToolbar || popup).getBoundingClientRect();
       if (anchorRect.bottom <= bounds.top || anchorRect.top >= bounds.bottom
           || anchorRect.right <= bounds.left || anchorRect.left >= bounds.right) {
         hideImagePreview();
@@ -2088,32 +2090,21 @@
       currentToolbar = null;
       masonryObserver?.disconnect();
       const retainedForm = currentNoteControls?.form;
-      if (retainedForm?.parentNode === popup) {
-        // Keep the live form mounted: detaching it loses focus and selection.
-        for (const child of [...popup.childNodes]) {
-          if (child !== retainedForm) child.remove();
-        }
-      } else {
-        popup.replaceChildren();
+      // Keep the scroller mounted so a retained repaint does not discard its
+      // viewport. Keep a retained live form mounted for focus and selection too.
+      contentScroll.replaceChildren();
+      for (const child of [...popup.childNodes]) {
+        if (child !== contentScroll && child !== retainedForm) child.remove();
       }
       // A hidden retirement needs no layout; the next visible render resets it.
-      if (!popup.hidden && !preserveViewControls) popup.scrollTop = 0;
+      if (!popup.hidden && !preserveViewControls) contentScroll.scrollTop = 0;
       setDefinitionBlurState("revealed");
     }
 
     function mountResultChrome(toolbar, content) {
-      const form = currentNoteControls?.form;
-      if (form?.parentNode === popup) {
-        if (toolbarPosition === "bottom") {
-          popup.prepend(content);
-          popup.append(toolbar);
-        } else {
-          popup.prepend(toolbar);
-          popup.append(content);
-        }
-      } else {
-        popup.append(toolbar, content);
-      }
+      contentScroll.append(content);
+      if (contentScroll.parentNode !== popup) popup.append(contentScroll);
+      popup.append(toolbar);
       setRenderedToolbar(toolbar);
     }
 
@@ -2351,7 +2342,7 @@
           onNoteEditingChange(true);
         }
         positionPopup();
-        popup.scrollTop = toolbarPosition === "bottom" ? popup.scrollHeight : 0;
+        form.scrollTop = 0;
         term.focus();
         term.select();
       }
@@ -2889,7 +2880,7 @@
         pendingScrollRestoration = () => {
           // Back's fresh render reset scroll to zero. Reading it earlier,
           // while the panel is empty, would force an unnecessary layout.
-          if (isCurrent() && popup.scrollTop === 0) popup.scrollTop = savedScrollTop;
+          if (isCurrent() && contentScroll.scrollTop === 0) contentScroll.scrollTop = savedScrollTop;
         };
         scheduleMasonry();
       }
@@ -3351,13 +3342,11 @@
         selected = nextSelected;
         let changed = false;
         if (sameMembers) {
-          for (const heading of popup.querySelectorAll(":scope > .gsm-hoshidicts-kanji-entry > h3")) {
+          for (const heading of contentScroll.querySelectorAll(":scope > .gsm-hoshidicts-kanji-entry > h3")) {
             changed = updateLabel(heading, dictionaryDisplayNames.get(heading.title) || heading.title) || changed;
           }
         } else {
-          for (const entry of popup.querySelectorAll(":scope > .gsm-hoshidicts-kanji-entry")) entry.remove();
-          if (toolbarPosition === "bottom") popup.prepend(renderEntries());
-          else popup.append(renderEntries());
+          contentScroll.replaceChildren(renderEntries());
           changed = true;
         }
         if (changed) scheduleMasonry();
@@ -3487,7 +3476,7 @@
         if (hasRendered) {
           if (onBeforeResultsRendered() === false) return;
         }
-        if (hasRendered || !renderContext.preserveViewControls) popup.scrollTop = 0;
+        if (hasRendered || !renderContext.preserveViewControls) contentScroll.scrollTop = 0;
         renderProjection(!hasRendered && renderContext.expandAll === true);
         hasRendered = true;
         positionPopup();
@@ -3680,7 +3669,7 @@
           return !metadataDeferred;
         });
       restoreRetainedFocus(focused);
-      captureTermView = () => ({ expandAll: rendered.isExpanded(), restoreScrollTop: popup.scrollTop,
+      captureTermView = () => ({ expandAll: rendered.isExpanded(), restoreScrollTop: contentScroll.scrollTop,
         disclosures: { results, dictionaries: [...tabDescriptors[selectedIndex].dictionaries],
           states: [...popup.querySelectorAll("details")].map(node => ({ className: node.className, open: node.open })),
         },
@@ -3689,6 +3678,7 @@
     }
 
     return {
+      scrollElement: contentScroll,
       clear,
       hideImagePreview,
       closeNoteForm() {

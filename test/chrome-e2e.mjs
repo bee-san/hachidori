@@ -234,6 +234,7 @@ const PLANNED = [
   "Design previews opacity and dimensions immediately and resets only Design settings",
   "live appearance changes preserve reader Notes and resources while applying the selected page highlight",
   "toolbar preferences persist and move the preview without detaching focused Notes or rebuilding cards",
+  "low-opacity popup content scrolls in a clipped viewport without overlapping either toolbar position",
   "live toolbar overrides apply to root and child and survive resize without focus or resource loss",
   "custom CSS editor previews unsaved text, persists its count and resets only its stylesheet",
   "custom CSS overrides built-in and late dictionary styles only inside the popup shadow tree and tolerates invalid CSS",
@@ -761,18 +762,19 @@ async function popupReader(page, depth = 0) {
       arguments: [{ value: index }, { value: action }],
       functionDeclaration: `function (index, action) {
         const root = this.getRootNode();
+        const scroll = this.querySelector(".gsm-hoshidicts-content-scroll");
         const links = [...this.querySelectorAll(".gloss-image-link")];
         const link = links[index];
         const image = link?.querySelector("img");
         if (action === "focus") link.focus();
         else if (action === "blur") link.blur();
-        else if (action === "scroll") this.scrollTop += this.scrollTop > 0 ? -30 : 30;
+        else if (action === "scroll") scroll.scrollTop += scroll.scrollTop > 0 ? -30 : 30;
         else if (action === "mouseenter" || action === "mouseleave") link.dispatchEvent(new Event(action));
         const preview = root.querySelector(".gsm-hoshidicts-image-hover-preview");
         const expanded = preview?.querySelector("img");
         const view = this.ownerDocument.defaultView;
         return {
-          scrollTop: this.scrollTop,
+          scrollTop: scroll.scrollTop,
           sourceRect: image?.getBoundingClientRect().toJSON(),
           focusedImage: links.indexOf(root.activeElement),
           images: links.map(link => {
@@ -809,6 +811,7 @@ async function popupReader(page, depth = 0) {
       arguments: [{ value: action }],
       functionDeclaration: `async function (action) {
         const details = this.querySelector(".gsm-hoshidicts-deinflection");
+        const toolbar = this.querySelector(".gsm-hoshidicts-result-chrome");
         const summary = details?.querySelector("summary");
         if (!summary) return null;
         const list = details.querySelector("ol");
@@ -850,7 +853,7 @@ async function popupReader(page, depth = 0) {
           noteRect: noteRect.toJSON(),
           noteReachable: !note.disabled && note.contains(root.elementFromPoint(
             noteRect.x + noteRect.width / 2, noteRect.y + noteRect.height / 2)),
-          scrollTop: this.scrollTop,
+          toolbarScrollTop: toolbar.scrollTop,
           lastStepReachable: reachable(lastStep),
           glossaryReachable: reachable(glossary),
           noteInputFocused: root.activeElement === termInput,
@@ -968,7 +971,8 @@ async function popupReader(page, depth = 0) {
           draft: input?.value, selection: [input?.selectionStart, input?.selectionEnd],
           inputFocused: root.activeElement === input,
           inputReachable: rect && root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === input,
-          inputRect: rect?.toJSON(), popupRect: this.getBoundingClientRect().toJSON(), scrollTop: this.scrollTop,
+          inputRect: rect?.toJSON(), popupRect: this.getBoundingClientRect().toJSON(),
+          scrollTop: this.querySelector(".gsm-hoshidicts-content-scroll").scrollTop,
           centerOwner: rect && root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.className,
           tabFocused: root.activeElement === this.querySelector('[role="tab"][aria-selected="true"]'),
           replaced: this.querySelector('.gsm-hoshidicts-tab-panel') !== saved?.panel,
@@ -986,8 +990,9 @@ async function popupReader(page, depth = 0) {
       arguments: [{ value: action }, { value: key }],
       functionDeclaration: function (action, key) {
         const root = this.getRootNode();
+        const scroll = this.querySelector(".gsm-hoshidicts-content-scroll");
         const tabs = [...this.querySelectorAll('[role="tab"]')];
-        if (action === "scroll") this.scrollTop = key;
+        if (action === "scroll") scroll.scrollTop = key;
         const tabKey = button => button.dataset.dictionary ? `dictionary:${button.dataset.dictionary}`
           : button.dataset.groupId ? `group:${button.dataset.groupId}`
             : button.dataset.favourites === "true" ? "favourites" : "all";
@@ -1043,7 +1048,7 @@ async function popupReader(page, depth = 0) {
             });
         });
         return {
-          hidden: this.hidden, entries, scrollTop: this.scrollTop,
+          hidden: this.hidden, entries, scrollTop: scroll.scrollTop,
           customOutline: getComputedStyle(this).outlineColor,
           showMore: Boolean(this.querySelector(".gsm-hoshidicts-show-more")),
           toolbar: this.dataset.toolbarPosition,
@@ -1373,7 +1378,7 @@ async function checkDeinflectionDisclosure(settings, tab, popup) {
       && fitsWidth(expanded.popupRect, expanded.noteRect)
       && Math.abs(expanded.noteRect.top - focused.noteRect.top) <= 1
       && note?.open === true && note.noteInputFocused && note.noteInputReachable
-      && lastStep?.open === true && lastStep.scrollTop > 0 && lastStep.lastStepReachable
+      && lastStep?.open === true && Math.abs(lastStep.toolbarScrollTop) > 0 && lastStep.lastStepReachable
       && lastStep.lastStepRect.top >= lastStep.popupRect.top
       && lastStep.lastStepRect.bottom <= lastStep.popupRect.bottom
       && glossary?.open === true && glossary.glossaryReachable,
@@ -5020,7 +5025,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
 }
 
 async function checkToolbarPreview(page, frame) {
-  const original = await readSettingsControls(page, ["opt-popup-toolbar"]);
+  const original = await readSettingsControls(page, ["opt-popup-toolbar", "opt-popup-opacity", "opt-popup-height"]);
   await frame.evaluate(() => {
     const root = document.getElementById("preview-host").shadowRoot;
     const popup = root.querySelector(".gsm-hoshidicts-popup");
@@ -5059,10 +5064,53 @@ async function checkToolbarPreview(page, frame) {
     }
     check("toolbar preferences persist and move the preview without detaching focused Notes or rebuilding cards",
       cases.every(Boolean), JSON.stringify(cases));
+    await frame.evaluate(() => window.toolbarProof.form.querySelector(".gsm-hoshidicts-note-cancel").click());
+    const clipping = [];
+    for (const edge of ["top", "bottom"]) {
+      await editSettingsControls(page, { "opt-popup-toolbar": edge, "opt-popup-opacity": "10", "opt-popup-height": "200" });
+      await frame.waitForFunction(edge => {
+        const host = document.getElementById("preview-host");
+        const popup = host.shadowRoot.querySelector(".gsm-hoshidicts-popup");
+        return popup.dataset.toolbarPosition === edge
+          && host.style.getPropertyValue("--gsm-hoshidicts-popup-opacity") === "10%"
+          && popup.getBoundingClientRect().height === 200;
+      }, {}, edge);
+      clipping.push(await frame.evaluate(async edge => {
+        const host = document.getElementById("preview-host");
+        const popup = host.shadowRoot.querySelector(".gsm-hoshidicts-popup");
+        const scroll = popup.querySelector(".gsm-hoshidicts-content-scroll");
+        const toolbar = popup.querySelector(".gsm-hoshidicts-result-chrome");
+        const before = toolbar.getBoundingClientRect();
+        scroll.scrollTop = Math.min(80, scroll.scrollHeight - scroll.clientHeight);
+        for (let index = 0; index < 3; index++) await new Promise(requestAnimationFrame);
+        const contentRect = scroll.getBoundingClientRect();
+        const toolbarRect = toolbar.getBoundingClientRect();
+        const popupRect = popup.getBoundingClientRect();
+        return {
+          edge: popup.dataset.toolbarPosition,
+          opacity: host.style.getPropertyValue("--gsm-hoshidicts-popup-opacity"),
+          scrollTop: scroll.scrollTop, outerScrollTop: popup.scrollTop,
+          contentOverflow: getComputedStyle(scroll).overflowY,
+          outerOverflow: getComputedStyle(popup).overflowY,
+          siblings: scroll.parentElement === popup && toolbar.parentElement === popup,
+          separate: contentRect.height > 0 && toolbarRect.height > 0
+            && (edge === "top" ? toolbarRect.bottom <= contentRect.top + 1 : contentRect.bottom <= toolbarRect.top + 1),
+          stationary: Math.abs(before.top - toolbarRect.top) <= 1 && Math.abs(before.bottom - toolbarRect.bottom) <= 1,
+          bounded: contentRect.top >= popupRect.top && contentRect.bottom <= popupRect.bottom
+            && toolbarRect.top >= popupRect.top && toolbarRect.bottom <= popupRect.bottom,
+          contentRect: contentRect.toJSON(), toolbarRect: toolbarRect.toJSON(), popupRect: popupRect.toJSON(),
+        };
+      }, edge));
+    }
+    check("low-opacity popup content scrolls in a clipped viewport without overlapping either toolbar position",
+      clipping.every((value, index) => value.edge === ["top", "bottom"][index]
+        && value.opacity === "10%" && value.scrollTop > 0 && value.outerScrollTop === 0
+        && value.contentOverflow === "auto" && value.outerOverflow === "hidden"
+        && value.siblings && value.separate && value.stationary && value.bounded), JSON.stringify(clipping));
   } finally {
     await frame.evaluate(() => {
       window.toolbarProof.observer.disconnect();
-      window.toolbarProof.form.querySelector(".gsm-hoshidicts-note-cancel").click();
+      if (!window.toolbarProof.form.hidden) window.toolbarProof.form.querySelector(".gsm-hoshidicts-note-cancel").click();
       delete window.toolbarProof;
     });
     await editSettingsControls(page, original);
@@ -5422,7 +5470,7 @@ async function checkDesignPreview(page) {
       await frame.evaluate(async () => {
         const root = document.getElementById("preview-host").shadowRoot;
         root.activeElement?.blur();
-        root.querySelector(".gsm-hoshidicts-popup").scrollTop = 0;
+        root.querySelector(".gsm-hoshidicts-content-scroll").scrollTop = 0;
         for (let index = 0; index < 3; index++) await new Promise(requestAnimationFrame);
       });
       await page.screenshot({ path: process.env.HACHIDORI_DESIGN_SCREENSHOT });

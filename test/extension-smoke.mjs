@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { ankiSetupFamily } from "../extension/anki-setup.js";
 import { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache } from "../extension/anki-maturity-cache.js";
 import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
 import { assertBackupSnapshot, backupRevisions } from "../extension/backup-state.js";
@@ -2263,6 +2264,7 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  window.ankiSetupFamily = ankiSetupFamily;
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const customLinkSettings = readFileSync(resolve(EXTENSION, "custom-link-settings.js"), "utf8")
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -2399,6 +2401,19 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && reader.normaliseOptions({ popupTheme: "unknown" }).popupTheme === "default",
       JSON.stringify({ themes, cssThemes: [...cssThemes] }));
     const readerCss = readFileSync(resolve(EXTENSION, "render/reader.css"), "utf8");
+    const frameRule = readerCss.match(/^\.gsm-hoshidicts-popup \{([^}]+)\}/mu)?.[1];
+    const scrollRule = readerCss.match(/^\.gsm-hoshidicts-content-scroll \{([^}]+)\}/mu)?.[1];
+    const toolbarRule = readerCss.match(/^\.gsm-hoshidicts-result-chrome \{([^}]+)\}/mu)?.[1];
+    const noteRule = [...readerCss.matchAll(/^\.gsm-hoshidicts-note-form \{([^}]+)\}/gmu)]
+      .map(match => match[1]).join("\n");
+    check("transparent popup backgrounds keep their opacity while the frame clips independently scrolling content and controls",
+      /display: flex;/u.test(frameRule) && /overflow: hidden;/u.test(frameRule)
+        && /background: var\(--hoshidicts-popup-background\);/u.test(frameRule)
+        && /--hoshidicts-background-opacity: var\(\s*--gsm-hoshidicts-popup-opacity,\s*85%\s*\)/u.test(frameRule)
+        && /--hoshidicts-chrome-background: color-mix\([^;]+var\(--hoshidicts-background-opacity\)[^;]+transparent\s*\)/u.test(frameRule)
+        && [scrollRule, toolbarRule, noteRule].every(rule => /min-height: 0;/u.test(rule) && /overflow-y: auto;/u.test(rule))
+        && /flex: 1 1 0;/u.test(scrollRule) && /max-height: 50%;/u.test(toolbarRule)
+        && /max-height: 60%;/u.test(noteRule) && !/position: sticky;/u.test(toolbarRule));
     const tagRule = readerCss.match(/^\.gsm-hoshidicts-tag \{([^}]+)\}/mu)?.[1];
     const definitionTagRule = readerCss.match(/^\.gsm-hoshidicts-tag-definition \{([^}]+)\}/mu)?.[1];
     const metadataValueRules = ["frequency", "pitch"].map(kind => readerCss
@@ -9901,6 +9916,7 @@ async function staleKanjiResponseStage(invalidation) {
     },
     popup,
     {
+      scrollElement: window.document.createElement("div"),
       clear() {},
       hideImagePreview() {},
       updateDictionaryPresentation() {},
@@ -10002,6 +10018,7 @@ async function contentNoteStage() {
         renders.push(render);
       }
       const view = {
+        scrollElement: window.document.createElement("div"),
         captureTermView: () => record.viewport,
         updateDictionaryPresentation(context) { record.presentations.push(context); },
         flushDictionaryPresentation() { record.presentationFlushes += 1; },
@@ -14144,30 +14161,33 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   const termFormWasLazy = popup.querySelector(".gsm-hoshidicts-note-form") === null
     && view.closeNoteForm() === false;
   const resultToolbar = popup.querySelector(".gsm-hoshidicts-result-chrome");
-  Object.defineProperty(popup, "scrollHeight", { configurable: true, value: 480 });
   view.setToolbarPosition("bottom");
-  popup.scrollTop = 0;
+  view.scrollElement.scrollTop = 120;
   let scrollAtNoteFocus;
-  popup.addEventListener("focus", () => { scrollAtNoteFocus = popup.scrollTop; }, { capture: true, once: true });
+  popup.addEventListener("focus", () => { scrollAtNoteFocus = view.scrollElement.scrollTop; }, { capture: true, once: true });
   termNoteButton?.click();
   const bottomNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
   const bottomChildren = [...popup.children];
-  const openedAtBottom = popup.scrollTop;
+  const openedAtBottom = view.scrollElement.scrollTop;
   view.setToolbarPosition("top");
   check(
-    "the bottom Note form stays beside its toolbar and opens at the active edge",
+    "the bottom Note form stays outside scrolling definitions and opens without moving their viewport",
     termFormWasLazy
       && bottomChildren.at(-2) === bottomNoteForm
       && bottomChildren.at(-1) === resultToolbar
-      && openedAtBottom === popup.scrollHeight
-      && scrollAtNoteFocus === popup.scrollHeight
+      && openedAtBottom === 120
+      && scrollAtNoteFocus === 120
+      && bottomNoteForm.scrollTop === 0
+      && view.scrollElement.parentNode === popup
+      && view.scrollElement.contains(popup.querySelector(".gsm-hoshidicts-tab-panel"))
+      && !view.scrollElement.contains(bottomNoteForm) && !view.scrollElement.contains(resultToolbar)
       && popup.children[0] === resultToolbar
       && popup.children[1] === bottomNoteForm,
     JSON.stringify({
       bottomOrder: bottomChildren.map(({ className }) => className),
       openedAtBottom,
       scrollAtNoteFocus,
-      scrollHeight: popup.scrollHeight,
+      formScrollTop: bottomNoteForm.scrollTop,
       topOrder: [...popup.children].map(({ className }) => className),
     }),
   );
@@ -14349,28 +14369,31 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   check("renderNotice replaces the view", popup.textContent.includes("nothing found"), JSON.stringify(popup.textContent));
   const scrollProperty = Object.getOwnPropertyDescriptor(window.Element.prototype, "scrollTop");
   let scrollWrites = 0;
-  Object.defineProperty(popup, "scrollTop", {
+  Object.defineProperty(view.scrollElement, "scrollTop", {
     configurable: true,
     get() { return scrollProperty.get.call(this); },
     set(value) { scrollWrites += 1; scrollProperty.set.call(this, value); },
   });
   popup.hidden = true;
   view.clear();
-  const hiddenCleared = popup.childElementCount === 0 && scrollWrites === 0;
+  const hiddenCleared = popup.childElementCount === 1 && popup.firstElementChild === view.scrollElement
+    && view.scrollElement.childElementCount === 0 && scrollWrites === 0;
   popup.hidden = false;
   const visibleResets = [
     () => view.renderNotice("nothing found", candidate),
     () => view.renderKanji(kanji, candidate),
     () => view.renderResults(lookup.results, candidate),
   ].map((render) => {
-    popup.scrollTop = 120;
+    view.scrollElement.scrollTop = 120;
     scrollWrites = 0;
     render();
-    return scrollWrites > 0 && popup.scrollTop === 0;
+    return scrollWrites > 0 && view.scrollElement.scrollTop === 0
+      && view.scrollElement.parentNode === popup
+      && popup.querySelector(".gsm-hoshidicts-result-chrome")?.parentNode === popup;
   });
   check("clear empties hidden popups without scrolling and every visible view resets scroll",
     hiddenCleared && visibleResets.every(Boolean), JSON.stringify({ hiddenCleared, visibleResets }));
-  delete popup.scrollTop;
+  delete view.scrollElement.scrollTop;
   view.clear();
   await imagePreviewStage({ view, popup, shadow, document, window, candidate,
     calculatePopupPosition: HDPopup.calculatePopupPosition,
@@ -14410,33 +14433,33 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
     tab();
     const collapsed = view.captureTermView().expandAll === false;
     popup.querySelector(".gsm-hoshidicts-show-more").click();
-    popup.scrollTop = 80;
+    view.scrollElement.scrollTop = 80;
     const snapshot = view.captureTermView();
     check("Back captures the current projected tab's expansion and scroll, not the initial panel",
       collapsed && snapshot.expandAll && snapshot.restoreScrollTop === 80);
     view.renderResults(results, candidate, snapshot);
     layout();
-    const beforeFill = popup.scrollTop === 0;
+    const beforeFill = view.scrollElement.scrollTop === 0;
     await settle();
     layout();
-    const restored = popup.scrollTop === 80 && !popup.querySelector(".gsm-hoshidicts-show-more");
+    const restored = view.scrollElement.scrollTop === 80 && !popup.querySelector(".gsm-hoshidicts-show-more");
     tab();
     popup.querySelector(".gsm-hoshidicts-show-more").click();
     await settle();
     layout();
     check("Back restores scroll after deferred bodies and masonry only once",
-      beforeFill && restored && popup.scrollTop === 0);
+      beforeFill && restored && view.scrollElement.scrollTop === 0);
     view.renderResults(results, candidate, snapshot);
     tab();
     await settle();
     layout();
-    const newerTab = popup.scrollTop === 0;
+    const newerTab = view.scrollElement.scrollTop === 0;
     view.renderResults(results, candidate, snapshot);
     await settle();
-    popup.scrollTop = 23;
+    view.scrollElement.scrollTop = 23;
     layout();
     check("a newer tab or deliberate scroll cancels deferred Back viewport restoration",
-      newerTab && popup.scrollTop === 23);
+      newerTab && view.scrollElement.scrollTop === 23);
     const disclosureResult = { ...result, term: { ...result.term,
       pitches: Array.from({ length: 13 }, (_, index) => ({ ...result.term.pitches[0], dictionary: `IPA ${index}` })),
       glossaries: [{ ...result.term.glossaries[0], glossary: JSON.stringify([{ type: "structured-content", content: {
@@ -14468,7 +14491,7 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
         && !popup.querySelector(".gsm-hoshidicts-ipa-overflow").open);
     let scrollReads = 0;
     let retainedScroll = 85;
-    Object.defineProperty(popup, "scrollTop", { configurable: true,
+    Object.defineProperty(view.scrollElement, "scrollTop", { configurable: true,
       get() { scrollReads++; return retainedScroll; },
       set(value) { retainedScroll = value; },
     });
@@ -14479,7 +14502,7 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
     view.renderResults(results, candidate, { preserveViewControls: true });
     check("Back and ordinary retained renders do not force scroll layout while their replacement panel is empty",
       backAvoidsEarlyLayout && scrollReads === 0 && retainedScroll === 85);
-    delete popup.scrollTop;
+    delete view.scrollElement.scrollTop;
   } finally { view.destroy(); popup.remove(); }
 }
 
@@ -14741,7 +14764,8 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
     await tick();
     check("clearing the projection retires all image refresh handles and their pending completions",
       retired.length === 2 && retired.every(({ query }) => !query.isCurrent())
-        && !popup.hasChildNodes() && images.every(image => !image.isConnected));
+        && !view.scrollElement.hasChildNodes() && popup.childElementCount === 1
+        && images.every(image => !image.isConnected));
 
     sources = null;
     const group = { id: "reading", name: "Reading", dictionaries: ["Illustrated", "Plain"] };
@@ -15567,7 +15591,7 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
   const preview = () => shadow.querySelector(".gsm-hoshidicts-image-hover-preview");
   const originalRect = window.Element.prototype.getBoundingClientRect;
   window.Element.prototype.getBoundingClientRect = function () {
-    if (this === popup) return { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight,
+    if (this === popup || this === view.scrollElement) return { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight,
       width: window.innerWidth, height: window.innerHeight };
     return this.classList.contains("gsm-hoshidicts-image-hover-preview")
       ? { left: 0, top: 0, right: 320, bottom: 240, width: 320, height: 240 }
@@ -15648,7 +15672,7 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
       return position.left >= 8 && position.top >= 8
         && position.left + fractionalSize.width <= 312 && position.top + fractionalSize.height <= 232;
     }));
-    event(popup, "scroll");
+    event(view.scrollElement, "scroll");
     const focusedScrollKept = Boolean(second) && preview() === second;
     links[1].blur();
     const blurred = !preview();
@@ -15659,7 +15683,7 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
     event(window, "resize");
     const resized = !preview();
     event(links[0], "mouseenter");
-    event(popup, "scroll");
+    event(view.scrollElement, "scroll");
     const scrolled = !preview();
     event(links[0], "mouseenter");
     event(links[0].querySelector("img"), "error");
@@ -15903,17 +15927,17 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   try {
     view.renderResults([healthy, invalid], candidate, context);
     const escaped = drain();
-    const deferredHandled = errors === 1 && escaped === 0 && popup.childElementCount === 0;
+    const deferredHandled = errors === 1 && escaped === 0 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
     view.renderResults([healthy, invalid], candidate, context);
     popup.querySelector('[data-dictionary="Invalid"][role="tab"]')?.click();
-    const tabHandled = errors === 2 && popup.childElementCount === 0;
+    const tabHandled = errors === 2 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
     drain();
     view.renderResults([healthy, healthy, invalid], candidate, context);
     drain();
     popup.querySelector(".gsm-hoshidicts-show-more")?.click();
     const moreEscaped = drain();
     check("deferred, tab and expanded render failures reach their owner without escaping",
-      deferredHandled && tabHandled && errors === 3 && moreEscaped === 0 && popup.childElementCount === 0,
+      deferredHandled && tabHandled && errors === 3 && moreEscaped === 0 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
       JSON.stringify({ deferredHandled, tabHandled, errors, escaped, moreEscaped }));
 
     const projectionContext = { ...context, selectedDictionaryTab: { groupId: "live" },
@@ -15928,7 +15952,7 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
       });
     } catch { presentationEscaped = true; }
     check("storage-driven projection failures use the current render error boundary",
-      !presentationEscaped && errors === beforePresentationError + 1 && popup.childElementCount === 0,
+      !presentationEscaped && errors === beforePresentationError + 1 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
       JSON.stringify({ presentationEscaped, errors, beforePresentationError }));
 
     const replacements = [

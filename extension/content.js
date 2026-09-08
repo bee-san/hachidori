@@ -1386,11 +1386,13 @@
       clearHideTimer();
     });
     popup.addEventListener("focusout", onPopupFocusOut);
+    // Scroll events do not bubble from the definition pane or its inner cards.
+    // Keep linked popups aligned with anchors moving inside those scrollers.
     popup.addEventListener("scroll", () => {
       if (level.retired) return;
       const child = levels[level.depth + 1];
       if (child) positionPopup(child);
-    }, { passive: true });
+    }, { capture: true, passive: true });
     popup.addEventListener("mouseenter", () => onPopupEnter(level));
     popup.addEventListener("mouseover", (event) => {
       const request = level.currentViewRequest;
@@ -1741,7 +1743,7 @@
       document.body.appendChild(host);
     }
     level.popup.hidden = false;
-    level.popup.scrollTop = 0;
+    level.view.scrollElement.scrollTop = 0;
   }
 
   function pruneLevels(depth, restoreFocus = true) {
