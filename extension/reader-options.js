@@ -6,7 +6,7 @@
   "use strict";
 
   const ANKI_FIELDS = ["expression", "reading", "definition", "sentence", "frequency", "pitch", "audio",
-    "captureAnimation", "captureAudio"];
+    "captureAnimation", "captureAudio", "screenshot"];
   const ANKI_DUPLICATE_SCOPES = ["collection", "deck", "deck-root"];
   const ANKI_DUPLICATE_BEHAVIORS = ["prevent", "new", "overwrite"];
   const ANKI_OVERWRITE_MODES = ["coalesce", "coalesce-new", "skip", "append", "prepend", "overwrite"];

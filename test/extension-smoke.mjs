@@ -1419,6 +1419,21 @@ async function ankiScreenshotStage() {
   // Chrome rate-limits captures, so one wait is worth a screenshot.
   captureFailures = 1;
   const retried = await ask(reader);
+  // A rate-limited attempt is retried, but the tab it belongs to is checked
+  // again first: a switch during the wait takes no picture at all.
+  captureFailures = 1;
+  const capturesBeforeSwitch = captures.length;
+  const switchedAway = await (async () => {
+    const pending = ask(reader);
+    for (let attempt = 0; attempt < 200 && captures.length === capturesBeforeSwitch; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    tab = { ...tab, active: false };
+    const reply = await pending;
+    tab = { ...tab, active: true };
+    return reply;
+  })();
+  const capturesAfterSwitch = captures.length;
   captureFailures = 3;
   const givenUp = await ask(reader);
   captureFailures = 0;
@@ -1437,12 +1452,14 @@ async function ankiScreenshotStage() {
         && action === "storeMediaFile" && params.data === "c2hvdA==" && params.deleteExisting === false)
       && retried?.ok === true && captures.filter(({ windowId }) => windowId === 3).length === captures.length
       && captures.every(({ options }) => options.format === "jpeg")
+      && switchedAway?.ok === false && switchedAway.error.includes("no longer the active tab")
+      && capturesAfterSwitch === capturesBeforeSwitch + 1
       && givenUp?.ok === false && givenUp.error.includes("quota")
       && background?.ok === false && background.error.includes("no longer the active tab")
       && navigated?.ok === false && navigated.error.includes("moved to another page")
       && fromExtensionPage?.ok === false && fromExtensionPage.error.includes("reading tab")
       && switchedOff?.ok === false && switchedOff.error.includes("turned off in Settings"),
-    JSON.stringify({ taken, retried, givenUp, background, navigated, fromExtensionPage, switchedOff, uploads, captures }));
+    JSON.stringify({ taken, retried, switchedAway, givenUp, background, navigated, fromExtensionPage, switchedOff, uploads, captures }));
 }
 
 async function ankiBackgroundStage() {

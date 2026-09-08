@@ -1313,9 +1313,11 @@ and the content script then hides Hachidori's own overlays — the popup, its im
 preview and everything else the reader draws live in one host element — waits two
 frames so the change has painted, asks the worker for the picture, and removes the
 declaration again whatever the outcome. The worker validates the request against
-its sender: `tabs.captureVisibleTab` takes the window's active tab, so the asking
-tab must still be that tab, and a top-level frame must still show the document
-that asked. Chrome's capture rate limit is honoured with one wait and retry. The
+its sender before every attempt: `tabs.captureVisibleTab` takes the window's
+active tab, so the asking tab must still be that tab, and a top-level frame must
+still show the document that asked. Chrome's capture rate limit is honoured with
+one wait and retry, and that wait is long enough to switch tabs, so ownership is
+checked again after it rather than once at the start. The
 picture is stored through the ordinary `storeMediaFile` gateway under its own
 `hachidori-screenshot-<uuid>.jpg` name, before the note, so duplicate checks,
 overwrite policies and existing values are untouched.
@@ -1326,7 +1328,9 @@ a duplicate retry. The Kiku and Lapis presets map their verified `Picture` field
 and Senren its `picture` field to this marker, and a first installation has the
 switch on, so a recognised mining setup gets screenshots without further
 configuration. A note type without a picture field maps nothing and captures
-nothing.
+nothing, and `{screenshot}` is refused in the first Anki field for the same
+reason as the other captured media: a note's identity cannot be a fresh picture
+name.
 
 ## Generic media capture
 

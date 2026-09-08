@@ -60,7 +60,8 @@ images and pronunciation audio, under its own `hachidori-screenshot-<uuid>.jpg`
 name, and the mapped field receives an ordinary `<img>` reference. Nothing is
 captured while you read, hover or during first-run setup, and only the tab that
 asked is captured: if it is no longer the active tab, or has moved to another
-page, the screenshot is skipped. A skipped or refused screenshot is a warning
+page, the screenshot is skipped. `{screenshot}` cannot go in the first field, which is the
+note's identity for duplicate checks. A skipped or refused screenshot is a warning
 beside the note's own result — the note is still added or updated, its other
 fields intact, and no duplicate retry is invited.
 
