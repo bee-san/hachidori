@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiDigest } from "./anki-digest.js";
-import { ankiFieldNames, escapeAnkiHtml, resolveAnkiTemplates } from "./anki-templates.js";
+import { escapeAnkiHtml, resolveAnkiTemplates } from "./anki-templates.js";
 
 // Anki parses these names as operators before considering a field search.
 // Treating an identically named field as an operator could match another word.
@@ -8,6 +8,7 @@ import { ankiFieldNames, escapeAnkiHtml, resolveAnkiTemplates } from "./anki-tem
 const SEARCH_OPERATORS = new Set(["deck", "note", "tag", "card", "flag", "resched", "prop", "added", "edited",
   "introduced", "rated", "is", "did", "mid", "nid", "cid", "re", "nc", "sc", "w", "dupe", "has-cd", "preset"]);
 const escapeQuery = value => value.replace(/[\\"*_:]/gu, String.raw`\$&`);
+const nameKey = value => value.normalize("NFC").toLowerCase();
 const foldAscii = value => value.replace(/[A-Z]/gu, character => character.toLowerCase());
 
 function expressionFields(config) {
@@ -19,7 +20,7 @@ function expressionFields(config) {
 
 export async function ankiMaturitySource(config) {
   if (!config.model) return null;
-  const fields = [...new Set(expressionFields(config).map(field => field.normalize("NFC").toLowerCase()))].sort((left, right) => Number(left > right) - Number(left < right));
+  const fields = [...new Set(expressionFields(config).map(nameKey))].sort((left, right) => Number(left > right) - Number(left < right));
   if (!fields.length) return null;
   const source = { model: config.model, fields, apiKey: config.apiKey };
   return { key: await ankiDigest(new TextEncoder().encode(JSON.stringify(source))), ...source };
@@ -46,12 +47,12 @@ export async function fetchAnkiMatureWords(gateway, source) {
   const words = new Set();
   for (const note of notes) {
     if (!Number.isSafeInteger(note?.noteId) || note.noteId <= 0 || typeof note.modelName !== "string"
-      || note.modelName.normalize("NFC").toLowerCase() !== source.model.normalize("NFC").toLowerCase()
+      || nameKey(note.modelName) !== nameKey(source.model)
       || !note.fields || typeof note.fields !== "object" || Array.isArray(note.fields)
       || Object.values(note.fields).some(field => typeof field?.value !== "string")) {
       throw new Error("AnkiConnect returned invalid mature note details.");
     }
-    const names = ankiFieldNames(Object.keys(note.fields));
+    const names = new Map(Object.keys(note.fields).map(field => [nameKey(field), field]));
     if (!names.size) throw new Error("AnkiConnect returned invalid mature note details.");
     for (const field of source.fields) {
       const value = note.fields[names.get(field)]?.value;
