@@ -240,6 +240,7 @@
   border-radius: 8px;
   background: rgb(250 247 252 / 94%);
 }
+.vn-dark-dialogue .setup-practice-dialogue { background: rgb(28 20 35 / 94%); }
 .setup-practice-text {
   line-break: strict;
 }
