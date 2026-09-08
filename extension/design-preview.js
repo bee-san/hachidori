@@ -81,6 +81,7 @@
     appendStructuredImage: HDGlossary.appendStructuredImage,
     parseTagList: HDGlossary.parseTagList,
     getPopupColumns: () => options.popupColumns,
+    customLinks: options.customLinks,
     positionPopup, sourceHighlightEnabled: true,
     onKanjiClick(character, result, anchor, link) {
       if (!kanjiCharacter) {
@@ -92,6 +93,10 @@
       popup.querySelector(".gsm-hoshidicts-kanji-back").focus({ preventScroll: true });
     },
     onAddCustomEntry() { throw new Error("This is a preview. Notes are not saved."); },
+    onCustomLinkClick(link) {
+      void chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_open_external", ...link })
+        .catch(error => console.debug("hachidori: preview link could not be opened", error));
+    },
     onResultsRendered({ lookupStats }) {
       sampleLookupStats = lookupStats;
       paintSampleLookupStats();
@@ -217,6 +222,7 @@
     // A blur edit restarts the sample decision so its effect is visible.
     const blurChanged = !state || DEFINITION_BLUR_KEYS.some(key => options[key] !== nextOptions[key]);
     options = { ...nextOptions };
+    view.setCustomLinks(options.customLinks);
     updateSampleAudio();
     if (geometryChanged || toolbarChanged) positionPopup(toolbarChanged);
     if (geometryChanged || cssChanged) view.scheduleMasonry();

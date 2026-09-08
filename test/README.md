@@ -8,6 +8,21 @@ plus the toolbar toggle, revision conflicts and recording shortcut. Search uses
 the same external jsdom dependency described below. The toolbar tests do not
 start a capture session.
 
+`node --test test/frequency-presentation.test.mjs` checks compact numeric
+frequency defaults, preserved explicit display choices, source and kana details,
+and live grammar/name controls without replacing definitions or Note drafts.
+It uses the same external jsdom dependency.
+
+`node --test test/note-editor.test.mjs` checks the shared personal-dictionary
+pencil on term, kanji and missing-word views, selected-word prefills and a single
+pending save. The extension smoke suite also verifies that selected missing
+words refresh into their personal definition after the save, including when no
+dictionaries were installed. It uses the same external jsdom dependency.
+
+`node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
+current word/reading/sentence expansion, background-tab clicks, live editing
+without replacing cards or Note drafts, and stale-control navigation rejection.
+
 Thirteen pieces, run in this order. The JavaScript checks use Node built-ins except
 `extension-smoke.mjs` and `audio-content.test.mjs`, which need jsdom. The browser checks need Chrome and
 `puppeteer-core`; those dependencies stay outside the repository.

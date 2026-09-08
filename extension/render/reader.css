@@ -1035,7 +1035,6 @@ html,
   --hoshidicts-frequency: var(--hoshidicts-palette-info);
   --hoshidicts-frequency-text: var(--hoshidicts-palette-info-content);
   --hoshidicts-pitch: var(--hoshidicts-palette-accent);
-  --hoshidicts-pitch-text: var(--hoshidicts-palette-accent-content);
   --hoshidicts-tag-text: var(--hoshidicts-palette-neutral-content);
   --hoshidicts-tag-expression-text: var(--hoshidicts-palette-secondary-content);
   --hoshidicts-tag-part-of-speech-text: var(--hoshidicts-palette-accent-content);
@@ -1226,6 +1225,7 @@ html,
 
 .gsm-hoshidicts-metadata-strip {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -1331,8 +1331,6 @@ html,
 
 .gsm-hoshidicts-primary-frequencies > .gsm-hoshidicts-tag-frequency +
   .gsm-hoshidicts-tag-frequency::before,
-.gsm-hoshidicts-primary-frequencies +
-  .gsm-hoshidicts-primary-grammar::before,
 .gsm-hoshidicts-primary-grammar-tag +
   .gsm-hoshidicts-primary-grammar-tag::before {
   margin: 0 7px;
@@ -1341,8 +1339,11 @@ html,
 }
 
 .gsm-hoshidicts-primary-grammar {
+  flex: 1 0 100%;
   overflow: hidden;
   color: var(--text-color-light1);
+  font-size: 12px;
+  line-height: 18px;
   text-overflow: ellipsis;
 }
 
@@ -1899,11 +1900,8 @@ html,
 }
 
 .gsm-hoshidicts-note-icon {
-  width: 12px;
-  height: 12px;
-  background:
-    linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat,
-    linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat;
+  font-size: 22px;
+  line-height: 1;
 }
 
 .gsm-hoshidicts-text-action-button {
@@ -2143,7 +2141,7 @@ html,
 .gsm-hoshidicts-tag {
   padding: 3px 5px;
   border-radius: 4px;
-  color: var(--hoshidicts-tag-text);
+  color: var(--text-color);
   font-size: 12px;
   line-height: 1.2;
   user-select: text;
@@ -2161,6 +2159,7 @@ html,
 
 .gsm-hoshidicts-tag-definition {
   background: var(--tag-default-background-color);
+  color: var(--hoshidicts-tag-text);
   font-size: 11px;
 }
 
@@ -2171,7 +2170,7 @@ html,
   overflow: hidden;
   border: 1px solid var(--hoshidicts-frequency);
   background: transparent;
-  color: var(--hoshidicts-frequency-text);
+  color: var(--text-color);
 }
 
 .gsm-hoshidicts-frequency-source,
@@ -2179,9 +2178,7 @@ html,
   padding: 3px 5px;
 }
 
-.gsm-hoshidicts-frequency-source,
-.gsm-hoshidicts-pitch-source,
-.gsm-hoshidicts-ipa-source {
+.gsm-hoshidicts-frequency-source {
   min-width: 0;
   max-width: min(18ch, 42vw);
   overflow: hidden;
@@ -2192,6 +2189,7 @@ html,
 
 .gsm-hoshidicts-frequency-source {
   background: var(--hoshidicts-frequency);
+  color: var(--hoshidicts-frequency-text);
 }
 
 .gsm-hoshidicts-frequency-body,
@@ -2202,7 +2200,7 @@ html,
 }
 
 .gsm-hoshidicts-frequency-body {
-  background: color-mix(in srgb, var(--hoshidicts-frequency) 74%, transparent);
+  background: color-mix(in srgb, var(--hoshidicts-frequency) 8%, var(--hoshidicts-palette-base-100));
 }
 
 .gsm-hoshidicts-frequency-values {
@@ -2218,7 +2216,6 @@ html,
   display: inline-flex;
   max-width: 100%;
   min-width: 0;
-  gap: 0.4em;
 }
 
 .gsm-hoshidicts-ipa-overflow {
@@ -2238,20 +2235,12 @@ html,
   overflow: hidden;
   border: 1px solid var(--hoshidicts-pitch);
   background: transparent;
-  color: var(--hoshidicts-pitch-text);
+  color: var(--text-color);
 }
 
-.gsm-hoshidicts-pitch-source,
 .gsm-hoshidicts-pitch-body {
   padding: 3px 5px;
-}
-
-.gsm-hoshidicts-pitch-source {
-  background: var(--hoshidicts-pitch);
-}
-
-.gsm-hoshidicts-pitch-body {
-  background: color-mix(in srgb, var(--hoshidicts-pitch) 74%, transparent);
+  background: color-mix(in srgb, var(--hoshidicts-pitch) 8%, var(--hoshidicts-palette-base-100));
 }
 
 .gsm-hoshidicts-glossary-grid {

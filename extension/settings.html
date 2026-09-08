@@ -95,7 +95,7 @@
       <main class="page" id="settings-content" tabindex="-1">
         <div id="settings-search-results" class="card settings-search-results" hidden>
           <h1>Search settings</h1>
-          <p id="settings-search-count" class="hint" role="status"></p>
+          <output id="settings-search-count" class="hint" aria-live="polite"></output>
           <ul id="settings-search-matches"></ul>
         </div>
         <section
@@ -333,19 +333,9 @@
             <h1 id="custom-dictionary-heading" tabindex="-1">Personal dictionary</h1>
             <p class="hint">Your entries appear first. Save source edits when you are ready.</p>
           </div>
-          <button
-            type="button"
-            class="ghost custom-dictionary-open"
-            id="custom-dictionary-open"
-            aria-controls="custom-dictionary-form"
-            aria-expanded="false"
-          >
-            Edit source
-          </button>
           <form
             class="custom-dictionary-form"
             id="custom-dictionary-form"
-            hidden
           >
             <details class="format-help">
               <summary>Source format</summary>
@@ -363,6 +353,8 @@
                 id="custom-dictionary-source"
                 rows="12"
                 spellcheck="false"
+                placeholder="蜂, はち, bee&#10;辞書, じしょ, dictionary&#10;読む, よむ, to read"
+                disabled
                 aria-describedby="custom-dictionary-status custom-dictionary-errors"
               ></textarea>
             </label>
@@ -724,6 +716,21 @@
                     <span class="field-hint">Falls back to the first available definition in the current tab.</span>
                   </label>
                 </div>
+              </fieldset>
+              <fieldset class="lookup-group">
+                <legend>Custom toolbar links</legend>
+                <label class="field">
+                  <span class="field-label">Names and URL templates</span>
+                  <textarea id="opt-custom-links" rows="4" spellcheck="false"
+                    aria-describedby="custom-links-help custom-links-status"
+                    placeholder="Jisho, https://jisho.org/search/%w&#10;Search sentence, https://www.google.com/search?q=%s"></textarea>
+                  <span id="custom-links-help" class="field-hint">One link per line: name, URL. Use %w for the word, %r for its reading, and %s for the sentence. Change line order to reorder buttons; remove a line to remove a link.</span>
+                </label>
+                <div class="custom-dictionary-actions">
+                  <button id="save-custom-links" type="button" class="ghost">Save links</button>
+                  <button id="discard-custom-links" type="button" class="ghost">Discard changes</button>
+                </div>
+                <output id="custom-links-status" class="is-error" aria-live="polite"></output>
               </fieldset>
               <details class="settings-disclosure custom-css-disclosure">
                 <summary>Custom CSS</summary>

@@ -42,6 +42,7 @@
     popupTheme: "default",
     popupToolbarPosition: "auto",
     customPopupCss: "",
+    customLinks: [],
     audioSources: [{ id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" }],
     audioAutoplay: false,
     anki: DEFAULT_ANKI,
@@ -63,11 +64,11 @@
     compactDefinitionSummaryDictionary: "",
     popupImageSource: null,
     averageFrequency: false,
-    showFrequencyDictionaryNames: true,
+    showFrequencyDictionaryNames: false,
     showPitchAccentFurigana: true,
     pitchAccentFuriganaDictionary: "",
     showPitchAccentBadge: true,
-    hidePopupGrammarTags: false,
+    hidePopupGrammarTags: true,
     kanjiClickDictionary: "",
     frequencyDictionary: "",
     frequencyOrder: "auto",
@@ -103,7 +104,7 @@
   })) }));
   const POPUP_THEME_IDS = new Set(POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id)));
   const DESIGN_OPTION_KEYS = [
-    "popupTheme", "popupToolbarPosition", "customPopupCss", "popupWidthPx", "popupHeightPx", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
+    "popupTheme", "popupToolbarPosition", "customPopupCss", "customLinks", "popupWidthPx", "popupHeightPx", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags",
@@ -219,6 +220,13 @@
     });
   }
 
+  function normaliseCustomLinks(value) {
+    if (!Array.isArray(value)) return [];
+    return value.filter(link => link && typeof link.label === "string" && link.label.trim()
+      && !/[\u0000-\u001f\u007f]/u.test(link.label) && typeof link.url === "string" && link.url.trim())
+      .map(({ label, url }) => ({ label, url }));
+  }
+
   function normaliseAnki(value) {
     const source = value && typeof value === "object" ? value : {};
     const result = { ...DEFAULT_ANKI };
@@ -315,6 +323,7 @@
       case "kanjiClickDictionary": return normaliseKanjiSelection(value);
       case "popupImageSource": return normalisePopupImageSource(value);
       case "audioSources": return normaliseAudioSources(value);
+      case "customLinks": return normaliseCustomLinks(value);
       case "anki": return normaliseAnki(value);
       case "mediaCapture": return normaliseMediaCapture(value);
       default: return typeof value === "string" ? value : "";
@@ -390,7 +399,7 @@
     if (key === "mediaCapture") return validMediaCapture(raw, normalized);
     if (key === "kanjiClickDictionary") return typeof raw === "string" || typeof normalized === "object";
     if (key === "popupImageSource") return raw === null || normalized !== null;
-    if (key === "audioSources") return Array.isArray(raw) && raw.length === normalized.length
+    if (key === "audioSources" || key === "customLinks") return Array.isArray(raw) && raw.length === normalized.length
       && normalized.every((source, index) => Object.entries(source).every(([field, value]) => raw[index][field] === value));
     return typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
   }

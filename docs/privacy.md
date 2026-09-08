@@ -69,7 +69,9 @@ a WebSocket service on the same computer. Lookup counts use only local browser
 storage and never contact an external service.
 
 **Links and styling.** Activating a link in a dictionary opens the URL supplied
-by that dictionary. Custom CSS you enter can load resources from URLs it
+by that dictionary. Custom toolbar links open the URL template you configured,
+including its selected word, reading or sentence placeholders, only when you
+click the link. Custom CSS you enter can load resources from URLs it
 contains. Those destination services receive ordinary browser requests. Their
 own privacy practices govern their handling of those requests.
 

@@ -1085,8 +1085,8 @@ async function popupReader(page, depth = 0) {
               return body.left >= tag.left - 1 && body.right <= tag.right + 1
                 && tag.left >= bounds.left - 1 && tag.right <= bounds.right + 1;
             }),
-            ipaSourceEllipsized: [...this.querySelectorAll(".gsm-hoshidicts-ipa-source")]
-              .some(node => node.scrollWidth > node.clientWidth),
+            ipaSourceLabels: this.querySelectorAll(".gsm-hoshidicts-ipa-source").length,
+            ipaTitles: [...this.querySelectorAll(".gsm-hoshidicts-tag-ipa")].map(node => node.title),
             grammar: this.querySelectorAll(".gsm-hoshidicts-primary-grammar-tag").length,
             definitionTags: this.querySelectorAll(".gsm-hoshidicts-definition-tags").length,
           },
@@ -5592,7 +5592,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     await setDictionaryAliasInSettings(settings, "hachidori-fixture", "PhoneticsWithoutSpaces".repeat(6));
     await tab.bringToFront();
     await hoverForPopup(tab, popup, "#verb");
-    const longSource = await expectMetadata(value => value.ipa.includes("tabeɾɯ") && value.ipaSourceEllipsized);
+    const longSource = await expectMetadata(value => value.ipa.includes("tabeɾɯ") && value.ipaSourceLabels === 0
+      && value.ipaTitles.some(title => title.includes("PhoneticsWithoutSpaces".repeat(6))));
     evidence.push(longSource.metadata.ipaFits);
   } finally {
     if (worker) await restoreMediaReplyProbe(worker);
@@ -5760,8 +5761,12 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     const blockQuery = (await lookups()).at(-1)?.text;
     await selectVerb("食べたかったXYZ");
     await pause();
-    const prefixRejected = !popup.visible(await popup.state());
+    const missingWord = await popup.state();
+    const prefixRejected = popup.visible(missingWord)
+      && missingWord.plain.includes("No definition found.") && !missingWord.plain.includes("to eat");
     const prefixQuery = (await lookups()).at(-1)?.text;
+    const selectedEditorOpened = await popup.click(".gsm-hoshidicts-note-button");
+    const selectedEditor = await popup.state();
     check("exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
       duringDrag && selected === "食べたかった" && exactPopup?.plain.includes("食べる")
         && exactRequests.length === 1 && exactRequests[0].text === selected && exactRequests[0].scanLength === 6
@@ -5769,10 +5774,14 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         && glossaryRetained && hiddenText.visible === "食べたかった" && hiddenQuery === hiddenText.visible
         && hiddenPopup?.plain.includes("食べる") && hiddenHighlight.includes(hiddenText.raw)
         && blockText.visible === "hello\nworld" && blockQuery === blockText.visible
-        && prefixRejected && prefixQuery === "食べたかったXYZ",
+        && prefixRejected && prefixQuery === "食べたかったXYZ"
+        && selectedEditorOpened && selectedEditor.noteOpen
+        && selectedEditor.noteTerm === prefixQuery && selectedEditor.noteReading === "",
       JSON.stringify({ duringDrag, selected, exactRequests, highlighted, glossaryRetained,
-        hiddenText, hiddenQuery, hiddenHighlight, blockText, blockQuery, prefixRejected, prefixQuery }));
+        hiddenText, hiddenQuery, hiddenHighlight, blockText, blockQuery, prefixRejected, prefixQuery,
+        selectedEditorOpened, selectedEditor }));
 
+    await popup.click(".gsm-hoshidicts-note-cancel");
     await dismiss();
     await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16" });
     await tab.$eval("#verb", (element) => {
@@ -7645,7 +7654,7 @@ async function main() {
           };
           const panel = document.getElementById(section);
           const primary = {
-            dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns", audio: "audio-source-add", anki: "anki-refresh", "custom-dictionary": "custom-dictionary-open",
+            dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns", audio: "audio-source-add", anki: "anki-refresh", "custom-dictionary": "custom-dictionary-source",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new", backup: "backup-export",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
@@ -8173,22 +8182,32 @@ async function main() {
   });
 
   // ------------------------------------------------------- custom dictionary
-  // The editor must not read the potentially large source until the reader asks
-  // for it. Saving here also puts the production ZIP compiler through the real
+  // Entering Personal dictionary loads the saved source into its visible editor.
+  // Saving here also puts the production ZIP compiler through the real
   // offscreen WASM importer before either popup Note path builds on that source.
   await showSettingsSection(page, "custom-dictionary");
-  const customEditorBeforeOpen = await page.evaluate(() => ({
-    expanded: document.getElementById("custom-dictionary-open")?.getAttribute("aria-expanded"),
+  const customEditorOnVisit = await page.evaluate(() => ({
+    openControlAbsent: document.getElementById("custom-dictionary-open") === null,
     formHidden: document.getElementById("custom-dictionary-form")?.hidden,
     source: document.getElementById("custom-dictionary-source")?.value ?? null,
     sourceHasMaximumLength: document.getElementById("custom-dictionary-source")?.hasAttribute("maxlength"),
+    placeholderLines: document.getElementById("custom-dictionary-source")?.placeholder.split("\n").length,
   }));
-  await page.click("#custom-dictionary-open");
   const customEditorLoaded = await page.waitForFunction(() => {
     const form = document.getElementById("custom-dictionary-form");
     const status = document.getElementById("custom-dictionary-status")?.textContent ?? "";
     return form?.hidden === false && status === "Loaded source revision 0.";
   }, { timeout: 30_000, polling: 100 }).then(() => true).catch(() => false);
+  const examplesBeforeTyping = await page.$eval("#custom-dictionary-source", textarea =>
+    textarea.matches(":placeholder-shown") && textarea.value === ""
+      && document.getElementById("custom-dictionary-save").disabled);
+  await page.type("#custom-dictionary-source", "蜂");
+  const examplesAfterTyping = await page.evaluate(async sourceKey => {
+    const textarea = document.getElementById("custom-dictionary-source");
+    const saved = await chrome.storage.local.get(sourceKey);
+    return !textarea.matches(":placeholder-shown") && textarea.value === "蜂"
+      && (saved[sourceKey]?.text ?? "") === "";
+  }, CUSTOM_DICTIONARY_SOURCE_KEY);
   await page.$eval("#custom-dictionary-source", (textarea, source) => {
     textarea.value = source;
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
@@ -8255,17 +8274,20 @@ async function main() {
   const customSettingsPaths = await listOpfsPaths(page);
   check(
     "custom Settings lazily saves a source through the real WASM importer",
-    customEditorBeforeOpen.expanded === "false"
-      && customEditorBeforeOpen.formHidden === true
-      && customEditorBeforeOpen.source === ""
-      && customEditorBeforeOpen.sourceHasMaximumLength === false
+    customEditorOnVisit.openControlAbsent === true
+      && customEditorOnVisit.formHidden === false
+      && customEditorOnVisit.source === ""
+      && customEditorOnVisit.sourceHasMaximumLength === false
+      && customEditorOnVisit.placeholderLines === 3
       && customEditorLoaded
+      && examplesBeforeTyping && examplesAfterTyping
       && customSettingsResult !== null
       && customSettingsGeneration !== ""
       && generationExists(customSettingsPaths, customSettingsResult.dictionary.path),
     JSON.stringify({
-      beforeOpen: customEditorBeforeOpen,
+      onVisit: customEditorOnVisit,
       editorLoaded: customEditorLoaded,
+      examplesBeforeTyping, examplesAfterTyping,
       result: customSettingsResult,
       generation: customSettingsGeneration,
       paths: customSettingsPaths,

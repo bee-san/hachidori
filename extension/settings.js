@@ -10,6 +10,7 @@ import { createAnkiSettingsController } from "./anki-settings.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
+import { createCustomLinkSettings } from "./custom-link-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
 import {
   createDictionaryGroupController,
@@ -125,6 +126,7 @@ let requestCounter = 0;
 let audioController;
 let ankiController;
 let backupController;
+let customLinkController;
 let backingUp = false;
 let mediaStatusEpoch = 0;
 let mediaRuntimeState = "unavailable";
@@ -207,6 +209,14 @@ function showSettingsSection(focus = false) {
   updateMediaSettings();
   updateAnkiSettings();
   updateBackupSettings();
+  if (activeSection === "design") {
+    customLinkController ??= createCustomLinkSettings({ document,
+      readLinks: () => options.customLinks,
+      saveLinks: links => { options.customLinks = links; writeOptions(); },
+    });
+    customLinkController.render();
+  }
+  if (activeSection === "custom-dictionary" && !customEditorLoaded) void loadCustomDictionarySource();
   if (fragment === "settings-content") element("settings-content").focus();
   else if (focus) element(activeSection).querySelector("h1").focus();
 }
@@ -322,7 +332,7 @@ function updateBackupSettings() {
       if (importing || updating || removing || committing || customLoading || customSaving || pendingDictionaryCommits > 0) {
         throw new Error("Wait for the current dictionary operation to finish, then try again.");
       }
-      if (customDictionaryDirty() || savingOptions !== null || optionsEditRevision !== null
+      if (customDictionaryDirty() || customLinkController?.dirty() || savingOptions !== null || optionsEditRevision !== null
           || Object.keys(pendingOptions).length > 0 || savingSchedule !== null || pendingSchedule !== null
           || nameDrafts.hasPendingChanges()) {
         throw new Error("Save or discard your pending changes before working with a backup.");
@@ -664,21 +674,12 @@ function customDictionaryDraftSource() {
 
 function renderCustomDictionaryControls() {
   const busy = importing || updating || removing || committing || customLoading || customSaving || backingUp;
-  const open = element("custom-dictionary-open");
   const source = element("custom-dictionary-source");
-  open.disabled = busy;
-  source.disabled = busy;
+  source.disabled = busy || !customEditorLoaded;
   element("custom-dictionary-save").disabled = busy
     || !customDictionaryDirty()
     || customDraftStale;
   element("custom-dictionary-reload").disabled = busy;
-}
-
-function showCustomDictionaryEditor(visible) {
-  element("custom-dictionary-form").hidden = !visible;
-  const open = element("custom-dictionary-open");
-  open.setAttribute("aria-expanded", String(visible));
-  open.textContent = visible ? "Close editor" : "Edit source";
 }
 
 function cancelCustomDictionaryValidation() {
@@ -759,7 +760,6 @@ async function loadCustomDictionarySource() {
     }
     customEditorLoaded = true;
     resetCustomDictionaryDraft(customDocument);
-    showCustomDictionaryEditor(true);
     setCustomDictionaryStatus(`Loaded source revision ${customDocument.revision}.`, "ready", true);
   } catch (error) {
     setCustomDictionaryStatus(`Could not load the custom dictionary source: ${describe(error)}`, "error");
@@ -1308,6 +1308,7 @@ function renderOptions() {
   element("opt-audio-autoplay").checked = options.audioAutoplay;
   renderThemeChoices();
   renderCustomCss();
+  customLinkController?.render();
   const toolbar = element("opt-popup-toolbar");
   if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
   const mode = element("opt-lookup-mode");
@@ -2260,13 +2261,6 @@ async function flushUpdateSchedule() {
 }
 
 function attachHandlers() {
-  element("custom-dictionary-open").addEventListener("click", () => {
-    if (!customEditorLoaded) {
-      void loadCustomDictionarySource();
-      return;
-    }
-    showCustomDictionaryEditor(element("custom-dictionary-form").hidden);
-  });
   element("custom-dictionary-form").addEventListener("submit", (event) => {
     void saveCustomDictionarySource(event);
   });
@@ -2433,6 +2427,7 @@ function attachHandlers() {
   });
   element("reset-design").addEventListener("click", () => {
     for (const key of DESIGN_OPTION_KEYS) options[key] = DEFAULT_OPTIONS[key];
+    customLinkController?.reset();
     renderCustomCss(true);
     renderOptions();
     writeOptions();
@@ -2628,7 +2623,7 @@ function attachHandlers() {
   window.addEventListener("beforeunload", (event) => {
     if (!importing && !backingUp && savingOptions === null && optionsEditRevision === null
         && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null
-        && !nameDrafts.hasPendingChanges()) {
+        && !nameDrafts.hasPendingChanges() && !customLinkController?.dirty()) {
       return;
     }
     // Leaving can revoke an import's blob URL or discard a queued settings draft.

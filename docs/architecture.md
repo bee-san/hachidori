@@ -525,6 +525,10 @@ selected string without trimming or truncation and accepts only results whose
 scan length within the existing engine scan window; a prefix-only result is not
 an exact match. A miss retains selection ownership until the selection changes
 or is dismissed, so pointer movement cannot silently replace it with a prefix.
+Its notice exposes the same personal-dictionary pencil as term and kanji results,
+prefilled with the selected word even when no dictionaries are installed. Saving
+uses the managed Note append transaction and replays that exact request to show
+the new definition; publisher dictionaries remain unchanged.
 
 The visible query and raw DOM highlight span are stored separately: hidden text
 and block separators can make `Selection.toString()` differ from `Range.toString()`.
@@ -574,9 +578,15 @@ before the change event completes.
 ## Popup metadata controls
 
 Design has independent controls for frequency source names and averages, pitch
-contour and its preferred dictionary, pitch badges, and grammar tags. Existing
-defaults keep source names, contour, badges and grammar visible; averages remain
-off. IPA transcriptions and definition tags remain visible independently.
+contour and its preferred dictionary, pitch badges, and grammar tags. Frequency
+badges default to compact numbers, with source and kana-frequency detail available
+on hover and to screen readers. Grammar tags default to hidden; opting in places
+them outside the frequency badge. Explicit saved display choices are preserved.
+Contour and pitch badges remain on, and averages remain off. IPA transcriptions
+and definition tags remain visible independently. Pitch and IPA show pronunciation
+data without source-name labels; tooltips and accessibility labels retain source
+attribution and follow dictionary aliases. Unfilled tags and lightly tinted pitch
+and frequency values use the theme's normal foreground, including light themes.
 When IPA sources exceed the existing metadata display budget, a collapsed
 disclosure builds their tags on first expansion. Every ordered transcription
 remains available; this is lazy presentation, not a source or data limit.
@@ -1168,7 +1178,7 @@ Global search matches settings across every section, opens a result's enclosing
 disclosures and focuses its control without changing values or discarding drafts.
 The activation-key selector remains editable in either lookup mode.
 All sections stay mounted, so navigation and browser history preserve reader
-drafts and the lazy custom editor without storage writes or engine requests.
+and personal-dictionary drafts. Personal source loads on first entering its section.
 The rail becomes a compact section chooser in narrow windows; light and dark palettes
 follow the system preference. Inactive sections mirror pending work, errors, and
 unseen operation completions next to their links. Visiting a section clears its
@@ -1712,7 +1722,9 @@ term-bank chunks. The normal Hoshidicts importer consumes that production ZIP;
 there is no separate test-only or in-memory dictionary backend.
 
 The source document is stored separately with a monotonic document revision and
-an ordered-entry semantic hash. Settings loads it only when the editor opens. A
+an ordered-entry semantic hash. Settings loads it on first entering Personal
+dictionary; its editor stays visible, and three example lines are placeholders
+only, never saved entries. A
 typing burst defers full-source validation until 150 ms of inactivity; dirty
 state updates immediately, and Save cancels the preview and validates the exact
 submitted source. Unchanged diagnostics retain their DOM nodes. A stale editor
@@ -1730,9 +1742,9 @@ and first position. Presentation-only conflicts are retried against current
 state without merging a stale source revision. A lost reply is accepted only
 after an exact source/state-pair readback.
 
-The term and kanji popup views share one fixed Note form, constructed only when
-opened so ordinary lookups do not build hidden editor controls. Its prefill comes from
-the currently projected primary result, and a successful append refreshes only
+The term, kanji and selected-word miss views share one fixed Note form, opened
+with the pencil and constructed only when opened. Its prefill comes from the
+currently projected primary result or the selected text, and a successful append refreshes only
 the exact still-current request descriptor and page anchor. Dictionary storage
 events adopt only newer revisions; editing defers popup invalidation until close
 or until that exact refresh consumes it. Saving is the transactional boundary,

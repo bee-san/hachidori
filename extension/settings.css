@@ -978,9 +978,6 @@ textarea {
   width: 260px;
   max-width: 100%;
 }
-.custom-dictionary-open {
-  width: fit-content;
-}
 .custom-dictionary-form,
 .custom-dictionary-source-field {
   display: grid;

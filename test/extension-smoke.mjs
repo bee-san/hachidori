@@ -2263,6 +2263,9 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
+  const customLinkSettings = readFileSync(resolve(EXTENSION, "custom-link-settings.js"), "utf8")
+    .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
   const searchSettings = readFileSync(resolve(EXTENSION, "settings-search.js"), "utf8").replace(/^export\s+/gmu, "");
   window.eval(`{ ${searchSettings}; window.createSettingsSearch = createSettingsSearch; }`);
   window.chrome.extension ??= { isAllowedFileSchemeAccess: async () => false };
@@ -2294,6 +2297,7 @@ function loadSettingsScript(window) {
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/import \{ createCustomLinkSettings \} from "\.\/custom-link-settings\.js";\s*/u, "")
     .replace(/import \{ createSettingsSearch \} from "\.\/settings-search\.js";\s*/u, "")
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
@@ -2308,7 +2312,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customLinkSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -2394,10 +2398,21 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
           && reader.validateOptionsPatch({ popupTheme: theme.id }).popupTheme === theme.id)
         && reader.normaliseOptions({ popupTheme: "unknown" }).popupTheme === "default",
       JSON.stringify({ themes, cssThemes: [...cssThemes] }));
+    const readerCss = readFileSync(resolve(EXTENSION, "render/reader.css"), "utf8");
+    const tagRule = readerCss.match(/^\.gsm-hoshidicts-tag \{([^}]+)\}/mu)?.[1];
+    const definitionTagRule = readerCss.match(/^\.gsm-hoshidicts-tag-definition \{([^}]+)\}/mu)?.[1];
+    const metadataValueRules = ["frequency", "pitch"].map(kind => readerCss
+      .match(new RegExp(`^\\.gsm-hoshidicts-tag-${kind} \\{([^}]+)\\}`, "mu"))?.[1]);
+    check("pronunciation and frequency values use the theme foreground while filled definition badges retain their paired foreground",
+      /color: var\(--text-color\);/u.test(tagRule)
+        && metadataValueRules.every(rule => /color: var\(--text-color\);/u.test(rule))
+        && /color: var\(--hoshidicts-tag-text\);/u.test(definitionTagRule)
+        && /--text-color: var\(--hoshidicts-text\);/u.test(readerCss)
+        && /--hoshidicts-text: var\(--hoshidicts-palette-base-content\);/u.test(readerCss));
     const metadataDefaults = {
-      averageFrequency: false, showFrequencyDictionaryNames: true,
+      averageFrequency: false, showFrequencyDictionaryNames: false,
       showPitchAccentFurigana: true, pitchAccentFuriganaDictionary: "",
-      showPitchAccentBadge: true, hidePopupGrammarTags: false,
+      showPitchAccentBadge: true, hidePopupGrammarTags: true,
     };
     const metadataAccepted = [];
     const metadataRejected = [];
@@ -5197,14 +5212,15 @@ async function main() {
   );
   check(
     "settings lazily loads the newest custom source across event and reply ordering",
-    settingsCustom?.startup?.customReadCount === 0
-      && settingsCustom.startup.formHidden === true
+    settingsCustom?.startup?.customReadCount === 1
+      && settingsCustom.startup.formHidden === false
+      && settingsCustom.startup.openControlAbsent === true
       && settingsCustom.startup.sourceFetchedDirectly === false
       && settingsCustom.startup.sourceHasMaximumLength === false
       && settingsCustom.startup.sourceDescribedBy
         === "custom-dictionary-status custom-dictionary-errors"
       && settingsCustom.eventBeforeReadReply?.value === "newer event, にゅー, wins\n"
-      && settingsCustom.eventBeforeReadReply.expanded === "true"
+      && settingsCustom.eventBeforeReadReply.formHidden === false
       && settingsCustom.eventBeforeReadReply.readCount === 1
       && settingsCustom.eventBeforeReadReply.saveDisabled === true
       && settingsCustom.eventBeforeReadReply.unseenCompletion === true
@@ -5344,7 +5360,7 @@ async function main() {
     JSON.stringify(settingsBatch),
   );
   const navigationSettings = await settingsNavigationStage();
-  check("Settings navigation preserves mounted views and pending reader drafts without extra requests",
+  check("Settings navigation loads personal source on first visit and preserves mounted drafts",
     navigationSettings?.navigation === true && navigationSettings.draft === true,
     JSON.stringify(navigationSettings));
   check("dictionary details retain their stable identity and focus across rerenders and filtering",
@@ -6065,6 +6081,8 @@ async function settingsNavigationStage() {
       requests.push(structuredClone(message));
       if (message.type === "hd_state_read") return { ok: true, state: structuredClone(state) };
       if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 2 };
+      if (message.type === "hd_custom_read") return { ok: true, document: { schemaVersion: 1, revision: 0,
+        semanticRevision: "a".repeat(64), text: "" } };
       if (message.type === "hd_options_write") return new Promise((resolveReply) => { pendingSave = resolveReply; });
       throw new Error(`Unexpected navigation request ${message.type}`);
     } },
@@ -6095,11 +6113,23 @@ async function settingsNavigationStage() {
     const source = document.getElementById("custom-dictionary-source");
     const beforeNavigation = requests.length;
     await navigate("custom-dictionary");
+    await until(() => !source.disabled);
+    const emptyEditor = !document.getElementById("custom-dictionary-form").hidden
+      && source.value === "" && source.placeholder.split("\n").length === 3
+      && parseCustomDictionary(source.value).entries.length === 0
+      && document.getElementById("custom-dictionary-save").disabled;
+    document.getElementById("custom-dictionary-form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+    source.value = "蜂";
+    source.dispatchEvent(new window.Event("input", { bubbles: true }));
+    const typedOnly = source.value === "蜂";
+    source.value = "";
+    source.dispatchEvent(new window.Event("input", { bubbles: true }));
     await navigate("lookup");
     const navigation = initial && active().length === 1 && active()[0] === reading
       && source === document.getElementById("custom-dictionary-source")
       && document.querySelector('.settings-nav [aria-current="page"]').hash === "#lookup"
-      && requests.length === beforeNavigation;
+      && requests.length === beforeNavigation + 1
+      && requests.at(-1).type === "hd_custom_read" && emptyEditor && typedOnly;
 
     const input = document.getElementById("opt-max-results");
     input.value = "64";
@@ -7382,8 +7412,14 @@ async function designPreviewStage() {
     const popup = window.document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
     const query = selector => popup.querySelector(selector);
     const card = query(".gsm-hoshidicts-glossary-card");
-    const sample = popup.textContent.includes("食べる") && popup.textContent.includes("Sample ranks")
-      && query(".gloss-image-link")?.dataset.imageLoadState === "loaded" && !!query(".gsm-hoshidicts-tag-pitch");
+    const sample = popup.textContent.includes("食べる")
+      && query('.gsm-hoshidicts-tag-frequency[data-dictionary="Sample ranks"]')?.textContent === "120 · 240"
+      && !query(".gsm-hoshidicts-frequency-source")
+      && query(".gloss-image-link")?.dataset.imageLoadState === "loaded"
+      && query(".gsm-hoshidicts-tag-pitch")?.textContent === "たべる [2] LHL"
+      && query(".gsm-hoshidicts-tag-ipa")?.textContent === "ta̠be̞ɾɯ̟ᵝ"
+      && !popup.textContent.includes("Sample pitch")
+      && query(".gsm-hoshidicts-tag-pitch")?.title.includes("Sample pitch");
     query(".gsm-hoshidicts-note-button").click();
     const form = query("form");
     form.elements.definition.value = "A preview draft";
@@ -7777,11 +7813,11 @@ async function settingsFrequencyStage() {
     }
     const metadataFields = [
       ["opt-lookup-counts", "showLookupCounts", true],
-      ["opt-frequency-names", "showFrequencyDictionaryNames", true],
+      ["opt-frequency-names", "showFrequencyDictionaryNames", false],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
       ["opt-pitch-furigana", "showPitchAccentFurigana", true],
-      ["opt-grammar-tags", "hidePopupGrammarTags", true],
+      ["opt-grammar-tags", "hidePopupGrammarTags", false],
     ];
     const pitch = window.document.getElementById("opt-pitch-dictionary");
     let metadata = Boolean(pitch) && metadataFields.every(([id, , checked]) =>
@@ -8939,12 +8975,11 @@ async function settingsCustomDictionaryStage() {
     }
   };
   await waitFor(() => window.document.getElementById("engine-status")?.textContent?.startsWith("Ready"));
-  const open = window.document.getElementById("custom-dictionary-open");
   const form = window.document.getElementById("custom-dictionary-form");
   const source = window.document.getElementById("custom-dictionary-source");
   const save = window.document.getElementById("custom-dictionary-save");
   const reload = window.document.getElementById("custom-dictionary-reload");
-  if (!open || !form || !source || !save || !reload) {
+  if (!form || !source || !save || !reload) {
     dom.window.close();
     return {
       error: "the custom dictionary editor controls did not render",
@@ -8957,6 +8992,7 @@ async function settingsCustomDictionaryStage() {
     startup: {
       customReadCount: customReadRequests.length,
       formHidden: form.hidden,
+      openControlAbsent: window.document.getElementById("custom-dictionary-open") === null,
       sourceFetchedDirectly: storageGetKeys.some((keys) =>
         Array.isArray(keys) && keys.includes("customDictionarySource")),
       sourceHasMaximumLength: source.hasAttribute("maxlength"),
@@ -8964,7 +9000,6 @@ async function settingsCustomDictionaryStage() {
     },
   };
 
-  open.click();
   await waitFor(() => pendingRead !== null);
   await navigateSettingsSection(window, "dictionaries");
   customDocument = {
@@ -8978,7 +9013,7 @@ async function settingsCustomDictionaryStage() {
   await waitFor(() => form.hidden === false && source.value === "newer event, にゅー, wins\n");
   result.eventBeforeReadReply = {
     value: source.value,
-    expanded: open.getAttribute("aria-expanded"),
+    formHidden: form.hidden,
     readCount: customReadRequests.length,
     saveDisabled: save.disabled,
     unseenCompletion: window.document.getElementById("nav-status-custom-dictionary").textContent
@@ -12528,12 +12563,54 @@ async function contentNoteStage() {
     if (longRequest) harness.reply(longRequest, { dictionaryCount: 1, results: [harness.term(long.slice(0, 64))] });
     await harness.settle();
     const exactBound = rawRequest?.request.text === raw && longRequest?.request.text === long
-      && longRequest.request.scanLength === 64 && harness.driver.snapshot().popupHidden;
+      && longRequest.request.scanLength === 64 && !harness.driver.snapshot().popupHidden
+      && harness.render()?.kind === "notice" && harness.render().candidate.query === long;
     harness.close();
     return {
       "exact reverse inline selections bypass activation and preserve raw context while rejecting prefix results": exactResult,
       "explicit selections preserve whitespace and full queries beyond the engine scan window": exactBound,
     };
+  }
+
+  async function selectedWordEditorCase() {
+    const outcomes = [];
+    for (const [dictionaryCount, eventFirst] of [[0, true], [1, false]]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      const query = harness.candidate.query;
+      window.getSelection().selectAllChildren(harness.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      const lookup = harness.take("hd_lookup");
+      if (lookup) harness.reply(lookup, { dictionaryCount, results: [] });
+      await harness.settle();
+      const original = harness.driver.viewRequest();
+      const editableMiss = !harness.driver.snapshot().popupHidden
+        && harness.render()?.kind === "notice" && harness.render().candidate.query === query;
+      harness.edit(true);
+      window.getSelection().removeAllRanges();
+      const entry = { term: query, reading: "たべた", definition: "My own meaning" };
+      const append = harness.callbacks().onAddCustomEntry(entry);
+      const mutation = harness.take("hd_custom_append");
+      const state = harness.state(2, "New personal definition");
+      if (eventFirst) harness.emitState(state);
+      if (mutation) harness.reply(mutation, { generation: 3, document: { revision: 1 }, state });
+      await harness.settle();
+      const refresh = harness.take("hd_lookup");
+      if (refresh) harness.reply(refresh, { generation: 3, dictionaryCount: 1,
+        results: [harness.term(query, CUSTOM_DICTIONARY_TITLE)] });
+      await append;
+      await harness.settle();
+      if (!eventFirst) harness.emitState(state);
+      outcomes.push(editableMiss && original?.exactSelection === true
+        && mutation?.request.entry.term === query && refresh?.request.text === query
+        && harness.driver.viewRequest() === original && harness.render()?.kind === "terms"
+        && harness.render().results[0].term.glossaries[0].dictionary === CUSTOM_DICTIONARY_TITLE
+        && harness.sent.filter(({ type }) => type === "hd_custom_append").length === 1
+        && !harness.driver.snapshot().popupHidden && harness.take("hd_lookup") === null);
+      harness.close();
+    }
+    return { "selected missing words remain editable and refresh after one personal save with zero or existing dictionaries":
+      outcomes.every(Boolean) || outcomes };
   }
 
   async function releasedSelectionDragCase() {
@@ -13544,12 +13621,12 @@ async function contentNoteStage() {
     try {
       await harness.initialLookup();
       harness.edit(true);
-      const open = harness.render().context.onExternalLink;
-      if (typeof open !== "function") return false;
+      const openLinks = [harness.render().context.onExternalLink, harness.callbacks().onCustomLinkClick];
+      if (openLinks.some(open => typeof open !== "function")) return false;
       const before = JSON.stringify({ snapshot: harness.driver.snapshot(), stats: harness.stats() });
       const descriptor = harness.driver.viewRequest();
       const sentBefore = harness.sent.length;
-      for (const kind of ["success", "failure", "lost-reply"]) {
+      for (const open of openLinks) for (const kind of ["success", "failure", "lost-reply"]) {
         open({ url: "https://example.test/reference", active: false });
         const item = harness.take("hd_open_external");
         if (item?.request.target !== "hoshidicts-worker" || item.request.active !== false
@@ -13558,9 +13635,12 @@ async function contentNoteStage() {
         else harness.reply(item, kind === "success" ? { opened: true } : { error: "tab creation failed" }, kind === "success");
         await harness.settle();
       }
-      return harness.sent.length === sentBefore + 3 && harness.pending.length === 0
+      const preserved = harness.sent.length === sentBefore + 6 && harness.pending.length === 0
         && harness.driver.viewRequest() === descriptor
         && JSON.stringify({ snapshot: harness.driver.snapshot(), stats: harness.stats() }) === before;
+      harness.driver.teardown();
+      openLinks[1]({ url: "https://example.test/stale", active: true });
+      return preserved && harness.sent.length === sentBefore + 6;
     } finally { harness.close(); }
   }
 
@@ -13571,7 +13651,7 @@ async function contentNoteStage() {
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
-      ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
+      ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
@@ -14828,7 +14908,8 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
     const independent = !popup.querySelector(".gsm-hoshidicts-tag-pitch")
       && !popup.querySelector(".gsm-hoshidicts-primary-grammar")
       && !popup.querySelector(".gsm-hoshidicts-frequency-source")
-      && popup.querySelector('.gsm-hoshidicts-tag-ipa[data-dictionary="IPA only"]')?.textContent.includes("Phonetics")
+      && popup.querySelector('.gsm-hoshidicts-tag-ipa[data-dictionary="IPA only"]')?.title.includes("Phonetics (IPA only)")
+      && !popup.querySelector(".gsm-hoshidicts-ipa-source, .gsm-hoshidicts-pitch-source")
       && popup.textContent.includes("ipa-only · second transcription")
       && definitionTag.isConnected;
     const preserved = popup.querySelector("form") === form && document.activeElement === form.elements.definition
@@ -14875,7 +14956,9 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
     await new Promise(resolve => setTimeout(resolve, 0));
     check("IPA overflow is lazy and reveals every ordered transcription with current aliases only once",
       lazy && tags.length === 13 && tags.every((tag, index) => tag.textContent.includes(`transcription ${index} · second ${index}`))
-        && tags[12].textContent.startsWith("Latest alias")
+        && tags[12].textContent === "transcription 12 · second 12"
+        && tags[12].title === "Latest alias (Phonetic 12): transcription 12 · second 12"
+        && tags[12].getAttribute("aria-label") === tags[12].title
         && afterClose > beforeClose && layouts > afterClose
         && tags.every((tag, index) => popup.querySelectorAll(".gsm-hoshidicts-tag-ipa")[index] === tag));
   } finally { view.destroy(); popup.remove(); }
@@ -15166,7 +15249,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
       pitches: [{ dictionary: "Pitch", transcriptions: [], pitches: [{ position: 1, pattern: "LH" }] }],
     } }));
     const metadataBefore = JSON.stringify(metadataResults);
-    view.renderResults(metadataResults, candidate, { ...context, showPitchAccentBadge: true });
+    view.renderResults(metadataResults, candidate, { ...context, showFrequencyDictionaryNames: true, showPitchAccentBadge: true });
     const frequencyValue = popup.querySelector(".gsm-hoshidicts-frequency-value");
     const pitchBody = popup.querySelector(".gsm-hoshidicts-pitch-body");
     view.updateDictionaryPresentation({ dictionaryPresentation: [
@@ -15176,12 +15259,12 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     live.push(popup.querySelector(".gsm-hoshidicts-frequency-value") === frequencyValue && frequencyValue.textContent === "42"
       && popup.querySelector(".gsm-hoshidicts-pitch-body") === pitchBody
       && popup.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
-      && popup.querySelector(".gsm-hoshidicts-pitch-source").textContent === "Pitch alias");
+      && popup.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1] LH");
     popup.querySelector(".gsm-hoshidicts-show-more").click();
     const secondary = popup.querySelectorAll("article")[1];
     live.push(secondary.querySelector(".gsm-hoshidicts-glossary-card > summary").textContent === "Second alias"
       && secondary.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
-      && secondary.querySelector(".gsm-hoshidicts-pitch-source").textContent === "Pitch alias"
+      && secondary.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1] LH"
       && JSON.stringify(metadataResults) === metadataBefore);
     const expandedGroup = { ...presentation, dictionaryTabGroups: [{ id: "expanded", name: "Expanded", dictionaries: ["First", "Second"] }] };
     view.renderResults(metadataResults, candidate, { ...context, ...expandedGroup, expandAll: true, selectedDictionaryTab: { groupId: "expanded" } });
