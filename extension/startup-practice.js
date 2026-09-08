@@ -1,6 +1,21 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 import { createLocalFileAccessController } from "./local-file-access.js";
 
+function practiceInstruction(options, enabled, probing, unavailable) {
+  if (enabled) {
+    return options.lookupMode === "activation"
+      ? `Try looking up a word below. Hold ${options.activationKey} and hover over Japanese text, or use the lookup button.`
+      : "Try looking up a word below. Hover over Japanese text, or use the lookup button.";
+  }
+  if (probing) return "Checking what the installed dictionaries can answer…";
+  if (unavailable) {
+    return options.lookupMode === "activation"
+      ? `Hold ${options.activationKey} and hover over Japanese text on any webpage to look it up.`
+      : "Hover over Japanese text on any webpage to look it up.";
+  }
+  return "You can finish setup now and try a lookup later.";
+}
+
 // Keep the exercise's text nodes alive while options/inventory updates arrive:
 // the ordinary reader anchors its selection, popup and Note draft to them.
 export function createPracticeView({ document, onDismiss, loadReader }) {
@@ -92,19 +107,12 @@ export function createPracticeView({ document, onDismiss, loadReader }) {
     find("setup-practice-tools").hidden = !enabled;
     lookup.disabled = !readerReady;
     recovery.hidden = enabled || probing;
+    instruction.textContent = practiceInstruction(options, enabled, probing,
+      available && options.hoverEnabled && outcome === "unavailable");
     if (enabled) {
-      instruction.textContent = options.lookupMode === "activation"
-        ? `Try looking up a word below. Hold ${options.activationKey} and hover over Japanese text, or use the lookup button.`
-        : "Try looking up a word below. Hover over Japanese text, or use the lookup button.";
       startReader();
       if (recoveryFocused) text.focus({ preventScroll: true });
     } else {
-      instruction.textContent = probing ? "Checking what the installed dictionaries can answer…"
-        : available && options.hoverEnabled && outcome === "unavailable"
-          ? options.lookupMode === "activation"
-            ? `Hold ${options.activationKey} and hover over Japanese text on any webpage to look it up.`
-            : "Hover over Japanese text on any webpage to look it up."
-          : "You can finish setup now and try a lookup later.";
       updateRecovery(available, dictionaries, outcome);
       if (practiceFocused && !probing) recoveryLink.focus();
     }
