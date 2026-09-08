@@ -6396,6 +6396,7 @@ async function startupWelcomeStage() {
     await page.load();
     const disclosure = page.document.getElementById("setup-body").textContent;
     const quiet = page.heading() === "Welcome to Hachidori" && page.requestTypes().length === 0
+      && page.document.getElementById("setup-steps").hidden
       && readerScripts(page.document).length === 0 && /page text/iu.test(disclosure)
       && /counts/iu.test(disclosure) && /IP address/u.test(disclosure) && /card and note metadata/u.test(disclosure)
       && /Capture stays off/u.test(disclosure)
@@ -6414,6 +6415,8 @@ async function startupWelcomeStage() {
     saveReply({ ok: true, state: accepted });
     await page.until(() => page.installs().length === 1, "the accepted dictionary run");
     const started = held && page.saves().every((message) => message.stage === "dictionaries" && message.baseRevision === 1)
+      && !page.document.getElementById("setup-steps").hidden
+      && page.document.querySelector('#setup-steps [aria-current="step"]')?.dataset.stage === "dictionaries"
       && page.heading() === "Installing default dictionaries…";
     page.window.close();
     resumed = startupCase(jsdom, { setup: accepted, reply });

@@ -799,6 +799,7 @@ function failedView() {
 }
 
 function renderSteps(stage) {
+  element("setup-steps").hidden = stage === "welcome";
   const position = stage === null ? -1 : SETUP_STAGES.indexOf(stage);
   for (const step of element("setup-steps").querySelectorAll(".setup-step")) {
     const index = SETUP_STAGES.indexOf(step.dataset.stage);
