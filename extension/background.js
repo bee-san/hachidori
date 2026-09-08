@@ -891,6 +891,7 @@ const WORKER_HANDLERS = {
     const stored = await chrome.storage.local.get(SETUP_STATE_KEY);
     const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
     if (current === null) throw new Error("Setup has not started on this installation.");
+    if (current.stage === "welcome") throw new Error("Start setup before checking Anki.");
     if (current.anki !== null) return { state: current };
     ankiSetupDetection ??= detectFirstRunAnki().finally(() => { ankiSetupDetection = null; });
     return ankiSetupDetection;
@@ -1375,8 +1376,8 @@ const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight",
 // second waits once rather than losing its screenshot.
 const CAPTURE_VISIBLE_RETRY_MS = 600;
 
-// Extension pages have no sender.tab and cannot answer tabs.sendMessage. Chrome's
-// live extension contexts bind startup to the same document before and after capture.
+// Startup messages can include or omit sender.tab. Chrome's live extension contexts
+// bind either shape to the same document before and after capture.
 async function screenshotOwnedTab(sender, startup) {
   let tabId = sender.tab?.id;
   if (startup) {
@@ -1386,7 +1387,8 @@ async function screenshotOwnedTab(sender, startup) {
   }
   const tab = await chrome.tabs.get(tabId);
   if (tab?.active !== true) throw new Error("The reading tab is no longer the active tab.");
-  if ((sender.frameId ?? 0) === 0 && tab.url !== sender.url) {
+  // Tabs hides extension-page URLs; startup's exact live document was checked above.
+  if (!startup && (sender.frameId ?? 0) === 0 && tab.url !== sender.url) {
     throw new Error("The reading tab moved to another page before the screenshot.");
   }
   if (!startup) {
@@ -1403,7 +1405,7 @@ async function screenshotOwnedTab(sender, startup) {
 // captureVisibleTab takes the window's active tab. Both the active page and its
 // document owner are checked around every attempt, including a rate-limit retry.
 async function captureSenderViewport(sender) {
-  const startup = typeof sender.tab?.id !== "number" && startupSender(sender);
+  const startup = startupSender(sender);
   if (typeof sender.tab?.id !== "number" && !startup) {
     throw new Error("Only a reading tab can be captured.");
   }
@@ -1576,16 +1578,30 @@ async function handleCaptureHostMessage(message, sender) {
     mediaCapture: globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]).mediaCapture };
 }
 
-async function openCaptureControls() {
-  const existing = (await chrome.tabs.query({ url: chrome.runtime.getURL(CAPTURE_DOCUMENT) }))[0];
-  if (existing) {
+// A newly created tab can be reopened before its TAB context is published.
+let captureControlsTabId = null;
+let captureControlsOpening = null;
+
+function openCaptureControls() {
+  captureControlsOpening ??= focusCaptureControls().finally(() => { captureControlsOpening = null; });
+  return captureControlsOpening;
+}
+
+async function focusCaptureControls() {
+  if (captureControlsTabId === null) {
+    const [existing] = await chrome.runtime.getContexts({ contextTypes: ["TAB"],
+      documentUrls: [chrome.runtime.getURL(CAPTURE_DOCUMENT)] });
+    captureControlsTabId = existing?.tabId ?? null;
+  }
+  if (captureControlsTabId !== null) {
     try {
-      const tab = await chrome.tabs.update(existing.id, { active: true });
+      const tab = await chrome.tabs.update(captureControlsTabId, { active: true });
       if (Number.isInteger(tab.windowId)) await chrome.windows.update(tab.windowId, { focused: true });
       return { tabId: tab.id };
     } catch { /* A closed controls tab can be reopened. */ }
   }
   const tab = await chrome.tabs.create({ url: chrome.runtime.getURL(CAPTURE_DOCUMENT), active: true });
+  captureControlsTabId = tab.id;
   return { tabId: tab.id };
 }
 
@@ -1760,10 +1776,12 @@ function clearNavigatedCaptureDocument(tabId, reason) {
 
 chrome.tabs?.onUpdated?.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "loading") {
+    if (tabId === captureControlsTabId) captureControlsTabId = null;
     clearNavigatedCaptureDocument(tabId, "The reading page navigated. Link it again.");
   }
 });
 chrome.tabs?.onRemoved?.addListener(tabId => {
+  if (tabId === captureControlsTabId) captureControlsTabId = null;
   clearNavigatedCaptureDocument(tabId, "The linked reading tab was closed.");
 });
 
@@ -1831,15 +1849,20 @@ async function relayEngineRequest(message) {
   }
 }
 
-// Only the startup page may start or observe the offscreen dictionary run; the
-// run itself never touches the storage queue held here.
+// Only the startup page may start or observe an accepted dictionary run.
+// Release the storage read before relaying: engine commits call back into the worker.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== SETUP_TARGET || message.relayed === true) return false;
   if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL(STARTUP_PAGE)) {
     sendResponse(failureReply(message, new Error("Setup installation is available only from the Hachidori startup page.")));
     return false;
   }
-  relay(message).then(sendResponse, (error) => sendResponse(failureReply(message, error)));
+  chrome.storage.local.get(SETUP_STATE_KEY).then((stored) => {
+    const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
+    if (current === null) throw new Error("Setup has not started on this installation.");
+    if (current.stage === "welcome") throw new Error("Start setup before downloading dictionaries.");
+    return relay(message);
+  }).then(sendResponse, (error) => sendResponse(failureReply(message, error)));
   return true;
 });
 

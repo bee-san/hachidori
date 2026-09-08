@@ -8,17 +8,19 @@ import "../extension/reader-options.js";
 
 const EMPTY_DICTIONARIES = { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] };
 
-test("a new installation starts at the dictionary stage and advances through revisioned stages", () => {
+test("a new installation starts at welcome and advances through revisioned stages", () => {
   const started = initialSetupState("2026-09-07T10:00:00.000Z");
   assert.deepEqual(started, {
-    schemaVersion: 1, revision: 1, startedAt: "2026-09-07T10:00:00.000Z", stage: "dictionaries", completedAt: null,
+    schemaVersion: 1, revision: 1, startedAt: "2026-09-07T10:00:00.000Z", stage: "welcome", completedAt: null,
     dictionaries: EMPTY_DICTIONARIES, anki: null,
   });
   assert.equal(setupIncomplete(started), true);
-  const anki = advanceSetupState(started, "anki", "2026-09-07T10:01:00.000Z");
-  assert.deepEqual(anki, { ...started, revision: 2, stage: "anki" });
+  const dictionaries = advanceSetupState(started, "dictionaries", "2026-09-07T10:00:30.000Z");
+  assert.deepEqual(dictionaries, { ...started, revision: 2, stage: "dictionaries" });
+  const anki = advanceSetupState(dictionaries, "anki", "2026-09-07T10:01:00.000Z");
+  assert.deepEqual(anki, { ...started, revision: 3, stage: "anki" });
   const complete = advanceSetupState(anki, "complete", "2026-09-07T10:02:00.000Z");
-  assert.deepEqual(complete, { ...started, revision: 3, stage: "complete", completedAt: "2026-09-07T10:02:00.000Z" });
+  assert.deepEqual(complete, { ...started, revision: 4, stage: "complete", completedAt: "2026-09-07T10:02:00.000Z" });
   assert.equal(setupIncomplete(complete), false);
   // Setup is monotonic: repeating a stage, returning to one, or reopening a
   // finished setup is refused even with the current revision.
@@ -30,7 +32,7 @@ test("a new installation starts at the dictionary stage and advances through rev
   assert.deepEqual(normaliseSetupState({ ...complete, extra: true }), complete);
   // A record written before dictionary outcomes existed reads as an empty stage.
   const { dictionaries: _dictionaries, anki: _anki, ...legacy } = started;
-  assert.deepEqual(normaliseSetupState(legacy), started);
+  assert.deepEqual(normaliseSetupState({ ...legacy, stage: "dictionaries" }), { ...started, stage: "dictionaries" });
 });
 
 test("the Anki outcome settles once with its status, reason and exact configured names", () => {
@@ -55,7 +57,7 @@ test("the Anki outcome settles once with its status, reason and exact configured
 });
 
 test("dictionary outcomes accumulate across runs and continuing records an incomplete set", () => {
-  const started = initialSetupState("2026-09-07T10:00:00.000Z");
+  const started = { ...initialSetupState("2026-09-07T10:00:00.000Z"), stage: "dictionaries" };
   const first = recordSetupDictionaries(started, {
     runId: "run-1",
     outcomes: { jitendex: { status: "installed", seconds: 12.5 }, jmnedict: { status: "failed", seconds: 3, error: "HTTP 503" } },
@@ -128,7 +130,7 @@ test("absent state is null and malformed or unsupported state is refused", () =>
     edit(value);
     assert.throws(() => normaliseSetupState(value), /malformed/u);
   }
-  assert.deepEqual(SETUP_STAGES, ["dictionaries", "anki", "practice", "complete"]);
+  assert.deepEqual(SETUP_STAGES, ["welcome", "dictionaries", "anki", "practice", "complete"]);
 });
 
 test("first-install preferences are a valid options patch that leaves reader defaults untouched", () => {

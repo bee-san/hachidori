@@ -119,7 +119,7 @@ function launch() {
   return puppeteer.launch({ executablePath: CHROME, userDataDir: PROFILE, headless: true, args });
 }
 
-// The fresh install starts the first-run dictionary run inside the fallback
+// Accepting Start setup begins the first-run dictionary run inside the fallback
 // engine. Its four catalogue downloads are answered 503 on the offscreen
 // target's Fetch domain, so nothing reaches the network and the library the
 // assertions below inspect stays empty until the fixture import.
@@ -275,6 +275,11 @@ try {
   browser = await launch();
   failSetupArchives(browser);
   const id = await extensionId(browser);
+  const startupTarget = await browser.waitForTarget(target => target.url() === `chrome-extension://${id}/startup.html`);
+  const startup = await startupTarget.page();
+  await startup.waitForSelector("#setup-start", { visible: true });
+  assert.equal(setupArchiveRequests.length, 0, "fallback setup waits for the welcome decision");
+  await startup.evaluate(() => document.getElementById("setup-start").click());
   let page = await openSettings(browser, id);
   // Let the automatic run fail all four sources before importing through the
   // same engine lock; a single run must have asked for each source once.

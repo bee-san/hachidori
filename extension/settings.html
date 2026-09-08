@@ -79,6 +79,7 @@
             <output class="nav-status" id="nav-status-backup" aria-live="polite"></output>
           </div>
         </nav>
+        <a class="setup-resume" href="https://github.com/bee-san/hachidori/blob/main/docs/privacy.md" target="_blank" rel="noopener noreferrer">Privacy policy</a>
         <output
           class="engine-status"
           id="engine-status"
@@ -757,6 +758,7 @@
           <p class="section-note">Choose a voice for text-to-speech, or add an audio provider. Hachidori tries enabled sources from top to bottom.</p>
           <label class="lookup-enable"><span>Automatically play the first lookup result</span><input id="opt-audio-autoplay" type="checkbox"></label>
           <p class="field-hint">Off by default. You can always use Audio in the popup; Shift-click or right-click it to choose a pronunciation.</p>
+          <p class="field-hint">Pronunciation sends the selected word and reading to your configured audio providers. Use HTTPS for remote sources; HTTP localhost services on this computer are supported.</p>
           <ol id="audio-source-list" class="audio-source-list"></ol>
           <p id="audio-source-empty" class="hint" hidden>No audio sources. Add one to configure pronunciation.</p>
           <button id="audio-source-add" type="button" class="ghost">Add source</button>
@@ -893,6 +895,7 @@
           </div>
           <div class="options-feedback-slot"></div>
           <output id="anki-status" class="anki-status" aria-live="polite">Open Anki to discover your decks and note types.</output>
+          <p class="field-hint">Opening this section reads deck and note-type metadata from Anki on this computer. Adding a note sends the text and media selected by your field mappings to local Anki; Anki controls any later sync.</p>
           <p class="field-hint">Requires the <a href="https://ankiweb.net/shared/info/2055492159" target="_blank" rel="noopener noreferrer">AnkiConnect add-on</a> in Anki, running on this computer at <code>127.0.0.1:8765</code>.</p>
           <fieldset class="lookup-group">
             <legend>Destination</legend>

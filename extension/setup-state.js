@@ -4,8 +4,9 @@
 export const SETUP_STATE_KEY = "setupState";
 export const SETUP_STATE_SCHEMA_VERSION = 1;
 export const STARTUP_PAGE = "startup.html";
-// Setup advances through the first three stages; "complete" is terminal.
-export const SETUP_STAGES = Object.freeze(["dictionaries", "anki", "practice", "complete"]);
+// A new installation waits for informed Start setup before its automatic work.
+// Existing records keep their stage, including runs already in progress.
+export const SETUP_STAGES = Object.freeze(["welcome", "dictionaries", "anki", "practice", "complete"]);
 export const SETUP_OUTCOME_STATUSES = Object.freeze(["installed", "already-installed", "failed"]);
 export const SETUP_ANKI_STATUSES = Object.freeze(["configured", "already-configured", "unavailable", "needs-attention"]);
 

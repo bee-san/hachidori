@@ -548,7 +548,11 @@ What it proves, in order:
    record confirms rather than recounts), and settles the Jitendex
    summary source and Bee's clicked-kanji route once from the committed titles,
    in one write with the setup record, without overwriting an option the user
-   already changed. A jsdom `startup.html` attaches to the installer with the
+   already changed. A fresh jsdom `startup.html` shows its data-use disclosure
+   without any runtime request, keeps it after a failed Start save, and begins
+   installation only after that stage write succeeds. Reopening the accepted
+   stage resumes installation, while **Set up manually** reaches practice
+   without dictionary or Anki requests. An accepted startup page attaches to the installer with the
    untouched sources, shows an unanswered request once with Retry instead of
    re-requesting, renders **Already installed** only for trusted
    `sourceId`/index identity, mirrors determinate and indeterminate download

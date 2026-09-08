@@ -50,6 +50,8 @@ test("default-off popup binding is silent; only the newest owned play updates co
   f.event({ target: "hachidori-audio-content", type: "hd_audio_playing" });
   parent.item.button.click();
   assert.equal(parent.item.button.getAttribute("aria-label"), "Stop pronunciation for 聞く");
+  assert.equal(parent.item.button.textContent, "", "playing keeps the speaker button icon-only");
+  assert.match(parent.item.button.title, /^Stop pronunciation;/u);
   parent.item.status = parent.context.popup.querySelector(".gsm-hoshidicts-audio-status");
   assert.ok(parent.item.status, "play lazily creates its feedback");
   const first = f.sent[0];
@@ -57,6 +59,8 @@ test("default-off popup binding is silent; only the newest owned play updates co
   assert.equal(f.sent.length, 1, "pruning a child preserves a parent's manual play");
   child.item.button.click();
   assert.equal(parent.item.button.getAttribute("aria-label"), "Play pronunciation for 聞く");
+  assert.equal(parent.item.button.textContent, "", "stopping keeps the speaker button icon-only");
+  assert.match(parent.item.button.title, /^Play pronunciation;/u);
   const second = f.sent.at(-1);
   assert.equal(f.sent[1].playRequestId, first.requestId);
   f.event({ target: "hachidori-audio-content", type: "hd_audio_playing", requestId: first.requestId, candidate: { name: "old" } });
