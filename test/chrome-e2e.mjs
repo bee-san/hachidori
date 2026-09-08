@@ -6565,7 +6565,8 @@ async function main() {
     }
     await startup.mouse.move(2, 2);
     const hidden = looked === null ? null : await startupPopup.waitForHidden(6000);
-    exercise = { injected, looked, hidden, scene, narrowScene, popupRect, cycled };
+    const idleScene = await readVisualNovelScene(startup, "#setup-practice-word");
+    exercise = { injected, looked, hidden, scene, narrowScene, idleScene, popupRect, cycled };
   }
   const jitendexFixtureTitle = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "jitendex").title;
   check(
@@ -6574,7 +6575,8 @@ async function main() {
       && exercise.looked !== null && exercise.looked.plain.includes("辞書")
       && exercise.looked.text.includes(`${jitendexFixtureTitle} term fixture`)
       && exercise.hidden === true && exercise.cycled
-      && [exercise.scene, exercise.narrowScene].every(scene => scene?.backgroundLoaded && scene.nextVisible && scene.dialogueVisible
+      && exercise.narrowScene.nextVisible && exercise.idleScene.nextVisible
+      && [exercise.scene, exercise.narrowScene].every(scene => scene?.backgroundLoaded && scene.dialogueVisible
         && scene.sourceAccessible && !scene.overflow)
       && exercise.scene.highlighted === "辞書" && exercise.popupRect?.bottom <= exercise.scene.sourceTop
       && exercise.popupRect.top < exercise.scene.dialogueTop,
