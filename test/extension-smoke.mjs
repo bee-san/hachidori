@@ -6314,7 +6314,7 @@ async function startupPageStage() {
 
 // One jsdom startup page with only the worker replies and stored values a
 // dictionary-stage case needs; the two stages below drive it from there.
-function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null }) {
+function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null }) {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
     pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
   });
@@ -6337,7 +6337,8 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, optio
         }
         // A refused lookup waits for the engine to go idle before asking again.
         if (message.type === "hd_status") {
-          return { type: "hd_status_result", requestId: message.requestId, ok: true, error: null, ready: true, loading: false };
+          return { type: "hd_status_result", requestId: message.requestId, ok: true, error: null, ready: true, loading: false,
+            ...(status === null ? {} : status(message)) };
         }
         if (message.type !== "hd_setup_install") throw new Error(`Unexpected startup request ${message.type}`);
         return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
@@ -6524,6 +6525,9 @@ async function startupPracticeStage() {
   // A dictionary mutation refuses the first pass, the way Settings publishing a
   // reimport does; the sentence must be asked again rather than written off.
   let busySweeps = 1;
+  // The engine reports a failed reload once, which a status poll repairs, then a
+  // mutation still holds it, and only then is it idle.
+  const recovering = [{ ok: false, error: "the dictionary reload failed" }, { ready: true, loading: true }];
   const answersVerb = (message) => {
     if (busySweeps > 0) {
       busySweeps -= 1;
@@ -6533,6 +6537,7 @@ async function startupPracticeStage() {
       results: libraryAnswers && message.text.startsWith("食べる") ? [{ term: "食べる", matched: "食べる" }] : [] };
   };
   const page = startupCase(jsdom, { setup, dictionaries: frequencyOnly, lookup: answersVerb,
+    status: () => recovering.shift() ?? {},
     reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
   const { document } = page;
   const sample = () => document.querySelector(".setup-practice-sample");

@@ -625,9 +625,12 @@ async function sweepPractice(signature) {
 
 // The engine reports ready after boot and loading while any mutation, including
 // a long generation cleanup, holds it. Waiting here is what keeps a refusal from
-// becoming a verdict; a newer signature or an unreachable engine ends the wait.
+// becoming a verdict. A failed status is also worth waiting on: a status poll is
+// what drives the engine's own reload recovery, so the next one can describe a
+// repaired engine. Only an unreachable engine, or one that keeps failing, ends
+// the wait, as does a newer signature.
 async function awaitIdleEngine(signature) {
-  for (;;) {
+  for (let failures = 0; failures < PROBE_ATTEMPTS;) {
     let status;
     try {
       status = await send("hd_status", {}, ENGINE_TARGET);
@@ -635,11 +638,12 @@ async function awaitIdleEngine(signature) {
       return false;
     }
     if (practiceProbed !== signature) return false;
-    if (status?.ok !== true) return false;
-    if (status.ready === true && status.loading !== true) return true;
+    if (status?.ok === true && status.ready === true && status.loading !== true) return true;
+    if (status?.ok !== true) failures += 1;
     await wait(PROBE_RETRY_MS);
     if (practiceProbed !== signature) return false;
   }
+  return false;
 }
 
 function probePractice() {
