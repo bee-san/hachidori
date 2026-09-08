@@ -39,7 +39,7 @@ export function createAudioRepository({ window, fetch, now = () => performance.n
       const cached = candidates.get(key);
       if (cached) return cached;
       let found = [];
-      if (source.type.startsWith("text-to-speech")) found = [{ name: source.voice || "System default" }];
+      if (source.type.startsWith("text-to-speech")) found = [{ name: source.voice || "Automatic Japanese" }];
       else if (source.url) {
         const url = audioSourceUrl(source.url, term);
         if (source.type === "custom") found = [{ url, name: "" }];

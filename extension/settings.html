@@ -5,6 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Hachidori settings</title>
+    <link rel="stylesheet" href="render/reader.css" />
     <link rel="stylesheet" href="settings.css" />
   </head>
   <body>
@@ -16,6 +17,10 @@
           <div><span>Hachidori</span><span class="brand-context">Settings</span></div>
         </div>
         <a class="setup-resume" id="setup-resume" href="startup.html" hidden>Resume setup</a>
+        <label class="settings-search" for="settings-search">
+          <span class="field-label">Search settings</span>
+          <input id="settings-search" type="search" placeholder="Find a setting…" autocomplete="off" aria-controls="settings-search-results" />
+        </label>
         <label class="settings-section-picker" for="settings-section">
           <span class="field-label">Section</span>
           <select id="settings-section">
@@ -89,6 +94,11 @@
         </output>
       </aside>
       <main class="page" id="settings-content" tabindex="-1">
+        <div id="settings-search-results" class="card settings-search-results" hidden>
+          <h1>Search settings</h1>
+          <output id="settings-search-count" class="hint" aria-live="polite"></output>
+          <ul id="settings-search-matches"></ul>
+        </div>
         <section
           class="card library"
           id="dictionaries"
@@ -324,19 +334,9 @@
             <h1 id="custom-dictionary-heading" tabindex="-1">Personal dictionary</h1>
             <p class="hint">Your entries appear first. Save source edits when you are ready.</p>
           </div>
-          <button
-            type="button"
-            class="ghost custom-dictionary-open"
-            id="custom-dictionary-open"
-            aria-controls="custom-dictionary-form"
-            aria-expanded="false"
-          >
-            Edit source
-          </button>
           <form
             class="custom-dictionary-form"
             id="custom-dictionary-form"
-            hidden
           >
             <details class="format-help">
               <summary>Source format</summary>
@@ -354,6 +354,8 @@
                 id="custom-dictionary-source"
                 rows="12"
                 spellcheck="false"
+                placeholder="蜂, はち, bee&#10;辞書, じしょ, dictionary&#10;読む, よむ, to read"
+                disabled
                 aria-describedby="custom-dictionary-status custom-dictionary-errors"
               ></textarea>
             </label>
@@ -415,7 +417,7 @@
               <label class="field">
                 <span class="field-label">Activation key</span>
                 <select id="opt-activation-key"></select>
-                <span class="field-hint">Some keys are reserved by your browser or operating system.</span>
+                <span class="field-hint">Used in Activation key + hover mode. Some keys are reserved by your browser or operating system.</span>
               </label>
             </div>
           </fieldset>
@@ -716,6 +718,21 @@
                   </label>
                 </div>
               </fieldset>
+              <fieldset class="lookup-group">
+                <legend>Custom toolbar links</legend>
+                <label class="field">
+                  <span class="field-label">Names and URL templates</span>
+                  <textarea id="opt-custom-links" rows="4" spellcheck="false"
+                    aria-describedby="custom-links-help custom-links-status"
+                    placeholder="Jisho, https://jisho.org/search/%w&#10;Search sentence, https://www.google.com/search?q=%s"></textarea>
+                  <span id="custom-links-help" class="field-hint">One link per line: name, URL. Use %w for the word, %r for its reading, and %s for the sentence. Change line order to reorder buttons; remove a line to remove a link.</span>
+                </label>
+                <div class="custom-dictionary-actions">
+                  <button id="save-custom-links" type="button" class="ghost">Save links</button>
+                  <button id="discard-custom-links" type="button" class="ghost">Discard changes</button>
+                </div>
+                <output id="custom-links-status" class="is-error" aria-live="polite"></output>
+              </fieldset>
               <details class="settings-disclosure custom-css-disclosure">
                 <summary>Custom CSS</summary>
                 <label class="field-label" for="opt-custom-popup-css">Popup stylesheet</label>
@@ -751,11 +768,12 @@
         </section>
         <section class="card" id="audio" aria-labelledby="audio-heading" hidden>
           <div class="card-head">
-            <h1 id="audio-heading" tabindex="-1">Audio</h1>
+            <h1 id="audio-heading" tabindex="-1" data-search-keywords="voice pronunciation text to speech TTS source provider URL">Audio</h1>
             <p class="hint">Choose where pronunciations come from, in priority order.</p>
           </div>
           <div class="options-feedback-slot"></div>
           <p class="section-note">Choose a voice for text-to-speech, or add an audio provider. Hachidori tries enabled sources from top to bottom.</p>
+          <p class="field-hint">Automatic Japanese chooses an available Japanese voice. You can try Google 日本語 if Chrome offers it, or choose another voice installed on your computer. For recorded pronunciation, add an audio provider.</p>
           <label class="lookup-enable"><span>Automatically play the first lookup result</span><input id="opt-audio-autoplay" type="checkbox"></label>
           <p class="field-hint">Off by default. You can always use Audio in the popup; Shift-click or right-click it to choose a pronunciation.</p>
           <p class="field-hint">Pronunciation sends the selected word and reading to your configured audio providers. Use HTTPS for remote sources; HTTP localhost services on this computer are supported.</p>
@@ -888,36 +906,36 @@
         <section class="card" id="anki" aria-labelledby="anki-heading" hidden>
           <div class="section-heading">
             <div class="card-head">
-              <h1 id="anki-heading" tabindex="-1">Anki</h1>
-              <p class="hint">Optional flashcards for the words you want to keep. Changes save automatically.</p>
+              <h1 id="anki-heading" tabindex="-1" data-search-keywords="deck note type field mapping note templates tags API key flashcards AnkiConnect URL endpoint">Anki</h1>
+              <p class="hint">Save words to Anki. Changes save automatically.</p>
             </div>
             <button id="anki-refresh" type="button" class="ghost">Refresh connection</button>
           </div>
           <div class="options-feedback-slot"></div>
-          <output id="anki-status" class="anki-status" aria-live="polite">Open Anki to discover your decks and note types.</output>
-          <p class="field-hint">Opening this section reads deck and note-type metadata from Anki on this computer. Adding a note sends the text and media selected by your field mappings to local Anki; Anki controls any later sync.</p>
-          <p class="field-hint">Requires the <a href="https://ankiweb.net/shared/info/2055492159" target="_blank" rel="noopener noreferrer">AnkiConnect add-on</a> in Anki, running on this computer at <code>127.0.0.1:8765</code>.</p>
+          <div class="anki-connection-summary">
+            <output id="anki-status" class="anki-status" aria-live="polite">Open Anki to discover your decks and note types.</output>
+            <p class="field-hint">Requires the <a href="https://ankiweb.net/shared/info/2055492159" target="_blank" rel="noopener noreferrer">AnkiConnect add-on</a> in Anki.</p>
+          </div>
           <fieldset class="lookup-group">
             <legend>Destination</legend>
             <div class="fields">
               <label class="field"><span class="field-label">Deck</span><select id="opt-anki-deck"></select></label>
-              <label class="field"><span class="field-label">Note type</span><select id="opt-anki-model"></select><span class="field-hint">Changing note type clears the old field mappings.</span></label>
+              <label class="field"><span class="field-label">Note type</span><select id="opt-anki-model"></select><span class="field-hint">Kiku, Lapis and Senren fill their matching fields automatically.</span></label>
               <label class="field"><span class="field-label">Tags</span><input id="opt-anki-tags" type="text" spellcheck="false"><span class="field-hint">Separate tags with spaces.</span></label>
             </div>
           </fieldset>
           <fieldset class="lookup-group">
             <legend>Field mapping</legend>
-            <p class="field-hint">Choose where each value goes. Blank fields stay disabled; Anki requires its first field to be filled.</p>
+            <p class="field-hint">Blank fields stay disabled. Anki requires the first field to be filled.</p>
             <div class="anki-preset-tools">
-              <label class="anki-preset"><span class="field-label">Starting point</span><select id="anki-preset"><option value="automatic">Automatic suggestions</option><option value="kiku">Kiku</option><option value="lapis">Lapis-shaped</option><option value="senren">Senren-shaped</option></select></label>
+              <label class="anki-preset"><span class="field-label">Preset</span><select id="anki-preset"><option value="automatic">Automatic suggestions</option><option value="kiku">Kiku</option><option value="lapis">Lapis</option><option value="senren">Senren</option></select></label>
               <button id="anki-apply-preset" class="ghost" type="button">Apply preset</button>
             </div>
-            <p class="field-hint">Replaces the templates below, using only fields found in this note type. Review them before mining.</p>
             <div id="anki-fields" class="fields"></div>
             <label class="lookup-enable"><span>Screenshot the page when mining</span><input id="opt-anki-screenshot" type="checkbox"></label>
-            <p class="field-hint">Takes one picture of the visible page for a note that maps <code>{screenshot}</code>, at the moment you add it. Hachidori's popup is hidden for the picture.</p>
+            <p class="field-hint">Adds the visible page to fields using <code>{screenshot}</code>.</p>
             <label class="lookup-enable"><span>Edit field templates directly</span><input id="opt-anki-advanced" type="checkbox"></label>
-            <p class="field-hint">Templates combine literal text or HTML with markers such as <code>{expression}</code> and <code>{glossary}</code>. Turn off direct editing to return to your basic mappings.</p>
+            <p class="field-hint">Combine text with markers such as <code>{expression}</code> and <code>{glossary}</code>.</p>
             <details class="anki-marker-reference"><summary>Available markers</summary><p id="anki-markers" class="anki-markers"></p><p class="field-hint">Dictionary-specific values also use <code>{single-glossary-DICTIONARY}</code>, <code>{single-frequency-DICTIONARY}</code> or <code>{single-frequency-number-DICTIONARY}</code>.</p></details>
             <div id="anki-templates" class="anki-templates"></div>
           </fieldset>
@@ -931,7 +949,9 @@
             <label class="lookup-enable"><span>Check across all note types</span><input id="opt-anki-check-all-models" type="checkbox"></label>
           </details>
           <details class="anki-details">
-            <summary>Connection credentials</summary>
+            <summary>Connection settings</summary>
+            <label class="field"><span class="field-label">AnkiConnect URL</span><input id="opt-anki-url" type="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8765" aria-describedby="anki-url-help anki-url-error"><span id="anki-url-help" class="field-hint">The address where AnkiConnect is running.</span></label>
+            <output id="anki-url-error" class="field-hint is-error" aria-live="polite"></output>
             <label class="field"><span class="field-label">API key</span><input id="opt-anki-api-key" type="password" autocomplete="off"><span class="field-hint">Leave blank unless you configured an API key in AnkiConnect. Stored locally in this browser.</span></label>
           </details>
         </section>

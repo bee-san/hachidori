@@ -4,7 +4,7 @@ import test from "node:test";
 import "../extension/reader-options.js";
 import { createAnkiGateway, ankiAvailability } from "../extension/anki.js";
 
-const { normaliseOptions, validateOptionsPatch } = globalThis.HDReaderOptions;
+const { normaliseOptions, normaliseAnkiConnectUrl, validateOptionsPatch } = globalThis.HDReaderOptions;
 const config = (patch = {}) => ({ ...normaliseOptions({}).anki, ...patch });
 const reply = result => ({ ok: true, async json() { return { result, error: null }; } });
 
@@ -12,6 +12,7 @@ test("global Anki configuration validates complete mappings and duplicate polici
   const defaults = config();
   assert.equal(defaults.deck, "Default");
   assert.equal(defaults.model, "");
+  assert.equal(defaults.url, "http://127.0.0.1:8765");
   assert.equal(defaults.checkForDuplicates, true);
   const value = config({ model: "日本語", tags: Array.from({ length: 300 }, (_, i) => `tag${i}`),
     fields: { ...defaults.fields, expression: "日本語".repeat(300) }, duplicateScope: "deck-root", duplicateBehavior: "new" });
@@ -23,7 +24,7 @@ test("global Anki configuration validates complete mappings and duplicate polici
   }
 });
 
-test("Anki discovery fixes the endpoint and envelope, reads independent lists concurrently and retains field order", async () => {
+test("Anki discovery defaults to localhost and fixes the envelope, reads lists concurrently and retains field order", async () => {
   const requests = [];
   const gateway = createAnkiGateway({ fetch: async (url, options) => {
     const body = JSON.parse(options.body);
@@ -44,6 +45,46 @@ test("Anki discovery fixes the endpoint and envelope, reads independent lists co
     assert.equal(body.key, "local-key");
   }
   assert.deepEqual(requests[2].body.params, { modelName: "Basic" });
+});
+
+test("Anki endpoint settings normalize HTTP(S) URLs and preserve legacy defaults without repairing invalid URLs to localhost", () => {
+  for (const [value, expected] of [
+    ["http://localhost:8765/", "http://localhost:8765"],
+    [" https://anki.example:443/connect?profile=Japanese#ignored ", "https://anki.example/connect?profile=Japanese"],
+  ]) {
+    assert.equal(normaliseAnkiConnectUrl(value), expected);
+    assert.equal(validateOptionsPatch({ anki: config({ url: value }) }).anki.url, expected);
+  }
+  const legacy = config();
+  delete legacy.url;
+  assert.equal(validateOptionsPatch({ anki: legacy }).anki.url, "http://127.0.0.1:8765");
+  for (const url of ["", null, 123, "file:///tmp/anki", "javascript:alert(1)",
+    "https://user:password@anki.example/", "https://anki.example/\n", "http://anki.example/\u007f"]) {
+    assert.equal(normaliseAnkiConnectUrl(url), null);
+    assert.throws(() => validateOptionsPatch({ anki: config({ url }) }));
+    assert.equal(normaliseOptions({ anki: { url } }).anki.url, "", "invalid stored endpoints stay unavailable");
+  }
+});
+
+test("custom discovery and direct calls use only their selected endpoint; invalid URLs never send fallback requests", async () => {
+  const requests = [];
+  const gateway = createAnkiGateway({ fetch: async (url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push({ url, body });
+    return reply({ deckNames: ["Default"], modelNames: ["Basic"], modelFieldNames: ["Front", "Back"], guiBrowse: [] }[body.action]);
+  } });
+  const url = "https://anki.example/connect?profile=Japanese";
+  assert.equal((await gateway.discover({ model: "Basic", apiKey: "remote-key", url })).connected, true);
+  await gateway.invoke("guiBrowse", { query: "猫" }, "remote-key", 500, url);
+  assert.equal(requests.length, 4);
+  assert.ok(requests.every(request => request.url === url && request.body.key === "remote-key"));
+  for (const invalid of ["", "file:///tmp/anki", "http://user:secret@anki.example", "https://anki.example/\n"]) {
+    const result = await gateway.discover({ model: "Basic", url: invalid });
+    assert.equal(result.connected, false);
+    assert.match(result.errors.join(" "), /valid HTTP or HTTPS/u);
+    await assert.rejects(gateway.invoke("guiBrowse", {}, "remote-key", 500, invalid), /valid HTTP or HTTPS/u);
+  }
+  assert.equal(requests.length, 4);
 });
 
 test("discovery distinguishes partial, malformed, permission and offline failures and retries afresh", async () => {

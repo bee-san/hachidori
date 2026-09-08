@@ -9,6 +9,8 @@ import { createAudioSettingsController } from "./audio-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
+import { createSettingsSearch } from "./settings-search.js";
+import { createCustomLinkSettings } from "./custom-link-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
 import {
   createDictionaryGroupController,
@@ -124,9 +126,11 @@ let requestCounter = 0;
 let audioController;
 let ankiController;
 let backupController;
+let customLinkController;
 let backingUp = false;
 let mediaStatusEpoch = 0;
 let mediaRuntimeState = "unavailable";
+let settingsSearch;
 
 const SECTION_STATUSES = {
   "import-state": { section: "add-dictionaries", label: "Import" },
@@ -180,6 +184,7 @@ function setSectionStatus(id, message, tone, completed = false) {
 }
 
 function showSettingsSection(focus = false) {
+  settingsSearch?.clear();
   const fragment = window.location.hash.slice(1);
   const requested = fragment === "settings-content" ? activeSection : fragment;
   const sections = [...document.querySelectorAll("main > section")];
@@ -204,6 +209,14 @@ function showSettingsSection(focus = false) {
   updateMediaSettings();
   updateAnkiSettings();
   updateBackupSettings();
+  if (activeSection === "design") {
+    customLinkController ??= createCustomLinkSettings({ document,
+      readLinks: () => options.customLinks,
+      saveLinks: links => { options.customLinks = links; writeOptions(); },
+    });
+    customLinkController.render();
+  }
+  if (activeSection === "custom-dictionary" && !customEditorLoaded) void loadCustomDictionarySource();
   if (fragment === "settings-content") element("settings-content").focus();
   else if (focus) element(activeSection).querySelector("h1").focus();
 }
@@ -319,7 +332,7 @@ function updateBackupSettings() {
       if (importing || updating || removing || committing || customLoading || customSaving || pendingDictionaryCommits > 0) {
         throw new Error("Wait for the current dictionary operation to finish, then try again.");
       }
-      if (customDictionaryDirty() || savingOptions !== null || optionsEditRevision !== null
+      if (customDictionaryDirty() || customLinkController?.dirty() || savingOptions !== null || optionsEditRevision !== null
           || Object.keys(pendingOptions).length > 0 || savingSchedule !== null || pendingSchedule !== null
           || nameDrafts.hasPendingChanges()) {
         throw new Error("Save or discard your pending changes before working with a backup.");
@@ -373,6 +386,10 @@ function resizeDesignPreview() {
 }
 
 function attachSettingsNavigation() {
+  settingsSearch = createSettingsSearch({ document, navigate(section) {
+    if (section && window.location.hash !== `#${section}`) window.history.pushState(null, "", `#${section}`);
+    showSettingsSection();
+  } });
   element("design-preview-disclosure").open = window.innerWidth > 1100;
   const picker = element("settings-section");
   picker.addEventListener("change", (event) => {
@@ -657,21 +674,12 @@ function customDictionaryDraftSource() {
 
 function renderCustomDictionaryControls() {
   const busy = importing || updating || removing || committing || customLoading || customSaving || backingUp;
-  const open = element("custom-dictionary-open");
   const source = element("custom-dictionary-source");
-  open.disabled = busy;
-  source.disabled = busy;
+  source.disabled = busy || !customEditorLoaded;
   element("custom-dictionary-save").disabled = busy
     || !customDictionaryDirty()
     || customDraftStale;
   element("custom-dictionary-reload").disabled = busy;
-}
-
-function showCustomDictionaryEditor(visible) {
-  element("custom-dictionary-form").hidden = !visible;
-  const open = element("custom-dictionary-open");
-  open.setAttribute("aria-expanded", String(visible));
-  open.textContent = visible ? "Close editor" : "Edit source";
 }
 
 function cancelCustomDictionaryValidation() {
@@ -752,7 +760,6 @@ async function loadCustomDictionarySource() {
     }
     customEditorLoaded = true;
     resetCustomDictionaryDraft(customDocument);
-    showCustomDictionaryEditor(true);
     setCustomDictionaryStatus(`Loaded source revision ${customDocument.revision}.`, "ready", true);
   } catch (error) {
     setCustomDictionaryStatus(`Could not load the custom dictionary source: ${describe(error)}`, "error");
@@ -1280,6 +1287,10 @@ function renderThemeChoices() {
   if (theme !== document.activeElement) theme.value = options.popupTheme;
 }
 
+function applySettingsTheme() {
+  document.documentElement.dataset.hoshidictsTheme = options.popupTheme;
+}
+
 function renderCustomCss(force = false) {
   const editor = element("opt-custom-popup-css");
   if ((force || editor !== document.activeElement) && editor.value !== options.customPopupCss) {
@@ -1289,6 +1300,7 @@ function renderCustomCss(force = false) {
 }
 
 function renderOptions() {
+  applySettingsTheme();
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
     if (input !== document.activeElement) {
@@ -1301,6 +1313,7 @@ function renderOptions() {
   element("opt-audio-autoplay").checked = options.audioAutoplay;
   renderThemeChoices();
   renderCustomCss();
+  customLinkController?.render();
   const toolbar = element("opt-popup-toolbar");
   if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
   const mode = element("opt-lookup-mode");
@@ -1310,7 +1323,6 @@ function renderOptions() {
     for (const key of ACTIVATION_KEYS) activation.add(new Option(key, key));
   }
   if (activation !== document.activeElement) activation.value = options.activationKey;
-  activation.disabled = options.lookupMode !== "activation";
   renderFrequencyOrder();
   renderKanjiChoices();
   renderFrequencyChoices();
@@ -2254,13 +2266,6 @@ async function flushUpdateSchedule() {
 }
 
 function attachHandlers() {
-  element("custom-dictionary-open").addEventListener("click", () => {
-    if (!customEditorLoaded) {
-      void loadCustomDictionarySource();
-      return;
-    }
-    showCustomDictionaryEditor(element("custom-dictionary-form").hidden);
-  });
   element("custom-dictionary-form").addEventListener("submit", (event) => {
     void saveCustomDictionarySource(event);
   });
@@ -2427,6 +2432,7 @@ function attachHandlers() {
   });
   element("reset-design").addEventListener("click", () => {
     for (const key of DESIGN_OPTION_KEYS) options[key] = DEFAULT_OPTIONS[key];
+    customLinkController?.reset();
     renderCustomCss(true);
     renderOptions();
     writeOptions();
@@ -2478,7 +2484,6 @@ function attachHandlers() {
   });
   element("opt-lookup-mode").addEventListener("change", (event) => {
     options.lookupMode = LOOKUP_MODES.includes(event.target.value) ? event.target.value : "hover";
-    element("opt-activation-key").disabled = options.lookupMode !== "activation";
     writeOptions();
   });
   element("opt-activation-key").addEventListener("change", (event) => {
@@ -2623,7 +2628,7 @@ function attachHandlers() {
   window.addEventListener("beforeunload", (event) => {
     if (!importing && !backingUp && savingOptions === null && optionsEditRevision === null
         && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null
-        && !nameDrafts.hasPendingChanges()) {
+        && !nameDrafts.hasPendingChanges() && !customLinkController?.dirty()) {
       return;
     }
     // Leaving can revoke an import's blob URL or discard a queued settings draft.
@@ -2729,6 +2734,7 @@ function setOptionsStatus(message, completed = false) {
 // Keep only edited fields. A storage event can update the committed snapshot,
 // but cannot replace a local draft or authorize a stale draft's write.
 function writeOptions() {
+  applySettingsTheme();
   updateDesignPreview();
   const previous = { ...savedOptions, ...savingOptions?.patch };
   const changes = Object.fromEntries(Object.entries(options).filter(([key, value]) =>

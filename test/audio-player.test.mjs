@@ -126,7 +126,50 @@ test("a missing configured voice fails without silently using the system default
   await assert.rejects(player.play(speech, term), /selected speech voice is no longer available/u);
   assert.equal(env.utterances.length, 0);
   assert.equal((await player.play({ ...speech, voice: "" }, term)).status, "success");
-  assert.equal(env.utterances[0].voice, undefined);
+  assert.equal(env.utterances[0].voice, env.voice, "automatic speech explicitly uses an available Japanese voice");
+});
+
+test("first speech playback waits for Chrome's voices and prefers available Japanese Google speech", async () => {
+  const env = environment();
+  const speech = env.window.speechSynthesis;
+  const listeners = new Set();
+  let available = [];
+  speech.getVoices = () => available;
+  speech.addEventListener = (type, listener) => { assert.equal(type, "voiceschanged"); listeners.add(listener); };
+  speech.removeEventListener = (type, listener) => listeners.delete(listener);
+  const google = { voiceURI: "Google 日本語", name: "Google 日本語", lang: "ja-JP", localService: false };
+  const player = createAudioPlayer({ window: env.window, fetch: () => assert.fail("TTS must not fetch audio") });
+  const speechSource = { ...source, type: "text-to-speech-reading" };
+  const pending = player.play(speechSource, term);
+  assert.equal(env.utterances.length, 0);
+  assert.equal(listeners.size, 1);
+  available = [{ voiceURI: "English", name: "Google US English", lang: "en-US", default: true }, env.voice, google];
+  for (const listener of [...listeners]) listener();
+  const result = await pending;
+  assert.equal(result.status, "success");
+  assert.equal(env.utterances[0].voice, google);
+  assert.equal(listeners.size, 0);
+  await player.play({ ...speechSource, voice: env.voice.voiceURI }, term);
+  assert.equal(env.utterances[1].voice, env.voice, "an explicit choice overrides automatic ranking");
+  available = [available[0]];
+  await assert.rejects(player.play(speechSource, term), /No Japanese speech voice/u);
+  player.dispose();
+});
+
+test("cancelling while Chrome loads voices retires the listener and cannot start late speech", async () => {
+  const env = environment();
+  const speech = env.window.speechSynthesis;
+  const listeners = new Set();
+  speech.getVoices = () => [];
+  speech.addEventListener = (type, listener) => listeners.add(listener);
+  speech.removeEventListener = (type, listener) => listeners.delete(listener);
+  const player = createAudioPlayer({ window: env.window, fetch: () => assert.fail("TTS must not fetch audio") });
+  const pending = player.play({ ...source, type: "text-to-speech-reading" }, term);
+  player.stop();
+  assert.equal((await pending).status, "cancelled");
+  assert.equal(listeners.size, 0);
+  assert.equal(env.utterances.length, 0);
+  player.dispose();
 });
 
 test("ordered sources fall through empty results and provider errors, then report the actual playing candidate", async () => {

@@ -24,13 +24,14 @@ html.gsm-hoshidicts-enabled #btn-yomitan {
 
 /*
  * Theme palette sources mirror GSM's renderer catalogue. The built-in values
- * are the exact daisyUI 5 palette colors; Hoshidicts semantics below are
- * derived once so popup content and detached controls stay in sync.
+ * are the exact daisyUI 5 palette colors. Extension pages can select them on
+ * html, while the page-isolated popup selects them on its shadow host.
+ * Hoshidicts semantics below are derived once so every consumer stays in sync.
  */
 html,
 /*
  * The popup lives in a shadow root, where no `html` element exists to match, so
- * every selected palette hangs off the extension-owned host, never page html.
+ * its selected palette hangs off the extension-owned host, never the page html.
  */
 :host,
 :host([data-hoshidicts-theme="default"]) {
@@ -54,6 +55,7 @@ html,
   --hoshidicts-palette-error: #d9645f;
 }
 
+html[data-hoshidicts-theme="miku"],
 :host([data-hoshidicts-theme="miku"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: #1c2529;
@@ -75,6 +77,7 @@ html,
   --hoshidicts-palette-error: #e5695f;
 }
 
+html[data-hoshidicts-theme="catppuccin-mocha"],
 :host([data-hoshidicts-theme="catppuccin-mocha"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: #181825;
@@ -96,6 +99,7 @@ html,
   --hoshidicts-palette-error: #f38ba8;
 }
 
+html[data-hoshidicts-theme="solarized-dark"],
 :host([data-hoshidicts-theme="solarized-dark"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: #002b36;
@@ -117,6 +121,7 @@ html,
   --hoshidicts-palette-error: #dc322f;
 }
 
+html[data-hoshidicts-theme="solarized-light"],
 :host([data-hoshidicts-theme="solarized-light"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: #fdf6e3;
@@ -138,6 +143,7 @@ html,
   --hoshidicts-palette-error: #dc322f;
 }
 
+html[data-hoshidicts-theme="high-contrast"],
 :host([data-hoshidicts-theme="high-contrast"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: #000000;
@@ -159,6 +165,7 @@ html,
   --hoshidicts-palette-error: #ff5b5b;
 }
 
+html[data-hoshidicts-theme="dark"],
 :host([data-hoshidicts-theme="dark"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(25.33% 0.016 252.42);
@@ -180,6 +187,7 @@ html,
   --hoshidicts-palette-error: oklch(71% 0.194 13.428);
 }
 
+html[data-hoshidicts-theme="synthwave"],
 :host([data-hoshidicts-theme="synthwave"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(15% 0.09 281.288);
@@ -201,6 +209,7 @@ html,
   --hoshidicts-palette-error: oklch(73.7% 0.121 32.639);
 }
 
+html[data-hoshidicts-theme="halloween"],
 :host([data-hoshidicts-theme="halloween"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(21% 0.006 56.043);
@@ -222,6 +231,7 @@ html,
   --hoshidicts-palette-error: oklch(65.72% 0.199 27.33);
 }
 
+html[data-hoshidicts-theme="forest"],
 :host([data-hoshidicts-theme="forest"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(20.84% 0.008 17.911);
@@ -243,6 +253,7 @@ html,
   --hoshidicts-palette-error: oklch(71.76% 0.221 22.18);
 }
 
+html[data-hoshidicts-theme="aqua"],
 :host([data-hoshidicts-theme="aqua"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(37% 0.146 265.522);
@@ -264,6 +275,7 @@ html,
   --hoshidicts-palette-error: oklch(73.95% 0.19 27.33);
 }
 
+html[data-hoshidicts-theme="black"],
 :host([data-hoshidicts-theme="black"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(0% 0 0);
@@ -285,6 +297,7 @@ html,
   --hoshidicts-palette-error: oklch(62.795% 0.257 29.233);
 }
 
+html[data-hoshidicts-theme="luxury"],
 :host([data-hoshidicts-theme="luxury"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(14.076% 0.004 285.822);
@@ -306,6 +319,7 @@ html,
   --hoshidicts-palette-error: oklch(71.753% 0.176 22.568);
 }
 
+html[data-hoshidicts-theme="dracula"],
 :host([data-hoshidicts-theme="dracula"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(28.822% 0.022 277.508);
@@ -327,6 +341,7 @@ html,
   --hoshidicts-palette-error: oklch(68.22% 0.206 24.43);
 }
 
+html[data-hoshidicts-theme="business"],
 :host([data-hoshidicts-theme="business"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(24.353% 0 0);
@@ -348,6 +363,7 @@ html,
   --hoshidicts-palette-error: oklch(51.61% 0.146 29.674);
 }
 
+html[data-hoshidicts-theme="night"],
 :host([data-hoshidicts-theme="night"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(20.768% 0.039 265.754);
@@ -369,6 +385,7 @@ html,
   --hoshidicts-palette-error: oklch(71.785% 0.17 13.118);
 }
 
+html[data-hoshidicts-theme="coffee"],
 :host([data-hoshidicts-theme="coffee"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(24% 0.023 329.708);
@@ -390,6 +407,7 @@ html,
   --hoshidicts-palette-error: oklch(77.318% 0.128 31.871);
 }
 
+html[data-hoshidicts-theme="dim"],
 :host([data-hoshidicts-theme="dim"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(30.857% 0.023 264.149);
@@ -411,6 +429,7 @@ html,
   --hoshidicts-palette-error: oklch(82.418% 0.099 33.756);
 }
 
+html[data-hoshidicts-theme="sunset"],
 :host([data-hoshidicts-theme="sunset"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(22% 0.019 237.69);
@@ -432,6 +451,7 @@ html,
   --hoshidicts-palette-error: oklch(85.511% 0.078 16.886);
 }
 
+html[data-hoshidicts-theme="abyss"],
 :host([data-hoshidicts-theme="abyss"]) {
   --hoshidicts-palette-color-scheme: dark;
   --hoshidicts-palette-base-100: oklch(20% 0.08 209);
@@ -453,6 +473,7 @@ html,
   --hoshidicts-palette-error: oklch(65% 0.1985 24.22);
 }
 
+html[data-hoshidicts-theme="light"],
 :host([data-hoshidicts-theme="light"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(100% 0 0);
@@ -474,6 +495,7 @@ html,
   --hoshidicts-palette-error: oklch(71% 0.194 13.428);
 }
 
+html[data-hoshidicts-theme="cupcake"],
 :host([data-hoshidicts-theme="cupcake"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(97.788% 0.004 56.375);
@@ -495,6 +517,7 @@ html,
   --hoshidicts-palette-error: oklch(64% 0.246 16.439);
 }
 
+html[data-hoshidicts-theme="bumblebee"],
 :host([data-hoshidicts-theme="bumblebee"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(100% 0 0);
@@ -516,6 +539,7 @@ html,
   --hoshidicts-palette-error: oklch(70% 0.191 22.216);
 }
 
+html[data-hoshidicts-theme="emerald"],
 :host([data-hoshidicts-theme="emerald"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(100% 0 0);
@@ -537,6 +561,7 @@ html,
   --hoshidicts-palette-error: oklch(71.76% 0.221 22.18);
 }
 
+html[data-hoshidicts-theme="corporate"],
 :host([data-hoshidicts-theme="corporate"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(100% 0 0);
@@ -558,6 +583,7 @@ html,
   --hoshidicts-palette-error: oklch(70% 0.191 22.216);
 }
 
+html[data-hoshidicts-theme="retro"],
 :host([data-hoshidicts-theme="retro"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(91.637% 0.034 90.515);
@@ -579,6 +605,7 @@ html,
   --hoshidicts-palette-error: oklch(70% 0.191 22.216);
 }
 
+html[data-hoshidicts-theme="cyberpunk"],
 :host([data-hoshidicts-theme="cyberpunk"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(94.51% 0.179 104.32);
@@ -600,6 +627,7 @@ html,
   --hoshidicts-palette-error: oklch(71.76% 0.221 22.18);
 }
 
+html[data-hoshidicts-theme="valentine"],
 :host([data-hoshidicts-theme="valentine"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(97% 0.014 343.198);
@@ -621,6 +649,7 @@ html,
   --hoshidicts-palette-error: oklch(63% 0.237 25.331);
 }
 
+html[data-hoshidicts-theme="garden"],
 :host([data-hoshidicts-theme="garden"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(92.951% 0.002 17.197);
@@ -642,6 +671,7 @@ html,
   --hoshidicts-palette-error: oklch(71.76% 0.221 22.18);
 }
 
+html[data-hoshidicts-theme="lofi"],
 :host([data-hoshidicts-theme="lofi"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(100% 0 0);
@@ -663,6 +693,7 @@ html,
   --hoshidicts-palette-error: oklch(78.66% 0.15 28.47);
 }
 
+html[data-hoshidicts-theme="pastel"],
 :host([data-hoshidicts-theme="pastel"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(100% 0 0);
@@ -684,6 +715,7 @@ html,
   --hoshidicts-palette-error: oklch(80% 0.114 19.571);
 }
 
+html[data-hoshidicts-theme="fantasy"],
 :host([data-hoshidicts-theme="fantasy"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(100% 0 0);
@@ -705,6 +737,7 @@ html,
   --hoshidicts-palette-error: oklch(71.76% 0.221 22.18);
 }
 
+html[data-hoshidicts-theme="wireframe"],
 :host([data-hoshidicts-theme="wireframe"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(100% 0 0);
@@ -726,6 +759,7 @@ html,
   --hoshidicts-palette-error: oklch(44% 0.177 26.899);
 }
 
+html[data-hoshidicts-theme="cmyk"],
 :host([data-hoshidicts-theme="cmyk"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(100% 0 0);
@@ -747,6 +781,7 @@ html,
   --hoshidicts-palette-error: oklch(62.013% 0.208 28.717);
 }
 
+html[data-hoshidicts-theme="autumn"],
 :host([data-hoshidicts-theme="autumn"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(95.814% 0 0);
@@ -768,6 +803,7 @@ html,
   --hoshidicts-palette-error: oklch(53.07% 0.241 24.16);
 }
 
+html[data-hoshidicts-theme="acid"],
 :host([data-hoshidicts-theme="acid"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(98% 0 0);
@@ -789,6 +825,7 @@ html,
   --hoshidicts-palette-error: oklch(64.84% 0.293 29.349);
 }
 
+html[data-hoshidicts-theme="lemonade"],
 :host([data-hoshidicts-theme="lemonade"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(98.71% 0.02 123.72);
@@ -810,6 +847,7 @@ html,
   --hoshidicts-palette-error: oklch(86.19% 0.047 25.85);
 }
 
+html[data-hoshidicts-theme="winter"],
 :host([data-hoshidicts-theme="winter"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(100% 0 0);
@@ -831,6 +869,7 @@ html,
   --hoshidicts-palette-error: oklch(73.092% 0.11 20.076);
 }
 
+html[data-hoshidicts-theme="nord"],
 :host([data-hoshidicts-theme="nord"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(95.127% 0.007 260.731);
@@ -852,6 +891,7 @@ html,
   --hoshidicts-palette-error: oklch(60.61% 0.12 15.341);
 }
 
+html[data-hoshidicts-theme="caramellatte"],
 :host([data-hoshidicts-theme="caramellatte"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(98% 0.016 73.684);
@@ -873,6 +913,7 @@ html,
   --hoshidicts-palette-error: oklch(70% 0.191 22.216);
 }
 
+html[data-hoshidicts-theme="silk"],
 :host([data-hoshidicts-theme="silk"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: oklch(97% 0.0035 67.78);
@@ -894,6 +935,7 @@ html,
   --hoshidicts-palette-error: oklch(75.1% 0.1814 22.37);
 }
 
+html[data-hoshidicts-theme="girlypop"],
 :host([data-hoshidicts-theme="girlypop"]) {
   --hoshidicts-palette-color-scheme: light;
   --hoshidicts-palette-base-100: #fff7fc;
@@ -1035,7 +1077,6 @@ html,
   --hoshidicts-frequency: var(--hoshidicts-palette-info);
   --hoshidicts-frequency-text: var(--hoshidicts-palette-info-content);
   --hoshidicts-pitch: var(--hoshidicts-palette-accent);
-  --hoshidicts-pitch-text: var(--hoshidicts-palette-accent-content);
   --hoshidicts-tag-text: var(--hoshidicts-palette-neutral-content);
   --hoshidicts-tag-expression-text: var(--hoshidicts-palette-secondary-content);
   --hoshidicts-tag-part-of-speech-text: var(--hoshidicts-palette-accent-content);
@@ -1057,12 +1098,9 @@ html,
   max-height: none;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-color: var(--hoshidicts-scrollbar) transparent;
-  scrollbar-width: thin;
+  overflow: hidden;
   box-sizing: border-box;
-  padding: 9px 11px 11px;
+  padding: 0;
   border: 1px solid var(--hoshidicts-border-strong);
   border-radius: 14px;
   background: var(--hoshidicts-popup-background);
@@ -1147,18 +1185,42 @@ html,
     0 0 0 1px color-mix(in srgb, var(--hoshidicts-palette-primary) 24%, transparent);
 }
 
-.gsm-hoshidicts-popup::-webkit-scrollbar {
+.gsm-hoshidicts-content-scroll,
+.gsm-hoshidicts-result-chrome,
+.gsm-hoshidicts-note-form {
+  box-sizing: border-box;
+  scrollbar-color: var(--hoshidicts-scrollbar) transparent;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+
+.gsm-hoshidicts-content-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 9px 11px 11px;
+}
+
+.gsm-hoshidicts-content-scroll::-webkit-scrollbar,
+.gsm-hoshidicts-result-chrome::-webkit-scrollbar,
+.gsm-hoshidicts-note-form::-webkit-scrollbar {
   width: 8px;
 }
 
-.gsm-hoshidicts-popup::-webkit-scrollbar-thumb {
+.gsm-hoshidicts-content-scroll::-webkit-scrollbar-thumb,
+.gsm-hoshidicts-result-chrome::-webkit-scrollbar-thumb,
+.gsm-hoshidicts-note-form::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: 999px;
   background: var(--hoshidicts-scrollbar);
   background-clip: padding-box;
 }
 
-.gsm-hoshidicts-popup::-webkit-scrollbar-track {
+.gsm-hoshidicts-content-scroll::-webkit-scrollbar-track,
+.gsm-hoshidicts-result-chrome::-webkit-scrollbar-track,
+.gsm-hoshidicts-note-form::-webkit-scrollbar-track {
   background: transparent;
 }
 
@@ -1167,44 +1229,33 @@ html,
 }
 
 .gsm-hoshidicts-result-chrome {
-  position: sticky;
-  top: -9px;
-  z-index: 4;
-  margin: -9px -11px 9px;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 50%;
+  overflow-x: hidden;
+  overflow-y: auto;
   border-bottom: 1px solid var(--hoshidicts-border);
   background: var(--hoshidicts-chrome-background);
-  backdrop-filter: blur(10px);
+}
+
+.gsm-hoshidicts-result-chrome > * {
+  flex-shrink: 0;
 }
 
 .gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-result-chrome {
   display: flex;
-  flex-direction: column-reverse;
-  top: auto;
-  bottom: -11px;
-  margin: auto -11px -11px;
-  /* margin-top: auto pushes the toolbar to the popup floor so short
-     definitions cannot leave it floating up the middle of the popup. */
+  flex-direction: column;
   border-top: 1px solid var(--hoshidicts-border);
   border-bottom: 0;
+}
+
+.gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-primary-header {
+  order: 1;
 }
 
 .gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-metadata-strip {
   border-top: 0;
   border-bottom: 1px solid var(--hoshidicts-border);
-}
-
-/* At the bottom the transient status is the top of the floor group so it owns
-   the auto margin that pushes the whole status surface to the popup floor. The
-   toolbar keeps its own auto margin for the hidden-status case above. */
-.gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-mining-feedback {
-  margin-top: auto;
-}
-
-/* When a visible status precedes the bottom toolbar the toolbar drops its own
-   auto margin so free space collapses ABOVE the status and keeps the surface
-   together instead of splitting it apart. */
-.gsm-hoshidicts-popup[data-toolbar-position="bottom"] .gsm-hoshidicts-mining-feedback:not([hidden]) + .gsm-hoshidicts-result-chrome {
-  margin-top: 0;
 }
 
 .gsm-hoshidicts-primary-header {
@@ -1226,6 +1277,7 @@ html,
 
 .gsm-hoshidicts-metadata-strip {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -1331,8 +1383,6 @@ html,
 
 .gsm-hoshidicts-primary-frequencies > .gsm-hoshidicts-tag-frequency +
   .gsm-hoshidicts-tag-frequency::before,
-.gsm-hoshidicts-primary-frequencies +
-  .gsm-hoshidicts-primary-grammar::before,
 .gsm-hoshidicts-primary-grammar-tag +
   .gsm-hoshidicts-primary-grammar-tag::before {
   margin: 0 7px;
@@ -1341,8 +1391,11 @@ html,
 }
 
 .gsm-hoshidicts-primary-grammar {
+  flex: 1 0 100%;
   overflow: hidden;
   color: var(--text-color-light1);
+  font-size: 12px;
+  line-height: 18px;
   text-overflow: ellipsis;
 }
 
@@ -1402,17 +1455,24 @@ html,
 }
 
 .gsm-hoshidicts-note-form {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 60%;
+  overflow-x: hidden;
+  overflow-y: auto;
   display: grid;
   gap: 7px;
-  margin: 0 0 8px;
+  margin: 8px 11px;
   padding: 8px;
   border: 1px solid var(--hoshidicts-border-strong);
   border-radius: 8px;
   background: var(--hoshidicts-surface);
 }
 
-.gsm-hoshidicts-audio-control { display: grid; justify-items: end; gap: 4px; }
-.gsm-hoshidicts-audio-status { max-width: 200px; color: var(--text-color-light1); font-size: 11px; overflow-wrap: anywhere; }
+.gsm-hoshidicts-audio-control { display: flex; align-items: flex-start; justify-content: end; gap: 6px; }
+.gsm-hoshidicts-audio-control[hidden] { display: none; }
+.gsm-hoshidicts-audio-control > button { flex-shrink: 0; }
+.gsm-hoshidicts-audio-status { max-width: 160px; padding-top: 4px; color: var(--text-color-light1); font-size: 11px; overflow-wrap: anywhere; }
 .gsm-hoshidicts-audio-status:empty { display: none; }
 .gsm-hoshidicts-anki-control { display: flex; flex-wrap: wrap; justify-content: end; gap: 4px; max-width: 240px; }
 .gsm-hoshidicts-anki-control[hidden] { display: none; }
@@ -1573,11 +1633,6 @@ html,
 .gsm-hoshidicts-entry-header:has(.gsm-hoshidicts-deinflection),
 .gsm-hoshidicts-kanji-navigation:has(.gsm-hoshidicts-deinflection) {
   align-items: flex-start;
-}
-
-/* A long explanation must scroll away rather than cover the glossary below. */
-.gsm-hoshidicts-result-chrome:has(.gsm-hoshidicts-deinflection[open]) {
-  position: static;
 }
 
 .gsm-hoshidicts-deinflection > summary {
@@ -1897,11 +1952,8 @@ html,
 }
 
 .gsm-hoshidicts-note-icon {
-  width: 12px;
-  height: 12px;
-  background:
-    linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat,
-    linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat;
+  font-size: 22px;
+  line-height: 1;
 }
 
 .gsm-hoshidicts-text-action-button {
@@ -1981,10 +2033,9 @@ html,
     var(--hoshidicts-palette-primary) 18%,
     var(--hoshidicts-palette-base-100)
   );
-  position: sticky;
-  bottom: 0;
   z-index: 5;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-height: 0;
   width: 100%;
   max-height: 70%;
   overflow-x: hidden;
@@ -2141,7 +2192,7 @@ html,
 .gsm-hoshidicts-tag {
   padding: 3px 5px;
   border-radius: 4px;
-  color: var(--hoshidicts-tag-text);
+  color: var(--text-color);
   font-size: 12px;
   line-height: 1.2;
   user-select: text;
@@ -2159,6 +2210,7 @@ html,
 
 .gsm-hoshidicts-tag-definition {
   background: var(--tag-default-background-color);
+  color: var(--hoshidicts-tag-text);
   font-size: 11px;
 }
 
@@ -2169,7 +2221,7 @@ html,
   overflow: hidden;
   border: 1px solid var(--hoshidicts-frequency);
   background: transparent;
-  color: var(--hoshidicts-frequency-text);
+  color: var(--text-color);
 }
 
 .gsm-hoshidicts-frequency-source,
@@ -2177,9 +2229,7 @@ html,
   padding: 3px 5px;
 }
 
-.gsm-hoshidicts-frequency-source,
-.gsm-hoshidicts-pitch-source,
-.gsm-hoshidicts-ipa-source {
+.gsm-hoshidicts-frequency-source {
   min-width: 0;
   max-width: min(18ch, 42vw);
   overflow: hidden;
@@ -2190,6 +2240,7 @@ html,
 
 .gsm-hoshidicts-frequency-source {
   background: var(--hoshidicts-frequency);
+  color: var(--hoshidicts-frequency-text);
 }
 
 .gsm-hoshidicts-frequency-body,
@@ -2200,7 +2251,7 @@ html,
 }
 
 .gsm-hoshidicts-frequency-body {
-  background: color-mix(in srgb, var(--hoshidicts-frequency) 74%, transparent);
+  background: color-mix(in srgb, var(--hoshidicts-frequency) 8%, var(--hoshidicts-palette-base-100));
 }
 
 .gsm-hoshidicts-frequency-values {
@@ -2216,7 +2267,6 @@ html,
   display: inline-flex;
   max-width: 100%;
   min-width: 0;
-  gap: 0.4em;
 }
 
 .gsm-hoshidicts-ipa-overflow {
@@ -2236,20 +2286,12 @@ html,
   overflow: hidden;
   border: 1px solid var(--hoshidicts-pitch);
   background: transparent;
-  color: var(--hoshidicts-pitch-text);
+  color: var(--text-color);
 }
 
-.gsm-hoshidicts-pitch-source,
 .gsm-hoshidicts-pitch-body {
   padding: 3px 5px;
-}
-
-.gsm-hoshidicts-pitch-source {
-  background: var(--hoshidicts-pitch);
-}
-
-.gsm-hoshidicts-pitch-body {
-  background: color-mix(in srgb, var(--hoshidicts-pitch) 74%, transparent);
+  background: color-mix(in srgb, var(--hoshidicts-pitch) 8%, var(--hoshidicts-palette-base-100));
 }
 
 .gsm-hoshidicts-glossary-grid {

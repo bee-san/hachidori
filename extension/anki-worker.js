@@ -84,13 +84,14 @@ export function createAnkiWorkerService({
     return reply;
   }
 
-  async function uploadCaptureAsset(kind, expectedFilename, metadata, { request, invoke }) {
+  async function uploadCaptureAsset(kind, expectedFilename, metadata, { request, invoke, configKey }) {
     if (!metadata || metadata.filename !== expectedFilename
         || !Number.isSafeInteger(metadata.byteLength) || metadata.byteLength < 1
         || metadata.byteLength > CAPTURE_LIMITS[kind]) {
       throw new Error(`The encoded captured ${kind} is invalid or exceeds its size limit.`);
     }
-    const uploadKey = `${request.captureJobId}:${kind}`;
+    // An upload confirmed by one Anki endpoint says nothing about another.
+    const uploadKey = `${request.captureJobId}:${configKey}:${kind}`;
     if (confirmedCaptureUploads.get(uploadKey) === expectedFilename) return;
     const asset = await captureRequest("hd_capture_asset", { jobId: request.captureJobId, kind });
     const byteLength = decodedBase64Length(asset.data);

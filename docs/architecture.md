@@ -168,7 +168,7 @@ of that record, not the reason alone, identifies a new installation.
   is the value that persists.
 
 New installations begin at `welcome`, which discloses local page processing,
-lookup statistics, publisher downloads, local Anki metadata discovery, optional
+lookup statistics, publisher downloads, configured Anki metadata discovery, optional
 pronunciation sharing, mining and explicitly started capture. **Start setup**
 uses the ordinary revisioned stage write to enter `dictionaries`; automatic
 downloads and the later Anki check wait for that successful write. The worker
@@ -501,8 +501,10 @@ full browser restart without reloading the engine.
 ## Page scanning and exact selections
 
 Automatic scanning crosses ordinary inline elements and stops at editing
-controls or contenteditable text. A focused page editor suppresses pointer and
-activation-key lookup without capturing typing. The live `onlyScanJapaneseText`
+controls or contenteditable text. A focused page editor keeps printable
+activation keys available for typing. Pointer lookups and modifier activation
+still work over separate page text, including example links beside an
+autofocused search field. The live `onlyScanJapaneseText`
 option defaults to true; disabling it permits other scripts in automatic scans.
 Repeated pointer events for one pending candidate share its lookup, while a
 changed anchor/query or failed request can start fresh work.
@@ -523,6 +525,10 @@ selected string without trimming or truncation and accepts only results whose
 scan length within the existing engine scan window; a prefix-only result is not
 an exact match. A miss retains selection ownership until the selection changes
 or is dismissed, so pointer movement cannot silently replace it with a prefix.
+Its notice exposes the same personal-dictionary pencil as term and kanji results,
+prefilled with the selected word even when no dictionaries are installed. Saving
+uses the managed Note append transaction and replays that exact request to show
+the new definition; publisher dictionaries remain unchanged.
 
 The visible query and raw DOM highlight span are stored separately: hidden text
 and block separators can make `Selection.toString()` differ from `Range.toString()`.
@@ -572,9 +578,15 @@ before the change event completes.
 ## Popup metadata controls
 
 Design has independent controls for frequency source names and averages, pitch
-contour and its preferred dictionary, pitch badges, and grammar tags. Existing
-defaults keep source names, contour, badges and grammar visible; averages remain
-off. IPA transcriptions and definition tags remain visible independently.
+contour and its preferred dictionary, pitch badges, and grammar tags. Frequency
+badges default to compact numbers, with source and kana-frequency detail available
+on hover and to screen readers. Grammar tags default to hidden; opting in places
+them outside the frequency badge. Explicit saved display choices are preserved.
+Contour and pitch badges remain on, and averages remain off. IPA transcriptions
+and definition tags remain visible independently. Pitch and IPA show pronunciation
+data without source-name labels; tooltips and accessibility labels retain source
+attribution and follow dictionary aliases. Unfilled tags and lightly tinted pitch
+and frequency values use the theme's normal foreground, including light themes.
 When IPA sources exceed the existing metadata display budget, a collapsed
 disclosure builds their tags on first expansion. Every ordered transcription
 remains available; this is lazy presentation, not a source or data limit.
@@ -939,10 +951,10 @@ backend rule names and descriptions remain untouched. Additional result headers
 are still created only by Show more. Tab projection creates a fresh closed
 disclosure, and queued toggle positioning uses the existing render-revision,
 panel, and request owner, including primary headers outside the result panel.
-While the primary explanation is expanded, its toolbar scrolls with the popup
-instead of sticking over the glossary; Note and Back stay beside the headword.
-Note opening positions the popup before focusing the term input, so native focus
-scrolling can keep the form visible beyond a long explanation.
+An expanded primary explanation scrolls inside the toolbar's bounded area;
+definitions have a separate scrollport and never pass behind the toolbar.
+Note and Back stay beside the headword. The Note form has its own bounded area,
+so opening it keeps the focused field reachable even with a long explanation.
 
 ## Media response boundary
 
@@ -1120,7 +1132,8 @@ Scroll restoration runs once after deferred glossary bodies and masonry, only
 for the current projection and while the reader has not deliberately scrolled.
 Later tabs do not inherit it. Ordinary retained renders do not read scroll while
 their replacement panel is empty: that layout flush can clamp a bottom Note's
-scroll before its content is rebuilt. The existing highlight, toolbar positioning,
+scroll before its content is rebuilt. The content scrollport owns the saved
+reading position. The existing highlight, toolbar positioning,
 exact clicked-kanji focus target and previous Back chain remain intact.
 Moving the toolbar to the other edge after a viewport resize preserves deliberate
 tab or Note focus, including the existing draft selection.
@@ -1162,15 +1175,27 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 ## Settings interface
 
 Settings is one document with native hash links and one visible task section.
+Global search matches settings across every section, opens a result's enclosing
+disclosures and focuses its control without changing values or discarding drafts.
+The activation-key selector remains editable in either lookup mode.
 All sections stay mounted, so navigation and browser history preserve reader
-drafts and the lazy custom editor without storage writes or engine requests.
-The rail becomes a compact section chooser in narrow windows; light and dark palettes
-follow the system preference. Inactive sections mirror pending work, errors, and
-unseen operation completions next to their links. Visiting a section clears its
-completion notice, not its source output or draft. The compact navigation mirrors
-inactive notices, and shared options feedback stays near the section heading.
+and personal-dictionary drafts. Personal source loads on first entering its section.
+The rail becomes a compact section chooser in narrow windows. Settings applies
+the saved lookup theme to its document and updates it immediately after local or
+external option changes; startup pages retain their independent system light/dark
+fallback. Inactive sections mirror pending work, errors, and unseen operation
+completions next to their links. Visiting a section clears its completion notice,
+not its source output or draft. The compact navigation mirrors inactive notices,
+and shared options feedback stays near the section heading.
 Status setters own these
 notices; there are no observers or additional polling loops.
+
+The toolbar action opens a compact popup with a global lookup switch, recording
+shortcut and Settings. The switch uses the worker's existing revisioned option
+writes. The recording shortcut opens the existing capture controls, enabling
+captured-media mining if necessary; recording still requires Start capture and
+Chrome's source picker. The toolbar is a trusted capture-control sender and only
+polls capture status while open and captured-media mining is enabled.
 
 Dictionary Details expansion is kept by stable package ID across focus-aware
 rerenders and search filtering. Direct enabled/order controls remain visible;
@@ -1220,13 +1245,18 @@ imports the player; audio never acquires the dictionary mutation lock.
 The offscreen document declares DOM_SCRAPING and AUDIO_PLAYBACK together. Chrome
 keeps it while its dictionary-engine purpose remains active, including after
 audio's 30-second idle window. URL playback fetches without credentials.
-Candidate fallback includes actual decoding/playback failures. Speech uses the
-chosen native voice and expression or reading; unavailable browser voices are a
-visible error. Only natural completion reports success; the Settings Test has
+Candidate fallback includes actual decoding/playback failures. Speech waits for
+Chrome's asynchronously loaded voice list within the existing playback deadline.
+Automatic Japanese uses an available Google Japanese voice, then a Japanese
+default or the first Japanese voice; explicit choices remain unchanged. The
+picker lists the browser's actual voices with Japanese first. Missing voices are
+a visible error. Only natural completion reports success; the Settings Test has
 the reference's 15-second deadline. Leaving Audio, editing its tested source, or
 closing Settings stops its owned Test.
 
-Each term result has a fixed Audio control. Shift-click, right-click or Down opens
+Each term result shows Audio when an enabled speech or nonempty URL source is
+configured. Loading and playback use the button's icon state; only errors appear
+beside it, with no persistent success text. Shift-click, right-click or Down opens
 the source/name chooser; Escape closes it before dismissing the popup. A choice
 pins the source descriptor, term, candidate index, name and URL. The offscreen
 owner revalidates it against current discovery, including provider reordering
@@ -1296,12 +1326,14 @@ Reading preferences, dictionaries, groups, and update policy are untouched.
 The source-audited bounds are width 280–1,200 px, height 200–900 px, and opacity
 0–100%. Viewport clamping never changes the saved dimensions.
 
-The shared popup appearance helper sets theme and size/opacity variables only
-on the extension host. All palette and theme-specific popup rules match that
-shadow host; page html is never themed. A tiny owned constructed stylesheet
-colours page ranges from the host's computed primary colour, reading it only
-on theme changes (and after the preview's async palette load). It preserves
-unrelated adopted sheets and removes only its own sheet on teardown.
+The palette catalogue can select either the Settings document or the
+extension-owned popup host. Settings loads that same catalogue and derives its
+semantic UI colours from the selected palette, while popup appearance still sets
+theme and size/opacity variables only on the shadow host; content-page html is
+never themed. A tiny owned constructed stylesheet colours page ranges from the
+host's computed primary colour, reading it only on theme changes (and after the
+preview's async palette load). It preserves unrelated adopted sheets and removes
+only its own sheet on teardown.
 Colour/opacity changes do not project results or schedule masonry. Size changes
 apply inline geometry before scheduling masonry so cards measure the new width
 on their first layout. Existing Note, tabs, and disclosure state remain mounted.
@@ -1349,7 +1381,7 @@ The CSS Highlight API is preferred. If unavailable, text-node Range fragments
 supply exact paint rectangles inside the existing extension shadow host, never
 classes on page elements or wrappers around page text. Paint is clipped to the
 viewport and ancestor scrollports, excludes hidden/transparent text, and avoids
-covering later popup panes or the source pane's sticky toolbar. One shared
+covering later popup panes or the source pane's toolbar. One shared
 fallback animation frame reads geometry before writing paint; scroll, resize,
 source layout changes, and existing popup placement callbacks refresh it.
 The fallback also subtracts page fixed/sticky headers, dialogs and popovers in
@@ -1416,6 +1448,14 @@ existing options CAS. Settings and the production preview apply it immediately;
 committed changes also update every live reader level without reprojecting
 results, scheduling masonry, or contacting the engine.
 
+The popup is a fixed flex frame with a clipped, independently scrolling content
+area beside the toolbar. Toolbar and Note controls occupy their own rows instead
+of overlapping definitions. At reduced Background opacity, the page backdrop
+remains visible through those rows without dictionary text bleeding underneath;
+text opacity and the user's background setting are unchanged. Oversized toolbar
+content and the Note form scroll within their own bounds. Nested popup anchors
+and Back restoration follow the content scrollport.
+
 The shared `resolveToolbarPosition` follows the pinned GSM PR #549 rule:
 Automatic places a horizontal root toolbar at the bottom of an above-word popup,
 or the top of a below-word popup. Vertical roots and side-by-side child panes
@@ -1439,6 +1479,13 @@ controller preflights rendered candidates sequentially, retires detached actions
 after live tab/group projection, and creates no Anki controls or requests while
 unconfigured. Mining uses the selected projected result, current frequency
 units and audio choice, and the raw source span for sentence/cloze boundaries.
+
+Anki settings expose the AnkiConnect URL, defaulting to `http://127.0.0.1:8765`.
+The worker validates the configured HTTP(S) endpoint and uses it consistently
+for discovery, setup, duplicate checks, media, mining and maturity queries.
+Endpoint changes invalidate connection and maturity identities. Selecting a
+recognised note-type family applies its preset after that model's fields load;
+stale replies and subsequent manual mapping edits cannot apply the old preset.
 
 Fixed background handlers own a separate Anki mutation queue. Submission freshly
 validates configuration, fields, dictionary generation and duplicate identity;
@@ -1695,7 +1742,9 @@ term-bank chunks. The normal Hoshidicts importer consumes that production ZIP;
 there is no separate test-only or in-memory dictionary backend.
 
 The source document is stored separately with a monotonic document revision and
-an ordered-entry semantic hash. Settings loads it only when the editor opens. A
+an ordered-entry semantic hash. Settings loads it on first entering Personal
+dictionary; its editor stays visible, and three example lines are placeholders
+only, never saved entries. A
 typing burst defers full-source validation until 150 ms of inactivity; dirty
 state updates immediately, and Save cancels the preview and validates the exact
 submitted source. Unchanged diagnostics retain their DOM nodes. A stale editor
@@ -1713,9 +1762,9 @@ and first position. Presentation-only conflicts are retried against current
 state without merging a stale source revision. A lost reply is accepted only
 after an exact source/state-pair readback.
 
-The term and kanji popup views share one fixed Note form, constructed only when
-opened so ordinary lookups do not build hidden editor controls. Its prefill comes from
-the currently projected primary result, and a successful append refreshes only
+The term, kanji and selected-word miss views share one fixed Note form, opened
+with the pencil and constructed only when opened. Its prefill comes from the
+currently projected primary result or the selected text, and a successful append refreshes only
 the exact still-current request descriptor and page anchor. Dictionary storage
 events adopt only newer revisions; editing defers popup invalidation until close
 or until that exact refresh consumes it. Saving is the transactional boundary,

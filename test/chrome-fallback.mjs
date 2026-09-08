@@ -238,8 +238,7 @@ async function showSection(page, id) {
 
 async function saveCustomDictionary(page) {
   await showSection(page, "custom-dictionary");
-  await page.waitForSelector("#custom-dictionary-open", { visible: true });
-  await page.click("#custom-dictionary-open");
+  await page.waitForSelector("#custom-dictionary-source", { visible: true });
   await page.waitForFunction(() => {
     const form = document.getElementById("custom-dictionary-form");
     const status = document.getElementById("custom-dictionary-status")?.textContent ?? "";

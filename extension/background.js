@@ -177,7 +177,8 @@ function trustedCaptureControl(sender) {
     const url = new URL(sender.url);
     if (url.search) return false;
     url.hash = "";
-    return [chrome.runtime.getURL("settings.html"), chrome.runtime.getURL(CAPTURE_DOCUMENT)].includes(url.href);
+    return ["settings.html", "toolbar.html", CAPTURE_DOCUMENT]
+      .some(document => url.href === chrome.runtime.getURL(document));
   } catch {
     return false;
   }
@@ -672,7 +673,9 @@ const WORKER_HANDLERS = {
       throw new TypeError("Anki discovery requires a note type and API key string");
     }
     ankiGateway ??= createAnkiGateway();
-    return ankiGateway.discover({ model: message.model, apiKey: message.apiKey });
+    const stored = await chrome.storage.local.get(OPTIONS_KEY);
+    const url = message.url === undefined ? normaliseOptions(stored[OPTIONS_KEY]).anki.url : message.url;
+    return ankiGateway.discover({ model: message.model, apiKey: message.apiKey, url });
   },
   async hd_open_external(message, sender) {
     if (sender.id !== chrome.runtime.id) throw new Error("external link request came from another extension");
@@ -937,7 +940,7 @@ function ankiSetupFailure(error) {
 // verifies it, never replaced. Nothing here holds the storage queue.
 async function checkFirstRunAnki(anki) {
   ankiGateway ??= createAnkiGateway();
-  const invoke = (action, params) => ankiGateway.invoke(action, params, anki.apiKey);
+  const invoke = (action, params) => ankiGateway.invoke(action, params, anki.apiKey, undefined, anki.url);
   try {
     const proposal = anki.model === "" ? await detectAnkiSetup(invoke, anki) : await verifyAnkiSetup(invoke, anki);
     return { proposal, outcome: { status: proposal.status, detail: proposal.detail, model: proposal.model, deck: proposal.deck } };

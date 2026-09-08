@@ -104,7 +104,7 @@ export function createAnkiMiningService({
 }) {
   let cached = null;
   let mutations = Promise.resolve();
-  const invokeFor = config => (action, params, timeoutMs) => gateway.invoke(action, params, config.apiKey, timeoutMs);
+  const invokeFor = config => (action, params, timeoutMs) => gateway.invoke(action, params, config.apiKey, timeoutMs, config.url);
 
   async function configuration(fresh = false) {
     const config = await readConfig();
