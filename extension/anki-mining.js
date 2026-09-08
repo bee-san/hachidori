@@ -35,6 +35,13 @@ async function decision(prepared) {
   return { state: "duplicate", canAdd: config.duplicateBehavior === "new", error: null };
 }
 
+function omitUnchangedFields(fields, existing) {
+  if (existing) for (const [field, value] of Object.entries(fields)) {
+    if (value === existing[field]) delete fields[field];
+  }
+  return fields;
+}
+
 function fieldsForDecision(prepared, checked) {
   const target = checked.target;
   if (!target) {
@@ -45,10 +52,9 @@ function fieldsForDecision(prepared, checked) {
     };
   }
   const canonical = canonicalAnkiFields(prepared.note.fields, prepared.resolved.templates, target.fields);
-  const desired = overwriteAnkiFields(canonical.fields, target.fields, canonical.templates);
   // Only the initial write omits unchanged values. Pronunciation enrichment
   // compares its complete desired value with the text-only write it replaces.
-  const fields = Object.fromEntries(Object.entries(desired).filter(([field, value]) => value !== target.fields[field]));
+  const fields = omitUnchangedFields(overwriteAnkiFields(canonical.fields, target.fields, canonical.templates), target.fields);
   return {
     fields,
     target,
@@ -177,9 +183,7 @@ export function createAnkiMiningService({
     });
     // Failed media can restore a field's original value after preparation.
     // Leave it untouched instead of overwriting an intervening Anki edit.
-    if (target) for (const [field, value] of Object.entries(fields)) {
-      if (value === target.fields[field]) delete fields[field];
-    }
+    omitUnchangedFields(fields, target?.fields);
     // A definitive no-write releases whatever only this note would have used.
     // An uncertain write keeps it: the note may exist in Anki after all.
     const releaseRejected = () => afterRejected({ request, ...prepared, writeResources })
