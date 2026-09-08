@@ -94,10 +94,8 @@ export async function openBackupArchive(blob) {
     const snapshot = manifest.version === 1 ? { ...manifest.snapshot, lookupStats: emptyLookupStats() } : manifest.snapshot;
     // Older backups include the retired external corpus integration. Drop only
     // those fields before the complete snapshot contract validates the restore.
-    if (snapshot?.options && typeof snapshot.options === "object") {
-      delete snapshot.options.corpusSeenEnabled;
-      delete snapshot.options.corpusSeenUrl;
-    }
+    delete snapshot?.options?.corpusSeenEnabled;
+    delete snapshot?.options?.corpusSeenUrl;
     const lookupStatsRows = manifest.version === 1 ? [] : manifest.lookupStatsRows;
     assertLookupStatsRows(snapshot?.lookupStats, lookupStatsRows);
     assertFileList(manifest.files);

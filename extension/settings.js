@@ -2336,7 +2336,7 @@ function attachHandlers() {
   element("install-recommended").addEventListener("click", installMissingRecommendedDictionaries);
   element("empty-install-recommended").addEventListener("click", () => {
     window.location.hash = "add-dictionaries";
-    void installMissingRecommendedDictionaries();
+    installMissingRecommendedDictionaries();
   });
   element("empty-import-dictionaries").addEventListener("click", () => {
     window.location.hash = "add-dictionaries";
