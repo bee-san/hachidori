@@ -39,7 +39,7 @@ git clone https://github.com/bee-san/hachidori.git
 4. Hachidori opens a short welcome on its first install. Choose **Start setup** to install the four recommended dictionaries automatically, or **Set up manually** to use your own. Open **Settings** from it any time to import your own Yomitan `.zip`, then hover Japanese text on any page.
 
 <p align="center">
-  <img src="docs/assets/startup-installing.png" alt="Hachidori's first-run setup tab installing the four recommended dictionaries with a download progress bar" width="720">
+  <img src="docs/assets/install-in-60-seconds.gif" alt="Animated walkthrough of Hachidori's first-run setup, dictionary installation, Anki detection, and Japanese lookup" width="720">
 </p>
 
 # Blazing Fast
