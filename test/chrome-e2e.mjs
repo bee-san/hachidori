@@ -213,6 +213,7 @@ const PLANNED = [
   "Retry installs only the missing dictionary and the committed entries settle their selections once",
   "the all-installed result stays five seconds before setup checks for Anki",
   "startup practice uses the installed dictionaries through keyboard selection and the ordinary reader",
+  "startup screenshot capture resolves its own live extension document",
   "the startup reader exception keeps Settings and the static preview excluded",
   "saved-page setup rechecks Chrome file access and a local HTML file uses the real reader",
   "startup practice without a usable dictionary retains recovery and completion controls",
@@ -3981,6 +3982,16 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   if (process.env.HACHIDORI_STARTUP_LOOKUP_SCREENSHOT) {
     await startup.screenshot({ path: process.env.HACHIDORI_STARTUP_LOOKUP_SCREENSHOT });
   }
+  const screenshot = await startup.evaluate(async () => {
+    const reply = await chrome.runtime.sendMessage({ target: "hachidori-anki", type: "hd_anki_screenshot",
+      requestId: "startup-screenshot", request: {} });
+    if (reply.ok) await chrome.runtime.sendMessage({ target: "hachidori-anki", type: "hd_anki_screenshot_discard",
+      requestId: "startup-screenshot-discard", token: reply.token });
+    return reply;
+  });
+  check("startup screenshot capture resolves its own live extension document",
+    screenshot.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(screenshot.filename ?? ""),
+    JSON.stringify(screenshot));
   const originalOpacity = await startup.evaluate(async () => {
     window.__practiceScene = document.getElementById("setup-practice-scene");
     window.__practiceRender = { events: 0, detached: false };

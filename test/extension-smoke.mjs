@@ -1393,6 +1393,14 @@ async function ankiScreenshotStage() {
   let documentId = "reading-document";
   let reloadDuringCapture = false;
   const documentChecks = [];
+  const contextChecks = [];
+  const getContexts = chrome.runtime.getContexts;
+  chrome.runtime.getContexts = async filter => {
+    if (!filter.documentIds) return getContexts(filter);
+    contextChecks.push(filter);
+    return filter.documentIds.includes(documentId)
+      ? [{ documentId, tabId: tab.id, documentUrl: tab.url, contextType: "TAB" }] : [];
+  };
   chrome.tabs = {
     async get(id) {
       if (id !== tab.id) throw new Error("No tab with id");
@@ -1468,6 +1476,15 @@ async function ankiScreenshotStage() {
   tab = { ...tab, active: true, url: "https://reader.test/elsewhere" };
   const navigated = await ask(reader);
   const fromExtensionPage = await ask({ id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") });
+  tab = { ...tab, url: chrome.runtime.getURL("startup.html#setup-heading") };
+  const startup = { id: chrome.runtime.id, url: tab.url, documentId };
+  const startupTaken = await ask(startup);
+  reloadDuringCapture = true;
+  const startupReloaded = await ask(startup);
+  reloadDuringCapture = false;
+  const capturesBeforeStartupReload = captures.length;
+  const startupGone = await ask(startup);
+  const capturesAfterStartupReload = captures.length;
   await storage.api().local.set({ options: { revision: 2,
     anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", captureScreenshot: false } } });
   tab = { ...tab, url: "https://reader.test/page" };
@@ -1492,9 +1509,13 @@ async function ankiScreenshotStage() {
       && background?.ok === false && background.error.includes("no longer the active tab")
       && navigated?.ok === false && navigated.error.includes("moved to another page")
       && fromExtensionPage?.ok === false && fromExtensionPage.error.includes("reading tab")
+      && startupTaken?.ok === true && contextChecks.length > 0
+      && startupReloaded?.ok === false && startupReloaded.error.includes("document")
+      && startupGone?.ok === false && startupGone.error.includes("document")
+      && capturesBeforeStartupReload === capturesAfterStartupReload
       && switchedOff?.ok === false && switchedOff.error.includes("turned off in Settings"),
     JSON.stringify({ taken, retried, switchedAway, givenUp, movedWindow, reloadedDuring, alreadyReloaded,
-      background, navigated, fromExtensionPage, switchedOff, uploads, captures, documentChecks }));
+      background, navigated, fromExtensionPage, startupTaken, startupReloaded, startupGone, switchedOff, uploads, captures, documentChecks, contextChecks }));
 }
 
 async function ankiBackgroundStage() {
