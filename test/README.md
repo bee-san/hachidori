@@ -959,9 +959,10 @@ focused and reachable, and a still-focused tab survives same-view refresh.
 `HACHIDORI_OPTIONS_SCREENSHOT` also includes the saved child-depth setting.
 
 `dictionaryTabsFixture()` extends that linked source with three unequal glossary
-cards, without changing the generated fixture files. Four Chrome checks project
-every contributing dictionary, aggregate favourites and ordered groups from the
-complete native result; warmed tab changes must issue no lookup, media or style
+cards, without changing the generated fixture files. Four Chrome projections
+cover All, ordered nonempty groups and an ungrouped favourite from the complete
+native result; ordinary contributors and grouped favourites receive no duplicate
+dictionary tabs. Warmed tab changes must issue no lookup, media or style
 requests. Linked-child, clicked-kanji and Back retain their semantic selection.
 Back also restores an expanded, scrolled child with a collapsed dictionary card,
 its prior tab, highlight and toolbar, without another native lookup; its next

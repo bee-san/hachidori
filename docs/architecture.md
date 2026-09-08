@@ -800,12 +800,14 @@ Local projection disconnects the superseded panel's
 observations before registering its replacements; Show more retains current
 observations while adding the newly displayed entries.
 
-Term views offer All, each contributing dictionary in native result order, one
-aggregate Favourites tab, then nonempty saved groups in their stored order.
-Favourites still contribute when they also belong to a group. Tabs project the
-already-returned results without changing their order or sending a lookup;
-aliases label tabs while canonical dictionary titles and stable group IDs own
-their selections. Colliding labels are qualified without changing membership.
+Term views offer All, nonempty saved groups in their stored order, then
+favourite dictionaries that do not already belong to a group. Other
+contributing dictionaries remain available through All without receiving their
+own tab, and grouped favourites do not receive duplicate dictionary tabs. Tabs
+project the already-returned results without changing their order or sending a
+lookup; aliases label tabs while canonical dictionary titles and stable group
+IDs own their selections. Colliding labels are qualified without changing
+membership.
 Linked and clicked-kanji requests copy that selection from their source view.
 The destination retains it only when it contributes results, otherwise adopting
 All; a child's fallback or later selection never rewrites its parent or Back
@@ -814,7 +816,9 @@ Content resolves saved group member IDs through the enabled package inventory
 using the shared D7 normalizer, including while a lookup reply is pending.
 
 Newer group, alias and favourite changes update the displayed view without
-invalidating its lookup token, media or styles. Keyed tab buttons keep their DOM
+invalidating its lookup token, media or styles. A view that started without a
+tab row does not create one when its first favourite or nonempty group is saved;
+that row appears on the next lookup. Existing keyed tab buttons keep their DOM
 identity and deliberate focus across renames and reordering. When the selected
 membership is unchanged, only labels change: glossary cards, expanded Details,
 metadata values, source highlights and Note controls remain mounted. Frequency
