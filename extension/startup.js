@@ -571,6 +571,10 @@ function automaticAnkiView(anki = null) {
   };
 }
 
+function ankiOutcomeRecorded() {
+  return setupState !== null && setupState.anki !== null;
+}
+
 function requestAnkiSetup() {
   if (ankiRequest !== null) return ankiRequest;
   const showPending = ankiFailed;
@@ -584,8 +588,9 @@ function requestAnkiSetup() {
     if (setupState?.anki === null) throw new Error("no Anki outcome was recorded");
     if (setupState.anki.status !== "configured") ankiProgressRequested = false;
   }).catch((error) => {
+    // The worker may have committed the outcome before its reply was lost.
+    if (ankiOutcomeRecorded()) return;
     ankiFailed = true;
-    ankiProgressRequested = false;
     stopAnkiProgress();
     setStatus(`Could not check Anki: ${describe(error)}`, "error");
   }).finally(() => {
@@ -937,6 +942,15 @@ function renderBody(children) {
   }
 }
 
+function recoverRecordedAnkiOutcome(view) {
+  if (!ankiFailed || !ankiOutcomeRecorded()) return;
+  ankiFailed = false;
+  const status = element("setup-status");
+  if (status.classList.contains("is-error") && status.textContent.startsWith("Could not check Anki:")) {
+    setStatus(view.heading);
+  }
+}
+
 function render() {
   const stage = setupError === null ? setupState?.stage ?? null : null;
   // A stage of its own starts without the previous stage's failed-advance state.
@@ -947,6 +961,7 @@ function render() {
   const card = element("setup-card");
   const focusKey = card.contains(document.activeElement) ? document.activeElement.dataset.focusKey ?? "" : "";
   const view = currentView();
+  recoverRecordedAnkiOutcome(view);
   renderSteps(stage);
   const heading = element("setup-heading");
   if (heading.textContent !== view.heading) heading.textContent = view.heading;
