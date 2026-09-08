@@ -1342,7 +1342,7 @@ async function firstRunAnkiStage() {
       && found.requests.find((request) => request.action === "findNotes").params.query === "mid:2"
       && found.requests.find((request) => request.action === "findCards").params.query === "mid:2 -deck:filtered"
       && savedOptions.revision === 3 && savedOptions.anki.model === "Kiku v2" && savedOptions.anki.deck === "Mining" && savedOptions.anki.apiKey === "local-key"
-      && savedOptions.anki.fieldTemplates.Expression.value === "{expression}" && savedOptions.anki.fieldTemplates.Picture.value === ""
+      && savedOptions.anki.fieldTemplates.Expression.value === "{expression}" && savedOptions.anki.fieldTemplates.Picture.value === "{screenshot}"
       && Object.keys(savedOptions.anki.fieldTemplates).length === KIKU_FIELDS.length
       && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([["options", "setupState"]])
       && first.state.revision === 5,
@@ -1377,6 +1377,72 @@ async function firstRunAnkiStage() {
       && failing.storage.raw.get("options").anki.model === "Kiku v2"
       && failing.storage.raw.get("options").revision === 2,
     JSON.stringify({ userChoice, raced, options: racing.storage.raw.get("options"), lateChoice, rescued, failingOptions: failing.storage.raw.get("options") }));
+}
+
+// A mining screenshot is captured from the page that asked, and only while that
+// page is still what the window shows.
+async function ankiScreenshotStage() {
+  const bus = makeBus();
+  const storage = makeStorage();
+  const chrome = makeChrome("anki-screenshot", bus, storage);
+  const uploads = [];
+  const captures = [];
+  let tab = { id: 7, active: true, url: "https://reader.test/page", windowId: 3 };
+  let captureFailures = 0;
+  chrome.tabs = {
+    async get(id) {
+      if (id !== tab.id) throw new Error("No tab with id");
+      return { ...tab };
+    },
+    async captureVisibleTab(windowId, options) {
+      captures.push({ windowId, options });
+      if (captureFailures > 0) {
+        captureFailures -= 1;
+        throw new Error("MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND quota exceeded");
+      }
+      return "data:image/jpeg;base64,c2hvdA==";
+    },
+  };
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController, crypto, Error, Promise,
+    fetch(url, options) {
+      const body = JSON.parse(options.body);
+      uploads.push({ url, action: body.action, params: body.params, key: body.key ?? null });
+      return Promise.resolve({ ok: true, async json() { return { result: body.params.filename, error: null }; } });
+    },
+  });
+  await storage.api().local.set({ options: { revision: 1, anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" } } });
+  const ask = (sender) => bus.sendMessage("reader", { target: "hachidori-anki", type: "hd_anki_screenshot",
+    requestId: "anki-screenshot", request: {} }, sender);
+  const reader = { id: chrome.runtime.id, url: tab.url, frameId: 0, tab: { id: tab.id } };
+
+  const taken = await ask(reader);
+  // Chrome rate-limits captures, so one wait is worth a screenshot.
+  captureFailures = 1;
+  const retried = await ask(reader);
+  captureFailures = 3;
+  const givenUp = await ask(reader);
+  captureFailures = 0;
+  tab = { ...tab, active: false };
+  const background = await ask(reader);
+  tab = { ...tab, active: true, url: "https://reader.test/elsewhere" };
+  const navigated = await ask(reader);
+  const fromExtensionPage = await ask({ id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") });
+  await storage.api().local.set({ options: { revision: 2,
+    anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", captureScreenshot: false } } });
+  tab = { ...tab, url: "https://reader.test/page" };
+  const switchedOff = await ask(reader);
+  check("a mining screenshot captures the asking page once it is still the window's own, and never any other page",
+    taken?.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(taken.filename)
+      && uploads.length === 2 && uploads.every(({ url, action, params }) => url === "http://127.0.0.1:8765"
+        && action === "storeMediaFile" && params.data === "c2hvdA==" && params.deleteExisting === false)
+      && retried?.ok === true && captures.filter(({ windowId }) => windowId === 3).length === captures.length
+      && captures.every(({ options }) => options.format === "jpeg")
+      && givenUp?.ok === false && givenUp.error.includes("quota")
+      && background?.ok === false && background.error.includes("no longer the active tab")
+      && navigated?.ok === false && navigated.error.includes("moved to another page")
+      && fromExtensionPage?.ok === false && fromExtensionPage.error.includes("reading tab")
+      && switchedOff?.ok === false && switchedOff.error.includes("turned off in Settings"),
+    JSON.stringify({ taken, retried, givenUp, background, navigated, fromExtensionPage, switchedOff, uploads, captures }));
 }
 
 async function ankiBackgroundStage() {
@@ -2673,6 +2739,7 @@ async function main() {
   await lookupStatsStage();
   await audioRelayStage();
   await ankiBackgroundStage();
+  await ankiScreenshotStage();
 
   section("custom dictionary storage ownership");
   const customBackground = await customBackgroundStage();

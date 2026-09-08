@@ -244,6 +244,8 @@ const PLANNED = [
   "Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
   "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
   "Anki reader controls stay absent until configured and preserve raw ruby context through one confirmed Add and View",
+  "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
+  "a screenshot upload that Anki refuses is a warning on a note that is still added",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
   "Popup pronunciation choices preserve source identity and warm replay reuses native cached media",
   "Popup autoplay is optional and does not replay after presentation updates or Back",
@@ -1207,9 +1209,24 @@ async function popupReader(page, depth = 0) {
     });
     return reply.result.value;
   }
+  // Where the popup actually is on the page, for assertions about what a
+  // screenshot of that page may contain.
+  async function rect() {
+    const object = await resolvePopupObject();
+    if (object === null) return null;
+    const reply = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true,
+      functionDeclaration: function () {
+        const box = this.getBoundingClientRect();
+        return { x: box.x, y: box.y, width: box.width, height: box.height };
+      }.toString(),
+    });
+    return reply.result.value;
+  }
+
   return {
     anki, audio, click, compactSummaries, definitionBlur, dictionaryTabs, deinflection, externalLink, imagePreview,
-    lookupStatistics, nested, sourcePaint, retainedControls, selectGlossaryText, state, visible,
+    lookupStatistics, nested, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
     waitForVisible, waitForHidden, writeNote,
   };
 }
@@ -3563,6 +3580,8 @@ async function checkAudioSettings(page, browser) {
 async function checkAnkiSubmission(settings, browser, tab, popup) {
   const original = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options);
   const notes = new Map(), calls = [], files = new Map();
+  // Flags the checks below flip to make the mock refuse specific work.
+  const control = { failScreenshotUpload: false };
   const apiRoute = { requests: 0, async respond(request) {
     const { action, params } = JSON.parse(request.postData);
     calls.push({ action, params });
@@ -3578,7 +3597,13 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     else if (action === "notesInfo") result = params.notes.map(noteId => ({ noteId,
       fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value]) => [field, { value }])) }));
     else if (action === "updateNoteFields") { notes.set(params.note.id, { ...notes.get(params.note.id), ...params.note.fields }); result = null; }
-    else if (action === "storeMediaFile") { files.set(params.filename, params.data); result = params.filename; }
+    else if (action === "storeMediaFile") {
+      if (control.failScreenshotUpload && params.filename.startsWith("hachidori-screenshot-")) {
+        return { body: JSON.stringify({ result: null, error: "media folder is read-only" }), status: 200, contentType: "application/json" };
+      }
+      files.set(params.filename, params.data);
+      result = params.filename;
+    }
     else if (action === "guiBrowse") result = [...notes.keys()];
     else throw new Error(`Unexpected Anki action ${action}`);
     return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
@@ -3654,7 +3679,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
         && files.get(filename) === wav.toString("base64") && routes.get(chosen.url).requests === 1
         && routes.get(other.url).requests === 0 && playCount === 0,
       JSON.stringify({ noUpload, withAudio, checked, filename, playCount, requests: [...routes].map(([url, route]) => [url, route.requests]) }));
-    await checkAnkiReader(tab, popup, configure, calls, notes);
+    await checkAnkiReader(tab, popup, configure, calls, notes, files, control);
   } finally {
     await settings.evaluate(async original => {
       const { options } = await chrome.storage.local.get("options");
@@ -3669,7 +3694,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
   }
 }
 
-async function checkAnkiReader(tab, popup, configure, calls, notes) {
+async function checkAnkiReader(tab, popup, configure, calls, notes, files, control) {
   const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
   async function settled(predicate) {
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -3708,9 +3733,112 @@ async function checkAnkiReader(tab, popup, configure, calls, notes) {
       const { x, y, width, height } = (await popup.anki()).rect;
       await tab.screenshot({ path: process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT, clip: { x, y, width, height } });
     }
+    await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
   } finally {
     await tab.keyboard.press("Escape");
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+  }
+}
+
+// A real viewport screenshot for a real Add: the picture Anki receives is of the
+// reading page with Hachidori's own overlays hidden, and a failed upload leaves
+// the note itself successful.
+async function checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled }) {
+  const template = value => ({ value, overwriteMode: "overwrite" });
+  // The first field carries a marker of its own so these notes are new rather
+  // than duplicates of the ones the checks above already added.
+  await configure(false, { fieldTemplates: { Front: template("{expression} screenshot"), Back: template("{screenshot}"), Audio: template("") } });
+  // A fresh lookup, because the previous Add left its own control terminal.
+  await tab.keyboard.press("Escape");
+  await hoverForPopup(tab, popup, "#kanjiword");
+  // Every change to the host's inline style, so the hide and the restore around
+  // the capture are observed rather than inferred.
+  await tab.evaluate(() => {
+    window.__hostVisibility = [];
+    const host = document.querySelector("hachidori-host");
+    window.__hostObserver?.disconnect();
+    window.__hostObserver = new MutationObserver(() => window.__hostVisibility.push(getComputedStyle(host).visibility));
+    window.__hostObserver.observe(host, { attributes: true, attributeFilter: ["style"] });
+  });
+  const uploadsBefore = calls.filter(call => call.action === "storeMediaFile").length;
+  const ready = await settled(state => state?.controls.some(item => !item.hidden && !item.disabled));
+  const popupRect = await popup.rect();
+  const addRect = ready.controls[0].rect;
+  const startedMining = Date.now();
+  await tab.mouse.click(addRect.x + addRect.width / 2, addRect.y + addRect.height / 2, { clickCount: 2 });
+  const saved = await settled(state => state?.controls.some(item => item.state === "success"));
+  console.log(`     screenshot mining answered in ${Date.now() - startedMining} ms`);
+  const visibility = await tab.evaluate(() => window.__hostVisibility ?? []);
+  const upload = calls.filter(call => call.action === "storeMediaFile").at(-1);
+  const note = [...notes.values()].at(-1);
+  const filename = /<img src="([^"]+)">/u.exec(note.Back ?? "")?.[1] ?? null;
+  // The picture itself: decoded in the page, so its size and the pixels where
+  // the popup stood are read from what Anki actually received.
+  const picture = filename === null || !files.has(filename) ? null : await tab.evaluate(async ({ data, rect }) => {
+    const response = await fetch(`data:image/jpeg;base64,${data}`);
+    const bitmap = await createImageBitmap(await response.blob());
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d");
+    context.drawImage(bitmap, 0, 0);
+    const scale = bitmap.width / window.innerWidth;
+    const luminance = (x, y) => {
+      const pixel = context.getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data;
+      return (pixel[0] + pixel[1] + pixel[2]) / 3;
+    };
+    // Where the popup stood must look like the page it covered, and the picture
+    // as a whole must still contain the page's own dark text.
+    let popupSum = 0, popupSamples = 0, darkest = 255;
+    for (let y = rect.y + 4; y < rect.y + rect.height - 4; y += 8) {
+      for (let x = rect.x + 4; x < rect.x + rect.width - 4; x += 8) {
+        popupSum += luminance(x, y);
+        popupSamples += 1;
+      }
+    }
+    for (let y = 2; y < window.innerHeight - 2; y += 6) {
+      for (let x = 2; x < window.innerWidth - 2; x += 6) darkest = Math.min(darkest, luminance(x, y));
+    }
+    return {
+      width: bitmap.width, height: bitmap.height,
+      viewport: [Math.round(window.innerWidth * devicePixelRatio), Math.round(window.innerHeight * devicePixelRatio)],
+      popupMean: Math.round(popupSum / Math.max(1, popupSamples)), popupSamples, darkest,
+    };
+  }, { data: files.get(filename), rect: popupRect });
+  check(
+    "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
+    saved.controls[0].disabled === true
+      && calls.filter(call => call.action === "storeMediaFile").length === uploadsBefore + 1
+      && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(upload?.params.filename ?? "")
+      && filename === upload.params.filename && files.get(filename) === upload.params.data
+      // Hidden for the capture, restored afterwards.
+      && JSON.stringify(visibility) === JSON.stringify(["hidden", "visible"])
+      // The whole viewport, the page's own light background everywhere the popup
+      // stood, and the page's dark text still in the picture.
+      && picture !== null && JSON.stringify([picture.width, picture.height]) === JSON.stringify(picture.viewport)
+      && picture.popupSamples > 100 && picture.popupMean > 240 && picture.darkest < 120,
+    JSON.stringify({ saved: saved.controls[0], upload: upload && { filename: upload.params.filename, bytes: upload.params.data?.length },
+      filename, visibility, picture, popupRect }),
+  );
+  control.failScreenshotUpload = true;
+  try {
+      await configure(false, { fieldTemplates: { Front: template("{expression} screenshot refused"), Back: template("{screenshot}"), Audio: template("") } });
+    await tab.keyboard.press("Escape");
+    await hoverForPopup(tab, popup, "#kanjiword");
+    const retry = await settled(state => state?.controls.some(item => !item.hidden && !item.disabled));
+    const retryRect = retry.controls[0].rect;
+    const addsBefore = calls.filter(call => call.action === "addNote").length;
+    await tab.mouse.click(retryRect.x + retryRect.width / 2, retryRect.y + retryRect.height / 2, { clickCount: 2 });
+    const failed = await settled(state => state?.controls.some(item => item.state === "success"));
+    const failedNote = [...notes.values()].at(-1);
+    check(
+      "a screenshot upload that Anki refuses is a warning on a note that is still added",
+      failed.controls[0].state === "success"
+        && calls.filter(call => call.action === "addNote").length === addsBefore + 1
+        && failedNote.Back === ""
+        && /Screenshot: /u.test(failed.controls[0].output ?? ""),
+      JSON.stringify({ failed: failed.controls[0], note: failedNote }),
+    );
+  } finally {
+    control.failScreenshotUpload = false;
   }
 }
 
@@ -3841,7 +3969,8 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && anki.model === "Kiku v2" && anki.deck === "Mining"
         && detected.options.revision === saved.options.revision + 1
         && Object.keys(templates).length === KIKU_FIELDS.length
-        && templates.Expression?.value === "{expression}" && templates.Picture?.value === ""
+        && templates.Expression?.value === "{expression}" && templates.Picture?.value === "{screenshot}"
+        && anki.captureScreenshot === true
         // Only the fixed read-only actions ran, in ranking order, at protocol version 6.
         && JSON.stringify(calls.map(({ action }) => action)) === JSON.stringify(
           ["modelNamesAndIds", "modelFieldNames", "findNotes", "findCards", "getDecks", "cardsToNotes", "cardsToNotes"])
@@ -3995,6 +4124,10 @@ async function checkAnkiSettings(page, browser) {
         && templateReload.config.fieldTemplates.Expression.overwriteMode === "coalesce-new"
         && templateReload.editor === "<b>{expression}</b>" && templateReload.status.generation === original.status.generation,
       JSON.stringify({ beforeTemplateRefresh, afterTemplateRefresh, templateReload }));
+    if (process.env.HACHIDORI_ANKI_SETTINGS_SCREENSHOT) {
+      const section = await page.$("#anki");
+      await section.screenshot({ path: process.env.HACHIDORI_ANKI_SETTINGS_SCREENSHOT });
+    }
     await checkAnkiGlossaryExport(page);
     if (process.env.HACHIDORI_ANKI_SCREENSHOT) await page.screenshot({ path: process.env.HACHIDORI_ANKI_SCREENSHOT, fullPage: true });
   } finally {

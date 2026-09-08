@@ -116,3 +116,24 @@ test("overwrite mode still prevents an external duplicate created after prefligh
   const { configKey } = await f.service.status();
   assert.equal((await f.service.submit({ expression: "猫", configKey })).state, "duplicate");
 });
+
+test("the screenshot requirement follows the applied mapping and the Settings switch", async () => {
+  const f = fixture();
+  const term = { expression: "猫", reading: "" };
+  const preflight = async () => {
+    const { configKey } = await f.service.status();
+    return f.service.preflight({ term, expression: "猫", generation: 3, configKey });
+  };
+  // Nothing maps {screenshot}: the reader is not asked to take one.
+  assert.equal((await preflight()).screenshot, false);
+
+  const templates = { Front: { value: "{expression}", overwriteMode: "overwrite" },
+    Back: { value: "{screenshot}", overwriteMode: "overwrite" } };
+  f.change({ fieldTemplates: templates });
+  f.dependencies.buildFields = async () => ({ fields: { Front: "猫", Back: "" }, templates });
+  assert.equal((await preflight()).screenshot, true);
+
+  // The switch is the user's, so a mapped screenshot they turned off is not taken.
+  f.change({ captureScreenshot: false });
+  assert.equal((await preflight()).screenshot, false);
+});

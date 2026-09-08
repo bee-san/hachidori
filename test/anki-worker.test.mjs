@@ -221,7 +221,7 @@ test("captured media preflight stays read-only and submission uploads referenced
   const f = captureFixture();
   f.request.configKey = (await f.service.status()).configKey;
   const preflight = await f.service.preflight(f.request);
-  assert.deepEqual(preflight.capture.requirements, { includeAnimation: true, includeAudio: true });
+  assert.deepEqual(preflight.capture.requirements, { includeAnimation: true, includeAudio: true, includeScreenshot: false });
   assert.equal(preflight.capture.sourceLabel, "Video cue");
   assert.deepEqual(f.captureCalls, []);
   assert.equal(f.calls.includes("storeMediaFile"), false);
@@ -334,4 +334,34 @@ test("missing captured audio writes the mapped animation only and returns the so
   assert.equal(f.fields.CapturedAudio, "");
   assert.match(result.warnings.join(" "), /did not provide audio/u);
   assert.equal(f.captureCalls.filter(call => call.type === "hd_capture_asset").length, 1);
+});
+
+test("a mining screenshot is stored through the media gateway under its own name and honours the switch", async () => {
+  const uploads = [];
+  const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic", deck: "Default", apiKey: "local-key" } });
+  const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front"], models: ["Basic"], decks: ["Default"], errors: [] }),
+    async invoke(action, params, apiKey) {
+      if (action !== "storeMediaFile") throw new Error(`Unexpected ${action}`);
+      uploads.push({ ...params, apiKey });
+      return uploads.length === 1 ? params.filename : "renamed.jpg";
+    } };
+  const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+    readDictionaries: async () => [], engine: async () => ({ generation: 3, ready: true, loading: false }),
+    offscreen: async () => ({ fields: {}, media: [] }) });
+
+  const stored = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+  assert.match(stored.filename, /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u);
+  assert.deepEqual(uploads[0], { filename: stored.filename, data: "c2hvdA==", deleteExisting: false, apiKey: "local-key" });
+
+  // Anki answering with another name means the reference would not resolve.
+  await assert.rejects(service.screenshot(async () => "data:image/jpeg;base64,c2hvdA=="), /under a different filename/u);
+  // Nothing but an image is uploaded, and the capture's own failure is the reason.
+  await assert.rejects(service.screenshot(async () => "not-an-image"), /no screenshot/u);
+  await assert.rejects(service.screenshot(async () => { throw new Error("The reading tab is no longer the active tab."); }),
+    /no longer the active tab/u);
+  assert.equal(uploads.length, 2);
+
+  options.anki.captureScreenshot = false;
+  await assert.rejects(service.screenshot(async () => "data:image/jpeg;base64,c2hvdA=="), /turned off in Settings/u);
+  assert.equal(uploads.length, 2);
 });

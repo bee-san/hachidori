@@ -15,12 +15,13 @@ async function until(predicate) {
   for (let n = 0; n < 100 && !predicate(); n++) await tick();
   assert.ok(predicate(), "mining controller did not reach the expected state");
 }
-function fixture(t, send, capture = send, wait) {
+function fixture(t, send, capture = send, wait, conceal) {
   const dom = new JSDOM("<!doctype html><body><section></section></body>");
   t.after(() => dom.window.close());
   const popup = dom.window.document.querySelector("section");
   const owner = {}, request = {};
-  const controller = globalThis.HDAnki.createAnkiController({ send, capture, onChange() {}, ...(wait ? { wait } : {}) });
+  const controller = globalThis.HDAnki.createAnkiController({ send, capture, onChange() {},
+    ...(wait ? { wait } : {}), ...(conceal ? { conceal } : {}) });
   const context = { owner, popup, request, isCurrent: () => true,
     getRequest: result => ({ term: result.term }) };
   const items = ["猫", "犬", "鳥"].map(expression => {
@@ -379,4 +380,44 @@ test("uncertain replies and lost submission responses retain the prepared job an
       assert.equal(f.captureCalls.includes("hd_capture_cancel"), false);
     });
   }
+});
+
+test("a note that maps a screenshot captures one with the reader concealed and never fails the note for it", async t => {
+  const calls = [];
+  const concealed = [];
+  let capture = async () => ({ filename: "hachidori-screenshot-a.jpg" });
+  let submittedRequest = null;
+  const f = fixture(t, async (type, { request } = {}) => {
+    calls.push(type);
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_screenshot") return capture();
+    if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 12, warnings: [] }; }
+    return { state: "addable", canAdd: true, screenshot: true };
+  }, undefined, undefined, async during => {
+    concealed.push("hidden");
+    const result = await during();
+    concealed.push("restored");
+    return result;
+  });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => f.items[0].add && !f.items[0].add.disabled);
+  f.items[0].add.click();
+  await until(() => f.items[0].add.textContent === "Added");
+  // The picture is taken while the popup is hidden, before the note is written.
+  assert.deepEqual(concealed, ["hidden", "restored"]);
+  // The picture is requested once, between the preflights and the write.
+  assert.deepEqual(calls.filter(type => ["hd_anki_screenshot", "hd_anki_submit"].includes(type)),
+    ["hd_anki_screenshot", "hd_anki_submit"]);
+  assert.deepEqual(submittedRequest.screenshot, { filename: "hachidori-screenshot-a.jpg" });
+  assert.equal(submittedRequest.captureUnavailable, undefined);
+
+  // A capture that fails is a warning on an otherwise ordinary note.
+  capture = async () => { throw new Error("The reading tab is no longer the active tab."); };
+  f.items[1].add.click();
+  await until(() => f.items[1].add.textContent === "Added");
+  await tick();
+  assert.deepEqual(submittedRequest.captureUnavailable, ["screenshot"]);
+  assert.equal(submittedRequest.screenshot, undefined);
+  assert.match(f.items[1].output.textContent, /Added.*12.*Screenshot: The reading tab is no longer the active tab\./u);
 });

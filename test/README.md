@@ -294,7 +294,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 449 checks, all of
+full request→reply round trip per contract-C message type. 450 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -640,7 +640,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 173 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 175 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -956,7 +956,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 173 assertions, and the summary line
+`PLANNED` at the top of the file names all 175 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -1218,6 +1218,18 @@ the ten-second `full-capture.avif` / `full-capture.wav`, and each period's
 The HTTP/WebSocket fixture uses an operating-system-assigned local port.
 AnkiConnect requests to port 8765 are intercepted and answered inside this
 browser; this test does not send note mutations to an installed Anki collection.
+
+Two of those checks cover the mining screenshot. The first maps `{screenshot}`
+into a field, adds a note from the real popup with a real double click, then
+decodes the picture Anki received inside the page: it must be the whole viewport,
+its samples across the area the popup occupied must be the page's own light
+background, and the page's dark text must still be somewhere in it — with the
+host element's observed visibility going `hidden` then `visible` around the
+capture. The second makes AnkiConnect refuse the screenshot upload and requires
+the note to be added anyway, with an empty picture field and the reason beside
+its result. The suite prints `screenshot mining answered in N ms` for the timed
+production path, and `HACHIDORI_ANKI_SETTINGS_SCREENSHOT` captures the Anki
+settings section for the documentation.
 Captured tab audio depends on Chrome and the host share implementation; the
 test requires a real captured track and audible fixture samples.
 

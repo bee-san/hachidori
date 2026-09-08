@@ -66,7 +66,8 @@ test("the note type with the unique highest distinct-note count wins and its bus
   assert.equal(result.model, "Kiku v2");
   assert.equal(result.deck, "Mining");
   assert.equal(result.fieldTemplates.Expression.value, "{expression}");
-  assert.equal(result.fieldTemplates.Picture.value, "");
+  // The verified Kiku picture field is the screenshot destination.
+  assert.equal(result.fieldTemplates.Picture.value, "{screenshot}");
   assert.equal(Object.keys(result.fieldTemplates).length, KIKU_FIELDS.length);
   // Senren is named like a family but lacks its fields; Basic and Kikuchi are never consulted for notes.
   assert.deepEqual(calls.filter((call) => call.action === "findNotes").map((call) => call.params.query), ["mid:2", "mid:3"]);
@@ -113,6 +114,6 @@ test("ties, zero usage, missing families and incompatible layouts ask for Settin
   const configured = await detectAnkiSetup(senren.invoke, baseConfig());
   assert.equal(configured.status, "configured");
   assert.deepEqual([configured.model, configured.deck, configured.fieldTemplates.word.value, configured.fieldTemplates.picture.value],
-    ["Senren 3", "Words::Mined", "{expression}", ""]);
+    ["Senren 3", "Words::Mined", "{expression}", "{screenshot}"]);
   await assert.rejects(detectAnkiSetup(async () => ["Kiku"], baseConfig()), /invalid note type list/u);
 });
