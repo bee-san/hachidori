@@ -3,7 +3,7 @@ import { createLocalFileAccessController } from "./local-file-access.js";
 
 // Keep the exercise's text nodes alive while options/inventory updates arrive:
 // the ordinary reader anchors its selection, popup and Note draft to them.
-export function createPracticeView({ document, onDismiss }) {
+export function createPracticeView({ document, onDismiss, loadReader }) {
   const node = document.createElement("div");
   node.className = "setup-practice";
   node.innerHTML = `
@@ -35,6 +35,7 @@ export function createPracticeView({ document, onDismiss }) {
   let readerReady = false;
   let currentOptions;
   let currentDictionaries;
+  let currentOutcome;
 
   lookup.addEventListener("click", () => {
     // Selection is the reader's existing keyboard/precise-lookup route. No
@@ -51,37 +52,46 @@ export function createPracticeView({ document, onDismiss }) {
   function startReader() {
     if (readerStarted) return;
     readerStarted = true;
-    const script = document.createElement("script");
-    script.src = "content.js";
-    script.addEventListener("load", () => { readerReady = true; update(currentOptions, currentDictionaries); });
-    script.addEventListener("error", () => { readerFailed = true; update(currentOptions, currentDictionaries); });
-    document.body.appendChild(script);
+    void loadReader().then(() => {
+      readerReady = true;
+      update(currentOptions, currentDictionaries, currentOutcome);
+    }, () => {
+      readerFailed = true;
+      update(currentOptions, currentDictionaries, currentOutcome);
+    });
   }
 
-  function updateRecovery(available, dictionaries) {
+  function updateRecovery(available, dictionaries, outcome) {
     let section = "lookup";
     let message = "Lookups are turned off. Enable them in ";
     if (!available) {
       section = dictionaries.some(entry => entry.termCount > 0) ? "dictionaries" : "add-dictionaries";
       message = "Install or enable a term dictionary in ";
-    } else if (readerFailed) {
+    } else if (currentOptions.hoverEnabled && readerFailed) {
       message = "The reader could not load. Reload this page or open ";
+    } else if (currentOptions.hoverEnabled && outcome === "missing") {
+      section = "add-dictionaries";
+      message = "The installed dictionaries do not have the words in this sample yet. Install dictionaries in ";
+    } else if (currentOptions.hoverEnabled && outcome === "unavailable") {
+      message = "The dictionary engine could not answer. Reload this page or open ";
     }
     recoveryLink.href = `settings.html#${section}`;
     recoveryMessage.textContent = message;
   }
 
-  function update(options, dictionaries) {
+  function update(options, dictionaries, outcome = null) {
     currentOptions = options;
     currentDictionaries = dictionaries;
+    currentOutcome = outcome;
     const available = dictionaries.some(entry => entry.enabled !== false && entry.termCount > 0);
-    const enabled = available && options.hoverEnabled && !readerFailed;
+    const probing = available && options.hoverEnabled && outcome === null;
+    const enabled = available && options.hoverEnabled && outcome === "ready" && !readerFailed;
     const practiceFocused = document.activeElement === lookup || document.activeElement === text;
     const recoveryFocused = document.activeElement === recoveryLink;
-    find("setup-practice-scene").hidden = !available;
+    find("setup-practice-scene").hidden = !available || (options.hoverEnabled && outcome !== "ready");
     find("setup-practice-tools").hidden = !enabled;
     lookup.disabled = !readerReady;
-    recovery.hidden = enabled;
+    recovery.hidden = enabled || probing;
     if (enabled) {
       instruction.textContent = options.lookupMode === "activation"
         ? `Try looking up a word below. Hold ${options.activationKey} and hover over Japanese text, or use the lookup button.`
@@ -89,9 +99,14 @@ export function createPracticeView({ document, onDismiss }) {
       startReader();
       if (recoveryFocused) text.focus({ preventScroll: true });
     } else {
-      instruction.textContent = "You can finish setup now and try a lookup later.";
-      updateRecovery(available, dictionaries);
-      if (practiceFocused) recoveryLink.focus();
+      instruction.textContent = probing ? "Checking what the installed dictionaries can answer…"
+        : available && options.hoverEnabled && outcome === "unavailable"
+          ? options.lookupMode === "activation"
+            ? `Hold ${options.activationKey} and hover over Japanese text on any webpage to look it up.`
+            : "Hover over Japanese text on any webpage to look it up."
+          : "You can finish setup now and try a lookup later.";
+      updateRecovery(available, dictionaries, outcome);
+      if (practiceFocused && !probing) recoveryLink.focus();
     }
   }
   return { node, update };

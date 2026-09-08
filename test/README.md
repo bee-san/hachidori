@@ -2,7 +2,7 @@
 
 # Hachidori test harness
 
-Twelve pieces, run in this order. The JavaScript checks use Node built-ins except
+Thirteen pieces, run in this order. The JavaScript checks use Node built-ins except
 `extension-smoke.mjs` and `audio-content.test.mjs`, which need jsdom. The browser checks need Chrome and
 `puppeteer-core`; those dependencies stay outside the repository.
 
@@ -19,8 +19,9 @@ node test/threaded-bridge-smoke.mjs # 7. both-backend bridge admission/control t
 node test/extension-smoke.mjs    # 8. the extension's own JS against that wasm
 node --test benchmark/*.test.mjs # 9. fail-closed benchmark framework tests
 node test/chrome-e2e.mjs         # 10. pthread/OPFS path in a real Chrome
-node test/chrome-fallback.mjs    # 11. capability fallback through IDBFS in real Chrome
-./test/baseline.sh               # 12. optional native cross-check
+HACHIDORI_CAPTURE_HEADFUL=1 xvfb-run -a node test/chrome-capture.mjs # 11. real display capture, audio, timing and Anki path on Linux
+node test/chrome-fallback.mjs    # 12. capability fallback through IDBFS in real Chrome
+./test/baseline.sh               # 13. optional native cross-check
 ```
 
 Step 4 is optional on its own: `node-smoke.mjs` imports the generator and builds
@@ -293,7 +294,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 448 checks, all of
+full request→reply round trip per contract-C message type. 449 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -639,7 +640,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 175 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 177 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -713,7 +714,29 @@ connection and an unconfigured mapping.
 result, `HACHIDORI_STARTUP_READY_SCREENSHOT`/`_DARK_SCREENSHOT` the final step
 after an absent Anki, and
 `HACHIDORI_STARTUP_ANKI_SCREENSHOT`/`_DARK_SCREENSHOT` the final step after an
-automatically configured one.
+automatically configured one, and
+`HACHIDORI_STARTUP_PRACTICE_SCREENSHOT`/`_DARK_SCREENSHOT` the practice step with
+a real lookup open.
+
+The jsdom stage for that step also requires the appended list to match the
+manifest's own `content_scripts` order, that the sentence is probed offset by
+offset until one lookup answers, that removing the package which answered retires
+the invitation and probes again while a group-only revision does not, and covers every state that must not invite a
+hover: a frequency-only library, a library that answers nothing, an engine that
+refuses the first pass and is retried after a failed status, a long loading
+recovery and then an idle engine, an engine that
+never answers, and lookups switched off. The group-only step also requires the
+sentence to be the same node afterwards, which is what keeps an in-flight lookup
+anchored.
+
+Two further checks cover that practice step. The first waits for the reader
+scripts the page appends for itself, requires their manifest order, aims the
+real mouse at **辞書** inside the reviewed street-scene passage, and requires
+the closed-shadow popup to show 辞書 with the definition from the Jitendex fixture this run
+installed, then to close on leave. The second loads those same scripts into
+Settings, hovers Japanese text there with the real mouse, and requires the
+renderer to be present but no reader host to exist, which is what proves the
+page restriction rather than the absence of an injection.
 
 Four further assertions cover the real practice and saved-page flow. The
 keyboard lookup button selects 辞書 from the scene and the ordinary reader
@@ -959,7 +982,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 175 assertions, and the summary line
+`PLANNED` at the top of the file names all 177 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
@@ -1108,6 +1131,177 @@ The offscreen document has a permanent CDP session on `Runtime`, because it has 
 console anyone reads and a boot failure there is otherwise invisible: its
 `consoleAPICalled` and `exceptionThrown` events go into the diagnostics the run
 prints after a failure.
+
+---
+
+## `chrome-capture.mjs`
+
+This separate browser test uses Chrome's real `getDisplayMedia()` path in the
+extension's shared offscreen document. It serves a visible animated canvas,
+changing Japanese DOM text, and a WebAudio tone. A muxed video/audio fixture
+supplies the synchronization flash and beep. Chrome's test-only picker flag
+selects that tab. The extension imports the real dictionary fixture,
+starts capture through the visible controls, links the reading page, and tests:
+
+- compressed frame history through the dedicated JPEG worker and sample-clocked
+  audio history;
+- full-rate capture while the reading/source tab is foreground, including
+  closing and reopening Capture controls;
+- recovery of the same recording and linked reader after service-worker restart;
+- first-baseline fallback and later observed DOM timing;
+- a real loopback plain-text WebSocket, texthooker priority, active state,
+  disconnect, and reconnect epoch;
+- a full ten-second moving-text export with roughly eighty decoded frames,
+  matching AVIF/WAV durations, and responsive lookups during encoding;
+- root pinning, bounded delivery drain, animated AVIF encoding, Chrome frame
+  decoding and looping playback, non-silent mono WAV samples, and decoded
+  flash/beep alignment within 125 ms;
+- production Anki preflight, one-at-a-time media uploads, note mutation, and
+  readback against a fixture intercepted at the service-worker network boundary;
+- settings-change confirmation, stop/clear behavior, no automatic rearming, and
+  absence of raw text/media in extension storage;
+- relinking enforcing one current reading document, and linked-page navigation
+  clearing only that binding while capture continues;
+- stopped-versus-recording dictionary latency, capture throughput, retained
+  history, encoding latency, and output sizes.
+
+```sh
+HACHIDORI_CAPTURE_HEADFUL=1 xvfb-run -a node test/chrome-capture.mjs
+HACHIDORI_CAPTURE_HEADFUL=1 HACHIDORI_CAPTURE_SUSTAINED_SECONDS=70 \
+  xvfb-run -a node test/chrome-capture.mjs
+HACHIDORI_CAPTURE_HEADFUL=1 HACHIDORI_CAPTURE_SUSTAINED_SECONDS=1800 \
+  HACHIDORI_CAPTURE_ASSET_DIR=/tmp/hachidori-capture-assets \
+  xvfb-run -a node test/chrome-capture.mjs
+HACHIDORI_CAPTURE_HEADFUL=1 HACHIDORI_CAPTURE_FORCE_AUDIO_WORKLET=1 \
+  xvfb-run -a node test/chrome-capture.mjs
+```
+
+The default measures five seconds of production throughput and then exercises
+the full ten-second export and lifecycle checks. A sustained duration greater
+than five seconds adds a soak with static, moving, and dense scenes in periods
+of up to sixty seconds, an export and lookup measurement after each period,
+and retention checks every ten seconds. Use at least seventy seconds to fill
+the history; 1,800 seconds requests a thirty-minute soak. The final audio
+history must cover 55–61 seconds, compressed frames must stay within 64 MiB,
+and retained audio must stay within 61 × 48,000 samples. The duration accepts
+finite values of at least five seconds and has no ninety-second ceiling.
+
+The throughput and sustained-export gates use a foreground source tab. Lifecycle
+checks temporarily open controls and restore source focus before comparing
+capture rates. This keeps the presentation conditions consistent: a separate
+controlled probe measured 7.99 fps in front, 6.49 fps behind controls, and
+7.99 fps after restoring focus, with every delivered frame encoded. Background
+capture remains supported, but the configured frame rate is a ceiling.
+
+`capture-resources.mjs` measures the entire test browser, including the extension
+and synthetic source/reader tabs. It samples Chrome process CPU and Linux RSS
+each second and at phase boundaries. The initial process snapshot establishes
+the CPU baseline; a process first observed later contributes its reported CPU
+time from creation. A process that starts and exits between samples is missed.
+Repeated capture-off, recording, export, soak, and stopped phases sum only
+adjacent intervals in the same phase, excluding intervening phases.
+
+The RSS sum counts shared pages in each process; it is neither unique physical
+memory nor the encoder's WASM heap. `sampledPeakRssMiB` is the largest observed
+RSS sum, not a continuous peak. On successful completion, the report prints
+phase totals and, with an asset directory, saves scope, measurement limitations,
+and underlying samples to `resources.json`. A stable ring byte count alone does
+not establish stable total process memory. Full-export results separately
+report the largest WASM heap size observed by encoder progress updates.
+
+The alignment oracle decodes the final AVIF and finds the first frame where at
+least 10% of pixels have every RGB channel at or above 240. The fixture's white
+flash occupies at least 20% of the captured layout, allowing the video to sit
+away from the canvas center. Its onset comes from the serialized AVIF sample
+durations and is compared with the first WAV sample of absolute amplitude at
+least 1,000. This checks the exported content against the unchanged 125 ms
+bound, independently of delivery callbacks or file-duration equality.
+
+The AudioWorklet command forces the compatibility audio path while retaining
+timestamped video-track processing. It runs the same media and alignment gates.
+These are test requirements, not a claim that every configuration has passed;
+the [acceptance record](../docs/media-capture-review.md) records completed runs
+and outstanding gates.
+
+The real chooser path must run headfully. On Linux, Xvfb provides the display;
+on a desktop host, omit `xvfb-run -a`. Set `HACHIDORI_CAPTURE_X11=1` to request
+Chrome's X11 backend explicitly. A screenshot run can use:
+
+```sh
+HACHIDORI_CAPTURE_HEADFUL=1 \
+HACHIDORI_MEDIA_SETTINGS_SCREENSHOT=docs/assets/media-capture-settings.png \
+HACHIDORI_CAPTURE_SCREENSHOT=docs/assets/media-capture-controls.png \
+xvfb-run -a node test/chrome-capture.mjs
+```
+
+The same external browser variables as `chrome-e2e.mjs` are accepted, plus
+`HACHIDORI_CAPTURE_PROFILE` to retain a dedicated test profile. With no override,
+the temporary profile is removed after the run. Never point this at a personal
+browser profile. `HACHIDORI_CAPTURE_ASSET_DIR` saves `capture.avif`, `capture.wav`,
+the ten-second `full-capture.avif` / `full-capture.wav`, and each period's
+`soak-<index>-<scene>.avif` / `.wav` for independent playback checks.
+
+The HTTP/WebSocket fixture uses an operating-system-assigned local port.
+AnkiConnect requests to port 8765 are intercepted and answered inside this
+browser; this test does not send note mutations to an installed Anki collection.
+Captured tab audio depends on Chrome and the host share implementation; the
+test requires a real captured track and audible fixture samples.
+
+### Application window and monitor checks
+
+`chrome-capture-surfaces.mjs` is an optional Linux/X11 test using an isolated
+Xvfb display, `ffplay`, `xdotool`, and `kwin_x11` on a private D-Bus session. It
+starts a synthetic application window and tests window selection, reporting
+unavailable source audio, resize delivery, minimize/restore, source closure,
+monitor selection, and explicit Stop. Use a fresh display, never the personal
+desktop; the script rejects `:0`.
+
+```sh
+xvfb-run -a sh -c 'HACHIDORI_CAPTURE_TEST_DISPLAY="$DISPLAY" node test/chrome-capture-surfaces.mjs'
+```
+
+It accepts `HACHIDORI_CHROME` and `HACHIDORI_PUPPETEER`, defaults to
+`/usr/bin/chromium`, and retains `results.json` and temporary profiles under the
+printed evidence directory. A passing X11 minimize/restore check does not prove
+physical sleep/wake behavior or audio availability on other operating systems.
+
+### Installed Anki Desktop playback
+
+`anki-capture-desktop.py` is an optional Linux check using the installed Anki
+Python runtime, Qt WebEngine, Anki's media player, and `pactl` / `parecord`.
+Generate assets with the browser harness above, then use the Python interpreter
+that can import the installed `anki` and `aqt` packages:
+
+```sh
+/usr/bin/python test/anki-capture-desktop.py --assets /tmp/hachidori-capture-assets
+/usr/bin/python test/anki-capture-desktop.py --assets /tmp/hachidori-capture-assets \
+  --basename full-capture
+/usr/bin/python test/anki-capture-desktop.py --assets /tmp/hachidori-capture-assets \
+  --basename soak-0-static --static
+```
+
+Each run snapshots the input files and hashes, creates a fresh temporary Anki
+base/profile and separate application instance, disables add-ons and sync, and
+imports an actual note with AVIF and `[sound:...]` fields. The real reviewer
+must render changing frames across a second animation loop, then play and
+replay the WAV through Anki's media player. A private null sink and monitor
+recording distinguishes nonzero source PCM from source silence.
+Both playback durations must match the source within half a second. The
+explicit `--static` mode instead requires the same rendered scene over at least
+two source durations, with the same playback/replay checks. It permits small
+lossy-codec differences from the first image: at most 1/255 root mean square
+difference across RGB channels. Maximum, mean, and RMS differences are recorded;
+the default moving-image assertions stay unchanged. Static rendering cannot
+establish a loop boundary; the browser and real libavif tests establish the
+static file's timed sequence and infinite repetition.
+Only this test's sink is configured; the user's speaker routing is unchanged.
+
+The reviewer blocks remote web requests while allowing Anki's local media
+server. The harness never opens the live Anki profile or calls its AnkiConnect
+endpoint. It retains version information, asset hashes, rendered samples,
+reviewer screenshot, playback events, and recorded PCM under the printed
+temporary directory. This establishes local Anki Desktop playback for those
+assets and that runtime; it does not test AnkiWeb sync or another device/client.
 
 ---
 

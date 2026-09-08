@@ -61,3 +61,14 @@ test("pitch, part-of-speech, tags and transcriptions keep source meanings and ma
   assert.equal(await render(source, "{pitch}"), "<b>Pitch</b>: LHH, LHL (nasal 1; devoice 2), &lt;ipa&gt;");
   assert.equal(await render(source, "{audio}", { audio: "[sound:chosen.mp3]" }), "[sound:chosen.mp3]");
 });
+
+test("captured media markers use generated pinned filenames and can omit unavailable outputs", async () => {
+  const capturePin = {
+    animationFilename: "hachidori-abc123.avif",
+    audioFilename: "hachidori-abc123.wav",
+  };
+  assert.equal(await render(request({ capturePin }), "{capture-animation}|{capture-audio}"),
+    '<img src="hachidori-abc123.avif">|[sound:hachidori-abc123.wav]');
+  assert.equal(await render(request({ capturePin, captureUnavailable: ["audio"] }),
+    "{capture-animation}|{capture-audio}"), '<img src="hachidori-abc123.avif">|');
+});

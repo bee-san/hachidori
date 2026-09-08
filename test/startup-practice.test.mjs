@@ -20,21 +20,28 @@ function fixture(t) {
   const previousChrome = globalThis.chrome;
   globalThis.chrome = { extension: { isAllowedFileSchemeAccess: async () => false } };
   const el = id => document.getElementById(id);
-  const view = createPracticeView({ document, onDismiss: () => el("finish").focus() });
+  let readerLoads = 0;
+  let loaded, failed;
+  const pendingReader = new Promise((resolve, reject) => { loaded = resolve; failed = reject; });
+  const view = createPracticeView({ document, onDismiss: () => el("finish").focus(),
+    loadReader: () => { readerLoads += 1; return pendingReader; } });
   el("practice").append(view.node);
   t.after(() => { dom.window.close(); globalThis.chrome = previousChrome; });
   return { view, document, window: dom.window, el,
-    reader: () => document.querySelector('script[src="content.js"]'),
-    update: (options = OPTIONS, dictionaries = DICTIONARIES) => view.update(options, dictionaries) };
+    reader: () => readerLoads === 0 ? null : pendingReader,
+    readerLoads: () => readerLoads,
+    loaded: async () => { loaded(); await tick(); },
+    failed: async () => { failed(new Error("reader failed")); await tick(); },
+    update: (options = OPTIONS, dictionaries = DICTIONARIES, outcome = "ready") => view.update(options, dictionaries, outcome) };
 }
 
-test("the keyboard lookup control selects the exercise's real text after the ordinary reader loads", t => {
+test("the keyboard lookup control selects the exercise's real text after the ordinary reader loads", async t => {
   const f = fixture(t);
   f.update();
   const lookup = f.el("setup-practice-lookup");
   assert.equal(lookup.disabled, true);
   assert.equal(f.el("finish").disabled, false);
-  f.reader().dispatchEvent(new f.window.Event("load"));
+  await f.loaded();
   assert.equal(lookup.disabled, false);
   lookup.focus();
   lookup.click();
@@ -48,7 +55,7 @@ test("the keyboard lookup control selects the exercise's real text after the ord
 test("option and inventory updates retain the scene, selected Range, reader script and local-file dismissal", async t => {
   const f = fixture(t);
   f.update();
-  f.reader().dispatchEvent(new f.window.Event("load"));
+  await f.loaded();
   f.el("setup-practice-lookup").click();
   const textNode = f.el("setup-practice-text").firstChild;
   const wordNode = f.el("setup-practice-word").firstChild;
@@ -62,7 +69,7 @@ test("option and inventory updates retain the scene, selected Range, reader scri
   assert.equal(selection.getRangeAt(0), range);
   assert.equal(selection.toString(), "辞書");
   assert.equal(f.document.activeElement, f.el("setup-practice-text"));
-  assert.equal(f.document.querySelectorAll('script[src="content.js"]').length, 1);
+  assert.equal(f.readerLoads(), 1);
   await tick();
   f.el("local-file-skip").click();
   f.update();
@@ -71,7 +78,7 @@ test("option and inventory updates retain the scene, selected Range, reader scri
   assert.equal(f.el("finish").disabled, false);
 });
 
-test("missing or disabled term dictionaries and disabled lookups give recovery without blocking Finish", t => {
+test("missing or disabled term dictionaries and disabled lookups give recovery without blocking Finish", async t => {
   const f = fixture(t);
   for (const dictionaries of [[], [{ ...DICTIONARIES[0], enabled: false }], [{ id: "frequency-only", termCount: 0 }]]) {
     f.update(OPTIONS, dictionaries);
@@ -96,20 +103,58 @@ test("missing or disabled term dictionaries and disabled lookups give recovery w
   assert.equal(f.el("finish").disabled, false);
   f.update();
   assert.equal(f.document.activeElement, f.el("setup-practice-text"));
-  f.reader().dispatchEvent(new f.window.Event("load"));
+  await f.loaded();
   f.el("setup-practice-lookup").click();
   f.update({ ...OPTIONS, hoverEnabled: false });
   assert.equal(f.document.activeElement, link, "hiding the active exercise hands focus to its recovery action");
 });
 
-test("reader load failure leaves a recoverable optional exercise and cannot enable lookup", t => {
+test("the practice invitation follows the current probe outcome even when the reader finishes loading later", async t => {
+  const f = fixture(t);
+  const scene = f.el("setup-practice-scene");
+  const text = f.el("setup-practice-text").firstChild;
+  const tools = f.el("setup-practice-tools");
+  const recovery = f.el("setup-practice-recovery");
+  f.update(OPTIONS, DICTIONARIES, null);
+  assert.equal(scene.hidden, true);
+  assert.equal(tools.hidden, true);
+  assert.equal(recovery.hidden, true);
+  assert.match(f.el("setup-practice-instruction").textContent, /Checking/u);
+  assert.equal(f.readerLoads(), 0);
+  f.update(OPTIONS, DICTIONARIES, "missing");
+  assert.equal(scene.hidden, true);
+  assert.equal(recovery.hidden, false);
+  assert.match(recovery.textContent, /do not have the words in this sample/u);
+  assert.equal(recovery.querySelector("a").getAttribute("href"), "settings.html#add-dictionaries");
+  assert.equal(f.readerLoads(), 0);
+  f.update();
+  assert.equal(scene.hidden, false);
+  assert.equal(f.readerLoads(), 1);
+  f.update(OPTIONS, DICTIONARIES, "missing");
+  await f.loaded();
+  assert.equal(scene.hidden, true, "a late reader load must not revive a retired invitation");
+  assert.equal(tools.hidden, true);
+  f.update({ ...OPTIONS, lookupMode: "activation", activationKey: "Control" }, DICTIONARIES, "unavailable");
+  assert.match(f.el("setup-practice-instruction").textContent, /Hold Control.*on any webpage/u);
+  assert.match(recovery.textContent, /engine could not answer/u);
+  assert.equal(f.el("finish").disabled, false);
+  f.update();
+  assert.equal(f.el("setup-practice-scene"), scene);
+  assert.equal(f.el("setup-practice-text").firstChild, text);
+  assert.equal(scene.hidden, false);
+  assert.equal(tools.hidden, false);
+  assert.equal(f.el("setup-practice-lookup").disabled, false);
+  assert.equal(f.readerLoads(), 1);
+});
+
+test("reader load failure leaves a recoverable optional exercise and cannot enable lookup", async t => {
   const f = fixture(t);
   f.update();
-  f.reader().dispatchEvent(new f.window.Event("error"));
+  await f.failed();
   assert.equal(f.el("setup-practice-tools").hidden, true);
   assert.match(f.el("setup-practice-recovery").textContent, /reader could not load.*Reload/u);
   assert.equal(f.el("finish").disabled, false);
   f.update();
-  assert.equal(f.document.querySelectorAll('script[src="content.js"]').length, 1);
+  assert.equal(f.readerLoads(), 1);
   assert.equal(f.el("setup-practice-tools").hidden, true);
 });

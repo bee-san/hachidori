@@ -59,6 +59,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 const EXTENSION = resolve(ROOT, "extension");
+const EXTENSION_MANIFEST = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"));
 const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
 const EXTENSION_ORIGIN = "chrome-extension://hachidorismokeextensionid";
 
@@ -3302,7 +3303,7 @@ async function main() {
       && trustedPackage?.isUpdatable === true
       && trustedPackage?.indexUrl === recommended.indexUrl
       && trustedPackage?.downloadUrl === recommended.downloadUrl
-      && trustedPackage?.termCount === 1
+      && trustedPackage?.termCount === 2
       && trustedPackage?.frequencyCount === 1
       && trustedPackage?.mediaCount === 1,
     JSON.stringify({ trustedImport, trustedState }),
@@ -5217,6 +5218,9 @@ async function main() {
   const advanceFailure = await startupAdvanceFailureStage();
   check("a refused automatic advance leaves an explicit Continue and cancels the countdown instead of saving again on a timer",
     advanceFailure !== null && Object.values(advanceFailure).every((value) => value === true), JSON.stringify(advanceFailure));
+  const practice = await startupPracticeStage();
+  check("the practice step invites a lookup only when a dictionary can answer one and loads the reader once with that step",
+    practice !== null && Object.values(practice).every((value) => value === true), JSON.stringify(practice));
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
@@ -6120,12 +6124,18 @@ async function startupPageStage() {
   window.chrome = {
     extension: { async isAllowedFileSchemeAccess() { return false; } },
     runtime: {
+      getManifest: () => structuredClone(EXTENSION_MANIFEST),
       async sendMessage(message) {
         requests.push(structuredClone(message));
         if (message.target === "hachidori-setup" && message.type === "hd_setup_install") {
           return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
         }
         if (message.type === "hd_setup_anki") return ankiReply(message);
+        // The practice step proves the sample is answerable before inviting a hover.
+        if (message.type === "hd_lookup") {
+          return { type: "hd_lookup_result", requestId: message.requestId, ok: true, error: null, generation: 5, dictionaryCount: 1,
+            results: message.text.startsWith("辞書") ? [{ term: "辞書", matched: "辞書" }] : [] };
+        }
         if (message.type !== "hd_setup_cas") throw new Error(`Unexpected startup request ${message.type}`);
         return new Promise((resolveReply) => { pendingReply = resolveReply; });
       },
@@ -6311,7 +6321,7 @@ async function startupPageStage() {
     // the move this page asked for, so the final step is not an error screen.
     setupState = { ...setupState, revision: 9, stage: "practice" };
     reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
-    await until(() => heading() === "You’re ready.", "the practice stage");
+    await until(() => document.getElementById("setup-practice-instruction")?.textContent.startsWith("Try looking up a word below."), "the practice stage");
     const outcomeNote = document.querySelector(".setup-anki-outcome");
     const practice = emptyReplyShown && ankiRequests() === 3 && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
       && checkedHeading === "Anki is set up"
@@ -6345,22 +6355,32 @@ async function startupPageStage() {
 
 // One jsdom startup page with only the worker replies and stored values a
 // dictionary-stage case needs; the two stages below drive it from there.
-function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
+function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null }) {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
     pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
   });
   const { window } = dom;
   const { document } = window;
   const requests = [];
-  const stored = { setup, dictionaries, dictionaryRevision: 1 };
+  const stored = { setup, dictionaries, options, dictionaryRevision: 1 };
   let installReply = reply;
   let storageListener = null;
   let eventListener = null;
   window.chrome = {
     runtime: {
+      getManifest: () => structuredClone(EXTENSION_MANIFEST),
       async sendMessage(message) {
         requests.push(structuredClone(message));
         if (message.type === "hd_setup_cas" && cas !== null) return cas(message);
+        if (message.type === "hd_lookup") {
+          if (lookup === null) throw new Error("the dictionary engine is unavailable");
+          return { type: "hd_lookup_result", requestId: message.requestId, ok: true, error: null, ...lookup(message) };
+        }
+        // A refused lookup waits for the engine to go idle before asking again.
+        if (message.type === "hd_status") {
+          return { type: "hd_status_result", requestId: message.requestId, ok: true, error: null, ready: true, loading: false,
+            ...(status === null ? {} : status(message)) };
+        }
         if (message.type !== "hd_setup_install") throw new Error(`Unexpected startup request ${message.type}`);
         return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
       },
@@ -6368,7 +6388,7 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
     },
     storage: {
       local: { async get() {
-        return { setupState: structuredClone(stored.setup), options: { revision: 1 },
+        return { setupState: structuredClone(stored.setup), options: structuredClone(stored.options),
           dictionaryState: { schemaVersion: 1, revision: stored.dictionaryRevision, groups: [], dictionaries: structuredClone(stored.dictionaries) } };
       } },
       onChanged: { addListener(value) { storageListener = value; } },
@@ -6383,11 +6403,19 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
       stored.setup = setupState;
       storageListener({ setupState: { newValue: structuredClone(setupState) } }, "local");
     },
+    // A dictionary-state write the page learns about through a storage event.
+    library(next) {
+      stored.dictionaries = next;
+      stored.dictionaryRevision += 1;
+      storageListener({ dictionaryState: { newValue: { schemaVersion: 1, revision: stored.dictionaryRevision,
+        groups: [], dictionaries: structuredClone(next) } } }, "local");
+    },
     // An installer broadcast for the run the page attached to.
     progress(snapshot) {
       eventListener({ target: "hachidori-setup-events", type: "hd_setup_progress", ...snapshot });
     },
     installs: () => requests.filter((message) => message.type === "hd_setup_install").map((message) => message.sourceIds),
+    lookups: () => requests.filter((message) => message.type === "hd_lookup").map((message) => message.text),
     saves: () => requests.filter((message) => message.type === "hd_setup_cas"),
     heading: () => document.getElementById("setup-heading").textContent,
     rowText: (sourceId) => document.querySelector(`.setup-dictionary[data-source-id="${sourceId}"] .setup-dictionary-status`).textContent,
@@ -6400,6 +6428,14 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
     load: () => loadStartupScript(window),
   };
 }
+
+const PRACTICE_SENTENCE_TEXT = "踏切の向こうから蝉の声が響く。喧騒を離れて路地に佇むと、古びた辞書で見つけた言葉が、目の前の景色と少しずつ結びついていく。";
+
+// The reader scripts the practice step appends, in order, and the order the
+// manifest itself gives them: the page must follow that list, not a copy.
+const readerScripts = (document) => [...document.querySelectorAll("script[data-setup-reader]")]
+  .map((script) => script.getAttribute("src"));
+const MANIFEST_READER_SCRIPTS = EXTENSION_MANIFEST.content_scripts[0].js.filter((src) => src !== "reader-options.js");
 
 const SETUP_AT_DICTIONARIES = Object.freeze({ schemaVersion: 1, revision: 2, startedAt: "2026-09-07T10:00:00.000Z",
   stage: "dictionaries", completedAt: null,
@@ -6510,6 +6546,145 @@ async function startupAdvanceFailureStage() {
     await new Promise((done) => setTimeout(done, 6000));
     const quiet = page.saves().length === 2 && label() === null && page.actionIds().includes("setup-continue");
     return { counting, failed, quiet };
+  } finally {
+    page.window.close();
+  }
+}
+
+// The practice step invites a real lookup only when a dictionary can answer
+// one, and the reader arrives with that step rather than with the page.
+async function startupPracticeStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const setup = { ...structuredClone(SETUP_AT_DICTIONARIES), revision: 8, stage: "practice",
+    anki: { status: "unavailable", detail: "Open Anki with the AnkiConnect add-on installed, then retry.", model: null, deck: null } };
+  // A frequency-only package cannot answer a term lookup.
+  const frequencyOnly = [{ id: "jiten", title: "Jiten", sourceId: "jiten", enabled: true, termCount: 0, frequencyCount: 9 }];
+  // The engine answers only from 辞書 onwards, inside the actual scene passage.
+  let libraryAnswers = true;
+  // A dictionary mutation refuses the first pass, the way Settings publishing a
+  // reimport does; the sentence must be asked again rather than written off.
+  let busySweeps = 1;
+  // The engine reports a failed reload once, which a status poll repairs, then a
+  // mutation still holds it, and only then is it idle.
+  const recovering = [{ ok: false, error: "the dictionary reload failed" },
+    // A recovery that is itself loading may take as long as it needs.
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ready: true, loading: true }];
+  const answersVerb = (message) => {
+    if (busySweeps > 0) {
+      busySweeps -= 1;
+      return { ok: false, error: "the dictionary engine is busy mutating" };
+    }
+    return { generation: 3, dictionaryCount: 1,
+      results: libraryAnswers && message.text.startsWith("辞書") ? [{ term: "辞書", matched: "辞書" }] : [] };
+  };
+  const page = startupCase(jsdom, { setup, dictionaries: frequencyOnly, lookup: answersVerb,
+    status: () => recovering.shift() ?? {},
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  const { document } = page;
+  const sample = () => document.querySelector("#setup-practice-scene:not([hidden]) #setup-practice-text");
+  try {
+    await page.load();
+    await page.until(() => page.heading() === "You’re ready.", "the final step without a usable dictionary");
+    const withoutDictionary = sample() === null && readerScripts(document).length === 0
+      && document.getElementById("setup-body").textContent.includes("Install or enable a term dictionary")
+      && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
+      && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
+      && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"]);
+    // A term dictionary arrives: the exercise appears and the reader is fetched once.
+    page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }]);
+    await page.until(() => sample() !== null, "the practice exercise");
+    // The refused pass stopped at once and was retried; then every offset was
+    // tried until 辞書 answered, and none after it.
+    const characters = [...PRACTICE_SENTENCE_TEXT];
+    const expected = [PRACTICE_SENTENCE_TEXT, ...characters.slice(0, characters.indexOf("辞") + 1)
+      .map((_, index) => characters.slice(index).join(""))];
+    const probed = JSON.stringify(page.lookups()) === JSON.stringify(expected);
+    const invited = withoutDictionary && probed && sample()?.textContent === PRACTICE_SENTENCE_TEXT && sample().lang === "ja"
+      && document.getElementById("setup-body").textContent.includes("Hover over Japanese text, or use the lookup button.")
+      && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
+      && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"])
+      // jsdom does not run appended scripts, so the chain stops at the first one.
+      && JSON.stringify(readerScripts(document)) === JSON.stringify(MANIFEST_READER_SCRIPTS.slice(0, 1));
+    // Rerenders of the same step must not fetch the reader again.
+    page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 43 }]);
+    await page.until(() => sample() !== null, "the rerendered exercise");
+    const loadedOnce = invited && JSON.stringify(readerScripts(document)) === JSON.stringify(MANIFEST_READER_SCRIPTS.slice(0, 1));
+    // A group-only or presentation write advances the dictionary revision without
+    // changing what the engine can answer, so it must disturb neither the probe
+    // nor the sentence node a lookup in flight is anchored to.
+    const sampleNode = sample();
+    const beforeGroups = page.lookups().length;
+    page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 43 }]);
+    await page.until(() => sample() !== null, "the undisturbed exercise");
+    const groupWriteIgnored = page.lookups().length === beforeGroups && sample() === sampleNode;
+    // The answering package is removed while an unrelated term dictionary stays:
+    // a previously successful probe must not keep the invitation standing.
+    const beforeRetire = page.lookups().length;
+    libraryAnswers = false;
+    page.library([{ id: "other", title: "Unrelated", enabled: true, termCount: 1 }]);
+    await page.until(() => page.document.getElementById("setup-body").textContent.includes("do not have the words in this sample"),
+      "the retired invitation");
+    const reprobed = loadedOnce && groupWriteIgnored && sample() === null
+      && page.lookups().length === beforeRetire + [...PRACTICE_SENTENCE_TEXT].length;
+    const offHover = await startupPracticeWithoutHover(jsdom, setup);
+    const unanswerable = await startupPracticeUnanswerable(jsdom, setup);
+    return { withoutDictionary, invited, loadedOnce, reprobed, offHover, unanswerable };
+  } finally {
+    page.window.close();
+  }
+}
+
+// A library that cannot answer this sentence, and an engine that cannot answer
+// at all, must not advertise a hover: the first says what is missing, the second
+// falls back to the instruction that is true anywhere.
+async function startupPracticeUnanswerable(jsdom, setup) {
+  const library = [{ id: "other", title: "Unrelated", enabled: true, termCount: 1 }];
+  const nothing = startupCase(jsdom, { setup, dictionaries: library, lookup: () => ({ generation: 3, dictionaryCount: 1, results: [] }),
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  const offline = startupCase(jsdom, { setup, dictionaries: library,
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  try {
+    await nothing.load();
+    await nothing.until(() => nothing.document.getElementById("setup-body").textContent.includes("do not have the words in this sample"),
+      "the unanswerable sample");
+    const missing = nothing.document.querySelector("#setup-practice-tools").hidden === true
+      && readerScripts(nothing.document).length === 0
+      && nothing.lookups().length === [...PRACTICE_SENTENCE_TEXT].length
+      && nothing.document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null;
+    await offline.load();
+    await offline.until(() => offline.document.getElementById("setup-body").textContent.includes("on any webpage"),
+      "the unavailable engine");
+    // A refused engine is asked again before the step gives up on this page.
+    const unavailable = offline.document.querySelector("#setup-practice-tools").hidden === true
+      && readerScripts(offline.document).length === 0 && offline.lookups().length > 1;
+    return missing && unavailable;
+  } finally {
+    nothing.window.close();
+    offline.window.close();
+  }
+}
+
+// The reader answers nothing while lookups are switched off, so the step says
+// so and points at that setting rather than inviting an impossible hover.
+async function startupPracticeWithoutHover(jsdom, setup) {
+  const page = startupCase(jsdom, { setup, options: { revision: 2, hoverEnabled: false },
+    dictionaries: [{ id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }],
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  try {
+    await page.load();
+    await page.until(() => page.heading() === "You’re ready.", "the final step with lookups off");
+    return page.document.querySelector("#setup-practice-tools").hidden === true
+      && readerScripts(page.document).length === 0
+      && page.document.getElementById("setup-body").textContent.includes("Lookups are turned off")
+      && page.document.querySelector('#setup-body a[href="settings.html#lookup"]') !== null
+      && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"]);
   } finally {
     page.window.close();
   }

@@ -193,12 +193,16 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     if (connectionKey(config) !== requestedKey) void refresh();
   }
 
+  const fieldLabels = {
+    captureAnimation: "Capture animation",
+    captureAudio: "Capture audio",
+  };
   for (const key of ANKI_FIELDS) {
     const label = document.createElement("label");
     label.className = "field";
     const text = document.createElement("span");
     text.className = "field-label";
-    text.textContent = key[0].toUpperCase() + key.slice(1);
+    text.textContent = fieldLabels[key] ?? key[0].toUpperCase() + key.slice(1);
     const select = document.createElement("select");
     select.id = `opt-anki-field-${key}`;
     select.addEventListener("change", () => change({ fields: { ...readConfig().fields, [key]: select.value } }));
