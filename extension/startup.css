@@ -180,6 +180,16 @@
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+.setup-countdown .setup-track.is-determinate .track-fill {
+  width: 100%;
+  transform-origin: left;
+  transition: none;
+  animation: setup-countdown-fill var(--countdown-duration) linear var(--countdown-delay) both;
+}
+@keyframes setup-countdown-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
 .setup-actions {
   display: flex;
   flex-wrap: wrap;
@@ -248,15 +258,6 @@
   border: 1px solid var(--border);
   border-radius: 8px;
 }
-.setup-practice-dialogue {
-  padding: 14px 18px;
-  border-radius: 8px;
-  background: rgb(250 247 252 / 94%);
-}
-.vn-dark-dialogue .setup-practice-dialogue { background: rgb(28 20 35 / 94%); }
-.setup-practice-text {
-  line-break: strict;
-}
 .setup-practice-tools { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
 .setup-practice-tools .hint { font-size: 12px; }
 .setup-anki-outcome {
@@ -271,7 +272,6 @@
 .setup-practice [hidden], .setup-track[hidden] { display: none; }
 
 @media (max-width: 480px) {
-  .setup-practice-dialogue { padding: 12px 14px; }
   .setup-actions { align-items: flex-start; flex-direction: column; }
   .setup-actions .hint { flex-basis: auto; }
 }
@@ -279,5 +279,9 @@
 @media (prefers-reduced-motion: reduce) {
   .setup-track.is-determinate .track-fill {
     transition: none;
+  }
+  .setup-countdown .setup-track.is-determinate .track-fill {
+    width: var(--progress, 0%);
+    animation: none;
   }
 }

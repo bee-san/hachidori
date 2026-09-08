@@ -17,5 +17,14 @@
     }
   }
 
-  globalThis.HDExternalLinks = { normaliseExternalUrl };
+  // GSM popup links use %w for the word and %s for the sentence. Reading is
+  // useful to dictionary providers too; encode each value before substitution.
+  function expandCustomLinkUrl(template, { word = "", reading = "", sentence = "" } = {}) {
+    if (typeof template !== "string") return null;
+    const values = { w: word, r: reading, s: sentence };
+    const expanded = template.replace(/%([wrs])/gu, (_, marker) => encodeURIComponent(String(values[marker])));
+    return normaliseExternalUrl(expanded);
+  }
+
+  globalThis.HDExternalLinks = { normaliseExternalUrl, expandCustomLinkUrl };
 })();

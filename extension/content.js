@@ -1386,11 +1386,13 @@
       clearHideTimer();
     });
     popup.addEventListener("focusout", onPopupFocusOut);
+    // Scroll events do not bubble from the definition pane or its inner cards.
+    // Keep linked popups aligned with anchors moving inside those scrollers.
     popup.addEventListener("scroll", () => {
       if (level.retired) return;
       const child = levels[level.depth + 1];
       if (child) positionPopup(child);
-    }, { passive: true });
+    }, { capture: true, passive: true });
     popup.addEventListener("mouseenter", () => onPopupEnter(level));
     popup.addEventListener("mouseover", (event) => {
       const request = level.currentViewRequest;
@@ -1408,9 +1410,15 @@
       appendStructuredImage: window.HDGlossary.appendStructuredImage,
       document,
       getPopupColumns: () => options.popupColumns,
+      customLinks: options.customLinks,
       highlightName: HIGHLIGHT_NAME,
       idPrefix: level === rootLevel ? "hoshidicts" : `hoshidicts-${nextLevelId += 1}`,
       onAddCustomEntry: (entry) => appendCustomEntry(entry, level),
+      onCustomLinkClick(link) {
+        if (!level.currentViewRequest || level.retainedView
+            || !requestCanRender(level.lookupToken, level.activeCandidate, level)) return;
+        openExternalLink(link);
+      },
       onKanjiClick: (character, result, candidate, link) => showKanji(character, result, candidate, link, level),
       onNoteEditingChange: (editing) => onNoteEditingChange(editing, level),
       onResultsRendered: rendered => bindResultActions(rendered, level),
@@ -1735,7 +1743,7 @@
       document.body.appendChild(host);
     }
     level.popup.hidden = false;
-    level.popup.scrollTop = 0;
+    level.view.scrollElement.scrollTop = 0;
   }
 
   function pruneLevels(depth, restoreFocus = true) {
@@ -1900,18 +1908,20 @@
       compactDefinitionSummaryDictionary: options.compactDefinitionSummaryDictionary };
   }
 
+  function openExternalLink({ url, active }) {
+    // A lost reply may follow a successful open, so never retry navigation.
+    void sendRequest("hd_open_external", { url, active }, "hoshidicts-worker").catch((error) => {
+      console.debug("hachidori: external link could not be opened", error);
+    });
+  }
+
   function renderContextFor(level = rootLevel) {
     return {
       definitionBlurState: level.currentViewRequest?.blur?.state ?? "revealed",
       dictionaryPresentation: dictionaryPresentation(),
       dictionaryTabGroups: dictionaryTabGroups(),
       generation: currentGeneration,
-      onExternalLink({ url, active }) {
-        // A lost reply may follow a successful open, so never retry navigation.
-        void sendRequest("hd_open_external", { url, active }, "hoshidicts-worker").catch((error) => {
-          console.debug("hachidori: external link could not be opened", error);
-        });
-      },
+      onExternalLink: openExternalLink,
       onInternalLink: (link) => onInternalLink(link, level),
       ...imageSourceContext(),
       ...compactSummaryOptions(),
@@ -2062,25 +2072,25 @@
 
   function handleTermMiss(request, dictionaryCount, token, level, replayOptions) {
     if (retainProtectedReplay(request, token, level, replayOptions)) return false;
-    if (dictionaryCount === 0) {
+    if (dictionaryCount === 0 || request.exactSelection) {
       show(request.candidate, level);
       level.activeHighlightText = "";
       level.activeTermRender = null;
       clearDefinitionBlurTimer(level);
-      level.currentViewRequest = null;
+      // Keep the exact request so saving a new word can refresh this notice
+      // into its personal definition, even after the form collapses selection.
+      level.currentViewRequest = request;
       level.view.renderNotice(
-        "No dictionaries loaded. Import a Yomitan .zip from the Hachidori options page.",
-        request.candidate
+        dictionaryCount === 0
+          ? "No dictionaries loaded. Import a Yomitan .zip in Settings, or add your own definition with the pencil."
+          : "No definition found. Add your own with the pencil.",
+        request.candidate,
+        { isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken },
       );
       positionPopup(level);
       return false;
     }
     hide(level);
-    // Retain an exact miss so subsequent pointer motion cannot turn it into
-    // a prefix lookup. Explicit dismissal or another selection resets it.
-    if (request.exactSelection && selectionIsUnchanged(request.candidate)) {
-      activeSelectionCandidate = request.candidate;
-    }
     return false;
   }
 
@@ -2460,7 +2470,7 @@
     }
     if (!options.hoverEnabled) return;
     if (transferTimer !== null) return;
-    if (hasProtectedNote() || popupHasFocus() || pageEditorFocused()) {
+    if (hasProtectedNote() || popupHasFocus()) {
       cancelCandidateScan();
       clearHideTimer();
       return;
@@ -2545,7 +2555,7 @@
     pointerInPopup = false;
     pointerLevel = null;
     if (leavingChain) scheduleTransferCheck();
-    if (hasProtectedNote() || popupHasFocus() || pageEditorFocused()) {
+    if (hasProtectedNote() || popupHasFocus()) {
       cancelCandidateScan();
       return;
     }
@@ -2632,7 +2642,11 @@
   }
 
   function onPageFocusIn() {
-    if (!disposed && pageEditorFocused()) cancelCandidateScan();
+    if (!disposed && pageEditorFocused()) {
+      cancelCandidateScan();
+      activationPressed = false;
+      activationCode = null;
+    }
   }
 
   function onKeyDown(event) {
@@ -2661,7 +2675,11 @@
       hide();
       if (dismissedCandidate || options.activationKey !== "Escape") return;
     }
-    if (!options.hoverEnabled || pageEditorFocused()) return;
+    if (!options.hoverEnabled) return;
+    // Autofocused search fields (such as Jisho's) must not disable lookups on
+    // the rest of the page. Modifier activation leaves native typing intact;
+    // printable/editor keys stay reserved for the focused field.
+    if (pageEditorFocused() && !MODIFIER_PROPERTIES.has(options.activationKey)) return;
     // Pressing the gate key while the pointer is stationary should reveal the
     // word under it without asking the reader to jiggle the mouse.
     const wasPressed = activationPressed;
@@ -2871,6 +2889,7 @@
     // A simultaneous dictionary replacement must invalidate the old view first.
     const countsChanged = next.showLookupCounts !== options.showLookupCounts;
     const ankiChanged = JSON.stringify(next.anki) !== JSON.stringify(options.anki);
+    const customLinksChanged = JSON.stringify(next.customLinks) !== JSON.stringify(options.customLinks);
     if (ankiChanged || next.definitionBlurAnkiMature !== options.definitionBlurAnkiMature) ankiMaturityEpoch++;
     const blurChanged = ankiChanged || next.showLookupCounts !== options.showLookupCounts || DEFINITION_BLUR_KEYS
       .some(key => next[key] !== options[key]);
@@ -2883,6 +2902,9 @@
     }
     optionsStorageRevision = revision;
     options = next;
+    if (customLinksChanged) {
+      for (const level of levels) level.view?.setCustomLinks(options.customLinks);
+    }
     if (countsChanged) {
       for (const level of levels) {
         const request = level.currentViewRequest;

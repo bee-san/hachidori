@@ -117,6 +117,16 @@ button,
   font-size: 13px;
   font-weight: 600;
 }
+.settings-search { display: grid; gap: 6px; margin: 22px 10px 0; }
+.settings-search input { width: 100%; min-width: 0; }
+.settings-search-results[hidden] { display: none; }
+.settings-search-results h1 { margin-top: 0; }
+.settings-search-results ul { display: grid; gap: 8px; margin: 20px 0 0; padding: 0; list-style: none; }
+.settings-search-results a { display: grid; gap: 3px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; }
+.settings-search-results a:hover { border-color: var(--accent); background: var(--accent-soft); }
+.settings-search-results small { color: var(--text-dim); }
+.settings-search-results strong { color: var(--accent); font-weight: 600; }
+
 .settings-nav {
   display: flex;
   flex-direction: column;
@@ -968,9 +978,6 @@ textarea {
   width: 260px;
   max-width: 100%;
 }
-.custom-dictionary-open {
-  width: fit-content;
-}
 .custom-dictionary-form,
 .custom-dictionary-source-field {
   display: grid;
@@ -1032,16 +1039,24 @@ textarea {
   white-space: pre-line;
   line-height: 1.6;
 }
+#anki { gap: 16px; }
+#anki .field-hint { margin: 0; }
+#anki .lookup-group legend { margin-bottom: 8px; }
+#anki .lookup-group .field,
+#anki .lookup-enable { padding-block: 9px; }
+.anki-connection-summary { display: grid; gap: 4px; }
+#anki-url-error:empty { display: none; }
+#anki .anki-details > .field { margin-top: 10px; }
 .anki-details {
   border-top: 1px solid var(--border);
-  padding: 18px 0;
+  padding: 10px 0;
 }
 .anki-details > summary {
   cursor: pointer;
   font-weight: 550;
 }
 .anki-details[open] > summary {
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 .anki-preset-tools,
 .anki-template-heading,
@@ -1053,6 +1068,7 @@ textarea {
 }
 .anki-preset-tools {
   align-items: end;
+  margin-block: 10px;
 }
 .anki-preset {
   display: flex;
@@ -1062,7 +1078,7 @@ textarea {
 }
 .anki-template-row {
   border-top: 1px solid var(--border);
-  padding: 16px 0;
+  padding: 10px 0;
 }
 .anki-template-heading {
   justify-content: space-between;
@@ -1086,7 +1102,7 @@ textarea {
   overflow-wrap: anywhere;
 }
 .anki-marker-reference {
-  margin: 16px 0;
+  margin: 10px 0;
 }
 .field {
   min-width: 0;

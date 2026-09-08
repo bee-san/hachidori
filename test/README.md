@@ -2,6 +2,27 @@
 
 # Hachidori test harness
 
+`node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
+settings search, keyboard navigation, disclosure focus and draft preservation,
+plus the toolbar toggle, revision conflicts and recording shortcut. Search uses
+the same external jsdom dependency described below. The toolbar tests do not
+start a capture session.
+
+`node --test test/frequency-presentation.test.mjs` checks compact numeric
+frequency defaults, preserved explicit display choices, source and kana details,
+and live grammar/name controls without replacing definitions or Note drafts.
+It uses the same external jsdom dependency.
+
+`node --test test/note-editor.test.mjs` checks the shared personal-dictionary
+pencil on term, kanji and missing-word views, selected-word prefills and a single
+pending save. The extension smoke suite also verifies that selected missing
+words refresh into their personal definition after the save, including when no
+dictionaries were installed. It uses the same external jsdom dependency.
+
+`node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
+current word/reading/sentence expansion, background-tab clicks, live editing
+without replacing cards or Note drafts, and stale-control navigation rejection.
+
 Thirteen pieces, run in this order. The JavaScript checks use Node built-ins except
 `extension-smoke.mjs` and `audio-content.test.mjs`, which need jsdom. The browser checks need Chrome and
 `puppeteer-core`; those dependencies stay outside the repository.
@@ -548,8 +569,8 @@ What it proves, in order:
    record confirms rather than recounts), and settles the Jitendex
    summary source and Bee's clicked-kanji route once from the committed titles,
    in one write with the setup record, without overwriting an option the user
-   already changed. A fresh jsdom `startup.html` shows its data-use disclosure
-   without any runtime request, keeps it after a failed Start save, and begins
+   already changed. A fresh jsdom `startup.html` shows its short setup invitation
+   and privacy-policy link without any runtime request, keeps them after a failed Start save, and begins
    installation only after that stage write succeeds. Reopening the accepted
    stage resumes installation, while **Set up manually** reaches practice
    without dictionary or Anki requests. An accepted startup page attaches to the installer with the
@@ -681,12 +702,14 @@ Without it, this headless macOS host accepts playback but stalls its audio clock
 at 64 ms. Audible hardware output and installed speech voices are not proved.
 
 `node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs`
-runs 25 focused tests for strict source options, defaults versus explicit empty
+runs 28 focused tests for strict source options, defaults versus explicit empty
 lists, template encoding, candidate order, native callback ownership, cleanup,
-TTS supersession and unavailable selected voices, document-scoped cancellation,
+TTS supersession, first-use voice loading, automatic Japanese voice selection,
+and unavailable selected voices, document-scoped cancellation,
 Test and fallback deadlines, LRU/TTL/byte accounting, leased URL cleanup, exact
 candidate identity, stale controls, chooser focus/failure recovery and autoplay,
-including delayed initial options without repeating a manual play. Extension
+including delayed initial options without repeating a manual play, quiet success
+feedback, and controls hidden when no source is configured. Extension
 checks exercise the actual worker's cancelled startup retries and Settings draft
 conflicts rather than duplicating their storage machinery.
 
@@ -978,8 +1001,11 @@ observe real worker lookup relays while toggling Japanese-only scanning in the
 open tab. Native input, textarea and contenteditable typing stays intact; direct
 and spanning selections exclude visible editing controls, including boxless
 `display:contents` editors, without treating a hidden control as visible.
-Nested open-shadow editors suppress native activation typing and pending scans;
-visibility-restored descendants are treated as visible even inside a hidden editor.
+Nested open-shadow editors suppress printable activation typing and cancel
+pending scans when focused. A local Japanese example link beside an autofocused
+search field supports both hover and stationary Shift lookup while preserving
+the field's focus. Visibility-restored descendants are treated as visible even
+inside a hidden editor.
 The extension suite separately holds replies through selection cancellation,
 retry and storage invalidation; checks exact Note/Back/internal-link descriptors;
 and pins same-candidate pending lookup deduplication.

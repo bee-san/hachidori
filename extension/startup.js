@@ -368,6 +368,9 @@ function startCountdown() {
 }
 
 function countdownView() {
+  // Keep the same animated fill through installer/storage updates. Replacing
+  // it would visibly restart the countdown even though its deadline is unchanged.
+  if (countdown.node) return countdown.node;
   const wrapper = document.createElement("div");
   wrapper.className = "setup-countdown";
   const label = document.createElement("span");
@@ -383,8 +386,11 @@ function countdownView() {
   track.setAttribute("aria-valuemax", "100");
   track.setAttribute("aria-valuenow", "0");
   track.style.setProperty("--progress", "0%");
+  track.style.setProperty("--countdown-duration", `${SUCCESS_DISPLAY_MS}ms`);
+  track.style.setProperty("--countdown-delay", `${countdown.startedAt - Date.now()}ms`);
   track.appendChild(document.createElement("div")).className = "track-fill";
   wrapper.append(label, track);
+  countdown.node = wrapper;
   return wrapper;
 }
 
@@ -540,7 +546,12 @@ function ankiOutcomeNote(anki) {
   } else if (anki.status === "already-configured") {
     node.append(`Anki is already set up with ${anki.model} for deck ‘${anki.deck}’. Change in `, link, ".");
   } else if (anki.status === "unavailable") {
-    node.append("Anki isn’t connected. It’s optional — you can set it up later in ", link, ".");
+    link.href = "https://apps.ankiweb.net/";
+    link.dataset.focusKey = "link:anki-download";
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Anki";
+    node.append("Could not find Anki. If you want to make flashcards out of words, I suggest ", link, "!");
   } else {
     node.append(`Anki needs attention: ${anki.detail} Set up in `, link, ".");
   }
@@ -551,7 +562,7 @@ function ankiHeading(anki) {
   switch (anki.status) {
     case "configured": return "Anki is set up";
     case "already-configured": return "Anki is already set up";
-    case "unavailable": return "Anki isn’t connected";
+    case "unavailable": return "Could not find Anki";
     default: return "Anki needs attention";
   }
 }
@@ -756,13 +767,9 @@ function practiceView() {
 function welcomeView() {
   return {
     heading: "Welcome to Hachidori",
-    body: [
-      paragraph("Japanese page text is looked up on this computer. Words, readings, counts and lookup times are saved locally. You can pause recording in Reading settings without erasing your history."),
-      paragraph("Start setup downloads four starter dictionaries from their publishers, who receive your IP address. It also reads deck, note-type, card and note metadata from local AnkiConnect to configure an existing mining setup. No Anki notes are changed."),
-      paragraph("Optional pronunciation sends words and readings to your audio provider or browser voice service. Mining sends selected study content and configured page screenshots to local Anki. Continuous recording stays off until you start it and choose a source in Chrome."),
-    ],
+    body: [paragraph("Click Start Setup to automatically set up Hachidori")],
     actions: [
-      button("setup-start", "Start setup", () => { void advance("dictionaries"); }),
+      button("setup-start", "Start Setup", () => { void advance("dictionaries"); }),
       button("setup-manual", "Set up manually", () => { void advance("practice"); }, "ghost"),
     ],
   };

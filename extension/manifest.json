@@ -22,6 +22,10 @@
     "<all_urls>"
   ],
   "options_page": "settings.html",
+  "action": {
+    "default_title": "Hachidori",
+    "default_popup": "toolbar.html"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
