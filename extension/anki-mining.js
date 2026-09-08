@@ -175,6 +175,11 @@ export function createAnkiMiningService({
       appliedFields: fields,
       capture,
     });
+    // Failed media can restore a field's original value after preparation.
+    // Leave it untouched instead of overwriting an intervening Anki edit.
+    if (target) for (const [field, value] of Object.entries(fields)) {
+      if (value === target.fields[field]) delete fields[field];
+    }
     // A definitive no-write releases whatever only this note would have used.
     // An uncertain write keeps it: the note may exist in Anki after all.
     const releaseRejected = () => afterRejected({ request, ...prepared, writeResources })

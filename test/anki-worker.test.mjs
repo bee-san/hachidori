@@ -374,7 +374,8 @@ test("missing captured audio writes the mapped animation only and returns the so
 test("a mining screenshot is held until the note is written, then stored under its own name", async () => {
   const uploads = [];
   const deletions = [];
-  let refuse = false, duplicate = false;
+  let refuse = false, duplicate = false, lostReply = false;
+  let check = { canAdd: true };
   const notes = new Map();
   let fields = null;
   const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic", deck: "Default", apiKey: "local-key",
@@ -383,10 +384,11 @@ test("a mining screenshot is held until the note is written, then stored under i
   const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Audio"],
     models: ["Basic"], decks: ["Default"], errors: [] }),
     async invoke(action, params, apiKey) {
-      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true }];
+      if (action === "canAddNotesWithErrorDetail") return [check];
       if (action === "deleteMediaFile") { deletions.push(params.filename); return null; }
       if (action === "addNote") {
         if (duplicate) throw new Error("cannot create note because it is a duplicate");
+        if (lostReply) throw new Error("Anki reply lost");
         fields = params.note.fields;
         notes.set(12, fields);
         return 12;
@@ -454,6 +456,31 @@ test("a mining screenshot is held until the note is written, then stored under i
   assert.match(withoutHeld.warnings.join(" "), /Screenshot: the captured picture was replaced/u);
   assert.deepEqual(deletions, []);
 
+  // Every authoritative no-write releases the pending bytes inside the worker,
+  // even when the original reader cannot receive its reply and discard them.
+  for (const outcome of ["duplicate", "invalid", "configuration changed"]) {
+    const picture = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+    const submitted = { ...request, configKey: status.configKey, screenshot: picture };
+    if (outcome === "configuration changed") {
+      await assert.rejects(service.submit({ ...submitted, configKey: "stale" }), /configuration changed/u);
+    } else {
+      check = { canAdd: false, error: outcome === "duplicate" ? "cannot create note because it is a duplicate" : "invalid note" };
+      assert.equal((await service.submit(submitted)).state, outcome);
+    }
+    check = { canAdd: true };
+    const uploadsBefore = uploads.length;
+    const retry = await service.submit(submitted);
+    assert.match(retry.warnings.join(" "), /Screenshot: the captured picture was replaced/u);
+    assert.equal(uploads.length, uploadsBefore, "a rejected submission must not leave its picture available for later upload");
+  }
+
+  const older = await service.screenshot(async () => "data:image/jpeg;base64,b2xk");
+  const newer = await service.screenshot(async () => "data:image/jpeg;base64,bmV3");
+  await assert.rejects(service.submit({ ...request, configKey: "stale", screenshot: older }), /configuration changed/u);
+  const currentPicture = await service.submit({ ...request, configKey: status.configKey, screenshot: newer });
+  assert.deepEqual(currentPicture.warnings, [], "old submission cleanup must leave a newer pending picture intact");
+  assert.equal(uploads.at(-1).filename, newer.filename);
+
   // A note Anki definitively refuses takes its own picture back out of the media
   // folder rather than leaving it unreferenced.
   refuse = false;
@@ -464,6 +491,14 @@ test("a mining screenshot is held until the note is written, then stored under i
   assert.equal(rejected.state, "duplicate");
   assert.deepEqual(deletions, [orphan.filename]);
   duplicate = false;
+  deletions.length = 0;
+
+  lostReply = true;
+  const uncertainPicture = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+  const uncertain = await service.submit({ ...request, configKey: status.configKey, screenshot: uncertainPicture });
+  assert.equal(uncertain.state, "uncertain");
+  assert.equal(uploads.at(-1).filename, uncertainPicture.filename);
+  assert.deepEqual(deletions, [], "an uncertain write must retain its uploaded screenshot");
 
   // The capture itself refuses when the switch is off or the page gives nothing.
   await assert.rejects(service.screenshot(async () => "not-an-image"), /no screenshot/u);
@@ -474,25 +509,32 @@ test("a mining screenshot is held until the note is written, then stored under i
 });
 
 test("pronunciation enrichment keeps a failed or replaced screenshot unavailable", async t => {
-  for (const outcome of ["stored", "replaced", "refused"]) await t.test(outcome, async () => {
-    let fields;
+  for (const outcome of ["stored", "replaced", "refused", "overwrite-refused"]) await t.test(outcome, async () => {
+    const overwrite = outcome === "overwrite-refused";
+    let fields = overwrite ? { Front: "猫", Back: "preserved" } : undefined;
+    const updates = [];
     const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic",
+      duplicateBehavior: overwrite ? "overwrite" : "prevent", duplicateScope: "collection",
       fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
-        Back: { value: "{screenshot}{audio}", overwriteMode: "overwrite" } } } });
+        Back: { value: `${overwrite ? "preserved" : ""}{screenshot}{audio}`, overwriteMode: "overwrite" } } } });
     const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
       models: ["Basic"], decks: ["Default"], errors: [] }), async invoke(action, params) {
-      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true }];
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: !overwrite,
+        error: overwrite ? "cannot create note because it is a duplicate" : null }];
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "findNotes") return [12];
       if (action === "storeMediaFile") {
-        if (outcome === "refused" && params.filename.startsWith("hachidori-screenshot-")) {
+        if ((outcome === "refused" || overwrite) && params.filename.startsWith("hachidori-screenshot-")) {
+          if (overwrite) fields.Back = "external edit";
           throw new Error("Screenshot upload acknowledgement lost");
         }
         return params.filename;
       }
       if (action === "deleteMediaFile") return null;
       if (action === "addNote") { fields = { ...params.note.fields }; return 12; }
-      if (action === "notesInfo") return [{ noteId: 12,
+      if (action === "notesInfo") return [{ noteId: 12, modelName: "Basic",
         fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
-      if (action === "updateNoteFields") { Object.assign(fields, params.note.fields); return null; }
+      if (action === "updateNoteFields") { updates.push({ ...params.note.fields }); Object.assign(fields, params.note.fields); return null; }
       throw new Error(`Unexpected ${action}`);
     } };
     const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
@@ -504,8 +546,13 @@ test("pronunciation enrichment keeps a failed or replaced screenshot unavailable
     if (outcome === "replaced") await service.screenshot(async () => "data:image/jpeg;base64,bmV3");
     const result = await service.submit({ term: { expression: "猫", reading: "ねこ" }, generation: 3,
       configKey: (await service.status()).configKey, screenshot, captureUnavailable: ["animation"] });
-    assert.equal(result.state, "added");
-    assert.equal(fields.Back, `${outcome === "stored" ? `<img src="${screenshot.filename}">` : ""}[sound:checked.wav]`);
+    assert.equal(result.state, overwrite ? "updated" : "added");
+    assert.equal(fields.Back, overwrite ? "external edit"
+      : `${outcome === "stored" ? `<img src="${screenshot.filename}">` : ""}[sound:checked.wav]`);
+    if (overwrite) {
+      assert.deepEqual(updates, [{}], "failed media must not write back a value preserved from the duplicate snapshot");
+      assert.match(result.warnings.join(" "), /pronunciation update was skipped/u);
+    }
     if (outcome === "stored") assert.deepEqual(result.warnings, []);
     else assert.match(result.warnings.join(" "), /Screenshot: /u);
   });

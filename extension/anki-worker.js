@@ -275,14 +275,27 @@ export function createAnkiWorkerService({
     return { token: pendingScreenshot.token, filename: pendingScreenshot.filename };
   }
 
-  // A submission that is abandoned before it is sent releases its picture, so a
-  // capture nobody will use does not sit in the worker until the next one.
+  // An abandoned or definitively rejected submission releases only its own
+  // pending bytes; uploaded media has a separate write-outcome cleanup path.
   function discardScreenshot(request) {
     if (pendingScreenshot !== null && pendingScreenshot.token === request?.token) pendingScreenshot = null;
     return { discarded: true };
   }
 
-  return { ...mining, screenshot, discardScreenshot, async maturity(request) {
+  async function submit(request) {
+    try {
+      const result = await mining.submit(request);
+      if (["duplicate", "invalid"].includes(result.state)) discardScreenshot(request.screenshot);
+      return result;
+    } catch (error) {
+      // The mining service reports a possibly sent mutation as uncertain;
+      // a rejection here confirms that its note write never happened.
+      discardScreenshot(request.screenshot);
+      throw error;
+    }
+  }
+
+  return { ...mining, submit, screenshot, discardScreenshot, async maturity(request) {
     try {
       const options = await readOptions();
       return { mature: options.definitionBlurAnkiMature === true

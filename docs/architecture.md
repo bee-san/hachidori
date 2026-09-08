@@ -1323,7 +1323,8 @@ it never holds the dictionary storage queue. Native Anki duplicate search select
 same-model overwrite targets inside the configured deck scope. The six field
 overwrite modes use authoritative field spellings. The initial write sends only
 changed fields; preserved values are omitted instead of written back from the
-earlier snapshot. Pronunciation enrichment compares its complete desired values
+earlier snapshot, including fields restored to that value by a failed media
+upload. Pronunciation enrichment compares its complete desired values
 against the applied text-only write and the current note.
 A lost write acknowledgement is not retried; confirmed note IDs stay successful
 even if readback, enrichment, or subsequent reader refresh fails, including
@@ -1394,7 +1395,9 @@ checks, overwrite policies and existing values are untouched and a note that is
 rejected uploads nothing at all. Only that note's own picture is consumed, so a
 second Add's newer capture is never taken from it, and a picture that the applied
 fields turn out not to use — a coalescing field that keeps its existing image — is
-released rather than held. A note the final checks or Anki then refuse definitively
+released rather than held. The worker also discards that request's pending bytes
+after an authoritative duplicate, invalid note or preparation error, even when
+the reader has closed before receiving the outcome. A note the final checks or Anki then refuse definitively
 — a configuration change, a lost write ownership, a duplicate, or a clip
 preparation that fails after the picture was stored — has its stored picture
 deleted again, as does a note that goes in without the picture because the store's
