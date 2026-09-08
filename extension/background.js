@@ -1367,32 +1367,41 @@ const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight",
 // second waits once rather than losing its screenshot.
 const CAPTURE_VISIBLE_RETRY_MS = 600;
 
-// The screenshot belongs to the page that asked for it. `captureVisibleTab`
-// takes the window's active tab, so the sender's tab must still be that tab, and
-// a top-level frame must still show the document the request came from.
-async function captureSenderViewport(sender) {
-  const tabId = sender.tab?.id;
-  if (typeof tabId !== "number") throw new Error("Only a reading tab can be captured.");
-  if (!sender.documentId) throw new Error("The reading document identity is unavailable.");
-  // Checked before and after every attempt: a rate-limit wait, and the capture
-  // itself, are both long enough to switch tabs or navigate, and the API takes
-  // whichever tab is active when it runs.
-  const ownedTab = async () => {
-    const tab = await chrome.tabs.get(tabId);
-    if (tab?.active !== true) throw new Error("The reading tab is no longer the active tab.");
-    if ((sender.frameId ?? 0) === 0 && tab.url !== sender.url) {
-      throw new Error("The reading tab moved to another page before the screenshot.");
-    }
-    // Chrome addresses this exact document, so a reload at the same URL cannot
+// Extension pages have no sender.tab and cannot answer tabs.sendMessage. Chrome's
+// live extension contexts bind startup to the same document before and after capture.
+async function screenshotOwnedTab(sender) {
+  const startup = startupSender(sender);
+  let tabId = sender.tab?.id;
+  if (startup) {
+    const [context] = await chrome.runtime.getContexts({ contextTypes: ["TAB"], documentIds: [sender.documentId] });
+    if (!context) throw new Error("The reading document changed before the screenshot.");
+    tabId = context.tabId;
+  }
+  const tab = await chrome.tabs.get(tabId);
+  if (tab?.active !== true) throw new Error("The reading tab is no longer the active tab.");
+  if ((sender.frameId ?? 0) === 0 && tab.url !== sender.url) {
+    throw new Error("The reading tab moved to another page before the screenshot.");
+  }
+  if (!startup) {
+    // Address the exact content-script document, so a same-URL reload cannot
     // answer on its predecessor's behalf.
     const document = await chrome.tabs.sendMessage(tabId, {
       target: CAPTURE_CONTENT_TARGET, type: "hd_capture_document",
     }, { documentId: sender.documentId }).catch(() => null);
     if (document?.present !== true) throw new Error("The reading document changed before the screenshot.");
-    return tab;
-  };
+  }
+  return tab;
+}
+
+// captureVisibleTab takes the window's active tab. Both the active page and its
+// document owner are checked around every attempt, including a rate-limit retry.
+async function captureSenderViewport(sender) {
+  if (typeof sender.tab?.id !== "number" && !startupSender(sender)) {
+    throw new Error("Only a reading tab can be captured.");
+  }
+  if (!sender.documentId) throw new Error("The reading document identity is unavailable.");
   for (let attempt = 1; ; attempt += 1) {
-    const tab = await ownedTab();
+    const tab = await screenshotOwnedTab(sender);
     let captured;
     try {
       captured = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
@@ -1403,7 +1412,7 @@ async function captureSenderViewport(sender) {
     }
     // Capturing stays bound to this window even if the active reading tab is
     // dragged to another one before the pixels return.
-    const afterCapture = await ownedTab();
+    const afterCapture = await screenshotOwnedTab(sender);
     if (afterCapture.windowId !== tab.windowId) {
       throw new Error("The reading tab moved to another window during the screenshot.");
     }

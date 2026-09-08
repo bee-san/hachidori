@@ -671,7 +671,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 182 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 183 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -795,6 +795,9 @@ and page reload, then looks up 辞書 in a local HTML fixture. Access is disable
 again before **Not now** and **Finish**. The Anki success screen, after fixture
 removal, proves dictionary recovery keeps Finish and Settings available.
 `HACHIDORI_STARTUP_LOOKUP_SCREENSHOT` captures the actual practice popup.
+The startup screenshot check uses Chrome’s live extension document context to
+capture that tab, since packaged extension pages cannot answer content-script
+messages and their runtime sender has no tab.
 The native-switch scenario enables Developer mode in its isolated profile:
 Chrome 152 otherwise disables a command-line extension when it reloads as an
 unpacked extension. No personal browser settings are changed.
@@ -1024,7 +1027,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 182 assertions, and the summary line
+`PLANNED` at the top of the file names all 183 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or
