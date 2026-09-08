@@ -17,12 +17,13 @@ Anki is labelled **Optional** in the progress indicator. Its check offers
 **Continue now** immediately, and a late result preserves the stage the user
 has reached. A failed connection says **Anki isn’t connected**, without
 claiming that Anki is absent. Dictionary success advances immediately. The
-three successful Anki detection steps each remain visible for one second, then
-the settled result remains for three seconds. On the final step, the ordinary
-reader immediately selects and looks up the demonstrated word once; its
-keyboard button and hover route remain available. Installation explains that
-it continues after the tab closes, and ZIP imports are clearly separate from
-the personal dictionary.
+three successful Anki detection steps each remain visible for two seconds. The
+selected card appears on the first step and the selected deck on the second,
+instead of withholding both names until the result. The settled result then
+remains for three seconds. On the final step, the ordinary reader immediately
+selects and looks up the demonstrated word once; its keyboard button and hover
+route remain available. Installation explains that it continues after the tab
+closes, and ZIP imports are clearly separate from the personal dictionary.
 
 The card has clearer heading and action spacing, less competing Anki feedback
 on the practice screen, and full-width dictionary status text. Existing light
@@ -34,15 +35,16 @@ narrow widths (failure uses 500 × 800; real practice uses 1200 × 1000). The fi
 actual packaged page, scripts and styles with controlled setup records,
 dictionary inventories and Anki replies; the background worker is inert.
 They show the UI states and do not prove downloads or lookups. The practice
-capture comes from the full extension browser test, with catalogue fixtures
-imported through the production engine. All images were inspected without
-editing. The capture driver and state/overflow report remain in the local
+and progressive Anki captures come from the full extension browser test, with
+catalogue fixtures imported through the production engine and AnkiConnect
+mocked at the service worker. All images were inspected without editing. The
+capture driver and state/overflow report for the controlled captures remain in the local
 `hachidori-merge-prs-20260908` run directory as `pr85-capture.mjs` and
 `pr85-captures.json`.
 
-| Three-second Anki result | Automatic real lookup |
+| Progressive Anki choices | Automatic real lookup |
 | --- | --- |
-| ![Configured Anki result](assets/startup-auto-anki.png) | ![Practice page showing its automatic lookup](assets/startup-auto-lookup.png) |
+| ![Configured card followed by the selected deck](assets/startup-auto-anki.png) | ![Practice page showing its automatic lookup](assets/startup-auto-lookup.png) |
 
 ![Empty library with Add dictionaries and Finish setup](assets/startup-refined-empty.png)
 

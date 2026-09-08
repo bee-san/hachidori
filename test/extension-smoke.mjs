@@ -6533,27 +6533,54 @@ async function startupPageStage() {
     document.getElementById("setup-retry").click();
     await until(() => ankiRequests() === 2 && status().textContent.includes("no Anki outcome was recorded"), "the empty Anki reply");
     const emptyReplyShown = heading() === "Anki could not be checked" && document.getElementById("setup-retry") !== null;
-    ankiReply = (message) => {
-      setupState = { ...setupState, revision: 8, anki: { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" } };
-      return { type: "hd_setup_anki_result", requestId: message.requestId, ok: true, error: null, state: structuredClone(setupState) };
-    };
-    const ankiStarted = Date.now();
+    const readAnkiProgress = () => [...document.querySelectorAll(".setup-anki-progress-step")].map((row) => ({
+      title: row.querySelector("strong")?.textContent,
+      detail: row.querySelector("small")?.textContent,
+      done: row.classList.contains("is-done"),
+      current: row.getAttribute("aria-current") === "step",
+    }));
+    let releaseConfiguredAnki;
+    ankiReply = (message) => new Promise((resolveReply) => {
+      releaseConfiguredAnki = () => {
+        setupState = { ...setupState, revision: 8, anki: { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" } };
+        resolveReply({ type: "hd_setup_anki_result", requestId: message.requestId, ok: true, error: null, state: structuredClone(setupState) });
+      };
+    });
     document.getElementById("setup-retry").click();
+    await until(() => typeof releaseConfiguredAnki === "function", "the held configured Anki reply");
+    await new Promise((done) => setTimeout(done, 2100));
+    const pendingProgress = readAnkiProgress();
+    const pendingStayed = heading() === "Finding your Anki setup…"
+      && status().textContent === "Finding your Anki setup…" && !status().classList.contains("is-error")
+      && JSON.stringify(pendingProgress) === JSON.stringify([
+        { title: "Looking for the most popular mining card", detail: "Checking Anki…", done: false, current: true },
+        { title: "Looking for the most popular deck", detail: "Waiting", done: false, current: false },
+        { title: "Setting Hachidori to use them", detail: "Waiting", done: false, current: false },
+      ]);
+    releaseConfiguredAnki();
+    await until(() => readAnkiProgress()[0]?.detail === "Selected Kiku v2"
+      && readAnkiProgress()[0]?.current, "the selected mining-card step");
+    const cardShownAt = Date.now();
+    const cardProgress = readAnkiProgress();
+    await until(() => readAnkiProgress()[1]?.detail === "Selected Mining::Words"
+      && readAnkiProgress()[1]?.current, "the selected deck step");
+    const deckShownAt = Date.now();
+    const deckProgress = readAnkiProgress();
+    await until(() => readAnkiProgress()[2]?.detail === "Ready for future mining"
+      && readAnkiProgress()[2]?.current, "the saved Anki step");
+    const readyShownAt = Date.now();
+    const readyProgress = readAnkiProgress();
     await until(() => heading() === "Anki is set up"
       && document.getElementById("setup-countdown-label")?.textContent === "Continuing to practice in 3 seconds",
     "the configured Anki result");
     const configuredAt = Date.now();
     const checkedHeading = heading();
-    const automaticProgress = [...document.querySelectorAll(".setup-anki-progress-step")].map((row) => ({
-      title: row.querySelector("strong")?.textContent,
-      detail: row.querySelector("small")?.textContent,
-      done: row.classList.contains("is-done"),
-    }));
+    const automaticProgress = readAnkiProgress();
     await new Promise((done) => setTimeout(done, 1500));
     const ankiHeld = heading() === "Anki is set up" && pendingReply === null
       && /Continuing to practice in [12] seconds?/u.test(document.getElementById("setup-countdown-label")?.textContent ?? "");
     await until(() => pendingReply !== null, "the practice write");
-    const progressElapsed = configuredAt - ankiStarted;
+    const progressDwell = [deckShownAt - cardShownAt, readyShownAt - deckShownAt, configuredAt - readyShownAt];
     const ankiElapsed = Date.now() - configuredAt;
     const practiceRequest = requests.at(-1);
     // A second startup tab made the same move first: the conflict it leaves is
@@ -6562,12 +6589,29 @@ async function startupPageStage() {
     reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
     await until(() => document.getElementById("setup-practice-instruction")?.textContent.startsWith("Try looking up a word below."), "the practice stage");
     const outcomeNote = document.querySelector(".setup-anki-outcome");
-    const practice = emptyReplyShown && ankiRequests() === 3 && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
-      && checkedHeading === "Anki is set up" && ankiHeld && progressElapsed >= 2900 && ankiElapsed >= 2900
+    const practice = emptyReplyShown && pendingStayed && ankiRequests() === 3
+      && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
+      && checkedHeading === "Anki is set up" && ankiHeld
+      && progressDwell.every((duration) => duration >= 1900) && ankiElapsed >= 2900
+      && JSON.stringify(cardProgress) === JSON.stringify([
+        { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: false, current: true },
+        { title: "Looking for the most popular deck", detail: "Waiting", done: false, current: false },
+        { title: "Setting Hachidori to use them", detail: "Waiting", done: false, current: false },
+      ])
+      && JSON.stringify(deckProgress) === JSON.stringify([
+        { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: true, current: false },
+        { title: "Looking for the most popular deck", detail: "Selected Mining::Words", done: false, current: true },
+        { title: "Setting Hachidori to use them", detail: "Waiting", done: false, current: false },
+      ])
+      && JSON.stringify(readyProgress) === JSON.stringify([
+        { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: true, current: false },
+        { title: "Looking for the most popular deck", detail: "Selected Mining::Words", done: true, current: false },
+        { title: "Setting Hachidori to use them", detail: "Ready for future mining", done: false, current: true },
+      ])
       && JSON.stringify(automaticProgress) === JSON.stringify([
-        { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: true },
-        { title: "Looking for the most popular deck", detail: "Selected Mining::Words", done: true },
-        { title: "Setting Hachidori to use them", detail: "Ready for future mining", done: true },
+        { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: true, current: false },
+        { title: "Looking for the most popular deck", detail: "Selected Mining::Words", done: true, current: false },
+        { title: "Setting Hachidori to use them", detail: "Ready for future mining", done: true, current: false },
       ])
       && outcomeNote?.dataset.status === "configured"
       && outcomeNote.textContent === "Automatically set up Kiku v2 for deck ‘Mining::Words’. Change in Settings."
@@ -6590,8 +6634,9 @@ async function startupPageStage() {
     const finished = finishRequest.baseRevision === 9 && finishRequest.stage === "complete" && closedTabs[0] === 44
       && heading() === "Setup is complete." && currentStep() === null && doneSteps() === 3
       && document.getElementById("setup-actions").childElementCount === 0;
+    const configuredResume = await startupConfiguredAnkiResume(jsdom);
     return { requestFailed, attached, determinate, ordered, indeterminate, installing, installed, failedRow, failureView, focusKept, continued,
-      retried, oldRunIgnored, success, advanced, practice, practicePreserved, finished };
+      retried, oldRunIgnored, success, advanced, practice, practicePreserved, finished, configuredResume };
   } finally {
     window.close();
   }
@@ -6686,6 +6731,27 @@ const MANIFEST_READER_SCRIPTS = EXTENSION_MANIFEST.content_scripts[0].js.filter(
 const SETUP_AT_DICTIONARIES = Object.freeze({ schemaVersion: 1, revision: 2, startedAt: "2026-09-07T10:00:00.000Z",
   stage: "dictionaries", completedAt: null,
   dictionaries: Object.freeze({ outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }) });
+
+// A persisted configured outcome is already settled. Reloading or resuming the
+// page must start its three-second continuation instead of replaying a check
+// that this page never made.
+async function startupConfiguredAnkiResume(jsdom) {
+  const setup = { ...structuredClone(SETUP_AT_DICTIONARIES), revision: 8, stage: "anki",
+    anki: { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" } };
+  const page = startupCase(jsdom, { setup,
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  try {
+    await page.load();
+    const progress = [...page.document.querySelectorAll(".setup-anki-progress-step")];
+    return page.heading() === "Anki is set up"
+      && page.document.getElementById("setup-countdown-label")?.textContent === "Continuing to practice in 3 seconds"
+      && progress.length === 3 && progress.every((row) => row.classList.contains("is-done"))
+      && progress.every((row) => !row.hasAttribute("aria-current"))
+      && !page.requestTypes().includes("hd_setup_anki");
+  } finally {
+    page.window.close();
+  }
+}
 
 async function startupWelcomeStage() {
   const jsdom = await loadJsdom();

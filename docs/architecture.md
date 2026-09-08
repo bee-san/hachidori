@@ -335,10 +335,12 @@ on its own. Anki is explicitly optional. **Continue now** is available during
 the check; its eventual reply adopts the latest recorded stage without moving
 the user back. A failed connection says **Anki isn’t connected**, rather than
 claiming Anki is absent. A successful automatic configuration keeps each of
-its three progress steps visible for one second. Every settled outcome remains
-for three seconds before setup continues to practice.
+its three progress steps visible for two seconds. The chosen model appears on
+the first step and the chosen deck on the second as that staged result is
+displayed. Every settled outcome remains for three seconds before setup
+continues to practice.
 
-![Configured Anki result during its three-second continuation](assets/startup-auto-anki.png)
+![Configured card followed by the selected deck during automatic setup](assets/startup-auto-anki.png)
 
 ![The final step after an absent Anki, light palette](assets/startup-ready.png)
 

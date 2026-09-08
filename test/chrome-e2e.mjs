@@ -4423,6 +4423,18 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
       record();
       new MutationObserver(record).observe(document.getElementById("setup-card"), { childList: true, subtree: true, characterData: true });
     });
+    if (process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT || process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT) {
+      await startup.waitForFunction(() => {
+        const current = document.querySelector('.setup-anki-progress-step[aria-current="step"]');
+        return current?.dataset.step === "2" && current.querySelector("small")?.textContent === "Selected Mining";
+      }, { timeout: 30_000, polling: 25 });
+      for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT]]) {
+        if (!path) continue;
+        await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+        await startup.screenshot({ path, fullPage: true });
+      }
+      await startup.emulateMediaFeatures([]);
+    }
     const configured = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "Anki is set up"
       ? {
           at: Date.now(),
@@ -4438,14 +4450,6 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
           actions: [...document.querySelectorAll("#setup-actions button")].map(control => control.id),
         } : false,
     { timeout: 30_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
-    if (configured && (process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT || process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT)) {
-      for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT]]) {
-        if (!path) continue;
-        await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
-        await startup.screenshot({ path, fullPage: true });
-      }
-      await startup.emulateMediaFeatures([]);
-    }
     const ready = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "Add a dictionary to try Hachidori"
       ? { at: Date.now(), outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
         outcomeText: document.querySelector(".setup-anki-outcome")?.textContent ?? "",
@@ -4472,9 +4476,18 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
     const pendingSteps = headingLog.filter(entry => entry.text === "Finding your Anki setup…")
       .flatMap(entry => entry.progress.filter(step => step.current).map(step => step.step));
     const progressStarted = new Map();
+    const progressChoices = new Map();
+    const expectedChoices = new Map([
+      ["1", "Selected Kiku v2"],
+      ["2", "Selected Mining"],
+      ["3", "Ready for future mining"],
+    ]);
     for (const entry of headingLog.filter(candidate => candidate.text === "Finding your Anki setup…")) {
-      const current = entry.progress.find(step => step.current)?.step;
-      if (current && !progressStarted.has(current)) progressStarted.set(current, entry.at);
+      const current = entry.progress.find(step => step.current);
+      if (current && current.detail === expectedChoices.get(current.step) && !progressStarted.has(current.step)) {
+        progressStarted.set(current.step, entry.at);
+        progressChoices.set(current.step, current.detail);
+      }
     }
     const configuredPaintedAt = headingLog.find(entry => entry.text === "Anki is set up")?.at ?? 0;
     const progressDwell = [
@@ -4486,7 +4499,8 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
       "first-run detection configures an existing Kiku mining setup read-only from the startup page",
       JSON.stringify(headingSequence.slice(0, 3)) === JSON.stringify(["Finding your Anki setup…", "Anki is set up", "Add a dictionary to try Hachidori"])
         && JSON.stringify([...new Set(pendingSteps)]) === JSON.stringify(["1", "2", "3"])
-        && progressDwell.every(duration => duration >= 900)
+        && JSON.stringify([...progressChoices]) === JSON.stringify([...expectedChoices])
+        && progressDwell.every(duration => duration >= 1900)
         && configured?.outcome === "configured" && configured.outcomeLink
         && configured.outcomeText === "Automatically set up Kiku v2 for deck ‘Mining’. Change in Settings."
         && JSON.stringify(configured.progress) === JSON.stringify([
@@ -4513,7 +4527,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && calls.every(({ version }) => version === 6)
         && calls.find(({ action }) => action === "findNotes").params.query === "mid:2"
         && calls.find(({ action }) => action === "findCards").params.query === "mid:2 -deck:filtered",
-      JSON.stringify({ headingLog, progressDwell, configured, ready, detected, calls }),
+      JSON.stringify({ headingLog, progressChoices: [...progressChoices], progressDwell, configured, ready, detected, calls }),
     );
   } finally {
     if (startup !== null) await startup.close().catch(() => {});

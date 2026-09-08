@@ -28,7 +28,7 @@ const SETUP_EVENTS_TARGET = "hachidori-setup-events";
 const ENGINE_TARGET = "hoshidicts-offscreen";
 const ANKI_RESULT_DISPLAY_MS = 3000;
 const COUNTDOWN_TICK_MS = 250;
-const ANKI_PROGRESS_STEP_MS = 1000;
+const ANKI_PROGRESS_STEP_MS = 2000;
 const ANKI_PROGRESS_STEPS = 3;
 // A run reports at every phase change and about ten times a second while a body
 // arrives, so a longer silence means the offscreen document that owned it is gone.
@@ -74,6 +74,8 @@ let practiceLookupShown = false;
 // Anki detection is asked for once per page; a failed request waits for Retry.
 let ankiRequest = null;
 let ankiFailed = false;
+// Only a check started by this page may stage a newly configured result.
+let ankiProgressRequested = false;
 let ankiProgressStartedAt = null;
 let ankiProgressTimer = null;
 const announced = new Map();
@@ -513,24 +515,24 @@ function scheduleAnkiProgressRender() {
   }, Math.max(0, nextBoundary - elapsed));
 }
 
-function ankiProgressView(anki = null) {
+function ankiProgressView(anki = null, complete = false) {
   const steps = [
     "Looking for the most popular mining card",
     "Looking for the most popular deck",
     "Setting Hachidori to use them",
   ];
-  const configured = anki?.status === "configured";
-  const current = configured ? ANKI_PROGRESS_STEPS : ankiProgressStep();
-  const details = configured
+  const selected = anki?.status === "configured";
+  const current = complete ? ANKI_PROGRESS_STEPS : ankiProgressStep();
+  const details = selected
     ? [`Selected ${anki.model}`, `Selected ${anki.deck}`, "Ready for future mining"]
-    : ["Mining card found", "Deck found", "Saving your selection"];
+    : [];
   const list = document.createElement("ol");
   list.className = "setup-anki-progress";
   list.setAttribute("aria-label", "Automatic Anki setup");
   for (const [index, title] of steps.entries()) {
     const row = document.createElement("li");
-    const done = configured || index < current;
-    const active = !configured && index === current;
+    const done = index < current;
+    const active = !complete && index === current;
     row.className = "setup-anki-progress-step";
     row.classList.toggle("is-done", done);
     row.classList.toggle("is-current", active);
@@ -546,7 +548,7 @@ function ankiProgressView(anki = null) {
     label.textContent = title;
     const detail = document.createElement("small");
     let detailText = "Waiting";
-    if (done) detailText = details[index];
+    if (done || (active && selected)) detailText = details[index];
     else if (active) detailText = "Checking Anki…";
     detail.textContent = detailText;
     copy.append(label, detail);
@@ -556,13 +558,13 @@ function ankiProgressView(anki = null) {
   return list;
 }
 
-function automaticAnkiView() {
+function automaticAnkiView(anki = null) {
   scheduleAnkiProgressRender();
   return {
     heading: "Finding your Anki setup…",
     body: [
       paragraph("Hachidori is checking the cards and decks you already use, then choosing the setup you use most."),
-      ankiProgressView(),
+      ankiProgressView(anki),
       paragraph("You can continue while the check finishes in the background."),
     ],
     actions: [button("setup-continue", "Continue now", () => { void advance("practice"); })],
@@ -571,22 +573,31 @@ function automaticAnkiView() {
 
 function requestAnkiSetup() {
   if (ankiRequest !== null) return ankiRequest;
+  const showPending = ankiFailed;
   ankiFailed = false;
-  startAnkiProgress();
-  ankiRequest = send("hd_setup_anki", {}).then((reply) => {
+  ankiProgressRequested = setupState?.anki === null;
+  stopAnkiProgress();
+  const request = send("hd_setup_anki", {}).then((reply) => {
     if (!reply.ok) throw new Error(reply.error || "Anki could not be checked");
     adoptSetupState(reply.state);
     // The reply promises a recorded outcome; without one the check is reported, not repeated.
     if (setupState?.anki === null) throw new Error("no Anki outcome was recorded");
+    if (setupState.anki.status !== "configured") ankiProgressRequested = false;
   }).catch((error) => {
     ankiFailed = true;
+    ankiProgressRequested = false;
     stopAnkiProgress();
     setStatus(`Could not check Anki: ${describe(error)}`, "error");
   }).finally(() => {
     ankiRequest = null;
     render();
   });
-  return ankiRequest;
+  ankiRequest = request;
+  if (showPending) {
+    setStatus("Finding your Anki setup…");
+    render();
+  }
+  return request;
 }
 
 // The settled Anki outcome, with its Settings link, as one readable sentence.
@@ -625,44 +636,59 @@ function ankiHeading(anki) {
   }
 }
 
+function pendingAnkiView() {
+  if (ankiFailed) {
+    return {
+      heading: "Anki could not be checked",
+      body: [settingsNote("Anki is optional. You can set it up later in ", "settings.html#anki")],
+      actions: [
+        button("setup-retry", "Retry", () => { void requestAnkiSetup(); }),
+        button("setup-continue", "Continue setup", () => { void advance("practice"); }, "ghost"),
+      ],
+    };
+  }
+  void requestAnkiSetup();
+  return automaticAnkiView();
+}
+
+function stagedConfiguredAnkiView(anki) {
+  if (anki.status !== "configured") {
+    ankiProgressRequested = false;
+    stopAnkiProgress();
+    return null;
+  }
+  if (!ankiProgressRequested) return null;
+  if (ankiProgressStartedAt === null) startAnkiProgress();
+  if (Date.now() - ankiProgressStartedAt < ANKI_PROGRESS_STEPS * ANKI_PROGRESS_STEP_MS) {
+    return automaticAnkiView(anki);
+  }
+  ankiProgressRequested = false;
+  stopAnkiProgress();
+  return null;
+}
+
 // Detection runs once per installation; its recorded outcome stays readable
 // for three seconds before setup moves on by itself.
 function ankiView() {
   const anki = setupState.anki;
-  if (anki === null) {
-    if (ankiFailed) {
-      return {
-        heading: "Anki could not be checked",
-        body: [settingsNote("Anki is optional. You can set it up later in ", "settings.html#anki")],
-        actions: [
-          button("setup-retry", "Retry", () => { void requestAnkiSetup(); }),
-          button("setup-continue", "Continue setup", () => { void advance("practice"); }, "ghost"),
-        ],
-      };
-    }
-    void requestAnkiSetup();
-    return automaticAnkiView();
-  }
+  if (anki === null) return pendingAnkiView();
   // A fast local AnkiConnect response can finish before the browser paints.
   // Keep each real detection step visible once before revealing a successful
   // automatic choice; the worker's existing detection and saved result remain
   // the source of truth.
-  if (anki.status === "configured" && ankiProgressStartedAt !== null
-      && Date.now() - ankiProgressStartedAt < ANKI_PROGRESS_STEPS * ANKI_PROGRESS_STEP_MS) {
-    return automaticAnkiView();
-  }
-  if (anki.status !== "configured") stopAnkiProgress();
+  const staged = stagedConfiguredAnkiView(anki);
+  if (staged !== null) return staged;
   if (advanceFailed) {
     cancelCountdown();
     return { heading: ankiHeading(anki),
-      body: [...(anki.status === "configured" ? [ankiProgressView(anki)] : []), ankiOutcomeNote(anki)],
+      body: [...(anki.status === "configured" ? [ankiProgressView(anki, true)] : []), ankiOutcomeNote(anki)],
       actions: [button("setup-continue", "Continue setup", () => { void advance("practice"); })] };
   }
   if (countdownPaused) cancelCountdown();
   else startCountdown("anki", "practice", "practice", ANKI_RESULT_DISPLAY_MS);
   return {
     heading: ankiHeading(anki),
-    body: [...(anki.status === "configured" ? [ankiProgressView(anki)] : []), ankiOutcomeNote(anki),
+    body: [...(anki.status === "configured" ? [ankiProgressView(anki, true)] : []), ankiOutcomeNote(anki),
       countdownPaused ? paragraph("Automatic continuation is paused. Continue when you’re ready.") : countdownView()],
     actions: [
       button("setup-continue", "Continue now", () => { void finishCountdown("anki", "practice"); }),
@@ -823,14 +849,10 @@ function practiceView() {
   }
   const readiness = practice.update(options, dictionaries, practiceOutcome);
   if (!practiceLookupShown && practiceOutcome === "ready") {
-    // Let this render mount the final step and move focus to its heading first.
-    // The ordinary reader then observes the same precise selection as the
-    // visible lookup button, without a synthetic result path.
-    practiceLookupShown = true;
-    queueMicrotask(() => {
-      if (setupState?.stage === "practice" && practiceOutcome === "ready" && practice.lookup()) return;
-      practiceLookupShown = false;
-    });
+    // The first render mounts the practice node while the reader loads. As soon
+    // as its real lookup control becomes enabled, select before the ready render
+    // returns so the final page cannot paint ahead of its demonstration.
+    practiceLookupShown = practice.lookup();
   }
   return {
     heading: readiness.heading,
@@ -894,7 +916,10 @@ function renderSteps(stage) {
 function currentView() {
   if (setupError !== null) return failedView();
   if (setupState === null) return inactiveView();
-  if (setupState.stage !== "anki" && ankiProgressStartedAt !== null) stopAnkiProgress();
+  if (setupState.stage !== "anki") {
+    ankiProgressRequested = false;
+    if (ankiProgressStartedAt !== null) stopAnkiProgress();
+  }
   if (countdown !== null && countdown.stage !== setupState.stage) cancelCountdown();
   return VIEWS[setupState.stage]();
 }
