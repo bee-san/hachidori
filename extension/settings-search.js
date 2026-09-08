@@ -21,9 +21,9 @@ export function createSettingsSearch({ document, navigate }) {
     link.href = `#${section.id}`;
     const breadcrumb = document.createElement("small");
     const sectionPath = sectionGroup ? `${sectionGroup} › ${sectionName}` : sectionName;
-    breadcrumb.textContent = group && group !== label
-      ? `${sectionPath} › ${group}`
-      : sectionGroup && label === sectionName ? sectionGroup : sectionPath;
+    let breadcrumbText = sectionGroup && label === sectionName ? sectionGroup : sectionPath;
+    if (group && group !== label) breadcrumbText = `${sectionPath} › ${group}`;
+    breadcrumb.textContent = breadcrumbText;
     const title = document.createElement("strong");
     title.textContent = label;
     link.append(breadcrumb, title);
