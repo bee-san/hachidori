@@ -36,6 +36,13 @@ function decodedBase64Length(value) {
   return value.length / 4 * 3 - padding;
 }
 
+// A note that was definitively not written leaves no picture of its own behind.
+async function releaseScreenshot({ writeResources, invoke }) {
+  const filename = writeResources?.screenshotFilename;
+  if (typeof filename !== "string" || filename === "") return;
+  await invoke("deleteMediaFile", { filename }, 10_000);
+}
+
 function validateCapture({ request, prepared, capture: selected }) {
   const media = prepared.config.mediaCapture;
   if (!media?.enabled) throw new Error("Enable media capture in Settings before using captured-media markers.");
@@ -135,13 +142,6 @@ export function createAnkiWorkerService({
       return withoutPicture(error.message);
     }
     return { warnings: [], screenshotFilename: filename };
-  }
-
-  // A note that was definitively not written leaves no picture of its own behind.
-  async function releaseScreenshot({ writeResources, invoke }) {
-    const filename = writeResources?.screenshotFilename;
-    if (typeof filename !== "string" || filename === "") return;
-    await invoke("deleteMediaFile", { filename }, 10_000);
   }
 
   async function prepareCapture(context) {
