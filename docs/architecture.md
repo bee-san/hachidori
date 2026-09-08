@@ -353,16 +353,21 @@ a second static list. `content.css` comes with the page; no reader scripts load
 during the dictionary or Anki stages. Hover instructions follow
 the active mode and activation key. The **Look up 辞書** button focuses the
 sentence and selects that word through the reader’s existing exact-selection
-route, so it also works from the keyboard. All exercise lookups use ordinary
+route, so it also works from the keyboard. It appears only when that exact
+selection can be answered. All exercise lookups use ordinary
 runtime messages, the installed dictionaries, WASM, popup renderer and styles.
 No sample result is substituted. The reader permits only this extension’s exact
 `chrome.runtime.getURL("startup.html")` URL among extension pages; Settings,
 the static design preview and other internal URLs remain excluded. The skip
 link focuses the heading without adding a URL fragment.
 
-Before inviting a lookup, the page probes the actual displayed passage with
-ordinary `hd_lookup` requests from successive character offsets, using the
-reader's configured scan length and stopping at the first hit. No result is
+Before inviting a lookup, the page probes **辞書** with the reader's selection
+payload: the word's length and a full matched-text result. If it misses, the
+page probes the actual displayed passage with ordinary `hd_lookup` requests
+from successive character offsets, using the reader's configured scan length
+and stopping at the first hit. A hit on another passage word keeps the exercise
+and reader available, while hiding the unanswered shortcut and omitting it
+from the instructions. No result is
 substituted into the popup. The answer belongs to the engine-visible library:
 each package's identity, title, revision, persisted generation path, enabled
 state and term count, together with the lookup options sent by the probe.
@@ -1369,9 +1374,13 @@ Fixed background handlers own a separate Anki mutation queue. Submission freshly
 validates configuration, fields, dictionary generation and duplicate identity;
 it never holds the dictionary storage queue. Native Anki duplicate search selects
 same-model overwrite targets inside the configured deck scope. The six field
-overwrite modes use authoritative field spellings. A lost write acknowledgement
-is not retried; confirmed note IDs stay successful even if readback, enrichment,
-or subsequent reader refresh fails, including across a settings change.
+overwrite modes use authoritative field spellings. The initial write sends only
+changed fields; preserved values are omitted instead of written back from the
+earlier snapshot. Pronunciation enrichment compares its complete desired values
+against the applied text-only write and the current note.
+A lost write acknowledgement is not retried; confirmed note IDs stay successful
+even if readback, enrichment, or subsequent reader refresh fails, including
+across a settings change.
 
 Only requested glossary variants are exported through the shared structured
 renderer into inert HTML. Dictionary CSS remains scoped, and image filenames

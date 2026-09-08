@@ -52,6 +52,28 @@ test("the keyboard lookup control selects the exercise's real text after the ord
   assert.equal(f.document.activeElement, f.el("setup-practice-text"));
 });
 
+test("a passage-only result keeps the reader available without advertising an unanswered shortcut", async t => {
+  const f = fixture(t);
+  assert.equal(f.update(OPTIONS, DICTIONARIES, "passage").heading, "You’re ready.");
+  await f.loaded();
+  assert.equal(f.el("setup-practice-scene").hidden, false);
+  assert.equal(f.el("setup-practice-tools").hidden, false);
+  assert.equal(f.el("setup-practice-lookup").hidden, true);
+  assert.equal(f.el("setup-practice-lookup").disabled, true);
+  assert.equal(f.el("setup-practice-recovery").hidden, true);
+  assert.equal(f.el("setup-practice-instruction").textContent,
+    "Try looking up a word below. Hover over Japanese text.");
+  f.update({ ...OPTIONS, lookupMode: "activation", activationKey: "Control" }, DICTIONARIES, "passage");
+  assert.equal(f.el("setup-practice-instruction").textContent,
+    "Try looking up a word below. Hold Control and hover over Japanese text.");
+  f.update();
+  f.el("setup-practice-lookup").focus();
+  f.update(OPTIONS, DICTIONARIES, "passage");
+  assert.equal(f.document.activeElement, f.el("setup-practice-text"));
+  assert.equal(f.readerLoads(), 1);
+  assert.equal(f.el("finish").disabled, false);
+});
+
 test("option and inventory updates retain the scene, selected Range, reader script and local-file dismissal", async t => {
   const f = fixture(t);
   f.update();
