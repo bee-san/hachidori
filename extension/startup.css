@@ -191,16 +191,12 @@
   overflow: hidden;
   clip-path: inset(50%);
 }
-/* The practice sentence is the thing to hover: large, selectable, and plainly
-   the page's own text rather than a control. */
-.setup-practice-sample {
-  margin: 0;
-  padding: 16px 18px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-sunken);
-  font-size: 24px;
-  line-height: 1.6;
+.startup-main:has(.vn-scene) {
+  width: min(100%, 1080px);
+}
+.setup-body > .vn-scene {
+  min-height: 520px;
+  border-radius: 6px;
 }
 
 @media (max-width: 480px) {

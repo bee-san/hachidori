@@ -8,6 +8,8 @@ Thanks for helping make private Japanese lookup easier.
 - Open an issue before a large behavior or architecture change.
 - Keep pull requests focused enough to review and test independently.
 
+Use the [issue template](https://github.com/bee-san/hachidori/issues/new?template=feature_request.md), fill in all three sections, and check the acknowledgement. GitHub Actions checks issues when they are opened, edited, or reopened, and closes incomplete submissions with a comment listing what is missing. Template instructions and the acknowledgement do not count as answers. Explain the practical benefit for the creator's Japanese-learning workflow; the [README](README.md#optionated) describes the project's priorities.
+
 ## Set up a development checkout
 
 ```sh
@@ -49,7 +51,7 @@ The real-browser suite gives each assertion a fixed name and predeclares its den
 
 ## Reporting bugs
 
-[Open an issue](https://github.com/bee-san/hachidori/issues/new) with your Chrome version, the smallest reproducible page or dictionary, the behavior you expected, and what happened instead. Do not attach private dictionaries unless you have permission to share them.
+[Open an issue using the template](https://github.com/bee-san/hachidori/issues/new?template=feature_request.md). Put your Chrome version, the smallest reproducible page or dictionary, the behavior you expected, and what happened instead in the Problem section. Explain how a fix would help the creator in Benefit to the creator, and describe any solution or workaround you have considered (or say if you have none) in Proposed solution and alternatives. Check the acknowledgement. Do not attach private dictionaries unless you have permission to share them.
 
 ## License
 

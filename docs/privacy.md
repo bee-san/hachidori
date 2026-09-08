@@ -57,10 +57,9 @@ selected by your field mappings, such as a word, definition, sentence, page
 title, image or audio, and creates or updates a note according to your settings.
 Any later Anki synchronization is controlled by Anki and your Anki configuration.
 
-**GSM and texthookers.** Corpus Seen is off by default. When enabled, it sends
-the looked-up word to your configured GSM service on the same computer to read
-a count. Optional media-capture texthookers receive text and timing from a
-WebSocket service on the same computer.
+**Texthookers.** Optional media-capture texthookers receive text and timing from
+a WebSocket service on the same computer. Lookup counts use only local browser
+storage and never contact an external service.
 
 **Links and styling.** Activating a link in a dictionary opens the URL supplied
 by that dictionary. Custom CSS you enter can load resources from URLs it
