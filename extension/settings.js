@@ -8,6 +8,7 @@ import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
 import { createBackupSettingsController } from "./backup-settings.js";
+import { createLocalFileAccessController } from "./local-file-access.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
 import {
   createDictionaryGroupController,
@@ -2792,6 +2793,7 @@ async function flushOptions() {
 }
 
 async function start() {
+  createLocalFileAccessController({ document, container: element("settings-local-file-access") });
   attachSettingsNavigation();
   renderRecommendedCatalogue();
   attachHandlers();
