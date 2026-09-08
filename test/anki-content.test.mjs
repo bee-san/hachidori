@@ -208,7 +208,7 @@ test("a reused primary action anchor binds the newly projected result and ignore
   }
 });
 
-test("captured media shows its source badge, polls a short job and submits only after encoding is ready", async t => {
+test("captured media polls its job and preserves an unavailable screenshot when encoding is ready", async t => {
   const captureCalls = [];
   const statuses = [
     { state: "finishing", partial: true, assets: {} },
@@ -220,7 +220,8 @@ test("captured media shows its source badge, polls a short job and submits only 
   let submitted;
   const f = fixture(t, async (type, { request } = {}) => {
     if (type === "hd_anki_status") return { available: true, configKey: "current" };
-    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true, capture: {
+    if (type === "hd_anki_screenshot") throw new Error("page capture unavailable");
+    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true, screenshot: true, capture: {
       requirements: { includeAnimation: true, includeAudio: false },
       sourceLabel: "Video cue",
       partial: true,
@@ -252,7 +253,8 @@ test("captured media shows its source badge, polls a short job and submits only 
   f.items[0].add.click();
   await until(() => f.items[0].add.textContent === "Added");
   assert.equal(submitted.captureJobId, "job-1");
-  assert.deepEqual(submitted.captureUnavailable, []);
+  assert.deepEqual(submitted.captureUnavailable, ["screenshot"]);
+  assert.match(f.items[0].output.textContent, /Added.*Screenshot: page capture unavailable/u);
   assert.deepEqual(captureCalls.map(([type]) => type),
     ["hd_capture_export", "hd_capture_job_status", "hd_capture_job_status", "hd_capture_job_status"]);
 });

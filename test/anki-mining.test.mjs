@@ -137,3 +137,41 @@ test("the screenshot requirement follows the applied mapping and the Settings sw
   f.change({ captureScreenshot: false });
   assert.equal((await preflight()).screenshot, false);
 });
+
+test("a vanished overwrite target refreshes screenshot preparation before any write", async () => {
+  for (const unavailable of [false, true]) {
+    const f = fixture();
+    f.change({ duplicateBehavior: "overwrite", duplicateScope: "collection", fieldTemplates: {
+      Front: { value: "{expression}", overwriteMode: "overwrite" },
+      Back: { value: "{screenshot}", overwriteMode: "coalesce" },
+    } });
+    let targetPresent = true, preparations = 0;
+    const invoke = f.gateway.invoke;
+    f.gateway.invoke = async (action, params) => {
+      if (action === "canAddNotesWithErrorDetail" && targetPresent) {
+        return [{ canAdd: false, error: "cannot create note because it is a duplicate" }];
+      }
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "findNotes") return [42];
+      if (action === "notesInfo" && targetPresent) return [{ noteId: 42, modelName: "Basic",
+        fields: { Front: { value: "猫" }, Back: { value: '<img src="existing.jpg">' } } }];
+      return invoke(action, params);
+    };
+    const service = createAnkiMiningService({ ...f.dependencies,
+      beforeWrite: async () => { preparations++; } });
+    const { configKey } = await service.status();
+    const request = { expression: "猫", configKey };
+    assert.equal((await service.preflight(request)).screenshot, false);
+    targetPresent = false;
+    const stale = await service.submit(request);
+    assert.equal(stale.state, "invalid");
+    assert.match(stale.error, /screenshot.*again/iu);
+    assert.equal(preparations, 0, "the changed decision must not upload media");
+    assert.equal(f.calls.includes("addNote"), false);
+    assert.equal((await service.preflight(request)).screenshot, true);
+    const attempted = unavailable ? { captureUnavailable: ["screenshot"] }
+      : { screenshot: { token: "picture", filename: "picture.jpg" } };
+    assert.equal((await service.submit({ ...request, ...attempted })).state, "added");
+    assert.equal(preparations, 1, "a captured or explicitly unavailable picture permits the write");
+  }
+});
