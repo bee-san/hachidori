@@ -27,7 +27,7 @@ and dark colours, the scene, real reader and saved-page controls are retained.
 
 The captures were refreshed on 2026-09-08 with Chrome for Testing
 152.0.7977.82 on a MacBook Air M2, at 1024 × 900 desktop and 375 × 900
-narrow widths (failure uses 500 × 800; real practice uses 1200 × 900). The first five render the
+narrow widths (failure uses 500 × 800; real practice uses 1200 × 1000). The first five render the
 actual packaged page, scripts and styles with controlled setup records,
 dictionary inventories and Anki replies; the background worker is inert.
 They show the UI states and do not prove downloads or lookups. The practice
