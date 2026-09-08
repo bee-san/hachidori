@@ -7344,7 +7344,6 @@ async function settingsFrequencyStage() {
     const metadataFields = [
       ["opt-lookup-counts", "showLookupCounts", true],
       ["opt-corpus-seen", "corpusSeenEnabled", false],
-      ["opt-blur-enabled", "definitionBlurEnabled", false],
       ["opt-frequency-names", "showFrequencyDictionaryNames", true],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
@@ -7374,18 +7373,55 @@ async function settingsFrequencyStage() {
         && corpusUrl.value === "http://localhost:7275"
         && status().includes("loopback"));
       const blurControl = id => window.document.getElementById(id);
-      // Counts were switched off above, so blur controls are disabled even though blur is on.
-      metadataDetails.push(["opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay"]
+      const blurSource = blurControl("opt-blur-source");
+      metadataDetails.push(blurSource.value === "off"
+        && [...blurSource.options].map(option => option.value).join(",") === "off,count,anki,either"
+        && ["definition-blur-count-controls", "definition-blur-anki-help", "definition-blur-reveal-controls"]
+          .every(id => blurControl(id).hidden)
+        && ["opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay"]
         .every(id => blurControl(id).disabled)
         && blurControl("opt-blur-direction").value === "atLeast" && blurControl("opt-blur-threshold").value === "5"
         && blurControl("opt-blur-reveal").value === "timed" && blurControl("opt-blur-delay").value === "5");
-      metadataDetails.push(blurControl("opt-blur-anki-mature").checked === false);
-      await editControl(blurControl("opt-blur-anki-mature"), true);
+      await editControl(blurSource, "anki");
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurAnkiMature: true })
-        && blurControl("opt-blur-direction").disabled && blurControl("opt-blur-threshold").disabled
+        && blurControl("definition-blur-count-controls").hidden && !blurControl("definition-blur-anki-help").hidden
+        && blurControl("definition-blur-anki-help").textContent.includes("30 minutes")
+        && blurControl("definition-blur-anki-help").textContent.includes("Anki is closed")
+        && !blurControl("definition-blur-reveal-controls").hidden
         && !blurControl("opt-blur-reveal").disabled && !blurControl("opt-blur-delay").disabled);
-      await editControl(blurControl("opt-blur-anki-mature"), false);
-      await editControl(blurControl("opt-lookup-counts"), true);
+      await editControl(blurSource, "either");
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurEnabled: true })
+        && storedOptions.definitionBlurAnkiMature && !storedOptions.showLookupCounts
+        && !blurControl("definition-blur-either-help").hidden
+        && !blurControl("definition-blur-count-controls").hidden
+        && !blurControl("definition-blur-count-paused").hidden && !blurControl("opt-blur-threshold").disabled);
+      await editControl(blurSource, "count");
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurAnkiMature: false })
+        && blurControl("definition-blur-anki-help").hidden && blurControl("definition-blur-either-help").hidden);
+      const beforeEnableCounts = writes.length;
+      blurControl("definition-blur-count-paused").querySelector("label").click();
+      await until(() => writes.length === beforeEnableCounts + 1 && status() === "Saved.");
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ showLookupCounts: true })
+        && blurControl("definition-blur-count-paused").hidden);
+      await editControl(blurSource, "off");
+      metadataDetails.push(storedOptions.definitionBlurEnabled === false && storedOptions.definitionBlurAnkiMature === false
+        && blurControl("definition-blur-count-controls").hidden && blurControl("definition-blur-reveal-controls").hidden);
+      await editControl(blurSource, "either");
+      metadataDetails.push(storedOptions.definitionBlurEnabled === true && storedOptions.definitionBlurAnkiMature === true);
+      blurSource.focus();
+      blurSource.value = "count";
+      blurSource.dispatchEvent(new window.Event("input", { bubbles: true }));
+      const blurRevision = storedOptions.revision;
+      emitOptions({ definitionBlurEnabled: false, definitionBlurAnkiMature: true });
+      metadataDetails.push(blurSource.value === "count");
+      blurSource.dispatchEvent(new window.Event("change", { bubbles: true }));
+      await until(() => status().includes("Could not save"));
+      metadataDetails.push(writes.at(-1).baseRevision === blurRevision
+        && writes.at(-1).options.definitionBlurEnabled === true && writes.at(-1).options.definitionBlurAnkiMature === false);
+      blurSource.blur();
+      window.document.getElementById("options-use-saved").click();
+      metadataDetails.push(blurSource.value === "anki" && blurControl("definition-blur-count-controls").hidden);
+      await editControl(blurSource, "count");
       metadataDetails.push(!blurControl("opt-blur-direction").disabled && !blurControl("opt-blur-delay").disabled);
       await editControl(blurControl("opt-blur-direction"), "below");
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurDirection: "below" }));
@@ -7397,6 +7433,7 @@ async function settingsFrequencyStage() {
         && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurDelayMs: 2500 }));
       await editControl(blurControl("opt-blur-reveal"), "hover");
       metadataDetails.push(blurControl("opt-blur-delay").disabled
+        && blurControl("definition-blur-delay-control").hidden
         && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurReveal: "hover" }));
       metadataDetails.push(pitch.disabled);
       await editControl(window.document.getElementById("opt-pitch-furigana"), true);
