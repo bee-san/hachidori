@@ -1163,7 +1163,7 @@ alongside structured media, frequency, pitch, and kanji content. Selected
 installed sources are represented by sample entries, not real lookup results.
 The packaged SVG is fetched once and reused as a blob URL; the preview does not
 contact the engine, fetch dictionary data, or write personal notes. The same
-local street background as first-run practice makes popup opacity visible over
+local backgrounds as first-run practice make popup opacity visible over
 game artwork; the dialogue stays below the lookup as popup dimensions change.
 
 An unchanged presentation snapshot does no renderer work. Metadata, summary,

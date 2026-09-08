@@ -11,7 +11,7 @@
   ];
 
   function initialize(scene) {
-    let index = Math.floor(Math.random() * backgrounds.length);
+    let index = crypto.getRandomValues(new Uint32Array(1))[0] % backgrounds.length;
     const show = () => {
       const background = backgrounds[index];
       scene.style.backgroundImage = `url("assets/${background.file}")`;
