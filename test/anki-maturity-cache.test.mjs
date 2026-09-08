@@ -156,6 +156,33 @@ test("a changed source cannot read or publish the old source snapshot", async ()
   assert.equal(f.calls.at(-1)[2], "new-key");
 });
 
+test("changing only the endpoint cannot reuse or publish the previous Anki collection's mature words", async () => {
+  const f = fixture();
+  await f.service.reconcile();
+  assert.equal(await f.service.has(f.options.anki, "猫"), true);
+  const original = f.state.snapshot;
+  const nextAnki = { ...f.options.anki, url: "http://127.0.0.1:9876" };
+  assert.equal(await f.service.has(nextAnki, "猫"), false);
+  f.due();
+  const hold = f.hold(), refresh = f.service.reconcile();
+  while (f.calls.length < 2) await new Promise(resolve => setImmediate(resolve));
+  await f.change({ anki: nextAnki }, false);
+  assert.equal(await f.service.has(f.options.anki, "猫"), false);
+  f.fail();
+  hold.resolve();
+  await refresh;
+  await f.service.reconcile();
+  assert.deepEqual(f.state.snapshot, original, "failed new endpoint cannot replace the previous snapshot");
+  assert.equal(await f.service.has(f.options.anki, "猫"), false, "the previous collection remains ineligible");
+  assert.equal(f.calls.at(-1)[4], globalThis.HDReaderOptions.normaliseAnkiConnectUrl(nextAnki.url));
+  f.fail(null);
+  f.due();
+  f.setAnswer([note("犬")]);
+  await f.service.reconcile();
+  assert.equal(await f.service.has(f.options.anki, "犬"), true);
+  assert.equal(await f.service.has(f.options.anki, "猫"), false);
+});
+
 test("failed persistence does not publish an uncommitted snapshot", async () => {
   const f = fixture(); await f.service.reconcile(); const original = f.state.snapshot; f.due();
   const hold = f.hold(), refresh = f.service.reconcile();

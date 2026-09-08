@@ -1,27 +1,33 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiAvailability } from "./anki.js";
+import { ankiSetupFamily } from "./anki-setup.js";
 import { ANKI_TEMPLATE_MARKERS, ankiFieldNames, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
 import { reorderSettingsRows } from "./settings-dom.js";
 
 export function createAnkiSettingsController({ document, readConfig, editConfig, send }) {
-  const { ANKI_FIELDS, ANKI_OVERWRITE_MODES } = document.defaultView.HDReaderOptions;
+  const { ANKI_FIELDS, ANKI_OVERWRITE_MODES, normaliseAnkiConnectUrl } = document.defaultView.HDReaderOptions;
   const element = id => document.getElementById(id);
   const selects = new WeakMap();
   let discovery = null;
+  let discoveryKey = null;
+  let pendingPreset = null;
+  let presetModel = null;
   let requestSequence = 0;
   let requestedKey = null;
   let loading = false;
   const templateRows = new Map();
   let nextTemplateId = 0;
-  const connectionKey = config => JSON.stringify([config.model, config.apiKey]);
+  const connectionKey = config => JSON.stringify([config.model, config.apiKey, config.url]);
 
   function change(patch) {
+    if (Object.hasOwn(patch, "fields") || Object.hasOwn(patch, "fieldTemplates")) pendingPreset = null;
     editConfig({ ...readConfig(), ...patch });
     render();
   }
 
   function currentFields() {
-    return discovery?.model === readConfig().model ? discovery.fields : [];
+    const config = readConfig();
+    return discovery?.model === config.model && discoveryKey === connectionKey(config) ? discovery.fields : [];
   }
 
   function materializeTemplates() {
@@ -144,13 +150,23 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     element("anki-apply-preset").disabled = true;
     if (config.fieldTemplates === null) element("opt-anki-advanced").disabled = true;
     try {
-      const reply = await send("hd_anki_discover", { model: config.model, apiKey: config.apiKey });
+      const reply = await send("hd_anki_discover", { model: config.model, apiKey: config.apiKey, url: config.url });
       if (sequence !== requestSequence || key !== connectionKey(readConfig())) return;
       if (!reply.ok) throw new Error(reply.error);
       discovery = reply;
+      discoveryKey = key;
+      if (pendingPreset?.key === key && reply.connected && reply.fields.length > 0) {
+        const preset = pendingPreset;
+        pendingPreset = null;
+        const current = readConfig();
+        if (current.fieldTemplates === null && JSON.stringify(current.fields) === preset.fields) {
+          editConfig(applyAnkiPreset(current, reply.fields, preset.family));
+        }
+      }
     } catch (error) {
       if (sequence !== requestSequence || key !== connectionKey(readConfig())) return;
       discovery = { connected: false, model: config.model, decks: [], models: [], fields: [], errors: [error.message] };
+      discoveryKey = key;
     } finally {
       if (sequence === requestSequence && key === connectionKey(readConfig())) {
         loading = false;
@@ -174,9 +190,16 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
 
   function render() {
     const config = readConfig();
+    if (pendingPreset && pendingPreset.key !== connectionKey(config)) pendingPreset = null;
+    if (presetModel !== config.model) {
+      presetModel = config.model;
+      element("anki-preset").value = ankiSetupFamily(config.model) || "automatic";
+    }
     selectChoices("opt-anki-deck", discovery?.decks || [], config.deck, "Choose a deck");
     selectChoices("opt-anki-model", discovery?.models || [], config.model, "Choose a note type");
-    const fields = discovery?.model === config.model ? discovery.fields : [];
+    const fields = currentFields();
+    const url = element("opt-anki-url");
+    if (url !== document.activeElement && !url.validity.customError && url.value !== config.url) url.value = config.url;
     renderBasicMappings(config, fields);
     for (const [key, id] of controls) {
       const control = element(id);
@@ -213,8 +236,13 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
   }
   element("opt-anki-deck").addEventListener("change", event => change({ deck: event.target.value }));
   element("opt-anki-model").addEventListener("change", event => {
-    if (event.target.value !== readConfig().model) change({ model: event.target.value,
-      fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])), fieldTemplates: null });
+    if (event.target.value === readConfig().model) return;
+    const next = { ...readConfig(), model: event.target.value,
+      fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])), fieldTemplates: null };
+    const family = ankiSetupFamily(next.model);
+    pendingPreset = family ? { family, key: connectionKey(next), fields: JSON.stringify(next.fields) } : null;
+    editConfig(next);
+    render();
   });
   for (const [key, id] of controls) {
     element(id).addEventListener("change", event => {
@@ -223,8 +251,26 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     });
   }
   element("anki").addEventListener("focusout", () => queueMicrotask(render));
-  element("anki-refresh").addEventListener("click", () => { void refresh(); });
+  function commitConnectionUrl() {
+    const input = element("opt-anki-url");
+    const url = normaliseAnkiConnectUrl(input.value);
+    const error = url ? "" : "Enter a valid HTTP or HTTPS AnkiConnect URL without a username or password.";
+    input.setCustomValidity(error);
+    element("anki-url-error").textContent = error;
+    if (!url) return null;
+    input.value = url;
+    if (url === readConfig().url) return false;
+    change({ url });
+    return true;
+  }
+  element("opt-anki-url").addEventListener("change", commitConnectionUrl);
+  element("anki-refresh").addEventListener("click", () => {
+    // A changed URL starts discovery through render; don't start it twice.
+    if (commitConnectionUrl() === false) void refresh();
+  });
+  element("anki-preset").addEventListener("change", () => { pendingPreset = null; });
   element("anki-apply-preset").addEventListener("click", () => {
+    pendingPreset = null;
     editConfig(applyAnkiPreset(readConfig(), currentFields(), element("anki-preset").value));
     render();
   });

@@ -178,3 +178,94 @@ test("field-order refresh rearranges surrounding rows without detaching the focu
   assert.equal(editor.selectionStart, 2);
   assert.equal(editor.selectionEnd, 5);
 });
+
+test("deliberately choosing a recognized note type selects and applies its preset once after field discovery", async t => {
+  const f = fixture(t);
+  const models = ["Kiku v2", "Lapis-1.4", "Senren (2026)"];
+  f.controller.render();
+  discovery(f.sent[0], { models });
+  await tick();
+  for (const [index, model] of models.entries()) {
+    const select = f.el("opt-anki-model");
+    select.value = model;
+    select.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+    assert.equal(f.read().fieldTemplates, null, "old mappings clear before discovered fields arrive");
+    const family = ["kiku", "lapis", "senren"][index];
+    assert.equal(f.el("anki-preset").value, family);
+    const editsBeforeReply = f.edits.length;
+    const fields = family === "senren" ? ["word", "reading", "sentence", "definition"]
+      : ["Expression", "ExpressionReading", "Sentence", "MainDefinition"];
+    discovery(f.sent.at(-1), { models, fields });
+    await tick();
+    assert.equal(f.edits.length, editsBeforeReply + 1);
+    assert.equal(f.read().fieldTemplates[fields[0]].value, "{expression}");
+    assert.equal(f.read().fieldTemplates[fields[1]].value, "{reading}");
+    const editor = f.el("anki-templates").querySelector("textarea");
+    editor.value = "Custom {expression}";
+    editor.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+    const editsBeforeRefresh = f.edits.length;
+    const refreshed = f.controller.refresh();
+    discovery(f.sent.at(-1), { models, fields });
+    await refreshed;
+    assert.equal(f.read().fieldTemplates[fields[0]].value, "Custom {expression}");
+    assert.equal(f.edits.length, editsBeforeRefresh, "refresh never reapplies the preset over edits");
+  }
+});
+
+test("a stale preset response or intervening mapping edit cannot overwrite the current mapping", async t => {
+  const f = fixture(t);
+  const models = ["Kiku", "Senren", "Kikuchi"];
+  f.controller.render();
+  discovery(f.sent[0], { models });
+  await tick();
+  function choose(model) {
+    const select = f.el("opt-anki-model");
+    select.value = model;
+    select.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+    return f.sent.at(-1);
+  }
+  const stale = choose("Kiku");
+  const current = choose("Senren");
+  const customized = { word: { value: "Already edited {expression}", overwriteMode: "coalesce" } };
+  f.adopt({ fieldTemplates: customized });
+  const editCount = f.edits.length;
+  discovery(current, { models, fields: ["word", "reading", "sentence", "definition"] });
+  discovery(stale, { models, fields: ["Expression", "ExpressionReading", "Sentence", "MainDefinition"] });
+  await tick();
+  assert.deepEqual(f.read().fieldTemplates, customized);
+  assert.equal(f.edits.length, editCount);
+  const unknown = choose("Kikuchi");
+  discovery(unknown, { models, fields: ["Front", "Back"] });
+  await tick();
+  assert.equal(f.el("anki-preset").value, "automatic");
+  assert.equal(f.read().fieldTemplates, null, "unrelated names are never guessed as Kiku");
+});
+
+test("AnkiConnect URL commits on change, retains invalid drafts and ignores old endpoint responses", async t => {
+  const f = fixture(t);
+  f.controller.render();
+  const old = f.sent[0];
+  const url = f.el("opt-anki-url");
+  url.focus();
+  url.value = "http://";
+  url.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  assert.equal(f.edits.length, 0);
+  assert.equal(f.sent.length, 1);
+  url.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  url.blur();
+  await tick();
+  assert.equal(url.value, "http://");
+  assert.match(f.el("anki-url-error").textContent, /valid HTTP/u);
+  assert.equal(f.sent.length, 1);
+  url.value = "https://anki.example.test:8766/connect";
+  url.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.equal(f.read().url, "https://anki.example.test:8766/connect");
+  assert.equal(f.sent.length, 2);
+  assert.equal(f.sent[1].url, f.read().url);
+  discovery(f.sent[1], { models: ["New endpoint"] });
+  await tick();
+  discovery(old, { models: ["Old endpoint"] });
+  await tick();
+  assert.match(f.el("opt-anki-model").textContent, /New endpoint/u);
+  assert.doesNotMatch(f.el("opt-anki-model").textContent, /Old endpoint/u);
+});

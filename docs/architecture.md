@@ -168,7 +168,7 @@ of that record, not the reason alone, identifies a new installation.
   is the value that persists.
 
 New installations begin at `welcome`, which discloses local page processing,
-lookup statistics, publisher downloads, local Anki metadata discovery, optional
+lookup statistics, publisher downloads, configured Anki metadata discovery, optional
 pronunciation sharing, mining and explicitly started capture. **Start setup**
 uses the ordinary revisioned stage write to enter `dictionaries`; automatic
 downloads and the later Anki check wait for that successful write. The worker
@@ -951,10 +951,10 @@ backend rule names and descriptions remain untouched. Additional result headers
 are still created only by Show more. Tab projection creates a fresh closed
 disclosure, and queued toggle positioning uses the existing render-revision,
 panel, and request owner, including primary headers outside the result panel.
-While the primary explanation is expanded, its toolbar scrolls with the popup
-instead of sticking over the glossary; Note and Back stay beside the headword.
-Note opening positions the popup before focusing the term input, so native focus
-scrolling can keep the form visible beyond a long explanation.
+An expanded primary explanation scrolls inside the toolbar's bounded area;
+definitions have a separate scrollport and never pass behind the toolbar.
+Note and Back stay beside the headword. The Note form has its own bounded area,
+so opening it keeps the focused field reachable even with a long explanation.
 
 ## Media response boundary
 
@@ -1132,7 +1132,8 @@ Scroll restoration runs once after deferred glossary bodies and masonry, only
 for the current projection and while the reader has not deliberately scrolled.
 Later tabs do not inherit it. Ordinary retained renders do not read scroll while
 their replacement panel is empty: that layout flush can clamp a bottom Note's
-scroll before its content is rebuilt. The existing highlight, toolbar positioning,
+scroll before its content is rebuilt. The content scrollport owns the saved
+reading position. The existing highlight, toolbar positioning,
 exact clicked-kanji focus target and previous Back chain remain intact.
 Moving the toolbar to the other edge after a viewport resize preserves deliberate
 tab or Note focus, including the existing draft selection.
@@ -1376,7 +1377,7 @@ The CSS Highlight API is preferred. If unavailable, text-node Range fragments
 supply exact paint rectangles inside the existing extension shadow host, never
 classes on page elements or wrappers around page text. Paint is clipped to the
 viewport and ancestor scrollports, excludes hidden/transparent text, and avoids
-covering later popup panes or the source pane's sticky toolbar. One shared
+covering later popup panes or the source pane's toolbar. One shared
 fallback animation frame reads geometry before writing paint; scroll, resize,
 source layout changes, and existing popup placement callbacks refresh it.
 The fallback also subtracts page fixed/sticky headers, dialogs and popovers in
@@ -1443,6 +1444,14 @@ existing options CAS. Settings and the production preview apply it immediately;
 committed changes also update every live reader level without reprojecting
 results, scheduling masonry, or contacting the engine.
 
+The popup is a fixed flex frame with a clipped, independently scrolling content
+area beside the toolbar. Toolbar and Note controls occupy their own rows instead
+of overlapping definitions. At reduced Background opacity, the page backdrop
+remains visible through those rows without dictionary text bleeding underneath;
+text opacity and the user's background setting are unchanged. Oversized toolbar
+content and the Note form scroll within their own bounds. Nested popup anchors
+and Back restoration follow the content scrollport.
+
 The shared `resolveToolbarPosition` follows the pinned GSM PR #549 rule:
 Automatic places a horizontal root toolbar at the bottom of an above-word popup,
 or the top of a below-word popup. Vertical roots and side-by-side child panes
@@ -1466,6 +1475,13 @@ controller preflights rendered candidates sequentially, retires detached actions
 after live tab/group projection, and creates no Anki controls or requests while
 unconfigured. Mining uses the selected projected result, current frequency
 units and audio choice, and the raw source span for sentence/cloze boundaries.
+
+Anki settings expose the AnkiConnect URL, defaulting to `http://127.0.0.1:8765`.
+The worker validates the configured HTTP(S) endpoint and uses it consistently
+for discovery, setup, duplicate checks, media, mining and maturity queries.
+Endpoint changes invalidate connection and maturity identities. Selecting a
+recognised note-type family applies its preset after that model's fields load;
+stale replies and subsequent manual mapping edits cannot apply the old preset.
 
 Fixed background handlers own a separate Anki mutation queue. Submission freshly
 validates configuration, fields, dictionary generation and duplicate identity;

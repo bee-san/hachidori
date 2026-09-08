@@ -13,7 +13,7 @@
   // `captureScreenshot` only matters once a mapped field asks for {screenshot},
   // so it is on by default: a note type with a picture field gets the viewport
   // screenshot the mining request was made from, and nothing else changes.
-  const DEFAULT_ANKI = { deck: "Default", model: "", apiKey: "", tags: ["hachidori"],
+  const DEFAULT_ANKI = { deck: "Default", model: "", url: "http://127.0.0.1:8765", apiKey: "", tags: ["hachidori"],
     fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])), checkForDuplicates: true,
     duplicateScope: "collection", duplicateScopeCheckAllModels: false, duplicateBehavior: "prevent",
     captureScreenshot: true, fieldTemplates: null };
@@ -227,12 +227,25 @@
       .map(({ label, url }) => ({ label, url }));
   }
 
+  function normaliseAnkiConnectUrl(value) {
+    if (typeof value !== "string" || /[\u0000-\u001f\u007f]/u.test(value)) return null;
+    try {
+      const url = new URL(value.trim());
+      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
+      url.hash = "";
+      return url.pathname === "/" && !url.search ? url.origin : url.href;
+    } catch { return null; }
+  }
+
   function normaliseAnki(value) {
     const source = value && typeof value === "object" ? value : {};
     const result = { ...DEFAULT_ANKI };
     for (const key of ["deck", "model", "apiKey", "checkForDuplicates", "duplicateScopeCheckAllModels", "captureScreenshot"]) {
       if (typeof source[key] === typeof DEFAULT_ANKI[key]) result[key] = source[key];
     }
+    // Missing legacy settings keep localhost; an explicitly invalid endpoint
+    // must remain unavailable rather than sending its requests somewhere else.
+    if (Object.hasOwn(source, "url")) result.url = normaliseAnkiConnectUrl(source.url) ?? "";
     result.tags = Array.isArray(source.tags) ? source.tags.filter(tag => typeof tag === "string") : [...DEFAULT_ANKI.tags];
     result.fields = Object.fromEntries(ANKI_FIELDS.map(key => [key,
       typeof source.fields?.[key] === "string" ? source.fields[key] : ""]));
@@ -252,6 +265,8 @@
   function validAnki(value, normalized) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     return Object.entries(normalized).every(([key, expected]) => {
+      if (key === "url") return !Object.hasOwn(value, key)
+        || (normaliseAnkiConnectUrl(value.url) !== null && normaliseAnkiConnectUrl(value.url) === expected);
       if (key === "fieldTemplates") return validAnkiTemplates(value.fieldTemplates);
       if (key === "fields") return value.fields && !Array.isArray(value.fields)
         && ANKI_FIELDS.every(field => value.fields[field] === expected[field]);
@@ -442,7 +457,7 @@
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
     MEDIA_TIMING_MODES, MEDIA_HISTORY_SECONDS, MEDIA_CLIP_SECONDS, MEDIA_VIDEO_PRESETS, MEDIA_TEXTHOOKER_FORMATS,
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
-    normaliseTexthookerUrl, normaliseMediaCapture, definitionBlurQualifies,
+    normaliseTexthookerUrl, normaliseAnkiConnectUrl, normaliseMediaCapture, definitionBlurQualifies,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
     projectStoredOptions, projectContentOptions, validateOptionsPatch,
     resolvePopupImageSources,

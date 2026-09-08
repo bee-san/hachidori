@@ -121,6 +121,7 @@ function captureFixture({
   warnings = [],
 } = {}) {
   const calls = [];
+  const endpointCalls = [];
   let fields = duplicate ? { Front: "猫", Media: "kept", CapturedAudio: "" } : null;
   let writes = 0;
   let captureAvailable = true, uploads = 0;
@@ -139,8 +140,9 @@ function captureFixture({
   const gateway = {
     discover: async () => ({ connected: true, model: "Basic", fields: Object.keys(templates),
       models: ["Basic"], decks: ["Default"], errors: [] }),
-    async invoke(action, params) {
+    async invoke(action, params, apiKey, timeoutMs, url) {
       calls.push(action);
+      endpointCalls.push({ action, url });
       if (action === "canAddNotesWithErrorDetail") {
         return [{ canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null }];
       }
@@ -234,7 +236,9 @@ function captureFixture({
       readyAtMs: Date.now(),
     },
   };
-  return { service, calls, captureCalls, request, stop() { captureAvailable = false; }, get fields() { return fields; } };
+  return { service, calls, endpointCalls, captureCalls, request,
+    changeEndpoint(url) { options.anki.url = url; },
+    stop() { captureAvailable = false; }, get fields() { return fields; } };
 }
 
 test("captured media preflight stays read-only and submission uploads referenced assets before the note", async () => {
@@ -335,6 +339,22 @@ test("an uncertain note write retains confirmed capture uploads for an explicit 
   assert.equal(f.captureCalls.filter(call => call.type === "hd_capture_asset").length, 1);
   assert.equal(f.calls.filter(call => call === "storeMediaFile").length, 1);
   assert.equal(f.captureCalls.filter(call => call.type === "hd_capture_complete").length, 1);
+});
+
+test("an uncertain capture retried at a different Anki endpoint uploads its media to that endpoint", async () => {
+  const f = captureFixture({ failFirstWrite: true, templates: {
+    Front: { value: "{expression}", overwriteMode: "overwrite" },
+    Media: { value: "{capture-animation}", overwriteMode: "overwrite" },
+  } });
+  f.request.configKey = (await f.service.status()).configKey;
+  f.request.captureJobId = "job-other-endpoint";
+  assert.equal((await f.service.submit(f.request)).state, "uncertain");
+  f.changeEndpoint("https://other-anki.example/api");
+  f.request.configKey = (await f.service.status()).configKey;
+  assert.equal((await f.service.submit(f.request)).state, "added");
+  assert.deepEqual(f.endpointCalls.filter(call => call.action === "storeMediaFile").map(call => call.url),
+    ["http://127.0.0.1:8765", "https://other-anki.example/api"]);
+  assert.equal(f.captureCalls.filter(call => call.type === "hd_capture_asset").length, 2);
 });
 
 test("a confirmed note releases its capture job even when field readback fails", async () => {
