@@ -593,8 +593,6 @@ toggle when recording is disabled. Any active source shows the common reveal
 controls. The Design preview passes a fixed mature sample and a count of
 three through the same rule, hover and timer without making Anki requests.
 
-![Definition blur source and shared reveal controls](assets/anki-mature-blur-settings.png)
-
 ## Lookup response boundary
 
 The native bridge rejects lookup text, primary reading, and frequency-dictionary
