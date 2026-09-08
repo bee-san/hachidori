@@ -6270,13 +6270,23 @@ async function startupPageStage() {
       outcomes: { ...setupState.dictionaries.outcomes, jiten: { status: "installed", seconds: 2.5, error: null } } } };
     storage({ setupState: { newValue: structuredClone(setupState) } });
     event({ runId: "run-b", sequence: 3, finished: true, entries: [entry("jiten", "installed", { seconds: 2.5 })] });
-    const successStarted = Date.now();
-    const success = heading() === "All dictionaries installed in 7.5 seconds"
+    let successStarted = Date.now();
+    let success = heading() === "All dictionaries installed in 7.5 seconds"
       && document.getElementById("setup-countdown-label")?.textContent === "Continuing to Anki in 5 seconds"
       && document.getElementById("setup-countdown-track")?.getAttribute("role") === "progressbar"
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
-      && document.querySelectorAll("#setup-actions button").length === 0
+      && JSON.stringify(actions().map(([id]) => id)) === JSON.stringify(["setup-continue", "setup-pause"])
       && status().textContent === "All dictionaries installed in 7.5 seconds";
+    document.getElementById("setup-pause").focus();
+    document.getElementById("setup-pause").click();
+    await new Promise((done) => setTimeout(done, 5100));
+    dictionaryState = { ...dictionaryState, revision: dictionaryState.revision + 1 };
+    storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
+    success &&= pendingReply === null && document.getElementById("setup-countdown-label") === null
+      && document.getElementById("setup-pause")?.textContent === "Resume countdown"
+      && document.activeElement?.id === "setup-pause";
+    document.getElementById("setup-pause").click();
+    successStarted = Date.now();
     // The result stays for five seconds; a conflicting write (the run total landed) is retried with the newer revision.
     await new Promise((done) => setTimeout(done, 3000));
     // The label ticks every 250 ms, so three seconds in it reads two or three.
@@ -6355,7 +6365,7 @@ async function startupPageStage() {
 
 // One jsdom startup page with only the worker replies and stored values a
 // dictionary-stage case needs; the two stages below drive it from there.
-function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null }) {
+function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null, anki = null }) {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
     pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
   });
@@ -6372,6 +6382,7 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, optio
       async sendMessage(message) {
         requests.push(structuredClone(message));
         if (message.type === "hd_setup_cas" && cas !== null) return cas(message);
+        if (message.type === "hd_setup_anki" && anki !== null) return anki(message);
         if (message.type === "hd_lookup") {
           if (lookup === null) throw new Error("the dictionary engine is unavailable");
           return { type: "hd_lookup_result", requestId: message.requestId, ok: true, error: null, ...lookup(message) };
@@ -6539,13 +6550,50 @@ async function startupAdvanceFailureStage() {
     await page.until(() => page.heading() === "All dictionaries installed in 4.0 seconds", "the complete result");
     const counting = label() !== null && page.saves().length === 0;
     // The five-second countdown elapses; both automatic writes are refused.
-    await page.until(() => page.actionIds().includes("setup-continue"), "the failed advance");
+    await page.until(() => page.saves().length === 2 && label() === null, "the failed advance");
     const failed = counting && page.saves().length === 2 && label() === null
       && page.heading() === "All dictionaries installed in 4.0 seconds";
     // Another display period passes without a further write of its own.
     await new Promise((done) => setTimeout(done, 6000));
     const quiet = page.saves().length === 2 && label() === null && page.actionIds().includes("setup-continue");
-    return { counting, failed, quiet };
+    const continuedNow = await startupContinueNowStage(jsdom, setup, dictionaries);
+    return { counting, failed, quiet, continuedNow };
+  } finally {
+    page.window.close();
+  }
+}
+
+// Continue now advances the installed result and the optional pending Anki
+// check. Its late reply preserves the stage the user already reached.
+async function startupContinueNowStage(jsdom, initialSetup, dictionaries) {
+  let setup = structuredClone(initialSetup);
+  let settleAnki;
+  const page = startupCase(jsdom, { setup, dictionaries,
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }),
+    cas: (message) => {
+      setup = { ...setup, revision: setup.revision + 1, stage: message.stage };
+      return { ok: true, state: structuredClone(setup) };
+    },
+    anki: () => new Promise(resolve => { settleAnki = resolve; }) });
+  try {
+    await page.load();
+    await page.until(() => page.document.getElementById("setup-countdown-label") !== null, "the installed result");
+    page.document.getElementById("setup-continue").click();
+    await page.until(() => typeof settleAnki === "function", "the optional Anki check");
+    const checking = page.heading() === "Connect Anki, if you use it"
+      && page.document.querySelector('[data-stage="anki"]')?.textContent.includes("Optional")
+      && page.document.getElementById("setup-continue")?.disabled === false
+      && page.document.getElementById("setup-countdown-label") === null
+      && page.saves().length === 1;
+    page.document.getElementById("setup-continue").click();
+    await page.until(() => page.document.getElementById("setup-finish") !== null, "practice while Anki is pending");
+    setup = { ...setup, revision: setup.revision + 1,
+      anki: { status: "unavailable", detail: "AnkiConnect timed out", model: null, deck: null } };
+    settleAnki({ ok: true, state: structuredClone(setup) });
+    await page.until(() => page.document.querySelector(".setup-anki-outcome") !== null, "the late Anki outcome");
+    return checking && page.saves().length === 2 && setup.stage === "practice"
+      && page.document.querySelector(".setup-anki-outcome").textContent.includes("Anki isn’t connected")
+      && page.document.getElementById("setup-finish")?.disabled === false;
   } finally {
     page.window.close();
   }
@@ -6591,9 +6639,9 @@ async function startupPracticeStage() {
   const sample = () => document.querySelector("#setup-practice-scene:not([hidden]) #setup-practice-text");
   try {
     await page.load();
-    await page.until(() => page.heading() === "You’re ready.", "the final step without a usable dictionary");
+    await page.until(() => page.heading() === "Add a dictionary to try Hachidori", "the final step without a usable dictionary");
     const withoutDictionary = sample() === null && readerScripts(document).length === 0
-      && document.getElementById("setup-body").textContent.includes("Install or enable a term dictionary")
+      && document.getElementById("setup-body").textContent.includes("Add a term dictionary")
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
       && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"]);
@@ -6679,7 +6727,7 @@ async function startupPracticeWithoutHover(jsdom, setup) {
     reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
   try {
     await page.load();
-    await page.until(() => page.heading() === "You’re ready.", "the final step with lookups off");
+    await page.until(() => page.heading() === "Turn on lookups to try Hachidori", "the final step with lookups off");
     return page.document.querySelector("#setup-practice-tools").hidden === true
       && readerScripts(page.document).length === 0
       && page.document.getElementById("setup-body").textContent.includes("Lookups are turned off")

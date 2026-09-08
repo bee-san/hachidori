@@ -81,16 +81,21 @@ test("option and inventory updates retain the scene, selected Range, reader scri
 test("missing or disabled term dictionaries and disabled lookups give recovery without blocking Finish", async t => {
   const f = fixture(t);
   for (const dictionaries of [[], [{ ...DICTIONARIES[0], enabled: false }], [{ id: "frequency-only", termCount: 0 }]]) {
-    f.update(OPTIONS, dictionaries);
+    const state = f.update(OPTIONS, dictionaries);
+    const installed = dictionaries.some(entry => entry.termCount > 0);
+    assert.equal(state.heading, installed ? "Enable a dictionary to try Hachidori" : "Add a dictionary to try Hachidori");
+    assert.equal(state.canProbe, false);
+    assert.equal(f.el("setup-practice-recovery").querySelector("a").textContent, installed ? "Open Library" : "Add dictionaries");
     assert.equal(f.el("setup-practice-scene").hidden, true);
-    assert.match(f.el("setup-practice-recovery").textContent, /Install or enable a term dictionary/u);
+    assert.match(f.el("setup-practice-recovery").textContent, dictionaries.some(entry => entry.termCount > 0)
+      ? /Your term dictionaries are turned off/u : /Add a term dictionary/u);
     assert.equal(f.el("setup-practice-tools").hidden, true);
     assert.equal(f.el("setup-practice-recovery").querySelector("a").getAttribute("href"),
       dictionaries.some(entry => entry.termCount > 0) ? "settings.html#dictionaries" : "settings.html#add-dictionaries");
     assert.equal(f.reader(), null);
     assert.equal(f.el("finish").disabled, false);
   }
-  f.update({ ...OPTIONS, hoverEnabled: false });
+  assert.equal(f.update({ ...OPTIONS, hoverEnabled: false }).heading, "Turn on lookups to try Hachidori");
   const recovery = f.el("setup-practice-recovery");
   assert.equal(f.el("setup-practice-scene").hidden, false);
   assert.match(recovery.textContent, /Lookups are turned off/u);
@@ -101,7 +106,7 @@ test("missing or disabled term dictionaries and disabled lookups give recovery w
   assert.equal(recovery.querySelector("a"), link);
   assert.equal(f.document.activeElement, link);
   assert.equal(f.el("finish").disabled, false);
-  f.update();
+  assert.equal(f.update().heading, "You’re ready.");
   assert.equal(f.document.activeElement, f.el("setup-practice-text"));
   await f.loaded();
   f.el("setup-practice-lookup").click();
