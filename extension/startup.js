@@ -15,7 +15,7 @@ import "./visual-novel.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-state.js";
-import { createPracticeView } from "./startup-practice.js";
+import { createPracticeView, practiceReadiness } from "./startup-practice.js";
 
 const WORKER_TARGET = "hoshidicts-worker";
 const SETUP_TARGET = "hachidori-setup";
@@ -49,6 +49,7 @@ let renderedStage;
 let run = null;
 let attaching = null;
 let countdown = null;
+let countdownPaused = false;
 let advanceFailed = false;
 // A failed install request is shown once with Retry; the page never re-requests on its own.
 let installFailed = false;
@@ -450,12 +451,17 @@ function installedView(rows, importNote) {
   const installedHere = Object.values(setupState.dictionaries.outcomes).some((outcome) => outcome.status === "installed");
   // A failed advance is an action-required state: the countdown a render during
   // those attempts restarted is cancelled rather than left to retry silently.
-  if (advanceFailed) cancelCountdown();
+  if (advanceFailed || countdownPaused) cancelCountdown();
   else startCountdown();
   return {
     heading: installedHere && total !== null ? `All dictionaries installed in ${formatSeconds(total)}` : "All dictionaries are already installed",
-    body: [importNote, rows, ...(advanceFailed ? [] : [countdownView()])],
-    actions: advanceFailed ? [button("setup-continue", "Continue setup", () => { void advance("anki"); })] : [],
+    body: [paragraph("Your recommended dictionaries are installed. You can add your own whenever you like."), rows, importNote,
+      ...(advanceFailed ? [] : [countdownPaused ? paragraph("Automatic continuation is paused. Continue when you’re ready.") : countdownView()])],
+    actions: [button("setup-continue", "Continue now", () => { void finishCountdown(); }),
+      ...(advanceFailed ? [] : [button("setup-pause", countdownPaused ? "Resume countdown" : "Pause countdown", () => {
+        countdownPaused = !countdownPaused;
+        render();
+      }, "ghost")])],
   };
 }
 
@@ -477,10 +483,10 @@ function incompleteView(rows, importNote, missing) {
 // live rows and the recorded result follow.
 function dictionariesView() {
   const rows = dictionaryRows();
-  const importNote = settingsNote("Install custom dictionaries in ", "settings.html#add-dictionaries");
+  const importNote = settingsNote("Import your own dictionary ZIPs in ", "settings.html#add-dictionaries");
   const installingView = () => ({
     heading: "Installing default dictionaries…",
-    body: [paragraph("Hachidori works best with these four trusted dictionaries from their publishers."), rows, importNote],
+    body: [paragraph("These four dictionaries get you started. Installation continues if you close this tab; use Resume setup in Settings to return."), rows, importNote],
     actions: [],
   });
   if (attaching !== null && !attaching.installing && !runActive()) {
@@ -535,7 +541,7 @@ function ankiOutcomeNote(anki) {
   } else if (anki.status === "already-configured") {
     node.append(`Anki is already set up with ${anki.model} for deck ‘${anki.deck}’. Change in `, link, ".");
   } else if (anki.status === "unavailable") {
-    node.append("No Anki found. Set up in ", link, ".");
+    node.append("Anki isn’t connected. It’s optional — you can set it up later in ", link, ".");
   } else {
     node.append(`Anki needs attention: ${anki.detail} Set up in `, link, ".");
   }
@@ -546,7 +552,7 @@ function ankiHeading(anki) {
   switch (anki.status) {
     case "configured": return "Anki is set up";
     case "already-configured": return "Anki is already set up";
-    case "unavailable": return "No Anki found";
+    case "unavailable": return "Anki isn’t connected";
     default: return "Anki needs attention";
   }
 }
@@ -559,7 +565,7 @@ function ankiView() {
     if (ankiFailed) {
       return {
         heading: "Anki could not be checked",
-        body: [settingsNote("Set up Anki in ", "settings.html#anki")],
+        body: [settingsNote("Anki is optional. You can set it up later in ", "settings.html#anki")],
         actions: [
           button("setup-retry", "Retry", () => { void requestAnkiSetup(); }),
           button("setup-continue", "Continue setup", () => { void advance("practice"); }, "ghost"),
@@ -568,9 +574,11 @@ function ankiView() {
     }
     void requestAnkiSetup();
     return {
-      heading: "Checking for Anki…",
-      body: [paragraph("Hachidori looks for an existing Senren, Lapis or Kiku mining setup and configures it for you.")],
-      actions: [],
+      heading: "Connect Anki, if you use it",
+      body: [paragraph("Anki is optional. Hachidori can look up words without it."),
+        paragraph("Checking for an existing Senren, Lapis or Kiku setup to use for flashcards…"),
+        paragraph("You can continue while the check finishes in the background.")],
+      actions: [button("setup-continue", "Continue now", () => { void advance("practice"); })],
     };
   }
   if (advanceFailed) {
@@ -723,39 +731,26 @@ function probePractice() {
   })();
 }
 
-// What the exercise needs before it can be offered at all, checked against the
-// live inventory and options rather than the setup record. The reader answers
-// nothing while `hoverEnabled` is off, so the step must not invite a hover then.
-function lookupObstacle() {
-  if (!dictionaries.some((dictionary) => dictionary?.enabled !== false && (dictionary?.termCount ?? 0) > 0)) {
-    return { text: "No enabled dictionary can answer a lookup yet.", before: "Install dictionaries in ", href: "settings.html#add-dictionaries" };
-  }
-  if (!options.hoverEnabled) {
-    return { text: "Lookups are turned off, so there is nothing to try here yet.", before: "Turn them back on in ", href: "settings.html#lookup" };
-  }
-  return null;
-}
-
 // Preserve the reviewed scene while the current library is proved answerable.
 // Finish and saved-page guidance remain available throughout the probe.
 function practiceView() {
   if (!practice) {
-    practice = createPracticeView({ document, loadReader,
+    practice = createPracticeView({ document, loadReader, onReaderSettled: render,
       onDismiss: () => { element("setup-finish")?.focus(); } });
     globalThis.HDVisualNovel.initialize(practice.node.querySelector(".vn-scene"));
   }
-  if (lookupObstacle() !== null) {
+  if (!practiceReadiness(options, dictionaries).canProbe) {
     // Retire an in-flight probe when lookup becomes unavailable too.
     practiceProbed = "";
     practiceOutcome = null;
   } else if (practiceProbed !== practiceSignature()) {
     probePractice();
   }
-  practice.update(options, dictionaries, practiceOutcome);
+  const readiness = practice.update(options, dictionaries, practiceOutcome);
   return {
-    heading: "You’re ready.",
-    body: [...(setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)]), practice.node],
-    actions: [button("setup-finish", "Finish", () => { void finish(); }), paragraph("The exercise is optional. You can finish any time.")],
+    heading: readiness.heading,
+    body: [practice.node, ...(setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)])],
+    actions: [button("setup-finish", "Finish setup", () => { void finish(); }, readiness.message ? "ghost" : "primary-button"), paragraph("The exercise is optional. You can finish any time.")],
   };
 }
 
@@ -765,14 +760,14 @@ const VIEWS = {
   practice: practiceView,
   complete: () => ({
     heading: "Setup is complete.",
-    body: [paragraph("You can close this tab and start reading."), settingsNote("Change dictionaries, Anki and reading preferences any time in ", "settings.html")],
+    body: [paragraph("You can close this tab. Your setup progress is saved."), settingsNote("Change dictionaries, Anki and reading preferences any time in ", "settings.html")],
     actions: [],
   }),
 };
 
 function inactiveView() {
   return {
-    heading: "Hachidori is ready.",
+    heading: "Manage Hachidori",
     body: [settingsNote("Setup runs once after installation. Manage dictionaries and preferences in ", "settings.html")],
     actions: [],
   };
@@ -781,7 +776,7 @@ function inactiveView() {
 function failedView() {
   return {
     heading: "Setup could not be read.",
-    body: [paragraph(setupError, "hint is-error"), settingsNote("Hachidori still works; manage it in ", "settings.html")],
+    body: [paragraph(setupError, "hint is-error"), settingsNote("Manage dictionaries and preferences in ", "settings.html")],
     actions: [button("setup-reload", "Reload setup", () => { location.reload(); })],
   };
 }

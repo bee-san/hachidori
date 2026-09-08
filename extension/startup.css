@@ -4,10 +4,10 @@
 
 .startup-page {
   min-height: 100vh;
-  padding: 48px 16px 64px;
+  padding: 48px 20px 64px;
 }
 .startup-main {
-  width: min(100%, 640px);
+  width: min(100%, 680px);
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -25,7 +25,9 @@
   align-items: center;
   gap: 14px;
 }
+.startup-brand h1 { margin: 0; font-size: 24px; letter-spacing: -0.035em; }
 .startup-settings-link {
+  padding: 8px 0;
   font-size: 13px;
   font-weight: 600;
 }
@@ -46,14 +48,20 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 12px;
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--surface-sunken);
   color: var(--text-dim);
   font-size: 13px;
   font-weight: 500;
+}
+.setup-step small {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
 }
 .setup-step-number {
   flex-shrink: 0;
@@ -89,16 +97,19 @@
 .setup-card {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   padding: 28px 32px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--surface);
 }
 .setup-card > h2 {
-  font-size: 20px;
+  margin: 0;
+  font-size: 24px;
   line-height: 1.4;
+  letter-spacing: -0.025em;
 }
+.setup-card p:not(.vn-speaker) { margin: 0; }
 .setup-card :is(p, a, h2, .setup-dictionary-status) { overflow-wrap: anywhere; }
 .setup-body {
   display: flex;
@@ -120,7 +131,7 @@
   row-gap: 2px;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--surface-sunken);
 }
 .setup-dictionary-name {
@@ -174,7 +185,13 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
 }
+.setup-actions button { min-height: 40px; }
+.setup-actions .hint { flex: 1 1 220px; font-size: 12px; }
+.setup-practice-recovery { display: grid; justify-items: start; gap: 14px; }
+.setup-practice-recovery a { text-decoration: none; }
 .setup-actions:empty {
   display: none;
 }
@@ -212,20 +229,16 @@
   .setup-steps { gap: 4px; }
   .setup-step {
     flex-direction: column;
-    gap: 5px;
-    padding: 8px 2px;
+    gap: 6px;
+    padding: 10px 2px;
     font-size: 12px;
+    text-align: center;
   }
+  .setup-step small { font-size: 10px; }
   .setup-card {
     padding: 20px 16px;
   }
-  .setup-dictionary {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .setup-dictionary-status {
-    grid-area: 3 / 1;
-    text-align: left;
-  }
+  .setup-card > h2 { font-size: 22px; }
 }
 
 .setup-practice { display: grid; gap: 16px; min-width: 0; }
@@ -233,7 +246,7 @@
   min-height: 520px;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 .setup-practice-dialogue {
   padding: 14px 18px;
@@ -250,6 +263,7 @@
   padding: 10px 12px;
   border-left: 3px solid var(--border-strong);
   background: var(--surface-sunken);
+  font-size: 12px;
 }
 .setup-anki-outcome[data-status="configured"],
 .setup-anki-outcome[data-status="already-configured"] { border-color: var(--ok); }
@@ -259,6 +273,7 @@
 @media (max-width: 480px) {
   .setup-practice-dialogue { padding: 12px 14px; }
   .setup-actions { align-items: flex-start; flex-direction: column; }
+  .setup-actions .hint { flex-basis: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

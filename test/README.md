@@ -734,8 +734,9 @@ Continue, durable outcomes and no all-installed claim; Retry fetching only
 jmnedict, the all-installed heading with the accumulated total, and the
 Jitendex summary source and Bee's clicked-kanji route settled once while the
 user's compact-summary edit stands; the result staying at least five seconds
-before **Checking for Anki…** with focus on the new heading; the absent Anki
-settling by itself into **No Anki found** after exactly one AnkiConnect
+before **Connect Anki, if you use it** with focus on the new heading; the
+unavailable Anki connection settling by itself into **Anki isn’t connected**
+after exactly one AnkiConnect
 attempt, which the harness refuses on the worker target for that stage so a
 real Anki or another suite's mock server on port 8765 cannot decide the
 outcome, and whose recorded outcome carries the gateway's reason and moves
@@ -824,8 +825,11 @@ unpacked extension. No personal browser settings are changed.
 `node --test test/local-file-access.test.mjs test/startup-practice.test.mjs`
 covers the optional prompt's initial query, return/reload lifecycle, stale
 replies, skip and Settings shortcut, plus practice selection, retained nodes,
-reader load failure and missing/disabled-dictionary recovery. The startup
-extension-smoke assertion also checks selection and focus through a same-stage
+reader load failure and missing/disabled-dictionary recovery with accurate
+headings and direct recovery actions. The startup smoke scenarios also cover
+pausing/resuming the success countdown, continuing immediately, and continuing
+while Anki detection is pending without a late reply reversing that decision.
+The startup extension-smoke assertion also checks selection and focus through a same-stage
 options event; audio routing covers startup document/request ownership.
 
 An in-memory external-reference fixture also passes through real WASM. Real Enter

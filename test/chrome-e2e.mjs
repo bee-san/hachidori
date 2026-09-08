@@ -4291,7 +4291,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
       record();
       new MutationObserver(record).observe(document.getElementById("setup-card"), { childList: true, subtree: true, characterData: true });
     });
-    const ready = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "You’re ready."
+    const ready = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "Add a dictionary to try Hachidori"
       ? { outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
         outcomeText: document.querySelector(".setup-anki-outcome")?.textContent ?? "",
         outcomeLink: document.querySelector('.setup-anki-outcome a[href="settings.html#anki"]') !== null,
@@ -4324,8 +4324,8 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
     }
     check(
       "first-run detection configures an existing Kiku mining setup read-only from the startup page",
-      JSON.stringify(headingLog.slice(0, 3)) === JSON.stringify(["Checking for Anki…", "Anki is set up", "You’re ready."])
-        && ready?.outcome === "configured" && ready.outcomeLink && ready.status === "You’re ready."
+      JSON.stringify(headingLog.slice(0, 3)) === JSON.stringify(["Connect Anki, if you use it", "Anki is set up", "Add a dictionary to try Hachidori"])
+        && ready?.outcome === "configured" && ready.outcomeLink && ready.status === "Add a dictionary to try Hachidori"
         && ready.outcomeText === "Automatically set up Kiku v2 for deck ‘Mining’. Change in Settings."
         && ready.done === 2
         // The durable outcome and the saved mapping name the same note type and deck.
@@ -6531,7 +6531,7 @@ async function main() {
       && startupShell?.title === "Set up Hachidori"
       && startupShell.heading === "Installing default dictionaries…"
       && startupShell.currentStep === "dictionaries" && startupShell.done === 0
-      && JSON.stringify(startupShell.steps) === JSON.stringify(["Dictionaries", "Anki", "Try it"])
+      && JSON.stringify(startupShell.steps) === JSON.stringify(["Dictionaries", "Anki Optional", "Try it"])
       && JSON.stringify(startupShell.rows) === JSON.stringify([
         ["jitendex", "Downloading… 0 KB", false, "Downloading… 0 KB"],
         ["jmnedict", "Waiting", null, null],
@@ -6721,7 +6721,7 @@ async function main() {
       && retried?.heading === `All dictionaries installed in ${afterRetry.setupState.dictionaries.totalSeconds < 10
         ? afterRetry.setupState.dictionaries.totalSeconds.toFixed(1) : Math.round(afterRetry.setupState.dictionaries.totalSeconds)} seconds`
       && retried.rows.every((row) => /^Installed in \d+(\.\d+)? seconds$/u.test(row[1]))
-      && retried.actions.length === 0 && retried.importLink
+      && JSON.stringify(retried.actions) === JSON.stringify([["setup-continue", "Continue now"], ["setup-pause", "Pause countdown"]]) && retried.importLink
       && retried.countdown === "Continuing to Anki in 5 seconds"
       && retryOutcomes.jmnedict?.status === "installed" && retryOutcomes.jmnedict.seconds > 0
       && retryOutcomes.jitendex?.status === "installed"
@@ -6797,7 +6797,7 @@ async function main() {
   }
   const headingLog = startup === null ? [] : await startup.evaluate(() => window.__headingLog ?? []);
   const painted = (text) => headingLog.find((entry) => entry.text === text) ?? null;
-  const checkingAnki = painted("Checking for Anki…");
+  const checkingAnki = painted("Connect Anki, if you use it");
   const ankiStage = await page.evaluate(async () => (await chrome.storage.local.get("setupState")).setupState);
   check(
     "the all-installed result stays five seconds before setup checks for Anki",
@@ -6805,14 +6805,14 @@ async function main() {
       && /^Continuing to Anki in [123] seconds?$/u.test(heldResult.countdown ?? "")
       && checkingAnki !== null && checkingAnki.at - successShownAt >= 4800
       && checkingAnki.focused === "setup-heading" && checkingAnki.step === "anki" && checkingAnki.done === 1
-      && JSON.stringify(checkingAnki.actions) === JSON.stringify([])
+      && JSON.stringify(checkingAnki.actions) === JSON.stringify(["setup-continue"])
       && ankiStage?.dictionaries.continued === false,
     JSON.stringify({ heldResult, checkingAnki, successShownAt, headingLog, ankiStage }),
   );
 
   // Nothing answers AnkiConnect on this host, so the ordinary absence is
   // recorded once and the page moves on without asking the user anything.
-  const settledAnki = painted("No Anki found");
+  const settledAnki = painted("Anki isn’t connected");
   if (startup && (process.env.HACHIDORI_STARTUP_READY_SCREENSHOT || process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT)) {
     await startup.setViewport({ width: 1200, height: 1000 });
     for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_READY_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT]]) {
@@ -6926,7 +6926,7 @@ async function main() {
       && practiceReached?.focused === "setup-heading" && practiceReached.currentStep === "practice"
       && practiceReached.done === 2 && practiceReached.status === "You’re ready."
       && practiceReached.outcome === "unavailable" && practiceReached.outcomeLink
-      && practiceReached.outcomeText === "No Anki found. Set up in Settings."
+      && practiceReached.outcomeText === "Anki isn’t connected. It’s optional — you can set it up later in Settings."
       && practiceReached.body.includes("Try looking up a word below.")
       && practiceReached.body.includes("踏切の向こうから蝉の声が響く。")
       && JSON.stringify(practiceReached.actions) === JSON.stringify(["setup-finish"])

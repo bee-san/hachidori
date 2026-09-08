@@ -1,5 +1,93 @@
 # Startup UI review
 
+## Readiness and continuation refinement
+
+This refinement retains PR #75’s passage and shortcut probes, the standalone
+Settings layout, screenshot mining, the six-scene carousel and cached Anki
+maturity. The refreshed captures use the integrated page runtime at `f22c387`.
+The final step now names the next action when the library is empty, its term
+dictionaries are disabled, or lookups are switched off. **Add dictionaries**, **Open Library** and
+**Open Reading** lead directly to the relevant Settings section. **You’re
+ready.** appears only after the installed library answers the practice probe;
+reader-load and engine failures retain recovery. A passage-only match is ready
+for ordinary lookup while its unanswered shortcut stays hidden. **Finish
+setup** remains available throughout.
+
+Anki is labelled **Optional** in the progress indicator. Its check offers
+**Continue now** immediately, and a late result preserves the stage the user
+has reached. A failed connection says **Anki isn’t connected**, without
+claiming that Anki is absent. The dictionary success screen offers **Continue
+now** and **Pause countdown**; resuming gives another five seconds. Installation
+explains that it continues after the tab closes, and ZIP imports are clearly
+separate from the personal dictionary.
+
+The card has clearer heading and action spacing, less competing Anki feedback
+on the practice screen, and full-width dictionary status text. Existing light
+and dark colours, the scene, real reader and saved-page controls are retained.
+
+The captures were refreshed on 2026-09-08 with Chrome for Testing
+152.0.7977.82 on a MacBook Air M2, at 1024 × 900 desktop and 375 × 900
+narrow widths (failure uses 500 × 800; real practice uses 1200 × 1000). The first five render the
+actual packaged page, scripts and styles with controlled setup records,
+dictionary inventories and Anki replies; the background worker is inert.
+They show the UI states and do not prove downloads or lookups. The practice
+capture comes from the full extension browser test, with catalogue fixtures
+imported through the production engine. All images were inspected without
+editing. The capture driver and state/overflow report remain in the local
+`hachidori-merge-prs-20260908` run directory as `pr85-capture.mjs` and
+`pr85-captures.json`.
+
+| Paused successful installation | Empty library recovery |
+| --- | --- |
+| ![Installed dictionaries with Continue now and Resume countdown](assets/startup-refined-installed.png) | ![Empty library with Add dictionaries and Finish setup](assets/startup-refined-empty.png) |
+
+| Optional Anki check, narrow dark | Disabled dictionaries, narrow dark |
+| --- | --- |
+| ![Optional Anki check with immediate Continue now](assets/startup-refined-anki-pending-dark.png) | ![Disabled dictionaries with a prominent Open Library action](assets/startup-refined-disabled-dark.png) |
+
+[Full-width failure status at 500px](assets/startup-refined-partial-500.png) and
+[the retained working practice scene](assets/startup-refined-practice.png).
+
+A simplification pass consolidated readiness headings, recovery text and the
+probe precondition in `practiceReadiness`, retained the existing setup CAS and
+countdown timers, reused the mounted practice controls, and removed unused
+sample CSS and duplicate narrow dictionary rules. Background-install guidance
+uses the existing introduction paragraph, so progress updates create no extra
+paragraph nodes. The generic paragraph reset excludes the shared scene speaker,
+preserving its existing label-to-passage spacing after carousel integration.
+
+### Follow-up progress measurements
+
+Compared `1cbaef6` and `b422e57` with Chromium 150.0.7871.186, Node 26.4.0,
+Linux x86_64, a 1024 × 900 viewport and the same production startup listener and
+render functions. The local capture command was
+`node /tmp/hachidori-startup-refinement/benchmark.mjs`; its driver and raw results
+were also retained in the local `hachidori-startup-refinement-20260908` report.
+
+Reproduction: serve each revision’s unmodified extension page/modules/styles
+on loopback, inject an inert Chrome storage/runtime bridge before navigation,
+and return one unfinished four-source install run with Jitendex downloading
+59,768,832 of 125,829,120 bytes. Capture the runtime listener and time eleven
+batches of 1,000 synchronous production `hd_setup_progress` messages using
+`performance.now()`. Increment the same run’s sequence and received bytes by
+1,024 for each event. Run revisions in before/after/after/before order, using a
+fresh page for each run. Both revisions retain the original row and finish at
+**67.7 MB of 120.0 MB (56%)**.
+
+| Order | Before median ms / 1,000 updates (range) | After median ms / 1,000 updates (range) |
+| --- | ---: | ---: |
+| Before then after | 116.7 (85.4–154.9) | 56.5 (46.5–111.1) |
+| After then before | 117.1 (76.7–178.2) | 74.2 (47.5–117.3) |
+
+These samples found no synchronous progress-update regression. Earlier short
+batches were noisy and changed direction between runs; this is not a claim of
+an end-to-end speedup. The measurements include event cloning and synchronous
+DOM updates, and exclude deferred layout/paint, downloads, imports and lookup.
+The compared runs executed serially, with the browser test run deferred during
+these longer timed loops.
+
+## Previous scene and file-access review
+
 This review improves the first-run flow from [issue #58](https://github.com/bee-san/hachidori/issues/58)
 on the MacBook Air M2. The baseline is `6b895529ef4ff6e98be0e8ce406e8176d3e7c9b2`;
 the comparison’s updated page sources are from `ed023b6`.
