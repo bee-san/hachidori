@@ -159,6 +159,12 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     "frequency-average-occurrence": () => frequencyAggregate(term, "occurrence-based", false),
     pitch: () => pitchHtml(term), "pitch-position": () => [...new Set(term.pitches.flatMap(group => group.pitches.map(value => value.position)))].join(", "),
     "pitch-accent-categories": () => pitchCategories(term), audio: () => audio,
+    "capture-animation": () => request.capturePin?.animationFilename
+      && !request.captureUnavailable?.includes("animation")
+      ? `<img src="${escape(request.capturePin.animationFilename)}">` : "",
+    "capture-audio": () => request.capturePin?.audioFilename
+      && !request.captureUnavailable?.includes("audio")
+      ? `[sound:${request.capturePin.audioFilename}]` : "",
   };
   const values = new Map();
   let glossaries, frequencies;

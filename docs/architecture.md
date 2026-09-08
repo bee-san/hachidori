@@ -147,9 +147,15 @@ launch for an unpacked extension loaded from the command line, so the absence
 of that record, not the reason alone, identifies a new installation.
 
 - `setupState`: `{ schemaVersion: 1, revision, startedAt, stage, completedAt,
-  dictionaries }`, where `stage` is `dictionaries`, `anki`, `practice` or
-  `complete` and `dictionaries` holds `{ outcomes, totalSeconds, continued,
-  selectionsApplied, recordedRuns }`. The worker owns every write. `hd_setup_cas` accepts
+  dictionaries, anki }`, where `stage` is `dictionaries`, `anki`, `practice` or
+  `complete`, `dictionaries` holds `{ outcomes, totalSeconds, continued,
+  selectionsApplied, recordedRuns }` and `anki` is `null` until the Anki stage
+  settles once as `{ status, detail, model, deck }` with `status` one of
+  `configured`, `already-configured`, `unavailable` or `needs-attention`. A
+  configured outcome names the model and deck and carries no reason text; the
+  other two carry a non-empty reason and no names, so no view can render an
+  empty or absent one.
+  The worker owns every write. `hd_setup_cas` accepts
   `{ baseRevision, stage, continued? }` from the exact startup page URL only,
   answers a stale base revision with a conflict and the current state, refuses a
   stage that is not later than the current one, records `completedAt` when the
@@ -171,13 +177,14 @@ page reads `setupState`, `dictionaryState` and `options` from storage, adopts
 only newer revisions from storage events, and renders one card per stage under
 a **Dictionaries → Anki → Try it** indicator (`aria-current="step"`). Continue
 and Finish send `hd_setup_cas` with the revision the page rendered; a conflict
-adopts the newer state and reports it in the card's live region, and a storage
+adopts the newer state and reports it in the card's live region, unless that
+state has already reached the requested stage — a second tab making the same
+move is the move this page asked for, not a failure — and a storage
 event that arrives while a write is in flight renders once with the reply. A
 stage change moves focus to the card heading; an inventory or progress update
 keeps focus on the control that had it. Finish records completion and closes
 the tab. Settings shows **Resume setup** in its sidebar while
-`stage !== "complete"`, so closing the tab loses nothing. Anki detection and the
-lookup exercise attach to the remaining stages separately.
+`stage !== "complete"`, so closing the tab loses nothing.
 
 ### Dictionary stage
 
@@ -261,6 +268,112 @@ records `continued: true`. Only settled outcomes are announced, never bytes.
 ![All dictionaries installed with the five-second countdown, light palette](assets/startup-complete.png)
 
 ![All dictionaries installed with the five-second countdown, dark palette](assets/startup-complete-dark.png)
+
+### Anki stage
+
+The Anki stage checks for an existing mining setup by itself. The startup page
+asks the worker once with `hd_setup_anki`, accepted from the exact startup page
+URL only and answered outside the storage queue, so a read-only AnkiConnect
+conversation never holds up a commit. Duplicate startup pages share the one
+detection in flight, and a settled outcome is returned to every later caller
+without asking Anki again.
+
+`anki-setup.js` holds that discovery, and it only reads. `modelNamesAndIds`
+names the candidates: a model qualifies when a supported family (Senren, Lapis
+or Kiku) leads its name and ends at a word boundary, so `Kiku v2` and
+`Lapis-1.4` match while `Kikuchi` and `My Kiku` do not. Each candidate's
+`modelFieldNames` must satisfy the same preset mapping Settings would apply
+(`applyAnkiPreset` and `resolveAnkiTemplates`, validated through
+`ankiAvailability`), and that mapping must cover the family's core — the
+expression, its reading, the sentence and a definition body — so a namesake
+that happens to carry one recognised field is dropped rather than adopted. `findNotes mid:<id>` counts each
+surviving candidate's distinct notes and the unique maximum wins; a tie, an
+unused note type or no candidate at all is a **needs-attention** outcome with
+the specific reason. The winner's deck is chosen the same way from
+`findCards mid:<id> -deck:filtered`, `getDecks` and `cardsToNotes`, so
+temporary filtered decks are excluded and the deck holding the most distinct
+notes wins. No write action is ever issued: nothing in the collection changes.
+
+The worker records the outcome, and for a `configured` proposal it saves the
+model, deck and resolved field templates through the ordinary revisioned
+options write in the same storage write as the setup record. A mapping the user
+already had is never replaced and is checked rather than assumed: instead of
+proposing anything, `verifyAnkiSetup` reads the note types, the decks and that
+model's fields and applies the shared `ankiAvailability` rules, so a complete
+mapping is **already-configured** and a half-made one — choosing a note type in
+Settings clears its fields — is **needs-attention** carrying Anki's own reason
+(for example *Map the first field, “Front”, before adding notes.*). A saved
+mapping that could not be checked at all is not claimed to be set up: the
+connection's own reason is recorded and the mapping is left untouched. The latest options are read again inside that write: a mapping the user changes
+while the check runs makes that check stale, so the write is abandoned and the
+mapping now stored is checked instead. A proposal is saved only while the
+mapping it was derived from is still the one stored, and a mapping that keeps
+changing across three passes settles as **needs-attention** saying so rather
+than recording a result for a mapping that no longer exists. A connection that does not answer or
+times out is the ordinary **unavailable** outcome; any other failure keeps its
+own reason. The page renders the settled outcome as one sentence with a link to
+the Anki section of Settings, and that outcome moves setup to the last stage by
+itself and stays readable there. A request the worker does not answer is
+reported once with **Retry** beside **Continue setup**; the page never re-asks
+on its own.
+
+![The final step after an absent Anki, light palette](assets/startup-ready.png)
+
+![The final step after an absent Anki, dark palette](assets/startup-ready-dark.png)
+
+![The final step after an automatically configured Anki, light palette](assets/startup-anki.png)
+
+![The final step after an automatically configured Anki, dark palette](assets/startup-anki-dark.png)
+
+### Practice step
+
+The last step is the real reader, on the startup page. When that step renders
+and the current inventory holds an enabled package that can answer a term
+lookup, the page appends the packaged reader scripts once, in the order the
+manifest itself lists them: it reads its own `content_scripts` entry through
+`chrome.runtime.getManifest()` and skips `reader-options.js`, which the startup
+module already loaded, so a reordered or extended reader cannot leave this step
+running a different one. `content.css` comes with the page.
+Nothing is fetched before that step, so the installation and Anki screens are
+never scanned, and a script that fails to load leaves the sentence and its
+instructions readable with the reason in the card's live region.
+
+`content.js` is a content script everywhere except this extension's own pages,
+where Chrome does not inject it at all. Its own guard now permits exactly the
+startup page URL, so these scripts do nothing when they are loaded into
+Settings, the design preview or any other internal page. The exercise then uses
+the ordinary path: the same runtime lookup messages, the installed dictionaries,
+the real WebAssembly engine and the same closed-shadow popup, including its
+first-install dark appearance and compact summaries.
+
+The card shows the instruction that matches the current `lookupMode` — hover, or
+holding the configured activation key — and one sentence to try,
+**朝ごはんを食べる。** **Finish** and **Open Settings** stay available: the
+exercise is optional. The invitation appears only when it can be answered, and that is
+proved rather than assumed: the page runs an ordinary `hd_lookup` from every
+offset in the sentence, through the same engine the reader would use and with the
+reader's own configured scan length, and stops at the first hit. The answer belongs to
+the engine-visible library it was made against — each package's identity,
+revision, persisted generation path, enabled state and term count — together with
+the lookup options the probe sends, so removing or disabling the package that answered, or shortening
+the scan length, retires it and the sentence is probed again, while a group-only
+or presentation write leaves a ready exercise alone. A library that holds no enabled term dictionary, one that
+cannot answer this sentence, or lookups switched off each get their own sentence
+and the matching Settings link, and none of them loads the reader. A dictionary mutation refuses lookups while it holds the
+engine — including a long generation cleanup — so a refused pass waits for
+`hd_status` to report a ready, idle engine and then asks again. A failed status is
+waited on too, because a status poll is what drives the engine's own reload
+recovery, so the next one can describe a repaired engine, and a failure that is
+itself loading is that recovery in progress rather than a verdict; only an engine
+that is unreachable, one whose status keeps failing while idle, or one that keeps
+refusing while idle, falls back to the
+instruction that is true anywhere, in the mode the user has configured. The
+sentence itself is one node for the life of the page, so a rerender moves it
+rather than replacing it and cannot cancel a lookup already in flight.
+
+![The practice step with a real lookup open, light palette](assets/startup-practice.png)
+
+![The practice step with a real lookup open, dark palette](assets/startup-practice-dark.png)
 
 ## Hover activation and popup ownership
 
@@ -1222,6 +1335,152 @@ read/write interval is not atomic. Browser TTS cannot be attached to a note;
 downloadable sources are required for audio fields. Sentence-furigana markers
 use the GSM fallback when its optional native tokenizer is unavailable.
 
+Capture markers are prepared through the same Anki queue rather than a second
+gateway. Preflight reports only the outputs referenced by fields that will
+actually be applied. Submission waits for the capture job, refreshes
+configuration, generation, duplicate and overwrite decisions, uploads final
+assets one at a time, revalidates capture ownership immediately before the note
+mutation, then performs and verifies the existing write. Stop during the final
+upload or configuration read prevents a new add/update; a mutation already sent
+may still succeed. `{audio}` remains pronunciation audio;
+`{capture-animation}`/`{capture-audio}` are rejected in the first field. A
+confirmed note mutation releases its capture job even if field readback later
+warns. An uncertain note mutation retains the job for an explicit retry and is
+neither automatically retried nor followed by automatic media deletion.
+
+## Generic media capture
+
+Media capture is default-off and starts only through an explicit **Start
+capture** action in `capture.html`. That page is a control surface;
+`capture-host.js` owns the stream in the shared `offscreen.html` document.
+Closing or reopening controls leaves recording running. The service worker
+creates the offscreen document with `DOM_SCRAPING`, `AUDIO_PLAYBACK`, and
+`DISPLAY_MEDIA` reasons, sharing it with the dictionary and pronunciation
+services. Capture has its own session and workers and does not enter the
+dictionary mutation queue.
+
+```text
+Settings / capture controls
+          |
+          v
+Service worker -- trusted sender validation and document routing
+          |
+          +--> linked content script: cue/DOM observations and root pins
+          |
+          +--> shared offscreen document: capture-host.js
+          |      MediaStream, WebSocket, rings, resolver, pins and export jobs
+          |          |
+          |          +--> dedicated JPEG frame worker
+          |          +--> dedicated AVIF export worker; local WAV encoder
+          |
+          +--> existing Anki queue and gateway: final assets and note mutation
+```
+
+The service worker accepts controls only from Settings or the capture-controls
+URL and observations only from the linked tab and document identity.
+`offscreen.js` lazily loads the recorder for relayed capture requests from the
+extension's background worker; other senders cannot dispatch Start there.
+Host registration is bound to the actual offscreen document returned by
+`chrome.runtime.getContexts()`. The configured texthooker URL is passed to the
+recorder and omitted from content-script options. Only loopback `ws://` or
+`wss://` endpoints are accepted.
+
+On service-worker restart, a control or reader request discovers the surviving
+offscreen host and validates its linked document through a content-script
+handshake. Recovery preserves the same session, observed timing, and pins;
+navigation or a missing collector cannot restore a stale binding. Losing the
+offscreen host, restarting the extension/browser, or changing capture settings
+requires an explicit new Start. No stored setting arms capture automatically.
+The picker allows one browser tab, application window, or monitor; actual audio
+availability comes from the tracks returned by the browser.
+
+The linked content script keeps DOM nodes and ranges locally. It observes one
+bounded ordinary text area plus an explicitly selected accessible video and
+sends only occurrence text, identities, normalized timestamps, and close
+events. Existing text is an unknown-onset baseline. Cue collection never
+enables a disabled track or changes subtitle language. Automatic area learning
+rejects editable roots, the document body, and Hachidori-owned UI; manual
+selection consumes pointer and keyboard input so it does not advance the
+reading surface.
+
+All providers enter one occurrence timeline. Per root lookup the resolver tries
+a usable matching live texthooker record, selected-video cue, watched page text,
+then recent history. NFC and whitespace normalization are allowed; word-only,
+ambiguous, wrong-session, wrong-document, cross-epoch, expired, or evicted
+matches fail closed. The admitted root pin freezes the source, options, and
+interval; nested lookups inherit it. A still-open matched line may receive only
+its bounded future tail. Submitting transfers ownership to one independent
+encoder job, while replacing or dismissing an unsubmitted root releases its
+pin. Stale or failed nested requests cannot release that borrowed root pin.
+Unlinking or navigating the reader drops its binding and unsubmitted pin while
+an already admitted export retains independent ownership. Closed texthooker
+occurrences remain eligible only in the current live feed epoch; a disconnect
+invalidates that epoch. DOM ranges associate a sentence lookup with its observed
+occurrence, with ambiguous ranges falling through to recent history.
+
+Video history contains timestamped JPEG bytes with the configured 30- or
+60-second age, 64 MiB live, 32 MiB extra pinned, and 256 KiB per-frame limits.
+`MediaStreamTrackProcessor` supplies raw video timestamps; the first frame maps
+that clock to `performance.timeOrigin + performance.now()`. Subsequent frames
+use that fixed origin and are sampled at up to 8 fps Standard or 6 fps Compact.
+The host transfers one cloned `VideoFrame` at a time to
+`capture-frame-worker.js`, which fits it into the initial canvas without
+upscaling, letterboxes changed aspect ratios, and JPEG-compresses it. Worker
+compression avoids the roughly one-second idle-encoding delay observed with a
+main-thread canvas in an offscreen document. The video-element compatibility
+sampler supplies an `ImageBitmap` to the same worker. Capture skips frame
+opportunities instead of building an unbounded queue.
+
+Audio is mixed to mono and retained as Float32 samples. Raw `AudioData` and
+`VideoFrame` timestamps shared a monotonic clock in the observed Chrome 150
+runtime, while Chrome 152 exposed page-relative audio timestamps with raw-clock
+video timestamps. At the first audio block, the recorder chooses between the
+video origin and `performance.timeOrigin` by proximity to the block's observed
+arrival time, then keeps that choice for the stream. This is a clock-domain
+comparison, not a browser-version branch or a mapping from preview playback
+`mediaTime`. Delivered sample counts determine subsequent block boundaries,
+tolerating timestamp rounding while rejecting dropped blocks or sample-rate
+changes. The AudioWorklet compatibility path establishes its origin only after
+`AudioContext.resume()` and maps `startFrame` to that origin; interrupted input
+reports an error. Retired stream/context callbacks cannot append to a new
+session.
+
+At a pin's selected end time, finalization waits up to 250 ms for outstanding
+JPEG and continuous audio delivery, finishing early if both cover the interval.
+The drain does not move the frozen interval. Frame selection keeps the last
+frame preceding the start and clips its presentation timestamp to that boundary.
+Stationary video may hold its last frame; audio still missing after the drain
+causes an export requiring it to fail. The AVIF encoder quantizes cumulative
+frame boundaries on a 48,000-tick timebase, with the final boundary rounded up
+to the same sample count as the 48 kHz WAV. Thus both serialized assets cover
+the same interval to sample precision without accumulating per-frame rounding
+drift. Content synchronization is independently checked by the flash/beep test.
+
+The AVIF worker incrementally decodes selected JPEGs into a looping sequence.
+A single retained frame is decoded once and encoded twice with split integer
+durations preserving the total sample count; otherwise libavif emits a still
+image without sequence timing. Fewer than two timebase ticks cannot represent
+that sequence and fail explicitly. WAV generation converts only selected PCM
+to 16-bit mono. One export job, a
+256 MiB encoder heap ceiling, 30-second watchdog, 4 MiB AVIF limit, 1 MiB WAV
+limit, and 6 MiB serialized asset-response limit bound export. Missing source
+audio permits a mapped animation with a warning, while an audio-only mapping
+fails explicitly. Microphone input and fabricated silence are never substituted;
+fully delivered source silence is valid.
+
+The offscreen recorder owns transient streams, rings, occurrence records,
+received texthooker text, pins, and export jobs. Its workers own frame canvases
+and encoding allocations. The linked content script owns local DOM nodes, ranges,
+observers, and collector epochs; the service worker owns validated routing
+identities. These are not persisted, logged as dialogue, sent to telemetry, or
+broadcast to unrelated tabs. Stop, relevant setting changes, source track
+`mute`/`ended`, or detected clock interruptions retire pending picker results,
+close tracks/sockets/workers, cancel drain/export work, clear history and pins,
+and unlink the collector. Dictionary state remains untouched. See
+[Media mining](media-capture.md) for setup and
+[the acceptance record](media-capture-review.md) for measured coverage and
+untested physical sleep/wake and additional-device sync behavior.
+
 ## Managed custom dictionary
 
 `custom-dictionary.js` is a context-independent ES module shared by Settings,
@@ -1269,7 +1528,10 @@ retryable.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
-| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, and dictionary selectors | service worker writes; extension pages read | `chrome.storage.local` key `options` |
+| Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
+| Media streams, compressed-frame/PCM history, occurrence timeline, pins, export jobs, and received texthooker text | offscreen capture host; dedicated workers own frame canvases and encoding allocations | transient memory only |
+| Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
+| Watched DOM nodes/ranges, cue/DOM observers, and collector epochs | linked content script | transient memory only |
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.
 
@@ -1336,6 +1598,11 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
 | `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |
+| `hd_capture_open`, `hd_capture_tabs`, `hd_capture_link`, `hd_capture_unlink` | Open the explicit capture surface, enumerate candidate reading tabs, and bind or release one trusted page/document |
+| `hd_capture_video_select`, `hd_capture_track_area`, `hd_capture_clear_area` | Control the linked page's session-only cue and DOM collectors |
+| `hd_capture_text_begin`, `hd_capture_text_close`, `hd_capture_text_source_close` | Forward bounded occurrence lifecycle records from the linked content script to the registered capture session |
+| `hd_capture_pin`, `hd_capture_release` | Freeze or release one root-lookup interval through the shared source-priority resolver |
+| `hd_capture_export`, `hd_capture_job_status`, `hd_capture_asset`, `hd_capture_complete`, `hd_capture_cancel` | Transfer pin ownership to one bounded encoder job and commit its final assets through Anki |
 
 ## Build outputs
 
@@ -1351,9 +1618,13 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 The zero-dependency Node suite checks imports, custom parsing and deterministic
 ZIP compilation, deinflection, normalized kana lookup, media extraction,
 malformed input, fallback persistence, thread-bridge transfer behavior,
-extension packaging, and generated runtime assets. Chrome E2E tests exercise
+extension packaging, generated runtime assets, capture settings and timing,
+bounded media rings, encoding, and Anki preparation/commit behavior. Chrome E2E tests exercise
 both the threaded direct-OPFS path and the forced compatibility path, including
 custom source compilation and restart durability, service-worker idling,
-bounded concurrency, and transactional replacement recovery.
+bounded concurrency, and transactional replacement recovery. The separate
+real-capture suite drives display permission, captured tab audio, loopback
+WebSocket lifecycle, animated-AVIF decode/playback, non-silent WAV output,
+sustained retention, dictionary-latency comparison, and storage privacy.
 
 The browser benchmark records import-to-first-valid-lookup, steady lookup, full-process restoration, process-tree resources, exact storage manifests, and input/runtime hashes. The cross-engine benchmark adds production-path adapters for Yomitan and JL under one rotating schedule; see [Benchmarks](../benchmark/README.md).

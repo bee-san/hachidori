@@ -18,11 +18,19 @@ import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-stat
 const WORKER_TARGET = "hoshidicts-worker";
 const SETUP_TARGET = "hachidori-setup";
 const SETUP_EVENTS_TARGET = "hachidori-setup-events";
+const ENGINE_TARGET = "hoshidicts-offscreen";
 const SUCCESS_DISPLAY_MS = 5000;
+const PRACTICE_SENTENCE = "朝ごはんを食べる。";
 const COUNTDOWN_TICK_MS = 250;
 // A run reports at every phase change and about ten times a second while a body
 // arrives, so a longer silence means the offscreen document that owned it is gone.
 const RUN_SILENCE_MS = 4000;
+// A dictionary mutation refuses lookups while it holds the engine, so the
+// practice probe waits for the engine to go idle and asks again rather than
+// calling the sentence unanswerable. Only an idle engine that still refuses is
+// counted, so a long generation cleanup cannot exhaust these attempts.
+const PROBE_RETRY_MS = 400;
+const PROBE_ATTEMPTS = 5;
 const { normaliseOptions } = globalThis.HDReaderOptions;
 const STEP_STAGES = SETUP_STAGES.slice(0, 3);
 
@@ -44,10 +52,29 @@ let advanceFailed = false;
 // A failed install request is shown once with Retry; the page never re-requests on its own.
 let installFailed = false;
 let runSilenceTimer = null;
+let readerLoading = null;
+// What a real lookup of the practice sentence found: unknown, "ready",
+// "missing" (nothing in the installed dictionaries) or "unavailable" (the engine
+// could not answer). Probed again whenever the inventory or the options it
+// depends on change, so a removed dictionary or a shortened scan cannot leave a
+// stale invitation standing.
+let practiceOutcome = null;
+let practiceProbed = "";
+// The sentence is one node for the life of the page: a rerender that moves the
+// same node keeps a lookup in flight anchored, where a fresh node would cancel it.
+let practiceSample = null;
+// Anki detection is asked for once per page; a failed request waits for Retry.
+let ankiRequest = null;
+let ankiFailed = false;
+let ankiAdvancing = false;
 const announced = new Map();
 
 function element(id) {
   return document.getElementById(id);
+}
+
+function wait(ms) {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
 }
 
 function describe(error) {
@@ -439,23 +466,291 @@ function dictionariesView() {
   return incompleteView(rows, importNote, missing);
 }
 
+function requestAnkiSetup() {
+  if (ankiRequest !== null) return ankiRequest;
+  ankiFailed = false;
+  ankiRequest = send("hd_setup_anki", {}).then((reply) => {
+    if (!reply.ok) throw new Error(reply.error || "Anki could not be checked");
+    adoptSetupState(reply.state);
+    // The reply promises a recorded outcome; without one the check is reported, not repeated.
+    if (setupState?.anki === null) throw new Error("no Anki outcome was recorded");
+  }).catch((error) => {
+    ankiFailed = true;
+    setStatus(`Could not check Anki: ${describe(error)}`, "error");
+  }).finally(() => {
+    ankiRequest = null;
+    render();
+  });
+  return ankiRequest;
+}
+
+// The settled Anki outcome, with its Settings link, as one readable sentence.
+// Names come from Anki and are rendered as text, never as markup.
+function ankiOutcomeNote(anki) {
+  const node = document.createElement("p");
+  node.className = "hint setup-anki-outcome";
+  node.dataset.status = anki.status;
+  const link = document.createElement("a");
+  link.href = "settings.html#anki";
+  link.dataset.focusKey = "link:settings.html#anki";
+  link.textContent = "Settings";
+  if (anki.status === "configured") {
+    node.append(`Automatically set up ${anki.model} for deck ‘${anki.deck}’. Change in `, link, ".");
+  } else if (anki.status === "already-configured") {
+    node.append(`Anki is already set up with ${anki.model} for deck ‘${anki.deck}’. Change in `, link, ".");
+  } else if (anki.status === "unavailable") {
+    node.append("No Anki found. Set up in ", link, ".");
+  } else {
+    node.append(`Anki needs attention: ${anki.detail} Set up in `, link, ".");
+  }
+  return node;
+}
+
+function ankiHeading(anki) {
+  switch (anki.status) {
+    case "configured": return "Anki is set up";
+    case "already-configured": return "Anki is already set up";
+    case "unavailable": return "No Anki found";
+    default: return "Anki needs attention";
+  }
+}
+
+// Detection runs once per installation; its recorded outcome moves setup on by
+// itself and stays readable on the final screen.
+function ankiView() {
+  const anki = setupState.anki;
+  if (anki === null) {
+    if (ankiFailed) {
+      return {
+        heading: "Anki could not be checked",
+        body: [settingsNote("Set up Anki in ", "settings.html#anki")],
+        actions: [
+          button("setup-retry", "Retry", () => { void requestAnkiSetup(); }),
+          button("setup-continue", "Continue setup", () => { void advance("practice"); }, "ghost"),
+        ],
+      };
+    }
+    void requestAnkiSetup();
+    return {
+      heading: "Checking for Anki…",
+      body: [paragraph("Hachidori looks for an existing Senren, Lapis or Kiku mining setup and configures it for you.")],
+      actions: [],
+    };
+  }
+  if (advanceFailed) {
+    return { heading: ankiHeading(anki), body: [ankiOutcomeNote(anki)],
+      actions: [button("setup-continue", "Continue setup", () => { void advance("practice"); })] };
+  }
+  if (!ankiAdvancing) void advanceAfterAnki();
+  return { heading: ankiHeading(anki), body: [ankiOutcomeNote(anki)], actions: [] };
+}
+
+async function advanceAfterAnki() {
+  ankiAdvancing = true;
+  try {
+    if (!await advance("practice") && setupState?.stage === "anki") advanceFailed = true;
+  } finally {
+    ankiAdvancing = false;
+  }
+  if (advanceFailed) render();
+}
+
+// The reader itself, in the one authoritative order: the manifest's own
+// content-script list, minus `reader-options.js`, which this module already
+// loaded. It arrives only when the practice step does, so nothing scans the
+// installation or Anki screens.
+function readerScripts() {
+  const [injected] = chrome.runtime.getManifest().content_scripts ?? [];
+  return (injected?.js ?? []).filter((src) => src !== "reader-options.js");
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.dataset.setupReader = "true";
+    script.addEventListener("load", () => { resolve(); });
+    script.addEventListener("error", () => { reject(new Error(`${src} could not be loaded`)); });
+    document.head.appendChild(script);
+  });
+}
+
+// One load per page: the reader initialises itself when its last script runs.
+function loadReader() {
+  readerLoading ??= readerScripts().reduce(
+    (chain, src) => chain.then(() => loadScript(src)), Promise.resolve(),
+  ).catch((error) => {
+    // The exercise is optional; the sentence and instructions stay readable.
+    setStatus(`The lookup exercise could not start: ${describe(error)}`, "error");
+  });
+  return readerLoading;
+}
+
+// The invitation is only made when this exact sentence can be answered, so the
+// page asks: an ordinary lookup from every offset in it, through the engine the
+// reader would use, stopping at the first hit. A partly installed library or an
+// unrelated dictionary therefore cannot advertise a hover that returns nothing.
+// What the answer depends on, rather than the whole revision: the engine-visible
+// library and the lookup options the probe sends. A group-only or presentation
+// write leaves this unchanged, so it cannot invalidate a ready exercise.
+function practiceSignature() {
+  const library = dictionaries.map((dictionary) => [dictionary?.id ?? "", dictionary?.title ?? "",
+    dictionary?.revision ?? "", dictionary?.path ?? "", dictionary?.enabled !== false,
+    dictionary?.termCount ?? 0].join("\u001f")).join("\u001e");
+  return `${library}|${options.scanLength}|${options.frequencyDictionary}|${options.frequencyOrder}`;
+}
+
+// One pass over the sentence: "ready" at the first hit, "missing" when nothing
+// answers, "refused" when the engine would not answer, "gone" when a newer
+// signature has taken over.
+async function sweepPractice(signature) {
+  const characters = [...PRACTICE_SENTENCE];
+  for (let start = 0; start < characters.length; start += 1) {
+    let reply;
+    try {
+      // The reader's own hover payload: the configured scan length decides how
+      // far a lookup from this offset may reach. One result settles existence.
+      reply = await send("hd_lookup", { text: characters.slice(start).join(""), scanLength: options.scanLength, maxResults: 1,
+        options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder, primaryReading: "" },
+      }, ENGINE_TARGET);
+    } catch {
+      return "refused";
+    }
+    if (practiceProbed !== signature) return "gone";
+    if (reply?.ok === false) return "refused";
+    if (Array.isArray(reply?.results) && reply.results.some((result) => result?.term)) return "ready";
+  }
+  return "missing";
+}
+
+// The engine reports ready after boot and loading while any mutation, including
+// a long generation cleanup, holds it. Waiting here is what keeps a refusal from
+// becoming a verdict. A failed status is also worth waiting on: a status poll is
+// what drives the engine's own reload recovery, so the next one can describe a
+// repaired engine. Only an unreachable engine, or one that keeps failing, ends
+// the wait, as does a newer signature.
+async function awaitIdleEngine(signature) {
+  for (let failures = 0; failures < PROBE_ATTEMPTS;) {
+    let status;
+    try {
+      status = await send("hd_status", {}, ENGINE_TARGET);
+    } catch {
+      return false;
+    }
+    if (practiceProbed !== signature) return false;
+    if (status?.ok === true && status.ready === true && status.loading !== true) return true;
+    // A failure that is still loading is recovery in progress, not a verdict.
+    if (status?.ok !== true && status?.loading !== true) failures += 1;
+    await wait(PROBE_RETRY_MS);
+    if (practiceProbed !== signature) return false;
+  }
+  return false;
+}
+
+function probePractice() {
+  const signature = practiceSignature();
+  practiceProbed = signature;
+  practiceOutcome = null;
+  void (async () => {
+    const settle = (found) => {
+      if (practiceProbed !== signature) return;
+      practiceOutcome = found;
+      render();
+    };
+    for (let refusals = 0; refusals < PROBE_ATTEMPTS; refusals += 1) {
+      const found = await sweepPractice(signature);
+      // A newer inventory or option has its own probe; this one's answer is stale.
+      if (found === "gone" || practiceProbed !== signature) return;
+      if (found !== "refused") {
+        settle(found);
+        return;
+      }
+      if (!await awaitIdleEngine(signature)) {
+        settle("unavailable");
+        return;
+      }
+    }
+    settle("unavailable");
+  })();
+}
+
+// What the exercise needs before it can be offered at all, checked against the
+// live inventory and options rather than the setup record. The reader answers
+// nothing while `hoverEnabled` is off, so the step must not invite a hover then.
+function lookupObstacle() {
+  if (!dictionaries.some((dictionary) => dictionary?.enabled !== false && (dictionary?.termCount ?? 0) > 0)) {
+    return { text: "No enabled dictionary can answer a lookup yet.", before: "Install dictionaries in ", href: "settings.html#add-dictionaries" };
+  }
+  if (!options.hoverEnabled) {
+    return { text: "Lookups are turned off, so there is nothing to try here yet.", before: "Turn them back on in ", href: "settings.html#lookup" };
+  }
+  return null;
+}
+
+// One instruction, whichever screen shows it: a lookup needs the activation key
+// when that is the configured mode, wherever the text is.
+function hoverInstruction(where) {
+  return options.lookupMode === "activation"
+    ? `Hold ${options.activationKey} and hover over ${where} to look it up.`
+    : `Hover over ${where} to look it up.`;
+}
+
+// The last step tries the real reader on this page: the packaged scripts, the
+// installed dictionaries, the ordinary runtime lookup and the same popup a
+// webpage gets. Finish and Open Settings stay available throughout.
+function practiceView() {
+  const outcome = setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)];
+  const finishAction = [button("setup-finish", "Finish", () => { void finish(); })];
+  const obstacle = lookupObstacle();
+  if (obstacle !== null) {
+    return {
+      heading: "You’re ready.",
+      body: [...outcome, paragraph(obstacle.text), settingsNote(obstacle.before, obstacle.href)],
+      actions: finishAction,
+    };
+  }
+  // A changed inventory or option retires the previous answer, including a
+  // successful one: the exercise must describe the library as it is now.
+  if (practiceProbed !== practiceSignature()) probePractice();
+  if (practiceOutcome === "missing") {
+    return {
+      heading: "You’re ready.",
+      body: [...outcome, paragraph("The installed dictionaries do not have the words in this sample yet."),
+        settingsNote("Install dictionaries in ", "settings.html#add-dictionaries")],
+      actions: finishAction,
+    };
+  }
+  if (practiceOutcome !== "ready") {
+    // The engine answers in milliseconds; until it has, the step stands on its
+    // own rather than promising a lookup this page has not proved.
+    return {
+      heading: "You’re ready.",
+      body: [...outcome, paragraph(practiceOutcome === "unavailable"
+        ? hoverInstruction("Japanese text on any webpage")
+        : "Checking what the installed dictionaries can answer…")],
+      actions: finishAction,
+    };
+  }
+  void loadReader();
+  practiceSample ??= (() => {
+    const node = document.createElement("p");
+    node.className = "setup-practice-sample";
+    node.lang = "ja";
+    node.textContent = PRACTICE_SENTENCE;
+    return node;
+  })();
+  return {
+    heading: "You’re ready. Try looking up a word below.",
+    body: [...outcome, paragraph(hoverInstruction("the Japanese below")), practiceSample,
+      paragraph("It works the same way on any webpage.")],
+    actions: finishAction,
+  };
+}
+
 const VIEWS = {
   dictionaries: dictionariesView,
-  anki: () => ({
-    heading: "Anki",
-    body: [
-      paragraph("Hachidori can add the words you look up to Anki through AnkiConnect."),
-      settingsNote("Set up in ", "settings.html#anki"),
-    ],
-    actions: [button("setup-continue", "Continue setup", () => { void advance("practice"); })],
-  }),
-  practice: () => ({
-    heading: "You’re ready.",
-    body: [paragraph(options.lookupMode === "activation"
-      ? `Hold ${options.activationKey} and hover over Japanese text on any webpage to look it up.`
-      : "Hover over Japanese text on any webpage to look it up.")],
-    actions: [button("setup-finish", "Finish", () => { void finish(); })],
-  }),
+  anki: ankiView,
+  practice: practiceView,
   complete: () => ({
     heading: "Setup is complete.",
     body: [settingsNote("Change dictionaries, Anki and reading preferences any time in ", "settings.html")],
@@ -494,15 +789,14 @@ function renderSteps(stage) {
 function currentView() {
   if (setupError !== null) return failedView();
   if (setupState === null) return inactiveView();
-  if (setupState.stage !== "dictionaries") {
-    cancelCountdown();
-    advanceFailed = false;
-  }
+  if (setupState.stage !== "dictionaries") cancelCountdown();
   return VIEWS[setupState.stage]();
 }
 
 function render() {
   const stage = setupError === null ? setupState?.stage ?? null : null;
+  // A stage of its own starts without the previous stage's failed-advance state.
+  if (stage !== renderedStage) advanceFailed = false;
   const card = element("setup-card");
   const focusKey = card.contains(document.activeElement) ? document.activeElement.dataset.focusKey ?? "" : "";
   const view = currentView();
@@ -530,7 +824,10 @@ async function advance(stage, { continued = false } = {}) {
   try {
     const reply = await send("hd_setup_cas", { baseRevision: setupState.revision, stage, ...(continued ? { continued } : {}) });
     if (reply.state) adoptSetupState(reply.state);
-    if (!reply.ok) throw new Error(reply.error || "setup progress could not be saved");
+    // Another tab may have already made this exact move: the conflict it leaves
+    // behind is the move this page asked for, not a failure to report.
+    const reached = setupState !== null && SETUP_STAGES.indexOf(setupState.stage) >= SETUP_STAGES.indexOf(stage);
+    if (!reply.ok && !(reply.conflict === true && reached)) throw new Error(reply.error || "setup progress could not be saved");
     setStatus("");
     advanced = true;
   } catch (error) {

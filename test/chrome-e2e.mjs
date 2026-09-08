@@ -193,6 +193,12 @@ const RECOMMENDED_LINKS = RECOMMENDED_DICTIONARIES.map(({ name, publisherUrl }) 
 // Every assertion this run makes, named up front. The denominator is this list,
 // not the number of checks that happened to execute: a suite that skips an
 // assertion under a regression prints "23/24 passed" and reads like success.
+// The reader as the manifest injects it into a page, minus `reader-options.js`,
+// which the startup page's own module already provides. Read from the manifest
+// so a reordered or extended reader cannot pass against a stale copy.
+const READER_SCRIPTS = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"))
+  .content_scripts[0].js.filter((src) => src !== "reader-options.js");
+
 const PLANNED = [
   ...BACKUP_CHROME_CHECKS,
   "extension loads and its service worker starts",
@@ -205,8 +211,11 @@ const PLANNED = [
   "a reconnecting startup page rejoins the running installer whose held download stays indeterminate",
   "the automatic installer continues after a mocked failure through real download and installation phases",
   "Retry installs only the missing dictionary and the committed entries settle their selections once",
-  "the all-installed result stays five seconds before setup moves to Anki",
-  "the startup page advances from Anki to completion, closes its tab and hides Resume setup",
+  "the all-installed result stays five seconds before setup checks for Anki",
+  "the practice step looks a word up on the startup page through the real reader and the installed dictionaries",
+  "the reader refuses to run on Settings even when its own scripts are loaded there",
+  "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
+  "first-run detection configures an existing Kiku mining setup read-only from the startup page",
   "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
   "Settings light and dark themes keep every task view readable without horizontal overflow",
@@ -392,6 +401,12 @@ async function interceptFetches(target, routes, label) {
         return;
       }
       route.requests += 1;
+      // A route may also refuse the connection, which is how a local service
+      // this suite does not own is kept out of a check's outcome.
+      if (route.fail) {
+        await session.send("Fetch.failRequest", { requestId: event.requestId, errorReason: route.fail });
+        return;
+      }
       const response = route.respond ? await route.respond(event.request) : route;
       const body = Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.body);
       await session.send("Fetch.fulfillRequest", {
@@ -3753,6 +3768,107 @@ async function checkAnkiGlossaryExport(page) {
   } finally { page.off("request", observe); }
 }
 
+// First-run Anki detection against a mocked AnkiConnect on the real service
+// worker: the startup page asks once, the ranked note type and deck are saved
+// with the preset, and nothing in the collection is modified. Setup state and
+// options are restored afterwards so the later Anki checks start as they did.
+async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
+  const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
+    "Glossary", "Sentence", "SentenceFurigana", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
+  const calls = [];
+  const route = { requests: 0, respond(request) {
+    const { action, params, version } = JSON.parse(request.postData);
+    calls.push({ action, params, version });
+    // Two notes live in Mining and one in the child deck, so Mining wins.
+    const result = action === "modelNamesAndIds" ? { Basic: 1, "Kiku v2": 2, "My Kiku": 3 }
+      : action === "modelFieldNames" ? (params.modelName === "Kiku v2" ? KIKU_FIELDS : ["Front", "Back"])
+        : action === "findNotes" ? [21, 22, 23]
+          : action === "findCards" ? [211, 212, 221, 231]
+            : action === "getDecks" ? { Mining: [211, 212, 221], "Mining::Old": [231] }
+              : action === "cardsToNotes" ? (params.cards.includes(231) ? [23] : [21, 22]) : null;
+    if (result === null) return { body: JSON.stringify({ result: null, error: `unexpected ${action}` }), status: 200, contentType: "application/json" };
+    return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
+  } };
+  const worker = await browser.waitForTarget((target) => target.type() === "service_worker" && target.url().endsWith("/background.js"));
+  const session = await interceptFetches(worker, new Map([["http://127.0.0.1:8765/", route]]), "anki setup");
+  const saved = await page.evaluate(async () => (await chrome.storage.local.get(["setupState", "options"])));
+  let startup = null;
+  try {
+    // Setup returns to the Anki stage with no outcome yet; the dictionary stage
+    // is already behind it, so the page checks Anki as soon as it opens.
+    await page.evaluate(async (previous) => {
+      await chrome.storage.local.set({ setupState: { ...previous, revision: previous.revision + 1, stage: "anki", completedAt: null, anki: null } });
+    }, saved.setupState);
+    startup = await browser.newPage();
+    startup.on("console", (message) => diagnostics.push(`[startup anki] ${message.type()}: ${message.text()}`));
+    startup.on("pageerror", (error) => diagnostics.push(`[startup anki] pageerror: ${error.message}`));
+    await startup.goto(startupUrl, { waitUntil: "domcontentloaded" });
+    await startup.evaluate(() => {
+      window.__headingLog = [];
+      const record = () => {
+        const text = document.getElementById("setup-heading")?.textContent ?? "";
+        if (window.__headingLog.at(-1) !== text) window.__headingLog.push(text);
+      };
+      record();
+      new MutationObserver(record).observe(document.getElementById("setup-card"), { childList: true, subtree: true, characterData: true });
+    });
+    const ready = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "You’re ready."
+      ? { outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
+        outcomeText: document.querySelector(".setup-anki-outcome")?.textContent ?? "",
+        outcomeLink: document.querySelector('.setup-anki-outcome a[href="settings.html#anki"]') !== null,
+        done: document.querySelectorAll(".setup-step.is-done").length,
+        status: document.getElementById("setup-status")?.textContent ?? "" } : false,
+    { timeout: 30_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
+    const headingLog = await startup.evaluate(() => window.__headingLog ?? []);
+    const detected = await page.evaluate(async () => (await chrome.storage.local.get(["setupState", "options"])));
+    const anki = detected.options?.anki ?? {};
+    const templates = anki.fieldTemplates ?? {};
+    if (process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT || process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT) {
+      await startup.setViewport({ width: 900, height: 820 });
+      for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_ANKI_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_ANKI_DARK_SCREENSHOT]]) {
+        if (!path) continue;
+        await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+        await startup.screenshot({ path });
+      }
+      await startup.emulateMediaFeatures([]);
+    }
+    check(
+      "first-run detection configures an existing Kiku mining setup read-only from the startup page",
+      JSON.stringify(headingLog.slice(0, 3)) === JSON.stringify(["Checking for Anki…", "Anki is set up", "You’re ready."])
+        && ready?.outcome === "configured" && ready.outcomeLink && ready.status === ""
+        && ready.outcomeText === "Automatically set up Kiku v2 for deck ‘Mining’. Change in Settings."
+        && ready.done === 2
+        // The durable outcome and the saved mapping name the same note type and deck.
+        && detected.setupState?.anki?.status === "configured" && detected.setupState.anki.detail === null
+        && detected.setupState.anki.model === "Kiku v2" && detected.setupState.anki.deck === "Mining"
+        && anki.model === "Kiku v2" && anki.deck === "Mining"
+        && detected.options.revision === saved.options.revision + 1
+        && Object.keys(templates).length === KIKU_FIELDS.length
+        && templates.Expression?.value === "{expression}" && templates.Picture?.value === ""
+        // Only the fixed read-only actions ran, in ranking order, at protocol version 6.
+        && JSON.stringify(calls.map(({ action }) => action)) === JSON.stringify(
+          ["modelNamesAndIds", "modelFieldNames", "findNotes", "findCards", "getDecks", "cardsToNotes", "cardsToNotes"])
+        && calls.every(({ version }) => version === 6)
+        && calls.find(({ action }) => action === "findNotes").params.query === "mid:2"
+        && calls.find(({ action }) => action === "findCards").params.query === "mid:2 -deck:filtered",
+      JSON.stringify({ headingLog, ready, detected, calls }),
+    );
+  } finally {
+    if (startup !== null) await startup.close().catch(() => {});
+    await session.detach().catch(() => {});
+    // The remaining Anki checks expect the unconfigured mapping and a completed setup.
+    await page.evaluate(async (previous) => {
+      const { options } = await chrome.storage.local.get("options");
+      await chrome.storage.local.set({ setupState: previous.setupState, options: { ...previous.options, revision: options.revision + 1 } });
+    }, saved);
+    await page.waitForFunction(async (expected) => {
+      const stored = await chrome.storage.local.get(["setupState", "options"]);
+      return stored.setupState?.stage === "complete"
+        && JSON.stringify(stored.options.anki ?? null) === JSON.stringify(expected ?? null);
+    }, { timeout: 10_000, polling: 100 }, saved.options.anki ?? null);
+  }
+}
+
 async function checkAnkiSettings(page, browser) {
   const original = await page.evaluate(async () => ({
     options: (await chrome.storage.local.get("options")).options,
@@ -5350,6 +5466,7 @@ async function checkSourceFallback(settings, tab, popup) {
     check("fallback source paint stays beneath page headers and overlays",
       covers.every(value => value.bounded && value.initiallyUncovered && value.restored && Math.abs(value.expectedArea - value.actualArea) < 2),
       JSON.stringify(covers));
+    const stylesheetSource = await tab.$eval("#verb", element => element.getBoundingClientRect().toJSON());
     const styleChanges = [];
     for (const kind of ["insert", "declaration", "adopted", "load", "media-nested", "media-sheet"]) {
       let stylesSession;
@@ -5365,7 +5482,9 @@ async function checkSourceFallback(settings, tab, popup) {
           const element = document.createElement("div");
           element.id = "e17-page-cover";
           element.dataset.e17PaintedCover = "";
-          element.style.cssText = "width:220px;height:48px;background:white;z-index:100";
+          // Cover the measured source rather than assuming a font's glyph
+          // height: Japanese serif fallback can exceed the old 40px interior.
+          element.style.cssText = `width:${source.width + 20}px;height:${source.height + 16}px;background:white;z-index:100`;
           document.body.append(element);
           const initial = "#e17-page-cover { position:absolute;left:-1000px;top:0; }";
           const css = `#e17-page-cover { position:fixed;left:${source.left - 10}px;top:${source.top - 8}px; }`;
@@ -5396,7 +5515,7 @@ async function checkSourceFallback(settings, tab, popup) {
             document.head.append(link);
           }
           return css;
-        }, { source: sourceRect, kind });
+        }, { source: stylesheetSource, kind });
         const before = await snapshot();
         if (stylesSession) {
           const request = await pendingStyle;
@@ -5411,7 +5530,10 @@ async function checkSourceFallback(settings, tab, popup) {
         }, { css, kind });
         await new Promise(done => setTimeout(done, 350));
         const changed = await snapshot();
-        styleChanges.push({ kind, before: before.exact, covered: changed.paint.groups === 1 && changed.paint.rects.length === 0 });
+        const fullyCovered = changed.source.expected.every(rect =>
+          overlap(rect, changed.source.cover) >= area(rect) - 1);
+        styleChanges.push({ kind, before: before.exact, fullyCovered,
+          covered: changed.paint.groups === 1 && changed.paint.rects.length === 0 });
       } finally {
         await stylesSession?.detach();
         await tab.evaluate(() => {
@@ -5424,7 +5546,7 @@ async function checkSourceFallback(settings, tab, popup) {
       styleChanges.at(-1).restored = (await snapshot()).exact;
     }
     check("fallback source paint refreshes after stylesheet loading and CSSOM edits",
-      styleChanges.every(value => value.before && value.covered && value.restored), JSON.stringify(styleChanges));
+      styleChanges.every(value => value.before && value.fullyCovered && value.covered && value.restored), JSON.stringify(styleChanges));
     await tab.keyboard.press("Escape"); // Close the unsaved Note draft first.
     await tab.keyboard.press("Escape");
     await frame();
@@ -5986,26 +6108,84 @@ async function main() {
     await startup.emulateMediaFeatures([]);
   }
 
+  // The first-run Anki check must find nothing. Refuse the AnkiConnect
+  // connection on the worker for the duration, so a real Anki or another
+  // suite's mock server on this port cannot decide this outcome.
+  const ankiRefused = { requests: 0, fail: "ConnectionRefused" };
+  const ankiOffline = await interceptFetches(
+    await browser.waitForTarget((target) => target.type() === "service_worker" && target.url().endsWith("/background.js")),
+    new Map([["http://127.0.0.1:8765/", ankiRefused]]), "anki offline");
+
+  // The Anki stage checks by itself and its outcome moves setup on, so both
+  // headings are transient. Record every heading the page paints instead of
+  // hoping a poll lands inside them.
+  if (startup !== null) {
+    await startup.evaluate(() => {
+      window.__headingLog = [];
+      const record = () => {
+        const text = document.getElementById("setup-heading")?.textContent ?? "";
+        if (window.__headingLog.at(-1)?.text === text) return;
+        window.__headingLog.push({
+          text,
+          at: Date.now(),
+          focused: document.activeElement?.id ?? "",
+          step: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
+          done: document.querySelectorAll(".setup-step.is-done").length,
+          actions: [...document.querySelectorAll("#setup-actions button")].map((control) => control.id),
+          outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
+          ankiLink: document.querySelector('#setup-body a[href="settings.html#anki"]') !== null,
+        });
+      };
+      record();
+      new MutationObserver(record).observe(document.getElementById("setup-card"),
+        { childList: true, subtree: true, characterData: true });
+    });
+  }
   let heldResult = null;
-  let ankiReached = null;
+  let practiceReached = null;
   if (startup !== null) {
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, successShownAt + 3500 - Date.now())));
     heldResult = await startup.evaluate(readStartup).catch(() => null);
-    ankiReached = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "Anki"
-      ? { at: Date.now(), focused: document.activeElement?.id ?? "", done: document.querySelectorAll(".setup-step.is-done").length,
-        ankiLink: document.querySelector('#setup-body a[href="settings.html#anki"]') !== null } : false,
-    { timeout: 10_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
+    // The final step waits for Finish, so it is the one stable state to poll for.
+    practiceReached = await startup.waitForFunction(() => document.getElementById("setup-heading")?.textContent === "You’re ready. Try looking up a word below."
+      ? { at: Date.now(), focused: document.activeElement?.id ?? "",
+        currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
+        done: document.querySelectorAll(".setup-step.is-done").length,
+        body: document.getElementById("setup-body")?.textContent ?? "",
+        outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
+        outcomeText: document.querySelector(".setup-anki-outcome")?.textContent ?? "",
+        outcomeLink: document.querySelector('.setup-anki-outcome a[href="settings.html#anki"]') !== null,
+        status: document.getElementById("setup-status")?.textContent ?? "",
+        actions: [...document.querySelectorAll("#setup-actions button")].map((control) => control.id) } : false,
+    { timeout: 30_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
   }
+  const headingLog = startup === null ? [] : await startup.evaluate(() => window.__headingLog ?? []);
+  const painted = (text) => headingLog.find((entry) => entry.text === text) ?? null;
+  const checkingAnki = painted("Checking for Anki…");
   const ankiStage = await page.evaluate(async () => (await chrome.storage.local.get("setupState")).setupState);
   check(
-    "the all-installed result stays five seconds before setup moves to Anki",
+    "the all-installed result stays five seconds before setup checks for Anki",
     heldResult?.heading.startsWith("All dictionaries installed in") === true
       && /^Continuing to Anki in [123] seconds?$/u.test(heldResult.countdown ?? "")
-      && ankiReached !== null && ankiReached.at - successShownAt >= 4800
-      && ankiReached.focused === "setup-heading" && ankiReached.done === 1 && ankiReached.ankiLink
-      && ankiStage?.stage === "anki" && ankiStage.dictionaries.continued === false,
-    JSON.stringify({ heldResult, ankiReached, successShownAt, ankiStage }),
+      && checkingAnki !== null && checkingAnki.at - successShownAt >= 4800
+      && checkingAnki.focused === "setup-heading" && checkingAnki.step === "anki" && checkingAnki.done === 1
+      && JSON.stringify(checkingAnki.actions) === JSON.stringify([])
+      && ankiStage?.dictionaries.continued === false,
+    JSON.stringify({ heldResult, checkingAnki, successShownAt, headingLog, ankiStage }),
   );
+
+  // Nothing answers AnkiConnect on this host, so the ordinary absence is
+  // recorded once and the page moves on without asking the user anything.
+  const settledAnki = painted("No Anki found");
+  if (startup && (process.env.HACHIDORI_STARTUP_READY_SCREENSHOT || process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT)) {
+    await startup.setViewport({ width: 900, height: 820 });
+    for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_READY_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT]]) {
+      if (!path) continue;
+      await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      await startup.screenshot({ path });
+    }
+    await startup.emulateMediaFeatures([]);
+  }
 
   // The dictionary-dependent selections were applied once; the user now returns
   // both to Automatic so the remaining assertions keep their historical options.
@@ -6017,7 +6197,68 @@ async function main() {
     if (!reply.ok) throw new Error(reply.error);
   });
 
-  let startupFlow = null;
+  // The final step runs the real reader on the startup page: its own packaged
+  // scripts, the dictionaries this setup just installed, the ordinary runtime
+  // lookup and the same closed-shadow popup a webpage gets.
+  let exercise = null;
+  if (startup !== null) {
+    await startup.bringToFront();
+    const startupPopup = await popupReader(startup);
+    const injected = await startup.waitForFunction(() => {
+      const sources = [...document.querySelectorAll("script[data-setup-reader]")].map((script) => script.getAttribute("src"));
+      return sources.includes("content.js") ? sources : false;
+    }, { timeout: 30_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
+    // The verb sits in the middle of the sentence, so the pointer aims at that
+    // character's own rectangle rather than at a fraction of the paragraph.
+    const hoverCharacter = async (index) => {
+      const point = await startup.evaluate((at) => {
+        const text = document.querySelector(".setup-practice-sample")?.firstChild;
+        if (!text) return null;
+        const range = document.createRange();
+        range.setStart(text, at);
+        range.setEnd(text, at + 1);
+        const rect = range.getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      }, index);
+      if (point === null) return;
+      await startup.mouse.move(2, 2);
+      await startup.mouse.move(point.x, point.y);
+    };
+    let looked = null;
+    const startedLookup = Date.now();
+    for (let attempt = 0; attempt < 12 && looked === null; attempt += 1) {
+      await hoverCharacter("朝ごはんを".length);
+      looked = await startupPopup.waitForVisible(2000);
+    }
+    // Chrome reports no Resource Timing for extension-scheme subresources, so
+    // what the step costs is measured where it is visible: the hover that answers.
+    console.log(`     practice lookup answered in ${Date.now() - startedLookup} ms`);
+    if (looked !== null && (process.env.HACHIDORI_STARTUP_PRACTICE_SCREENSHOT || process.env.HACHIDORI_STARTUP_PRACTICE_DARK_SCREENSHOT)) {
+      await startup.setViewport({ width: 900, height: 820 });
+      for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_PRACTICE_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_PRACTICE_DARK_SCREENSHOT]]) {
+        if (!path) continue;
+        await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+        await hoverCharacter("朝ごはんを".length);
+        await startupPopup.waitForVisible(2000);
+        await startup.screenshot({ path });
+      }
+      await startup.emulateMediaFeatures([]);
+    }
+    await startup.mouse.move(2, 2);
+    const hidden = looked === null ? null : await startupPopup.waitForHidden(6000);
+    exercise = { injected, looked, hidden };
+  }
+  const jitendexFixtureTitle = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "jitendex").title;
+  check(
+    "the practice step looks a word up on the startup page through the real reader and the installed dictionaries",
+    JSON.stringify(exercise?.injected) === JSON.stringify(READER_SCRIPTS)
+      && exercise.looked !== null && exercise.looked.plain.includes("食べる")
+      && exercise.looked.text.includes(`${jitendexFixtureTitle} verb fixture`)
+      && exercise.hidden === true,
+    JSON.stringify({ injected: exercise?.injected, looked: exercise?.looked, hidden: exercise?.hidden }),
+  );
+
+  let closedTab = null;
   if (startup !== null) {
     await startup.bringToFront();
     const startupClosed = new Promise((resolveClosed) => {
@@ -6027,20 +6268,8 @@ async function main() {
       browser.on("targetdestroyed", onDestroyed);
       setTimeout(() => { browser.off("targetdestroyed", onDestroyed); resolveClosed(false); }, 15_000);
     });
-    await clickStartupControl("setup-continue");
-    const practice = await startup.waitForFunction(() => {
-      const text = document.getElementById("setup-heading")?.textContent ?? "";
-      return text === "You’re ready." ? {
-        focused: document.activeElement?.id ?? "",
-        currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
-        done: document.querySelectorAll(".setup-step.is-done").length,
-        body: document.getElementById("setup-body")?.textContent ?? "",
-        status: document.getElementById("setup-status")?.textContent ?? "",
-      } : false;
-    }, { timeout: 10_000, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => null);
     await clickStartupControl("setup-finish");
-    const closed = await startupClosed;
-    startupFlow = { practice, closed };
+    closedTab = await startupClosed;
   }
   const completedSetup = await page.waitForFunction(async () => {
     const { setupState } = await chrome.storage.local.get("setupState");
@@ -6048,17 +6277,72 @@ async function main() {
       ? setupState : false;
   }, { timeout: 10_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
   check(
-    "the startup page advances from Anki to completion, closes its tab and hides Resume setup",
-    startupFlow?.practice?.focused === "setup-heading" && startupFlow.practice.currentStep === "practice"
-      && startupFlow.practice.done === 2 && startupFlow.practice.status === ""
-      && startupFlow.practice.body.includes("Hover over Japanese text on any webpage")
-      && startupFlow.closed === true && startupTabs() === 0
-      && typeof completedSetup?.completedAt === "string"
+    "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
+    settledAnki !== null && settledAnki.step === "anki" && settledAnki.done === 1
+      && settledAnki.outcome === "unavailable" && JSON.stringify(settledAnki.actions) === JSON.stringify([])
+      // Exactly one AnkiConnect attempt, and the absence is not asked about twice.
+      && ankiRefused.requests === 1
+      && ankiStage?.anki?.status === "unavailable" && ankiStage.anki.model === null && ankiStage.anki.deck === null
+      && ankiStage.anki.detail.includes("Open Anki with the AnkiConnect add-on")
+      // The outcome moved setup on by itself and stays readable on the final step.
+      && practiceReached?.focused === "setup-heading" && practiceReached.currentStep === "practice"
+      && practiceReached.done === 2 && practiceReached.status === ""
+      && practiceReached.outcome === "unavailable" && practiceReached.outcomeLink
+      && practiceReached.outcomeText === "No Anki found. Set up in Settings."
+      && practiceReached.body.includes("Hover over the Japanese below to look it up.")
+      && practiceReached.body.includes("朝ごはんを食べる。")
+      && JSON.stringify(practiceReached.actions) === JSON.stringify(["setup-finish"])
+      && closedTab === true && startupTabs() === 0
+      && typeof completedSetup?.completedAt === "string" && completedSetup.anki?.status === "unavailable"
       && JSON.stringify(Object.keys(completedSetup.dictionaries.outcomes).sort()) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId).sort())
       && editedPreference?.showCompactDefinitionSummary === false && editedPreference.revision === 2,
-    JSON.stringify({ startupFlow, completedSetup, editedPreference, startupTabs: startupTabs() }),
+    JSON.stringify({ settledAnki, practiceReached, headingLog, completedSetup, editedPreference, closedTab,
+      ankiRequests: ankiRefused.requests, startupTabs: startupTabs() }),
   );
+  await ankiOffline.detach().catch(() => {});
   await page.bringToFront();
+
+  // Only the startup page may run the reader. Loading the very same scripts into
+  // Settings must leave it inert, so no internal page starts scanning text.
+  const guarded = await (async () => {
+    const other = await browser.newPage();
+    try {
+      await other.goto(settingsUrl, { waitUntil: "domcontentloaded" });
+      const loaded = await other.evaluate(async (scripts) => {
+        const sample = document.createElement("p");
+        sample.id = "e2e-japanese";
+        sample.style.cssText = "font: 32px/2 serif; padding: 40px";
+        sample.textContent = "食べる";
+        document.body.prepend(sample);
+        for (const src of scripts) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = src;
+            script.addEventListener("load", () => { resolve(); });
+            script.addEventListener("error", () => { reject(new Error(`${src} did not load`)); });
+            document.head.appendChild(script);
+          });
+        }
+        return true;
+      }, READER_SCRIPTS).catch((error) => `${error?.message ?? error}`);
+      const box = await (await other.$("#e2e-japanese")).boundingBox();
+      await other.mouse.move(2, 2);
+      await other.mouse.move(box.x + 20, box.y + box.height / 2);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return {
+        loaded,
+        popupHost: await other.evaluate(() => document.querySelector("hachidori-host") !== null),
+        rendererLoaded: await other.evaluate(() => typeof window.HDPopup === "object"),
+      };
+    } finally {
+      await other.close().catch(() => {});
+    }
+  })();
+  check(
+    "the reader refuses to run on Settings even when its own scripts are loaded there",
+    guarded.loaded === true && guarded.rendererLoaded === true && guarded.popupHost === false,
+    JSON.stringify(guarded),
+  );
 
   // Clear the mocked catalogue packages so the Settings installer below starts
   // from the same clean library it always did; the setup mock stays attached so
@@ -6080,6 +6364,8 @@ async function main() {
       && document.getElementById("recommended-starter")?.hidden === false;
   }, { timeout: 90_000, polling: 100 });
   const setupRequestsAfterSetup = setupArchives.requests.length;
+
+  await checkFirstRunAnkiDetection(page, browser, startupUrl);
 
   await checkSettingsAutosave(page, browser, settingsUrl);
   await checkSettingsTransport(page);
@@ -6580,7 +6866,7 @@ async function main() {
     const links = [...document.querySelectorAll(".settings-nav a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 10
+      && links.length === 11
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION");
   });
   const selectionActions = await page.evaluate(() => {

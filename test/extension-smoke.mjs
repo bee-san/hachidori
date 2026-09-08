@@ -59,6 +59,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 const EXTENSION = resolve(ROOT, "extension");
+const EXTENSION_MANIFEST = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"));
 const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
 const EXTENSION_ORIGIN = "chrome-extension://hachidorismokeextensionid";
 
@@ -734,6 +735,8 @@ function loadBackgroundScript(sandbox) {
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const ankiTemplates = readFileSync(resolve(EXTENSION, "anki-templates.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
+  const ankiSetup = readFileSync(resolve(EXTENSION, "anki-setup.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const lookupStats = readFileSync(resolve(EXTENSION, "lookup-stats-identity.js"), "utf8")
     + readFileSync(resolve(EXTENSION, "lookup-stats.js"), "utf8").replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -754,6 +757,7 @@ function loadBackgroundScript(sandbox) {
     .replace(/^import .* from "\.\/lookup-stats\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/backup-(?:state|downloads)\.js";\s*/gmu, "")
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
+    .replace(/import \{ detectAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/external-links\.js";\s*/u, "")
@@ -774,7 +778,7 @@ function loadBackgroundScript(sandbox) {
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${setupState}\n${ankiTemplates}\n${anki}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${setupState}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1079,6 +1083,7 @@ async function firstRunBackgroundStage() {
     && JSON.stringify(seeded.setup) === JSON.stringify({
       schemaVersion: 1, revision: 1, startedAt: seeded.setup?.startedAt, stage: "dictionaries", completedAt: null,
       dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] },
+      anki: null,
     }) && validIso(seeded.setup?.startedAt)
     && JSON.stringify(seeded.options) === JSON.stringify({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3, revision: 1 })
     && JSON.stringify(storage.sets) === JSON.stringify([["options", "setupState"]]);
@@ -1224,6 +1229,154 @@ async function firstRunBackgroundStage() {
       && JSON.stringify(reconciled.state.dictionaries.selectionsApplied) === JSON.stringify(["bees-ultimate-kanji-dictionary"])
       && JSON.stringify(reconcile.raw.get("options").kanjiClickDictionary) === JSON.stringify({ title: beesTitle, kind: "term" }),
     JSON.stringify({ fromPage, unknownSource, jitendexRecorded, afterJitendex, jitendexAgain, beesRecorded, resentRun, failedRecorded, noRun, finalSetup, reconciled, reconcileOptions: reconcile.raw.get("options"), sets: storage.sets.slice(recordWritesBefore) }));
+}
+
+// First-run Anki detection: read-only calls through the gateway, the
+// revisioned options write for a recognised setup, one durable outcome.
+async function firstRunAnkiStage() {
+  const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
+    "Glossary", "Sentence", "SentenceFurigana", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
+  const setupRecord = (patch = {}) => ({ schemaVersion: 1, revision: 4, startedAt: "2026-09-07T10:00:00.000Z", stage: "anki", completedAt: null,
+    dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }, anki: null, ...patch });
+  const defaultAnki = () => globalThis.HDReaderOptions.normaliseOptions({}).anki;
+  // A usable saved mapping: a note type, a deck and a mapped first field. Choosing
+  // only a note type in Settings leaves the fields blank, which is not one.
+  const configuredAnki = (model, deck) => ({ ...defaultAnki(), model, deck,
+    fields: { ...defaultAnki().fields, expression: "Front" } });
+  function worldFor(name, { answer, options = null, setup = setupRecord() }) {
+    const bus = makeBus();
+    const storage = makeStorage();
+    const chrome = makeChrome(`${name}-worker`, bus, storage);
+    const requests = [];
+    const held = [];
+    loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController, URL, Promise, Error,
+      fetch(url, init) {
+        const body = JSON.parse(init.body);
+        requests.push({ url, action: body.action, params: body.params, key: body.key ?? null });
+        const result = answer(body.action, body.params, requests.length);
+        if (result === "hold") {
+          return new Promise((resolve) => held.push(() => resolve({ ok: true, async json() { return { result: answer(body.action, body.params, 0), error: null }; } })));
+        }
+        if (result instanceof Error) return Promise.reject(result);
+        if (result?.status) return Promise.resolve({ ok: false, status: result.status });
+        return Promise.resolve({ ok: true, async json() { return { result, error: null }; } });
+      } });
+    storage.raw.set("setupState", structuredClone(setup));
+    if (options) storage.raw.set("options", structuredClone(options));
+    const send = (fields = {}, sender = { id: chrome.runtime.id, url: chrome.runtime.getURL("startup.html") }) => bus.sendMessage(
+      "startup-page", { target: "hoshidicts-worker", type: "hd_setup_anki", requestId: `anki-setup-${name}`, ...fields }, sender);
+    return { bus, storage, chrome, requests, held, send };
+  }
+  const collection = (action, params) => {
+    switch (action) {
+      case "modelNamesAndIds": return { Basic: 1, "Kiku v2": 2, "My Kiku": 3 };
+      case "deckNames": return ["Default", "Words", "Mining", "Mining::Old"];
+      case "modelFieldNames": return params.modelName === "Kiku v2" ? KIKU_FIELDS : ["Front", "Back"];
+      case "findNotes": return [21, 22, 23];
+      case "findCards": return [211, 212, 221, 231];
+      case "getDecks": return { Mining: [211, 212, 221], "Mining::Old": [231] };
+      case "cardsToNotes": return params.cards.includes(231) ? [23] : [21, 22];
+      default: throw new Error(`unexpected ${action}`);
+    }
+  };
+
+  // Ordinary absence: the connection never answers.
+  const absent = worldFor("anki-absent", { answer: () => new TypeError("Failed to fetch") });
+  const fromSettings = await absent.send({}, { id: absent.chrome.runtime.id, url: absent.chrome.runtime.getURL("settings.html") });
+  const unavailable = await absent.send();
+  const again = await absent.send();
+  // A refusal keeps its reason.
+  const denied = worldFor("anki-denied", { answer: () => ({ status: 403 }) });
+  const deniedReply = await denied.send();
+  // A configuration the user already has is verified the way Settings verifies
+  // it, then reported without proposing or writing anything.
+  const existing = worldFor("anki-existing", { answer: collection, options: { revision: 3, anki: configuredAnki("Basic", "Words") } });
+  const existingReply = await existing.send();
+  // A note type chosen in Settings without its fields is not a configured setup:
+  // Anki's own availability rules name what is missing.
+  const partial = worldFor("anki-partial", { answer: collection, options: { revision: 3, anki: { ...defaultAnki(), model: "Basic", deck: "Words" } } });
+  const partialReply = await partial.send();
+  // A saved mapping that could not be checked is not claimed to be set up: the
+  // connection's own reason is recorded and the mapping is left untouched.
+  const offline = worldFor("anki-offline", { answer: () => new TypeError("Failed to fetch"),
+    options: { revision: 3, anki: configuredAnki("Basic", "Words") } });
+  const offlineReply = await offline.send();
+  check("first-run Anki detection is startup-only, records absence or a specific refusal once, and reports an existing setup without any call",
+    fromSettings?.ok === false && fromSettings.error.includes("startup page")
+      && unavailable?.ok === true && unavailable.state.anki?.status === "unavailable" && unavailable.state.anki.detail.includes("Open Anki")
+      && unavailable.state.revision === 5 && absent.requests.length === 1 && absent.requests[0].action === "modelNamesAndIds"
+      && absent.requests[0].url === "http://127.0.0.1:8765" && again?.ok === true && again.state.revision === 5 && absent.requests.length === 1
+      && absent.storage.raw.get("options") === undefined
+      && deniedReply?.ok === true && deniedReply.state.anki?.status === "needs-attention" && deniedReply.state.anki.detail.includes("denied permission")
+      && existingReply?.ok === true && existingReply.state.anki?.status === "already-configured"
+      && existingReply.state.anki.model === "Basic" && existingReply.state.anki.deck === "Words"
+      && JSON.stringify(existing.requests.map((request) => request.action)) === JSON.stringify(["modelNamesAndIds", "deckNames", "modelFieldNames"])
+      && existing.storage.raw.get("options").revision === 3
+      && partialReply?.ok === true && partialReply.state.anki?.status === "needs-attention"
+      && partialReply.state.anki.detail === "Map the first field, “Front”, before adding notes."
+      && partialReply.state.anki.model === null
+      && JSON.stringify(partial.requests.map((request) => request.action)) === JSON.stringify(["modelNamesAndIds", "deckNames", "modelFieldNames"])
+      && partial.storage.raw.get("options").revision === 3
+      && offlineReply?.ok === true && offlineReply.state.anki?.status === "unavailable"
+      && offlineReply.state.anki.detail.includes("Open Anki") && offlineReply.state.anki.model === null
+      && JSON.stringify(offline.storage.raw.get("options").anki) === JSON.stringify(configuredAnki("Basic", "Words"))
+      && offline.storage.raw.get("options").revision === 3,
+    JSON.stringify({ fromSettings, unavailable, again, absentRequests: absent.requests, deniedReply, existingReply,
+      existingRequests: existing.requests, partialReply, partialRequests: partial.requests, offlineReply }));
+
+  // A recognised setup: duplicate requests share one detection, the ranked
+  // model and deck are saved with the preset through the options CAS, and the
+  // outcome lands in the same storage write.
+  const found = worldFor("anki-found", { answer: collection, options: { revision: 2, anki: { ...defaultAnki(), apiKey: "local-key" } } });
+  const writesBefore = found.storage.sets.length;
+  const [first, second] = await Promise.all([found.send(), found.send({ requestId: "anki-setup-duplicate" })]);
+  const savedOptions = found.storage.raw.get("options");
+  const actions = found.requests.map((request) => request.action);
+  check("first-run Anki detection ranks note types and decks read-only and saves the exact names with the preset once",
+    first?.ok === true && second?.ok === true && JSON.stringify(first.state) === JSON.stringify(second.state)
+      && first.state.anki?.status === "configured" && first.state.anki.model === "Kiku v2" && first.state.anki.deck === "Mining"
+      && actions.filter((action) => action === "modelNamesAndIds").length === 1
+      // "My Kiku" and "Basic" are never consulted: only a leading family name is a candidate.
+      && JSON.stringify(actions) === JSON.stringify(["modelNamesAndIds", "modelFieldNames", "findNotes", "findCards", "getDecks", "cardsToNotes", "cardsToNotes"])
+      && found.requests.every((request) => request.key === "local-key")
+      && found.requests.find((request) => request.action === "findNotes").params.query === "mid:2"
+      && found.requests.find((request) => request.action === "findCards").params.query === "mid:2 -deck:filtered"
+      && savedOptions.revision === 3 && savedOptions.anki.model === "Kiku v2" && savedOptions.anki.deck === "Mining" && savedOptions.anki.apiKey === "local-key"
+      && savedOptions.anki.fieldTemplates.Expression.value === "{expression}" && savedOptions.anki.fieldTemplates.Picture.value === ""
+      && Object.keys(savedOptions.anki.fieldTemplates).length === KIKU_FIELDS.length
+      && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([["options", "setupState"]])
+      && first.state.revision === 5,
+    JSON.stringify({ first, second, actions, savedOptions, sets: found.storage.sets.slice(writesBefore) }));
+
+  // A choice the user makes while detection runs is kept.
+  const racing = worldFor("anki-racing", { answer: (action, params, count) => (action === "modelNamesAndIds" && count === 1 ? "hold" : collection(action, params)),
+    options: { revision: 1 } });
+  const pendingDetection = racing.send();
+  for (let attempt = 0; attempt < 100 && racing.held.length === 0; attempt += 1) await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+  const userChoice = await racing.bus.sendMessage("settings-page", { target: "hoshidicts-worker", type: "hd_options_write", requestId: "anki-user",
+    baseRevision: 1, options: { anki: configuredAnki("Basic", "Default") } });
+  racing.held.forEach((release) => release());
+  const raced = await pendingDetection;
+  // A mapping changed while a check ran makes that check stale: the new mapping
+  // is checked instead, so a failure of the old check is never recorded for it.
+  const failing = worldFor("anki-racing-absent", { answer: (action, params, count) => (count === 1 ? "hold" : new TypeError("Failed to fetch")),
+    options: { revision: 1 } });
+  const pendingFailure = failing.send();
+  for (let attempt = 0; attempt < 100 && failing.held.length === 0; attempt += 1) await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+  const lateChoice = await failing.bus.sendMessage("settings-page", { target: "hoshidicts-worker", type: "hd_options_write", requestId: "anki-late",
+    baseRevision: 1, options: { anki: configuredAnki("Kiku v2", "Mining") } });
+  failing.held.forEach((release) => release());
+  const rescued = await pendingFailure;
+  check("a note type chosen while first-run Anki detection runs is reported as already configured and never overwritten",
+    racing.held.length === 1 && userChoice?.ok === true && raced?.ok === true && raced.state.anki?.status === "already-configured"
+      && raced.state.anki.model === "Basic" && racing.storage.raw.get("options").anki.model === "Basic"
+      && racing.storage.raw.get("options").revision === 2
+      && lateChoice?.ok === true && rescued?.ok === true && rescued.state.anki?.status === "unavailable"
+      && rescued.state.anki.detail.includes("Open Anki")
+      && failing.requests.filter((request) => request.action === "modelNamesAndIds").length === 2
+      && failing.storage.raw.get("options").anki.model === "Kiku v2"
+      && failing.storage.raw.get("options").revision === 2,
+    JSON.stringify({ userChoice, raced, options: racing.storage.raw.get("options"), lateChoice, rescued, failingOptions: failing.storage.raw.get("options") }));
 }
 
 async function ankiBackgroundStage() {
@@ -2514,6 +2667,7 @@ async function main() {
   section("external dictionary links");
   await externalLinksBackgroundStage();
   await firstRunBackgroundStage();
+  await firstRunAnkiStage();
   await backupRelayStage();
   await managedScheduleStage();
   await lookupStatsStage();
@@ -3124,7 +3278,7 @@ async function main() {
       && trustedPackage?.isUpdatable === true
       && trustedPackage?.indexUrl === recommended.indexUrl
       && trustedPackage?.downloadUrl === recommended.downloadUrl
-      && trustedPackage?.termCount === 1
+      && trustedPackage?.termCount === 2
       && trustedPackage?.frequencyCount === 1
       && trustedPackage?.mediaCount === 1,
     JSON.stringify({ trustedImport, trustedState }),
@@ -5039,6 +5193,9 @@ async function main() {
   const advanceFailure = await startupAdvanceFailureStage();
   check("a refused automatic advance leaves an explicit Continue and cancels the countdown instead of saving again on a timer",
     advanceFailure !== null && Object.values(advanceFailure).every((value) => value === true), JSON.stringify(advanceFailure));
+  const practice = await startupPracticeStage();
+  check("the practice step invites a lookup only when a dictionary can answer one and loads the reader once with that step",
+    practice !== null && Object.values(practice).every((value) => value === true), JSON.stringify(practice));
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
@@ -5921,8 +6078,9 @@ async function startupPageStage() {
   let eventListener = null;
   let pendingReply = null;
   let installReply = null;
+  let ankiReply = null;
   const emptyDictionaries = { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] };
-  let setupState = { schemaVersion: 1, revision: 3, startedAt: "2026-09-07T10:00:00.000Z", stage: "dictionaries", completedAt: null, dictionaries: emptyDictionaries };
+  let setupState = { schemaVersion: 1, revision: 3, startedAt: "2026-09-07T10:00:00.000Z", stage: "dictionaries", completedAt: null, dictionaries: emptyDictionaries, anki: null };
   const catalogue = (sourceId) => RECOMMENDED_CATALOGUE.find((entry) => entry.sourceId === sourceId);
   let dictionaryState = { schemaVersion: 1, revision: 5, groups: [], dictionaries: [
     { id: "bee", title: "Bee's Ultimate Kanji Dictionary", sourceId: "bees-ultimate-kanji-dictionary", enabled: true },
@@ -5934,10 +6092,17 @@ async function startupPageStage() {
   const closedTabs = [];
   window.chrome = {
     runtime: {
+      getManifest: () => structuredClone(EXTENSION_MANIFEST),
       async sendMessage(message) {
         requests.push(structuredClone(message));
         if (message.target === "hachidori-setup" && message.type === "hd_setup_install") {
           return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
+        }
+        if (message.type === "hd_setup_anki") return ankiReply(message);
+        // The practice step proves the sample is answerable before inviting a hover.
+        if (message.type === "hd_lookup") {
+          return { type: "hd_lookup_result", requestId: message.requestId, ok: true, error: null, generation: 5, dictionaryCount: 1,
+            results: message.text.startsWith("食べる") ? [{ term: "食べる", matched: "食べる" }] : [] };
         }
         if (message.type !== "hd_setup_cas") throw new Error(`Unexpected startup request ${message.type}`);
         return new Promise((resolveReply) => { pendingReply = resolveReply; });
@@ -5982,6 +6147,7 @@ async function startupPageStage() {
     // The worker does not answer the first automatic request: the page reports it
     // once with Retry and never re-requests on its own.
     installReply = () => { throw new Error("the extension's service worker did not reply"); };
+    ankiReply = () => { throw new Error("the extension's service worker did not reply"); };
     await loadStartupScript(window);
     await until(() => heading() === "Some dictionaries could not be installed", "the failed request view");
     const rendersBefore = installs().length;
@@ -6029,7 +6195,7 @@ async function startupPageStage() {
       && status().classList.contains("is-error") && heading() === "Installing default dictionaries…";
     // The worker records outcomes before the run finishes; a complete inventory is what decides success.
     dictionaryState = { ...dictionaryState, revision: 7, dictionaries: [...dictionaryState.dictionaries,
-      { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true }] };
+      { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }] };
     storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
     setupState = { ...setupState, revision: 4, dictionaries: { ...emptyDictionaries, totalSeconds: 5,
       outcomes: { jitendex: { status: "installed", seconds: 3.2, error: null }, jiten: { status: "failed", seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" },
@@ -6091,24 +6257,52 @@ async function startupPageStage() {
     const secondAdvance = requests.at(-1);
     setupState = { ...setupState, revision: 7, stage: "anki" };
     reply({ state: structuredClone(setupState) });
-    await until(() => heading() === "Anki", "the Anki stage");
+    await until(() => heading() === "Anki could not be checked", "the failed Anki check");
+    const ankiRequests = () => requests.filter((message) => message.type === "hd_setup_anki").length;
+    // The first check is not answered: shown once with Retry and Continue, never re-asked on its own.
+    storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
     const advanced = elapsed >= 4900 && firstAdvance.stage === "anki" && firstAdvance.baseRevision === 5 && firstAdvance.continued === undefined
       && secondAdvance.stage === "anki" && secondAdvance.baseRevision === 6 && currentStep() === "anki" && doneSteps() === 1
-      && document.activeElement === document.getElementById("setup-heading") && status().textContent === ""
+      && document.activeElement === document.getElementById("setup-heading")
+      && status().textContent === "Could not check Anki: the extension's service worker did not reply" && ankiRequests() === 1
+      && JSON.stringify(actions().map(([id]) => id)) === JSON.stringify(["setup-retry", "setup-continue"])
       && document.querySelector('#setup-body a[href="settings.html#anki"]') !== null;
 
-    document.getElementById("setup-continue").click();
+    // Retry: the recorded outcome arrives with the reply and the page moves to the final step by itself,
+    // where the outcome stays readable beside the reading instructions.
+    // A reply that carries no newer outcome is a failed check, shown once, not a loop.
+    ankiReply = (message) => ({ type: "hd_setup_anki_result", requestId: message.requestId, ok: true, error: null, state: structuredClone(setupState) });
+    document.getElementById("setup-retry").click();
+    await until(() => ankiRequests() === 2 && status().textContent.includes("no Anki outcome was recorded"), "the empty Anki reply");
+    const emptyReplyShown = heading() === "Anki could not be checked" && document.getElementById("setup-retry") !== null;
+    ankiReply = (message) => {
+      setupState = { ...setupState, revision: 8, anki: { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" } };
+      return { type: "hd_setup_anki_result", requestId: message.requestId, ok: true, error: null, state: structuredClone(setupState) };
+    };
+    document.getElementById("setup-retry").click();
     await until(() => pendingReply !== null, "the practice write");
-    setupState = { ...setupState, revision: 8, stage: "practice" };
-    reply({ state: structuredClone(setupState) });
-    await until(() => heading() === "You’re ready.", "the practice stage");
-    const practice = document.getElementById("setup-body").textContent.includes("Hold Control and hover")
+    const practiceRequest = requests.at(-1);
+    const checkedHeading = heading();
+    // A second startup tab made the same move first: the conflict it leaves is
+    // the move this page asked for, so the final step is not an error screen.
+    setupState = { ...setupState, revision: 9, stage: "practice" };
+    reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
+    await until(() => heading() === "You’re ready. Try looking up a word below.", "the practice stage");
+    const outcomeNote = document.querySelector(".setup-anki-outcome");
+    const practice = emptyReplyShown && ankiRequests() === 3 && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
+      && checkedHeading === "Anki is set up"
+      && outcomeNote?.dataset.status === "configured"
+      && outcomeNote.textContent === "Automatically set up Kiku v2 for deck ‘Mining::Words’. Change in Settings."
+      && outcomeNote.querySelector('a[href="settings.html#anki"]') !== null
+      && document.getElementById("setup-body").textContent.includes("Hold Control and hover over the Japanese below")
+      && document.querySelector(".setup-practice-sample")?.textContent === "朝ごはんを食べる。"
+      && status().textContent === "" && !status().classList.contains("is-error")
       && document.getElementById("setup-finish") !== null && doneSteps() === 2;
     document.getElementById("setup-finish").click();
     await until(() => pendingReply !== null, "the finish write");
-    const finishRequest = reply({ state: { ...setupState, revision: 9, stage: "complete", completedAt: "2026-09-07T10:05:00.000Z" } });
+    const finishRequest = reply({ state: { ...setupState, revision: 10, stage: "complete", completedAt: "2026-09-07T10:05:00.000Z" } });
     await until(() => closedTabs.length === 1, "the closed tab");
-    const finished = finishRequest.baseRevision === 8 && finishRequest.stage === "complete" && closedTabs[0] === 44
+    const finished = finishRequest.baseRevision === 9 && finishRequest.stage === "complete" && closedTabs[0] === 44
       && heading() === "Setup is complete." && currentStep() === null && doneSteps() === 3
       && document.getElementById("setup-actions").childElementCount === 0;
     return { requestFailed, attached, determinate, ordered, indeterminate, installing, installed, failedRow, failureView, focusKept, continued,
@@ -6120,22 +6314,32 @@ async function startupPageStage() {
 
 // One jsdom startup page with only the worker replies and stored values a
 // dictionary-stage case needs; the two stages below drive it from there.
-function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
+function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null }) {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
     pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
   });
   const { window } = dom;
   const { document } = window;
   const requests = [];
-  const stored = { setup, dictionaries, dictionaryRevision: 1 };
+  const stored = { setup, dictionaries, options, dictionaryRevision: 1 };
   let installReply = reply;
   let storageListener = null;
   let eventListener = null;
   window.chrome = {
     runtime: {
+      getManifest: () => structuredClone(EXTENSION_MANIFEST),
       async sendMessage(message) {
         requests.push(structuredClone(message));
         if (message.type === "hd_setup_cas" && cas !== null) return cas(message);
+        if (message.type === "hd_lookup") {
+          if (lookup === null) throw new Error("the dictionary engine is unavailable");
+          return { type: "hd_lookup_result", requestId: message.requestId, ok: true, error: null, ...lookup(message) };
+        }
+        // A refused lookup waits for the engine to go idle before asking again.
+        if (message.type === "hd_status") {
+          return { type: "hd_status_result", requestId: message.requestId, ok: true, error: null, ready: true, loading: false,
+            ...(status === null ? {} : status(message)) };
+        }
         if (message.type !== "hd_setup_install") throw new Error(`Unexpected startup request ${message.type}`);
         return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
       },
@@ -6143,7 +6347,7 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
     },
     storage: {
       local: { async get() {
-        return { setupState: structuredClone(stored.setup), options: { revision: 1 },
+        return { setupState: structuredClone(stored.setup), options: structuredClone(stored.options),
           dictionaryState: { schemaVersion: 1, revision: stored.dictionaryRevision, groups: [], dictionaries: structuredClone(stored.dictionaries) } };
       } },
       onChanged: { addListener(value) { storageListener = value; } },
@@ -6158,11 +6362,19 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
       stored.setup = setupState;
       storageListener({ setupState: { newValue: structuredClone(setupState) } }, "local");
     },
+    // A dictionary-state write the page learns about through a storage event.
+    library(next) {
+      stored.dictionaries = next;
+      stored.dictionaryRevision += 1;
+      storageListener({ dictionaryState: { newValue: { schemaVersion: 1, revision: stored.dictionaryRevision,
+        groups: [], dictionaries: structuredClone(next) } } }, "local");
+    },
     // An installer broadcast for the run the page attached to.
     progress(snapshot) {
       eventListener({ target: "hachidori-setup-events", type: "hd_setup_progress", ...snapshot });
     },
     installs: () => requests.filter((message) => message.type === "hd_setup_install").map((message) => message.sourceIds),
+    lookups: () => requests.filter((message) => message.type === "hd_lookup").map((message) => message.text),
     saves: () => requests.filter((message) => message.type === "hd_setup_cas"),
     heading: () => document.getElementById("setup-heading").textContent,
     rowText: (sourceId) => document.querySelector(`.setup-dictionary[data-source-id="${sourceId}"] .setup-dictionary-status`).textContent,
@@ -6175,6 +6387,14 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null }) {
     load: () => loadStartupScript(window),
   };
 }
+
+const PRACTICE_SENTENCE_TEXT = "朝ごはんを食べる。";
+
+// The reader scripts the practice step appends, in order, and the order the
+// manifest itself gives them: the page must follow that list, not a copy.
+const readerScripts = (document) => [...document.querySelectorAll("script[data-setup-reader]")]
+  .map((script) => script.getAttribute("src"));
+const MANIFEST_READER_SCRIPTS = EXTENSION_MANIFEST.content_scripts[0].js.filter((src) => src !== "reader-options.js");
 
 const SETUP_AT_DICTIONARIES = Object.freeze({ schemaVersion: 1, revision: 2, startedAt: "2026-09-07T10:00:00.000Z",
   stage: "dictionaries", completedAt: null,
@@ -6285,6 +6505,144 @@ async function startupAdvanceFailureStage() {
     await new Promise((done) => setTimeout(done, 6000));
     const quiet = page.saves().length === 2 && label() === null && page.actionIds().includes("setup-continue");
     return { counting, failed, quiet };
+  } finally {
+    page.window.close();
+  }
+}
+
+// The practice step invites a real lookup only when a dictionary can answer
+// one, and the reader arrives with that step rather than with the page.
+async function startupPracticeStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const setup = { ...structuredClone(SETUP_AT_DICTIONARIES), revision: 8, stage: "practice",
+    anki: { status: "unavailable", detail: "Open Anki with the AnkiConnect add-on installed, then retry.", model: null, deck: null } };
+  // A frequency-only package cannot answer a term lookup.
+  const frequencyOnly = [{ id: "jiten", title: "Jiten", sourceId: "jiten", enabled: true, termCount: 0, frequencyCount: 9 }];
+  // The engine answers the sentence only from the verb onwards, the way a real
+  // library that holds 食べる but not 朝ごはん would.
+  let libraryAnswers = true;
+  // A dictionary mutation refuses the first pass, the way Settings publishing a
+  // reimport does; the sentence must be asked again rather than written off.
+  let busySweeps = 1;
+  // The engine reports a failed reload once, which a status poll repairs, then a
+  // mutation still holds it, and only then is it idle.
+  const recovering = [{ ok: false, error: "the dictionary reload failed" },
+    // A recovery that is itself loading may take as long as it needs.
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ready: true, loading: true }];
+  const answersVerb = (message) => {
+    if (busySweeps > 0) {
+      busySweeps -= 1;
+      return { ok: false, error: "the dictionary engine is busy mutating" };
+    }
+    return { generation: 3, dictionaryCount: 1,
+      results: libraryAnswers && message.text.startsWith("食べる") ? [{ term: "食べる", matched: "食べる" }] : [] };
+  };
+  const page = startupCase(jsdom, { setup, dictionaries: frequencyOnly, lookup: answersVerb,
+    status: () => recovering.shift() ?? {},
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  const { document } = page;
+  const sample = () => document.querySelector(".setup-practice-sample");
+  try {
+    await page.load();
+    await page.until(() => page.heading() === "You’re ready.", "the final step without a usable dictionary");
+    const withoutDictionary = sample() === null && readerScripts(document).length === 0
+      && document.getElementById("setup-body").textContent.includes("No enabled dictionary can answer a lookup yet")
+      && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
+      && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
+      && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"]);
+    // A term dictionary arrives: the exercise appears and the reader is fetched once.
+    page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }]);
+    await page.until(() => page.heading() === "You’re ready. Try looking up a word below.", "the practice exercise");
+    // The refused pass stopped at once and was retried; then every offset was
+    // tried until the verb answered, and none after it.
+    const probed = JSON.stringify(page.lookups()) === JSON.stringify(["朝ごはんを食べる。",
+      "朝ごはんを食べる。", "ごはんを食べる。", "はんを食べる。", "んを食べる。", "を食べる。", "食べる。"]);
+    const invited = withoutDictionary && probed && sample()?.textContent === "朝ごはんを食べる。" && sample().lang === "ja"
+      && document.getElementById("setup-body").textContent.includes("Hover over the Japanese below to look it up.")
+      && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
+      && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"])
+      // jsdom does not run appended scripts, so the chain stops at the first one.
+      && JSON.stringify(readerScripts(document)) === JSON.stringify(MANIFEST_READER_SCRIPTS.slice(0, 1));
+    // Rerenders of the same step must not fetch the reader again.
+    page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 43 }]);
+    await page.until(() => sample() !== null, "the rerendered exercise");
+    const loadedOnce = invited && JSON.stringify(readerScripts(document)) === JSON.stringify(MANIFEST_READER_SCRIPTS.slice(0, 1));
+    // A group-only or presentation write advances the dictionary revision without
+    // changing what the engine can answer, so it must disturb neither the probe
+    // nor the sentence node a lookup in flight is anchored to.
+    const sampleNode = sample();
+    const beforeGroups = page.lookups().length;
+    page.library([...frequencyOnly, { id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 43 }]);
+    await page.until(() => page.heading() === "You’re ready. Try looking up a word below.", "the undisturbed exercise");
+    const groupWriteIgnored = page.lookups().length === beforeGroups && sample() === sampleNode;
+    // The answering package is removed while an unrelated term dictionary stays:
+    // a previously successful probe must not keep the invitation standing.
+    const beforeRetire = page.lookups().length;
+    libraryAnswers = false;
+    page.library([{ id: "other", title: "Unrelated", enabled: true, termCount: 1 }]);
+    await page.until(() => page.document.getElementById("setup-body").textContent.includes("do not have the words in this sample"),
+      "the retired invitation");
+    const reprobed = loadedOnce && groupWriteIgnored && sample() === null
+      && page.lookups().length === beforeRetire + [...PRACTICE_SENTENCE_TEXT].length;
+    const offHover = await startupPracticeWithoutHover(jsdom, setup);
+    const unanswerable = await startupPracticeUnanswerable(jsdom, setup);
+    return { withoutDictionary, invited, loadedOnce, reprobed, offHover, unanswerable };
+  } finally {
+    page.window.close();
+  }
+}
+
+// A library that cannot answer this sentence, and an engine that cannot answer
+// at all, must not advertise a hover: the first says what is missing, the second
+// falls back to the instruction that is true anywhere.
+async function startupPracticeUnanswerable(jsdom, setup) {
+  const library = [{ id: "other", title: "Unrelated", enabled: true, termCount: 1 }];
+  const nothing = startupCase(jsdom, { setup, dictionaries: library, lookup: () => ({ generation: 3, dictionaryCount: 1, results: [] }),
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  const offline = startupCase(jsdom, { setup, dictionaries: library,
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  try {
+    await nothing.load();
+    await nothing.until(() => nothing.document.getElementById("setup-body").textContent.includes("do not have the words in this sample"),
+      "the unanswerable sample");
+    const missing = nothing.document.querySelector(".setup-practice-sample") === null
+      && readerScripts(nothing.document).length === 0
+      && nothing.lookups().length === [..."朝ごはんを食べる。"].length
+      && nothing.document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null;
+    await offline.load();
+    await offline.until(() => offline.document.getElementById("setup-body").textContent.includes("on any webpage"),
+      "the unavailable engine");
+    // A refused engine is asked again before the step gives up on this page.
+    const unavailable = offline.document.querySelector(".setup-practice-sample") === null
+      && readerScripts(offline.document).length === 0 && offline.lookups().length > 1;
+    return missing && unavailable;
+  } finally {
+    nothing.window.close();
+    offline.window.close();
+  }
+}
+
+// The reader answers nothing while lookups are switched off, so the step says
+// so and points at that setting rather than inviting an impossible hover.
+async function startupPracticeWithoutHover(jsdom, setup) {
+  const page = startupCase(jsdom, { setup, options: { revision: 2, hoverEnabled: false },
+    dictionaries: [{ id: "jitendex", title: "Jitendex.org [2026-08-11]", sourceId: "jitendex", enabled: true, termCount: 42 }],
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  try {
+    await page.load();
+    await page.until(() => page.heading() === "You’re ready.", "the final step with lookups off");
+    return page.document.querySelector(".setup-practice-sample") === null
+      && readerScripts(page.document).length === 0
+      && page.document.getElementById("setup-body").textContent.includes("Lookups are turned off")
+      && page.document.querySelector('#setup-body a[href="settings.html#lookup"]') !== null
+      && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"]);
   } finally {
     page.window.close();
   }

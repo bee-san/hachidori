@@ -8,7 +8,8 @@ const CORE_MARKERS = ["expression", "reading", "furigana", "furigana-plain", "di
   "conjugation", "part-of-speech", "phonetic-transcriptions", "tags", "popup-selection-text", "search-query", "document-title",
   "sentence", "sentence-furigana", "sentence-furigana-plain", "cloze-prefix", "cloze-body", "cloze-suffix",
   "frequency", "frequencies", "frequency-harmonic-rank", "frequency-harmonic-occurrence", "frequency-average-rank",
-  "frequency-average-occurrence", "pitch", "pitch-position", "pitch-accent-positions", "pitch-categories", "pitch-accent-categories", "audio"];
+  "frequency-average-occurrence", "pitch", "pitch-position", "pitch-accent-positions", "pitch-categories",
+  "pitch-accent-categories", "audio", "capture-animation", "capture-audio"];
 export const ANKI_TEMPLATE_MARKERS = CORE_MARKERS;
 const MARKER_ALIASES = new Map([["pitch-accent", "pitch"], ["pitch-accents", "pitch"],
   ["pitch-accent-graphs", "pitch"], ["pitch-accent-graphs-jj", "pitch"]]);
@@ -21,6 +22,8 @@ const genericAliases = {
   definition: ["Definition", "Definitions", "Meaning", "Glossary"], sentence: ["Sentence", "Context", "Example Sentence"],
   frequency: ["Frequency", "Frequencies"], pitch: ["Pitch Accent", "PitchAccent", "Pitch", "Accent"],
   audio: ["WordAudio", "PronunciationAudio", "Pronunciation", "Audio"],
+  captureAnimation: ["Capture Animation", "CaptureAnimation", "Sentence Animation", "SentenceAnimation"],
+  captureAudio: ["Capture Audio", "CaptureAudio", "Sentence Audio", "SentenceAudio"],
 };
 // Kiku table from GSM PR #549. Lapis uses this same field shape, verified against
 // donkuri/lapis f4eb29bd build/anki_fields.yaml; non-mining fields stay blank.
@@ -45,6 +48,7 @@ const SENREN = {
 const fieldKey = value => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 const knownMarker = value => MARKERS.has(value) || DYNAMIC_PREFIXES.some(prefix => value.startsWith(prefix) && value.length > prefix.length);
 const blankTemplate = () => ({ value: "", overwriteMode: "coalesce" });
+const semanticMarker = semantic => ({ captureAnimation: "capture-animation", captureAudio: "capture-audio" })[semantic] ?? semantic;
 
 export const escapeAnkiHtml = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#x27;");
@@ -58,6 +62,14 @@ export function ankiTemplateMarkerNames(template) {
     const name = match[1].toLowerCase();
     return MARKER_ALIASES.get(name) ?? name;
   });
+}
+
+export function ankiCaptureRequirements(templates) {
+  const markers = new Set(Object.values(templates).flatMap(template => ankiTemplateMarkerNames(template.value)));
+  return {
+    includeAnimation: markers.has("capture-animation"),
+    includeAudio: markers.has("capture-audio"),
+  };
 }
 
 export function ankiTemplateErrors(template) {
@@ -98,10 +110,21 @@ function basicTemplates(config, fields) {
     const field = canonical.get(name.toLowerCase());
     if (!field) { errors.push(`Mapped field “${name}” is unavailable.`); continue; }
     const row = rows.get(field);
-    const marker = semantic === "pitch" && field.toLowerCase() === "pitchposition" ? "pitch-position" : semantic;
+    const marker = semantic === "pitch" && field.toLowerCase() === "pitchposition" ? "pitch-position"
+      : semanticMarker(semantic);
     row.value += `${row.value ? "<br>" : ""}{${marker}}`;
   }
   return { templates: Object.fromEntries(rows), staleFields: [], errors };
+}
+
+// The core a mined card needs: the expression, its reading, the sentence and a
+// definition body. A note type that only shares a family name maps fewer than
+// these, so first-run detection can tell a real setup from a namesake.
+export function ankiPresetCoreMapped(fieldTemplates) {
+  const values = new Set(Object.values(fieldTemplates).map(template => template.value));
+  return values.has(KIKU.Expression) && values.has(KIKU.ExpressionReading)
+    && (values.has(KIKU.MainDefinition) || values.has(KIKU.Glossary))
+    && values.has(KIKU.Sentence);
 }
 
 export function resolveAnkiTemplates(config, fields) {
@@ -131,7 +154,7 @@ export function applyAnkiPreset(config, fields, preset) {
   const suggestions = new Map();
   if (preset === "automatic") {
     for (const [semantic, aliases] of Object.entries(genericAliases)) {
-      for (const alias of aliases) suggestions.set(fieldKey(alias), { slot: semantic, value: `{${semantic}}` });
+      for (const alias of aliases) suggestions.set(fieldKey(alias), { slot: semantic, value: `{${semanticMarker(semantic)}}` });
     }
   }
   for (const [field, value] of Object.entries(table)) suggestions.set(fieldKey(field), {

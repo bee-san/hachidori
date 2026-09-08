@@ -5,13 +5,26 @@
 (function () {
   "use strict";
 
-  const ANKI_FIELDS = ["expression", "reading", "definition", "sentence", "frequency", "pitch", "audio"];
+  const ANKI_FIELDS = ["expression", "reading", "definition", "sentence", "frequency", "pitch", "audio",
+    "captureAnimation", "captureAudio"];
   const ANKI_DUPLICATE_SCOPES = ["collection", "deck", "deck-root"];
   const ANKI_DUPLICATE_BEHAVIORS = ["prevent", "new", "overwrite"];
   const ANKI_OVERWRITE_MODES = ["coalesce", "coalesce-new", "skip", "append", "prepend", "overwrite"];
   const DEFAULT_ANKI = { deck: "Default", model: "", apiKey: "", tags: ["hachidori"],
     fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])), checkForDuplicates: true,
     duplicateScope: "collection", duplicateScopeCheckAllModels: false, duplicateBehavior: "prevent", fieldTemplates: null };
+  const DEFAULT_MEDIA_CAPTURE = {
+    enabled: false,
+    timingMode: "auto",
+    includeAnimation: true,
+    includeCapturedAudio: true,
+    historySeconds: 60,
+    clipSeconds: 10,
+    videoPreset: "standard",
+    estimatedOffsetMs: -500,
+    texthooker: { enabled: false, url: "", format: "plain" },
+    page: { nativeCues: true, domText: true, autoLearnArea: true },
+  };
   const DEFAULT_OPTIONS = {
     scanLength: 16,
     maxResults: 32,
@@ -28,6 +41,7 @@
     audioSources: [{ id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" }],
     audioAutoplay: false,
     anki: DEFAULT_ANKI,
+    mediaCapture: DEFAULT_MEDIA_CAPTURE,
     popupWidthPx: 560,
     popupHeightPx: 420,
     popupOpacityPercent: 85,
@@ -111,6 +125,87 @@
   const AUDIO_SOURCE_LABELS = { custom: "Audio URL", "custom-json": "Yomitan JSON",
     "text-to-speech": "Speech: term", "text-to-speech-reading": "Speech: reading" };
   const AUDIO_SOURCE_TYPES = Object.keys(AUDIO_SOURCE_LABELS);
+  const MEDIA_TIMING_MODES = ["auto", "page", "recent"];
+  const MEDIA_HISTORY_SECONDS = [30, 60];
+  const MEDIA_CLIP_SECONDS = [5, 10];
+  const MEDIA_VIDEO_PRESETS = ["standard", "compact"];
+  const MEDIA_TEXTHOOKER_FORMATS = ["plain", "gsm"];
+  const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+  function cloneMediaCapture(value = DEFAULT_MEDIA_CAPTURE) {
+    return {
+      ...value,
+      texthooker: { ...value.texthooker },
+      page: { ...value.page },
+    };
+  }
+
+  function normaliseTexthookerUrl(value) {
+    if (typeof value !== "string" || value === "") return "";
+    try {
+      const url = new URL(value);
+      if (!["ws:", "wss:"].includes(url.protocol) || !LOOPBACK_HOSTS.has(url.hostname)
+          || url.username || url.password || url.hash) return null;
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  function normaliseCaptureCollectors(source, result) {
+    const texthooker = source.texthooker && typeof source.texthooker === "object"
+      && !Array.isArray(source.texthooker) ? source.texthooker : {};
+    const page = source.page && typeof source.page === "object" && !Array.isArray(source.page) ? source.page : {};
+    if (typeof texthooker.enabled === "boolean") result.texthooker.enabled = texthooker.enabled;
+    const url = normaliseTexthookerUrl(texthooker.url);
+    if (url !== null) result.texthooker.url = url;
+    if (MEDIA_TEXTHOOKER_FORMATS.includes(texthooker.format)) result.texthooker.format = texthooker.format;
+    for (const key of ["nativeCues", "domText", "autoLearnArea"]) {
+      if (typeof page[key] === "boolean") result.page[key] = page[key];
+    }
+    if (result.texthooker.enabled && !result.texthooker.url) result.texthooker.enabled = false;
+  }
+
+  function normaliseMediaCapture(value) {
+    const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const result = cloneMediaCapture();
+    for (const key of ["enabled", "includeAnimation", "includeCapturedAudio"]) {
+      if (typeof source[key] === "boolean") result[key] = source[key];
+    }
+    if (MEDIA_TIMING_MODES.includes(source.timingMode)) result.timingMode = source.timingMode;
+    if (MEDIA_HISTORY_SECONDS.includes(source.historySeconds)) result.historySeconds = source.historySeconds;
+    if (MEDIA_CLIP_SECONDS.includes(source.clipSeconds)) result.clipSeconds = source.clipSeconds;
+    if (MEDIA_VIDEO_PRESETS.includes(source.videoPreset)) result.videoPreset = source.videoPreset;
+    if (Number.isInteger(source.estimatedOffsetMs)
+        && source.estimatedOffsetMs >= -2000 && source.estimatedOffsetMs <= 2000) {
+      result.estimatedOffsetMs = source.estimatedOffsetMs;
+    }
+    if (!result.includeAnimation && !result.includeCapturedAudio) {
+      result.includeAnimation = DEFAULT_MEDIA_CAPTURE.includeAnimation;
+      result.includeCapturedAudio = DEFAULT_MEDIA_CAPTURE.includeCapturedAudio;
+    }
+    normaliseCaptureCollectors(source, result);
+    return result;
+  }
+
+  function sameMediaCapture(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  function validMediaCapture(value, normalized) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    if (!value.texthooker || typeof value.texthooker !== "object" || Array.isArray(value.texthooker)
+        || !value.page || typeof value.page !== "object" || Array.isArray(value.page)) return false;
+    const keys = Object.keys(DEFAULT_MEDIA_CAPTURE);
+    const texthookerKeys = Object.keys(DEFAULT_MEDIA_CAPTURE.texthooker);
+    const pageKeys = Object.keys(DEFAULT_MEDIA_CAPTURE.page);
+    if (Object.keys(value).some(key => !keys.includes(key))
+        || Object.keys(value.texthooker).some(key => !texthookerKeys.includes(key))
+        || Object.keys(value.page).some(key => !pageKeys.includes(key))) return false;
+    return sameMediaCapture(value, normalized)
+      && (normalized.includeAnimation || normalized.includeCapturedAudio)
+      && (!normalized.texthooker.enabled || Boolean(normalized.texthooker.url));
+  }
 
   function normaliseAudioSources(value) {
     if (!Array.isArray(value)) return [];
@@ -235,6 +330,7 @@
       case "corpusSeenUrl": return normaliseCorpusSeenUrl(value) ?? DEFAULT_OPTIONS.corpusSeenUrl;
       case "audioSources": return normaliseAudioSources(value);
       case "anki": return normaliseAnki(value);
+      case "mediaCapture": return normaliseMediaCapture(value);
       default: return typeof value === "string" ? value : "";
     }
   }
@@ -305,6 +401,7 @@
 
   function isValidOptionField(key, raw, normalized) {
     if (key === "anki") return validAnki(raw, normalized);
+    if (key === "mediaCapture") return validMediaCapture(raw, normalized);
     if (key === "kanjiClickDictionary") return typeof raw === "string" || typeof normalized === "object";
     if (key === "popupImageSource") return raw === null || normalized !== null;
     if (key === "corpusSeenUrl") return normaliseCorpusSeenUrl(raw) === raw;
@@ -325,18 +422,35 @@
   }
 
   function normaliseOptions(value) {
-    return { ...DEFAULT_OPTIONS, ...projectStoredOptions(value) };
+    const options = { ...DEFAULT_OPTIONS, ...projectStoredOptions(value) };
+    options.mediaCapture = cloneMediaCapture(options.mediaCapture);
+    return options;
+  }
+
+  function projectContentOptions(value) {
+    const options = normaliseOptions(value);
+    return {
+      ...options,
+      mediaCapture: {
+        ...options.mediaCapture,
+        texthooker: {
+          enabled: options.mediaCapture.texthooker.enabled,
+          format: options.mediaCapture.texthooker.format,
+        },
+      },
+    };
   }
 
   globalThis.HDReaderOptions = {
     ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS, ANKI_OVERWRITE_MODES,
-    DEFAULT_OPTIONS, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+    DEFAULT_OPTIONS, DEFAULT_MEDIA_CAPTURE, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
+    MEDIA_TIMING_MODES, MEDIA_HISTORY_SECONDS, MEDIA_CLIP_SECONDS, MEDIA_VIDEO_PRESETS, MEDIA_TEXTHOOKER_FORMATS,
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
-    normaliseCorpusSeenUrl, definitionBlurQualifies,
+    normaliseCorpusSeenUrl, normaliseTexthookerUrl, normaliseMediaCapture, definitionBlurQualifies,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
-    projectStoredOptions, validateOptionsPatch,
+    projectStoredOptions, projectContentOptions, validateOptionsPatch,
     resolvePopupImageSources,
     resolveKanjiDictionary,
   };
