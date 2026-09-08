@@ -22,8 +22,9 @@ function render() {
   if (!options) return;
   elements["lookup-toggle"].setAttribute("aria-checked", String(options.hoverEnabled));
   elements["lookup-state"].textContent = options.hoverEnabled ? "On" : "Off";
-  elements["activation-hint"].textContent = !options.hoverEnabled ? "Lookups paused"
-    : options.lookupMode === "activation" ? `Hold ${options.activationKey} to scan` : "Hover over Japanese text to scan";
+  const activeHint = options.lookupMode === "activation"
+    ? `Hold ${options.activationKey} to scan` : "Hover over Japanese text to scan";
+  elements["activation-hint"].textContent = options.hoverEnabled ? activeHint : "Lookups paused";
 }
 
 function showError(error) {

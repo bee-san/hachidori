@@ -15,61 +15,68 @@ export function createSettingsSearch({ document, navigate }) {
     results.replaceChildren();
   }
 
+  function appendResult(section, target, sectionName, group, label, hint) {
+    const item = document.createElement("li");
+    const link = document.createElement("a");
+    link.href = `#${section.id}`;
+    const breadcrumb = document.createElement("small");
+    breadcrumb.textContent = group && group !== label ? `${sectionName} › ${group}` : sectionName;
+    const title = document.createElement("strong");
+    title.textContent = label;
+    link.append(breadcrumb, title);
+    if (hint) {
+      const detail = document.createElement("span");
+      detail.textContent = hint;
+      link.append(detail);
+    }
+    link.addEventListener("click", event => {
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      navigate(section.id);
+      let destination = target;
+      for (let parent = target; parent && parent !== section; parent = parent.parentElement) {
+        // Conditional settings stay governed by their own enable control.
+        // Lead to the enclosing group when the matching control is hidden.
+        if (parent.hidden) destination = parent.parentElement;
+        else if (parent.tagName === "DETAILS") parent.open = true;
+      }
+      const controls = [destination.control, ...destination.querySelectorAll("input, select, textarea, button")];
+      const control = controls.find(node => node && !node.disabled && !node.closest("[hidden]")) || destination;
+      if (!control.matches("input, select, textarea, button, summary, a[href], [tabindex]")) control.tabIndex = -1;
+      control.focus({ preventScroll: true });
+      destination.scrollIntoView({ block: "center" });
+    });
+    item.append(link);
+    results.append(item);
+  }
+
+  function searchSection(section, words) {
+    section.hidden = true;
+    const sectionName = text(section.querySelector("h1"));
+    // Read mounted labels on demand, including lazy controls once populated.
+    const candidates = section.querySelectorAll("h1, h2, h3, legend, summary, label, button[id]");
+    for (const target of candidates) {
+      if (target.closest("template, [role=status], output")) continue;
+      const label = text(target.querySelector(".field-label"))
+        || text(target.querySelector("span")) || text(target);
+      if (!label) continue;
+      const group = text(target.closest("fieldset")?.querySelector("legend"));
+      const hint = text(target.querySelector(".field-hint"));
+      const searchable = normalise(`${sectionName} ${group} ${label} ${hint} ${target.dataset.searchKeywords || ""}`);
+      if (!words.every(word => searchable.includes(word))) continue;
+      appendResult(section, target, sectionName, group, label, hint);
+    }
+  }
+
   function search() {
     const words = normalise(input.value.trim()).split(/\s+/).filter(Boolean);
     if (!words.length) { navigate(); return; }
     results.replaceChildren();
     panel.hidden = false;
-    for (const section of document.querySelectorAll("main > section")) {
-      section.hidden = true;
-      const sectionName = text(section.querySelector("h1"));
-      // Read mounted labels on demand, including lazy controls once populated.
-      const candidates = section.querySelectorAll("h1, h2, h3, legend, summary, label, button[id]");
-      for (const target of candidates) {
-        if (target.closest("template, [role=status], output")) continue;
-        const label = text(target.querySelector(".field-label"))
-          || text(target.querySelector("span")) || text(target);
-        if (!label) continue;
-        const group = text(target.closest("fieldset")?.querySelector("legend"));
-        const hint = text(target.querySelector(".field-hint"));
-        const searchable = normalise(`${sectionName} ${group} ${label} ${hint} ${target.dataset.searchKeywords || ""}`);
-        if (!words.every(word => searchable.includes(word))) continue;
-        const item = document.createElement("li");
-        const link = document.createElement("a");
-        link.href = `#${section.id}`;
-        const breadcrumb = document.createElement("small");
-        breadcrumb.textContent = group && group !== label ? `${sectionName} › ${group}` : sectionName;
-        const title = document.createElement("strong");
-        title.textContent = label;
-        link.append(breadcrumb, title);
-        if (hint) {
-          const detail = document.createElement("span");
-          detail.textContent = hint;
-          link.append(detail);
-        }
-        link.addEventListener("click", event => {
-          if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-          event.preventDefault();
-          navigate(section.id);
-          let destination = target;
-          for (let parent = target; parent && parent !== section; parent = parent.parentElement) {
-            // Conditional settings stay governed by their own enable control.
-            // Lead to the enclosing group when the matching control is hidden.
-            if (parent.hidden) destination = parent.parentElement;
-            else if (parent.tagName === "DETAILS") parent.open = true;
-          }
-          const controls = [destination.control, ...destination.querySelectorAll("input, select, textarea, button")];
-          const control = controls.find(node => node && !node.disabled && !node.closest("[hidden]")) || destination;
-          if (!control.matches("input, select, textarea, button, summary, a[href], [tabindex]")) control.tabIndex = -1;
-          control.focus({ preventScroll: true });
-          destination.scrollIntoView({ block: "center" });
-        });
-        item.append(link);
-        results.append(item);
-      }
-    }
+    for (const section of document.querySelectorAll("main > section")) searchSection(section, words);
     const matches = results.childElementCount;
-    count.textContent = matches ? `${matches} ${matches === 1 ? "setting" : "settings"} found` : "No settings found. Try another word.";
+    const noun = matches === 1 ? "setting" : "settings";
+    count.textContent = matches ? `${matches} ${noun} found` : "No settings found. Try another word.";
   }
 
   input.addEventListener("input", search);

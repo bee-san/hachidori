@@ -83,7 +83,10 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
       await new Promise((resolve, reject) => {
         utterance.onend = resolve;
         utterance.onstart = () => { if (!signal.aborted) onPlaying?.(candidate); };
-        utterance.onerror = event => reject(new Error(`Text-to-speech could not be played${event.error ? ` (${event.error})` : ""}.`));
+        utterance.onerror = event => {
+          const detail = event.error ? ` (${event.error})` : "";
+          reject(new Error(`Text-to-speech could not be played${detail}.`));
+        };
         abort = () => {
           // Cancel synchronously, before a newer operation can speak. A late
           // finally calling global speech.cancel() would stop that new voice.
