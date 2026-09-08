@@ -1359,7 +1359,8 @@ function failureReply(message, error) {
   });
 }
 
-const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight", hd_anki_submit: "submit", hd_anki_browse: "browse" };
+const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight", hd_anki_submit: "submit", hd_anki_browse: "browse",
+  hd_anki_maturity: "maturity" };
 
 const CAPTURE_CONTROL_TYPES = new Set([
   "hd_capture_open",

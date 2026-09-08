@@ -7055,6 +7055,14 @@ async function designPreviewStage() {
     options = { ...options, definitionBlurEnabled: false };
     update();
     await settle();
+    options = { ...options, showLookupCounts: false, definitionBlurAnkiMature: true };
+    update();
+    await settle();
+    blur &&= blurState() === "blurred" && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    options = { ...options, showLookupCounts: true, definitionBlurAnkiMature: false };
+    update();
+    await settle();
+    blur &&= blurState() === "revealed";
     options = { ...options, popupTheme: "miku", popupWidthPx: 720, popupHeightPx: 500, popupOpacityPercent: 0,
       sourceHighlightEnabled: false };
     update();
@@ -7410,6 +7418,12 @@ async function settingsFrequencyStage() {
         .every(id => blurControl(id).disabled)
         && blurControl("opt-blur-direction").value === "atLeast" && blurControl("opt-blur-threshold").value === "5"
         && blurControl("opt-blur-reveal").value === "timed" && blurControl("opt-blur-delay").value === "5");
+      metadataDetails.push(blurControl("opt-blur-anki-mature").checked === false);
+      await editControl(blurControl("opt-blur-anki-mature"), true);
+      metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurAnkiMature: true })
+        && blurControl("opt-blur-direction").disabled && blurControl("opt-blur-threshold").disabled
+        && !blurControl("opt-blur-reveal").disabled && !blurControl("opt-blur-delay").disabled);
+      await editControl(blurControl("opt-blur-anki-mature"), false);
       await editControl(blurControl("opt-lookup-counts"), true);
       metadataDetails.push(!blurControl("opt-blur-direction").disabled && !blurControl("opt-blur-delay").disabled);
       await editControl(blurControl("opt-blur-direction"), "below");
@@ -10085,6 +10099,137 @@ async function contentNoteStage() {
         offVisit && Boolean(read) && hidden.lookupStatistics()?.lookupCount === 4 && slot()?.hidden === false
         && hidden.take("hd_lookup_stats_record") === null && hidden.renders.length === rendersBefore;
     } finally { hidden.close(); }
+    return outcomes;
+  }
+
+  async function ankiMaturityBlurCase() {
+    const outcomes = {};
+    const options = { showLookupCounts: false, definitionBlurAnkiMature: true, definitionBlurReveal: "hover",
+      audioAutoplay: true, anki: { model: "Mining", fields: { expression: "Expression" } } };
+    const harness = await createHarness(null, { holdLookupStats: true, options });
+    const plays = () => harness.sent.filter(request => request.type === "hd_audio_play").length;
+    const lookup = async expression => {
+      const operation = harness.driver.runLookup(harness.candidate);
+      harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term(expression)] });
+      await operation;
+      return harness.take("hd_anki_maturity");
+    };
+    try {
+      const mature = await lookup("成熟");
+      const pending = mature?.request.target === "hachidori-anki" && harness.blurState() === "pending"
+        && !harness.sent.some(request => request.type === "hd_lookup_stats_record") && plays() === 0;
+      harness.reply(mature, { mature: true });
+      await harness.settle();
+      const blurred = harness.blurState() === "blurred" && plays() === 0;
+      harness.hoverDefinitions();
+      harness.callbacks().onBeforeResultsRendered();
+      const button = harness.popup.ownerDocument.createElement("button");
+      harness.popup.append(button);
+      harness.callbacks().onResultsRendered({ lookupStats: harness.popup.querySelector(".gsm-hoshidicts-lookup-stats"),
+        audioButtons: [{ button, result: harness.term("成熟") }], miningActions: [] });
+      outcomes["Anki maturity blurs without counts and preserves hover reveal and silent tab rebinds"] =
+        pending && blurred && harness.blurState() === "revealed" && plays() === 0;
+
+      harness.reply(await lookup("若い"), { mature: false });
+      await harness.settle();
+      const young = harness.blurState() === "revealed" && plays() === 1;
+      harness.reply(await lookup("オフライン"), { error: "Anki unavailable" }, false);
+      await harness.settle();
+      outcomes["nonmature and unavailable Anki fail open and release autoplay once"] =
+        young && harness.blurState() === "revealed" && plays() === 2;
+
+      const stale = await lookup("古い"), current = await lookup("現在");
+      harness.reply(stale, { mature: true });
+      await harness.settle();
+      const untouched = harness.blurState() === "pending" && plays() === 2;
+      harness.reply(current, { mature: false });
+      await harness.settle();
+      outcomes["a retired lookup's Anki result cannot settle the current lookup's blur or autoplay"] =
+        untouched && harness.blurState() === "revealed" && plays() === 3;
+
+      const changed = await lookup("設定");
+      harness.emitOptions({ ...options, anki: { ...options.anki, model: "Other" } });
+      harness.reply(changed, { mature: true });
+      await harness.settle();
+      outcomes["changing the Anki mapping releases a pending visit and rejects its late mature result"] =
+        harness.blurState() === "revealed" && plays() === 4;
+
+      const combined = { ...options, showLookupCounts: true, definitionBlurEnabled: true, definitionBlurThreshold: 5 };
+      harness.emitOptions(combined);
+      const byCount = await lookup("回数");
+      const count = harness.take("hd_lookup_stats_record");
+      harness.reply(count, { descriptor: { generation: "statistics", revision: 1 },
+        statistics: { term: count.request.term, reading: count.request.reading, lookupCount: 5 } });
+      await harness.settle();
+      const countWins = harness.blurState() === "blurred" && plays() === 4;
+      harness.reply(byCount, { mature: false });
+      await harness.settle();
+      const byAnki = await lookup("暗記");
+      const lowCount = harness.take("hd_lookup_stats_record");
+      harness.reply(lowCount, { descriptor: { generation: "statistics", revision: 2 },
+        statistics: { term: lowCount.request.term, reading: lowCount.request.reading, lookupCount: 1 } });
+      await harness.settle();
+      const waiting = harness.blurState() === "pending" && plays() === 4;
+      harness.reply(byAnki, { mature: true });
+      await harness.settle();
+      outcomes["either the first count or Anki maturity qualifies without waiting for the other signal"] =
+        countWins && waiting && harness.blurState() === "blurred" && plays() === 4;
+
+      const firstCount = await lookup("最初");
+      const firstCountRequest = harness.take("hd_lookup_stats_record");
+      harness.reply(firstCountRequest, { descriptor: { generation: "statistics", revision: 3 },
+        statistics: { term: firstCountRequest.request.term, reading: firstCountRequest.request.reading, lookupCount: 1 } });
+      await harness.settle();
+      harness.emitLookupStats({ generation: "statistics", revision: 4 },
+        { term: firstCountRequest.request.term, reading: firstCountRequest.request.reading, lookupCount: 9 });
+      harness.reply(firstCount, { mature: false });
+      await harness.settle();
+      outcomes["waiting for Anki preserves the first count's autoplay decision despite later row events"] =
+        harness.blurState() === "revealed" && plays() === 5;
+    } finally { harness.close(); }
+
+    const early = await createHarness(null, { deferInitialStorage: true, options: { ...options,
+      frequencyDictionary: "", frequencyOrder: "auto", scanLength: 16, maxResults: 32, kanjiClickDictionary: "" } });
+    try {
+      // Hydrate dictionary identity separately so the late options do not
+      // correctly retire this lookup for an unrelated dictionary/ranking edit.
+      early.emitState({ schemaVersion: 1, revision: 1, dictionaries: [genericPackage({ favorite: true })] });
+      await early.initialLookup();
+      const pending = early.blurState() === "pending" && !early.take("hd_anki_maturity");
+      early.deliverInitialStorage();
+      await early.settle();
+      early.reply(early.take("hd_anki_maturity"), { mature: true });
+      await early.settle();
+      outcomes["a lookup before initial options waits for its Anki maturity setting"] =
+        pending && !!early.driver.viewRequest() && early.blurState() === "blurred"
+        && !early.sent.some(request => request.type === "hd_audio_play");
+    } finally { early.close(); }
+
+    for (const held of [false, true]) {
+      const navigation = await createHarness({ title: "Generic", kind: "kanji" }, { options });
+      try {
+        await navigation.initialLookup();
+        const query = navigation.take("hd_anki_maturity");
+        if (!held) { navigation.reply(query, { mature: true }); await navigation.settle(); }
+        const showKanji = async () => {
+          const operation = navigation.driver.showKanji("食");
+          navigation.reply(navigation.take("hd_kanji"), {
+            kanji: { character: "食", entries: [{ dictionary: "Generic", meanings: ["eat"] }] } });
+          await operation;
+        };
+        await showKanji();
+        await navigation.render().context.onBack();
+        const retained = navigation.blurState() === (held ? "pending" : "blurred")
+          && !navigation.take("hd_anki_maturity");
+        await showKanji();
+        navigation.emitOptions({ ...options, kanjiClickDictionary: { title: "Generic", kind: "kanji" },
+          anki: { ...options.anki, model: "Other" } });
+        if (held) { navigation.reply(query, { mature: true }); await navigation.settle(); }
+        await navigation.render().context.onBack();
+        outcomes[`Back keeps the visit but rejects ${held ? "pending" : "completed"} Anki evidence after a parked mapping edit`] =
+          retained && navigation.blurState() === "revealed" && !navigation.take("hd_anki_maturity");
+      } finally { navigation.close(); }
+    }
     return outcomes;
   }
 
@@ -12966,7 +13111,7 @@ async function contentNoteStage() {
   return {
     callbacksWired,
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
-    definitionBlur: await definitionBlurCase(),
+    definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
     scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),

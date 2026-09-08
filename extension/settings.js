@@ -63,6 +63,7 @@ const METADATA_FIELDS = [
   { key: "showLookupCounts", id: "opt-lookup-counts" },
   { key: "corpusSeenEnabled", id: "opt-corpus-seen" },
   { key: "definitionBlurEnabled", id: "opt-blur-enabled" },
+  { key: "definitionBlurAnkiMature", id: "opt-blur-anki-mature" },
   { key: "showFrequencyDictionaryNames", id: "opt-frequency-names" },
   { key: "averageFrequency", id: "opt-average-frequency" },
   { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },
@@ -1048,16 +1049,17 @@ function renderCompactSummaryControls() {
     "term", "Automatic — first available definition", enabled);
 }
 
-// Blur needs counts. The delay applies only to the timed reveal; the field
-// shows seconds, fractions allowed, for the stored milliseconds.
+// Either blur rule uses the shared reveal controls. The delay field shows
+// seconds, fractions allowed, for the stored milliseconds.
 function renderDefinitionBlurControls() {
-  const enabled = options.definitionBlurEnabled && options.showLookupCounts;
-  for (const [id, key] of [["opt-blur-direction", "definitionBlurDirection"], ["opt-blur-reveal", "definitionBlurReveal"],
-    ["opt-blur-threshold", "definitionBlurThreshold"]]) {
+  const countEnabled = options.definitionBlurEnabled && options.showLookupCounts;
+  const enabled = countEnabled || options.definitionBlurAnkiMature;
+  for (const [id, key, controlEnabled] of [["opt-blur-direction", "definitionBlurDirection", countEnabled],
+    ["opt-blur-reveal", "definitionBlurReveal", enabled], ["opt-blur-threshold", "definitionBlurThreshold", countEnabled]]) {
     const control = element(id);
     if (control === document.activeElement) continue;
     control.value = String(options[key]);
-    control.disabled = !enabled;
+    control.disabled = !controlEnabled;
   }
   const delay = element("opt-blur-delay");
   if (delay !== document.activeElement) {
