@@ -16,10 +16,13 @@ setup** remains available throughout.
 Anki is labelled **Optional** in the progress indicator. Its check offers
 **Continue now** immediately, and a late result preserves the stage the user
 has reached. A failed connection says **Anki isn’t connected**, without
-claiming that Anki is absent. The dictionary success screen offers **Continue
-now** and **Pause countdown**; resuming gives another five seconds. Installation
-explains that it continues after the tab closes, and ZIP imports are clearly
-separate from the personal dictionary.
+claiming that Anki is absent. Dictionary success advances immediately. The
+three successful Anki detection steps each remain visible for one second, then
+the settled result remains for three seconds. On the final step, the ordinary
+reader immediately selects and looks up the demonstrated word once; its
+keyboard button and hover route remain available. Installation explains that
+it continues after the tab closes, and ZIP imports are clearly separate from
+the personal dictionary.
 
 The card has clearer heading and action spacing, less competing Anki feedback
 on the practice screen, and full-width dictionary status text. Existing light
@@ -37,9 +40,11 @@ editing. The capture driver and state/overflow report remain in the local
 `hachidori-merge-prs-20260908` run directory as `pr85-capture.mjs` and
 `pr85-captures.json`.
 
-| Paused successful installation | Empty library recovery |
+| Three-second Anki result | Automatic real lookup |
 | --- | --- |
-| ![Installed dictionaries with Continue now and Resume countdown](assets/startup-refined-installed.png) | ![Empty library with Add dictionaries and Finish setup](assets/startup-refined-empty.png) |
+| ![Configured Anki result](assets/startup-auto-anki.png) | ![Practice page showing its automatic lookup](assets/startup-auto-lookup.png) |
+
+![Empty library with Add dictionaries and Finish setup](assets/startup-refined-empty.png)
 
 | Optional Anki check, narrow dark | Disabled dictionaries, narrow dark |
 | --- | --- |
@@ -50,7 +55,7 @@ editing. The capture driver and state/overflow report remain in the local
 
 A simplification pass consolidated readiness headings, recovery text and the
 probe precondition in `practiceReadiness`, retained the existing setup CAS and
-countdown timers, reused the mounted practice controls, and removed unused
+Anki countdown timer, reused the mounted practice controls, and removed unused
 sample CSS and duplicate narrow dictionary rules. Background-install guidance
 uses the existing introduction paragraph, so progress updates create no extra
 paragraph nodes. The generic paragraph reset excludes the shared scene speaker,

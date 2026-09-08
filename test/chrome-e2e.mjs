@@ -212,8 +212,8 @@ const PLANNED = [
   "a reconnecting startup page rejoins the running installer whose held download stays indeterminate",
   "the automatic installer continues after a mocked failure through real download and installation phases",
   "Retry installs only the missing dictionary and the committed entries settle their selections once",
-  "the all-installed result stays five seconds before setup checks for Anki",
-  "startup practice uses the installed dictionaries through keyboard selection and the ordinary reader",
+  "the all-installed result advances immediately before setup checks for Anki",
+  "startup practice immediately demonstrates the installed dictionaries and retains keyboard and hover lookup",
   "startup screenshot capture resolves its own live extension document",
   "the startup reader exception keeps Settings and the static preview excluded",
   "saved-page setup rechecks Chrome file access and a local HTML file uses the real reader",
@@ -4082,9 +4082,16 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   await startup.bringToFront();
   await startup.waitForSelector("#setup-practice-lookup:not([disabled])");
   const popup = await popupReader(startup);
+  const automatic = await popup.waitForVisible();
+  const automaticallySelected = await startup.evaluate(() => getSelection().toString());
   await startup.focus("#setup-heading");
-  // Reach the real control through the page's tab order, then activate it with
-  // Enter. The control selects prose; only the ordinary reader sends the lookup.
+  if (process.env.HACHIDORI_STARTUP_LOOKUP_SCREENSHOT) {
+    await startup.screenshot({ path: process.env.HACHIDORI_STARTUP_LOOKUP_SCREENSHOT });
+  }
+  await startup.keyboard.press("Escape");
+  const automaticEscaped = await popup.waitForHidden();
+  await startup.evaluate(() => getSelection().removeAllRanges());
+  // The visible control remains keyboard-operable after the automatic example.
   let keyboardReached = false;
   for (let attempt = 0; attempt < 15; attempt += 1) {
     await startup.keyboard.press("Tab");
@@ -4094,9 +4101,6 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   if (!keyboardReached) throw new Error("The practice lookup control was not reachable through the tab order.");
   await startup.keyboard.press("Enter");
   const selected = await popup.waitForVisible();
-  if (process.env.HACHIDORI_STARTUP_LOOKUP_SCREENSHOT) {
-    await startup.screenshot({ path: process.env.HACHIDORI_STARTUP_LOOKUP_SCREENSHOT });
-  }
   const screenshot = await startup.evaluate(async () => {
     const reply = await chrome.runtime.sendMessage({ target: "hachidori-anki", type: "hd_anki_screenshot",
       requestId: "startup-screenshot", request: {} });
@@ -4144,12 +4148,13 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   const hovered = await popup.waitForVisible();
   const genuine = state => state?.plain.includes("辞書")
     && state.text.includes(`${RECOMMENDED_DICTIONARIES[0].title} term fixture`);
-  check("startup practice uses the installed dictionaries through keyboard selection and the ordinary reader",
-    keyboardReached && genuine(selected) && genuine(hovered) && escaped
+  check("startup practice immediately demonstrates the installed dictionaries and retains keyboard and hover lookup",
+    genuine(automatic) && automaticallySelected === "辞書" && automaticEscaped
+      && keyboardReached && genuine(selected) && genuine(hovered) && escaped
       && source.url === `${startupUrl}#setup-heading`
       && source.selected === "辞書" && source.text.includes("辞書") && source.sameScene && !source.detached
       && source.readerScripts === 1 && source.finish && source.settings,
-    JSON.stringify({ keyboardReached, selected, hovered, source, escaped }));
+    JSON.stringify({ automatic, automaticallySelected, automaticEscaped, keyboardReached, selected, hovered, source, escaped }));
   await startup.keyboard.press("Escape");
   await popup.waitForHidden();
   await startup.mouse.move(2, 2);
@@ -4455,10 +4460,22 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
     const headingSequence = [...new Set(headingLog.map(entry => entry.text))];
     const pendingSteps = headingLog.filter(entry => entry.text === "Finding your Anki setup…")
       .flatMap(entry => entry.progress.filter(step => step.current).map(step => step.step));
+    const progressStarted = new Map();
+    for (const entry of headingLog.filter(candidate => candidate.text === "Finding your Anki setup…")) {
+      const current = entry.progress.find(step => step.current)?.step;
+      if (current && !progressStarted.has(current)) progressStarted.set(current, entry.at);
+    }
+    const configuredPaintedAt = headingLog.find(entry => entry.text === "Anki is set up")?.at ?? 0;
+    const progressDwell = [
+      (progressStarted.get("2") ?? 0) - (progressStarted.get("1") ?? 0),
+      (progressStarted.get("3") ?? 0) - (progressStarted.get("2") ?? 0),
+      configuredPaintedAt - (progressStarted.get("3") ?? 0),
+    ];
     check(
       "first-run detection configures an existing Kiku mining setup read-only from the startup page",
       JSON.stringify(headingSequence.slice(0, 3)) === JSON.stringify(["Finding your Anki setup…", "Anki is set up", "Add a dictionary to try Hachidori"])
         && JSON.stringify([...new Set(pendingSteps)]) === JSON.stringify(["1", "2", "3"])
+        && progressDwell.every(duration => duration >= 900)
         && configured?.outcome === "configured" && configured.outcomeLink
         && configured.outcomeText === "Automatically set up Kiku v2 for deck ‘Mining’. Change in Settings."
         && JSON.stringify(configured.progress) === JSON.stringify([
@@ -4466,11 +4483,11 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
           { title: "Looking for the most popular deck", detail: "Selected Mining", done: true },
           { title: "Setting Hachidori to use them", detail: "Ready for future mining", done: true },
         ])
-        && configured.countdown === "Continuing to practice in 5 seconds"
+        && configured.countdown === "Continuing to practice in 3 seconds"
         && JSON.stringify(configured.actions) === JSON.stringify(["setup-continue", "setup-pause"])
         && ready?.outcome === "configured" && ready.outcomeLink && ready.status === "Add a dictionary to try Hachidori"
         && ready.outcomeText === "Automatically set up Kiku v2 for deck ‘Mining’. Change in Settings."
-        && ready.done === 2 && ready.at - configured.at >= 4800
+        && ready.done === 2 && ready.at - configured.at >= 2800
         // The durable outcome and the saved mapping name the same note type and deck.
         && detected.setupState?.anki?.status === "configured" && detected.setupState.anki.detail === null
         && detected.setupState.anki.model === "Kiku v2" && detected.setupState.anki.deck === "Mining"
@@ -4485,7 +4502,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && calls.every(({ version }) => version === 6)
         && calls.find(({ action }) => action === "findNotes").params.query === "mid:2"
         && calls.find(({ action }) => action === "findCards").params.query === "mid:2 -deck:filtered",
-      JSON.stringify({ headingLog, configured, ready, detected, calls }),
+      JSON.stringify({ headingLog, progressDwell, configured, ready, detected, calls }),
     );
   } finally {
     if (startup !== null) await startup.close().catch(() => {});
@@ -6985,13 +7002,63 @@ async function main() {
   }));
   const jitendexTitle = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "jitendex").title;
   const beesTitle = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "bees-ultimate-kanji-dictionary").title;
+  // The first-run Anki check begins immediately after the retry completes, so
+  // refuse it before releasing that transition. A real Anki or another suite's
+  // mock server on this port cannot decide the outcome.
+  const ankiRefused = { requests: 0, fail: "ConnectionRefused" };
+  const ankiOffline = await interceptFetches(
+    await browser.waitForTarget((target) => target.type() === "service_worker" && target.url().endsWith("/background.js")),
+    new Map([["http://127.0.0.1:8765/", ankiRefused]]), "anki offline");
   let retried = null;
   let successShownAt = 0;
   if (startup !== null) {
     await startup.bringToFront();
+    // Dictionary success and both Anki headings are transient. Record every
+    // painted state before Retry rather than relying on polling luck.
+    await startup.evaluate(() => {
+      window.__headingLog = [];
+      window.__dictionarySuccessLog = [];
+      const record = () => {
+        const text = document.getElementById("setup-heading")?.textContent ?? "";
+        if (window.__headingLog.at(-1)?.text !== text) {
+          window.__headingLog.push({
+            text,
+            at: Date.now(),
+            focused: document.activeElement?.id ?? "",
+            step: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
+            done: document.querySelectorAll(".setup-step.is-done").length,
+            actions: [...document.querySelectorAll("#setup-actions button")].map((control) => control.id),
+            outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
+            ankiLink: document.querySelector('#setup-body a[href="settings.html#anki"]') !== null,
+            countdown: document.getElementById("setup-countdown-label")?.textContent ?? null,
+          });
+        }
+        if (text.startsWith("All dictionaries installed")) {
+          const state = {
+            at: Date.now(),
+            heading: text,
+            rows: [...document.querySelectorAll(".setup-dictionary")].map((row) => [
+              row.dataset.sourceId,
+              row.querySelector(".setup-dictionary-status")?.textContent ?? "",
+            ]),
+            actions: [...document.querySelectorAll("#setup-actions button")].map((control) => [control.id, control.textContent]),
+            countdown: document.getElementById("setup-countdown-label")?.textContent ?? null,
+            importLink: document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null,
+          };
+          const signature = JSON.stringify([state.heading, state.rows, state.actions, state.countdown, state.importLink]);
+          if (window.__dictionarySuccessLog.at(-1)?.signature !== signature) {
+            window.__dictionarySuccessLog.push({ ...state, signature });
+          }
+        }
+      };
+      record();
+      new MutationObserver(record).observe(document.getElementById("setup-card"),
+        { childList: true, subtree: true, characterData: true });
+    });
     await clickStartupControl("setup-retry");
-    retried = await waitStartup((state) => state.heading.startsWith("All dictionaries installed"), 60_000);
-    successShownAt = Date.now();
+    retried = await startup.waitForFunction(() => window.__dictionarySuccessLog?.at(-1) ?? false,
+      { timeout: 60_000, polling: 20 }).then((handle) => handle.jsonValue()).catch(() => null);
+    successShownAt = retried?.at ?? 0;
   }
   const afterRetry = await page.evaluate(async () => chrome.storage.local.get(["setupState", "options", "dictionaryState"]));
   const retryOutcomes = afterRetry.setupState?.dictionaries?.outcomes ?? {};
@@ -7002,8 +7069,7 @@ async function main() {
       && retried?.heading === `All dictionaries installed in ${afterRetry.setupState.dictionaries.totalSeconds < 10
         ? afterRetry.setupState.dictionaries.totalSeconds.toFixed(1) : Math.round(afterRetry.setupState.dictionaries.totalSeconds)} seconds`
       && retried.rows.every((row) => /^Installed in \d+(\.\d+)? seconds$/u.test(row[1]))
-      && JSON.stringify(retried.actions) === JSON.stringify([["setup-continue", "Continue now"], ["setup-pause", "Pause countdown"]]) && retried.importLink
-      && retried.countdown === "Continuing to Anki in 5 seconds"
+      && retried.actions.length === 0 && retried.importLink && retried.countdown === null
       && retryOutcomes.jmnedict?.status === "installed" && retryOutcomes.jmnedict.seconds > 0
       && retryOutcomes.jitendex?.status === "installed"
       && afterRetry.setupState.dictionaries.totalSeconds > afterRun.setupState.dictionaries.totalSeconds
@@ -7011,59 +7077,11 @@ async function main() {
       && afterRetry.options.compactDefinitionSummaryDictionary === jitendexTitle
       && afterRetry.options.kanjiClickDictionary?.title === beesTitle && afterRetry.options.kanjiClickDictionary.kind === "term"
       && afterRetry.options.showCompactDefinitionSummary === false
-      && (afterRetry.dictionaryState?.dictionaries ?? []).length === RECOMMENDED_DICTIONARIES.length
-      && afterRetry.setupState.stage === "dictionaries",
+      && (afterRetry.dictionaryState?.dictionaries ?? []).length === RECOMMENDED_DICTIONARIES.length,
     JSON.stringify({ settingsAfterRun, retried, afterRetry, requests: setupArchives.requests }),
   );
-  if (startup && (process.env.HACHIDORI_STARTUP_COMPLETE_SCREENSHOT || process.env.HACHIDORI_STARTUP_COMPLETE_DARK_SCREENSHOT)) {
-    await startup.setViewport({ width: 900, height: 820 });
-    for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_COMPLETE_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_COMPLETE_DARK_SCREENSHOT]]) {
-      if (!path) continue;
-      await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
-      await startup.screenshot({ path });
-    }
-    await startup.emulateMediaFeatures([]);
-  }
-
-  // The first-run Anki check must find nothing. Refuse the AnkiConnect
-  // connection on the worker for the duration, so a real Anki or another
-  // suite's mock server on this port cannot decide this outcome.
-  const ankiRefused = { requests: 0, fail: "ConnectionRefused" };
-  const ankiOffline = await interceptFetches(
-    await browser.waitForTarget((target) => target.type() === "service_worker" && target.url().endsWith("/background.js")),
-    new Map([["http://127.0.0.1:8765/", ankiRefused]]), "anki offline");
-
-  // The Anki stage checks by itself and its outcome moves setup on, so both
-  // headings are transient. Record every heading the page paints instead of
-  // hoping a poll lands inside them.
-  if (startup !== null) {
-    await startup.evaluate(() => {
-      window.__headingLog = [];
-      const record = () => {
-        const text = document.getElementById("setup-heading")?.textContent ?? "";
-        if (window.__headingLog.at(-1)?.text === text) return;
-        window.__headingLog.push({
-          text,
-          at: Date.now(),
-          focused: document.activeElement?.id ?? "",
-          step: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
-          done: document.querySelectorAll(".setup-step.is-done").length,
-          actions: [...document.querySelectorAll("#setup-actions button")].map((control) => control.id),
-          outcome: document.querySelector(".setup-anki-outcome")?.dataset.status ?? null,
-          ankiLink: document.querySelector('#setup-body a[href="settings.html#anki"]') !== null,
-          countdown: document.getElementById("setup-countdown-label")?.textContent ?? null,
-        });
-      };
-      record();
-      new MutationObserver(record).observe(document.getElementById("setup-card"),
-        { childList: true, subtree: true, characterData: true });
-    });
-  }
-  let heldResult = null;
   let practiceReached = null;
   if (startup !== null) {
-    await new Promise((resolve) => setTimeout(resolve, Math.max(0, successShownAt + 3500 - Date.now())));
-    heldResult = await startup.evaluate(readStartup).catch(() => null);
     // The final step waits for Finish, so it is the one stable state to poll for.
     practiceReached = await startup.waitForFunction(() => document.getElementById("setup-practice-instruction")?.textContent.startsWith("Try looking up a word below.")
       ? { at: Date.now(), focused: document.activeElement?.id ?? "",
@@ -7082,14 +7100,13 @@ async function main() {
   const checkingAnki = painted("Finding your Anki setup…");
   const ankiStage = await page.evaluate(async () => (await chrome.storage.local.get("setupState")).setupState);
   check(
-    "the all-installed result stays five seconds before setup checks for Anki",
-    heldResult?.heading.startsWith("All dictionaries installed in") === true
-      && /^Continuing to Anki in [123] seconds?$/u.test(heldResult.countdown ?? "")
-      && checkingAnki !== null && checkingAnki.at - successShownAt >= 4800
+    "the all-installed result advances immediately before setup checks for Anki",
+    retried?.countdown === null && retried.actions.length === 0
+      && checkingAnki !== null && checkingAnki.at - successShownAt >= 0 && checkingAnki.at - successShownAt < 1500
       && checkingAnki.focused === "setup-heading" && checkingAnki.step === "anki" && checkingAnki.done === 1
       && JSON.stringify(checkingAnki.actions) === JSON.stringify(["setup-continue"])
       && ankiStage?.dictionaries.continued === false,
-    JSON.stringify({ heldResult, checkingAnki, successShownAt, headingLog, ankiStage }),
+    JSON.stringify({ retried, checkingAnki, successShownAt, headingLog, ankiStage }),
   );
 
   // Nothing answers AnkiConnect on this host, so the ordinary absence is
@@ -7207,14 +7224,15 @@ async function main() {
     settledAnki !== null && settledAnki.step === "anki" && settledAnki.done === 1
       && settledAnki.outcome === "unavailable"
       && JSON.stringify(settledAnki.actions) === JSON.stringify(["setup-continue", "setup-pause"])
-      && settledAnki.countdown === "Continuing to practice in 5 seconds"
+      && settledAnki.countdown === "Continuing to practice in 3 seconds"
       // Exactly one AnkiConnect attempt, and the absence is not asked about twice.
       && ankiRefused.requests === 1
       && ankiStage?.anki?.status === "unavailable" && ankiStage.anki.model === null && ankiStage.anki.deck === null
       && ankiStage.anki.detail.includes("Open Anki with the AnkiConnect add-on")
-      // The outcome moved setup on by itself and stays readable on the final step.
-      && practiceReached?.focused === "setup-heading" && practiceReached.currentStep === "practice"
-      && practiceReached.at - settledAnki.at >= 4800
+      // The outcome moved setup on by itself; the automatic demonstration
+      // selects the sample text and keeps the outcome readable on the final step.
+      && practiceReached?.focused === "setup-practice-text" && practiceReached.currentStep === "practice"
+      && practiceReached.at - settledAnki.at >= 2800
       && practiceReached.done === 2 && practiceReached.status === "You’re ready."
       && practiceReached.outcome === "unavailable" && practiceReached.outcomeLink
       && practiceReached.outcomeText === "Could not find Anki. If you want to make flashcards out of words, I suggest Anki!"

@@ -252,16 +252,18 @@ an empty request, which starts nothing. A live run answers with its own
 snapshot and keeps the progress the page already applied; a replacement
 installer answers with an empty, finished one, and the sources without a
 recorded outcome are requested once more instead of leaving a screen that can
-never change. The installer records every outcome and each run's
-duration through `hd_setup_record`, which the worker accepts from the offscreen
+never change. The installer records every outcome and each run's summed
+installation duration through `hd_setup_record`, which the worker accepts from
+the offscreen
 document only, and a row settles only after that record is acknowledged: a lost
 reply or a restarting worker makes the installer resend the same record with
 backoff, and records are idempotent per run (`recordedRuns`), so a duration
 whose reply was lost is confirmed rather than counted twice. The last row's
-record carries the run's duration with that outcome, so a document terminated
+record carries that installation duration with the outcome, so a document terminated
 between the two can never leave every outcome settled with the run accounting
 missing, which nothing could reconstruct. Outcomes replace
-earlier ones, durations accumulate into `totalSeconds`, and a
+earlier ones, installation durations begin at the engine's `installing` phase
+and accumulate into `totalSeconds`, and a
 committed Jitendex or Bee's entry settles its first-install selection once
 (`compactDefinitionSummaryDictionary` and the term-route
 `kanjiClickDictionary`) while that option is still Automatic, through the
@@ -271,24 +273,16 @@ imported by hand or carried in from another profile settles its selection from
 its own committed title. **All dictionaries installed in X seconds** is
 rendered only when the current inventory holds every catalogue source and this
 setup installed at least one of them; a profile that already carried them all
-reads **All dictionaries are already installed**. Either result
-stays for five seconds with a labelled countdown that is not a live region,
-then the page advances to Anki. **Continue now** advances immediately;
-**Pause countdown** leaves the result available until Continue or
-**Resume countdown**, which starts a fresh five seconds. The page explains
+reads **All dictionaries are already installed**. Either result advances to
+Anki immediately. If both automatic writes are refused, the result keeps an
+explicit **Continue now** instead of saving again by itself. The page explains
 that installation continues after closing the tab and can be resumed from
-Settings. If both automatic writes are refused, the
-countdown is cancelled and the result keeps an explicit **Continue now**
-instead of saving again on a timer. **Continue setup** with missing sources
+Settings. **Continue setup** with missing sources
 records `continued: true`. Only settled outcomes are announced, never bytes.
 
 ![Automatic installation with a held download, light palette](assets/startup-installing.png)
 
 ![Automatic installation with a held download, dark palette](assets/startup-installing-dark.png)
-
-![All dictionaries installed with the five-second countdown, light palette](assets/startup-complete.png)
-
-![All dictionaries installed with the five-second countdown, dark palette](assets/startup-complete-dark.png)
 
 ### Anki stage
 
@@ -340,7 +334,11 @@ reported once with **Retry** beside **Continue setup**; the page never re-asks
 on its own. Anki is explicitly optional. **Continue now** is available during
 the check; its eventual reply adopts the latest recorded stage without moving
 the user back. A failed connection says **Anki isn’t connected**, rather than
-claiming Anki is absent.
+claiming Anki is absent. A successful automatic configuration keeps each of
+its three progress steps visible for one second. Every settled outcome remains
+for three seconds before setup continues to practice.
+
+![Configured Anki result during its three-second continuation](assets/startup-auto-anki.png)
 
 ![The final step after an absent Anki, light palette](assets/startup-ready.png)
 
@@ -368,7 +366,9 @@ a second static list. `content.css` comes with the page; no reader scripts load
 during the dictionary or Anki stages. Hover instructions follow
 the active mode and activation key. The **Look up 辞書** button focuses the
 sentence and selects that word through the reader’s existing exact-selection
-route, so it also works from the keyboard. It appears only when that exact
+route, so it also works from the keyboard. When the final step first becomes
+answerable and the reader is ready, the page makes that same selection once to
+demonstrate the lookup immediately. The button appears only when that exact
 selection can be answered. All exercise lookups use ordinary
 runtime messages, the installed dictionaries, WASM, popup renderer and styles.
 No sample result is substituted. Among extension pages the reader permits only
@@ -376,6 +376,8 @@ this extension’s `startup.html`, with either no fragment or the native skip
 link's `#setup-heading`. Query variants, unknown fragments, Settings and the
 static design preview remain excluded. The skip handler focuses the heading
 directly; a fragment created before it attaches still works after reload.
+
+![The final step immediately showing its real dictionary lookup](assets/startup-auto-lookup.png)
 
 The shared `visual-novel.js` picks one of six local images at random when each
 scene is created. A small **Next background** arrow cycles through them and

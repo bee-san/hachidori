@@ -26,9 +26,9 @@ const WORKER_TARGET = "hoshidicts-worker";
 const SETUP_TARGET = "hachidori-setup";
 const SETUP_EVENTS_TARGET = "hachidori-setup-events";
 const ENGINE_TARGET = "hoshidicts-offscreen";
-const SUCCESS_DISPLAY_MS = 5000;
+const ANKI_RESULT_DISPLAY_MS = 3000;
 const COUNTDOWN_TICK_MS = 250;
-const ANKI_PROGRESS_STEP_MS = 600;
+const ANKI_PROGRESS_STEP_MS = 1000;
 const ANKI_PROGRESS_STEPS = 3;
 // A run reports at every phase change and about ten times a second while a body
 // arrives, so a longer silence means the offscreen document that owned it is gone.
@@ -57,6 +57,7 @@ let attaching = null;
 let countdown = null;
 let countdownPaused = false;
 let advanceFailed = false;
+let automaticAdvance = null;
 // A failed install request is shown once with Retry; the page never re-requests on its own.
 let installFailed = false;
 let runSilenceTimer = null;
@@ -69,6 +70,7 @@ let readerLoading = null;
 // stale invitation standing.
 let practiceOutcome = null;
 let practiceProbed = "";
+let practiceLookupShown = false;
 // Anki detection is asked for once per page; a failed request waits for Retry.
 let ankiRequest = null;
 let ankiFailed = false;
@@ -272,7 +274,7 @@ function cancelCountdown() {
 }
 
 function countdownLabel() {
-  const remaining = Math.max(0, Math.ceil((SUCCESS_DISPLAY_MS - (Date.now() - countdown.startedAt)) / 1000));
+  const remaining = Math.max(0, Math.ceil((countdown.durationMs - (Date.now() - countdown.startedAt)) / 1000));
   return `Continuing to ${countdown.destination} in ${remaining} ${remaining === 1 ? "second" : "seconds"}`;
 }
 
@@ -281,44 +283,62 @@ function updateCountdown() {
   const label = element("setup-countdown-label");
   const track = element("setup-countdown-track");
   if (!label || !track) return;
-  const elapsed = Math.min(1, (Date.now() - countdown.startedAt) / SUCCESS_DISPLAY_MS);
+  const elapsed = Math.min(1, (Date.now() - countdown.startedAt) / countdown.durationMs);
   label.textContent = countdownLabel();
   track.setAttribute("aria-valuenow", String(Math.floor(elapsed * 100)));
   track.style.setProperty("--progress", `${elapsed * 100}%`);
 }
 
-async function finishCountdown(stage = countdown?.stage, nextStage = countdown?.nextStage) {
-  const finishing = countdown ?? { stage, nextStage };
-  cancelCountdown();
-  countdownPaused = false;
-  if (!finishing.stage || !finishing.nextStage || setupState?.stage !== finishing.stage
-      || (finishing.stage === "dictionaries" && missingEntries().length > 0)) return;
+async function advanceSettledStage(stage, nextStage) {
+  if (!stage || !nextStage || setupState?.stage !== stage
+      || (stage === "dictionaries" && missingEntries().length > 0)) return;
   // The installer may have recorded its run total between our read and this
   // write; the second attempt carries the revision that reply delivered.
-  let advanced = await advance(finishing.nextStage);
-  if (!advanced && setupState?.stage === finishing.stage
-      && (finishing.stage !== "dictionaries" || missingEntries().length === 0)) {
-    advanced = await advance(finishing.nextStage);
+  let advanced = await advance(nextStage);
+  if (!advanced && setupState?.stage === stage
+      && (stage !== "dictionaries" || missingEntries().length === 0)) {
+    advanced = await advance(nextStage);
   }
-  if (!advanced && setupState?.stage === finishing.stage) {
+  if (!advanced && setupState?.stage === stage) {
     // Leave the result readable with an explicit control instead of retrying on a timer.
     advanceFailed = true;
     render();
   }
 }
 
-// A settled automatic result stays readable for five seconds, then setup moves
-// on by itself. The countdown label is not a live region: ticks are not news.
-function startCountdown(stage, nextStage, destination) {
+async function finishCountdown(stage = countdown?.stage, nextStage = countdown?.nextStage) {
+  const finishing = countdown ?? { stage, nextStage };
+  cancelCountdown();
+  countdownPaused = false;
+  await advanceSettledStage(finishing.stage, finishing.nextStage);
+}
+
+// Dictionary success moves on without a display delay. One task owns the
+// automatic write across any renders it causes, including its conflict retry.
+function startImmediateAdvance(stage, nextStage) {
+  if (automaticAdvance?.stage === stage) return;
+  const task = { stage, nextStage };
+  automaticAdvance = task;
+  queueMicrotask(() => {
+    void advanceSettledStage(stage, nextStage).finally(() => {
+      if (automaticAdvance === task) automaticAdvance = null;
+    });
+  });
+}
+
+// A settled Anki result stays readable briefly, then setup moves on by itself.
+// The countdown label is not a live region: ticks are not news.
+function startCountdown(stage, nextStage, destination, durationMs) {
   if (countdown?.stage === stage) return;
   cancelCountdown();
   countdown = {
     stage,
     nextStage,
     destination,
+    durationMs,
     startedAt: Date.now(),
     ticker: setInterval(updateCountdown, COUNTDOWN_TICK_MS),
-    timer: setTimeout(() => { void finishCountdown(); }, SUCCESS_DISPLAY_MS),
+    timer: setTimeout(() => { void finishCountdown(); }, durationMs),
   };
 }
 
@@ -341,7 +361,7 @@ function countdownView() {
   track.setAttribute("aria-valuemax", "100");
   track.setAttribute("aria-valuenow", "0");
   track.style.setProperty("--progress", "0%");
-  track.style.setProperty("--countdown-duration", `${SUCCESS_DISPLAY_MS}ms`);
+  track.style.setProperty("--countdown-duration", `${countdown.durationMs}ms`);
   track.style.setProperty("--countdown-delay", `${countdown.startedAt - Date.now()}ms`);
   track.appendChild(document.createElement("div")).className = "track-fill";
   wrapper.append(label, track);
@@ -405,23 +425,18 @@ function requestInstall(sourceIds) {
 
 // A complete inventory is announced with this setup's own install time only
 // when it installed something; a profile that already carried every source
-// reads as already installed. The result holds for five seconds.
+// reads as already installed and setup moves straight on.
 function installedView(rows, importNote) {
   const total = setupState.dictionaries.totalSeconds;
   const installedHere = Object.values(setupState.dictionaries.outcomes).some((outcome) => outcome.status === "installed");
-  // A failed advance is an action-required state: the countdown a render during
-  // those attempts restarted is cancelled rather than left to retry silently.
-  if (advanceFailed || countdownPaused) cancelCountdown();
-  else startCountdown("dictionaries", "anki", "Anki");
+  cancelCountdown();
+  if (!advanceFailed) startImmediateAdvance("dictionaries", "anki");
   return {
     heading: installedHere && total !== null ? `All dictionaries installed in ${formatSeconds(total)}` : "All dictionaries are already installed",
-    body: [paragraph("Your recommended dictionaries are installed. You can add your own whenever you like."), rows, importNote,
-      ...(advanceFailed ? [] : [countdownPaused ? paragraph("Automatic continuation is paused. Continue when you’re ready.") : countdownView()])],
-    actions: [button("setup-continue", "Continue now", () => { void finishCountdown("dictionaries", "anki"); }),
-      ...(advanceFailed ? [] : [button("setup-pause", countdownPaused ? "Resume countdown" : "Pause countdown", () => {
-        countdownPaused = !countdownPaused;
-        render();
-      }, "ghost")])],
+    body: [paragraph("Your recommended dictionaries are installed. You can add your own whenever you like."), rows, importNote],
+    actions: advanceFailed
+      ? [button("setup-continue", "Continue now", () => { void advanceSettledStage("dictionaries", "anki"); })]
+      : [],
   };
 }
 
@@ -611,7 +626,7 @@ function ankiHeading(anki) {
 }
 
 // Detection runs once per installation; its recorded outcome stays readable
-// for five seconds before setup moves on by itself.
+// for three seconds before setup moves on by itself.
 function ankiView() {
   const anki = setupState.anki;
   if (anki === null) {
@@ -644,7 +659,7 @@ function ankiView() {
       actions: [button("setup-continue", "Continue setup", () => { void advance("practice"); })] };
   }
   if (countdownPaused) cancelCountdown();
-  else startCountdown("anki", "practice", "practice");
+  else startCountdown("anki", "practice", "practice", ANKI_RESULT_DISPLAY_MS);
   return {
     heading: ankiHeading(anki),
     body: [...(anki.status === "configured" ? [ankiProgressView(anki)] : []), ankiOutcomeNote(anki),
@@ -807,6 +822,16 @@ function practiceView() {
     probePractice();
   }
   const readiness = practice.update(options, dictionaries, practiceOutcome);
+  if (!practiceLookupShown && practiceOutcome === "ready") {
+    // Let this render mount the final step and move focus to its heading first.
+    // The ordinary reader then observes the same precise selection as the
+    // visible lookup button, without a synthetic result path.
+    practiceLookupShown = true;
+    queueMicrotask(() => {
+      if (setupState?.stage === "practice" && practiceOutcome === "ready" && practice.lookup()) return;
+      practiceLookupShown = false;
+    });
+  }
   return {
     heading: readiness.heading,
     body: [practice.node, ...(setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)])],

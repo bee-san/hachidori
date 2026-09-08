@@ -568,7 +568,7 @@ What it proves, in order:
    the current state, rejects invalid stages, missing revisions and any move
    back to an earlier or finished stage, and records `completedAt` and
    `continued`. `hd_setup_record` is answered for the offscreen document only:
-   it stores each outcome, accumulates run durations once per run (a resent
+   it stores each outcome, accumulates installation durations once per run (a resent
    record confirms rather than recounts), and settles the Jitendex
    summary source and Bee's clicked-kanji route once from the committed titles,
    in one write with the setup record, without overwriting an option the user
@@ -584,8 +584,8 @@ What it proves, in order:
    rows, installation, installed and failed phases for its own run identity and
    sequence only, announces settled outcomes but not bytes, shows Retry and
    Continue on failure, requests only the missing source on retry, ignores the
-   superseded run, shows the all-installed result with a countdown for five
-   seconds and then advances with a conflict retry, keeps focus on its controls
+   superseded run, advances the all-installed result immediately with a
+   conflict retry, keeps focus on its controls
    through inventory events, ignores an older setup revision,
    defers rendering while a
    write is in flight, moves focus to the heading on a stage change, adopts a
@@ -767,15 +767,16 @@ the 503 failure with its reason beside three installed rows, Retry and
 Continue, durable outcomes and no all-installed claim; Retry fetching only
 jmnedict, the all-installed heading with the accumulated total, and the
 Jitendex summary source and Bee's clicked-kanji route settled once while the
-user's compact-summary edit stands; the result staying at least five seconds
-before **Finding your Anki setup…** with focus on the new heading; the
-unavailable Anki connection settling into **Could not find Anki** for five
-seconds after exactly one AnkiConnect
+user's compact-summary edit stands; the result advancing immediately to
+**Finding your Anki setup…** with focus on the new heading; the unavailable
+Anki connection settling into **Could not find Anki** for three seconds after
+exactly one AnkiConnect
 attempt, which the harness refuses on the worker target for that stage so a
 real Anki or another suite's mock server on port 8765 cannot decide the
 outcome, and whose recorded outcome carries the gateway's reason and moves
 setup to **You’re ready.** with the outcome sentence
-and its Settings link, where Finish closes the tab and the completed record
+and its Settings link, where the real reader immediately demonstrates the
+answerable word before keyboard and hover checks, Finish closes the tab and the completed record
 hides the link; and, after the in-run service-worker restart and the full
 pass-2 relaunch, no reopened startup tab, no further archive request, the same
 completed record, and the earlier edit still in force. Both Anki headings are
