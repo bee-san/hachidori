@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
-import { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, createAnkiMaturityCache } from "../extension/anki-maturity-cache.js";
+import { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache } from "../extension/anki-maturity-cache.js";
 import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
 import { assertBackupSnapshot, backupRevisions } from "../extension/backup-state.js";
 import { createBackupDownloads } from "../extension/backup-downloads.js";
@@ -776,7 +776,7 @@ function loadBackgroundScript(sandbox) {
   sandbox.Uint32Array ??= Uint32Array;
   sandbox.DataView ??= DataView;
   sandbox.crypto ??= globalThis.crypto;
-  Object.assign(sandbox, { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, createAnkiMaturityCache });
+  Object.assign(sandbox, { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache });
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
@@ -965,7 +965,7 @@ async function managedScheduleStage() {
   await settleAlarm();
   const originalGet = alarms.api.get;
   let alarmReads = 0;
-  alarms.api.get = (...args) => { alarmReads += 1; return originalGet(...args); };
+  alarms.api.get = (...args) => { if (args[0] === name) alarmReads += 1; return originalGet(...args); };
   const schedule = async value => bus.sendMessage("schedule-page", { target: "hachidori-updates", type: "hd_updates_schedule",
     baseRevision: (await chrome.storage.local.get("dictionaryUpdates")).dictionaryUpdates.revision, schedule: value });
   await schedule("daily");
@@ -1422,6 +1422,25 @@ async function ankiBackgroundStage() {
   check("Anki model and mappings commit together through the existing options CAS and reject stale edits",
     commit.ok && commit.options.anki.model === "Basic" && commit.options.anki.fields.expression === "Front"
       && !stale.ok && stale.options.anki.model === "Basic", JSON.stringify({ commit, stale }));
+
+  const cacheBus = makeBus(), cacheStorage = makeStorage();
+  const cacheChrome = makeChrome("anki-cache-worker", cacheBus, cacheStorage);
+  loadBackgroundScript({ chrome: cacheChrome, console, setTimeout, clearTimeout,
+    fetch: async () => ({ ok: true, json: async () => ({ result: [], error: null }) }),
+  });
+  const writeCacheOptions = (baseRevision, options) => cacheBus.sendMessage("anki-settings", {
+    target: "hoshidicts-worker", type: "hd_options_write", baseRevision, options,
+  });
+  const enabled = await writeCacheOptions(0, { definitionBlurAnkiMature: true, anki: commit.options.anki });
+  const enabledCache = structuredClone(cacheStorage.raw.get(ANKI_MATURITY_CACHE_KEY));
+  const disabled = await writeCacheOptions(enabled.options.revision, { definitionBlurAnkiMature: false });
+  const disabledCache = cacheStorage.raw.get(ANKI_MATURITY_CACHE_KEY);
+  const optionsCommits = cacheStorage.sets.filter(keys => keys.includes("options"));
+  check("Anki maturity options and their invalidation revision commit atomically before storage events",
+    enabled.ok && disabled.ok && enabledCache.configurationRevision === 1 && disabledCache.configurationRevision === 2
+      && disabledCache.attempt === null && optionsCommits.length === 2
+      && optionsCommits.every(keys => keys.length === 2 && keys.includes(ANKI_MATURITY_CACHE_KEY)),
+    JSON.stringify({ enabledCache, disabledCache, optionsCommits }));
 }
 
 async function backupRelayStage() {

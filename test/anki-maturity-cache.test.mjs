@@ -2,11 +2,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { ANKI_MATURITY_ALARM, ANKI_MATURITY_REFRESH_MS, createAnkiMaturityCache } from "../extension/anki-maturity-cache.js";
+import { ANKI_MATURITY_ALARM, ANKI_MATURITY_REFRESH_MS, ankiMaturityConfigurationChange, createAnkiMaturityCache } from "../extension/anki-maturity-cache.js";
+import { createAnkiWorkerService } from "../extension/anki-worker.js";
 
 const copy = value => structuredClone(value);
 const note = word => ({ noteId: 1, modelName: "Japanese", fields: { Expression: { value: word } } });
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+
+test("the production worker reads only the local cache when its Anki criterion is enabled", async () => {
+  let enabled = true, reads = 0;
+  const service = createAnkiWorkerService({
+    gateway: { invoke() { throw new Error("A lookup must not call Anki"); } },
+    readOptions: async () => ({ definitionBlurAnkiMature: enabled, anki: { model: "Japanese" } }),
+    maturityCache: { async has(config, expression) {
+      reads++; assert.equal(config.model, "Japanese"); return expression === "猫";
+    } },
+  });
+  assert.deepEqual(await service.maturity({ term: { expression: "猫" } }), { mature: true });
+  assert.deepEqual(await service.maturity({ term: { expression: "犬" } }), { mature: false });
+  enabled = false;
+  assert.deepEqual(await service.maturity({ term: { expression: "猫" } }), { mature: false });
+  assert.equal(reads, 2);
+});
 
 function fixture(saved) {
   let options = globalThis.HDReaderOptions.normaliseOptions({ definitionBlurAnkiMature: true,
@@ -46,10 +63,16 @@ function fixture(saved) {
     setAnswer(value) { answer = value; }, fail(value = new Error("Anki closed")) { failure = value; },
     failWrites(value) { writeFailure = value; }, hold() { return held = deferred(); },
     due() { clock += ANKI_MATURITY_REFRESH_MS; },
-    async change(patch) {
-      const before = options;
-      options = globalThis.HDReaderOptions.normaliseOptions({ ...options, ...patch });
-      return service.optionsChanged(before, options);
+    async change(patch, notify = true) {
+      const commit = storageTail.then(async () => {
+        const nextOptions = globalThis.HDReaderOptions.normaliseOptions({ ...options, ...patch });
+        const nextState = await ankiMaturityConfigurationChange(options, nextOptions, copy(state));
+        options = nextOptions;
+        if (nextState !== undefined) state = copy(nextState);
+      });
+      storageTail = commit.catch(() => {});
+      await commit;
+      if (notify) return service.reconcile();
     },
   };
 }
@@ -100,7 +123,7 @@ test("concurrent triggers share one refresh; unrelated Anki settings do not inva
   const f = fixture(), hold = f.hold();
   const a = f.service.reconcile(), b = f.service.reconcile();
   while (!f.calls.length) await new Promise(resolve => setImmediate(resolve));
-  await f.change({ anki: { ...f.options.anki, deck: "Another deck", tags: ["new-tag"] } });
+  await f.change({ anki: { ...f.options.anki, deck: "Another deck", tags: ["new-tag"] } }, false);
   hold.resolve(); await Promise.all([a, b]);
   assert.equal(f.calls.length, 1);
   assert.equal(await f.service.has(f.options.anki, "猫"), true);
@@ -139,4 +162,45 @@ test("failed persistence does not publish an uncommitted snapshot", async () => 
   assert.deepEqual(f.state.snapshot, original);
   assert.equal(await f.service.has(f.options.anki, "猫"), true);
   assert.equal(await f.service.has(f.options.anki, "犬"), false);
+});
+
+
+test("a delayed options event does not discard or repeat a refresh already started for the new configuration", async () => {
+  const f = fixture();
+  await f.change({ definitionBlurAnkiMature: false }, false);
+  await f.change({ definitionBlurAnkiMature: true }, false);
+  const hold = f.hold(), startup = f.service.reconcile();
+  while (!f.calls.length) await new Promise(resolve => setImmediate(resolve));
+  const started = f.state;
+  const delayedEnableEvent = f.service.reconcile();
+  hold.resolve();
+  await Promise.all([startup, delayedEnableEvent]);
+  await f.service.reconcile();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.state.configurationRevision, started.configurationRevision);
+  assert.deepEqual(f.state.attempt, started.attempt);
+  assert.equal(await f.service.has(f.options.anki, "猫"), true);
+});
+
+test("an off/on configuration commit rejects the original pending response before either options event arrives", async () => {
+  const f = fixture(); await f.service.reconcile();
+  const original = f.state.snapshot;
+  f.due();
+  const hold = f.hold(), refresh = f.service.reconcile();
+  while (f.calls.length < 2) await new Promise(resolve => setImmediate(resolve));
+  const initialRevision = f.state.configurationRevision;
+  await f.change({ definitionBlurAnkiMature: false }, false);
+  await f.change({ definitionBlurAnkiMature: true }, false);
+  assert.equal(f.state.configurationRevision, initialRevision + 2);
+  assert.equal(f.state.attempt, null);
+  f.setAnswer([note("犬")]);
+  const replacementHold = f.hold();
+  hold.resolve(); await refresh;
+  while (f.calls.length < 3) await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(f.state.snapshot, original);
+  assert.equal(await f.service.has(f.options.anki, "犬"), false);
+  const delayedEvents = Promise.all([f.service.reconcile(), f.service.reconcile()]);
+  replacementHold.resolve(); await delayedEvents;
+  assert.equal(f.calls.length, 3);
+  assert.equal(await f.service.has(f.options.anki, "犬"), true);
 });
