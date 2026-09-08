@@ -11,6 +11,7 @@
  */
 
 import "./reader-options.js";
+import "./visual-novel.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-state.js";
@@ -738,8 +739,11 @@ function lookupObstacle() {
 // Preserve the reviewed scene while the current library is proved answerable.
 // Finish and saved-page guidance remain available throughout the probe.
 function practiceView() {
-  practice ??= createPracticeView({ document, loadReader,
-    onDismiss: () => { element("setup-finish")?.focus(); } });
+  if (!practice) {
+    practice = createPracticeView({ document, loadReader,
+      onDismiss: () => { element("setup-finish")?.focus(); } });
+    globalThis.HDVisualNovel.initialize(practice.node.querySelector(".vn-scene"));
+  }
   if (lookupObstacle() !== null) {
     // Retire an in-flight probe when lookup becomes unavailable too.
     practiceProbed = "";

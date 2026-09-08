@@ -100,9 +100,9 @@ The assets used are AI generated. If you are an artist and want to contribute to
 
 ## Credits
 
-The logo pack and visual novel background were supplied by bee-san. See the
+The logo pack and six visual novel backgrounds were supplied by bee-san. See the
 [asset ownership and publishing record](docs/asset-rights.md) for the original
-assets and the background's copyright declaration.
+assets and their copyright declaration.
 
 Hachidori is powered by [hoshidicts](https://github.com/Manhhao/hoshidicts) by Manhhao. Its popup renderer, structured-content renderer, furigana segmentation, and CSS are ported from [GameSentenceMiner PR #549](https://github.com/bpwhelan/GameSentenceMiner/pull/549), which adapts [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Yomitan](https://github.com/yomidevs/yomitan). See the full [renderer attribution](extension/render/ATTRIBUTION.md).
 

@@ -333,9 +333,9 @@ on its own.
 ### Practice and saved pages
 
 `startup-practice.js` supplies the **Try it** scene and a Japanese passage about
-the street shown in the background. The scene and Design preview share
+a street like those shown in the backgrounds. The scene and Design preview share
 `visual-novel.css` and the repository owner's supplied artwork, preserved
-unchanged. Its source and copyright declaration are recorded in
+unchanged. Its sources and copyright declaration are recorded in
 [asset ownership](asset-rights.md). The longer practice passage has a readable
 dialogue surface that grows with its text at narrow widths.
 
@@ -356,6 +356,19 @@ this extension’s `startup.html`, with either no fragment or the native skip
 link's `#setup-heading`. Query variants, unknown fragments, Settings and the
 static design preview remain excluded. The skip handler focuses the heading
 directly; a fragment created before it attaches still works after reload.
+
+The shared `visual-novel.js` picks one of six local images at random when each
+scene is created. A small **Next background** arrow cycles through them and
+wraps to the first. It changes only the scene background and dialogue colors,
+keeping the passage and Design popup mounted; no selection is stored. Images
+load as selected. The startup arrow can retain keyboard focus while the reader
+looks up the dialogue; ordinary page controls still pause hover. Pointer clicks
+outside the real popup retain its usual dismissal behavior.
+
+The startup passage's opaque surface follows the light or dark scene palette
+so its text stays readable on every background.
+
+![The production practice scene with dark dialogue and its next-background arrow](assets/startup-carousel-dark.png)
 
 Before inviting a lookup, the page probes **辞書** with the reader's selection
 payload: the word's length and a full matched-text result. If it misses, the
@@ -1205,7 +1218,7 @@ alongside structured media, frequency, pitch, and kanji content. Selected
 installed sources are represented by sample entries, not real lookup results.
 The packaged SVG is fetched once and reused as a blob URL; the preview does not
 contact the engine, fetch dictionary data, or write personal notes. The same
-local street background as first-run practice makes popup opacity visible over
+local backgrounds as first-run practice make popup opacity visible over
 game artwork; the dialogue stays below the lookup as popup dimensions change.
 
 An unchanged presentation snapshot does no renderer work. Metadata, summary,
