@@ -6173,7 +6173,7 @@ async function main() {
       && startupShell?.title === "Set up Hachidori"
       && startupShell.heading === "Installing default dictionaries…"
       && startupShell.currentStep === "dictionaries" && startupShell.done === 0
-      && JSON.stringify(startupShell.steps) === JSON.stringify(["Dictionaries", "Anki", "Try it"])
+      && JSON.stringify(startupShell.steps) === JSON.stringify(["Dictionaries", "Anki Optional", "Try it"])
       && JSON.stringify(startupShell.rows) === JSON.stringify([
         ["jitendex", "Downloading… 0 KB", false, "Downloading… 0 KB"],
         ["jmnedict", "Waiting", null, null],
