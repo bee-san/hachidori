@@ -57,6 +57,10 @@ The sources are libavif 1.3.0 at
 and libaom's internal dependencies are present in those archives. Other AVIF
 codecs and external libyuv are disabled by `wasm/avif/CMakeLists.txt`.
 
+Packaging pins libaom's official release archive. Its source files and executable
+modes match that commit, while the Gitiles archive endpoint rewrites timestamps
+on each request and cannot provide a stable download checksum.
+
 ## zip.js and validation
 
 `third_party/store-sources/zipjs/lib/` contains zip.js 2.11.2's editable source;

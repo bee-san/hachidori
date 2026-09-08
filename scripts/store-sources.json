@@ -12,9 +12,9 @@
     "name": "libaom",
     "revision": "10aece4157eb79315da205f39e19bf6ab3ee30d0",
     "version": "3.12.1",
-    "url": "https://aomedia.googlesource.com/aom/+archive/10aece4157eb79315da205f39e19bf6ab3ee30d0.tar.gz",
-    "sha256": "931be437dc000dcf97c23cbaa8154fbcf449afe6dae5c0a0a0a9fd86b30238a4",
-    "strip_prefix": "",
+    "url": "https://storage.googleapis.com/aom-releases/libaom-3.12.1.tar.gz",
+    "sha256": "9e9775180dec7dfd61a79e00bda3809d43891aee6b2e331ff7f26986207ea22e",
+    "strip_prefix": "libaom-3.12.1/",
     "licenses": ["LICENSE", "PATENTS", "third_party/libyuv/LICENSE", "third_party/fastfeat/LICENSE", "third_party/vector/LICENSE"]
   },
   {
