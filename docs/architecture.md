@@ -560,6 +560,10 @@ Anki configurations with `normalize_note_text=false` are not mirrored by this
 bulk API. Operator-named fields remain excluded. Refresh requests have a
 25-second timeout; ordinary Anki operations keep their existing timeout.
 
+A short-lived dedicated worker launched by the existing Anki offscreen service
+fetches, parses and extracts the complete response. It returns only the compact
+word list, then terminates, keeping the large JSON allocation off both the
+service-worker request thread and the dictionary engine thread.
 The refresh builds a complete replacement outside the background storage queue,
 then rechecks the effective configuration, enablement and reserved configuration
 revision inside the queue before persisting and publishing it. All options writes

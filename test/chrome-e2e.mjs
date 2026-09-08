@@ -4368,6 +4368,9 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
   const routes = new Map([["http://127.0.0.1:8765/", route]]);
   let worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
   let session = await interceptFetches(worker, routes, "anki-maturity");
+  const offscreen = await browser.waitForTarget(target => target.url().endsWith("/offscreen.html"));
+  // The offscreen Fetch domain also covers its dedicated refresh worker.
+  const refreshSession = await interceptFetches(offscreen, routes, "anki-maturity-refresh");
   const refreshCalls = () => calls.filter(call => call.action === "notesInfo").length;
   const readCache = () => settings.evaluate(async () => (await chrome.storage.local.get("ankiMaturityCache")).ankiMaturityCache);
   const waitForSnapshot = (mature, previousRefresh = null) => settings.waitForFunction(async ({ mature, previousRefresh }) => {
@@ -4583,6 +4586,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
       if (!reply.ok) throw new Error(reply.error);
     }, originalAnki);
     await session?.detach();
+    await refreshSession.detach();
     await tab.bringToFront();
     if (!popup.visible(await popup.state())) await hoverForPopup(tab, popup, "#verb");
   }

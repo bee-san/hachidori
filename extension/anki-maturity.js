@@ -19,7 +19,7 @@ function expressionFields(config) {
 
 export async function ankiMaturitySource(config) {
   if (!config.model) return null;
-  const fields = [...new Set(expressionFields(config).map(field => field.normalize("NFC").toLowerCase()))].sort();
+  const fields = [...new Set(expressionFields(config).map(field => field.normalize("NFC").toLowerCase()))].sort((left, right) => Number(left > right) - Number(left < right));
   if (!fields.length) return null;
   const source = { model: config.model, fields, apiKey: config.apiKey };
   return { key: await ankiDigest(new TextEncoder().encode(JSON.stringify(source))), ...source };

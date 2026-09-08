@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { ankiMaturitySource, ankiMaturityWordKey, fetchAnkiMatureWords } from "./anki-maturity.js";
+import { ankiMaturitySource, ankiMaturityWordKey } from "./anki-maturity.js";
 
 export const ANKI_MATURITY_CACHE_KEY = "ankiMaturityCache";
 export const ANKI_MATURITY_ALARM = "hachidori-anki-maturity";
@@ -32,7 +32,7 @@ export async function ankiMaturityConfigurationChange(previous, next, value) {
 
 // The background supplies serialized storage updates. The control queue owns
 // scheduling/configuration transitions, but never waits for Anki's full pull.
-export function createAnkiMaturityCache({ gateway, readOptions, readState, updateState, alarms,
+export function createAnkiMaturityCache({ fetchWords, readOptions, readState, updateState, alarms,
   now = Date.now, reportError = error => console.warn("hachidori: Anki maturity refresh failed:", error) }) {
   let snapshot = null, words = new Set(), active = null;
   let controlTail = Promise.resolve();
@@ -58,7 +58,7 @@ export function createAnkiMaturityCache({ gateway, readOptions, readState, updat
 
   async function pull(source, token) {
     try {
-      const nextWords = await fetchAnkiMatureWords(gateway, source);
+      const nextWords = await fetchWords(source);
       await control(async () => {
         let committed = false;
         const saved = await updateState(async ({ options, state }) => {

@@ -119,7 +119,12 @@ async function writeLocalState(values) {
 
 function getAnkiMaturityCache() {
   ankiMaturityCache ??= createAnkiMaturityCache({
-    gateway: ankiGateway ??= createAnkiGateway(),
+    fetchWords: async source => {
+      const reply = await relay({ target: "hachidori-anki-render", type: "hd_anki_maturity_refresh",
+        requestId: `anki-maturity-${crypto.randomUUID()}`, source });
+      if (!reply.ok) throw new Error(reply.error);
+      return reply.words;
+    },
     readOptions: readAnkiOptions,
     readState: async () => (await chrome.storage.local.get(ANKI_MATURITY_CACHE_KEY))[ANKI_MATURITY_CACHE_KEY],
     updateState: update => serialiseStorage(async () => {

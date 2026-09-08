@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 import { ANKI_MATURITY_ALARM, ANKI_MATURITY_REFRESH_MS, ankiMaturityConfigurationChange, createAnkiMaturityCache } from "../extension/anki-maturity-cache.js";
+import { createAnkiOffscreenService } from "../extension/anki-offscreen.js";
+import { fetchAnkiMatureWords } from "../extension/anki-maturity.js";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
 
 const copy = value => structuredClone(value);
@@ -32,13 +34,13 @@ function fixture(saved) {
   let storageTail = Promise.resolve(), writing = false;
   const calls = [], alarms = new Map();
   const dependencies = {
-    gateway: { async invoke(...args) {
+    fetchWords: source => fetchAnkiMatureWords({ async invoke(...args) {
       assert.equal(writing, false, "network must run outside the storage queue");
       calls.push(args);
       if (held) { const pending = held; held = null; await pending.promise; }
       if (failure) throw failure;
       return copy(answer);
-    } },
+    } }, source),
     readOptions: async () => copy(options),
     readState: async () => copy(state),
     updateState(update) {
@@ -203,4 +205,28 @@ test("an off/on configuration commit rejects the original pending response befor
   replacementHold.resolve(); await delayedEvents;
   assert.equal(f.calls.length, 3);
   assert.equal(await f.service.has(f.options.anki, "犬"), true);
+});
+
+
+test("the offscreen refresh returns only words and terminates its worker after success or failure", async () => {
+  const source = { model: "Japanese", fields: ["expression"], apiKey: "fixture-key" };
+  for (const outcome of [{ words: ["猫"] }, { error: "Anki closed" }, { workerError: "Worker failed" }]) {
+    let terminated = false;
+    const service = createAnkiOffscreenService({ Worker: class {
+      constructor(url, options) {
+        assert.ok(url.pathname.endsWith("/anki-maturity-worker.js"));
+        assert.deepEqual(options, { type: "module" });
+      }
+      postMessage(value) {
+        assert.equal(value, source);
+        if (outcome.workerError) this.onerror({ message: outcome.workerError });
+        else this.onmessage({ data: outcome });
+      }
+      terminate() { terminated = true; }
+    } });
+    const request = service({ type: "hd_anki_maturity_refresh", source });
+    if (outcome.words) assert.deepEqual(await request, outcome);
+    else await assert.rejects(request, new RegExp(outcome.error || outcome.workerError));
+    assert.equal(terminated, true);
+  }
 });
