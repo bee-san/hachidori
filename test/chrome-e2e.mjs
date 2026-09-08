@@ -253,7 +253,7 @@ const PLANNED = [
   "optional GSM Seen counts use the configured loopback corpus and fail open",
   "definition blur follows real lookup counts and settings and holds autoplay for blurred results",
   "blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
-  "Anki maturity blur is opt-in and persists independently of lookup counts",
+  "the Anki maturity blur source persists independently of lookup counts",
   "a cold Anki maturity cache leaves the popup responsive while its first refresh is held",
   "cached mature definitions reveal silently and repeated lookups make no Anki requests",
   "a scheduled maturity refresh preserves the current popup and updates only new lookups",
@@ -4267,7 +4267,7 @@ async function waitForDefinitionBlur(popup, predicate, timeoutMs = 10_000) {
 }
 
 async function checkDefinitionBlur({ settings, tab, popup }) {
-  const controls = ["opt-lookup-counts", "opt-blur-enabled", "opt-blur-direction", "opt-blur-threshold",
+  const controls = ["opt-lookup-counts", "opt-blur-source", "opt-blur-direction", "opt-blur-threshold",
     "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"];
   const original = await readSettingsControls(settings, controls);
   const freshLookup = async () => {
@@ -4282,7 +4282,7 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
     const before = await readLookupStatistics(settings);
     const threshold = before.statistics.lookupCount + 1;
     await updateSettingsControls(settings, {
-      "opt-lookup-counts": true, "opt-audio-autoplay": true, "opt-blur-enabled": true,
+      "opt-lookup-counts": true, "opt-audio-autoplay": true, "opt-blur-source": "count",
       "opt-blur-direction": "atLeast", "opt-blur-threshold": String(threshold), "opt-blur-reveal": "hover",
     });
     const qualifyingDefinition = await freshLookup();
@@ -4318,7 +4318,7 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
     await freshLookup();
     const longBlurred = await decided();
     await popup.lookupStatistics("remember");
-    await updateSettingsControls(settings, { "opt-blur-enabled": false });
+    await updateSettingsControls(settings, { "opt-blur-source": "off" });
     const disabled = await waitForDefinitionBlur(popup, value => value?.state === "revealed", 5_000);
     const retained = await popup.lookupStatistics();
     check("blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
@@ -4341,7 +4341,7 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
 async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, watchedServiceWorkers }) {
   const alarmName = "hachidori-anki-maturity";
   const intervalMs = 30 * 60 * 1000;
-  const original = await readSettingsControls(settings, ["opt-lookup-counts", "opt-blur-enabled", "opt-blur-anki-mature",
+  const original = await readSettingsControls(settings, ["opt-lookup-counts", "opt-blur-source",
     "opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"]);
   const originalAnki = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options.anki);
   const calls = [];
@@ -4394,7 +4394,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     await tab.keyboard.press("Escape");
     await popup.waitForHidden();
     await updateSettingsControls(settings, {
-      "opt-lookup-counts": false, "opt-blur-enabled": false, "opt-audio-autoplay": true, "opt-blur-reveal": "hover",
+      "opt-lookup-counts": false, "opt-blur-source": "off", "opt-audio-autoplay": true, "opt-blur-reveal": "hover",
     });
     await settings.evaluate(async () => {
       const { options } = await chrome.storage.local.get("options");
@@ -4403,23 +4403,23 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
         options: { anki: { ...defaults, model: "Basic", fields: { ...defaults.fields, expression: "Front" } } } });
       if (!reply.ok) throw new Error(reply.error);
     });
-    await updateSettingsControls(settings, { "opt-blur-anki-mature": true });
+    await updateSettingsControls(settings, { "opt-blur-source": "anki" });
     // Keep the main Settings page's custom source draft alive for later tests.
     const reloadedSettings = await browser.newPage();
     let persisted;
     try {
       await reloadedSettings.goto(settings.url(), { waitUntil: "domcontentloaded" });
       await reloadedSettings.reload({ waitUntil: "domcontentloaded" });
-      await reloadedSettings.waitForFunction(() => document.getElementById("opt-blur-anki-mature").checked);
+      await reloadedSettings.waitForFunction(() => document.getElementById("opt-blur-source").value === "anki");
       persisted = await reloadedSettings.evaluate(async () => {
         const { options } = await chrome.storage.local.get("options");
         return { enabled: options.definitionBlurAnkiMature, counts: options.showLookupCounts, countBlur: options.definitionBlurEnabled,
-          checked: document.getElementById("opt-blur-anki-mature").checked,
+          source: document.getElementById("opt-blur-source").value,
           revealDisabled: document.getElementById("opt-blur-reveal").disabled };
       });
     } finally { await reloadedSettings.close(); }
-    check("Anki maturity blur is opt-in and persists independently of lookup counts",
-      original["opt-blur-anki-mature"] === false && persisted.enabled && persisted.checked
+    check("the Anki maturity blur source persists independently of lookup counts",
+      original["opt-blur-source"] === "off" && persisted.enabled && persisted.source === "anki"
         && !persisted.counts && !persisted.countBlur && !persisted.revealDisabled,
       JSON.stringify({ original, persisted }));
 
@@ -4475,12 +4475,12 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     await triggerRefresh();
     await waitForDefinitionBlur(popup, () => releaseMaturity !== null);
     const heldOnDisable = releaseMaturity !== null;
-    await updateSettingsControls(settings, { "opt-blur-anki-mature": false });
+    await updateSettingsControls(settings, { "opt-blur-source": "off" });
     releaseRefresh();
     const disabledAlarm = await settings.evaluate(name => chrome.alarms.get(name), alarmName);
     const disabledCache = await readCache();
     mode = "held-mature";
-    await updateSettingsControls(settings, { "opt-blur-anki-mature": true });
+    await updateSettingsControls(settings, { "opt-blur-source": "anki" });
     await waitForDefinitionBlur(popup, () => releaseMaturity !== null);
     const beforeReenabledRefresh = await readCache();
     releaseRefresh();
@@ -4545,7 +4545,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
         && JSON.stringify(restoredCache) === JSON.stringify(restartState.cache) && refreshCalls() === callsBeforeRestart,
       JSON.stringify({ stopped, cachedReply, restored, restoredCache, restartState, callsBeforeRestart, calls }));
 
-    await updateSettingsControls(settings, { "opt-lookup-counts": true, "opt-blur-enabled": true,
+    await updateSettingsControls(settings, { "opt-lookup-counts": true, "opt-blur-source": "either",
       "opt-blur-direction": "atLeast", "opt-blur-threshold": "1" });
     const cachedMiss = await settings.evaluate(() => chrome.runtime.sendMessage({
       target: "hoshidicts-worker", type: "hd_anki_maturity", request: { term: { expression: "not in the fixture" } } }));
