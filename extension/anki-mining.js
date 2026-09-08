@@ -45,12 +45,11 @@ function fieldsForDecision(prepared, checked) {
     };
   }
   const canonical = canonicalAnkiFields(prepared.note.fields, prepared.resolved.templates, target.fields);
+  const fields = overwriteAnkiFields(canonical.fields, target.fields, canonical.templates);
   return {
-    fields: overwriteAnkiFields(canonical.fields, target.fields, canonical.templates),
+    fields,
     target,
-    templates: Object.fromEntries(Object.entries(canonical.templates).filter(([field, template]) =>
-      template.overwriteMode !== "skip"
-      && !(template.overwriteMode === "coalesce" && target.fields[field]))),
+    templates: Object.fromEntries(Object.entries(canonical.templates).filter(([field]) => Object.hasOwn(fields, field))),
   };
 }
 
