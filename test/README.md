@@ -1223,9 +1223,10 @@ Two of those checks cover the mining screenshot. The first maps `{screenshot}`
 into a field, adds a note from the real popup with a real double click, then
 decodes the picture Anki received inside the page: it must be the whole viewport,
 its samples across the area the popup occupied must be the page's own light
-background, and the page's dark text must still be somewhere in it — with the
-host element's observed visibility going `hidden` then `visible` around the
-capture. The second makes AnkiConnect refuse the screenshot upload and requires
+background, the page's dark text must still be somewhere in it, and every pixel
+of the hovered word must be dark and neutral rather than carrying the reader's
+coloured source highlight — with the host element's observed visibility going
+`hidden` then `visible` around the capture. The second makes AnkiConnect refuse the screenshot upload and requires
 the note to be added anyway, with an empty picture field and the reason beside
 its result. The suite prints `screenshot mining answered in N ms` for the timed
 production path, and `HACHIDORI_ANKI_SETTINGS_SCREENSHOT` captures the Anki

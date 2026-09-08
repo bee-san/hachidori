@@ -146,7 +146,15 @@ export function createAnkiWorkerService({
 
   async function prepareCapture(context) {
     const screenshot = await storePendingScreenshot(context);
-    const clip = await prepareClipCapture(context);
+    let clip;
+    try {
+      clip = await prepareClipCapture(context);
+    } catch (error) {
+      // No note will be written, and this rejection never reaches the caller's
+      // own cleanup, so the picture is taken back out here.
+      await releaseScreenshot({ writeResources: screenshot, invoke: context.invoke }).catch(() => undefined);
+      throw error;
+    }
     if (clip === null) {
       return screenshot.warnings.length === 0 && screenshot.screenshotFilename === undefined ? null : screenshot;
     }

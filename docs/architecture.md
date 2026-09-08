@@ -1309,10 +1309,13 @@ discovery or background reading.
 
 The reader takes it. Preflight reports `screenshot: true` only when the fields
 that will actually be applied map `{screenshot}` and the Settings switch is on,
-and the content script then hides Hachidori's own overlays — the popup, its image
-preview and everything else the reader draws live in one host element — waits two
-frames so the change has painted, asks the worker for the picture, and removes the
-declaration again whatever the outcome. The worker validates the request against
+and the content script then hides Hachidori's own overlays: the popup, its image
+preview and the fallback highlight paint all live in one host element, and the
+document-registered source highlight is suspended beside it by unregistering the
+exact `Highlight` object and registering it again afterwards. It waits two frames
+so the change has painted, asks the worker for the picture, and restores
+everything whatever the outcome. Concealment is counted, so one capture cannot
+reveal the reader while another still owns it. The worker validates the request against
 its sender before every attempt: `tabs.captureVisibleTab` takes the window's
 active tab, so the asking tab must still be that tab, and a top-level frame must
 still show the document that asked. Chrome's capture rate limit is honoured with

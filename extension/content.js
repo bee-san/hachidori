@@ -1262,18 +1262,43 @@
     });
   }
 
-  // A screenshot of the page must not contain Hachidori's own popup or its image
-  // preview. The host carries everything the reader draws, so hiding it hides all
-  // of them; two frames give the change time to paint before the capture, and the
-  // declaration is removed again whatever the capture did.
+  // The source-term highlight is painted by the document, not by the shadow tree,
+  // so hiding the host alone would leave it in the picture. Its ranges live in
+  // the registered Highlight, so unregistering and re-registering the same object
+  // suspends and restores the exact paint.
+  function suspendMatchHighlight() {
+    const highlights = window.CSS?.highlights;
+    const painted = highlights?.get?.(HIGHLIGHT_NAME) ?? null;
+    if (painted !== null) highlights.delete(HIGHLIGHT_NAME);
+    return () => {
+      // Only what was suspended: a newer lookup may have published its own.
+      if (painted !== null && highlights.get(HIGHLIGHT_NAME) === undefined) highlights.set(HIGHLIGHT_NAME, painted);
+    };
+  }
+
+  // A screenshot of the page must not contain anything Hachidori drew: the host
+  // carries the popup, its image preview and the fallback highlight paint, and the
+  // registered highlight is suspended beside it. Two frames give the change time
+  // to paint before the capture. Concealment is counted, so one capture cannot
+  // reveal the reader while another still owns it, and everything is restored
+  // whatever the captures did.
+  let concealing = 0;
+  let restoreMatchHighlight = null;
   async function concealReader(during) {
     if (host === null) return during();
+    if (concealing === 0) restoreMatchHighlight = suspendMatchHighlight();
+    concealing += 1;
     host.style.setProperty("visibility", "hidden", "important");
     try {
       await new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
       return await during();
     } finally {
-      host.style.removeProperty("visibility");
+      concealing -= 1;
+      if (concealing === 0) {
+        host.style.removeProperty("visibility");
+        restoreMatchHighlight?.();
+        restoreMatchHighlight = null;
+      }
     }
   }
 

@@ -3781,8 +3781,9 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
     const context = canvas.getContext("2d");
     context.drawImage(bitmap, 0, 0);
     const scale = bitmap.width / window.innerWidth;
+    const pixelAt = (x, y) => context.getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data;
     const luminance = (x, y) => {
-      const pixel = context.getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data;
+      const pixel = pixelAt(x, y);
       return (pixel[0] + pixel[1] + pixel[2]) / 3;
     };
     // Where the popup stood must look like the page it covered, and the picture
@@ -3797,10 +3798,23 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
     for (let y = 2; y < window.innerHeight - 2; y += 6) {
       for (let x = 2; x < window.innerWidth - 2; x += 6) darkest = Math.min(darkest, luminance(x, y));
     }
+    // The hovered word: still the page's own dark, neutral text rather than the
+    // reader's coloured source highlight.
+    const word = document.querySelector("#verb").getBoundingClientRect();
+    let wordDarkest = 255, wordColour = 0;
+    for (let y = word.y + 2; y < word.y + word.height - 2; y += 2) {
+      for (let x = word.x + 2; x < word.x + word.width - 2; x += 2) {
+        const pixel = pixelAt(x, y);
+        const spread = Math.max(pixel[0], pixel[1], pixel[2]) - Math.min(pixel[0], pixel[1], pixel[2]);
+        wordColour = Math.max(wordColour, spread);
+        wordDarkest = Math.min(wordDarkest, (pixel[0] + pixel[1] + pixel[2]) / 3);
+      }
+    }
     return {
       width: bitmap.width, height: bitmap.height,
       viewport: [Math.round(window.innerWidth * devicePixelRatio), Math.round(window.innerHeight * devicePixelRatio)],
       popupMean: Math.round(popupSum / Math.max(1, popupSamples)), popupSamples, darkest,
+      wordDarkest: Math.round(wordDarkest), wordColour,
     };
   }, { data: files.get(filename), rect: popupRect });
   check(
@@ -3814,7 +3828,8 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
       // The whole viewport, the page's own light background everywhere the popup
       // stood, and the page's dark text still in the picture.
       && picture !== null && JSON.stringify([picture.width, picture.height]) === JSON.stringify(picture.viewport)
-      && picture.popupSamples > 100 && picture.popupMean > 240 && picture.darkest < 120,
+      && picture.popupSamples > 100 && picture.popupMean > 240 && picture.darkest < 120
+      && picture.wordDarkest < 120 && picture.wordColour < 40,
     JSON.stringify({ saved: saved.controls[0], upload: upload && { filename: upload.params.filename, bytes: upload.params.data?.length },
       filename, visibility, picture, popupRect }),
   );
