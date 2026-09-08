@@ -6649,7 +6649,7 @@ async function startupWelcomeStage() {
       cas: (message) => ({ ok: true, state: { ...setup, revision: 2, stage: message.stage } }) });
     await manual.load();
     manual.document.getElementById("setup-manual").click();
-    await manual.until(() => manual.heading() === "You’re ready.", "manual setup");
+    await manual.until(() => manual.heading() === "Add a dictionary to try Hachidori", "manual setup");
     const skipped = manual.saves()[0].stage === "practice" && manual.installs().length === 0
       && !manual.requestTypes().includes("hd_setup_anki")
       && manual.document.querySelector('a[href="settings.html#add-dictionaries"]') !== null;
