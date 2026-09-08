@@ -69,6 +69,10 @@ Do you keep on seeing a name pop up over & over again in a book, but it's not in
 
 With Hachidori, you can highlight the word and add it as a custom definition.
 
+<p align="center">
+  <img src="docs/assets/custom-dictionary.gif" alt="Animated demonstration of adding and viewing a custom dictionary definition in Hachidori" width="720">
+</p>
+
 # Lookup blur
 
 Sometimes we fall into a trap of looking up a word over & over again, but never learning it.
