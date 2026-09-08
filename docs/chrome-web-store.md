@@ -256,6 +256,11 @@ Prepare these [required store images](https://developer.chrome.com/docs/webstore
   references, but must not be assumed to meet store dimensions.
 - An optional **1400 × 560 marquee image** if desired.
 
+The [asset ownership record](asset-rights.md) documents the supplied Hachidori
+logo pack and all six visual novel backgrounds, including the owner's copyright
+declaration, original filenames and image checksums. Use it as the artwork
+reference for the package and publishing screenshots.
+
 ### 5. Upload and complete review information
 
 In the dashboard, choose **Add new item**, upload the ZIP, and complete Store

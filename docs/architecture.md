@@ -340,9 +340,9 @@ claiming Anki is absent.
 ### Practice and saved pages
 
 `startup-practice.js` supplies the **Try it** scene and a Japanese passage about
-the street shown in the background. The scene and Design preview share
+a street like those shown in the backgrounds. The scene and Design preview share
 `visual-novel.css` and the repository owner's supplied artwork, preserved
-unchanged. Its source and copyright declaration are recorded in
+unchanged. Its sources and copyright declaration are recorded in
 [asset ownership](asset-rights.md). The longer practice passage has a readable
 dialogue surface that grows with its text at narrow widths.
 
@@ -363,6 +363,19 @@ this extension’s `startup.html`, with either no fragment or the native skip
 link's `#setup-heading`. Query variants, unknown fragments, Settings and the
 static design preview remain excluded. The skip handler focuses the heading
 directly; a fragment created before it attaches still works after reload.
+
+The shared `visual-novel.js` picks one of six local images at random when each
+scene is created. A small **Next background** arrow cycles through them and
+wraps to the first. It changes only the scene background and dialogue colors,
+keeping the passage and Design popup mounted; no selection is stored. Images
+load as selected. The startup arrow can retain keyboard focus while the reader
+looks up the dialogue; ordinary page controls still pause hover. Pointer clicks
+outside the real popup retain its usual dismissal behavior.
+
+The startup passage's opaque surface follows the light or dark scene palette
+so its text stays readable on every background.
+
+![The production practice scene with dark dialogue and its next-background arrow](assets/startup-carousel-dark.png)
 
 Before inviting a lookup, the page probes **辞書** with the reader's selection
 payload: the word's length and a full matched-text result. If it misses, the
@@ -1216,7 +1229,7 @@ alongside structured media, frequency, pitch, and kanji content. Selected
 installed sources are represented by sample entries, not real lookup results.
 The packaged SVG is fetched once and reused as a blob URL; the preview does not
 contact the engine, fetch dictionary data, or write personal notes. The same
-local street background as first-run practice makes popup opacity visible over
+local backgrounds as first-run practice make popup opacity visible over
 game artwork; the dialogue stays below the lookup as popup dimensions change.
 
 An unchanged presentation snapshot does no renderer work. Metadata, summary,
@@ -1389,7 +1402,8 @@ it never holds the dictionary storage queue. Native Anki duplicate search select
 same-model overwrite targets inside the configured deck scope. The six field
 overwrite modes use authoritative field spellings. The initial write sends only
 changed fields; preserved values are omitted instead of written back from the
-earlier snapshot. Pronunciation enrichment compares its complete desired values
+earlier snapshot, including fields restored to that value by a failed media
+upload. Pronunciation enrichment compares its complete desired values
 against the applied text-only write and the current note.
 A lost write acknowledgement is not retried; confirmed note IDs stay successful
 even if readback, enrichment, or subsequent reader refresh fails, including
@@ -1417,6 +1431,80 @@ may still succeed. `{audio}` remains pronunciation audio;
 confirmed note mutation releases its capture job even if field readback later
 warns. An uncertain note mutation retains the job for an explicit retry and is
 neither automatically retried nor followed by automatic media deletion.
+
+### Page screenshot when mining
+
+`{screenshot}` is one viewport picture of the page a note is being made from,
+taken at the moment the user adds it. It is the same media path as any other Anki
+image, not a second one: nothing is captured during hover, preflight, first-run
+discovery or background reading.
+
+The reader takes it. Preflight reports `screenshot: true` when the configured
+mapping contains `{screenshot}` and the Settings switch is on — the whole mapping,
+not the subset that preflight would apply, because the authoritative decision is
+made again inside the write and may apply a field this one would have kept —
+and the content script then hides Hachidori's own overlays: the popup, its image
+preview and the fallback highlight paint all live in one host element, and the
+document-registered source highlight is suspended beside it — the highlighter
+stops publishing for the whole interval, so a lookup that settles while the
+picture is being taken cannot paint into it either, and releasing repaints the
+exact ranges. It waits two frames
+so the change has painted, asks the worker for the picture, and restores
+everything whatever the outcome. The host uses `opacity: 0 !important` so even
+masonry cards with explicit `visibility: visible` remain concealed; its previous
+inline opacity and priority are restored when the last capture finishes.
+The picture is taken before any clip export is
+prepared, so it is of the moment the user clicked rather than of whatever the page
+shows minutes later. Concealment is counted, so one capture cannot
+reveal the reader while another still owns it. The worker validates the request against
+its sender before every attempt: `tabs.captureVisibleTab` takes the window's
+active tab, so the asking tab must still be that tab, and a top-level frame must
+still show the document that asked. The post-capture check also requires the
+same window ID: dragging the reading tab to another window can otherwise leave
+it active while the original window captures a different tab.
+Before and after each attempt, a read-only message addressed to the original
+sender's Chrome document ID must also receive a presence reply. The packaged
+startup reader instead resolves that document ID through Chrome's live TAB
+extension contexts, which supplies its tab ID and confirms the same document
+without content-script messaging. Reloading the
+same URL or retaining an old document in the back/forward cache cannot pass as
+the document that requested the picture.
+Chrome's capture rate limit is honoured with
+one wait and retry, and that wait is long enough to switch tabs, so ownership is
+checked again after it rather than once at the start. The
+reply is the picture's name, not its upload, so the reader shows itself again as
+soon as the pixels are taken. The worker holds that one pending picture and stores
+it through the ordinary `storeMediaFile` gateway under its own
+`hachidori-screenshot-<uuid>.jpg` name inside the queued write, once the
+generation, configuration and duplicate decisions have been made, so duplicate
+checks, overwrite policies and existing values are untouched; preflight and an
+initial rejection upload nothing. Only that note's own picture is consumed, so a
+second Add's newer capture is never taken from it. The worker allocates the request
+token before awaiting capture; a superseded capture completion is refused instead
+of replacing the newer pending bytes. A picture that the applied
+fields turn out not to use — a coalescing field that keeps its existing image — is
+released rather than held. The worker also discards that request's pending bytes
+after an authoritative duplicate, invalid note or preparation error, even when
+the reader has closed before receiving the outcome. A note the final checks or Anki then refuse definitively
+— a configuration change, a lost write ownership, a duplicate, or a clip
+preparation that fails after the picture was stored — has its stored picture
+deleted again, as does a note that goes in without the picture because the store's
+own answer was lost; an uncertain note write keeps it, because the note may exist.
+A submission the reader abandons before sending it releases the picture it took.
+
+A failed or replaced picture stays marked unavailable on the mining request, so
+later pronunciation enrichment cannot restore its image reference in a mixed
+`{screenshot}{audio}` field; valid pronunciation audio still enriches the note.
+A capture or upload that fails is a warning carried with the note's own outcome:
+the marker renders empty — a refused upload also empties the fields that
+referenced the picture, so no note points at an image Anki does not have — the
+note is still added or updated, and nothing invites a duplicate retry. The Kiku and Lapis presets map their verified `Picture` field
+and Senren its `picture` field to this marker, and a first installation has the
+switch on, so a recognised mining setup gets screenshots without further
+configuration. A note type without a picture field maps nothing and captures
+nothing, and `{screenshot}` is refused in the first Anki field for the same
+reason as the other captured media: a note's identity cannot be a fresh picture
+name.
 
 ## Generic media capture
 

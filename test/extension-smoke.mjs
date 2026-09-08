@@ -1307,7 +1307,7 @@ async function firstRunAnkiStage() {
       && found.requests.find((request) => request.action === "findNotes").params.query === "mid:2"
       && found.requests.find((request) => request.action === "findCards").params.query === "mid:2 -deck:filtered"
       && savedOptions.revision === 3 && savedOptions.anki.model === "Kiku v2" && savedOptions.anki.deck === "Mining" && savedOptions.anki.apiKey === "local-key"
-      && savedOptions.anki.fieldTemplates.Expression.value === "{expression}" && savedOptions.anki.fieldTemplates.Picture.value === ""
+      && savedOptions.anki.fieldTemplates.Expression.value === "{expression}" && savedOptions.anki.fieldTemplates.Picture.value === "{screenshot}"
       && Object.keys(savedOptions.anki.fieldTemplates).length === KIKU_FIELDS.length
       && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([["options", "setupState"]])
       && first.state.revision === 5,
@@ -1342,6 +1342,145 @@ async function firstRunAnkiStage() {
       && failing.storage.raw.get("options").anki.model === "Kiku v2"
       && failing.storage.raw.get("options").revision === 2,
     JSON.stringify({ userChoice, raced, options: racing.storage.raw.get("options"), lateChoice, rescued, failingOptions: failing.storage.raw.get("options") }));
+}
+
+// A mining screenshot is captured from the page that asked, and only while that
+// page is still what the window shows.
+async function ankiScreenshotStage() {
+  const bus = makeBus();
+  const storage = makeStorage();
+  const chrome = makeChrome("anki-screenshot", bus, storage);
+  const uploads = [];
+  const captures = [];
+  let tab = { id: 7, active: true, url: "https://reader.test/page", windowId: 3 };
+  let captureFailures = 0;
+  let moveDuringCapture = false;
+  let documentId = "reading-document";
+  let reloadDuringCapture = false;
+  const documentChecks = [];
+  const contextChecks = [];
+  const getContexts = chrome.runtime.getContexts;
+  chrome.runtime.getContexts = async filter => {
+    if (!filter.documentIds) return getContexts(filter);
+    contextChecks.push(filter);
+    return filter.documentIds.includes(documentId)
+      ? [{ documentId, tabId: tab.id, documentUrl: tab.url, contextType: "TAB" }] : [];
+  };
+  chrome.tabs = {
+    async get(id) {
+      if (id !== tab.id) throw new Error("No tab with id");
+      return { ...tab };
+    },
+    async sendMessage(id, message, options) {
+      documentChecks.push({ id, message, options });
+      if (id !== tab.id || options.documentId !== documentId) throw new Error("The document was removed.");
+      return { present: true };
+    },
+    async captureVisibleTab(windowId, options) {
+      captures.push({ windowId, options });
+      if (captureFailures > 0) {
+        captureFailures -= 1;
+        throw new Error("MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND quota exceeded");
+      }
+      if (moveDuringCapture) tab = { ...tab, windowId: 4 };
+      if (reloadDuringCapture) documentId = "replacement-document";
+      return "data:image/jpeg;base64,c2hvdA==";
+    },
+  };
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController, crypto, Error, Promise,
+    fetch(url, options) {
+      const body = JSON.parse(options.body);
+      uploads.push({ url, action: body.action, params: body.params, key: body.key ?? null });
+      return Promise.resolve({ ok: true, async json() { return { result: body.params.filename, error: null }; } });
+    },
+  });
+  await storage.api().local.set({ options: { revision: 1, anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" } } });
+  const ask = (sender) => bus.sendMessage("reader", { target: "hachidori-anki", type: "hd_anki_screenshot",
+    requestId: "anki-screenshot", request: {} }, sender);
+  const reader = { id: chrome.runtime.id, url: tab.url, frameId: 0, documentId, tab: { id: tab.id } };
+
+  const taken = await ask(reader);
+  // Chrome rate-limits captures, so one wait is worth a screenshot.
+  captureFailures = 1;
+  const retried = await ask(reader);
+  // A rate-limited attempt is retried, but the tab it belongs to is checked
+  // again first: a switch during the wait takes no picture at all.
+  captureFailures = 1;
+  const capturesBeforeSwitch = captures.length;
+  const switchedAway = await (async () => {
+    const pending = ask(reader);
+    for (let attempt = 0; attempt < 200 && captures.length === capturesBeforeSwitch; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    tab = { ...tab, active: false };
+    const reply = await pending;
+    tab = { ...tab, active: true };
+    return reply;
+  })();
+  const capturesAfterSwitch = captures.length;
+  captureFailures = 3;
+  const givenUp = await ask(reader);
+  captureFailures = 0;
+  // Dragging the active reading tab to another window leaves it active with the
+  // same URL, but the capture was bound to the old window's replacement tab.
+  moveDuringCapture = true;
+  const movedWindow = await ask(reader);
+  moveDuringCapture = false;
+  tab = { ...tab, windowId: 3 };
+  // A reload can replace the document while its tab, URL and window all stay
+  // the same. It must fail both before capture and after pixels return.
+  reloadDuringCapture = true;
+  const reloadedDuring = await ask(reader);
+  reloadDuringCapture = false;
+  const capturesBeforeReload = captures.length;
+  const alreadyReloaded = await ask(reader);
+  const capturesAfterReload = captures.length;
+  documentId = reader.documentId;
+  tab = { ...tab, active: false };
+  const background = await ask(reader);
+  tab = { ...tab, active: true, url: "https://reader.test/elsewhere" };
+  const navigated = await ask(reader);
+  const fromExtensionPage = await ask({ id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") });
+  tab = { ...tab, url: chrome.runtime.getURL("startup.html#setup-heading") };
+  const startup = { id: chrome.runtime.id, url: tab.url, documentId };
+  const startupTaken = await ask(startup);
+  reloadDuringCapture = true;
+  const startupReloaded = await ask(startup);
+  reloadDuringCapture = false;
+  const capturesBeforeStartupReload = captures.length;
+  const startupGone = await ask(startup);
+  const capturesAfterStartupReload = captures.length;
+  await storage.api().local.set({ options: { revision: 2,
+    anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", captureScreenshot: false } } });
+  tab = { ...tab, url: "https://reader.test/page" };
+  const switchedOff = await ask(reader);
+  check("a mining screenshot captures the asking page once it is still the window's own, and never any other page",
+    taken?.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(taken.filename)
+      && /^[0-9a-f-]{36}$/u.test(taken.token ?? "")
+      // The picture waits for the note: capturing talks to nothing but the tab.
+      && uploads.length === 0
+      && retried?.ok === true && captures.filter(({ windowId }) => windowId === 3).length === captures.length
+      && captures.every(({ options }) => options.format === "jpeg")
+      && switchedAway?.ok === false && switchedAway.error.includes("no longer the active tab")
+      && capturesAfterSwitch === capturesBeforeSwitch + 1
+      && givenUp?.ok === false && givenUp.error.includes("quota")
+      && movedWindow?.ok === false && movedWindow.error.includes("moved to another window")
+      && reloadedDuring?.ok === false && reloadedDuring.error.includes("document")
+      && alreadyReloaded?.ok === false && alreadyReloaded.error.includes("document")
+      && capturesBeforeReload === capturesAfterReload
+      && documentChecks.length > 0 && documentChecks.every(value => value.id === tab.id
+        && value.options.documentId === reader.documentId
+        && value.message.target === "hachidori-capture-content" && value.message.type === "hd_capture_document")
+      && background?.ok === false && background.error.includes("no longer the active tab")
+      && navigated?.ok === false && navigated.error.includes("moved to another page")
+      && fromExtensionPage?.ok === false && fromExtensionPage.error.includes("reading tab")
+      && startupTaken?.ok === true && contextChecks.length > 0
+      && startupReloaded?.ok === false && startupReloaded.error.includes("document")
+      && startupGone?.ok === false && startupGone.error.includes("document")
+      && capturesBeforeStartupReload === capturesAfterStartupReload
+      && switchedOff?.ok === false && switchedOff.error.includes("turned off in Settings"),
+    JSON.stringify({ taken, retried, switchedAway, givenUp, movedWindow, reloadedDuring, alreadyReloaded,
+      background, navigated, fromExtensionPage, startupTaken, startupReloaded, startupGone, switchedOff, uploads, captures, documentChecks, contextChecks }));
 }
 
 async function ankiBackgroundStage() {
@@ -2663,6 +2802,7 @@ async function main() {
   await lookupStatsStage();
   await audioRelayStage();
   await ankiBackgroundStage();
+  await ankiScreenshotStage();
 
   section("custom dictionary storage ownership");
   const customBackground = await customBackgroundStage();
@@ -5186,6 +5326,9 @@ async function main() {
   const practice = await startupPracticeStage();
   check("the practice step invites a lookup only when a dictionary can answer one and loads the reader once with that step",
     practice !== null && Object.values(practice).every((value) => value === true), JSON.stringify(practice));
+  const scenes = await visualNovelStage();
+  check("visual novel scenes start randomly and cycle all six backgrounds without replacing the dialogue",
+    scenes !== null && Object.values(scenes).every((value) => value === true), JSON.stringify(scenes));
   const preview = await designPreviewStage();
   check("custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work",
     preview?.cssOwner === true, JSON.stringify(preview));
@@ -5215,6 +5358,8 @@ async function main() {
     sourceHighlight?.mutations === true, JSON.stringify(sourceHighlight));
   check("source fallback paints exact Range bounds in its own layer without editing page text, classes or selection",
     sourceHighlight?.fallback === true, JSON.stringify(sourceHighlight));
+  check("a suspended source highlight publishes nothing, ignores matches meanwhile and repaints its exact ranges",
+    sourceHighlight?.restored === true, JSON.stringify(sourceHighlight));
   check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
     frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
   check("Design resets only its shared appearance and content keys through one sparse options write",
@@ -6036,6 +6181,7 @@ async function settingsNavigationStage() {
 
 function loadStartupScript(window) {
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
+  window.eval(readFileSync(resolve(EXTENSION, "visual-novel.js"), "utf8"));
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
@@ -6050,6 +6196,7 @@ function loadStartupScript(window) {
     .replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
+    .replace(/import "\.\/visual-novel\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
@@ -6821,8 +6968,32 @@ async function sourceHighlightStage() {
     disposableView.destroy();
     const mutations = replacement && stale && detached && shadowDetached && ranges().length === 0
       && window.CSS.highlights.get("page-owned") === unrelated && window.getSelection().toString() === "Keep selection";
+    // A screenshot must not contain the highlight: publication stops for as long
+    // as it is suspended, including for a match that arrives meanwhile, and the
+    // exact ranges come back when it is released.
+    highlighter.clearAll();
+    const suspendSource = document.createElement("p");
+    suspendSource.textContent = "食べる";
+    document.body.append(suspendSource);
+    const suspendScope = highlighter.scope("suspend");
+    const suspendCandidate = { sourceElements: [suspendSource], sentence: suspendSource.textContent, matchOffset: 0 };
+    suspendScope.apply(suspendCandidate, "食べる");
+    const publishedBefore = texts() === "食べる";
+    const releaseFirst = highlighter.suspend();
+    const releaseSecond = highlighter.suspend();
+    const suspendedEmpty = ranges().length === 0;
+    suspendScope.clear();
+    suspendScope.apply(suspendCandidate, "食べる");
+    const suspendedQuiet = ranges().length === 0;
+    releaseFirst();
+    releaseFirst();
+    const heldBySecond = ranges().length === 0;
+    releaseSecond();
+    const restored = publishedBefore && suspendedEmpty && suspendedQuiet && heldBySecond && texts() === "食べる";
+    highlighter.clearAll();
+    suspendSource.remove();
     const fallback = await sourceHighlightFallbackCase(window);
-    return { ownership, mutations, fallback, visits, replacement, stale };
+    return { ownership, restored, mutations, fallback, visits, replacement, stale };
   } finally {
     highlighter.clearAll();
     window.close();
@@ -7003,6 +7174,50 @@ async function sourceHighlightFallbackCase(window) {
   }
 }
 
+async function visualNovelStage() {
+  const jsdom = await loadJsdom();
+  if (!jsdom) return null;
+  const result = { randomStart: true, cycle: true, retained: true, startupSurface: true };
+  for (const [random, first] of [[0, 0], [0xffffffff, 3]]) {
+    const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "design-preview.html"), "utf8"), {
+      runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/design-preview.html`,
+    });
+    const { window } = dom;
+    try {
+      let randomCalls = 0;
+      window.crypto.getRandomValues = values => { randomCalls += 1; values[0] = random; return values; };
+      window.eval(readFileSync(resolve(EXTENSION, "visual-novel.js"), "utf8"));
+      const scene = window.document.querySelector(".vn-scene");
+      const source = scene.querySelector("#preview-source");
+      const text = source.firstChild;
+      const dialogue = scene.querySelector(".vn-dialogue");
+      const style = window.document.createElement("style");
+      style.textContent = ["visual-novel.css", "startup.css"].map(file => readFileSync(resolve(EXTENSION, file), "utf8")).join("\n");
+      window.document.head.append(style);
+      dialogue.classList.add("setup-practice-dialogue");
+      window.HDVisualNovel.initialize(scene);
+      const next = scene.querySelector(".vn-next");
+      const filename = index => `assets/preview-background${index === 0 ? "" : `-${index + 1}`}.png`;
+      result.randomStart &&= scene.style.backgroundImage.includes(filename(first));
+      result.cycle &&= next?.tagName === "BUTTON" && next.type === "button" && next.getAttribute("aria-label") === "Next background";
+      const visited = new Set();
+      for (let step = 0; step < 6; step += 1) {
+        const index = (first + step) % 6;
+        visited.add(scene.style.backgroundImage);
+        result.cycle &&= scene.style.backgroundImage.includes(filename(index))
+          && scene.classList.contains("vn-dark-dialogue") === [3, 5].includes(index);
+        result.startupSurface &&= window.getComputedStyle(dialogue).backgroundColor ===
+          ([3, 5].includes(index) ? "rgba(28, 20, 35, 0.94)" : "rgba(250, 247, 252, 0.94)");
+        next?.click();
+      }
+      result.cycle &&= visited.size === 6 && scene.style.backgroundImage.includes(filename(first)) && randomCalls === 1;
+      result.retained &&= scene.querySelector("#preview-source") === source && source.firstChild === text
+        && source.textContent === "朝ごはんを食べる。" && scene.querySelector(".vn-dialogue") === dialogue;
+    } finally { window.close(); }
+  }
+  return result;
+}
+
 async function designPreviewStage() {
   const jsdom = await loadJsdom();
   if (!jsdom) return null;
@@ -7015,7 +7230,7 @@ async function designPreviewStage() {
     window.URL.createObjectURL = () => "blob:sample-meal";
     window.CSS = { highlights: new Map() };
     window.Highlight = class extends Set { constructor(...ranges) { super(ranges); } };
-    for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "design-preview.js"]) {
+    for (const file of ["reader-options.js", "render/glossary.js", "render/popup.js", "visual-novel.js", "design-preview.js"]) {
       window.eval(readFileSync(resolve(EXTENSION, file), "utf8"));
     }
     let earlyLoad = true;

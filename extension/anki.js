@@ -83,7 +83,7 @@ export function ankiAvailability(config, discovery, resolvedTemplates) {
   }
   if (discovery.fields.length > 0) {
     const markers = ankiTemplateMarkerNames(resolved.templates[discovery.fields[0]].value);
-    if (markers.includes("capture-animation") || markers.includes("capture-audio")) {
+    if (markers.includes("capture-animation") || markers.includes("capture-audio") || markers.includes("screenshot")) {
       errors.push(`Captured media cannot be mapped to the first field, “${discovery.fields[0]}”.`);
     }
   }

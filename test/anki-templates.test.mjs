@@ -60,7 +60,8 @@ test("marker validation retains unknown tokens as errors and recognizes nonempty
   assert.deepEqual(ankiTemplateErrors("{Expression}<br>{single-glossary-辞典-plain}{single-frequency-number-辞典}"), []);
   assert.deepEqual(ankiTemplateErrors("{capture-animation}{capture-audio}"), []);
   const source = "literal {unknown} {single-glossary-} {screenshot} {unknown}";
-  assert.deepEqual(ankiTemplateErrors(source), ["Unknown marker: {unknown}", "Unknown marker: {single-glossary-}", "Unknown marker: {screenshot}"]);
+  // {screenshot} is a real marker; the other two are not.
+  assert.deepEqual(ankiTemplateErrors(source), ["Unknown marker: {unknown}", "Unknown marker: {single-glossary-}"]);
   assert.equal(source, "literal {unknown} {single-glossary-} {screenshot} {unknown}");
   assert.deepEqual(ankiTemplateErrors("text {} and an unmatched { brace"), []);
 });

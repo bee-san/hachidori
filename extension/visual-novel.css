@@ -3,7 +3,7 @@
    Background ownership and source: assets/ATTRIBUTION.md. */
 .vn-scene {
   position: relative;
-  background: #614657 url("assets/preview-background.png") center bottom / cover no-repeat;
+  background: #614657 center bottom / cover no-repeat;
   color: #f6f5ef;
 }
 .vn-dialogue {
@@ -24,6 +24,24 @@
   font-size: 26px;
   line-height: 1.7;
 }
+.vn-dark-dialogue .vn-dialogue { color: #f6f0f8; }
+.vn-dark-dialogue .vn-speaker { color: #e2cce8; }
+.vn-next {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 60%);
+  border-radius: 50%;
+  background: rgb(28 20 35 / 75%);
+  color: #fff;
+  font: 20px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.vn-next:hover { background: #382d40; }
+.vn-next:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 
 @media (max-width: 480px) {
   .vn-line { font-size: 22px; }
