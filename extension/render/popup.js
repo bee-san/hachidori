@@ -2707,7 +2707,6 @@
           DEFAULT_COMPACT_DEFINITION_SUMMARY_COUNT,
         compactDefinitionSummaryDictionary = null,
         summaryMedia = null,
-        inlineMetadata = null,
         showPitchAccentFurigana = true,
         pitchAccentFuriganaDictionary = null,
         onBack = null,
@@ -2754,9 +2753,6 @@
       if (showCompactDefinitionSummary === true) {
         updateCompactSummary(headword, result, { showCompactDefinitionSummary,
           compactDefinitionSummaryCount, compactDefinitionSummaryDictionary }, summaryMedia);
-      }
-      if (inlineMetadata) {
-        headword.appendChild(inlineMetadata);
       }
       const deinflection = buildDeinflectionDisclosure(documentRef, result, windowRef.navigator.language);
       if (deinflection) {
@@ -2920,7 +2916,6 @@
               ? renderContext.compactDefinitionSummaryDictionary
               : null,
           summaryMedia,
-          inlineMetadata: resultIndex === 0 ? primaryMetadataCapsule : null,
           showPitchAccentFurigana:
             renderContext.showPitchAccentFurigana !== false,
           pitchAccentFuriganaDictionary:
@@ -2958,6 +2953,7 @@
             renderContext.averageFrequency === true,
             renderContext.showFrequencyDictionaryNames === true
           );
+          entry.appendChild(primaryMetadataCapsule);
         }
 
         const metadata = appendMetadata(

@@ -1048,10 +1048,10 @@ async function popupReader(page, depth = 0) {
         const saved = this.__dictionaryTabs;
         const metadataCapsule = this.querySelector(".gsm-hoshidicts-primary-metadata-capsule");
         const metadataStrip = this.querySelector(".gsm-hoshidicts-metadata-strip");
-        const metadataHeadword = metadataCapsule?.closest(".gsm-hoshidicts-headword");
+        const primaryEntry = this.querySelector(".gsm-hoshidicts-entry");
         const primaryHeader = this.querySelector(".gsm-hoshidicts-primary-header");
         const capsuleRect = metadataCapsule?.getBoundingClientRect();
-        const headerRect = primaryHeader?.getBoundingClientRect();
+        const entryRect = primaryEntry?.getBoundingClientRect();
         const capsuleStyle = metadataCapsule ? getComputedStyle(metadataCapsule) : null;
         const entries = [...this.querySelectorAll(".gsm-hoshidicts-entry")].map((entry, index) => ({
           expression: entry.dataset.expression,
@@ -1133,9 +1133,10 @@ async function popupReader(page, depth = 0) {
               .every(node => node.parentElement === metadataCapsule),
             grammarInsideCapsule: [...this.querySelectorAll(".gsm-hoshidicts-primary-grammar")]
               .every(node => node.parentElement === metadataCapsule),
-            inlineWithHeadword: metadataCapsule?.parentElement === metadataHeadword,
-            insideHeader: Boolean(capsuleRect && headerRect
-              && capsuleRect.top >= headerRect.top - 1 && capsuleRect.bottom <= headerRect.bottom + 1),
+            insidePrimaryEntry: metadataCapsule?.parentElement === primaryEntry,
+            outsideHeader: !primaryHeader?.contains(metadataCapsule),
+            insideResult: Boolean(capsuleRect && entryRect
+              && capsuleRect.top >= entryRect.top - 1 && capsuleRect.bottom <= entryRect.bottom + 1),
             plain: Boolean(capsuleStyle
               && capsuleStyle.borderTopStyle === "none"
               && capsuleStyle.backgroundColor === "rgba(0, 0, 0, 0)"),
@@ -5781,12 +5782,14 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     const normal = await expectMetadata(value => value.frequencyNames.length > 0 && value.pitch > 0
       && value.ruby.length > 0 && value.grammar > 0 && value.ipa.includes("tabeɾɯ"));
     evidence.push(normal.rect.width === 560 && !normal.metadata.clippedFrequencies
-      && normal.metadata.inlineWithHeadword && normal.metadata.insideHeader && normal.metadata.plain
+      && normal.metadata.insidePrimaryEntry && normal.metadata.outsideHeader && normal.metadata.insideResult
+      && normal.metadata.plain
       && normal.metadata.separateFromTabStrip && normal.metadata.tabStripOnly);
     await editSettingsControls(settings, { "opt-popup-width": "280", "opt-popup-toolbar": "bottom" });
     const narrow = await expectState(value => value.rect.width === 280 && value.toolbar === "bottom"
-      && value.metadata.insideHeader);
-    evidence.push(!narrow.metadata.clippedFrequencies && narrow.metadata.inlineWithHeadword
+      && value.metadata.insideResult);
+    evidence.push(!narrow.metadata.clippedFrequencies && narrow.metadata.insidePrimaryEntry
+      && narrow.metadata.outsideHeader
       && narrow.metadata.plain && narrow.metadata.separateFromTabStrip && narrow.metadata.tabStripOnly);
     if (process.env.HACHIDORI_METADATA_NARROW_SCREENSHOT) {
       const { x, y, width, height } = narrow.rect;
@@ -5814,7 +5817,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     evidence.push(hidden.metadata.ipa.includes("tabeɾɯ") && hidden.metadata.definitionTags === before.metadata.definitionTags
       && before.metadata.capsuleAria === "Entry metadata"
       && before.metadata.frequencyInsideCapsule && before.metadata.grammarInsideCapsule
-      && before.metadata.inlineWithHeadword && before.metadata.insideHeader && before.metadata.plain
+      && before.metadata.insidePrimaryEntry && before.metadata.outsideHeader && before.metadata.insideResult
+      && before.metadata.plain
       && before.metadata.separateFromTabStrip && before.metadata.tabStripOnly
       && hidden.sameCards && hidden.samePanel && await popup.dictionaryTabs("matches", before.entries)
       && retained.sameForm && retained.mounted && retained.inputFocused && retained.draft === "Keep the metadata draft"

@@ -54,13 +54,15 @@ test("fresh and partial stored options default to numeric frequencies while expl
   assert.equal(chosen.hidePopupGrammarTags, false);
 });
 
-test("the default Jiten frequency is quiet inline headword metadata with detail available on hover", t => {
+test("the default Jiten frequency is quiet primary-result metadata with detail available on hover", t => {
   const f = fixture(t);
   for (const options of [undefined, f.options.normaliseOptions({})]) {
     const capsule = f.render(options);
+    const entry = f.popup.querySelector(".gsm-hoshidicts-entry");
     assert.equal(capsule.textContent, "14.2k · 191");
     assert.equal(capsule.getAttribute("aria-label"), "Entry metadata");
-    assert.ok(capsule.parentElement.classList.contains("gsm-hoshidicts-headword"));
+    assert.equal(capsule.parentElement, entry);
+    assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-header").contains(capsule), false);
     assert.equal(f.popup.querySelector(".gsm-hoshidicts-metadata-strip"), null);
     assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-grammar"), null);
     assert.equal(capsule.querySelector(".gsm-hoshidicts-frequency-source"), null);
@@ -68,20 +70,19 @@ test("the default Jiten frequency is quiet inline headword metadata with detail 
     assert.equal(frequency.title, "Jiten");
     assert.match(frequency.getAttribute("aria-label"), /Jiten:.*Kana frequency: 14200.*191/u);
     assert.equal(capsule.querySelector(".gsm-hoshidicts-frequency-value").title, "Kana frequency: 14200");
-    const deinflection = f.popup.querySelector(".gsm-hoshidicts-deinflection");
-    assert.ok(deinflection, "the full explanation stays available");
     assert.ok(
-      capsule.compareDocumentPosition(deinflection) & capsule.DOCUMENT_POSITION_FOLLOWING,
-      "inline metadata precedes the full deinflection row"
+      capsule.compareDocumentPosition(entry.querySelector(".gsm-hoshidicts-ipa-metadata"))
+        & capsule.DOCUMENT_POSITION_FOLLOWING,
+      "primary metadata precedes the other result metadata"
     );
   }
 });
 
-test("live display choices keep frequency and grammar together beside the headword and preserve the definition and draft", t => {
+test("live display choices keep frequency and grammar in the primary result and preserve the definition and draft", t => {
   const f = fixture(t);
   const defaults = f.options.normaliseOptions({});
   const capsule = f.render(defaults);
-  const headword = capsule.parentElement;
+  const entry = capsule.parentElement;
   const card = f.popup.querySelector(".gsm-hoshidicts-glossary-card");
   f.popup.querySelector(".gsm-hoshidicts-note-button").click();
   const form = f.popup.querySelector("form");
@@ -92,7 +93,7 @@ test("live display choices keep frequency and grammar together beside the headwo
   f.view.updateDictionaryPresentation(defaults);
   assert.equal(capsule.textContent, "14.2k · 191");
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-primary-grammar"), null);
-  assert.equal(capsule.parentElement, headword);
+  assert.equal(capsule.parentElement, entry);
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-glossary-card"), card);
   assert.equal(f.popup.querySelector("form"), form);
   assert.equal(form.elements.definition.value, "keep my draft");
@@ -133,7 +134,7 @@ test("opt-in grammar stays visible without frequency or dictionary tabs and hide
   const result = { ...RESULT, term: { ...RESULT.term, glossaries: [], frequencies: [] } };
   const capsule = f.render({ ...defaults, hidePopupGrammarTags: false }, result);
   assert.equal(capsule.hidden, false);
-  assert.ok(capsule.parentElement.classList.contains("gsm-hoshidicts-headword"));
+  assert.ok(capsule.parentElement.classList.contains("gsm-hoshidicts-entry"));
   assert.equal(f.popup.querySelector(".gsm-hoshidicts-metadata-strip"), null);
   assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-grammar")?.textContent, "-た-ますv1");
   f.view.updateDictionaryPresentation(defaults);
@@ -158,5 +159,5 @@ test("the lower metadata strip exists only for dictionary tabs", t => {
   assert.equal(strip.children.length, 1);
   assert.ok(strip.firstElementChild.classList.contains("gsm-hoshidicts-tab-list"));
   assert.equal(strip.contains(capsule), false);
-  assert.ok(capsule.parentElement.classList.contains("gsm-hoshidicts-headword"));
+  assert.ok(capsule.parentElement.classList.contains("gsm-hoshidicts-entry"));
 });
