@@ -651,6 +651,22 @@ function pendingAnkiView() {
   return automaticAnkiView();
 }
 
+function stagedConfiguredAnkiView(anki) {
+  if (anki.status !== "configured") {
+    ankiProgressRequested = false;
+    stopAnkiProgress();
+    return null;
+  }
+  if (!ankiProgressRequested) return null;
+  if (ankiProgressStartedAt === null) startAnkiProgress();
+  if (Date.now() - ankiProgressStartedAt < ANKI_PROGRESS_STEPS * ANKI_PROGRESS_STEP_MS) {
+    return automaticAnkiView(anki);
+  }
+  ankiProgressRequested = false;
+  stopAnkiProgress();
+  return null;
+}
+
 // Detection runs once per installation; its recorded outcome stays readable
 // for three seconds before setup moves on by itself.
 function ankiView() {
@@ -660,18 +676,8 @@ function ankiView() {
   // Keep each real detection step visible once before revealing a successful
   // automatic choice; the worker's existing detection and saved result remain
   // the source of truth.
-  if (anki.status === "configured" && ankiProgressRequested) {
-    if (ankiProgressStartedAt === null) startAnkiProgress();
-    if (Date.now() - ankiProgressStartedAt < ANKI_PROGRESS_STEPS * ANKI_PROGRESS_STEP_MS) {
-      return automaticAnkiView(anki);
-    }
-    ankiProgressRequested = false;
-    stopAnkiProgress();
-  }
-  if (anki.status !== "configured") {
-    ankiProgressRequested = false;
-    stopAnkiProgress();
-  }
+  const staged = stagedConfiguredAnkiView(anki);
+  if (staged !== null) return staged;
   if (advanceFailed) {
     cancelCountdown();
     return { heading: ankiHeading(anki),
