@@ -74,6 +74,8 @@ let practiceLookupShown = false;
 // Anki detection is asked for once per page; a failed request waits for Retry.
 let ankiRequest = null;
 let ankiFailed = false;
+// Only a check started by this page may stage a newly configured result.
+let ankiProgressRequested = false;
 let ankiProgressStartedAt = null;
 let ankiProgressTimer = null;
 const announced = new Map();
@@ -573,14 +575,17 @@ function requestAnkiSetup() {
   if (ankiRequest !== null) return ankiRequest;
   const showPending = ankiFailed;
   ankiFailed = false;
+  ankiProgressRequested = setupState?.anki === null;
   stopAnkiProgress();
   const request = send("hd_setup_anki", {}).then((reply) => {
     if (!reply.ok) throw new Error(reply.error || "Anki could not be checked");
     adoptSetupState(reply.state);
     // The reply promises a recorded outcome; without one the check is reported, not repeated.
     if (setupState?.anki === null) throw new Error("no Anki outcome was recorded");
+    if (setupState.anki.status !== "configured") ankiProgressRequested = false;
   }).catch((error) => {
     ankiFailed = true;
+    ankiProgressRequested = false;
     stopAnkiProgress();
     setStatus(`Could not check Anki: ${describe(error)}`, "error");
   }).finally(() => {
@@ -655,13 +660,18 @@ function ankiView() {
   // Keep each real detection step visible once before revealing a successful
   // automatic choice; the worker's existing detection and saved result remain
   // the source of truth.
-  if (anki.status === "configured") {
+  if (anki.status === "configured" && ankiProgressRequested) {
     if (ankiProgressStartedAt === null) startAnkiProgress();
     if (Date.now() - ankiProgressStartedAt < ANKI_PROGRESS_STEPS * ANKI_PROGRESS_STEP_MS) {
       return automaticAnkiView(anki);
     }
+    ankiProgressRequested = false;
+    stopAnkiProgress();
   }
-  if (anki.status !== "configured") stopAnkiProgress();
+  if (anki.status !== "configured") {
+    ankiProgressRequested = false;
+    stopAnkiProgress();
+  }
   if (advanceFailed) {
     cancelCountdown();
     return { heading: ankiHeading(anki),
@@ -900,7 +910,10 @@ function renderSteps(stage) {
 function currentView() {
   if (setupError !== null) return failedView();
   if (setupState === null) return inactiveView();
-  if (setupState.stage !== "anki" && ankiProgressStartedAt !== null) stopAnkiProgress();
+  if (setupState.stage !== "anki") {
+    ankiProgressRequested = false;
+    if (ankiProgressStartedAt !== null) stopAnkiProgress();
+  }
   if (countdown !== null && countdown.stage !== setupState.stage) cancelCountdown();
   return VIEWS[setupState.stage]();
 }

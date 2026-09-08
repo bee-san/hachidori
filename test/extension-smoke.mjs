@@ -6634,8 +6634,9 @@ async function startupPageStage() {
     const finished = finishRequest.baseRevision === 9 && finishRequest.stage === "complete" && closedTabs[0] === 44
       && heading() === "Setup is complete." && currentStep() === null && doneSteps() === 3
       && document.getElementById("setup-actions").childElementCount === 0;
+    const configuredResume = await startupConfiguredAnkiResume(jsdom);
     return { requestFailed, attached, determinate, ordered, indeterminate, installing, installed, failedRow, failureView, focusKept, continued,
-      retried, oldRunIgnored, success, advanced, practice, practicePreserved, finished };
+      retried, oldRunIgnored, success, advanced, practice, practicePreserved, finished, configuredResume };
   } finally {
     window.close();
   }
@@ -6730,6 +6731,27 @@ const MANIFEST_READER_SCRIPTS = EXTENSION_MANIFEST.content_scripts[0].js.filter(
 const SETUP_AT_DICTIONARIES = Object.freeze({ schemaVersion: 1, revision: 2, startedAt: "2026-09-07T10:00:00.000Z",
   stage: "dictionaries", completedAt: null,
   dictionaries: Object.freeze({ outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }) });
+
+// A persisted configured outcome is already settled. Reloading or resuming the
+// page must start its three-second continuation instead of replaying a check
+// that this page never made.
+async function startupConfiguredAnkiResume(jsdom) {
+  const setup = { ...structuredClone(SETUP_AT_DICTIONARIES), revision: 8, stage: "anki",
+    anki: { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" } };
+  const page = startupCase(jsdom, { setup,
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  try {
+    await page.load();
+    const progress = [...page.document.querySelectorAll(".setup-anki-progress-step")];
+    return page.heading() === "Anki is set up"
+      && page.document.getElementById("setup-countdown-label")?.textContent === "Continuing to practice in 3 seconds"
+      && progress.length === 3 && progress.every((row) => row.classList.contains("is-done"))
+      && progress.every((row) => !row.hasAttribute("aria-current"))
+      && !page.requestTypes().includes("hd_setup_anki");
+  } finally {
+    page.window.close();
+  }
+}
 
 async function startupWelcomeStage() {
   const jsdom = await loadJsdom();
