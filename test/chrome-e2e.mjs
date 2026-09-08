@@ -7128,8 +7128,12 @@ async function main() {
   );
   let practiceReached = null;
   if (startup !== null) {
-    // The final step waits for Finish, so it is the one stable state to poll for.
+    // The final step waits for Finish. Wait for its asynchronous reader load to
+    // complete the automatic selection too, rather than sampling the heading
+    // focus from the first practice render.
     practiceReached = await startup.waitForFunction(() => document.getElementById("setup-practice-instruction")?.textContent.startsWith("Try looking up a word below.")
+      && document.activeElement?.id === "setup-practice-text"
+      && getSelection().toString() === "辞書"
       ? { at: Date.now(), focused: document.activeElement?.id ?? "",
         currentStep: document.querySelector('.setup-step[aria-current="step"]')?.dataset.stage ?? null,
         done: document.querySelectorAll(".setup-step.is-done").length,
