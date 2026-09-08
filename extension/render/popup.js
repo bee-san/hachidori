@@ -1075,6 +1075,9 @@
     const matches = new Map();
     let fallback = null;
     let publishedHighlight = null;
+    // Publication is the only part of this that the document paints, so a caller
+    // that must not appear in a picture of the page suspends exactly that.
+    let suspended = 0;
 
     function clearRenderedHighlight() {
       const highlights = windowRef.CSS && windowRef.CSS.highlights;
@@ -1175,7 +1178,7 @@
       for (const { match } of matches.values()) {
         ranges.push(...match.ranges);
       }
-      if (canUseRanges && ranges.length > 0) {
+      if (canUseRanges && ranges.length > 0 && suspended === 0) {
         try {
           const next = new HighlightImpl(...ranges);
           highlights.set(highlightName, next);
@@ -1261,6 +1264,20 @@
         clearFor("default");
       },
       refresh() { fallback?.schedule(); },
+      // Nothing is published, and nothing that arrives meanwhile is published
+      // either, until every suspension is released; the ranges are kept, so
+      // releasing repaints exactly what was there.
+      suspend() {
+        suspended += 1;
+        clearRenderedHighlight();
+        let released = false;
+        return () => {
+          if (released) return;
+          released = true;
+          suspended -= 1;
+          if (suspended === 0) render();
+        };
+      },
       scope(key) {
         return {
           apply(candidate, matchedText) {

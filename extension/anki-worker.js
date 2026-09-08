@@ -36,6 +36,13 @@ function decodedBase64Length(value) {
   return value.length / 4 * 3 - padding;
 }
 
+// A note that was definitively not written leaves no picture of its own behind.
+async function releaseScreenshot({ writeResources, invoke }) {
+  const filename = writeResources?.screenshotFilename;
+  if (typeof filename !== "string" || filename === "") return;
+  await invoke("deleteMediaFile", { filename }, 10_000);
+}
+
 function validateCapture({ request, prepared, capture: selected }) {
   const media = prepared.config.mediaCapture;
   if (!media?.enabled) throw new Error("Enable media capture in Settings before using captured-media markers.");
@@ -103,7 +110,71 @@ export function createAnkiWorkerService({
     confirmedCaptureUploads.set(uploadKey, expectedFilename);
   }
 
+  // One pending viewport picture at a time: a later capture supersedes an
+  // earlier one, and a note that is written consumes it. Nothing is uploaded
+  // until then, so a rejected note leaves no unreferenced media in Anki.
+  let pendingScreenshot = null;
+  let screenshotRequestToken = null;
+
+  // Stored inside the queued write, once the generation, configuration and
+  // duplicate decisions have been made. A refused upload is a warning, and the
+  // fields that referenced the picture are emptied so the note never points at
+  // an image Anki does not have.
+  async function storePendingScreenshot({ request, appliedFields, invoke }) {
+    const filename = request.screenshot?.filename;
+    if (typeof filename !== "string" || filename === "") return { warnings: [] };
+    const reference = `<img src="${filename}">`;
+    const fields = Object.keys(appliedFields).filter(field => appliedFields[field].includes(reference));
+    if (fields.length === 0) {
+      // The fields this note actually applies keep their existing picture, so the
+      // one that was captured for it is released rather than left held.
+      if (pendingScreenshot?.token === request.screenshot.token) pendingScreenshot = null;
+      return { warnings: [] };
+    }
+    const withoutPicture = reason => {
+      // Pronunciation enrichment renders this request again after the note is
+      // saved; keep that render from restoring a picture that was not stored.
+      request.captureUnavailable = [...(request.captureUnavailable ?? []), "screenshot"];
+      for (const field of fields) appliedFields[field] = appliedFields[field].replaceAll(reference, "");
+      return { warnings: [`Screenshot: ${reason}`] };
+    };
+    const pending = pendingScreenshot;
+    // Only this note's own picture is consumed: another Add's newer capture is
+    // left where it is rather than taken away from it.
+    if (pending === null || pending.token !== request.screenshot.token || pending.filename !== filename) {
+      return withoutPicture("the captured picture was replaced before this note was saved.");
+    }
+    pendingScreenshot = null;
+    try {
+      const stored = await invoke("storeMediaFile", { filename, data: pending.data, deleteExisting: false }, 30_000);
+      if (stored !== filename) throw new Error("Anki stored it under a different filename.");
+    } catch (error) {
+      // The store may have happened even though its answer did not arrive, and
+      // the note is about to be written without the picture: take it back out.
+      await releaseScreenshot({ writeResources: { screenshotFilename: filename }, invoke }).catch(() => undefined);
+      return withoutPicture(error.message);
+    }
+    return { warnings: [], screenshotFilename: filename };
+  }
+
   async function prepareCapture(context) {
+    const screenshot = await storePendingScreenshot(context);
+    let clip;
+    try {
+      clip = await prepareClipCapture(context);
+    } catch (error) {
+      // No note will be written, and this rejection never reaches the caller's
+      // own cleanup, so the picture is taken back out here.
+      await releaseScreenshot({ writeResources: screenshot, invoke: context.invoke }).catch(() => undefined);
+      throw error;
+    }
+    if (clip === null) {
+      return screenshot.warnings.length === 0 && screenshot.screenshotFilename === undefined ? null : screenshot;
+    }
+    return { ...clip, ...screenshot, warnings: [...clip.warnings, ...screenshot.warnings] };
+  }
+
+  async function prepareClipCapture(context) {
     const { appliedFields, capture: selected, request } = context;
     await currentGeneration(request);
     if (!selected) return null;
@@ -181,13 +252,56 @@ export function createAnkiWorkerService({
     beforeWrite: prepareCapture,
     beforeMutation,
     afterConfirmed: completeCapture,
+    afterRejected: releaseScreenshot,
     enrich: context => enrichAnkiNote(context, { audio, render, media: async (item, generation) => {
       const reply = await engine({ type: "hd_media", dictionary: item.dictionary, path: item.path, generation });
       if (!reply.dataUrl) throw new Error("The dictionary image is no longer available.");
       return reply.dataUrl.slice(reply.dataUrl.indexOf(",") + 1);
     } }),
   });
-  return { ...mining, async maturity(request) {
+
+  // One viewport screenshot for the mining action being taken now. The caller
+  // owns the capture itself, because only it knows which page asked; the picture
+  // is held here under a name a field may reference and uploaded only when the
+  // note is written, so this reply is immediate and the reader can show itself
+  // again without waiting for Anki.
+  async function screenshot(captureViewport) {
+    const token = crypto.randomUUID();
+    screenshotRequestToken = token;
+    const { anki } = await readOptions();
+    if (anki.captureScreenshot !== true) throw new Error("Screenshots when mining are turned off in Settings.");
+    const dataUrl = await captureViewport();
+    // Capture retries can complete out of order. Only the latest request may
+    // publish its bytes, even if a newer picture has already been consumed.
+    if (screenshotRequestToken !== token) throw new Error("A newer capture replaced this screenshot request.");
+    const data = typeof dataUrl === "string" && dataUrl.startsWith("data:image/")
+      ? dataUrl.slice(dataUrl.indexOf(",") + 1) : "";
+    if (decodedBase64Length(data) === null) throw new Error("This page produced no screenshot.");
+    pendingScreenshot = { token, filename: `hachidori-screenshot-${crypto.randomUUID()}.jpg`, data };
+    return { token: pendingScreenshot.token, filename: pendingScreenshot.filename };
+  }
+
+  // An abandoned or definitively rejected submission releases only its own
+  // pending bytes; uploaded media has a separate write-outcome cleanup path.
+  function discardScreenshot(request) {
+    if (pendingScreenshot !== null && pendingScreenshot.token === request?.token) pendingScreenshot = null;
+    return { discarded: true };
+  }
+
+  async function submit(request) {
+    try {
+      const result = await mining.submit(request);
+      if (["duplicate", "invalid"].includes(result.state)) discardScreenshot(request.screenshot);
+      return result;
+    } catch (error) {
+      // The mining service reports a possibly sent mutation as uncertain;
+      // a rejection here confirms that its note write never happened.
+      discardScreenshot(request.screenshot);
+      throw error;
+    }
+  }
+
+  return { ...mining, submit, screenshot, discardScreenshot, async maturity(request) {
     try {
       const options = await readOptions();
       return { mature: options.definitionBlurAnkiMature === true

@@ -1264,6 +1264,43 @@
     });
   }
 
+  // A screenshot of the page must not contain anything Hachidori drew: the host
+  // carries the popup, its image preview and the fallback highlight paint, and the
+  // registered highlight is suspended beside it. Two frames give the change time
+  // to paint before the capture. Concealment is counted, so one capture cannot
+  // reveal the reader while another still owns it, and everything is restored
+  // whatever the captures did.
+  let concealing = 0;
+  let restoreMatchHighlight = null;
+  let hostOpacity = "";
+  let hostOpacityPriority = "";
+  async function concealReader(during) {
+    if (host === null) return during();
+    // The source-term highlight is painted by the document, not by the shadow
+    // tree, so the highlighter stops publishing for as long as this lasts —
+    // including for a lookup that settles while the picture is being taken.
+    if (concealing === 0) {
+      restoreMatchHighlight = highlighter?.suspend() ?? null;
+      hostOpacity = host.style.getPropertyValue("opacity");
+      hostOpacityPriority = host.style.getPropertyPriority("opacity");
+      // Descendants can override inherited visibility, including masonry cards.
+      // Opacity composites the whole host without changing its layout.
+      host.style.setProperty("opacity", "0", "important");
+    }
+    concealing += 1;
+    try {
+      await new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+      return await during();
+    } finally {
+      concealing -= 1;
+      if (concealing === 0) {
+        host.style.setProperty("opacity", hostOpacity, hostOpacityPriority);
+        restoreMatchHighlight?.();
+        restoreMatchHighlight = null;
+      }
+    }
+  }
+
   async function readerStyleSheet() {
     const response = await fetch(chrome.runtime.getURL(READER_STYLESHEET));
     if (!response.ok) {
@@ -1326,6 +1363,7 @@
       send: (type, fields) => sendRequest(type, fields, "hachidori-anki"),
       capture: (type, fields) => sendRequest(type, fields, "hachidori-capture"),
       onChange: owner => positionPopup(owner),
+      conceal: concealReader,
     });
     mining.update(options, optionsStorageRevision >= 0);
     audio ??= window.HDAudio.createAudioController({ window,
