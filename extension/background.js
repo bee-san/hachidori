@@ -1359,7 +1359,33 @@ function failureReply(message, error) {
   });
 }
 
-const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight", hd_anki_submit: "submit", hd_anki_browse: "browse" };
+const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight", hd_anki_submit: "submit",
+  hd_anki_browse: "browse", hd_anki_screenshot: "screenshot" };
+
+// Chrome rate-limits viewport captures, so a second mining action in the same
+// second waits once rather than losing its screenshot.
+const CAPTURE_VISIBLE_RETRY_MS = 600;
+
+// The screenshot belongs to the page that asked for it. `captureVisibleTab`
+// takes the window's active tab, so the sender's tab must still be that tab, and
+// a top-level frame must still show the document the request came from.
+async function captureSenderViewport(sender) {
+  const tabId = sender.tab?.id;
+  if (typeof tabId !== "number") throw new Error("Only a reading tab can be captured.");
+  const tab = await chrome.tabs.get(tabId);
+  if (tab?.active !== true) throw new Error("The reading tab is no longer the active tab.");
+  if ((sender.frameId ?? 0) === 0 && tab.url !== sender.url) {
+    throw new Error("The reading tab moved to another page before the screenshot.");
+  }
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
+    } catch (error) {
+      if (attempt >= 2 || !/per second|too many|MAX_CAPTURE/iu.test(describe(error))) throw error;
+      await sleep(CAPTURE_VISIBLE_RETRY_MS);
+    }
+  }
+}
 
 const CAPTURE_CONTROL_TYPES = new Set([
   "hd_capture_open",
@@ -1732,6 +1758,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         capture: fields => relayCapture({ ...fields, requestId: `anki-capture-${crypto.randomUUID()}` }),
       });
     }
+    // Only the screenshot needs to know which page asked, and it is given the
+    // capture rather than the sender, so nothing else can capture a tab.
+    if (message.type === "hd_anki_screenshot") return ankiMining.screenshot(() => captureSenderViewport(sender));
     return ankiMining[ANKI_METHODS[message.type]](message.type === "hd_anki_browse" ? message.expression : message.request);
   }).then(result => sendResponse(workerReply(message, result)), error => sendResponse(failureReply(message, error)));
   return true;

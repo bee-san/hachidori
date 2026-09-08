@@ -167,6 +167,11 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     "capture-audio": () => request.capturePin?.audioFilename
       && !request.captureUnavailable?.includes("audio")
       ? `[sound:${request.capturePin.audioFilename}]` : "",
+    // The viewport screenshot this mining request was made from. A capture or
+    // upload that failed marks itself unavailable, and the field stays empty
+    // rather than referring to a picture Anki does not have.
+    screenshot: () => request.screenshot?.filename && !request.captureUnavailable?.includes("screenshot")
+      ? `<img src="${escape(request.screenshot.filename)}">` : "",
   };
   const values = new Map();
   let glossaries, frequencies;

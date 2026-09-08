@@ -1262,6 +1262,21 @@
     });
   }
 
+  // A screenshot of the page must not contain Hachidori's own popup or its image
+  // preview. The host carries everything the reader draws, so hiding it hides all
+  // of them; two frames give the change time to paint before the capture, and the
+  // declaration is removed again whatever the capture did.
+  async function concealReader(during) {
+    if (host === null) return during();
+    host.style.setProperty("visibility", "hidden", "important");
+    try {
+      await new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+      return await during();
+    } finally {
+      host.style.removeProperty("visibility");
+    }
+  }
+
   async function readerStyleSheet() {
     const response = await fetch(chrome.runtime.getURL(READER_STYLESHEET));
     if (!response.ok) {
@@ -1324,6 +1339,7 @@
       send: (type, fields) => sendRequest(type, fields, "hachidori-anki"),
       capture: (type, fields) => sendRequest(type, fields, "hachidori-capture"),
       onChange: owner => positionPopup(owner),
+      conceal: concealReader,
     });
     mining.update(options, optionsStorageRevision >= 0);
     audio ??= window.HDAudio.createAudioController({ window,

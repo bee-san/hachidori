@@ -10,9 +10,13 @@
   const ANKI_DUPLICATE_SCOPES = ["collection", "deck", "deck-root"];
   const ANKI_DUPLICATE_BEHAVIORS = ["prevent", "new", "overwrite"];
   const ANKI_OVERWRITE_MODES = ["coalesce", "coalesce-new", "skip", "append", "prepend", "overwrite"];
+  // `captureScreenshot` only matters once a mapped field asks for {screenshot},
+  // so it is on by default: a note type with a picture field gets the viewport
+  // screenshot the mining request was made from, and nothing else changes.
   const DEFAULT_ANKI = { deck: "Default", model: "", apiKey: "", tags: ["hachidori"],
     fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])), checkForDuplicates: true,
-    duplicateScope: "collection", duplicateScopeCheckAllModels: false, duplicateBehavior: "prevent", fieldTemplates: null };
+    duplicateScope: "collection", duplicateScopeCheckAllModels: false, duplicateBehavior: "prevent",
+    captureScreenshot: true, fieldTemplates: null };
   const DEFAULT_MEDIA_CAPTURE = {
     enabled: false,
     timingMode: "auto",
@@ -221,7 +225,7 @@
   function normaliseAnki(value) {
     const source = value && typeof value === "object" ? value : {};
     const result = { ...DEFAULT_ANKI };
-    for (const key of ["deck", "model", "apiKey", "checkForDuplicates", "duplicateScopeCheckAllModels"]) {
+    for (const key of ["deck", "model", "apiKey", "checkForDuplicates", "duplicateScopeCheckAllModels", "captureScreenshot"]) {
       if (typeof source[key] === typeof DEFAULT_ANKI[key]) result[key] = source[key];
     }
     result.tags = Array.isArray(source.tags) ? source.tags.filter(tag => typeof tag === "string") : [...DEFAULT_ANKI.tags];

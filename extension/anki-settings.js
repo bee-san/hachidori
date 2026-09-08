@@ -163,6 +163,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
     ["tags", "opt-anki-tags"], ["apiKey", "opt-anki-api-key"],
     ["duplicateScope", "opt-anki-duplicate-scope"], ["duplicateBehavior", "opt-anki-duplicate-behavior"],
     ["checkForDuplicates", "opt-anki-check-duplicates"], ["duplicateScopeCheckAllModels", "opt-anki-check-all-models"],
+    ["captureScreenshot", "opt-anki-screenshot"],
   ];
   function renderBasicMappings(config, fields) {
     if (config.fieldTemplates !== null) return;
@@ -196,6 +197,7 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
   const fieldLabels = {
     captureAnimation: "Capture animation",
     captureAudio: "Capture audio",
+    screenshot: "Page screenshot",
   };
   for (const key of ANKI_FIELDS) {
     const label = document.createElement("label");

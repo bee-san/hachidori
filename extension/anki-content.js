@@ -63,6 +63,9 @@
     send,
     capture = send,
     onChange,
+    // The page's own overlays are hidden for a viewport screenshot and restored
+    // afterwards; without a host to hide, the screenshot is just taken.
+    conceal = during => during(),
     wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
   }) {
     const owners = new Map(), bound = new WeakMap();
@@ -130,6 +133,22 @@
       try { await capture("hd_capture_cancel", { jobId: record.captureJobId }); } catch { /* Stop/expiry already cleaned it up. */ }
       record.captureJobId = null;
     }
+    // One viewport screenshot for this submission, taken with Hachidori's own
+    // overlays hidden. A capture or upload that fails is a warning carried with
+    // the note's outcome: the field renders empty and the note still goes in.
+    async function prepareScreenshot(record, request, owns) {
+      record.screenshotWarning = "";
+      if (record.decision?.screenshot !== true) return request;
+      if (owns()) text(record.output, "Taking the screenshot…");
+      try {
+        const taken = await conceal(() => send("hd_anki_screenshot", {}));
+        if (typeof taken?.filename !== "string" || !taken.filename) throw new Error("no screenshot was stored");
+        return { ...request, screenshot: { filename: taken.filename } };
+      } catch (error) {
+        record.screenshotWarning = `Screenshot: ${error.message}`;
+        return { ...request, captureUnavailable: [...(request.captureUnavailable ?? []), "screenshot"] };
+      }
+    }
     function submitted(record, result) {
       if (result.state === "uncertain") { uncertain(record, result.error); return true; }
       if (result.state !== "added" && result.state !== "updated") return false;
@@ -139,7 +158,8 @@
       record.add.dataset.state = "success";
       const label = result.state === "added" ? "Added" : "Updated";
       text(record.add, label);
-      text(record.output, `${label} note ${result.noteId}. ${result.warnings.join(" ")}`.trim());
+      text(record.output, `${label} note ${result.noteId}. ${[record.screenshotWarning, ...result.warnings]
+        .filter(Boolean).join(" ")}`.trim());
       refreshAll(); // Best-effort checks cannot turn a confirmed write into a retry.
       return true;
     }
@@ -179,7 +199,7 @@
       text(record.output, "Saving to Anki…");
       let writeSent = false;
       try {
-        const prepared = await prepareCapture(record, request, owns);
+        const prepared = await prepareScreenshot(record, await prepareCapture(record, request, owns), owns);
         if (owns()) text(record.output, "Saving to Anki…");
         writeSent = true;
         const result = await send("hd_anki_submit", { request: prepared });

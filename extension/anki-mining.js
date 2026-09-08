@@ -146,6 +146,10 @@ export function createAnkiMiningService({
       error: result.error,
       action: result.action,
       capture,
+      // A mapped {screenshot} that the user has left switched on: the reader
+      // takes the viewport picture itself, when it submits.
+      screenshot: applied !== null && prepared.config.captureScreenshot === true
+        && ankiCaptureRequirements(applied.templates).includeScreenshot,
     };
   }
 

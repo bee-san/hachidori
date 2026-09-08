@@ -149,7 +149,7 @@ export function createAnkiWorkerService({
     if (status.state !== "ready") throw new Error(status.error || "The captured-media export was cancelled or expired.");
   }
 
-  return createAnkiMiningService({ gateway,
+  const mining = createAnkiMiningService({ gateway,
     readConfig: async () => {
       const options = await readOptions();
       return {
@@ -186,4 +186,23 @@ export function createAnkiWorkerService({
       return reply.dataUrl.slice(reply.dataUrl.indexOf(",") + 1);
     } }),
   });
+
+  // One viewport screenshot for the mining action being taken now. The caller
+  // owns the capture itself, because only it knows which page asked; this stores
+  // the picture through the same media gateway a note's other images use and
+  // returns the filename a field may reference.
+  async function screenshot(captureViewport) {
+    const { anki } = await readOptions();
+    if (anki.captureScreenshot !== true) throw new Error("Screenshots when mining are turned off in Settings.");
+    const dataUrl = await captureViewport();
+    const data = typeof dataUrl === "string" && dataUrl.startsWith("data:image/")
+      ? dataUrl.slice(dataUrl.indexOf(",") + 1) : "";
+    if (decodedBase64Length(data) === null) throw new Error("This page produced no screenshot.");
+    const filename = `hachidori-screenshot-${crypto.randomUUID()}.jpg`;
+    const stored = await gateway.invoke("storeMediaFile", { filename, data, deleteExisting: false }, anki.apiKey, 30_000);
+    if (stored !== filename) throw new Error("Anki stored the screenshot under a different filename.");
+    return { filename };
+  }
+
+  return { ...mining, screenshot };
 }
