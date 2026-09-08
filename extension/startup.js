@@ -15,13 +15,13 @@ import "./visual-novel.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-state.js";
+import { createPracticeView } from "./startup-practice.js";
 
 const WORKER_TARGET = "hoshidicts-worker";
 const SETUP_TARGET = "hachidori-setup";
 const SETUP_EVENTS_TARGET = "hachidori-setup-events";
 const ENGINE_TARGET = "hoshidicts-offscreen";
 const SUCCESS_DISPLAY_MS = 5000;
-const PRACTICE_SENTENCE = "朝ごはんを食べる。";
 const COUNTDOWN_TICK_MS = 250;
 // A run reports at every phase change and about ten times a second while a body
 // arrives, so a longer silence means the offscreen document that owned it is gone.
@@ -54,21 +54,21 @@ let advanceFailed = false;
 let installFailed = false;
 let runSilenceTimer = null;
 let readerLoading = null;
-// What a real lookup of the practice sentence found: unknown, "ready",
+// What a real lookup of the practice sentence found: unknown, "ready" (the
+// exact-selection shortcut answers), "passage" (another passage lookup answers),
 // "missing" (nothing in the installed dictionaries) or "unavailable" (the engine
 // could not answer). Probed again whenever the inventory or the options it
 // depends on change, so a removed dictionary or a shortened scan cannot leave a
 // stale invitation standing.
 let practiceOutcome = null;
 let practiceProbed = "";
-// The sentence is one node for the life of the page: a rerender that moves the
-// same node keeps a lookup in flight anchored, where a fresh node would cancel it.
-let practiceScene = null;
 // Anki detection is asked for once per page; a failed request waits for Retry.
 let ankiRequest = null;
 let ankiFailed = false;
 let ankiAdvancing = false;
 const announced = new Map();
+let dictionaryList;
+let practice;
 
 function element(id) {
   return document.getElementById(id);
@@ -245,11 +245,15 @@ function progressBar(progress, labelId) {
 }
 
 function dictionaryRows() {
+  if (dictionaryList) {
+    updateDictionaryRows();
+    return dictionaryList;
+  }
   const list = document.createElement("ul");
+  dictionaryList = list;
   list.className = "setup-dictionary-list";
   list.setAttribute("aria-label", "Default dictionaries");
   for (const entry of RECOMMENDED_DICTIONARIES) {
-    const state = rowState(entry);
     const row = document.createElement("li");
     row.className = "setup-dictionary";
     row.dataset.sourceId = entry.sourceId;
@@ -262,13 +266,44 @@ function dictionaryRows() {
     purpose.textContent = entry.description;
     const status = document.createElement("span");
     status.className = "setup-dictionary-status";
-    if (state.tone) status.classList.add(`is-${state.tone}`);
-    status.textContent = state.text;
+    status.id = `setup-dictionary-status-${entry.sourceId}`;
     row.append(name, purpose, status);
-    if (state.progress) row.appendChild(progressBar(state.progress, name.id));
+    const track = progressBar({ value: null }, name.id);
+    track.setAttribute("aria-describedby", status.id);
+    row.appendChild(track);
     list.appendChild(row);
   }
+  updateDictionaryRows();
   return list;
+}
+
+function updateDictionaryRows() {
+  for (const [index, entry] of RECOMMENDED_DICTIONARIES.entries()) {
+    const state = rowState(entry);
+    const row = dictionaryList.children[index];
+    const status = row.querySelector(".setup-dictionary-status");
+    if (status.textContent !== state.text) status.textContent = state.text;
+    status.classList.toggle("is-ok", state.tone === "ok");
+    status.classList.toggle("is-error", state.tone === "error");
+    row.classList.toggle("is-active", Boolean(state.progress));
+    const track = row.querySelector(".setup-track");
+    track.hidden = !state.progress;
+    const value = state.progress?.value;
+    const determinate = typeof value === "number";
+    track.classList.toggle("is-determinate", determinate);
+    if (determinate) {
+      track.removeAttribute("aria-valuetext");
+      track.setAttribute("aria-valuemin", "0");
+      track.setAttribute("aria-valuemax", "100");
+      track.setAttribute("aria-valuenow", String(Math.floor(value * 100)));
+      track.style.setProperty("--progress", `${value * 100}%`);
+    } else {
+      track.removeAttribute("aria-valuenow");
+      track.removeAttribute("aria-valuemin");
+      track.removeAttribute("aria-valuemax");
+      track.setAttribute("aria-valuetext", state.text);
+    }
+  }
 }
 
 // Announce outcomes, not bytes: one sentence when a dictionary settles.
@@ -430,7 +465,7 @@ function incompleteView(rows, importNote, missing) {
   const failed = installFailed || missing.some((entry) => setupState.dictionaries.outcomes[entry.sourceId]?.status === "failed");
   return {
     heading: failed ? "Some dictionaries could not be installed" : "Some dictionaries are not installed",
-    body: [rows, importNote],
+    body: [paragraph("Retry the missing dictionaries, or continue and add them later in Settings."), rows, importNote],
     actions: [
       button("setup-retry", "Retry missing dictionaries", () => { void requestInstall(missing.map((entry) => entry.sourceId)); }),
       button("setup-continue", "Continue setup", () => { void advance("anki", { continued: true }); }, "ghost"),
@@ -581,16 +616,17 @@ function loadReader() {
   readerLoading ??= readerScripts().reduce(
     (chain, src) => chain.then(() => loadScript(src)), Promise.resolve(),
   ).catch((error) => {
-    // The exercise is optional; the sentence and instructions stay readable.
+    // The persistent practice controller also exposes its recovery link.
     setStatus(`The lookup exercise could not start: ${describe(error)}`, "error");
+    throw error;
   });
   return readerLoading;
 }
 
 // The invitation is only made when this exact sentence can be answered, so the
-// page asks: an ordinary lookup from every offset in it, through the engine the
-// reader would use, stopping at the first hit. A partly installed library or an
-// unrelated dictionary therefore cannot advertise a hover that returns nothing.
+// page asks the exact-selection shortcut first, then ordinary lookups from the
+// passage offsets if needed, stopping at the first hit. A partly installed or
+// unrelated library therefore cannot advertise an exercise that returns nothing.
 // What the answer depends on, rather than the whole revision: the engine-visible
 // library and the lookup options the probe sends. A group-only or presentation
 // write leaves this unchanged, so it cannot invalidate a ready exercise.
@@ -598,28 +634,40 @@ function practiceSignature() {
   const library = dictionaries.map((dictionary) => [dictionary?.id ?? "", dictionary?.title ?? "",
     dictionary?.revision ?? "", dictionary?.path ?? "", dictionary?.enabled !== false,
     dictionary?.termCount ?? 0].join("\u001f")).join("\u001e");
-  return `${library}|${options.scanLength}|${options.frequencyDictionary}|${options.frequencyOrder}`;
+  return `${library}|${options.scanLength}|${options.maxResults}|${options.frequencyDictionary}|${options.frequencyOrder}`;
 }
 
-// One pass over the sentence: "ready" at the first hit, "missing" when nothing
-// answers, "refused" when the engine would not answer, "gone" when a newer
-// signature has taken over.
+async function probePracticeText(signature, text, exact = false) {
+  let reply;
+  try {
+    // Selection uses the selected word's length and ignores prefix-only hits;
+    // hover uses the configured scan length and needs just one term result.
+    reply = await send("hd_lookup", { text,
+      scanLength: exact ? [...text].length : options.scanLength,
+      maxResults: exact ? options.maxResults : 1,
+      options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder, primaryReading: "" },
+    }, ENGINE_TARGET);
+  } catch {
+    return "refused";
+  }
+  if (practiceProbed !== signature) return "gone";
+  if (reply?.ok === false) return "refused";
+  const found = Array.isArray(reply?.results) && reply.results.some((result) => result?.term
+    && (!exact || result.matched === text));
+  return found ? "ready" : "missing";
+}
+
+// Prove the fixed shortcut first. If it misses, one passage sweep can still
+// enable ordinary hover/selection without advertising that unanswered button.
 async function sweepPractice(signature) {
-  const characters = [...PRACTICE_SENTENCE];
+  const word = practice.node.querySelector("#setup-practice-word").textContent;
+  const shortcut = await probePracticeText(signature, word, true);
+  if (shortcut !== "missing") return shortcut;
+  const characters = [...practice.node.querySelector("#setup-practice-text").textContent];
   for (let start = 0; start < characters.length; start += 1) {
-    let reply;
-    try {
-      // The reader's own hover payload: the configured scan length decides how
-      // far a lookup from this offset may reach. One result settles existence.
-      reply = await send("hd_lookup", { text: characters.slice(start).join(""), scanLength: options.scanLength, maxResults: 1,
-        options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder, primaryReading: "" },
-      }, ENGINE_TARGET);
-    } catch {
-      return "refused";
-    }
-    if (practiceProbed !== signature) return "gone";
-    if (reply?.ok === false) return "refused";
-    if (Array.isArray(reply?.results) && reply.results.some((result) => result?.term)) return "ready";
+    const found = await probePracticeText(signature, characters.slice(start).join(""));
+    if (found === "ready") return "passage";
+    if (found !== "missing") return found;
   }
   return "missing";
 }
@@ -688,73 +736,26 @@ function lookupObstacle() {
   return null;
 }
 
-// One instruction, whichever screen shows it: a lookup needs the activation key
-// when that is the configured mode, wherever the text is.
-function hoverInstruction(where) {
-  return options.lookupMode === "activation"
-    ? `Hold ${options.activationKey} and hover over ${where} to look it up.`
-    : `Hover over ${where} to look it up.`;
-}
-
-// The last step tries the real reader on this page: the packaged scripts, the
-// installed dictionaries, the ordinary runtime lookup and the same popup a
-// webpage gets. Finish and Open Settings stay available throughout.
+// Preserve the reviewed scene while the current library is proved answerable.
+// Finish and saved-page guidance remain available throughout the probe.
 function practiceView() {
-  const outcome = setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)];
-  const finishAction = [button("setup-finish", "Finish", () => { void finish(); })];
-  const obstacle = lookupObstacle();
-  if (obstacle !== null) {
-    return {
-      heading: "You’re ready.",
-      body: [...outcome, paragraph(obstacle.text), settingsNote(obstacle.before, obstacle.href)],
-      actions: finishAction,
-    };
+  if (!practice) {
+    practice = createPracticeView({ document, loadReader,
+      onDismiss: () => { element("setup-finish")?.focus(); } });
+    globalThis.HDVisualNovel.initialize(practice.node.querySelector(".vn-scene"));
   }
-  // A changed inventory or option retires the previous answer, including a
-  // successful one: the exercise must describe the library as it is now.
-  if (practiceProbed !== practiceSignature()) probePractice();
-  if (practiceOutcome === "missing") {
-    return {
-      heading: "You’re ready.",
-      body: [...outcome, paragraph("The installed dictionaries do not have the words in this sample yet."),
-        settingsNote("Install dictionaries in ", "settings.html#add-dictionaries")],
-      actions: finishAction,
-    };
+  if (lookupObstacle() !== null) {
+    // Retire an in-flight probe when lookup becomes unavailable too.
+    practiceProbed = "";
+    practiceOutcome = null;
+  } else if (practiceProbed !== practiceSignature()) {
+    probePractice();
   }
-  if (practiceOutcome !== "ready") {
-    // The engine answers in milliseconds; until it has, the step stands on its
-    // own rather than promising a lookup this page has not proved.
-    return {
-      heading: "You’re ready.",
-      body: [...outcome, paragraph(practiceOutcome === "unavailable"
-        ? hoverInstruction("Japanese text on any webpage")
-        : "Checking what the installed dictionaries can answer…")],
-      actions: finishAction,
-    };
-  }
-  void loadReader();
-  practiceScene ??= (() => {
-    const scene = document.createElement("section");
-    scene.className = "vn-scene";
-    scene.setAttribute("aria-label", "Visual novel practice scene");
-    const dialogue = document.createElement("div");
-    dialogue.className = "vn-dialogue";
-    dialogue.lang = "ja";
-    const speaker = paragraph("ひなた", "vn-speaker");
-    const node = document.createElement("p");
-    node.className = "setup-practice-sample vn-line";
-    node.lang = "ja";
-    node.textContent = PRACTICE_SENTENCE;
-    dialogue.append(speaker, node);
-    scene.append(dialogue);
-    globalThis.HDVisualNovel.initialize(scene);
-    return scene;
-  })();
+  practice.update(options, dictionaries, practiceOutcome);
   return {
-    heading: "You’re ready. Try looking up a word below.",
-    body: [...outcome, paragraph(hoverInstruction("the Japanese below")), practiceScene,
-      paragraph("Read the dialogue, look up a word, and use Add to Anki in the popup when Anki is set up. This is a real lookup, just like on a webpage.")],
-    actions: finishAction,
+    heading: "You’re ready.",
+    body: [...(setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)]), practice.node],
+    actions: [button("setup-finish", "Finish", () => { void finish(); }), paragraph("The exercise is optional. You can finish any time.")],
   };
 }
 
@@ -764,7 +765,7 @@ const VIEWS = {
   practice: practiceView,
   complete: () => ({
     heading: "Setup is complete.",
-    body: [settingsNote("Change dictionaries, Anki and reading preferences any time in ", "settings.html")],
+    body: [paragraph("You can close this tab and start reading."), settingsNote("Change dictionaries, Anki and reading preferences any time in ", "settings.html")],
     actions: [],
   }),
 };
@@ -781,7 +782,7 @@ function failedView() {
   return {
     heading: "Setup could not be read.",
     body: [paragraph(setupError, "hint is-error"), settingsNote("Hachidori still works; manage it in ", "settings.html")],
-    actions: [],
+    actions: [button("setup-reload", "Reload setup", () => { location.reload(); })],
   };
 }
 
@@ -804,6 +805,19 @@ function currentView() {
   return VIEWS[setupState.stage]();
 }
 
+function renderBody(children) {
+  const body = element("setup-body");
+  // Remove obsolete nodes backwards before inserting replacements, keeping
+  // persistent rows and the scene connected throughout the update.
+  for (let index = body.children.length - 1; index >= 0; index -= 1) {
+    const child = body.children[index];
+    if (!children.includes(child)) child.remove();
+  }
+  for (const [index, child] of children.entries()) {
+    if (body.children[index] !== child) body.insertBefore(child, body.children[index] ?? null);
+  }
+}
+
 function render() {
   const stage = setupError === null ? setupState?.stage ?? null : null;
   // A stage of its own starts without the previous stage's failed-advance state.
@@ -813,18 +827,27 @@ function render() {
   const view = currentView();
   renderSteps(stage);
   const heading = element("setup-heading");
-  heading.textContent = view.heading;
-  element("setup-body").replaceChildren(...view.body);
+  if (heading.textContent !== view.heading) heading.textContent = view.heading;
+  renderBody(view.body);
   element("setup-actions").replaceChildren(...view.actions);
   announceOutcomes();
+  if (heading.textContent !== lastAnnouncedHeading) {
+    lastAnnouncedHeading = heading.textContent;
+    if (!element("setup-status").classList.contains("is-error")) setStatus(view.heading);
+  }
   if (renderedStage !== undefined && renderedStage !== stage) {
     // The control that held focus belonged to the previous stage.
     heading.focus();
   } else if (focusKey) {
-    [...card.querySelectorAll("[data-focus-key]")].find((node) => node.dataset.focusKey === focusKey)?.focus();
+    const replacement = [...card.querySelectorAll("[data-focus-key]")].find((node) => node.dataset.focusKey === focusKey);
+    // Retry removes its button while work runs; keep a keyboard user's place
+    // at the result heading when that action no longer exists.
+    (replacement ?? heading).focus();
   }
   renderedStage = stage;
 }
+
+let lastAnnouncedHeading;
 
 async function advance(stage, { continued = false } = {}) {
   if (saving || setupState === null) return false;
@@ -882,6 +905,12 @@ function handleRuntimeMessage(message) {
 }
 
 async function start() {
+  // Focus directly without a new history entry. The reader also permits the
+  // native heading fragment if the link ran before this handler was attached.
+  document.querySelector(".skip-link").addEventListener("click", (event) => {
+    event.preventDefault();
+    element("setup-heading").focus();
+  });
   chrome.storage.onChanged.addListener(handleStorageChange);
   chrome.runtime.onMessage.addListener(handleRuntimeMessage);
   const stored = await chrome.storage.local.get([SETUP_STATE_KEY, "dictionaryState", "options"]);
@@ -895,4 +924,9 @@ async function start() {
   render();
 }
 
-await start();
+try {
+  await start();
+} catch (error) {
+  setupError = describe(error);
+  render();
+}

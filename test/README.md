@@ -300,7 +300,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 449 checks, all of
+full request→reply round trip per contract-C message type. 458 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -671,7 +671,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 173 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 180 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -750,9 +750,13 @@ automatically configured one, and
 a real lookup open.
 
 The jsdom stage for that step also requires the appended list to match the
-manifest's own `content_scripts` order, that the sentence is probed offset by
-offset until one lookup answers, that removing the package which answered retires
-the invitation and probes again while a group-only revision does not, and covers every state that must not invite a
+manifest's own `content_scripts` order, that the exact **辞書** selection is
+probed first and the sentence is then probed offset by offset only if needed,
+that a prefix-only shortcut hit keeps the button hidden while another passage
+word can still enable the exercise, and that the exact-selection length remains
+two when the hover scan length is one. It also checks that removing the package
+which answered retires the invitation and probes again while a group-only
+revision does not, and covers every state that must not invite a
 hover: a frequency-only library, a library that answers nothing, an engine that
 refuses the first pass and is retried after a failed status, a long loading
 recovery and then an idle engine, an engine that
@@ -761,13 +765,46 @@ sentence to be the same node afterwards, which is what keeps an in-flight lookup
 anchored.
 
 Two further checks cover that practice step. The first waits for the reader
-scripts the page appends for itself, aims the real mouse at the verb's own
-character rectangle inside **朝ごはんを食べる。**, and requires the closed-shadow
-popup to show 食べる with the definition from the Jitendex fixture this run
+scripts the page appends for itself, requires their manifest order, aims the
+real mouse at **辞書** inside the reviewed street-scene passage, and requires
+the closed-shadow popup to show 辞書 with the definition from the Jitendex fixture this run
 installed, then to close on leave. The second loads those same scripts into
 Settings, hovers Japanese text there with the real mouse, and requires the
 renderer to be present but no reader host to exist, which is what proves the
 page restriction rather than the absence of an injection.
+
+The keyboard/hover practice check first reloads `startup.html#setup-heading`,
+the URL its native skip link can create before the module attaches a handler,
+then requires the ordinary reader to answer from the real installed fixture.
+The internal-page exclusion check also injects the same scripts into query
+variants (including one with the known fragment) and an unknown fragment,
+requiring no reader host or selection lookup there.
+
+Four further assertions cover the real practice and saved-page flow. The
+keyboard lookup button selects 辞書 from the scene and the ordinary reader
+returns the just-installed catalogue fixture's glossary; pointer lookup works
+too. An options update preserves the connected scene and selection. Using
+**Skip to setup** keeps the exact startup URL, while explicitly injecting the
+reader into Settings, the design preview or a query-suffixed startup URL still
+produces no lookup. The file-access control opens this extension's own Chrome
+details page. At the end of the browser suite, it returns without enabling,
+then flips the real switch in its isolated profile. Chrome closes extension
+tabs during the reload, so the test opens **Extension options** and follows
+**Resume setup** to the persisted practice stage. It confirms access on resume
+and page reload, then looks up 辞書 in a local HTML fixture. Access is disabled
+again before **Not now** and **Finish**. The Anki success screen, after fixture
+removal, proves dictionary recovery keeps Finish and Settings available.
+`HACHIDORI_STARTUP_LOOKUP_SCREENSHOT` captures the actual practice popup.
+The native-switch scenario enables Developer mode in its isolated profile:
+Chrome 152 otherwise disables a command-line extension when it reloads as an
+unpacked extension. No personal browser settings are changed.
+
+`node --test test/local-file-access.test.mjs test/startup-practice.test.mjs`
+covers the optional prompt's initial query, return/reload lifecycle, stale
+replies, skip and Settings shortcut, plus practice selection, retained nodes,
+reader load failure and missing/disabled-dictionary recovery. The startup
+extension-smoke assertion also checks selection and focus through a same-stage
+options event; audio routing covers startup document/request ownership.
 
 An in-memory external-reference fixture also passes through real WASM. Real Enter
 on its closed-shadow anchor must create exactly one worker-routed browser tab,
@@ -987,7 +1024,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 173 assertions, and the summary line
+`PLANNED` at the top of the file names all 180 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

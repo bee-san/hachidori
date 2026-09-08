@@ -102,12 +102,13 @@
     return;
   }
   // The reader belongs to ordinary pages. First-run setup loads these same
-  // scripts into its own startup page for the practice step, so that exact URL
-  // is the one extension page it may run on; Settings, the design preview and
-  // every other internal page stay excluded.
+  // scripts into its own startup page for the practice step. Its native skip
+  // link may leave the known heading fragment before the module loads or on
+  // reload; query variants and every other internal page stay excluded.
   if (
     location.protocol === "chrome-extension:" &&
-    location.href.split(/[?#]/u)[0] !== chrome.runtime.getURL("startup.html")
+    location.href !== chrome.runtime.getURL("startup.html") &&
+    location.href !== chrome.runtime.getURL("startup.html#setup-heading")
   ) {
     return;
   }
