@@ -62,7 +62,7 @@ let practiceOutcome = null;
 let practiceProbed = "";
 // The sentence is one node for the life of the page: a rerender that moves the
 // same node keeps a lookup in flight anchored, where a fresh node would cancel it.
-let practiceSample = null;
+let practiceScene = null;
 // Anki detection is asked for once per page; a failed request waits for Retry.
 let ankiRequest = null;
 let ankiFailed = false;
@@ -732,17 +732,26 @@ function practiceView() {
     };
   }
   void loadReader();
-  practiceSample ??= (() => {
+  practiceScene ??= (() => {
+    const scene = document.createElement("section");
+    scene.className = "vn-scene";
+    scene.setAttribute("aria-label", "Visual novel practice scene");
+    const dialogue = document.createElement("div");
+    dialogue.className = "vn-dialogue";
+    dialogue.lang = "ja";
+    const speaker = paragraph("ひなた", "vn-speaker");
     const node = document.createElement("p");
-    node.className = "setup-practice-sample";
+    node.className = "setup-practice-sample vn-line";
     node.lang = "ja";
     node.textContent = PRACTICE_SENTENCE;
-    return node;
+    dialogue.append(speaker, node);
+    scene.append(dialogue);
+    return scene;
   })();
   return {
     heading: "You’re ready. Try looking up a word below.",
-    body: [...outcome, paragraph(hoverInstruction("the Japanese below")), practiceSample,
-      paragraph("It works the same way on any webpage.")],
+    body: [...outcome, paragraph(hoverInstruction("the Japanese below")), practiceScene,
+      paragraph("Read the dialogue, look up a word, and use Add to Anki in the popup when Anki is set up. This is a real lookup, just like on a webpage.")],
     actions: finishAction,
   };
 }

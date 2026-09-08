@@ -212,7 +212,7 @@ const PLANNED = [
   "the automatic installer continues after a mocked failure through real download and installation phases",
   "Retry installs only the missing dictionary and the committed entries settle their selections once",
   "the all-installed result stays five seconds before setup checks for Anki",
-  "the practice step looks a word up on the startup page through the real reader and the installed dictionaries",
+  "the practice visual novel scene fits narrow screens and looks a word up through the real reader and installed dictionaries",
   "the reader refuses to run on Settings even when its own scripts are loaded there",
   "an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup",
   "first-run detection configures an existing Kiku mining setup read-only from the startup page",
@@ -221,7 +221,7 @@ const PLANNED = [
   "Settings light and dark themes keep every task view readable without horizontal overflow",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   "Settings rejects malformed and oversized option frames before commit and still autosaves without reload",
-  "Design lazily renders local sample terms, kanji and images through the production popup",
+  "Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup",
   "Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries",
   "Design fits the popup without changing its actual dimensions and keeps narrow Settings scrollable",
   "Design exposes 42 grouped themes and applies real palette overrides without rebuilding the preview",
@@ -4493,7 +4493,9 @@ async function checkToolbarPreview(page, frame) {
         const root = document.getElementById("preview-host").shadowRoot;
         const popup = root.querySelector(".gsm-hoshidicts-popup");
         const cards = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")];
-        return popup.dataset.toolbarPosition === (edge === "auto" ? "top" : edge)
+        // The scene's dialogue is below the popup, so Automatic keeps its
+        // toolbar at the bottom, nearest the hovered game text.
+        return popup.dataset.toolbarPosition === (edge === "auto" ? "bottom" : edge)
           && root.activeElement === proof.input && proof.input.value === "A toolbar draft"
           && proof.input.selectionStart === 2 && proof.input.selectionEnd === 7 && !proof.removed && proof.blurs === 0
           && proof.form === popup.querySelector("form") && cards.length === proof.cards.length
@@ -4707,6 +4709,38 @@ async function checkCustomCssPreview(page, frame) {
   }
 }
 
+async function readVisualNovelScene(page, sourceSelector) {
+  return page.evaluate(async (selector, highlightName) => {
+    const scene = document.querySelector(".vn-scene");
+    const dialogue = scene?.querySelector(".vn-dialogue");
+    const source = document.querySelector(selector);
+    if (!scene || !dialogue || !source) return null;
+    const imageUrl = getComputedStyle(scene).backgroundImage.match(/url\(["']?([^"')]+)["']?\)/u)?.[1];
+    const image = new Image();
+    image.src = imageUrl ?? "";
+    await image.decode().catch(() => {});
+    const range = document.createRange();
+    range.selectNodeContents(source);
+    const sourceRects = [...range.getClientRects()];
+    const dialogueRect = dialogue.getBoundingClientRect();
+    return {
+      backgroundLoaded: imageUrl === new URL("assets/preview-background.png", location.href).href
+        && image.naturalWidth === 1672 && image.naturalHeight === 941,
+      dialogueVisible: dialogueRect.width > 0 && dialogueRect.height > 0
+        && getComputedStyle(dialogue).visibility === "visible" && dialogue.querySelector(".vn-speaker")?.textContent.trim().length > 0,
+      sourceAccessible: sourceRects.length > 0 && sourceRects.every(rect => rect.width > 0 && rect.height > 0
+        && rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight
+        && source.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2))),
+      highlighted: [...(CSS.highlights.get(highlightName) ?? [])]
+        .filter(match => source.contains(match.startContainer) && source.contains(match.endContainer))
+        .map(match => match.toString()).join(""),
+      sourceTop: range.getBoundingClientRect().top,
+      dialogueTop: dialogueRect.top,
+      overflow: document.documentElement.scrollWidth > innerWidth,
+    };
+  }, sourceSelector, HIGHLIGHT_NAME);
+}
+
 async function checkDesignPreview(page) {
   const original = await readSettingsControls(page, ["opt-popup-columns", "opt-compact-summary", "opt-frequency-names"]);
   const originalViewport = page.viewport();
@@ -4721,6 +4755,9 @@ async function checkDesignPreview(page) {
     await frame.waitForFunction(() => document.getElementById("preview-host")?.shadowRoot
       ?.querySelector('.gloss-image-link[data-image-load-state="loaded"] img')?.naturalWidth > 0,
     { timeout: 10_000 });
+    const scene = await readVisualNovelScene(frame, "#preview-source");
+    const popupRect = await frame.evaluate(() => document.getElementById("preview-host").shadowRoot
+      .querySelector(".gsm-hoshidicts-popup").getBoundingClientRect().toJSON());
     const sample = await frame.evaluate(() => {
       const root = document.getElementById("preview-host").shadowRoot;
       const popup = root.querySelector(".gsm-hoshidicts-popup");
@@ -4741,8 +4778,10 @@ async function checkDesignPreview(page) {
     await page.keyboard.press("Enter");
     const back = await frame.evaluate(() => document.getElementById("preview-host").shadowRoot
       .activeElement?.classList.contains("gsm-hoshidicts-kanji-link"));
-    check("Design lazily renders local sample terms, kanji and images through the production popup", before.lazy && sample && kanji && back,
-      JSON.stringify({ lazy: before.lazy, sample, kanji, back }));
+    check("Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup",
+      before.lazy && sample && kanji && back && scene?.backgroundLoaded && scene.dialogueVisible && scene.sourceAccessible
+        && scene.highlighted === "食べる" && popupRect.bottom <= scene.sourceTop && popupRect.top < scene.dialogueTop,
+      JSON.stringify({ lazy: before.lazy, sample, kanji, back, scene, popupRect }));
     await frame.evaluate(() => {
       const popup = document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
       window.previewCard = popup.querySelector(".gsm-hoshidicts-glossary-card");
@@ -4793,6 +4832,9 @@ async function checkDesignPreview(page) {
     if (process.env.HACHIDORI_DESIGN_SCREENSHOT) {
       await page.setViewport({ width: 1440, height: 1000 });
       await frame.evaluate(async () => {
+        const root = document.getElementById("preview-host").shadowRoot;
+        root.activeElement?.blur();
+        root.querySelector(".gsm-hoshidicts-popup").scrollTop = 0;
         for (let index = 0; index < 3; index++) await new Promise(requestAnimationFrame);
       });
       await page.screenshot({ path: process.env.HACHIDORI_DESIGN_SCREENSHOT });
@@ -6178,11 +6220,11 @@ async function main() {
   // recorded once and the page moves on without asking the user anything.
   const settledAnki = painted("No Anki found");
   if (startup && (process.env.HACHIDORI_STARTUP_READY_SCREENSHOT || process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT)) {
-    await startup.setViewport({ width: 900, height: 820 });
+    await startup.setViewport({ width: 1200, height: 1000 });
     for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_READY_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_READY_DARK_SCREENSHOT]]) {
       if (!path) continue;
       await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
-      await startup.screenshot({ path });
+      await startup.screenshot({ path, fullPage: true });
     }
     await startup.emulateMediaFeatures([]);
   }
@@ -6203,6 +6245,10 @@ async function main() {
   let exercise = null;
   if (startup !== null) {
     await startup.bringToFront();
+    await startup.setViewport({ width: 320, height: 900 });
+    await startup.$eval(".setup-practice-sample", source => source.scrollIntoView({ block: "center" }));
+    const narrowScene = await readVisualNovelScene(startup, ".setup-practice-sample");
+    await startup.setViewport({ width: 1200, height: 1000 });
     const startupPopup = await popupReader(startup);
     const injected = await startup.waitForFunction(() => {
       const sources = [...document.querySelectorAll("script[data-setup-reader]")].map((script) => script.getAttribute("src"));
@@ -6212,7 +6258,9 @@ async function main() {
     // character's own rectangle rather than at a fraction of the paragraph.
     const hoverCharacter = async (index) => {
       const point = await startup.evaluate((at) => {
-        const text = document.querySelector(".setup-practice-sample")?.firstChild;
+        const source = document.querySelector(".setup-practice-sample");
+        source?.scrollIntoView({ block: "nearest" });
+        const text = source?.firstChild;
         if (!text) return null;
         const range = document.createRange();
         range.setStart(text, at);
@@ -6233,29 +6281,35 @@ async function main() {
     // Chrome reports no Resource Timing for extension-scheme subresources, so
     // what the step costs is measured where it is visible: the hover that answers.
     console.log(`     practice lookup answered in ${Date.now() - startedLookup} ms`);
+    const scene = await readVisualNovelScene(startup, ".setup-practice-sample");
+    const popupRect = looked === null ? null : (await startupPopup.nested())?.rect;
     if (looked !== null && (process.env.HACHIDORI_STARTUP_PRACTICE_SCREENSHOT || process.env.HACHIDORI_STARTUP_PRACTICE_DARK_SCREENSHOT)) {
-      await startup.setViewport({ width: 900, height: 820 });
+      await startup.setViewport({ width: 1200, height: 1000 });
       for (const [scheme, path] of [["light", process.env.HACHIDORI_STARTUP_PRACTICE_SCREENSHOT], ["dark", process.env.HACHIDORI_STARTUP_PRACTICE_DARK_SCREENSHOT]]) {
         if (!path) continue;
         await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
         await hoverCharacter("朝ごはんを".length);
         await startupPopup.waitForVisible(2000);
-        await startup.screenshot({ path });
+        await startup.screenshot({ path, fullPage: true });
       }
       await startup.emulateMediaFeatures([]);
     }
     await startup.mouse.move(2, 2);
     const hidden = looked === null ? null : await startupPopup.waitForHidden(6000);
-    exercise = { injected, looked, hidden };
+    exercise = { injected, looked, hidden, scene, narrowScene, popupRect };
   }
   const jitendexFixtureTitle = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "jitendex").title;
   check(
-    "the practice step looks a word up on the startup page through the real reader and the installed dictionaries",
+    "the practice visual novel scene fits narrow screens and looks a word up through the real reader and installed dictionaries",
     JSON.stringify(exercise?.injected) === JSON.stringify(READER_SCRIPTS)
       && exercise.looked !== null && exercise.looked.plain.includes("食べる")
       && exercise.looked.text.includes(`${jitendexFixtureTitle} verb fixture`)
-      && exercise.hidden === true,
-    JSON.stringify({ injected: exercise?.injected, looked: exercise?.looked, hidden: exercise?.hidden }),
+      && exercise.hidden === true
+      && [exercise.scene, exercise.narrowScene].every(scene => scene?.backgroundLoaded && scene.dialogueVisible
+        && scene.sourceAccessible && !scene.overflow)
+      && exercise.scene.highlighted === "食べる" && exercise.popupRect?.bottom <= exercise.scene.sourceTop
+      && exercise.popupRect.top < exercise.scene.dialogueTop,
+    JSON.stringify(exercise),
   );
 
   let closedTab = null;
