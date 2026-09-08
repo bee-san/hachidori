@@ -254,8 +254,12 @@ const PLANNED = [
   "definition blur follows real lookup counts and settings and holds autoplay for blurred results",
   "blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
   "Anki maturity blur is opt-in and persists independently of lookup counts",
-  "held Anki maturity keeps the first local popup responsive and mature definitions reveal silently",
-  "nonmature and unavailable Anki fail open while qualifying lookup counts still blur independently",
+  "a cold Anki maturity cache leaves the popup responsive while its first refresh is held",
+  "cached mature definitions reveal silently and repeated lookups make no Anki requests",
+  "a scheduled maturity refresh preserves the current popup and updates only new lookups",
+  "disabling maturity cancels its alarm and pending publication and re-enabling refreshes immediately",
+  "an unavailable Anki refresh retains cached maturity and independent count blur",
+  "worker restart restores cached maturity and the missing thirty-minute alarm without fetching",
   "lookup counts survive a full browser restart",
   "reader settings and their revision survive a full browser restart",
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
@@ -4334,23 +4338,26 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
   }
 }
 
-async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup }) {
+async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, watchedServiceWorkers }) {
+  const alarmName = "hachidori-anki-maturity";
+  const intervalMs = 30 * 60 * 1000;
   const original = await readSettingsControls(settings, ["opt-lookup-counts", "opt-blur-enabled", "opt-blur-anki-mature",
     "opt-blur-direction", "opt-blur-threshold", "opt-blur-reveal", "opt-blur-delay", "opt-audio-autoplay"]);
   const originalAnki = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options.anki);
   const calls = [];
-  let mode = "nonmature", releaseMaturity = null;
-  // Match the entire fixed AnkiConnect endpoint, including mining discovery and
-  // preflight: no action in this block may reach the user's running Anki.
+  let mode = "held-mature", releaseMaturity = null;
+  // Cover the entire endpoint, including mining discovery and preflight, so
+  // fixtures never depend on the user's Anki notes or scheduling data.
   const route = { requests: 0, async respond(request) {
     const { action, params } = JSON.parse(request.postData);
     calls.push({ action, params });
-    if (mode === "offline") return { body: "Anki unavailable", status: 503, contentType: "text/plain" };
     let result;
-    if (action === "findCards") {
-      const mature = mode === "mature";
-      if (mature) await new Promise(resolve => { releaseMaturity = resolve; });
-      result = mature ? [70] : [];
+    if (action === "notesInfo") {
+      const responseMode = mode;
+      if (responseMode.startsWith("held-")) await new Promise(resolve => { releaseMaturity = resolve; });
+      if (responseMode === "offline") return { body: "Anki unavailable", status: 503, contentType: "text/plain" };
+      result = responseMode.endsWith("mature") ? [{ noteId: 70, modelName: "Basic", cards: [70],
+        fields: { Front: { value: "食べる", order: 0 }, Back: { value: "to eat", order: 1 } } }] : [];
     } else if (action === "deckNames") result = ["Default"];
     else if (action === "modelNames") result = ["Basic"];
     else if (action === "modelFieldNames") result = ["Front", "Back"];
@@ -4358,8 +4365,25 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup }) 
     else throw new Error(`Unexpected Anki maturity action ${action}`);
     return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
   } };
-  const worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
-  const session = await interceptFetches(worker, new Map([["http://127.0.0.1:8765/", route]]), "anki-maturity");
+  const routes = new Map([["http://127.0.0.1:8765/", route]]);
+  let worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
+  let session = await interceptFetches(worker, routes, "anki-maturity");
+  const refreshCalls = () => calls.filter(call => call.action === "notesInfo").length;
+  const readCache = () => settings.evaluate(async () => (await chrome.storage.local.get("ankiMaturityCache")).ankiMaturityCache);
+  const waitForSnapshot = (mature, previousRefresh = null) => settings.waitForFunction(async ({ mature, previousRefresh }) => {
+    const { ankiMaturityCache: cache } = await chrome.storage.local.get("ankiMaturityCache");
+    return cache?.snapshot && cache.snapshot.refreshedAt !== previousRefresh
+      && cache.snapshot.words.includes("食べる") === mature ? cache : false;
+  }, { timeout: 10_000, polling: 50 }, { mature, previousRefresh }).then(handle => handle.jsonValue());
+  const releaseRefresh = () => { releaseMaturity?.(); releaseMaturity = null; };
+  const triggerRefresh = () => settings.evaluate(async ({ alarmName, intervalMs }) => {
+    const { ankiMaturityCache } = await chrome.storage.local.get("ankiMaturityCache");
+    // Advance only the stored attempt deadline; Chrome still delivers a real
+    // alarm through the production worker's onAlarm listener.
+    await chrome.storage.local.set({ ankiMaturityCache: { ...ankiMaturityCache,
+      attempt: { ...ankiMaturityCache.attempt, startedAt: Date.now() - intervalMs } } });
+    await chrome.alarms.create(alarmName, { when: Date.now() + 100 });
+  }, { alarmName, intervalMs });
   const freshLookup = async () => {
     await tab.bringToFront();
     await tab.keyboard.press("Escape");
@@ -4380,8 +4404,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup }) 
       if (!reply.ok) throw new Error(reply.error);
     });
     await updateSettingsControls(settings, { "opt-blur-anki-mature": true });
-    // Keep the main Settings page's already-open custom source editor alive for
-    // the later Note adoption contract while independently proving a reload.
+    // Keep the main Settings page's custom source draft alive for later tests.
     const reloadedSettings = await browser.newPage();
     let persisted;
     try {
@@ -4401,45 +4424,145 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup }) 
       JSON.stringify({ original, persisted }));
 
     const before = await readLookupStatistics(settings);
-    mode = "mature";
-    const definition = await freshLookup();
-    const pending = await waitForDefinitionBlur(popup, value => releaseMaturity !== null && value?.state === "pending", 800);
-    const respondedAfterDisplay = releaseMaturity !== null && popup.visible(definition);
-    releaseMaturity?.();
-    releaseMaturity = null;
-    mode = "nonmature";
+    const coldDefinition = await freshLookup();
+    const cold = await waitForDefinitionBlur(popup, value => releaseMaturity !== null
+      && value?.state === "revealed" && value.audioFeedback.some(Boolean), 5_000);
+    const coldCache = await readCache();
+    check("a cold Anki maturity cache leaves the popup responsive while its first refresh is held",
+      coldDefinition?.plain.includes("食べる") && popup.visible(coldDefinition)
+        && releaseMaturity !== null && cold?.state === "revealed" && cold.audioFeedback.some(Boolean)
+        && !coldCache?.snapshot && refreshCalls() === 1,
+      JSON.stringify({ cold, coldCache, calls }));
+    releaseRefresh();
+    const initialCache = await waitForSnapshot(true);
+    const matureDefinition = await freshLookup();
     const mature = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
     await tab.mouse.move(mature.definitionsPoint.x, mature.definitionsPoint.y);
     const hovered = await waitForDefinitionBlur(popup, value => value?.state === "revealed");
+    await freshLookup();
+    const repeated = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
     const after = await readLookupStatistics(settings);
-    const query = calls.find(call => call.action === "findCards")?.params.query ?? "";
-    check("held Anki maturity keeps the first local popup responsive and mature definitions reveal silently",
-      definition?.plain.includes("食べる") && respondedAfterDisplay
-        && pending?.state === "pending" && !pending.audioFeedback.some(Boolean)
-        && mature?.state === "blurred" && mature.definitionsState === "blurred" && !mature.audioFeedback.some(Boolean)
-        && hovered?.state === "revealed" && !hovered.audioFeedback.some(Boolean)
+    const query = calls.find(call => call.action === "notesInfo")?.params.query ?? "";
+    check("cached mature definitions reveal silently and repeated lookups make no Anki requests",
+      matureDefinition?.plain.includes("食べる") && mature?.state === "blurred" && mature.definitionsState === "blurred"
+        && !mature.audioFeedback.some(Boolean) && hovered?.state === "revealed" && !hovered.audioFeedback.some(Boolean)
+        && repeated?.state === "blurred" && refreshCalls() === 1 && !calls.some(call => call.action === "findCards")
         && before.ok && after.ok && before.statistics === null && after.statistics === null
         && before.descriptor.generation === after.descriptor.generation && before.descriptor.revision === after.descriptor.revision
         && query.includes("is:review") && query.includes("-is:learn") && query.includes("prop:ivl>=21")
-        && query.includes("note:Basic") && query.includes("Front:食べる") && !query.includes("deck:"),
-      JSON.stringify({ respondedAfterDisplay, pending, mature, hovered, before, after, query }));
+        && query.includes("note:Basic") && !query.includes("Front:") && !query.includes("deck:"),
+      JSON.stringify({ mature, hovered, repeated, before, after, query, calls }));
 
+    mode = "held-empty";
+    await triggerRefresh();
+    await freshLookup();
+    const refreshing = await waitForDefinitionBlur(popup, value => releaseMaturity !== null && value?.state === "blurred");
+    await popup.lookupStatistics("remember");
+    releaseRefresh();
+    const emptyCache = await waitForSnapshot(false, initialCache.snapshot.refreshedAt);
+    const retained = await popup.lookupStatistics();
+    const afterRefresh = await popup.definitionBlur();
     const nonmatureDefinition = await freshLookup();
     const nonmature = await waitForDefinitionBlur(popup, value => value?.state === "revealed" && value.audioFeedback.some(Boolean), 5_000);
+    check("a scheduled maturity refresh preserves the current popup and updates only new lookups",
+      refreshing?.state === "blurred" && !refreshing.audioFeedback.some(Boolean)
+        && retained?.samePopup && retained.samePanel && afterRefresh?.state === "blurred"
+        && emptyCache.snapshot.words.length === 0 && nonmatureDefinition?.plain.includes("食べる")
+        && nonmature?.state === "revealed" && nonmature.audioFeedback.some(Boolean) && refreshCalls() === 2,
+      JSON.stringify({ refreshing, retained, afterRefresh, emptyCache, nonmature }));
+
+    mode = "held-mature";
+    await triggerRefresh();
+    await waitForDefinitionBlur(popup, () => releaseMaturity !== null);
+    const heldOnDisable = releaseMaturity !== null;
+    await updateSettingsControls(settings, { "opt-blur-anki-mature": false });
+    releaseRefresh();
+    const disabledAlarm = await settings.evaluate(name => chrome.alarms.get(name), alarmName);
+    const disabledCache = await readCache();
+    mode = "held-mature";
+    await updateSettingsControls(settings, { "opt-blur-anki-mature": true });
+    await waitForDefinitionBlur(popup, () => releaseMaturity !== null);
+    const beforeReenabledRefresh = await readCache();
+    releaseRefresh();
+    const reenabledCache = await waitForSnapshot(true, emptyCache.snapshot.refreshedAt);
+    check("disabling maturity cancels its alarm and pending publication and re-enabling refreshes immediately",
+      heldOnDisable && disabledAlarm === undefined && disabledCache.snapshot.words.length === 0
+        && beforeReenabledRefresh.snapshot.words.length === 0 && reenabledCache.snapshot.words.includes("食べる") && refreshCalls() === 4,
+      JSON.stringify({ heldOnDisable, disabledAlarm, disabledCache, beforeReenabledRefresh, reenabledCache, calls }));
+
     mode = "offline";
-    const offlineDefinition = await freshLookup();
-    const offline = await waitForDefinitionBlur(popup, value => value?.state === "revealed" && value.audioFeedback.some(Boolean), 5_000);
-    mode = "nonmature";
+    await triggerRefresh();
+    await freshLookup();
+    const offline = await waitForDefinitionBlur(popup, value => refreshCalls() === 5 && value?.state === "blurred");
+    const retry = await settings.waitForFunction(async ({ alarmName, intervalMs, previousAttempt }) => {
+      const { ankiMaturityCache: cache } = await chrome.storage.local.get("ankiMaturityCache");
+      const alarm = await chrome.alarms.get(alarmName);
+      return cache.attempt.startedAt > previousAttempt && alarm?.scheduledTime === cache.attempt.startedAt + intervalMs
+        ? { cache, alarm } : false;
+    }, { timeout: 10_000, polling: 50 }, { alarmName, intervalMs, previousAttempt: reenabledCache.attempt.startedAt })
+      .then(handle => handle.jsonValue());
+    // Leave a mature snapshot and a failed-attempt deadline on disk, then stop
+    // the actual worker. Its replacement must serve the cache and recover the
+    // missing alarm without pulling Anki again or retrying the recent failure.
+    const restartState = retry;
+    const callsBeforeRestart = refreshCalls();
+    await settings.evaluate(name => chrome.alarms.clear(name), alarmName);
+    await session.send("Fetch.disable");
+    await session.detach();
+    session = null;
+    const watchedWorker = watchedServiceWorkers.get(worker);
+    if (watchedWorker) {
+      await watchedWorker.client.detach();
+      watchedServiceWorkers.delete(worker);
+    }
+    const browserCdp = await browser.target().createCDPSession();
+    const serviceWorkerCdp = await settings.createCDPSession();
+    const runningPromise = waitForRunningServiceWorker(serviceWorkerCdp, worker.url());
+    await serviceWorkerCdp.send("ServiceWorker.enable");
+    const running = await runningPromise;
+    if (!running) throw new Error("Anki maturity worker was not running before restart");
+    await serviceWorkerCdp.send("ServiceWorker.stopWorker", { versionId: running.versionId });
+    const stopped = await waitForCdpTargetGone(browserCdp, running.targetId);
+    const replacementPromise = browser.waitForTarget(target => target.type() === "service_worker"
+      && target.url() === worker.url() && target !== worker).then(async target => {
+      session = await interceptFetches(target, routes, "anki-maturity-restarted");
+      return target;
+    });
+    const cachedReply = await settings.evaluate(() => chrome.runtime.sendMessage({
+      target: "hoshidicts-worker", type: "hd_anki_maturity", request: { term: { expression: "食べる" } } }));
+    worker = await replacementPromise;
+    const restored = await settings.waitForFunction(async ({ alarmName, expectedTime }) => {
+      const alarm = await chrome.alarms.get(alarmName);
+      return alarm?.scheduledTime === expectedTime ? alarm : false;
+    }, { timeout: 10_000, polling: 50 }, { alarmName, expectedTime: restartState.alarm.scheduledTime })
+      .then(handle => handle.jsonValue());
+    const restoredCache = await readCache();
+    await serviceWorkerCdp.send("ServiceWorker.disable");
+    await serviceWorkerCdp.detach();
+    await browserCdp.detach();
+    check("worker restart restores cached maturity and the missing thirty-minute alarm without fetching",
+      stopped && cachedReply.mature === true && restored.scheduledTime === restartState.alarm.scheduledTime
+        && JSON.stringify(restoredCache) === JSON.stringify(restartState.cache) && refreshCalls() === callsBeforeRestart,
+      JSON.stringify({ stopped, cachedReply, restored, restoredCache, restartState, callsBeforeRestart, calls }));
+
     await updateSettingsControls(settings, { "opt-lookup-counts": true, "opt-blur-enabled": true,
       "opt-blur-direction": "atLeast", "opt-blur-threshold": "1" });
+    const cachedMiss = await settings.evaluate(() => chrome.runtime.sendMessage({
+      target: "hoshidicts-worker", type: "hd_anki_maturity", request: { term: { expression: "not in the fixture" } } }));
+    // An empty new snapshot lets this visit prove the independent count branch.
+    mode = "empty";
+    await triggerRefresh();
+    await waitForSnapshot(false, reenabledCache.snapshot.refreshedAt);
     await freshLookup();
     const countQualified = await waitForDefinitionBlur(popup, value => value?.state === "blurred" && value.countText.includes("Looked up"));
-    check("nonmature and unavailable Anki fail open while qualifying lookup counts still blur independently",
-      nonmatureDefinition?.plain.includes("食べる") && nonmature?.state === "revealed" && nonmature.audioFeedback.some(Boolean)
-        && offlineDefinition?.plain.includes("食べる") && offline?.state === "revealed" && offline.audioFeedback.some(Boolean)
-        && countQualified?.state === "blurred" && !countQualified.audioFeedback.some(Boolean)
-        && calls.every(call => ["findCards", "deckNames", "modelNames", "modelFieldNames", "canAddNotesWithErrorDetail"].includes(call.action)),
-      JSON.stringify({ nonmature, offline, countQualified, calls }));
+    check("an unavailable Anki refresh retains cached maturity and independent count blur",
+      offline?.state === "blurred" && !offline.audioFeedback.some(Boolean)
+        && JSON.stringify(retry.cache.snapshot) === JSON.stringify(reenabledCache.snapshot)
+        && cachedMiss.mature === false && countQualified?.state === "blurred" && !countQualified.audioFeedback.some(Boolean)
+        && calls.every(call => ["notesInfo", "deckNames", "modelNames", "modelFieldNames", "canAddNotesWithErrorDetail"].includes(call.action)),
+      JSON.stringify({ offline, retry, cachedMiss, countQualified, calls }));
+
+
     if (process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT) {
       await updateSettingsControls(settings, { "opt-blur-threshold": "5", "opt-blur-reveal": "timed", "opt-blur-delay": "5" });
       await settings.bringToFront();
@@ -4451,14 +4574,15 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup }) 
       await card.screenshot({ path: process.env.HACHIDORI_DEFINITION_BLUR_SCREENSHOT });
     }
   } finally {
-    releaseMaturity?.();
+    releaseRefresh();
+    await popup.lookupStatistics("cleanup").catch(() => {});
     await updateSettingsControls(settings, original);
     await settings.evaluate(async anki => {
       const { options } = await chrome.storage.local.get("options");
       const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision, options: { anki } });
       if (!reply.ok) throw new Error(reply.error);
     }, originalAnki);
-    await session.detach();
+    await session?.detach();
     await tab.bringToFront();
     if (!popup.visible(await popup.state())) await hoverForPopup(tab, popup, "#verb");
   }
@@ -7634,7 +7758,7 @@ async function main() {
     extensionId,
   });
   await checkDefinitionBlur({ settings: page, tab, popup });
-  await checkAnkiMatureDefinitionBlur({ browser, settings: page, tab, popup });
+  await checkAnkiMatureDefinitionBlur({ browser, settings: page, tab, popup, watchedServiceWorkers });
   await checkDeinflectionDisclosure(page, tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
