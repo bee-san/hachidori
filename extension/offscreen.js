@@ -80,17 +80,6 @@ let lastEngineStatus = {
 };
 const pending = new Map();
 
-if (typeof navigator.storage?.persist === "function") {
-  navigator.storage.persist().then(
-    (persistent) => {
-      if (!persistent) {
-        console.warn("hoshidicts: storage is not persistent, Chrome may evict imported dictionaries");
-      }
-    },
-    (error) => console.warn(`hoshidicts: navigator.storage.persist() failed: ${describe(error)}`),
-  );
-}
-
 function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);
 }
