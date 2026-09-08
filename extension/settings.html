@@ -25,24 +25,27 @@
         <label class="settings-section-picker" for="settings-section">
           <span class="field-label">Section</span>
           <select id="settings-section">
-            <option value="dictionaries">Library</option>
+            <optgroup label="Library">
+              <option value="dictionaries">Dictionaries</option>
+              <option value="add-dictionaries">Add</option>
+              <option value="updates">Updates</option>
+              <option value="dictionary-groups">Groups</option>
+              <option value="custom-dictionary">Personal dictionary</option>
+            </optgroup>
             <option value="lookup">Reading</option>
             <option value="design">Design</option>
             <option value="audio">Audio</option>
             <option value="media">Media capture</option>
             <option value="anki">Anki</option>
-            <option value="custom-dictionary">Personal dictionary</option>
-            <optgroup label="Library tools">
-              <option value="add-dictionaries">Import</option>
-              <option value="updates">Updates</option>
-              <option value="dictionary-groups">Groups</option>
-              <option value="backup">Backup &amp; restore</option>
-            </optgroup>
+            <option value="backup">Backup &amp; restore</option>
           </select>
         </label>
         <output id="settings-navigation-status" class="compact-nav-status" aria-live="polite"></output>
         <nav class="settings-nav" aria-label="Settings sections">
-          <div class="nav-item"><a href="#dictionaries">Library</a></div>
+          <div class="nav-item">
+            <a href="#dictionaries" aria-describedby="nav-status-dictionaries">Library</a>
+            <output class="nav-status" id="nav-status-dictionaries" aria-live="polite"></output>
+          </div>
           <div class="nav-item">
             <a href="#lookup" aria-describedby="nav-status-lookup">Reading</a>
             <output class="nav-status" id="nav-status-lookup" aria-live="polite"></output>
@@ -64,23 +67,6 @@
             <output class="nav-status" id="nav-status-anki" aria-live="polite"></output>
           </div>
           <div class="nav-item">
-            <a href="#custom-dictionary" aria-describedby="nav-status-custom-dictionary">Personal dictionary</a>
-            <output class="nav-status" id="nav-status-custom-dictionary" aria-live="polite"></output>
-          </div>
-          <p class="nav-label">Library tools</p>
-          <div class="nav-item">
-            <a href="#add-dictionaries" aria-describedby="nav-status-add-dictionaries">Import</a>
-            <output class="nav-status" id="nav-status-add-dictionaries" aria-live="polite"></output>
-          </div>
-          <div class="nav-item">
-            <a href="#updates" aria-describedby="nav-status-updates">Updates</a>
-            <output class="nav-status" id="nav-status-updates" aria-live="polite"></output>
-          </div>
-          <div class="nav-item">
-            <a href="#dictionary-groups" aria-describedby="nav-status-dictionary-groups">Groups</a>
-            <output class="nav-status" id="nav-status-dictionary-groups" aria-live="polite"></output>
-          </div>
-          <div class="nav-item">
             <a href="#backup" aria-describedby="nav-status-backup">Backup &amp; restore</a>
             <output class="nav-status" id="nav-status-backup" aria-live="polite"></output>
           </div>
@@ -100,10 +86,18 @@
           <output id="settings-search-count" class="hint" aria-live="polite"></output>
           <ul id="settings-search-matches"></ul>
         </div>
+        <nav class="library-navigation" id="library-navigation" aria-label="Library sections" hidden>
+          <a href="#dictionaries">Dictionaries</a>
+          <a href="#add-dictionaries">Add</a>
+          <a href="#updates">Updates</a>
+          <a href="#dictionary-groups">Groups</a>
+          <a href="#custom-dictionary">Personal dictionary</a>
+        </nav>
         <section
           class="card library"
           id="dictionaries"
           aria-labelledby="dictionaries-heading"
+          data-settings-group="Library"
         >
           <div class="section-heading">
             <div class="card-head">
@@ -177,6 +171,7 @@
           class="card"
           id="add-dictionaries"
           aria-labelledby="import-heading"
+          data-settings-group="Library"
           hidden
         >
           <div class="card-head">
@@ -247,7 +242,7 @@
           </p>
         </section>
 
-        <section class="card" id="updates" aria-labelledby="updates-heading" hidden>
+        <section class="card" id="updates" aria-labelledby="updates-heading" data-settings-group="Library" hidden>
           <div class="card-head">
             <h1 id="updates-heading" tabindex="-1">Updates</h1>
             <p class="hint">For dictionaries with an update source. Other imports are local-only.</p>
@@ -300,6 +295,7 @@
           class="card"
           id="dictionary-groups"
           aria-labelledby="dictionary-groups-heading"
+          data-settings-group="Library"
           hidden
         >
           <div class="card-head">
@@ -330,6 +326,7 @@
           class="card"
           id="custom-dictionary"
           aria-labelledby="custom-dictionary-heading"
+          data-settings-group="Library"
           hidden
         >
           <div class="card-head">

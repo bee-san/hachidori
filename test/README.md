@@ -884,14 +884,15 @@ and kanji views, including projected prefill, hover/Escape draft protection,
 exact-view refresh, Back restoration, source adoption in the already-open
 Settings page, and retirement of each superseded OPFS generation.
 
-Settings layout checks cover library-first task order, selection-aware bulk
-actions, native keyboard section and skip links, Back/Forward, same-hash focus,
-short-window sidebar scrolling, and mounted source drafts. All seven views are
-checked at 320px and desktop widths in light and dark mode, including palette
-text/control contrast and visible-control overflow. Empty live regions stay
-available for their first announcement. The extension harness pins hidden-view
-save failures, unseen completions, draft retention without extra requests, and
-stable-ID Details expansion/focus across rerenders and filtering.
+Settings layout checks cover the seven-destination primary rail, Library's five
+local views, selection-aware bulk actions, native keyboard section and skip
+links, Back/Forward, same-hash focus, short-window sidebar scrolling, and mounted
+source drafts. All eleven task views are checked at 320px and desktop widths in
+light and dark mode, including palette text/control contrast and visible-control
+overflow. Empty live regions stay available for their first announcement. The
+extension harness pins hidden-view save failures, aggregated Library notices,
+unseen completions, draft retention without extra requests, and stable-ID
+Details expansion/focus across rerenders and filtering.
 Two real Settings pages exercise debounced option patches with one held reply:
 a newer external commit cannot be rolled back, and a stale queued draft surfaces
 a conflict with explicit discard. Revisioned options also survive the full

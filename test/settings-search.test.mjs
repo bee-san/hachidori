@@ -65,17 +65,23 @@ test("global search finds inactive section controls and lazy Audio by its voice 
 
 test("Library exposes its related views together and search reports that hierarchy", t => {
   const f = fixture(t);
+  const expected = [
+    ["dictionaries", "Dictionaries"],
+    ["add-dictionaries", "Add"],
+    ["updates", "Updates"],
+    ["dictionary-groups", "Groups"],
+    ["custom-dictionary", "Personal dictionary"],
+  ];
   const navigation = f.el("library-navigation");
   assert.ok(navigation);
   assert.deepEqual(
-    [...navigation.querySelectorAll("a")].map(link => [link.hash, link.textContent.trim()]),
-    [
-      ["#dictionaries", "Dictionaries"],
-      ["#add-dictionaries", "Add"],
-      ["#updates", "Updates"],
-      ["#dictionary-groups", "Groups"],
-      ["#custom-dictionary", "Personal dictionary"],
-    ],
+    [...navigation.querySelectorAll("a")].map(link => [link.hash.slice(1), link.textContent.trim()]),
+    expected,
+  );
+  assert.deepEqual(
+    [...f.el("settings-section").querySelector('optgroup[label="Library"]').querySelectorAll("option")]
+      .map(option => [option.value, option.textContent.trim()]),
+    expected,
   );
   f.query("default automatic updates");
   const result = f.match("Default automatic updates");

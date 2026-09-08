@@ -1179,7 +1179,12 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 ## Settings interface
 
 Settings is one document with native hash links and one visible task section.
-Global search matches settings across every section, opens a result's enclosing
+The primary rail exposes seven destinations. Library owns five local,
+hash-addressable task views: Dictionaries, Add, Updates, Groups, and Personal
+dictionary. Backup and restore remains a global destination. The compact picker
+keeps all eleven task views available and groups those five Library choices.
+Global search matches settings across every section, includes the Library
+hierarchy in matching and result breadcrumbs, opens a result's enclosing
 disclosures and focuses its control without changing values or discarding drafts.
 The activation-key selector remains editable in either lookup mode.
 All sections stay mounted, so navigation and browser history preserve reader
@@ -1190,8 +1195,9 @@ external option changes; startup pages retain their independent system light/dar
 fallback. Inactive sections mirror pending work, errors, and unseen operation
 completions next to their links. Visiting a section clears its completion notice,
 not its source output or draft. The compact navigation mirrors inactive notices,
-and shared options feedback stays near the section heading.
-Status setters own these
+and shared options feedback stays near the section heading. Notices from Library
+children are labelled and aggregated on the primary Library destination while
+the local navigation identifies the active child. Status setters own these
 notices; there are no observers or additional polling loops.
 
 The toolbar action opens a compact popup with a global lookup switch, recording

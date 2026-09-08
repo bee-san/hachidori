@@ -15,6 +15,14 @@ Threshold/reveal details and custom CSS use native disclosures. Narrow windows
 use a section picker that keeps keyboard focus and browser history; background
 operation notices remain available beside it.
 
+The navigation follow-up keeps all eleven mounted task sections while reducing
+the primary navigation to seven destinations. **Library** now owns
+**Dictionaries**, **Add**, **Updates**, **Groups**, and
+**Personal dictionary** in a local navigation row; **Backup & restore** remains
+global. The narrow picker groups the same five choices, and search results name
+their hierarchy, such as **Library › Updates**. Existing hashes, drafts, and
+Back/Forward behaviour are unchanged.
+
 The empty Library offers recommended dictionaries and ZIP import directly.
 Recommendations remain available after a local import or a partial installation,
 and installation controls wait for the initial inventory. Readiness distinguishes
@@ -46,6 +54,8 @@ control-boundary contrast. Every one of the eleven sections also fit at 320 and
 system colour preference forced to prove that the saved theme wins.
 
 ![Settings using the selected Miku lookup theme](assets/settings-theme-miku.png)
+
+![Library with its five related settings views](assets/settings-library-navigation.png)
 
 | Desktop Design | Narrow Design |
 | --- | --- |
