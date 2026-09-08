@@ -279,7 +279,7 @@ try {
   const startup = await startupTarget.page();
   await startup.waitForSelector("#setup-start", { visible: true });
   assert.equal(setupArchiveRequests.length, 0, "fallback setup waits for the welcome decision");
-  await startup.click("#setup-start");
+  await startup.evaluate(() => document.getElementById("setup-start").click());
   let page = await openSettings(browser, id);
   // Let the automatic run fail all four sources before importing through the
   // same engine lock; a single run must have asked for each source once.
