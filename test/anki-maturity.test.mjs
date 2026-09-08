@@ -93,7 +93,7 @@ test("membership follows Anki's ASCII-only case folding and default query NFC no
 test("failed or partially malformed bulk replies reject instead of publishing partial words", async () => {
   const source = await ankiMaturitySource(config());
   for (const result of [null, {}, [null], [{}], [{ ...note({ Expression: "猫" }), noteId: "12" }],
-    [{ ...note({ Expression: "猫" }), modelName: "Other" }], [{ ...note({ Expression: "猫" }), fields: [] }],
+    [{ ...note({ Expression: "猫" }), modelName: "Other" }], [{ ...note({ Expression: "猫" }), fields: [] }], [note({})],
     [note({ Expression: "猫" }), note({ Expression: 12 }, 13)],
     [note({ Expression: "猫" }), note({ Expression: "犬", Other: null }, 13)]]) {
     await assert.rejects(fetchAnkiMatureWords({ invoke: async () => result }, source), /invalid mature note/iu);

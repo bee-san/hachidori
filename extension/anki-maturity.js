@@ -52,6 +52,7 @@ export async function fetchAnkiMatureWords(gateway, source) {
       throw new Error("AnkiConnect returned invalid mature note details.");
     }
     const names = ankiFieldNames(Object.keys(note.fields));
+    if (!names.size) throw new Error("AnkiConnect returned invalid mature note details.");
     for (const field of source.fields) {
       const value = note.fields[names.get(field)]?.value;
       // Do not normalize stored text: legacy NFD fields also fail an ordinary
