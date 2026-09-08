@@ -1,12 +1,106 @@
 # Anki maturity cache: production benchmark
 
+Moving bulk response parsing and word extraction to a short-lived dedicated
+worker removes the measured refresh-time lookup stall. With the same
+138,474,410-byte synthetic response, every measured refresh's worst decision
+fell from **335–409 ms** to **3.93–9.85 ms** on this MacBook Air. The earlier
+Linux live-versus-cache results remain below as historical evidence.
+
+## Dedicated-worker regression check
+
+Compared `25addf5430c6bed50cc0c487fb63560ccfa59838` (bulk parsing on the
+service worker) with `e733a7b787b016c579f86dac415a59ffbb26b1c5` (dedicated
+refresh worker, integrated with current Settings and screenshot mining).
+The same production gateway, 25-second timeout, extractor, cache, runtime
+messages and scheduled-alarm path run in both revisions.
+
+The deterministic response contains **6,104 notes, 6,001 distinct Japanese
+expression values, and exactly 138,474,410 UTF-8 bytes**. Its SHA-256 is
+`5900ddb7af79ab6197f53f63bb6c545d5b06bf3273a03f5de08afcc3ca531027`.
+Unselected Sentence fields account for the large response size; the cache
+retains only expression values. This reproduces the original response size
+and note count without copying anyone's Anki collection.
+
+Environment: Apple M2, 8 GiB RAM, macOS 14.6.1, Node 22.22.3, Chrome for
+Testing 152.0.7977.82, Puppeteer Core 25.10.0 from the existing external test installation.
+Host one-minute load at browser boundaries ranged 3.38–3.93. Heavy browser and
+benchmark work was serialized; existing user processes were left running.
+
+One excluded warmup pair and **five measured alternating before/after pairs**
+used fresh Chrome processes and profiles. Each browser primed the cache,
+then ran 90 steady checks and continued checking throughout one complete
+scheduled refresh. The workload repeats two verified mature expressions and
+one miss, with a 5 ms pause between overlapping checks. All 12 cells passed
+Boolean answers, unchanged word-list signatures, exactly two refresh calls
+(one initial and one scheduled), zero per-lookup Anki calls, refresh-worker
+termination and browser shutdown checks. Raw rows are synchronously persisted.
+
+| Production round trip | Median ms | p95 ms | Maximum ms | Requests |
+| --- | ---: | ---: | ---: | ---: |
+| Before, steady cache | 0.295 | 0.510 | 2.615 | 450 |
+| After, steady cache | 0.290 | 0.400 | 1.610 | 450 |
+| Before, during scheduled refresh | 1.140 | 408.855 | 408.855 | 14 |
+| After, during scheduled refresh | 0.570 | 1.170 | 9.850 | 286 |
+
+The request counts differ because the blocked baseline can service only 2–3
+requests per refresh; the isolated worker permits 52–64. The paired per-refresh
+maxima therefore provide the clearest contention comparison:
+
+| Pair | Before maximum ms | After maximum ms | Before refresh ms | After refresh ms |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 369.46 | 9.85 | 393.05 | 436.46 |
+| 2 | 408.86 | 4.30 | 432.96 | 394.62 |
+| 3 | 374.46 | 4.07 | 398.89 | 407.37 |
+| 4 | 335.46 | 5.93 | 351.88 | 452.19 |
+| 5 | 387.22 | 3.93 | 409.69 | 419.85 |
+
+Complete scheduled-refresh medians were 398.89 ms before and 419.85 ms after.
+Those intervals include different amounts of concurrent useful work, so they
+are not an equal-work refresh-throughput comparison. Isolation removes the
+large decision stall; it does not reduce Anki's response size or claim a faster
+refresh. Steady cache latency is effectively unchanged on this workload.
+
+### Reproduce this check
+
+Use [the checked-in driver](../benchmark/anki-maturity-cache.mjs) with the
+existing [Chrome/Puppeteer setup](../test/README.md). Prepare dedicated
+worktrees at the two revisions above, set `HACHIDORI_CHROME` to the Chrome
+executable and `HACHIDORI_PUPPETEER` to its external Puppeteer module, then run
+from the candidate checkout with a fresh output filename:
+
+```sh
+node benchmark/anki-maturity-cache.mjs \
+  /path/to/before/extension /path/to/after/extension /tmp/anki-maturity.jsonl
+```
+
+The driver creates its own random-port HTTP fixture server. CDP interception
+on the service-worker and offscreen targets redirects the production gateway's
+fixed loopback request to that server; the user's Anki is never contacted.
+The offscreen interception also covers the dedicated refresh worker. Native
+HTTP body reading, JSON parsing, field extraction, runtime messaging and
+cache publication remain unmodified. The driver accelerates only the stored
+attempt timestamp and actual Chrome alarm, and verifies the final snapshot.
+Compute nearest-rank p95s after excluding rows marked `excluded`; per-request
+samples are not independent browser samples.
+
+This is a targeted contention diagnostic. It excludes real Anki search and
+response serialization, uses synthetic unselected field text, and does not
+measure popup layout or total visual lookup latency. The final in-memory Set
+installation follows the durable storage event; concurrent request timings
+include any delay encountered before that event. No Linux-only CPU/RSS metrics
+are inferred for macOS. The original private Linux collection was not rerun on
+this Mac; the full real-Chrome suite separately checks popup decisions,
+autoplay, offline retention and actual service-worker restart recovery.
+
+## Original Linux comparison, before worker isolation
+
 The cache reduced steady decision latency from **74.25 ms to 0.99 ms median**
 on this collection, with zero Anki requests per cached lookup. A full refresh
 still has a cost: the largest decision delay during a pull was **1.31 seconds**,
 compared with 139 ms on the unchanged live path. This measures the implemented
 production handlers, including their timer and persisted cache.
 
-## Inputs and environment
+### Inputs and environment
 
 - Baseline: `10e6f0951192dab6de31facc8579f03ef7fdd589`.
 - Cache implementation: `2ed10b092813f512796022828924fac4295db781`.
@@ -33,7 +127,7 @@ production handlers, including their timer and persisted cache.
   CPU/memory/I/O pressure was recorded at each cell boundary. These are
   host-specific observations under changing load, not an idle-machine baseline.
 
-## Results
+### Results
 
 | Production decision path | Median ms | p95 ms | Maximum ms |
 | --- | ---: | ---: | ---: |
@@ -98,7 +192,7 @@ This divides each round's initial refresh cost by its live-minus-cache mean
 latency. It is a descriptive wall-time heuristic, not CPU usage or total popup
 time saved.
 
-## Reproducing the measurement
+### Reproducing the measurement
 
 The collection and Japanese query list are private and are not checked in. Use
 your own isolated collection to reproduce the procedure; matching the original
