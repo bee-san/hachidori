@@ -1537,7 +1537,7 @@
     checkDefinitionBlurMaturity(request, level);
   }
 
-  // The primary word owns one read-only Anki query per visit. It starts after
+  // The primary word owns one local maturity-cache check per visit. It starts after
   // rendering and never joins the lookup or storage queue. Back keeps its
   // result; a changed Anki configuration discards the old evidence.
   function checkDefinitionBlurMaturity(request, level) {

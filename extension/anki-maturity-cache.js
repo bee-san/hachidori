@@ -10,6 +10,7 @@ function cacheState(value) {
   const snapshot = state.snapshot;
   const attempt = state.attempt;
   return { version: 1,
+    configurationRevision: Number.isInteger(state.configurationRevision) ? state.configurationRevision : 0,
     snapshot: typeof snapshot?.sourceKey === "string" && Number.isFinite(snapshot.refreshedAt)
       && Array.isArray(snapshot.words) && snapshot.words.every(word => typeof word === "string") ? snapshot : null,
     attempt: typeof attempt?.sourceKey === "string" && Number.isFinite(attempt.startedAt) ? attempt : null,
@@ -20,11 +21,20 @@ async function enabledSource(options) {
   return options.definitionBlurAnkiMature === true ? ankiMaturitySource(options.anki) : null;
 }
 
+// Commit this invalidation alongside options, before their onChanged event.
+// Otherwise delayed events can discard a new pull or allow an old off/on pull.
+export async function ankiMaturityConfigurationChange(previous, next, value) {
+  const [before, after] = await Promise.all([enabledSource(previous), enabledSource(next)]);
+  if (before?.key === after?.key) return undefined;
+  const state = cacheState(value);
+  return { ...state, configurationRevision: state.configurationRevision + 1, attempt: null };
+}
+
 // The background supplies serialized storage updates. The control queue owns
 // scheduling/configuration transitions, but never waits for Anki's full pull.
 export function createAnkiMaturityCache({ gateway, readOptions, readState, updateState, alarms,
   now = Date.now, reportError = error => console.warn("hachidori: Anki maturity refresh failed:", error) }) {
-  let snapshot = null, words = new Set(), epoch = 0, active = null;
+  let snapshot = null, words = new Set(), active = null;
   let controlTail = Promise.resolve();
   const hydrate = readState().then(value => {
     snapshot = cacheState(value).snapshot;
@@ -50,11 +60,10 @@ export function createAnkiMaturityCache({ gateway, readOptions, readState, updat
     try {
       const nextWords = await fetchAnkiMatureWords(gateway, source);
       await control(async () => {
-        if (token.epoch !== epoch) return;
         let committed = false;
         const saved = await updateState(async ({ options, state }) => {
           const current = cacheState(state), currentSource = await enabledSource(options);
-          if (token.epoch !== epoch || currentSource?.key !== source.key
+          if (current.configurationRevision !== token.configurationRevision || currentSource?.key !== source.key
               || current.attempt?.sourceKey !== source.key || current.attempt.startedAt !== token.startedAt) return;
           committed = true;
           return { ...current, snapshot: { sourceKey: source.key, refreshedAt: now(), words: nextWords } };
@@ -83,14 +92,15 @@ export function createAnkiMaturityCache({ gateway, readOptions, readState, updat
       ? state.attempt.startedAt + ANKI_MATURITY_REFRESH_MS : now();
     if (due > now()) { await schedule(due); return null; }
 
-    const token = { epoch, startedAt: now() };
+    const token = { startedAt: now() };
     let reserved = false;
     await updateState(async ({ options, state: value }) => {
       const current = cacheState(value), currentSource = await enabledSource(options);
-      if (token.epoch !== epoch || currentSource?.key !== source.key) return;
+      if (currentSource?.key !== source.key) return;
       if (current.attempt?.sourceKey === source.key
           && current.attempt.startedAt + ANKI_MATURITY_REFRESH_MS > now()) return;
       reserved = true;
+      token.configurationRevision = current.configurationRevision;
       return { ...current, attempt: { sourceKey: source.key, startedAt: token.startedAt } };
     });
     if (!reserved) return null;
@@ -106,17 +116,7 @@ export function createAnkiMaturityCache({ gateway, readOptions, readState, updat
     return control(startDueRefresh).then(job => job?.promise).catch(reportError);
   }
 
-  function optionsChanged(previous, next) {
-    return control(async () => {
-      const [before, after] = await Promise.all([enabledSource(previous), enabledSource(next)]);
-      if (before?.key === after?.key) return false;
-      epoch++;
-      await updateState(({ state }) => ({ ...cacheState(state), attempt: null }));
-      return true;
-    }).then(changed => changed ? reconcile() : undefined).catch(reportError);
-  }
-
-  return { reconcile, optionsChanged, async has(config, expression) {
+  return { reconcile, async has(config, expression) {
     const key = ankiMaturityWordKey(expression);
     if (key === null) return false;
     await hydrate;
