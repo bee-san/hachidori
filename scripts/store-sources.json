@@ -1,0 +1,29 @@
+[
+  {
+    "name": "libavif",
+    "revision": "1aadfad932c98c069a1204261b1856f81f3bc199",
+    "version": "1.3.0",
+    "url": "https://codeload.github.com/AOMediaCodec/libavif/tar.gz/1aadfad932c98c069a1204261b1856f81f3bc199",
+    "sha256": "ac93983be0cc7188ecfc654ecb77f886243edb3d3827fd45cca14c50b2d813e3",
+    "strip_prefix": "libavif-1aadfad932c98c069a1204261b1856f81f3bc199/",
+    "licenses": ["LICENSE"]
+  },
+  {
+    "name": "libaom",
+    "revision": "10aece4157eb79315da205f39e19bf6ab3ee30d0",
+    "version": "3.12.1",
+    "url": "https://aomedia.googlesource.com/aom/+archive/10aece4157eb79315da205f39e19bf6ab3ee30d0.tar.gz",
+    "sha256": "931be437dc000dcf97c23cbaa8154fbcf449afe6dae5c0a0a0a9fd86b30238a4",
+    "strip_prefix": "",
+    "licenses": ["LICENSE", "PATENTS", "third_party/libyuv/LICENSE", "third_party/fastfeat/LICENSE", "third_party/vector/LICENSE"]
+  },
+  {
+    "name": "zipjs",
+    "revision": "2.11.2",
+    "version": "2.11.2",
+    "url": "https://registry.npmjs.org/@zip.js/zip.js/-/zip.js-2.11.2.tgz",
+    "sha256": "82f90c0134fc02b4963187ab2b06299758c3f9e4dd678fbdacd082ea73f09d3e",
+    "strip_prefix": "package/",
+    "licenses": ["LICENSE"]
+  }
+]
