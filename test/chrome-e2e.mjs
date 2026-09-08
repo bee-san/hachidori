@@ -4653,7 +4653,7 @@ async function checkLookupStatistics({ settings, tab, popup }) {
 
     const localControls = await settings.evaluate(() => ({
       counts: document.getElementById("opt-lookup-counts").closest("section").id,
-      blur: document.getElementById("opt-blur-enabled").closest("section").id,
+      blur: document.getElementById("opt-blur-source").closest("section").id,
       external: document.querySelectorAll("#opt-corpus-url, #opt-corpus-seen").length,
     }));
     check("local count and blur settings belong to Reading without external corpus controls",
