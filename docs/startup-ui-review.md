@@ -2,9 +2,10 @@
 
 ## Readiness and continuation refinement
 
-The follow-up compares `1cbaef6` with `b422e57`. The final step now names the
-next action when the library is empty, its term dictionaries are disabled, or
-lookups are switched off. **Add dictionaries**, **Open Library** and
+This refinement builds on PR #75 through `c93eedc`; the refreshed screenshots
+use the page sources at `c9cbd46`, including its original practice artwork.
+The final step now names the next action when the library is empty, its term
+dictionaries are disabled, or lookups are switched off. **Add dictionaries**, **Open Library** and
 **Open Reading** lead directly to the relevant Settings section. **You’re
 ready.** appears only after the installed library answers the practice probe;
 reader-load and engine failures retain recovery. **Finish setup** remains
