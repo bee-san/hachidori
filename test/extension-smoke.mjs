@@ -6557,7 +6557,8 @@ async function startupAdvanceFailureStage() {
     await new Promise((done) => setTimeout(done, 6000));
     const quiet = page.saves().length === 2 && label() === null && page.actionIds().includes("setup-continue");
     const continuedNow = await startupContinueNowStage(jsdom, setup, dictionaries);
-    return { counting, failed, quiet, continuedNow };
+    const completedWhileChecking = await startupContinueNowStage(jsdom, setup, dictionaries, true);
+    return { counting, failed, quiet, continuedNow, completedWhileChecking };
   } finally {
     page.window.close();
   }
@@ -6565,13 +6566,14 @@ async function startupAdvanceFailureStage() {
 
 // Continue now advances the installed result and the optional pending Anki
 // check. Its late reply preserves the stage the user already reached.
-async function startupContinueNowStage(jsdom, initialSetup, dictionaries) {
+async function startupContinueNowStage(jsdom, initialSetup, dictionaries, finishBeforeReply = false) {
   let setup = structuredClone(initialSetup);
   let settleAnki;
   const page = startupCase(jsdom, { setup, dictionaries,
     reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }),
     cas: (message) => {
-      setup = { ...setup, revision: setup.revision + 1, stage: message.stage };
+      setup = { ...setup, revision: setup.revision + 1, stage: message.stage,
+        completedAt: message.stage === "complete" ? "2026-09-08T12:00:00Z" : null };
       return { ok: true, state: structuredClone(setup) };
     },
     anki: () => new Promise(resolve => { settleAnki = resolve; }) });
@@ -6587,9 +6589,18 @@ async function startupContinueNowStage(jsdom, initialSetup, dictionaries) {
       && page.saves().length === 1;
     page.document.getElementById("setup-continue").click();
     await page.until(() => page.document.getElementById("setup-finish") !== null, "practice while Anki is pending");
+    if (finishBeforeReply) {
+      page.document.getElementById("setup-finish").click();
+      await page.until(() => page.heading() === "Setup is complete.", "completion while Anki is pending");
+    }
     setup = { ...setup, revision: setup.revision + 1,
       anki: { status: "unavailable", detail: "AnkiConnect timed out", model: null, deck: null } };
     settleAnki({ ok: true, state: structuredClone(setup) });
+    if (finishBeforeReply) {
+      await new Promise(setImmediate);
+      return checking && page.saves().length === 3 && page.heading() === "Setup is complete."
+        && page.actionIds().length === 0 && setup.completedAt === "2026-09-08T12:00:00Z";
+    }
     await page.until(() => page.document.querySelector(".setup-anki-outcome") !== null, "the late Anki outcome");
     return checking && page.saves().length === 2 && setup.stage === "practice"
       && page.document.querySelector(".setup-anki-outcome").textContent.includes("Anki isn’t connected")
