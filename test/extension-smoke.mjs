@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, createAnkiMaturityCache } from "../extension/anki-maturity-cache.js";
 import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
 import { assertBackupSnapshot, backupRevisions } from "../extension/backup-state.js";
 import { createBackupDownloads } from "../extension/backup-downloads.js";
@@ -759,6 +760,7 @@ function loadBackgroundScript(sandbox) {
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ detectAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
+    .replace(/^import .* from "\.\/anki-maturity-cache\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/external-links\.js";\s*/u, "")
     .replace(/import "\.\/dictionary-group-state\.js";\s*/u, "")
@@ -774,6 +776,7 @@ function loadBackgroundScript(sandbox) {
   sandbox.Uint32Array ??= Uint32Array;
   sandbox.DataView ??= DataView;
   sandbox.crypto ??= globalThis.crypto;
+  Object.assign(sandbox, { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, createAnkiMaturityCache });
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(

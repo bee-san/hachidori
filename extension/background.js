@@ -2,6 +2,7 @@ import "./reader-options.js";
 import { createAnkiGateway } from "./anki.js";
 import { detectAnkiSetup, verifyAnkiSetup } from "./anki-setup.js";
 import { createAnkiWorkerService } from "./anki-worker.js";
+import { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, createAnkiMaturityCache } from "./anki-maturity-cache.js";
 import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm } from "./lookup-stats.js";
@@ -80,7 +81,7 @@ const SETUP_TARGET = "hachidori-setup";
 // `relayed` and handed straight back to the offscreen document, where the
 // engine's own request queue would then wait on itself.
 const WORKER_TARGET = "hoshidicts-worker";
-let ankiGateway, ankiMining;
+let ankiGateway, ankiMining, ankiMaturityCache;
 let backupDownloads;
 // One first-run Anki detection at a time; duplicate startup pages share it.
 let ankiSetupDetection = null;
@@ -98,6 +99,29 @@ const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
 const DICTIONARY_STATE_SCHEMA_VERSION = 1;
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
 const LOOKUP_STATS_CORPUS_TIMEOUT_MS = 2_000;
+
+async function readAnkiOptions() {
+  return normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
+}
+
+function getAnkiMaturityCache() {
+  ankiMaturityCache ??= createAnkiMaturityCache({
+    gateway: ankiGateway ??= createAnkiGateway(),
+    readOptions: readAnkiOptions,
+    readState: async () => (await chrome.storage.local.get(ANKI_MATURITY_CACHE_KEY))[ANKI_MATURITY_CACHE_KEY],
+    updateState: update => serialiseStorage(async () => {
+      const stored = await chrome.storage.local.get([OPTIONS_KEY, ANKI_MATURITY_CACHE_KEY]);
+      const state = stored[ANKI_MATURITY_CACHE_KEY];
+      const next = await update({ options: normaliseOptions(stored[OPTIONS_KEY]), state });
+      if (next !== undefined && !sameJsonValue(state, next)) {
+        await chrome.storage.local.set({ [ANKI_MATURITY_CACHE_KEY]: next });
+      }
+      return next ?? state;
+    }),
+    alarms: chrome.alarms,
+  });
+  return ankiMaturityCache;
+}
 // A relayed request can arrive in the window between createDocument() resolving
 // and offscreen.js running its module body, where nothing is listening yet.
 const RELAY_ATTEMPTS = 5;
@@ -1315,6 +1339,13 @@ chrome.storage.onChanged.addListener((changes, area) => {
   )) void refreshUpdateAlarm();
 });
 
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes[OPTIONS_KEY]) return;
+  void getAnkiMaturityCache().optionsChanged(
+    normaliseOptions(changes[OPTIONS_KEY].oldValue), normaliseOptions(changes[OPTIONS_KEY].newValue),
+  );
+});
+
 const UPDATE_HANDLERS = {
   async hd_updates_schedule(message) {
     const schedule = managedUpdateSchedule(message?.schedule);
@@ -1727,7 +1758,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       };
       ankiGateway ??= createAnkiGateway();
       ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
-        readOptions: async () => globalThis.HDReaderOptions.normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]),
+        readOptions: readAnkiOptions,
+        maturityCache: getAnkiMaturityCache(),
         readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
         engine: fields => send(TARGET, fields), offscreen: fields => send("hachidori-anki-render", fields),
         capture: fields => relayCapture({ ...fields, requestId: `anki-capture-${crypto.randomUUID()}` }),
@@ -1910,6 +1942,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ANKI_MATURITY_ALARM) {
+    void getAnkiMaturityCache().reconcile();
+    return;
+  }
   if (alarm.name !== UPDATE_ALARM) {
     return;
   }
@@ -1926,6 +1962,7 @@ chrome.downloads.onChanged.addListener(delta => {
 });
 
 function warmUp() {
+  void getAnkiMaturityCache().reconcile();
   ensureOffscreen().catch((error) => {
     console.error("hoshidicts: could not create the offscreen document:", describe(error));
   });
@@ -1980,3 +2017,4 @@ async function initialiseUpdateAlarm() {
 }
 
 void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
+void getAnkiMaturityCache().reconcile(); // NOSONAR -- initialize without delaying worker activation.
