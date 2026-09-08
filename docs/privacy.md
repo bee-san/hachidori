@@ -52,9 +52,12 @@ by an online service. Hachidori does not guarantee that every voice works offlin
 **Anki.** Hachidori communicates with AnkiConnect at `http://127.0.0.1:8765`.
 After you start setup, it reads note-type, deck and collection metadata to suggest
 configuration. Opening the Anki settings section also reads configuration
-metadata. Optional mature-word blur and duplicate checks query your local
-collection. These checks do not create notes. Explicit mining sends the content
-selected by your field mappings, such as a word, definition, sentence, page
+metadata. Optional mature-word blur retrieves mature expressions from the
+configured note type every 30 minutes while enabled. Its local cache stores
+those expressions, refresh times and an identifier for the selected configuration;
+turning the feature off keeps the last snapshot. Duplicate checks also query
+your local collection. These checks do not create notes. Explicit mining sends
+the content selected by your field mappings, such as a word, definition, sentence, page
 title, image or audio, and creates or updates a note according to your settings.
 Any later Anki synchronization is controlled by Anki and your Anki configuration.
 
@@ -90,8 +93,9 @@ storage.
 
 An exported backup is an **unencrypted file** containing dictionaries, personal
 entries, settings and lookup statistics. It can include custom URLs and your
-AnkiConnect API key. Export it only to a location you trust. Hachidori does not
-upload backups to a cloud service. You control any later sharing or syncing of
+AnkiConnect API key. The derived mature-word cache is not included. Export the
+backup only to a location you trust. Hachidori does not upload backups to a cloud
+service. You control any later sharing or syncing of
 that file. Delete downloaded backups and already-created Anki notes/media
 separately; uninstalling Hachidori does not remove them.
 
