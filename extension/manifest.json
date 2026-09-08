@@ -13,8 +13,10 @@
   },
   "permissions": [
     "alarms",
+    "downloads",
     "offscreen",
     "storage",
+    "tabs",
     "unlimitedStorage"
   ],
   "host_permissions": [
@@ -32,6 +34,13 @@
       ],
       "run_at": "document_idle",
       "js": [
+        "reader-options.js",
+        "dictionary-group-state.js",
+        "lookup-stats-identity.js",
+        "external-links.js",
+        "audio-content.js",
+        "anki-content.js",
+        "capture-content.js",
         "render/glossary.js",
         "render/popup.js",
         "content.js"

@@ -35,6 +35,19 @@
   const MAX_STRUCTURED_DATA_VALUE_LENGTH = 4096;
   const MAX_DICTIONARY_STYLE_BYTES = 256 * 1024;
   const MAX_DICTIONARY_STYLES_BYTES = 2 * 1024 * 1024;
+  // These compatibility aliases are typed at each use site. Even a page's
+  // @property registration must not turn their values into resource URLs.
+  const DICTIONARY_STYLE_VARIABLES = new Set([
+    "--text-color", "--background-color", "--fg", "--canvas", "--font-size-no-units",
+  ]);
+  const DICTIONARY_STYLE_GROUPS = new Set([
+    "CSSMediaRule", "CSSSupportsRule", "CSSContainerRule",
+  ]);
+  const DICTIONARY_FONT_FAMILIES = new Set([
+    "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui",
+    "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded", "math", "fangsong",
+    "inherit", "initial", "unset", "revert", "revert-layer",
+  ]);
   const HAN_CHARACTER_PATTERN =
     /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u{20000}-\u{2fa1f}]/u;
   const KANJI_SEGMENT_PATTERN =
@@ -620,7 +633,14 @@
 
   function appendStructuredImage(documentRef, parent, value, state) {
     const path = normalizeMediaPath(value.path);
-    if (!path || typeof state.resolveMedia !== "function") {
+    if (!path) return;
+    // The Anki exporter shares structured parsing, but writes inert portable
+    // image markup instead of installing a popup's asynchronous preview owner.
+    if (typeof state.appendImage === "function") {
+      state.appendImage(documentRef, parent, value, { dictionary: state.dictionary, path });
+      return;
+    }
+    if (typeof state.resolveMedia !== "function") {
       return;
     }
 
@@ -640,9 +660,17 @@
       : null;
     const aspectWidth = preferredWidth || width;
     const aspectHeight = preferredHeight || height;
-    const usedWidth = preferredWidth || (
+    let usedWidth = preferredWidth || (
       preferredHeight ? preferredHeight * width / height : width
     );
+    if (preferredWidth === null && preferredHeight !== null && (!Number.isFinite(usedWidth) || usedWidth === 0)) {
+      // The product can overflow/underflow even when the final width fits.
+      // Keep valid original results; try the other groupings only on failure.
+      usedWidth = preferredHeight * (width / height);
+      if (!Number.isFinite(usedWidth) || usedWidth === 0) {
+        usedWidth = (preferredHeight / height) * width;
+      }
+    }
     const units = value.sizeUnits === "em" ? "em" : "px";
     const maximumSize = units === "em" ? 64 : MAX_MEDIA_DISPLAY_SIZE;
     const displayWidth = Math.max(0.1, Math.min(maximumSize, usedWidth));
@@ -677,7 +705,6 @@
     const container = documentRef.createElement("span");
     container.className = "gloss-image-container";
     container.style.width = `${displayWidth}${units}`;
-    container.style.aspectRatio = `${aspectWidth} / ${aspectHeight}`;
     if (typeof value.title === "string" && value.title.length <= 4096) {
       container.title = value.title;
     }
@@ -691,6 +718,7 @@
 
     const sizer = documentRef.createElement("span");
     sizer.className = "gloss-image-sizer";
+    // One sizing rule owns the ratio; raw CSS aspect-ratio bypasses this cap.
     sizer.style.paddingTop = `${Math.min(10_000, aspectHeight / aspectWidth * 100)}%`;
     const background = documentRef.createElement("span");
     background.className = "gloss-image-background";
@@ -716,35 +744,150 @@
     const onLayoutChange = typeof state.onLayoutChange === "function"
       ? state.onLayoutChange
       : () => {};
-    image.addEventListener("load", () => {
-      link.dataset.imageLoadState = "loaded";
-      onLayoutChange();
+    const ownsView = typeof state.isCurrent === "function" ? state.isCurrent : () => true;
+    const isCurrent = () => image.isConnected && ownsView();
+    const ownsDisplayedImage = state.isImageCurrent
+      || (() => image.isConnected && (state.isCurrentLink || ownsView)());
+    let imageContext = state.imageContext || {};
+    let appliedSources = imageContext.popupImageSources ?? null;
+    let attempt = 0;
+    let supplier = null;
+    let sourceLabel = null;
+    function updateSourceLabel() {
+      if (!supplier || supplier === state.dictionary) {
+        if (!sourceLabel) return false;
+        sourceLabel.remove();
+        sourceLabel = null;
+        return true;
+      }
+      const name = imageContext.dictionaryPresentation?.find(entry => entry.title === supplier)?.displayName || supplier;
+      const text = `Image: ${name}`;
+      if (sourceLabel?.textContent === text && sourceLabel.dataset.dictionary === supplier) return false;
+      if (!sourceLabel) {
+        sourceLabel = documentRef.createElement("span");
+        sourceLabel.className = "gloss-image-source";
+        if (state.imageSourceLabelHost) state.imageSourceLabelHost.appendChild(sourceLabel);
+        else link.after(sourceLabel);
+      }
+      sourceLabel.textContent = text;
+      sourceLabel.dataset.dictionary = supplier;
+      sourceLabel.title = supplier;
+      return true;
+    }
+    let previewHovered = false;
+    let previewFocused = false;
+    const showPreview = () => {
+      if (!isCurrent()) return;
+      state.requestImagePreview?.(link, image);
+    };
+    const hidePreview = () => {
+      state.hideImagePreview?.(link);
+    };
+    const hideUnownedPreview = () => {
+      if (!previewHovered && !previewFocused) hidePreview();
+    };
+    link.addEventListener("mouseenter", () => {
+      previewHovered = true;
+      showPreview();
     });
-    image.addEventListener("error", () => {
+    link.addEventListener("mouseleave", () => {
+      previewHovered = false;
+      hideUnownedPreview();
+    });
+    link.addEventListener("focus", () => {
+      previewFocused = true;
+      showPreview();
+    });
+    link.addEventListener("blur", () => {
+      previewFocused = false;
+      link.removeAttribute("tabindex");
+      hideUnownedPreview();
+    });
+    const failImage = () => {
+      if (!isCurrent()) return;
+      hidePreview();
       image.hidden = true;
       link.removeAttribute("href");
+      background.style.removeProperty("--image");
       link.dataset.imageLoadState = "load-error";
+      link.setAttribute("role", "img");
+      linkText.textContent = image.alt ? `${image.alt}: Image failed to load` : "Image failed to load";
+      link.setAttribute("aria-label", linkText.textContent);
+      supplier = null;
+      updateSourceLabel();
+      state.onImageError?.();
       onLayoutChange();
-    });
+    };
     parent.appendChild(link);
-    let mediaPromise;
-    try {
-      mediaPromise = Promise.resolve(state.resolveMedia({ path, width, height }));
-    } catch (error) {
-      mediaPromise = Promise.reject(error);
-    }
-    mediaPromise.then((url) => {
-      if (image.isConnected && isRenderableMediaUrl(url)) {
+    let onLoad = null;
+    let onError = null;
+    function loadImage(refresh = false) {
+      const currentAttempt = ++attempt;
+      const ownsAttempt = () => attempt === currentAttempt && ownsView();
+      const canPublish = () => image.isConnected && ownsAttempt();
+      if (onLoad) image.removeEventListener("load", onLoad);
+      if (onError) image.removeEventListener("error", onError);
+      onLoad = () => {
+        if (!canPublish() || image.hidden) return;
+        link.dataset.imageLoadState = "loaded";
+        onLayoutChange();
+        state.refreshImagePreview?.(link, image);
+      };
+      const failAttempt = () => { if (canPublish()) failImage(); };
+      onError = () => { if (!image.hidden) failAttempt(); };
+      image.addEventListener("load", onLoad);
+      image.addEventListener("error", onError);
+      if (refresh) {
+        state.onImageStart?.();
+        image.hidden = true;
+        image.removeAttribute("src");
+        // Keep a deliberately focused control keyboard-focusable while its
+        // old URL is unavailable. The successful href restores native focus.
+        if (link.getRootNode().activeElement === link) link.tabIndex = 0;
+        link.removeAttribute("href");
+        link.removeAttribute("role");
+        link.removeAttribute("aria-label");
+        linkText.textContent = "Image";
+        background.style.removeProperty("--image");
+        link.dataset.imageLoadState = "not-loaded";
+        supplier = null;
+        updateSourceLabel();
+        state.refreshImagePreview?.(link, image);
+      }
+      let resolvedSupplier = state.dictionary;
+      let mediaPromise;
+      try {
+        mediaPromise = Promise.resolve(state.resolveMedia({ path, width, height, isCurrent: ownsAttempt,
+          onResolvedSource(title) { if (ownsAttempt()) resolvedSupplier = title; },
+        }));
+      } catch (error) {
+        mediaPromise = Promise.reject(error);
+      }
+      mediaPromise.then((url) => {
+        if (!canPublish()) return;
+        if (!isRenderableMediaUrl(url)) throw new Error("dictionary image is unavailable");
+        image.hidden = false;
         image.src = url;
         link.href = url;
+        link.removeAttribute("tabindex");
         link.dataset.imageLoadState = "loaded";
         background.style.setProperty("--image", `url("${url}")`);
-      }
-    }).catch(() => {
-      image.hidden = true;
-      link.dataset.imageLoadState = "load-error";
-      onLayoutChange();
+        supplier = resolvedSupplier;
+        // The image's load/error callback positions its new label too.
+        updateSourceLabel();
+      }).catch(failAttempt);
+    }
+    state.onImageCreated?.({
+      isCurrent: ownsDisplayedImage,
+      updatePresentation(context) {
+        imageContext = context;
+        if (appliedSources === (context.popupImageSources ?? null) || !ownsView()) return updateSourceLabel();
+        appliedSources = context.popupImageSources ?? null;
+        loadImage(true);
+        return true;
+      },
     });
+    loadImage();
   }
 
   function structuredDataAttributeName(rawKey) {
@@ -828,32 +971,32 @@
         query,
       };
     }
-    if (/^https?:\/\//iu.test(href)) {
-      return { href, internal: false };
-    }
-    return null;
+    const url = globalThis.HDExternalLinks.normaliseExternalUrl(href);
+    return url ? { href: url, internal: false } : null;
+  }
+
+  function ownsStructuredLink(element, state) {
+    const isCurrent = state.isCurrentLink || state.isCurrent;
+    return element.isConnected && (typeof isCurrent !== "function" || isCurrent());
   }
 
   function appendStructuredValue(documentRef, parent, value, state, depth) {
     if (state.nodes >= MAX_STRUCTURED_NODES || depth > MAX_STRUCTURED_DEPTH) {
-      return;
+      throw new RangeError("Structured content exceeds its node or depth limit");
     }
+    // Bound traversal work, including containers and values that render no DOM.
+    state.nodes += 1;
     if (typeof value === "string") {
-      state.nodes += 1;
       parent.appendChild(documentRef.createTextNode(value));
       return;
     }
     if (typeof value === "number" || typeof value === "boolean") {
-      state.nodes += 1;
       parent.appendChild(documentRef.createTextNode(String(value)));
       return;
     }
     if (Array.isArray(value)) {
       for (const child of value) {
         appendStructuredValue(documentRef, parent, child, state, depth + 1);
-        if (state.nodes >= MAX_STRUCTURED_NODES) {
-          break;
-        }
       }
       return;
     }
@@ -891,14 +1034,12 @@
     }
 
     if (tag === "img") {
-      state.nodes += 1;
       appendStructuredImage(documentRef, parent, value, state);
       return;
     }
 
     const element = documentRef.createElement(tag);
     element.classList.add(`gloss-sc-${tag}`);
-    state.nodes += 1;
     applyStructuredStyle(element, value.style);
     applyStructuredData(element, value.data);
     if (
@@ -937,10 +1078,13 @@
           element.dataset.hoshidictsReading = link.primaryReading;
         }
         element.addEventListener("click", (event) => {
+          if (event.defaultPrevented) return;
           event.preventDefault();
-          if (typeof state.onInternalLink === "function") {
+          event.stopPropagation();
+          if (ownsStructuredLink(element, state) && typeof state.onInternalLink === "function") {
             state.onInternalLink({
               anchor: element,
+              focusChild: event.detail === 0,
               primaryReading: link.primaryReading,
               query: link.query,
             });
@@ -951,6 +1095,20 @@
         element.target = "_blank";
         element.rel = "noopener noreferrer";
         element.dataset.external = "true";
+        const activate = (event) => {
+          if (event.defaultPrevented || event.button !== (event.type === "auxclick" ? 1 : 0)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (!ownsStructuredLink(element, state)) return;
+          if (typeof state.onExternalLink === "function") {
+            state.onExternalLink({
+              url: link.href,
+              active: event.shiftKey || !(event.button === 1 || event.ctrlKey || event.metaKey),
+            });
+          }
+        };
+        element.addEventListener("click", activate);
+        element.addEventListener("auxclick", activate);
       }
     }
     let contentParent = element;
@@ -1007,13 +1165,25 @@
     }
     const state = {
       nodes: 0,
+      dictionary: options.dictionary,
+      appendImage: options.appendImage,
+      imageContext: options.imageContext,
+      onImageCreated: options.onImageCreated,
+      isCurrent: options.isCurrent,
+      isCurrentLink: options.isCurrentLink,
+      onExternalLink: options.onExternalLink,
       onInternalLink: options.onInternalLink,
       onLayoutChange: options.onLayoutChange,
+      requestImagePreview: options.requestImagePreview,
+      refreshImagePreview: options.refreshImagePreview,
+      hideImagePreview: options.hideImagePreview,
       resolveMedia: typeof options.resolveMedia === "function"
-        ? ({ path, width, height }) => options.resolveMedia({
+        ? ({ path, width, height, isCurrent, onResolvedSource }) => options.resolveMedia({
             dictionary: options.dictionary,
             generation: options.generation,
             height,
+            isCurrent,
+            onResolvedSource,
             path,
             width,
           })
@@ -1030,9 +1200,6 @@
       listItem.className = "gloss-item";
       appendStructuredValue(documentRef, listItem, item, state, 0);
       list.appendChild(listItem);
-      if (state.nodes >= MAX_STRUCTURED_NODES) {
-        break;
-      }
     }
     parent.appendChild(list);
   }
@@ -1043,10 +1210,66 @@
       : value.length;
   }
 
-  function cssAttributeString(value) {
-    return `"${value
-      .replace(/\\/gu, "\\\\")
-      .replace(/"/gu, '\\"')}"`;
+  function isSafeDictionaryStyle(style) {
+    const declarations = style.cssText;
+    // Check the whole browser-serialized block: var() shorthands enumerate as
+    // empty longhands until substitution. Residual escapes can disguise both
+    // function names and variable delimiters; drop that cosmetic rule rather
+    // than reinterpret CSS tokens. Do not strip comment-like text in strings.
+    if (declarations.includes("\\")
+      || /\b(?:url|src|image-set|paint|attr)\s*\(/iu.test(declarations)
+      || /--[^(),]*\(/u.test(declarations)) return false;
+    for (const match of declarations.matchAll(/\bvar\(\s*([^,)]+)[,)]/giu)) {
+      if (!DICTIONARY_STYLE_VARIABLES.has(match[1].trim())) return false;
+    }
+    for (const property of style) {
+      if (property.startsWith("--")) return false;
+      // Named fonts can activate an outer page's @font-face without a URL here.
+      // CSSOM expands non-variable font shorthands into font-family as well.
+      if (property === "font-family" && !style.getPropertyValue(property).split(",")
+        .every((family) => DICTIONARY_FONT_FAMILIES.has(family.trim().toLowerCase()))) return false;
+    }
+    return true;
+  }
+
+  function typeDictionaryStyleVariables(style) {
+    const declarations = style.cssText;
+    if (!/\bvar\(/iu.test(declarations)) return;
+    const suffixes = [];
+    // CSSOM has already balanced the declaration block, and residual escapes
+    // were rejected. Keep strings/comments opaque while pairing parentheses.
+    style.cssText = declarations.replace(
+      /"[^"]*"|'[^']*'|\/\*[\s\S]*?\*\/|\bvar\(\s*(--[\w-]+)|[()]/giu,
+      (token, variable) => {
+        if (variable) {
+          const numeric = variable === "--font-size-no-units";
+          suffixes.push(numeric ? " * 1)" : " 100%, transparent)");
+          return (numeric ? "calc(" : "color-mix(in srgb, ") + token;
+        }
+        if (token === "(") suffixes.push("");
+        return token === ")" ? token + suffixes.pop() : token;
+      },
+    );
+  }
+
+  function filterDictionaryStyleRules(parent) {
+    for (let index = parent.cssRules.length - 1; index >= 0; index -= 1) {
+      const rule = parent.cssRules[index];
+      const kind = rule.constructor.name;
+      if (kind === "CSSStyleRule" || kind === "CSSNestedDeclarations") {
+        if (!isSafeDictionaryStyle(rule.style)) {
+          parent.deleteRule(index);
+          continue;
+        }
+        typeDictionaryStyleVariables(rule.style);
+      } else if (!DICTIONARY_STYLE_GROUPS.has(kind)) {
+        // Global definitions (@font-face, @property, keyframes, imports, etc.)
+        // are not glossary-local even when written inside an @scope block.
+        parent.deleteRule(index);
+        continue;
+      }
+      if (rule.cssRules) filterDictionaryStyleRules(rule);
+    }
   }
 
   // Replaces whatever styles a previous generation installed in `host` rather
@@ -1068,8 +1291,8 @@
       const dictionary = boundedString(entry.dictionary, 4096);
       const entryStyles = boundedString(entry.styles, MAX_DICTIONARY_STYLE_BYTES + 1);
       const styleBytes = utf8Length(entryStyles);
-      // A dictionary ships its own CSS, so cap it: one runaway stylesheet must
-      // not be able to repaint or cover the whole popup.
+      // Keep the existing stylesheet transport bounds. Containment is enforced
+      // by parsed scoping and the trusted card's paint boundary, not its size.
       if (
         !dictionary ||
         !entryStyles ||
@@ -1081,12 +1304,17 @@
       }
       dictionaries.add(dictionary);
       totalBytes += styleBytes;
+      // Detached parsing cannot fetch resources. Only browser-serialized rules
+      // enter the controlled scope; raw closing braces must never reach it.
+      const sheet = new documentRef.defaultView.CSSStyleSheet();
+      sheet.replaceSync(entryStyles);
+      filterDictionaryStyleRules(sheet);
       const style = documentRef.createElement("style");
       style.dataset.hoshidictsDictionaryStyle = dictionary;
       style.dataset.hoshidictsGeneration = String(generation);
       style.textContent = [
-        `@scope (.gsm-hoshidicts-glossary-content[data-hoshidicts-dictionary=${cssAttributeString(dictionary)}]) {`,
-        entryStyles,
+        `@scope (.gsm-hoshidicts-glossary-content[data-hoshidicts-dictionary=${documentRef.defaultView.CSS.escape(dictionary)}]) {`,
+        ...[...sheet.cssRules].map((rule) => rule.cssText),
         "}",
       ].join("\n");
       host.appendChild(style);

@@ -1,10 +1,24 @@
+import "./reader-options.js";
+import { createAnkiGateway } from "./anki.js";
+import { detectAnkiSetup, verifyAnkiSetup } from "./anki-setup.js";
+import { createAnkiWorkerService } from "./anki-worker.js";
+import { createBackupDownloads } from "./backup-downloads.js";
+import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
+import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm } from "./lookup-stats.js";
+import "./external-links.js";
+import "./dictionary-group-state.js";
 import {
+  assertDictionaryUpdateSchedule,
   httpsUrl,
+  installedRecommendedDictionary,
   MANAGED_DICTIONARY_CHANGED,
-  MANAGED_UPDATE_SCHEDULE_MINUTES,
   managedDictionaryFingerprint,
   managedDictionaryMatches,
+  managedDictionarySource,
   managedUpdateSchedule,
+  nextDictionaryUpdateCheck,
+  nextManagedUpdateCheck,
+  normaliseUpdateSettings,
   recommendedDictionarySource,
   recommendedIndexUrlMatches,
 } from "./managed-dictionary-source.js";
@@ -13,11 +27,26 @@ import {
   CUSTOM_DICTIONARY_SOURCE_KEY,
   CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION,
   CUSTOM_DICTIONARY_TITLE,
+  assertCustomDictionaryCommit,
+  assertCustomSourceState,
   customDictionarySemanticRevision,
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
 } from "./custom-dictionary.js";
 import { sameJsonValue } from "./json-value.js";
+import {
+  boundResponseFailure, responseFits, responseLimitError, validResponseRequestId,
+} from "./response-limits.js";
+import {
+  FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
+  advanceSetupState, initialSetupState, normaliseSetupState, recordSetupAnki, recordSetupDictionaries,
+} from "./setup-state.js";
+
+const {
+  DEFAULT_OPTIONS, normaliseCorpusSeenUrl, normaliseOptions, projectStoredOptions, validateOptionsPatch,
+} = globalThis.HDReaderOptions;
+const { normaliseExternalUrl } = globalThis.HDExternalLinks;
+const { pruneGroupMemberships } = globalThis.HDDictionaryGroups;
 
 /*
  * Service worker for Hachidori.
@@ -38,6 +67,12 @@ import { sameJsonValue } from "./json-value.js";
 const OFFSCREEN_DOCUMENT = "offscreen.html";
 const TARGET = "hoshidicts-offscreen";
 const UPDATE_TARGET = "hachidori-updates";
+const AUDIO_TARGET = "hachidori-audio";
+const CAPTURE_TARGET = "hachidori-capture";
+const CAPTURE_PAGE_TARGET = "hachidori-capture-page";
+const CAPTURE_CONTENT_TARGET = "hachidori-capture-content";
+const CAPTURE_DOCUMENT = "capture.html";
+const SETUP_TARGET = "hachidori-setup";
 
 // Requests the worker answers itself. A second target is what keeps them out of
 // the relay below: a message from the offscreen document carrying TARGET is
@@ -45,6 +80,15 @@ const UPDATE_TARGET = "hachidori-updates";
 // `relayed` and handed straight back to the offscreen document, where the
 // engine's own request queue would then wait on itself.
 const WORKER_TARGET = "hoshidicts-worker";
+let ankiGateway, ankiMining;
+let backupDownloads;
+// One first-run Anki detection at a time; duplicate startup pages share it.
+let ankiSetupDetection = null;
+
+function getBackupDownloads() {
+  backupDownloads ??= createBackupDownloads(chrome, relay);
+  return backupDownloads;
+}
 
 const DICTIONARY_STATE_KEY = "dictionaryState";
 const LEGACY_DICTIONARIES_KEY = "dictionaries";
@@ -53,6 +97,7 @@ const UPDATE_SETTINGS_KEY = "dictionaryUpdates";
 const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
 const DICTIONARY_STATE_SCHEMA_VERSION = 1;
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
+const LOOKUP_STATS_CORPUS_TIMEOUT_MS = 2_000;
 // A relayed request can arrive in the window between createDocument() resolving
 // and offscreen.js running its module body, where nothing is listening yet.
 const RELAY_ATTEMPTS = 5;
@@ -60,6 +105,11 @@ const RELAY_BACKOFF_MS = 40;
 const NOT_LISTENING = /Receiving end does not exist|Could not establish connection/i;
 
 let creating = null;
+let latestAudioOperation = null;
+let capturePage = null;
+let captureRecovery = null;
+let captureContentDocument = null;
+let captureLink = null;
 
 function describe(error) {
   if (error instanceof Error) {
@@ -74,6 +124,144 @@ function sleep(ms) {
   });
 }
 
+function capturePageSender(sender) {
+  return sender.id === chrome.runtime.id
+    && sender.url === chrome.runtime.getURL(OFFSCREEN_DOCUMENT)
+    && sender.tab === undefined;
+}
+
+function trustedCaptureControl(sender) {
+  if (sender.id !== chrome.runtime.id || typeof sender.url !== "string") return false;
+  try {
+    const url = new URL(sender.url);
+    if (url.search) return false;
+    url.hash = "";
+    return [chrome.runtime.getURL("settings.html"), chrome.runtime.getURL(CAPTURE_DOCUMENT)].includes(url.href);
+  } catch {
+    return false;
+  }
+}
+
+async function relayCapture(message, stillCurrent = null) {
+  if (!capturePage || captureRecovery) await recoverCaptureHost();
+  if (stillCurrent && !stillCurrent()) return { ignored: true };
+  return sendCapture(message);
+}
+
+async function sendCapture(message) {
+  if (!capturePage?.documentId) throw new Error("The media capture host is unavailable.");
+  const request = {
+    ...message,
+    target: CAPTURE_PAGE_TARGET,
+    relayed: true,
+    captureDocumentId: capturePage.documentId,
+  };
+  let reply;
+  try {
+    reply = await chrome.runtime.sendMessage(request);
+  } catch (error) {
+    capturePage = null;
+    void unlinkCaptureContent();
+    throw error;
+  }
+  if (!reply) {
+    capturePage = null;
+    void unlinkCaptureContent();
+    throw new Error("The media capture host did not reply.");
+  }
+  if (!responseFits(reply)) throw new Error(responseLimitError(message.type));
+  if (!reply.ok) throw new Error(reply.error || "The capture operation failed.");
+  return reply;
+}
+
+async function recoverCaptureBinding(page) {
+  if (captureContentDocument || captureLink?.captureSessionId || !page) return;
+  assertCaptureTabId(page.tabId);
+  if (!shortCaptureString(page.documentId)) throw new Error("The linked document identity is invalid.");
+  const owner = capturePage;
+  const identity = { tabId: page.tabId, documentId: page.documentId };
+  const reply = await chrome.tabs.sendMessage(page.tabId, {
+    target: CAPTURE_CONTENT_TARGET, type: "hd_capture_recover",
+  }, { documentId: page.documentId }).catch(() => null);
+  if (capturePage !== owner || captureContentDocument || captureLink?.captureSessionId) return;
+  if (reply?.linked === true && reply.documentId === page.documentId) {
+    captureContentDocument = identity;
+  } else {
+    await sendCapture({ type: "hd_capture_unlinked", ...identity,
+      reason: "The reading document is no longer available. Link the page again." });
+  }
+}
+
+async function recoverCaptureHost() {
+  if (captureRecovery) return captureRecovery;
+  if (capturePage) return;
+  captureRecovery = (async () => {
+    await ensureOffscreen();
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: ["OFFSCREEN_DOCUMENT"], documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT)],
+    });
+    if (capturePage || contexts.length !== 1) return;
+    const context = contexts[0];
+    capturePage = { documentId: context.documentId };
+    const status = await sendCapture({ type: "hd_capture_status" });
+    await recoverCaptureBinding(status.linkedPage);
+  })();
+  try { await captureRecovery; }
+  finally { captureRecovery = null; }
+}
+
+function finiteCaptureTime(value) {
+  return Number.isFinite(value) && Math.abs(value - Date.now()) <= 10 * 60 * 1000;
+}
+
+function shortCaptureString(value, limit = 256) {
+  return typeof value === "string" && value.length > 0 && value.length <= limit;
+}
+
+function assertCaptureTabId(tabId) {
+  if (!Number.isInteger(tabId) || tabId < 0) throw new Error("Choose a valid reading tab.");
+}
+
+async function captureTabs() {
+  const tabs = await chrome.tabs.query({});
+  return tabs.filter(tab => Number.isInteger(tab.id) && typeof tab.url === "string"
+      && /^(https?|file):/u.test(tab.url))
+    .map(tab => ({ id: tab.id, title: String(tab.title || "").slice(0, 200), url: tab.url.slice(0, 2048) }));
+}
+
+async function commandCaptureContent(tabId, type, fields = {}) {
+  assertCaptureTabId(tabId);
+  try {
+    const reply = await chrome.tabs.sendMessage(tabId, {
+      target: CAPTURE_CONTENT_TARGET,
+      type,
+      ...fields,
+    }, { frameId: 0 });
+    if (reply?.error) throw new Error(reply.error);
+    return reply;
+  } catch (error) {
+    throw new Error(`The reading page is unavailable. Reload it and try again. ${describe(error)}`);
+  }
+}
+
+function captureDocumentKey(tabId) {
+  return `tab:${tabId}`;
+}
+
+async function unlinkCaptureContent() {
+  const linked = captureContentDocument;
+  if (!linked) return;
+  try {
+    await commandCaptureContent(linked.tabId, "hd_capture_unlink");
+  } catch {
+    // Navigation and tab closure already destroy the content-script state.
+  }
+  if (captureContentDocument?.tabId === linked.tabId
+      && captureContentDocument.documentId === linked.documentId) {
+    captureContentDocument = null;
+  }
+}
+
 async function offscreenExists() {
   const contexts = await chrome.runtime.getContexts({
     contextTypes: ["OFFSCREEN_DOCUMENT"],
@@ -86,9 +274,9 @@ async function createOffscreen() {
   try {
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_DOCUMENT,
-      reasons: ["DOM_SCRAPING"],
+      reasons: ["DOM_SCRAPING", "AUDIO_PLAYBACK", "DISPLAY_MEDIA"],
       justification:
-        "Runs the WebAssembly dictionary engine and parses imported Yomitan archives in a DOM context that outlives the service worker.",
+        "Runs the dictionary engine and pronunciation audio, and owns explicitly started local display capture across control-page closure.",
     });
   } catch (error) {
     // Another extension context may have won the race; only a genuine absence
@@ -113,10 +301,13 @@ async function ensureOffscreen() {
   await creating;
 }
 
-async function relay(message) {
+async function relay(message, stillCurrent = null) {
   let failure = null;
   for (let attempt = 0; attempt < RELAY_ATTEMPTS; attempt += 1) {
     await ensureOffscreen();
+    if (stillCurrent && !stillCurrent()) {
+      return { type: `${message.type}_result`, requestId: message.requestId, ok: true, status: "cancelled" };
+    }
     try {
       // `relayed` is what lets offscreen.js ignore the copy of this message that
       // chrome.runtime.sendMessage also delivers to it directly, so a request
@@ -156,14 +347,6 @@ async function readDictionaryStorage(includeCustomDocument = false) {
     customDocument: includeCustomDocument
       ? stored?.[CUSTOM_DICTIONARY_SOURCE_KEY] ?? null
       : undefined,
-  };
-}
-
-function normaliseUpdateSettings(value) {
-  const schedule = managedUpdateSchedule(value?.schedule) ?? "off";
-  return {
-    schedule,
-    lastCheckedAt: typeof value?.lastCheckedAt === "string" ? value.lastCheckedAt : null,
   };
 }
 
@@ -211,24 +394,6 @@ function normaliseDictionarySelections(value, dictionaries) {
   return options;
 }
 
-function pruneGroupMemberships(value, dictionaries) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const installedIds = new Set(dictionaries.map((dictionary) => dictionary.id));
-  return value.map((group) => {
-    const seen = new Set();
-    const dictionaryIds = Array.isArray(group.dictionaryIds)
-      ? group.dictionaryIds.filter((id) => {
-        if (!installedIds.has(id) || seen.has(id)) return false;
-        seen.add(id);
-        return true;
-      })
-      : [];
-    return { ...group, dictionaryIds };
-  });
-}
-
 function assertDictionaryState(state) {
   if (state !== null && state?.schemaVersion !== DICTIONARY_STATE_SCHEMA_VERSION) {
     throw new Error(`unsupported dictionary state schema ${String(state?.schemaVersion)}`);
@@ -266,42 +431,6 @@ function assertOrdinaryCustomTransition(currentDictionaries, nextDictionaries) {
   }
 }
 
-function assertCustomDictionaryCommit(dictionaries) {
-  const customIndexes = dictionaries.flatMap((dictionary, index) =>
-    dictionary?.id === CUSTOM_DICTIONARY_ID ? [index] : []);
-  if (customIndexes.length > 1) {
-    throw new Error("the custom dictionary state contains duplicate managed packages");
-  }
-  if (customIndexes.length === 0) return;
-  const custom = dictionaries[customIndexes[0]];
-  if (customIndexes[0] !== 0
-      || custom?.title !== CUSTOM_DICTIONARY_TITLE
-      || custom?.enabled !== true) {
-    throw new Error("the managed custom dictionary must stay enabled and first");
-  }
-  if (dictionaries.some((dictionary, index) =>
-    index !== customIndexes[0] && dictionary?.title === CUSTOM_DICTIONARY_TITLE)) {
-    throw new Error(`a dictionary named ${CUSTOM_DICTIONARY_TITLE} is already installed`);
-  }
-}
-
-function assertCustomSourceState(dictionaries, semanticRevision, entryCount) {
-  const custom = dictionaries.filter((dictionary) => dictionary?.id === CUSTOM_DICTIONARY_ID);
-  if (entryCount === 0) {
-    if (custom.length !== 0) {
-      throw new Error("a zero-entry custom source cannot retain its managed package");
-    }
-    return;
-  }
-  assertCustomDictionaryCommit(dictionaries);
-  const entry = custom[0];
-  if (custom.length !== 1
-      || entry?.revision !== semanticRevision
-      || entry?.termCount !== entryCount) {
-    throw new Error("the custom dictionary package does not match its source semantics");
-  }
-}
-
 function assertCustomDictionaryCasRequest(message) {
   if (!Number.isInteger(message?.baseDocumentRevision)
       || message.baseDocumentRevision < 0) {
@@ -324,7 +453,13 @@ function assertCustomDictionaryCasRequest(message) {
   return changesDictionaryState;
 }
 
+function committedSelectionTitle(title, current, dictionaries) {
+  const selected = current?.dictionaries.find((entry) => entry.title === title);
+  return selected ? dictionaries.find((entry) => entry.id === selected.id)?.title ?? "" : title;
+}
+
 function dictionaryCommit(current, currentOptions, dictionaries, groups) {
+  for (const dictionary of dictionaries) assertDictionaryUpdateSchedule(dictionary);
   const currentRevision = current?.revision ?? 0;
   const state = {
     schemaVersion: DICTIONARY_STATE_SCHEMA_VERSION,
@@ -334,9 +469,21 @@ function dictionaryCommit(current, currentOptions, dictionaries, groups) {
   };
   const values = { [DICTIONARY_STATE_KEY]: state };
   if (currentOptions !== undefined) {
-    const nextOptions = normaliseDictionarySelections(currentOptions, state.dictionaries);
-    if (!sameJsonValue(nextOptions, currentOptions)) {
-      values[OPTIONS_KEY] = { ...nextOptions, revision: optionsRevision(currentOptions) + 1 };
+    const revision = optionsRevision(currentOptions);
+    const nextOptions = normaliseDictionarySelections(
+      { ...projectStoredOptions(currentOptions), revision }, state.dictionaries,
+    );
+    if (nextOptions.popupImageSource?.kind === "dictionary") {
+      const title = committedSelectionTitle(nextOptions.popupImageSource.title, current, dictionaries);
+      nextOptions.popupImageSource = title ? { kind: "dictionary", title } : null;
+    }
+    if (nextOptions.pitchAccentFuriganaDictionary) {
+      nextOptions.pitchAccentFuriganaDictionary = committedSelectionTitle(
+        nextOptions.pitchAccentFuriganaDictionary, current, dictionaries,
+      );
+    }
+    if (!sameJsonValue(nextOptions, { ...currentOptions, revision })) {
+      values[OPTIONS_KEY] = { ...nextOptions, revision: revision + 1 };
     }
   }
   return { state, values };
@@ -358,7 +505,182 @@ async function removeLegacyDictionaryRows(current, legacyDictionaries) {
 // The engine or settings page reads state, changes it, and sends it back a
 // message round trip later. A caller includes the revision it read so a stale
 // write cannot discard a change made by another extension context.
+async function lookupStatisticsStorage(message, record) {
+  const term = normaliseLookupTerm(message.term, message.reading);
+  const stored = await chrome.storage.local.get([LOOKUP_STATS_KEY, OPTIONS_KEY]);
+  let descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
+  assertLookupStatsDescriptor(descriptor);
+  const storedOptions = stored[OPTIONS_KEY];
+  if (storedOptions?.showLookupCounts === false) {
+    return { descriptor, statistics: null, term, corpusSeen: null };
+  }
+  const key = lookupStatsKey(descriptor, term);
+  let row = descriptor.generation === null ? undefined : (await chrome.storage.local.get(key))[key];
+  if (record) {
+    row = incrementLookupStats(row, term, Date.now());
+    descriptor = { generation: descriptor.generation ?? crypto.randomUUID(), revision: descriptor.revision + 1 };
+    assertLookupStatsDescriptor(descriptor);
+    await chrome.storage.local.set({ [LOOKUP_STATS_KEY]: descriptor, [lookupStatsKey(descriptor, term)]: row });
+  } else if (row !== undefined) {
+    assertLookupStatsRows(descriptor, [row]);
+    if (lookupStatsKey(descriptor, row) !== key) throw new Error("The lookup statistics row does not match its key.");
+  }
+  return {
+    descriptor,
+    statistics: { ...(row ?? { ...term, lookupCount: 0 }), seenCount: null },
+    term,
+    corpusSeen: storedOptions?.corpusSeenEnabled === true
+      ? normaliseCorpusSeenUrl(storedOptions.corpusSeenUrl) ?? DEFAULT_OPTIONS.corpusSeenUrl
+      : null,
+  };
+}
+
+// Read-only: GSM's POST lookup-stats endpoint would also increment its own count.
+async function corpusSeenCount(baseUrl, term) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LOOKUP_STATS_CORPUS_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${baseUrl}/api/tokenization/word/${encodeURIComponent(term)}`, {
+      cache: "no-store",
+      credentials: "omit",
+      method: "GET",
+      redirect: "error",
+      signal: controller.signal,
+    });
+    let payload;
+    try {
+      payload = await response.json();
+    } catch {
+      return null;
+    }
+    if (response.status === 404 && payload?.error === "Word not found") return 0;
+    return response.ok && Number.isSafeInteger(payload?.total_occurrences) && payload.total_occurrences >= 0
+      ? payload.total_occurrences
+      : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function lookupStatistics(message, record) {
+  const { term, corpusSeen, ...local } = await serialiseStorage(
+    () => lookupStatisticsStorage(message, record),
+  );
+  if (local.statistics === null || corpusSeen === null) return local;
+  return {
+    ...local,
+    statistics: { ...local.statistics, seenCount: await corpusSeenCount(corpusSeen, term.term) },
+  };
+}
+
+function assertBackupEngineSender(sender) {
+  if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)) {
+    throw new Error("Backup restore and cleanup must be requested by the dictionary engine.");
+  }
+}
+
 const WORKER_HANDLERS = {
+  hd_lookup_stats_record(message) { return lookupStatistics(message, true); },
+  hd_lookup_stats_read(message) { return lookupStatistics(message, false); },
+  async hd_lookup_stats_cleanup(_message, sender) {
+    assertBackupEngineSender(sender);
+    const stored = await chrome.storage.local.get(null);
+    const descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
+    assertLookupStatsDescriptor(descriptor);
+    const prefix = lookupStatsPrefix(descriptor);
+    const unused = Object.keys(stored).filter(key => key.startsWith(LOOKUP_STATS_ROW_PREFIX) && !key.startsWith(prefix));
+    if (unused.length > 0) await chrome.storage.local.remove(unused);
+    return {};
+  },
+  async hd_backup_download(message, sender) {
+    if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
+      throw new Error("Backup downloads are available only from Hachidori Settings.");
+    }
+    return getBackupDownloads().download();
+  },
+  async hd_backup_base_read() {
+    const stored = await chrome.storage.local.get([
+      DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_SOURCE_KEY, UPDATE_SETTINGS_KEY, LOOKUP_STATS_KEY,
+    ]);
+    return { snapshot: {
+      state: stored[DICTIONARY_STATE_KEY] ?? null,
+      options: stored[OPTIONS_KEY] ?? null,
+      document: stored[CUSTOM_DICTIONARY_SOURCE_KEY] ?? null,
+      updates: stored[UPDATE_SETTINGS_KEY] ?? null,
+      lookupStats: stored[LOOKUP_STATS_KEY] ?? null,
+    } };
+  },
+
+  async hd_backup_read() {
+    const { snapshot } = await WORKER_HANDLERS.hd_backup_base_read();
+    const stored = await chrome.storage.local.get(null);
+    const descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
+    assertLookupStatsDescriptor(descriptor);
+    const prefix = lookupStatsPrefix(descriptor);
+    const lookupStatsRows = Object.entries(stored).filter(([key]) => key.startsWith(prefix)).map(([key, row]) => {
+      if (lookupStatsKey(descriptor, row) !== key) throw new Error("The lookup statistics row does not match its key.");
+      return row;
+    });
+    assertLookupStatsRows(descriptor, lookupStatsRows);
+    return { snapshot: {
+      state: snapshot.state,
+      options: { ...projectStoredOptions(snapshot.options), revision: optionsRevision(snapshot.options) },
+      document: normaliseCustomDictionaryDocument(snapshot.document),
+      updates: normaliseUpdateSettings(snapshot.updates),
+      lookupStats: descriptor,
+    }, lookupStatsRows };
+  },
+
+  async hd_backup_cas(message, sender) {
+    assertBackupEngineSender(sender);
+    const { snapshot: current } = await WORKER_HANDLERS.hd_backup_base_read();
+    if (!sameJsonValue(message.base, current)) {
+      return { ok: false, conflict: true, error: "Hachidori changed since this backup was prepared. Prepare it again before restoring." };
+    }
+    const snapshot = message.snapshot;
+    await assertBackupSnapshot(snapshot);
+    assertLookupStatsRows(snapshot.lookupStats, message.lookupStatsRows);
+    if (snapshot.lookupStats.generation === null || snapshot.lookupStats.generation === current.lookupStats?.generation) {
+      throw new Error("A backup restore requires a fresh lookup statistics namespace.");
+    }
+    const expected = Object.fromEntries(Object.entries(backupRevisions(current)).map(([key, revision]) => [key, revision + 1]));
+    if (!sameJsonValue(backupRevisions(snapshot), expected)) throw new Error("Invalid backup restore revisions.");
+    if (!sameJsonValue(snapshot.options, normaliseDictionarySelections(snapshot.options, snapshot.state.dictionaries))) {
+      throw new Error("The backup reader settings refer to unavailable dictionaries.");
+    }
+    await chrome.storage.local.set({
+      [DICTIONARY_STATE_KEY]: snapshot.state,
+      [OPTIONS_KEY]: snapshot.options,
+      [CUSTOM_DICTIONARY_SOURCE_KEY]: snapshot.document,
+      [UPDATE_SETTINGS_KEY]: snapshot.updates,
+      [LOOKUP_STATS_KEY]: snapshot.lookupStats,
+      ...Object.fromEntries(message.lookupStatsRows.map(row => [lookupStatsKey(snapshot.lookupStats, row), row])),
+    });
+    return { snapshot };
+  },
+
+  async hd_anki_discover(message, sender) {
+    if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
+      throw new Error("Anki discovery is available only from Hachidori Settings");
+    }
+    if (typeof message.model !== "string" || typeof message.apiKey !== "string") {
+      throw new TypeError("Anki discovery requires a note type and API key string");
+    }
+    ankiGateway ??= createAnkiGateway();
+    return ankiGateway.discover({ model: message.model, apiKey: message.apiKey });
+  },
+  async hd_open_external(message, sender) {
+    if (sender.id !== chrome.runtime.id) throw new Error("external link request came from another extension");
+    const url = normaliseExternalUrl(message.url);
+    if (!url) throw new TypeError("external link URL is invalid");
+    const active = message.active === undefined ? true : message.active;
+    if (typeof active !== "boolean") throw new TypeError("external link activation is invalid");
+    await chrome.tabs.create({ url, active, ...(sender.tab ? { windowId: sender.tab.windowId } : {}) });
+    return { opened: true };
+  },
+
   async hd_state_read() {
     const { state, legacyDictionaries } = await readDictionaryStorage();
     return { state, legacyDictionaries };
@@ -503,36 +825,189 @@ const WORKER_HANDLERS = {
   },
 
   async hd_options_write(message) {
-    if (!message?.options || typeof message.options !== "object" || Array.isArray(message.options)) {
-      throw new Error("the options write request carried no object");
-    }
+    const patch = validateOptionsPatch(message.options);
     if (!Number.isInteger(message.baseRevision) || message.baseRevision < 0) {
       throw new Error("the options write request carried no valid base revision");
     }
     const { state, options: currentOptions } = await readDictionaryStorage();
     assertDictionaryState(state);
     const revision = optionsRevision(currentOptions);
-    const current = { ...currentOptions, revision };
+    const current = { ...projectStoredOptions(currentOptions), revision };
     if (message.baseRevision !== revision) {
-      return {
+      return checkedOptionsResult(message, {
         ok: false,
         conflict: true,
         error: "Settings changed in another page. Review your changes before saving again.",
         options: current,
-      };
+      });
     }
     // Patch only edited fields; revision is owned here, never by the caller.
-    const patched = { ...current, ...message.options, revision };
+    const patched = { ...current, ...patch, revision };
     const options = state === null
       ? patched
       : normaliseDictionarySelections(patched, state.dictionaries);
-    if (!sameJsonValue(options, current)) {
-      options.revision += 1;
+    const changed = !sameJsonValue(options, { ...currentOptions, revision });
+    if (changed) options.revision += 1;
+    // Check the exact prospective reply, including its final revision, before
+    // committing. An oversized success must never become a post-commit error.
+    const result = checkedOptionsResult(message, { options });
+    if (changed) {
       await chrome.storage.local.set({ [OPTIONS_KEY]: options });
     }
-    return { options };
+    return result;
+  },
+
+  async hd_setup_cas(message, sender) {
+    if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL(STARTUP_PAGE)) {
+      throw new Error("Setup progress can be changed only from the Hachidori startup page.");
+    }
+    if (!Number.isInteger(message.baseRevision) || message.baseRevision < 0) {
+      throw new Error("the setup write request carried no valid base revision");
+    }
+    if (message.continued !== undefined && typeof message.continued !== "boolean") {
+      throw new Error("the setup write request carried an invalid continuation flag");
+    }
+    const stored = await chrome.storage.local.get(SETUP_STATE_KEY);
+    const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
+    if (current === null) throw new Error("Setup has not started on this installation.");
+    if (message.baseRevision !== current.revision) {
+      return { ok: false, conflict: true, error: "Setup changed in another tab.", state: current };
+    }
+    const state = advanceSetupState(current, message.stage, new Date().toISOString(), { continued: message.continued === true });
+    await chrome.storage.local.set({ [SETUP_STATE_KEY]: state });
+    return { state };
+  },
+
+  // The offscreen installer reports each dictionary outcome and each run's
+  // duration; a committed catalogue entry also settles its first-install
+  // selection exactly once.
+  // The startup page asks once for Anki detection; the reply carries the
+  // settled outcome, which is also the durable record every later page reads.
+  async hd_setup_anki(message, sender) {
+    if (!startupSender(sender)) throw new Error("Anki setup is available only from the Hachidori startup page.");
+    const stored = await chrome.storage.local.get(SETUP_STATE_KEY);
+    const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
+    if (current === null) throw new Error("Setup has not started on this installation.");
+    if (current.anki !== null) return { state: current };
+    ankiSetupDetection ??= detectFirstRunAnki().finally(() => { ankiSetupDetection = null; });
+    return ankiSetupDetection;
+  },
+
+  async hd_setup_record(message, sender) {
+    if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)) {
+      throw new Error("Setup outcomes are recorded only by the dictionary engine host.");
+    }
+    const outcomes = message.outcomes ?? {};
+    if (!outcomes || typeof outcomes !== "object" || Array.isArray(outcomes)
+        || !Object.keys(outcomes).every((sourceId) => recommendedDictionarySource(sourceId) !== null)) {
+      throw new Error("the setup record names an unknown catalogue source");
+    }
+    const stored = await chrome.storage.local.get([SETUP_STATE_KEY, DICTIONARY_STATE_KEY, OPTIONS_KEY]);
+    const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
+    if (current === null) throw new Error("Setup has not started on this installation.");
+    const selections = firstInstallSelections(current, outcomes, stored[DICTIONARY_STATE_KEY], stored[OPTIONS_KEY]);
+    const state = recordSetupDictionaries(current, {
+      runId: message.runId, outcomes, runSeconds: message.runSeconds ?? null, selectionsApplied: selections.applied,
+    });
+    const values = { [SETUP_STATE_KEY]: state };
+    if (selections.options !== null) values[OPTIONS_KEY] = selections.options;
+    await chrome.storage.local.set(values);
+    return { state };
   },
 };
+
+function startupSender(sender) {
+  return sender.id === chrome.runtime.id && sender.url?.split(/[?#]/u)[0] === chrome.runtime.getURL(STARTUP_PAGE);
+}
+
+// Ordinary absence is a connection that never answered; an answer that refused
+// or failed keeps its specific reason.
+function ankiSetupFailure(error) {
+  const detail = describe(error);
+  const unavailable = /Open Anki with the AnkiConnect add-on|timed out/iu.test(detail);
+  return { status: unavailable ? "unavailable" : "needs-attention", detail, model: null, deck: null };
+}
+
+// One read-only conversation with Anki: an unconfigured profile is offered a
+// proposal, and a mapping the user already saved is verified the way Settings
+// verifies it, never replaced. Nothing here holds the storage queue.
+async function checkFirstRunAnki(anki) {
+  ankiGateway ??= createAnkiGateway();
+  const invoke = (action, params) => ankiGateway.invoke(action, params, anki.apiKey);
+  try {
+    const proposal = anki.model === "" ? await detectAnkiSetup(invoke, anki) : await verifyAnkiSetup(invoke, anki);
+    return { proposal, outcome: { status: proposal.status, detail: proposal.detail, model: proposal.model, deck: proposal.deck } };
+  } catch (error) {
+    // Nothing is claimed about a mapping that could not be checked: the
+    // connection's own reason is the outcome, and the mapping is left untouched.
+    return { proposal: null, outcome: ankiSetupFailure(error) };
+  }
+}
+
+// The check runs outside the storage queue, so the mapping it judged can change
+// while it runs. Such a check is stale: the write is abandoned and the mapping
+// now stored is checked instead. Only a mapping that stops changing can be
+// recorded, so a user still editing Anki settings gets that reason and the link.
+const ANKI_SETUP_ATTEMPTS = 3;
+const ANKI_SETUP_CHANGED = "Anki settings changed while setup checked them. Confirm the mapping in Settings.";
+
+async function detectFirstRunAnki() {
+  for (let attempt = 1; ; attempt += 1) {
+    const stored = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
+    const options = normaliseOptions(stored[OPTIONS_KEY]);
+    const last = attempt >= ANKI_SETUP_ATTEMPTS;
+    const { proposal, outcome } = await checkFirstRunAnki(options.anki);
+    const written = await serialiseStorage(async () => {
+      const current = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
+      const setup = normaliseSetupState(current[SETUP_STATE_KEY]);
+      if (setup === null) throw new Error("Setup has not started on this installation.");
+      if (setup.anki !== null) return { state: setup };
+      const stale = !sameJsonValue(normaliseOptions(current[OPTIONS_KEY]).anki, options.anki);
+      if (stale && !last) return null;
+      const values = {};
+      if (!stale && proposal?.status === "configured") {
+        const revision = optionsRevision(current[OPTIONS_KEY]);
+        const anki = { ...options.anki, model: proposal.model, deck: proposal.deck, fieldTemplates: proposal.fieldTemplates };
+        values[OPTIONS_KEY] = { ...projectStoredOptions(current[OPTIONS_KEY]), ...validateOptionsPatch({ anki }), revision: revision + 1 };
+      }
+      const state = recordSetupAnki(setup, stale
+        ? { status: "needs-attention", detail: ANKI_SETUP_CHANGED, model: null, deck: null }
+        : outcome);
+      values[SETUP_STATE_KEY] = state;
+      await chrome.storage.local.set(values);
+      return { state };
+    });
+    if (written !== null) return written;
+  }
+}
+
+// Dictionary-dependent initial preferences follow the committed entry's exact
+// title, whether setup installed it or found it installed. Each is consumed
+// once; an option the user already changed is left alone.
+function firstInstallSelections(current, outcomes, dictionaryState, storedOptions) {
+  const dictionaries = dictionaryState?.dictionaries ?? [];
+  const effective = normaliseOptions(storedOptions);
+  const applied = [];
+  const patch = {};
+  for (const [sourceId, rule] of Object.entries(FIRST_INSTALL_SELECTIONS)) {
+    if (!["installed", "already-installed"].includes(outcomes[sourceId]?.status)
+        || current.dictionaries.selectionsApplied.includes(sourceId)) continue;
+    // The same catalogue identity the installer uses, so a package carried in
+    // or imported by hand, which is recognised by its exact update index, is
+    // the entry the selection follows.
+    const source = recommendedDictionarySource(sourceId);
+    const committed = source === null ? null : installedRecommendedDictionary(source, dictionaries);
+    if (committed === null) continue;
+    applied.push(sourceId);
+    if (effective[rule.option] === "") patch[rule.option] = rule.select(committed.title);
+  }
+  if (Object.keys(patch).length === 0) return { applied, options: null };
+  const revision = optionsRevision(storedOptions);
+  const options = normaliseDictionarySelections(
+    { ...projectStoredOptions(storedOptions), ...validateOptionsPatch(patch), revision }, dictionaries,
+  );
+  return { applied, options: sameJsonValue(options, { ...storedOptions, revision }) ? null : { ...options, revision: revision + 1 } };
+}
 
 // One read-then-write at a time, so the check above cannot be overtaken by
 // another worker-mediated write between its get and its set.
@@ -550,9 +1025,12 @@ function serialiseStorage(job) {
 async function writeUpdateSettings(update) {
   return serialiseStorage(async () => {
     const current = await readUpdateSettings();
-    const settings = update(current);
+    const next = update(current);
+    if (next === null) return { ok: false, error: "The update settings changed elsewhere. Review the current schedule before retrying.", settings: current };
+    if (sameJsonValue(next, current)) return { settings: current };
+    const settings = { ...next, revision: current.revision + 1 };
     await chrome.storage.local.set({ [UPDATE_SETTINGS_KEY]: settings });
-    return settings;
+    return { settings };
   });
 }
 
@@ -733,32 +1211,56 @@ async function installCheckedCandidate(candidate, checked, checkedAt) {
   }
 }
 
-async function runManagedUpdateCycle({ dictionaryIds = null, install = false } = {}) {
+async function readUpdatePlan() {
+  const stored = await chrome.storage.local.get([DICTIONARY_STATE_KEY, UPDATE_SETTINGS_KEY]);
+  return { dictionaries: stored[DICTIONARY_STATE_KEY]?.dictionaries ?? [],
+    settings: normaliseUpdateSettings(stored[UPDATE_SETTINGS_KEY]) };
+}
+
+async function scheduledCandidateIsDue(candidate) {
+  const { dictionaries, settings } = await serialiseStorage(readUpdatePlan);
+  const current = dictionaries.find(dictionary => dictionary.id === candidate.id);
+  if (!current || !managedDictionaryMatches(current, candidate.fingerprint)) return false;
+  const now = Date.now();
+  const due = nextDictionaryUpdateCheck(current, settings.schedule, now);
+  return due !== null && due <= now;
+}
+
+async function runManagedUpdateCycle({ dictionaryIds = null, install = false, dueOnly = false } = {}) {
   const candidates = await managedCandidates(dictionaryIds);
-  const checkedAt = new Date().toISOString();
   const outcomes = [];
 
   for (const candidate of candidates) {
+    // A later package can be switched Off while an earlier fetch is in flight.
+    if (dueOnly && !await scheduledCandidateIsDue(candidate)) continue;
+    const checkedAt = new Date().toISOString();
     const checked = await checkManagedCandidate(candidate, checkedAt);
     outcomes.push(install
       ? await installCheckedCandidate(candidate, checked, checkedAt)
       : checked.outcome);
   }
 
-  const settings = await writeUpdateSettings((current) => ({
+  if (dueOnly && outcomes.length === 0) return { outcomes, settings: await readUpdateSettings() };
+  const { settings } = await writeUpdateSettings((current) => ({
     ...current,
-    lastCheckedAt: checkedAt,
+    lastCheckedAt: new Date().toISOString(),
   }));
   return { outcomes, settings };
 }
 
 let updateTail = Promise.resolve();
+let updateCycleActive = false;
 
 function queueManagedUpdate(options) {
-  const run = updateTail.then(
-    () => runManagedUpdateCycle(options),
-    () => runManagedUpdateCycle(options),
-  );
+  const execute = async () => {
+    updateCycleActive = true;
+    try { return await runManagedUpdateCycle(options); }
+    finally {
+      updateCycleActive = false;
+      await refreshUpdateAlarm();
+    }
+  };
+  const run = updateTail.then(execute, execute);
   updateTail = run.then(
     () => undefined,
     () => undefined,
@@ -770,18 +1272,21 @@ let alarmTail = Promise.resolve();
 
 function reconcileUpdateAlarm() {
   const run = alarmTail.then(async () => {
-    const settings = await readUpdateSettings();
-    const periodInMinutes = MANAGED_UPDATE_SCHEDULE_MINUTES[settings.schedule];
+    if (updateCycleActive) return;
+    const { dictionaries, settings } = await serialiseStorage(readUpdatePlan);
+    const now = Date.now();
+    const when = nextManagedUpdateCheck(dictionaries, settings.schedule, now);
     const existing = await chrome.alarms.get(UPDATE_ALARM);
-    if (periodInMinutes === null) {
+    if (updateCycleActive) return;
+    if (when === null) {
       if (existing) await chrome.alarms.clear(UPDATE_ALARM);
       return;
     }
-    if (existing?.periodInMinutes === periodInMinutes) {
+    if (existing && existing.periodInMinutes === undefined
+        && (existing.scheduledTime === when || (when === now && existing.scheduledTime <= now))) {
       return;
     }
-    if (existing) await chrome.alarms.clear(UPDATE_ALARM);
-    await chrome.alarms.create(UPDATE_ALARM, { periodInMinutes });
+    await chrome.alarms.create(UPDATE_ALARM, { when });
   });
   alarmTail = run.then(
     () => undefined,
@@ -790,15 +1295,36 @@ function reconcileUpdateAlarm() {
   return run;
 }
 
+function refreshUpdateAlarm() {
+  return reconcileUpdateAlarm().catch(error => {
+    console.error("hoshidicts: could not reconcile the dictionary update alarm:", describe(error));
+  });
+}
+
+function updateTiming(dictionaries = []) {
+  return dictionaries.map(dictionary => [managedDictionarySource(dictionary) !== null,
+    dictionary.updateScheduleOverride ?? null, dictionary.lastUpdateCheck?.checkedAt ?? null]);
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || updateCycleActive) return;
+  const state = changes[DICTIONARY_STATE_KEY];
+  // Update-settings writers reconcile explicitly after releasing the storage queue.
+  if (state && !sameJsonValue(
+    updateTiming(state.oldValue?.dictionaries), updateTiming(state.newValue?.dictionaries),
+  )) void refreshUpdateAlarm();
+});
+
 const UPDATE_HANDLERS = {
   async hd_updates_schedule(message) {
     const schedule = managedUpdateSchedule(message?.schedule);
     if (schedule === null) {
       throw new Error("the dictionary update schedule is invalid");
     }
-    const settings = await writeUpdateSettings((current) => ({ ...current, schedule }));
-    await reconcileUpdateAlarm();
-    return { settings };
+    const result = await writeUpdateSettings(current =>
+      message.baseRevision === current.revision ? { ...current, schedule } : null);
+    if (result.ok !== false) await reconcileUpdateAlarm();
+    return result;
   },
 
   async hd_updates_check() {
@@ -813,23 +1339,504 @@ const UPDATE_HANDLERS = {
   },
 };
 
+function workerReply(message, result) {
+  const { ok = true, error = null, ...payload } = result ?? {};
+  return { type: `${message.type}_result`, requestId: message.requestId ?? null, ok, error, ...payload };
+}
+
+function checkedOptionsResult(message, result) {
+  if (!responseFits(workerReply(message, result))) throw new Error(responseLimitError(message.type));
+  return result;
+}
+
 function failureReply(message, error) {
-  return {
+  return boundResponseFailure({
     type: `${message?.type ?? "hd_unknown"}_result`,
     requestId: message?.requestId ?? null,
     ok: false,
     error: describe(error),
     generation: 0,
+  });
+}
+
+const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight", hd_anki_submit: "submit", hd_anki_browse: "browse" };
+
+const CAPTURE_CONTROL_TYPES = new Set([
+  "hd_capture_open",
+  "hd_capture_tabs",
+  "hd_capture_link",
+  "hd_capture_unlink",
+  "hd_capture_video_select",
+  "hd_capture_track_area",
+  "hd_capture_clear_area",
+  "hd_capture_status",
+  "hd_capture_start",
+  "hd_capture_stop",
+]);
+const CAPTURE_CONTENT_TYPES = new Set([
+  "hd_capture_content_identify",
+  "hd_capture_text_begin",
+  "hd_capture_text_close",
+  "hd_capture_text_source_close",
+  "hd_capture_page_status",
+  "hd_capture_pin",
+  "hd_capture_release",
+  "hd_capture_export",
+  "hd_capture_job_status",
+  "hd_capture_cancel",
+]);
+
+let captureConfigRevision = 0;
+let captureConfigTail = Promise.resolve();
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes[OPTIONS_KEY]) return;
+  const previous = globalThis.HDReaderOptions.normaliseOptions(changes[OPTIONS_KEY].oldValue).mediaCapture;
+  const mediaCapture = globalThis.HDReaderOptions.normaliseOptions(changes[OPTIONS_KEY].newValue).mediaCapture;
+  if (sameJsonValue(previous, mediaCapture)) return;
+  const revision = ++captureConfigRevision;
+  const apply = () => relayCapture({ type: "hd_capture_configure", mediaCapture },
+    () => revision === captureConfigRevision);
+  captureConfigTail = captureConfigTail.then(apply, apply).catch(error => {
+    console.error("hachidori: could not update media capture settings:", describe(error));
+  });
+});
+
+function assertCurrentCaptureLink(link, status = null) {
+  if (captureLink !== link || (status && (status.state !== "recording"
+      || status.captureSessionId !== link.captureSessionId))) {
+    throw new Error("The capture session changed before the reading page was linked.");
+  }
+}
+
+async function linkCapturePage(message) {
+  const link = { tabId: message.tabId, captureSessionId: null, document: null };
+  captureLink = link;
+  let captureDocumentId;
+  try {
+    const status = await relayCapture({ type: "hd_capture_status" });
+    assertCurrentCaptureLink(link);
+    if (status.state !== "recording" || !status.captureSessionId) {
+      await unlinkCaptureContent();
+      throw new Error("Start capture before linking a reading page.");
+    }
+    link.captureSessionId = status.captureSessionId;
+    captureDocumentId = capturePage.documentId;
+    if (status.linkedPage) {
+      await relayCapture({ type: "hd_capture_unlinked", ...status.linkedPage,
+        reason: "Linking a reading page." }, () => captureLink === link);
+      assertCurrentCaptureLink(link);
+    }
+    await unlinkCaptureContent();
+    const stored = await chrome.storage.local.get(OPTIONS_KEY);
+    assertCurrentCaptureLink(link);
+    const mediaCapture = globalThis.HDReaderOptions.projectContentOptions(stored[OPTIONS_KEY]).mediaCapture;
+    const details = await commandCaptureContent(message.tabId, "hd_capture_link", {
+      mediaCapture, captureSessionId: link.captureSessionId,
+    });
+    const document = link.document;
+    if (!document?.documentId) {
+      throw new Error("The linked page did not establish a document identity.");
+    }
+    const tab = await chrome.tabs.get(message.tabId);
+    assertCurrentCaptureLink(link);
+    const page = {
+      tabId: message.tabId,
+      documentId: document.documentId,
+      title: String(tab.title || "").slice(0, 200),
+      url: String(tab.url || "").slice(0, 2048),
+      videos: Array.isArray(details?.videos) ? details.videos : [],
+      message: details?.message || "",
+    };
+    await relayCapture({ type: "hd_capture_linked", requestId: message.requestId,
+      captureSessionId: link.captureSessionId, page });
+    return { page };
+  } catch (error) {
+    if (link.document) {
+      await unlinkRetiredCapture({ captureDocumentId, captureSessionId: link.captureSessionId,
+        linkedPage: link.document }, captureDocumentId, link);
+    }
+    throw error;
+  } finally {
+    if (captureLink === link) captureLink = null;
+  }
+}
+
+function sameCapturePage(page, expected) {
+  return page?.tabId === expected.tabId && page.documentId === expected.documentId;
+}
+
+function replacementCaptureLink(link) {
+  if (captureLink && captureLink !== link && captureLink.tabId === link.tabId) return true;
+  return captureContentDocument !== link.document && sameCapturePage(captureContentDocument, link.document);
+}
+
+async function unlinkRetiredCapture(message, documentId, retiringLink = null) {
+  if (message.captureDocumentId !== documentId) return;
+  const page = message.linkedPage;
+  assertCaptureTabId(page?.tabId);
+  if (!shortCaptureString(page.documentId) || !shortCaptureString(message.captureSessionId)) {
+    throw new Error("The retired capture identity is invalid.");
+  }
+  // A source-ended event can wake a fresh worker before routing has recovered.
+  // Check the live host without publishing a partly recovered capturePage.
+  const status = await chrome.runtime.sendMessage({
+    target: CAPTURE_PAGE_TARGET, type: "hd_capture_status", relayed: true, captureDocumentId: documentId,
+  }).catch(() => null);
+  if (retiringLink && replacementCaptureLink(retiringLink)) return;
+  if (status?.captureSessionId && status.captureSessionId !== message.captureSessionId
+      && sameCapturePage(status.linkedPage, page)) return;
+  await chrome.tabs.sendMessage(page.tabId, {
+    target: CAPTURE_CONTENT_TARGET, type: "hd_capture_unlink",
+  }, { documentId: page.documentId }).catch(() => {});
+  if (sameCapturePage(captureContentDocument, page)) captureContentDocument = null;
+}
+
+async function handleCaptureHostMessage(message, sender) {
+  if (!capturePageSender(sender)) throw new Error("Only the offscreen document can register or stop the capture host.");
+  const contexts = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"],
+    documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT)] });
+  const documentId = contexts.length === 1 ? contexts[0].documentId : null;
+  if (!documentId) throw new Error("The capture host document is unavailable.");
+  if (message.type === "hd_capture_host_stopped") {
+    await unlinkRetiredCapture(message, documentId);
+    return { stopped: true };
+  }
+  capturePage = { documentId };
+  await recoverCaptureBinding(message.linkedPage);
+  const stored = await chrome.storage.local.get(OPTIONS_KEY);
+  return { documentId,
+    mediaCapture: globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]).mediaCapture };
+}
+
+async function openCaptureControls() {
+  const existing = (await chrome.tabs.query({ url: chrome.runtime.getURL(CAPTURE_DOCUMENT) }))[0];
+  if (existing) {
+    try {
+      const tab = await chrome.tabs.update(existing.id, { active: true });
+      if (Number.isInteger(tab.windowId)) await chrome.windows.update(tab.windowId, { focused: true });
+      return { tabId: tab.id };
+    } catch { /* A closed controls tab can be reopened. */ }
+  }
+  const tab = await chrome.tabs.create({ url: chrome.runtime.getURL(CAPTURE_DOCUMENT), active: true });
+  return { tabId: tab.id };
+}
+
+async function handleCaptureControl(message, sender) {
+  if (["hd_capture_register", "hd_capture_host_stopped"].includes(message.type)) {
+    return handleCaptureHostMessage(message, sender);
+  }
+  if (!CAPTURE_CONTROL_TYPES.has(message.type) || !trustedCaptureControl(sender)) {
+    throw new Error("Unknown or untrusted capture control request.");
+  }
+  if (message.type === "hd_capture_open") return openCaptureControls();
+  if (message.type === "hd_capture_tabs") return { tabs: await captureTabs() };
+  if (["hd_capture_status", "hd_capture_start", "hd_capture_stop"].includes(message.type)) return relayCapture(message);
+  assertCaptureTabId(message.tabId);
+  if (message.type === "hd_capture_link") {
+    return linkCapturePage(message);
+  }
+  if (message.type === "hd_capture_unlink") {
+    const result = await commandCaptureContent(message.tabId, "hd_capture_unlink", {});
+    if (captureContentDocument?.tabId === message.tabId) captureContentDocument = null;
+    return result;
+  }
+  const command = {
+    hd_capture_video_select: ["hd_capture_video_select", { videoId: message.videoId }],
+    hd_capture_track_area: ["hd_capture_track_area", {}],
+    hd_capture_clear_area: ["hd_capture_clear_area", {}],
+  }[message.type];
+  return commandCaptureContent(message.tabId, command[0], command[1]);
+}
+
+function authoritativeCaptureRecord(message, sender) {
+  const record = message.record;
+  if (!record || !["cue", "dom"].includes(record.sourceKind)
+      || !shortCaptureString(record.sourceEpoch) || !shortCaptureString(record.occurrenceId)
+      || typeof record.text !== "string" || record.text.length === 0 || record.text.length > 4096
+      || !finiteCaptureTime(record.startMs)) throw new Error("The reading page sent an invalid text timing record.");
+  return {
+    sourceKind: record.sourceKind,
+    sourceId: captureDocumentKey(sender.tab.id),
+    sourceEpoch: `${sender.documentId}:${record.sourceEpoch}`,
+    occurrenceId: record.occurrenceId,
+    text: record.text,
+    startMs: record.startMs,
+    onsetKnown: record.onsetKnown !== false,
   };
 }
 
+function authoritativeCaptureIdentity(message, sender) {
+  const identity = message.identity;
+  if (!identity || !["cue", "dom"].includes(identity.sourceKind)
+      || !shortCaptureString(identity.sourceEpoch) || !shortCaptureString(identity.occurrenceId)
+      || !finiteCaptureTime(message.endMs)) throw new Error("The reading page sent an invalid text close record.");
+  return {
+    sourceKind: identity.sourceKind,
+    sourceId: captureDocumentKey(sender.tab.id),
+    sourceEpoch: `${sender.documentId}:${identity.sourceEpoch}`,
+    occurrenceId: identity.occurrenceId,
+  };
+}
+
+async function handleCaptureContent(message, sender) {
+  if (!CAPTURE_CONTENT_TYPES.has(message.type) || sender.id !== chrome.runtime.id
+      || !Number.isInteger(sender.tab?.id) || sender.frameId !== 0
+      || typeof sender.documentId !== "string" || sender.documentId === "") {
+    throw new Error("Unknown or untrusted reading-page capture request.");
+  }
+  if (message.type === "hd_capture_content_identify") {
+    const link = captureLink;
+    if (link?.tabId !== sender.tab.id || link.captureSessionId !== message.captureSessionId) {
+      throw new Error("This reading page is not being linked to the capture session.");
+    }
+    const status = await relayCapture({ type: "hd_capture_status" });
+    assertCurrentCaptureLink(link, status);
+    link.document = { tabId: sender.tab.id, documentId: sender.documentId };
+    captureContentDocument = link.document;
+    return { documentId: sender.documentId, tabId: sender.tab.id };
+  }
+  if (!capturePage || captureRecovery) await recoverCaptureHost();
+  // Admitted exports outlive reader relinking. The offscreen job retains the
+  // original document and checks these authoritative sender fields itself.
+  if (["hd_capture_job_status", "hd_capture_cancel"].includes(message.type)) {
+    return relayCaptureContent(message, sender);
+  }
+  const document = captureContentDocument;
+  if (document?.tabId !== sender.tab.id || document.documentId !== sender.documentId) {
+    throw new Error("This reading document is not linked to the capture session.");
+  }
+  return relayCaptureContent(message, sender);
+}
+
+function assertCaptureLookup(lookup) {
+  if (!lookup || typeof lookup.lookupText !== "string" || lookup.lookupText.length === 0
+      || lookup.lookupText.length > 4096 || !finiteCaptureTime(lookup.lookupTimeMs)
+      || (lookup.occurrenceId !== "" && !shortCaptureString(lookup.occurrenceId))
+      || !["", "dom", "cue"].includes(lookup.occurrenceSourceKind ?? "")) {
+    throw new Error("The reading page sent an invalid lookup capture request.");
+  }
+}
+
+function assertCaptureExport(message) {
+  if (!shortCaptureString(message.token)
+      || !message.requirements || typeof message.requirements !== "object"
+      || typeof message.requirements.includeAnimation !== "boolean"
+      || typeof message.requirements.includeAudio !== "boolean"
+      || (!message.requirements.includeAnimation && !message.requirements.includeAudio)) {
+    throw new Error("The capture export request is invalid.");
+  }
+}
+
+async function relayCaptureContent(message, sender) {
+  const authority = { tabId: sender.tab.id, documentId: sender.documentId };
+  if (message.type === "hd_capture_text_begin") {
+    return relayCapture({ ...message, ...authority, record: authoritativeCaptureRecord(message, sender) });
+  }
+  if (message.type === "hd_capture_text_close") {
+    return relayCapture({ ...message, ...authority, identity: authoritativeCaptureIdentity(message, sender) });
+  }
+  if (message.type === "hd_capture_text_source_close") {
+    if (!["cue", "dom"].includes(message.sourceKind) || !shortCaptureString(message.sourceEpoch)
+        || !finiteCaptureTime(message.endMs)) throw new Error("The reading page sent an invalid source close.");
+    return relayCapture({
+      ...message,
+      ...authority,
+      sourceId: captureDocumentKey(sender.tab.id),
+      sourceEpoch: `${sender.documentId}:${message.sourceEpoch}`,
+    });
+  }
+  if (message.type === "hd_capture_pin") {
+    const lookup = message.lookup;
+    assertCaptureLookup(lookup);
+    return relayCapture({ ...message, ...authority,
+      lookup: { ...lookup, occurrenceId: lookup.occurrenceId || "",
+        occurrenceSourceKind: lookup.occurrenceSourceKind || "" } });
+  }
+  if (message.type === "hd_capture_release") {
+    if (!shortCaptureString(message.token)) throw new Error("The capture release token is invalid.");
+    return relayCapture({ ...message, ...authority });
+  }
+  if (message.type === "hd_capture_export") {
+    assertCaptureExport(message);
+    return relayCapture({
+      ...message,
+      ...authority,
+      requirements: {
+        includeAnimation: message.requirements.includeAnimation,
+        includeAudio: message.requirements.includeAudio,
+      },
+    });
+  }
+  if (message.type === "hd_capture_job_status" || message.type === "hd_capture_cancel") {
+    if (!shortCaptureString(message.jobId)) throw new Error("The capture export job is invalid.");
+    return relayCapture({ ...message, ...authority });
+  }
+  if (message.type === "hd_capture_page_status") {
+    return relayCapture({ ...message, ...authority });
+  }
+  throw new Error("Unknown reading-page capture request.");
+}
+
+function clearNavigatedCaptureDocument(tabId, reason) {
+  const document = captureContentDocument;
+  if (document?.tabId !== tabId) return;
+  captureContentDocument = null;
+  void relayCapture({
+    type: "hd_capture_unlinked",
+    requestId: `capture-navigation-${crypto.randomUUID()}`,
+    tabId,
+    documentId: document.documentId,
+    reason,
+  }).catch(() => {});
+}
+
+chrome.tabs?.onUpdated?.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading") {
+    clearNavigatedCaptureDocument(tabId, "The reading page navigated. Link it again.");
+  }
+});
+chrome.tabs?.onRemoved?.addListener(tabId => {
+  clearNavigatedCaptureDocument(tabId, "The linked reading tab was closed.");
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || message.target !== TARGET || message.relayed === true) {
+  if (message?.target !== CAPTURE_TARGET || message.relayed === true) return false;
+  const operation = ["hd_capture_register", "hd_capture_host_stopped"].includes(message.type) || CAPTURE_CONTROL_TYPES.has(message.type)
+    ? handleCaptureControl(message, sender)
+    : handleCaptureContent(message, sender);
+  Promise.resolve(operation).then(
+    result => sendResponse(workerReply(message, result)),
+    error => sendResponse(failureReply(message, error)),
+  );
+  return true;
+});
+
+// Anki owns its own mutation queue. Discovery, DOM rendering and network I/O
+// must never hold the dictionary storage queue while the engine calls into it.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== "hachidori-anki") return false;
+  Promise.resolve().then(async () => {
+    if (sender.id !== chrome.runtime.id || !Object.hasOwn(ANKI_METHODS, message.type)) throw new Error("Unknown Anki request.");
+    if (!ankiMining) {
+      const send = async (target, fields) => {
+        const reply = await relay({ ...fields, target, requestId: `anki-${crypto.randomUUID()}` });
+        if (!reply?.ok) throw new Error(reply?.error || "Anki preparation did not complete.");
+        return reply;
+      };
+      ankiGateway ??= createAnkiGateway();
+      ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
+        readOptions: async () => globalThis.HDReaderOptions.normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]),
+        readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
+        engine: fields => send(TARGET, fields), offscreen: fields => send("hachidori-anki-render", fields),
+        capture: fields => relayCapture({ ...fields, requestId: `anki-capture-${crypto.randomUUID()}` }),
+      });
+    }
+    return ankiMining[ANKI_METHODS[message.type]](message.type === "hd_anki_browse" ? message.expression : message.request);
+  }).then(result => sendResponse(workerReply(message, result)), error => sendResponse(failureReply(message, error)));
+  return true;
+});
+
+const backupPreparations = new Map();
+let backupCancelTail = Promise.resolve();
+
+async function relayEngineRequest(message) {
+  if (message.type === "hd_backup_cancel") {
+    const preparation = backupPreparations.get(message.token);
+    if (preparation) preparation.cancelled = true;
+    // Retire startup/retries now, but admit only one cleanup request at a time.
+    // Cancel followed by pagehide must not consume the download-release slot.
+    const cancelled = backupCancelTail.then(() => relay(message), () => relay(message));
+    backupCancelTail = cancelled.catch(() => {});
+    return cancelled;
+  }
+  if (message.type !== "hd_backup_prepare") return relay(message);
+  const preparation = { cancelled: false };
+  backupPreparations.set(message.token, preparation);
+  try {
+    return await relay(message, () => !preparation.cancelled);
+  } finally {
+    if (backupPreparations.get(message.token) === preparation) backupPreparations.delete(message.token);
+  }
+}
+
+// Only the startup page may start or observe the offscreen dictionary run; the
+// run itself never touches the storage queue held here.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== SETUP_TARGET || message.relayed === true) return false;
+  if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL(STARTUP_PAGE)) {
+    sendResponse(failureReply(message, new Error("Setup installation is available only from the Hachidori startup page.")));
     return false;
   }
-  relay(message).then(sendResponse, (error) => {
+  relay(message).then(sendResponse, (error) => sendResponse(failureReply(message, error)));
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || (message.target !== TARGET && message.target !== AUDIO_TARGET) || message.relayed === true) {
+    return false;
+  }
+  let stillCurrent = null;
+  let operation = null;
+  if (message.target === AUDIO_TARGET) {
+    try {
+      if (!["hd_audio_test", "hd_audio_play", "hd_audio_candidates", "hd_audio_stop", "hd_audio_voices"].includes(message.type)) throw new Error("Unknown audio request.");
+      validateAudioRequest(message);
+      // Chrome supplies the document ID, so an old Settings tab cannot stop a
+      // pronunciation subsequently started by a different document.
+      message = { ...message, owner: sender.documentId };
+      if (["hd_audio_test", "hd_audio_play", "hd_audio_candidates"].includes(message.type)) {
+        operation = { ...message, tabId: sender.tab?.id };
+        latestAudioOperation = operation;
+        stillCurrent = () => latestAudioOperation === operation;
+      } else if (message.type === "hd_audio_stop"
+          && latestAudioOperation?.owner === message.owner && latestAudioOperation?.requestId === message.playRequestId) {
+        // Retire it before awaiting offscreen startup. Otherwise its relay
+        // retry could start playback after this Stop has already completed.
+        latestAudioOperation = null;
+      }
+    } catch (error) {
+      sendResponse(failureReply(message, error));
+      return false;
+    }
+  }
+  const response = message.target === AUDIO_TARGET
+    ? prepareAudioRequest(message).then(prepared => relay(prepared, stillCurrent)) : relayEngineRequest(message);
+  response.then(sendResponse, error => {
     sendResponse(failureReply(message, error));
-  });
+  }).finally(() => { if (operation && latestAudioOperation === operation) latestAudioOperation = null; });
+  return true;
+});
+
+function validateAudioRequest(message) {
+  if (message.type === "hd_audio_test") {
+    globalThis.HDReaderOptions.validateOptionsPatch({ audioSources: [message.source] });
+    return;
+  }
+  if (message.type !== "hd_audio_play" && message.type !== "hd_audio_candidates") return;
+  if (typeof message.term?.expression !== "string" || !message.term.expression
+      || typeof message.term.reading !== "string") throw new Error("A pronunciation needs an expression and reading.");
+  const choice = message.selection;
+  if (choice !== undefined && (!choice || !Number.isInteger(choice.index) || choice.index < 0
+      || !["sourceId", "sourceKey", "expression", "reading", "name"].every(key => typeof choice[key] === "string")
+      || (choice.url !== null && typeof choice.url !== "string"))) throw new Error("Invalid pronunciation selection.");
+}
+
+async function prepareAudioRequest(message) {
+  if (message.type !== "hd_audio_play" && message.type !== "hd_audio_candidates") return message;
+  const stored = await chrome.storage.local.get(OPTIONS_KEY);
+  const options = globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]);
+  return { ...message, sources: options.audioSources.filter(source => source.enabled) };
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== "hachidori-audio-events") return false;
+  const operation = latestAudioOperation;
+  if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)
+      || operation?.tabId === undefined || operation.owner !== message.owner
+      || operation.requestId !== message.requestId || message.type !== "hd_audio_playing") return false;
+  chrome.tabs.sendMessage(operation.tabId, { ...message, target: "hachidori-audio-content" }, { documentId: operation.owner })
+    .then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
   return true;
 });
 
@@ -844,10 +1851,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse(failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`)));
     return false;
   }
-  serialiseStorage(() => WORKER_HANDLERS[type](message)).then(
-    (result) => {
-      const { ok = true, error = null, ...payload } = result ?? {};
-      sendResponse({ type: `${type}_result`, requestId: message.requestId ?? null, ok, error, ...payload });
+  if (type === "hd_options_write") {
+    let error = null;
+    if (!validResponseRequestId(message.requestId ?? null)) {
+      error = "the options write request carried an invalid request ID";
+    } else if (!responseFits(message)) {
+      error = responseLimitError(type);
+    }
+    if (error !== null) {
+      sendResponse(failureReply(message, error));
+      return true;
+    }
+  }
+  const invoke = () => WORKER_HANDLERS[type](message, sender);
+  // Navigation and read-only Anki discovery must not hold up storage commits.
+  const operation = [
+    "hd_open_external", "hd_anki_discover", "hd_setup_anki", "hd_backup_download",
+    "hd_lookup_stats_record", "hd_lookup_stats_read",
+  ].includes(type) ? invoke() : serialiseStorage(invoke);
+  operation.then(
+    async (result) => {
+      if (type === "hd_backup_cas" && result.ok !== false) {
+        try { await reconcileUpdateAlarm(); }
+        catch (error) { result.warning = `Restored successfully; update alarm could not be refreshed: ${describe(error)}`; }
+      }
+      sendResponse(workerReply(message, result));
     },
     (error) => {
       sendResponse(failureReply(message, error));
@@ -884,13 +1912,15 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== UPDATE_ALARM) {
     return;
   }
-  void readUpdateSettings().then((settings) => {
-    if (settings.schedule !== "off") {
-      return queueManagedUpdate({ install: true });
-    }
-    return undefined;
-  }).catch((error) => {
+  void queueManagedUpdate({ install: true, dueOnly: true }).catch((error) => {
     console.error("hoshidicts: scheduled dictionary updates failed:", describe(error));
+  });
+});
+
+chrome.downloads.onChanged.addListener(delta => {
+  if (!delta.state || delta.state.current === "in_progress") return;
+  getBackupDownloads().changed(delta.id).catch(error => {
+    console.warn("hoshidicts: could not release a finished backup download:", describe(error));
   });
 });
 
@@ -903,8 +1933,38 @@ function warmUp() {
   });
 }
 
-// Load the dictionaries before the first hover asks for them.
-chrome.runtime.onInstalled.addListener(warmUp);
+// A fresh installation seeds its setup state and initial preferences once, then
+// opens one startup tab. Only values that are still absent are written, so a
+// profile that already carries settings keeps them. Chrome reports "install"
+// again on every launch for an unpacked extension loaded from the command line,
+// so the absence of a setup record, not the reason alone, identifies a new
+// installation.
+async function beginFirstRunSetup() {
+  const created = await serialiseStorage(async () => {
+    const stored = await chrome.storage.local.get([SETUP_STATE_KEY, OPTIONS_KEY]);
+    const values = {};
+    if (stored[SETUP_STATE_KEY] === undefined) {
+      values[SETUP_STATE_KEY] = initialSetupState(new Date().toISOString());
+    }
+    if (stored[OPTIONS_KEY] === undefined) {
+      values[OPTIONS_KEY] = { ...validateOptionsPatch(FIRST_INSTALL_OPTIONS), revision: 1 };
+    }
+    if (Object.keys(values).length > 0) await chrome.storage.local.set(values);
+    return Object.hasOwn(values, SETUP_STATE_KEY);
+  });
+  if (created) await chrome.tabs.create({ url: chrome.runtime.getURL(STARTUP_PAGE) });
+}
+
+// Load the dictionaries before the first hover asks for them. Extension updates,
+// browser starts and service-worker restarts never reach the first-run path, so
+// they cannot reopen setup or reset preferences.
+chrome.runtime.onInstalled.addListener((details) => {
+  warmUp();
+  if (details.reason !== "install") return;
+  beginFirstRunSetup().catch((error) => {
+    console.error("hoshidicts: could not start first-run setup:", describe(error));
+  });
+});
 chrome.runtime.onStartup.addListener(warmUp);
 
 // Alarms may be cleared across browser restarts. Module evaluation is the one

@@ -499,23 +499,198 @@ export function buildFixtureZip() {
 // stripped so the import fails *after* the importer has read the title and
 // derived a directory from it. That is the only moment a title can do damage,
 // which is what the path-traversal and failed-re-import tests need.
-export function buildTitledZip(title, { banks = true } = {}) {
-  const entries = [zipEntry('index.json', JSON.stringify({ ...index, title }))];
+export function buildTitledZip(title, { banks = true, terms = TERMS, termMeta = [], mediaEntries = [], frequencyMode } = {}) {
+  const entries = [zipEntry('index.json', JSON.stringify({ ...index, title, frequencyMode }))];
   if (banks) {
-    entries.push(zipEntry('term_bank_1.json', JSON.stringify(TERMS)));
+    entries.push(zipEntry('term_bank_1.json', JSON.stringify(terms)));
   }
+  if (termMeta.length > 0) {
+    entries.push(zipEntry('term_meta_bank_1.json', JSON.stringify(termMeta)));
+  }
+  for (const [path, bytes] of mediaEntries) entries.push(zipEntry(path, bytes));
   return buildZip(entries);
+}
+
+export function externalLinksFixture(destinationUrl) {
+  const title = 'external-links-fixture';
+  const query = '参照';
+  const archive = buildTitledZip(title, { terms: [[query, 'さんしょう', '', '', 0, [
+    { type: 'structured-content', content: { tag: 'div', content: [
+      'Reference: ', { tag: 'a', href: destinationUrl, content: '外部辞典 <reference>' },
+      { tag: 'ul', content: ['usage', 'examples', 'sources'].map(label => ({ tag: 'li', content: {
+        tag: 'a', href: `${destinationUrl.split('#')[0]}#${label}`, content: label,
+      } })) },
+    ] } },
+  ], 1, '']] });
+  return { title, query, archive };
+}
+
+export function nestedLinksFixture() {
+  const title = 'nested-links-fixture';
+  const query = '連鎖語';
+  const child = '食用語';
+  const reading = 'しょくようご';
+  const grandchild = '終点';
+  const link = (query, primaryReading, label) => ({ tag: 'a',
+    href: `?query=${encodeURIComponent(query)}&primary_reading=${encodeURIComponent(primaryReading)}`,
+    content: label,
+  });
+  const glossary = (text, next) => [{ type: 'structured-content', content: { tag: 'div', content: [
+    text, ' ', next, { tag: 'img', path: 'media/kanji.png', width: 16, height: 16 },
+  ] } }];
+  const archive = buildTitledZip(title, { mediaEntries: [['media/kanji.png', makePng()]], terms: [
+    [query, 'れんさご', '', '', 0, glossary('A linked definition.', link(child, reading, 'Open the referenced entry')), 1, ''],
+    [child, reading, '', '', 0, glossary('The referenced entry.', link(grandchild, 'しゅうてん', 'Continue to the final entry')), 2, ''],
+    [grandchild, 'しゅうてん', '', '', 0, glossary('The final entry.', link(query, 'れんさご', 'Return to the first entry')), 3, ''],
+  ] });
+  return { title, query, child, reading, grandchild, archive };
+}
+
+export function dictionaryTabsFixture() {
+  const nested = nestedLinksFixture();
+  const rootReading = 'れんさご';
+  const companions = [
+    ['dictionary-tabs-usage', [
+      { tag: 'p', content: 'Usage: a linked expression in running text.' },
+      { tag: 'p', content: '用例を読み、前後の文脈から言葉の意味を確かめる。' },
+    ]],
+    ['dictionary-tabs-examples', [
+      { tag: 'p', content: 'Examples in source order:' },
+      { tag: 'ol', content: [
+        '一つ目の例。', '二つ目の例は少し長く、使われる場面も示す。', '三つ目の例。',
+      ].map(content => ({ tag: 'li', content })) },
+    ]],
+    ['dictionary-tabs-reference', [
+      { tag: 'p', content: 'Reference: related meanings and usage.' },
+    ]],
+  ].map(([title, content]) => ({ title, archive: buildTitledZip(title, { terms: [
+    [nested.query, rootReading, '', '', 0, [{ type: 'structured-content', content: { tag: 'div', content } }], 1, ''],
+  ] }) }));
+  return { ...nested, rootReading, dictionaries: [{ title: nested.title, archive: nested.archive }, ...companions] };
+}
+
+export function frequencyRankingFixture() {
+  const query = '頻度語';
+  const readings = ['あ', 'い', 'う'];
+  const dictionaries = [
+    ['Frequency rank mode', 'rank-based', [20, 10, 30]],
+    ['Frequency occurrence mode', 'occurrence-based', [1, 2, 9]],
+  ].map(([title, frequencyMode, values]) => ({
+    title,
+    frequencyMode,
+    archive: buildTitledZip(title, {
+      frequencyMode,
+      terms: readings.map((reading, index) =>
+        [query, reading, '', '', 30 - index * 10, [`${title}: ${reading}`], index, '']),
+      termMeta: readings.map((reading, index) =>
+        [query, 'freq', { reading, frequency: { value: values[index] } }]),
+    }),
+  }));
+  return { query, dictionaries };
+}
+
+export function compactSummaryFixture() {
+  const query = '要約', child = '要約語', broken = '欠損図';
+  const illustrated = 'compact-summary-illustrated', plain = 'compact-summary-text';
+  const image = path => ({ tag: 'img', path, width: 16, height: 16 });
+  const leading = [{ type: 'structured-content', content: { tag: 'div', content: [
+    { tag: 'span', data: { content: 'part-of-speech' }, content: 'noun' },
+    { ...image('media/kanji.png'), collapsed: true },
+    { tag: 'ul', data: { content: 'glossary' }, content: [
+      { tag: 'li', content: '短い説明 • • 使い方' }, { tag: 'li', content: '別の意味' },
+    ] },
+    { tag: 'a', href: `?query=${encodeURIComponent(child)}&primary_reading=${encodeURIComponent('ようやくご')}`,
+      content: 'Open the related term' },
+  ] } }];
+  return { query, child, broken, illustrated, plain, leading, dictionaries: [
+    { title: illustrated, archive: buildTitledZip(illustrated, { mediaEntries: [['media/kanji.png', makePng()]], terms: [
+      [query, 'ようやく', '', '', 0, leading, 1, ''],
+      [child, 'ようやくご', '', '', 0, ['Text before the image.', image('media/kanji.png')], 2, ''],
+      [broken, 'けっそんず', '', '', 0, [image('media/missing.png'), 'The text remains available.'], 3, ''],
+    ] }) },
+    { title: plain, archive: buildTitledZip(plain, { mediaEntries: [
+      ['media/missing.png', Buffer.concat([makePng(), Buffer.from([1])])],
+      ['media/kanji.png', Buffer.concat([makePng(), Buffer.from([1])])],
+    ], terms: [
+      [query, 'ようやく', '', '', 0, ['Alternative first', 'Alternative second'], 1, ''],
+    ] }) },
+  ] };
+}
+
+export function imageSizingFixture() {
+  const cases = [
+    ['landscape', { width: 200, height: 100 }, 200, 50],
+    ['portrait', { width: 67, height: 100 }, 67, 100 / 67 * 100],
+    ['preferred width', { width: 200, height: 100, preferredWidth: 100 }, 100, 100],
+    ['preferred height', { width: 200, height: 100, preferredHeight: 50 }, 100, 25],
+    ['both preferred', { width: 200, height: 100, preferredWidth: 100, preferredHeight: 50 }, 100, 50],
+    ['em', { width: 3, height: 2, sizeUnits: 'em' }, 3, 2 / 3 * 100],
+    ['preferred em', { width: 3, height: 2, preferredWidth: 1.5, sizeUnits: 'em' }, 1.5, 2 / 1.5 * 100],
+    ['tall aspect', { width: 1, height: 1e9 }, 1, 10_000],
+    ['intermediate overflow', { width: 1e308, height: 1e308, preferredHeight: 100 }, 100, 1e-304],
+    ['intermediate underflow', { width: Number.MIN_VALUE, height: Number.MIN_VALUE, preferredHeight: 0.5 }, 0.5, 10_000],
+    ['second grouping overflow', { width: 1e-14, height: Number.MIN_VALUE, preferredHeight: 1e-310 }, 0.20240225330731, 1e-294],
+    ['valid original grouping', { width: 1.5, height: Number.MIN_VALUE, preferredHeight: Number.MIN_VALUE }, 2, 0],
+    ['over display width', { width: 1e308, height: 1, preferredHeight: 1e308 }, 1024, 100],
+    ['under display width', { width: 1e-300, height: 1e300, preferredHeight: 1e-300 }, 0.1, 100],
+  ].map(([name, dimensions, width, padding]) => ({ name, dimensions, width, padding }));
+  const title = 'dictionary-image-sizing-fixture';
+  const query = '画像寸法';
+  const bytes = makePng();
+  const path = 'media/sizing.png';
+  const archive = buildTitledZip(title, { terms: [[query, 'がぞうすんぽう', '', '', 0,
+    cases.map(({ name, dimensions }) => ({ type: 'structured-content', content: {
+      tag: 'div', content: [name, { tag: 'img', path, alt: name, ...dimensions }],
+    } })), 1, '']], mediaEntries: [[path, bytes]] });
+  return { archive, bytes, cases, path, query, title };
+}
+
+export function imagePreviewFixture() {
+  // Genuine 16x16 AVIF, generated once with FFmpeg 7.0.1 / libaom-av1:
+  // ffmpeg -f lavfi -i color=c=0x3676d9:s=16x16:d=0.04 -frames:v 1
+  //   -c:v libaom-av1 -cpu-used 8 -crf 30 -still-picture 1 -f avif blue.avif
+  // SHA-256: ef64ea8fb6ab6da6b0b2049d7102157c0c6ea587841b86efa6dcff55f72ee66b
+  // Keeping the encoded bytes here avoids a test-time encoder dependency.
+  const avif = Buffer.from(
+    'AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAAD5bWV0YQAAAAAAAAAvaGRscgAAAAAA' +
+    'AAAAcGljdAAAAAAAAAAAAAAAAFBpY3R1cmVIYW5kbGVyAAAAAA5waXRtAAAAAAABAAAAHmlsb2MA' +
+    'AAAARAAAAQABAAAAAQAAASEAAAAaAAAAKGlpbmYAAAAAAAEAAAAaaW5mZQIAAAAAAQAAYXYwMUNv' +
+    'bG9yAAAAAGppcHJwAAAAS2lwY28AAAAUaXNwZQAAAAAAAAAQAAAAEAAAABBwaXhpAAAAAAMICAgA' +
+    'AAAMYXYxQ4EADAAAAAATY29scm5jbHgAAgACAAIAAAAAF2lwbWEAAAAAAAAAAQABBAECgwQAAAAi' +
+    'bWRhdAoGGAz/2gCAMhAXgAAASAAQAprs5iUJK26P', 'base64');
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64">' +
+    '<rect width="96" height="64" fill="#edf5ff"/><circle cx="73" cy="17" r="9" fill="#ffd478"/>' +
+    '<path d="M0 64V49L31 17L65 64Z" fill="#648f8c"/><path d="M34 64L69 29L96 55V64Z" fill="#3d6d70"/></svg>');
+  const images = [
+    { path: 'media/blue.avif', bytes: avif, type: 'image/avif', width: 16, height: 16, alt: 'Blue AVIF sample' },
+    { path: 'media/mountains.svg', bytes: svg, type: 'image/svg+xml', width: 96, height: 64, alt: 'Mountain illustration' },
+  ];
+  const title = 'dictionary-image-preview-fixture';
+  const query = '拡大画像';
+  const archive = buildTitledZip(title, { terms: [[query, 'かくだいがぞう', '', '', 0, [
+    'Hover or focus an image for a larger view.',
+    { type: 'structured-content', content: [
+      ...images.map(({ path, alt }) => ({ tag: 'img', path, width: 64, height: 64, alt })),
+      { tag: 'p', content: 'The next illustration is farther down this definition. Tab to it to test keyboard focus.\n' + '\n'.repeat(35) },
+      { tag: 'img', path: images[1].path, width: 64, height: 64, alt: 'Focus this illustration below the fold' },
+      { tag: 'a', href: '?query=食べる', content: 'Look up 食べる' },
+    ] },
+  ], 1, '']], mediaEntries: images.map(({ path, bytes }) => [path, bytes]) });
+  return { archive, images, query, title };
 }
 
 // Small deterministic stand-ins for the recommended downloads. The browser
 // suite serves these bytes for the production catalogue URLs, so CI exercises
 // the complete download/import path without depending on live publishers.
+// `paddingBytes` adds one stored media file so a real-Chrome download of the
+// otherwise tiny archive arrives in several chunks and shows measurable progress.
 export function buildRecommendedZip({
   title,
   revision,
   indexUrl,
   downloadUrl,
   capabilities,
+  paddingBytes = 0,
 }) {
   const supported = new Set(capabilities);
   const entries = [zipEntry('index.json', JSON.stringify({
@@ -529,6 +704,8 @@ export function buildRecommendedZip({
   if (supported.has('term')) {
     entries.push(zipEntry('term_bank_1.json', JSON.stringify([
       ['辞書', 'じしょ', 'n', '', 1, [`${title} term fixture`], 1, ''],
+      // The word the first-run practice sentence invites a real lookup of.
+      ['食べる', 'たべる', 'v1', 'v1', 1, [`${title} verb fixture`], 2, ''],
     ])));
   }
   if (supported.has('freq')) {
@@ -548,6 +725,9 @@ export function buildRecommendedZip({
   }
   if (supported.has('media')) {
     entries.push(zipEntry('media/recommended.png', makePng(4), STORE));
+  }
+  if (paddingBytes > 0) {
+    entries.push(zipEntry('media/padding.bin', Buffer.alloc(paddingBytes, 0x5a), STORE));
   }
   return buildZip(entries);
 }

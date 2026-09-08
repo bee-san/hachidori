@@ -1,0 +1,455 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Loaded synchronously by the content-script manifest and by side-effect imports
+// in extension modules, so every options consumer uses the same stored view.
+(function () {
+  "use strict";
+
+  const ANKI_FIELDS = ["expression", "reading", "definition", "sentence", "frequency", "pitch", "audio",
+    "captureAnimation", "captureAudio"];
+  const ANKI_DUPLICATE_SCOPES = ["collection", "deck", "deck-root"];
+  const ANKI_DUPLICATE_BEHAVIORS = ["prevent", "new", "overwrite"];
+  const ANKI_OVERWRITE_MODES = ["coalesce", "coalesce-new", "skip", "append", "prepend", "overwrite"];
+  const DEFAULT_ANKI = { deck: "Default", model: "", apiKey: "", tags: ["hachidori"],
+    fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])), checkForDuplicates: true,
+    duplicateScope: "collection", duplicateScopeCheckAllModels: false, duplicateBehavior: "prevent", fieldTemplates: null };
+  const DEFAULT_MEDIA_CAPTURE = {
+    enabled: false,
+    timingMode: "auto",
+    includeAnimation: true,
+    includeCapturedAudio: true,
+    historySeconds: 60,
+    clipSeconds: 10,
+    videoPreset: "standard",
+    estimatedOffsetMs: -500,
+    texthooker: { enabled: false, url: "", format: "plain" },
+    page: { nativeCues: true, domText: true, autoLearnArea: true },
+  };
+  const DEFAULT_OPTIONS = {
+    scanLength: 16,
+    maxResults: 32,
+    hoverEnabled: true,
+    onlyScanJapaneseText: true,
+    lookupMode: "hover",
+    activationKey: "Shift",
+    hoverDelayMs: 50,
+    popupHideDelayMs: 160,
+    popupNestingMaxDepth: 10,
+    popupTheme: "default",
+    popupToolbarPosition: "auto",
+    customPopupCss: "",
+    audioSources: [{ id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" }],
+    audioAutoplay: false,
+    anki: DEFAULT_ANKI,
+    mediaCapture: DEFAULT_MEDIA_CAPTURE,
+    popupWidthPx: 560,
+    popupHeightPx: 420,
+    popupOpacityPercent: 85,
+    sourceHighlightEnabled: true,
+    popupColumns: 1,
+    showLookupCounts: true,
+    corpusSeenEnabled: false,
+    corpusSeenUrl: "http://127.0.0.1:7275",
+    definitionBlurEnabled: false,
+    definitionBlurDirection: "atLeast",
+    definitionBlurThreshold: 5,
+    definitionBlurReveal: "timed",
+    definitionBlurDelayMs: 5000,
+    showCompactDefinitionSummary: false,
+    compactDefinitionSummaryCount: 3,
+    compactDefinitionSummaryDictionary: "",
+    popupImageSource: null,
+    averageFrequency: false,
+    showFrequencyDictionaryNames: true,
+    showPitchAccentFurigana: true,
+    pitchAccentFuriganaDictionary: "",
+    showPitchAccentBadge: true,
+    hidePopupGrammarTags: false,
+    kanjiClickDictionary: "",
+    frequencyDictionary: "",
+    frequencyOrder: "auto",
+  };
+  const NUMBER_RANGES = {
+    scanLength: [1, 64],
+    maxResults: [1, 256],
+    hoverDelayMs: [0, 2000],
+    popupHideDelayMs: [0, 5000],
+    popupNestingMaxDepth: [0, Number.MAX_SAFE_INTEGER],
+    popupWidthPx: [280, 1200],
+    popupHeightPx: [200, 900],
+    popupOpacityPercent: [0, 100],
+    popupColumns: [1, 4],
+    compactDefinitionSummaryCount: [1, 6],
+    definitionBlurThreshold: [1, 1000000],
+    definitionBlurDelayMs: [1000, 3600000],
+  };
+  // GSM PR #549 blurs at or above the threshold; Below is the issue #9 adaptation.
+  const DEFINITION_BLUR_DIRECTIONS = ["atLeast", "below"];
+  const DEFINITION_BLUR_REVEALS = ["timed", "hover"];
+  // Audited Hoshidicts catalogue from GSM PR #549; palette values live in reader.css.
+  const POPUP_THEME_GROUPS = [
+    { label: "Dark", ids: ["default", "miku", "catppuccin-mocha", "solarized-dark", "dark", "synthwave",
+      "halloween", "forest", "aqua", "black", "luxury", "dracula", "business", "night", "coffee", "dim", "sunset", "abyss"] },
+    { label: "Light", ids: ["girlypop", "solarized-light", "light", "cupcake", "bumblebee", "emerald", "corporate",
+      "retro", "cyberpunk", "valentine", "garden", "lofi", "pastel", "fantasy", "wireframe", "cmyk", "autumn", "acid",
+      "lemonade", "winter", "nord", "caramellatte", "silk"] },
+    { label: "High contrast", ids: ["high-contrast"] },
+  ].map(({ label, ids }) => ({ label, themes: ids.map(id => ({ id,
+    label: id === "default" ? "Hachidori (default)"
+      : id.replace(/(^|-)([a-z])/gu, (_, separator, letter) => `${separator ? " " : ""}${letter.toUpperCase()}`),
+  })) }));
+  const POPUP_THEME_IDS = new Set(POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id)));
+  const DESIGN_OPTION_KEYS = [
+    "popupTheme", "popupToolbarPosition", "customPopupCss", "popupWidthPx", "popupHeightPx", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
+    "showLookupCounts", "corpusSeenEnabled", "corpusSeenUrl",
+    "definitionBlurEnabled", "definitionBlurDirection", "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs",
+    "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
+    "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
+    "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags",
+  ];
+  const LEGACY_MODIFIERS = new Map([["none", "Shift"], ["shift", "Shift"], ["ctrl", "Control"], ["alt", "Alt"]]);
+  const LOOKUP_MODES = ["hover", "activation"];
+  const POPUP_TOOLBAR_POSITIONS = new Set(["auto", "top", "bottom"]);
+  // Browser KeyboardEvent names, adapting the source's desktop hotkey names.
+  const ACTIVATION_KEYS = [
+    "Shift", "Control", "Alt", "Meta", "Space", "Enter", "Escape", "Backspace", "Delete", "Tab",
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", "Insert",
+    ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    ...Array.from({ length: 24 }, (_, index) => `F${index + 1}`),
+    ..."-=[]\\;',./`",
+  ];
+  const ACTIVATION_NAMES = new Map(ACTIVATION_KEYS.map((key) => [key.toLowerCase(), key]));
+  const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
+  const OPTION_KEYS = Object.keys(DEFAULT_OPTIONS);
+  const AUDIO_SOURCE_LABELS = { custom: "Audio URL", "custom-json": "Yomitan JSON",
+    "text-to-speech": "Speech: term", "text-to-speech-reading": "Speech: reading" };
+  const AUDIO_SOURCE_TYPES = Object.keys(AUDIO_SOURCE_LABELS);
+  const MEDIA_TIMING_MODES = ["auto", "page", "recent"];
+  const MEDIA_HISTORY_SECONDS = [30, 60];
+  const MEDIA_CLIP_SECONDS = [5, 10];
+  const MEDIA_VIDEO_PRESETS = ["standard", "compact"];
+  const MEDIA_TEXTHOOKER_FORMATS = ["plain", "gsm"];
+  const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+  function cloneMediaCapture(value = DEFAULT_MEDIA_CAPTURE) {
+    return {
+      ...value,
+      texthooker: { ...value.texthooker },
+      page: { ...value.page },
+    };
+  }
+
+  function normaliseTexthookerUrl(value) {
+    if (typeof value !== "string" || value === "") return "";
+    try {
+      const url = new URL(value);
+      if (!["ws:", "wss:"].includes(url.protocol) || !LOOPBACK_HOSTS.has(url.hostname)
+          || url.username || url.password || url.hash) return null;
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  function normaliseCaptureCollectors(source, result) {
+    const texthooker = source.texthooker && typeof source.texthooker === "object"
+      && !Array.isArray(source.texthooker) ? source.texthooker : {};
+    const page = source.page && typeof source.page === "object" && !Array.isArray(source.page) ? source.page : {};
+    if (typeof texthooker.enabled === "boolean") result.texthooker.enabled = texthooker.enabled;
+    const url = normaliseTexthookerUrl(texthooker.url);
+    if (url !== null) result.texthooker.url = url;
+    if (MEDIA_TEXTHOOKER_FORMATS.includes(texthooker.format)) result.texthooker.format = texthooker.format;
+    for (const key of ["nativeCues", "domText", "autoLearnArea"]) {
+      if (typeof page[key] === "boolean") result.page[key] = page[key];
+    }
+    if (result.texthooker.enabled && !result.texthooker.url) result.texthooker.enabled = false;
+  }
+
+  function normaliseMediaCapture(value) {
+    const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const result = cloneMediaCapture();
+    for (const key of ["enabled", "includeAnimation", "includeCapturedAudio"]) {
+      if (typeof source[key] === "boolean") result[key] = source[key];
+    }
+    if (MEDIA_TIMING_MODES.includes(source.timingMode)) result.timingMode = source.timingMode;
+    if (MEDIA_HISTORY_SECONDS.includes(source.historySeconds)) result.historySeconds = source.historySeconds;
+    if (MEDIA_CLIP_SECONDS.includes(source.clipSeconds)) result.clipSeconds = source.clipSeconds;
+    if (MEDIA_VIDEO_PRESETS.includes(source.videoPreset)) result.videoPreset = source.videoPreset;
+    if (Number.isInteger(source.estimatedOffsetMs)
+        && source.estimatedOffsetMs >= -2000 && source.estimatedOffsetMs <= 2000) {
+      result.estimatedOffsetMs = source.estimatedOffsetMs;
+    }
+    if (!result.includeAnimation && !result.includeCapturedAudio) {
+      result.includeAnimation = DEFAULT_MEDIA_CAPTURE.includeAnimation;
+      result.includeCapturedAudio = DEFAULT_MEDIA_CAPTURE.includeCapturedAudio;
+    }
+    normaliseCaptureCollectors(source, result);
+    return result;
+  }
+
+  function sameMediaCapture(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  function validMediaCapture(value, normalized) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    if (!value.texthooker || typeof value.texthooker !== "object" || Array.isArray(value.texthooker)
+        || !value.page || typeof value.page !== "object" || Array.isArray(value.page)) return false;
+    const keys = Object.keys(DEFAULT_MEDIA_CAPTURE);
+    const texthookerKeys = Object.keys(DEFAULT_MEDIA_CAPTURE.texthooker);
+    const pageKeys = Object.keys(DEFAULT_MEDIA_CAPTURE.page);
+    if (Object.keys(value).some(key => !keys.includes(key))
+        || Object.keys(value.texthooker).some(key => !texthookerKeys.includes(key))
+        || Object.keys(value.page).some(key => !pageKeys.includes(key))) return false;
+    return sameMediaCapture(value, normalized)
+      && (normalized.includeAnimation || normalized.includeCapturedAudio)
+      && (!normalized.texthooker.enabled || Boolean(normalized.texthooker.url));
+  }
+
+  function normaliseAudioSources(value) {
+    if (!Array.isArray(value)) return [];
+    const ids = new Set();
+    return value.flatMap(source => {
+      if (!source || typeof source.id !== "string" || source.id === "" || ids.has(source.id)
+          || !AUDIO_SOURCE_TYPES.includes(source.type)) return [];
+      ids.add(source.id);
+      return [{ id: source.id, type: source.type, enabled: typeof source.enabled === "boolean" ? source.enabled : true,
+        url: typeof source.url === "string" ? source.url : "", voice: typeof source.voice === "string" ? source.voice : "" }];
+    });
+  }
+
+  function normaliseAnki(value) {
+    const source = value && typeof value === "object" ? value : {};
+    const result = { ...DEFAULT_ANKI };
+    for (const key of ["deck", "model", "apiKey", "checkForDuplicates", "duplicateScopeCheckAllModels"]) {
+      if (typeof source[key] === typeof DEFAULT_ANKI[key]) result[key] = source[key];
+    }
+    result.tags = Array.isArray(source.tags) ? source.tags.filter(tag => typeof tag === "string") : [...DEFAULT_ANKI.tags];
+    result.fields = Object.fromEntries(ANKI_FIELDS.map(key => [key,
+      typeof source.fields?.[key] === "string" ? source.fields[key] : ""]));
+    if (ANKI_DUPLICATE_SCOPES.includes(source.duplicateScope)) result.duplicateScope = source.duplicateScope;
+    if (ANKI_DUPLICATE_BEHAVIORS.includes(source.duplicateBehavior)) result.duplicateBehavior = source.duplicateBehavior;
+    result.fieldTemplates = validAnkiTemplates(source.fieldTemplates) ? source.fieldTemplates : null;
+    return result;
+  }
+
+  function validAnkiTemplates(value) {
+    if (value === null) return true;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    return Object.entries(value).every(([field, template]) => field !== "" && template
+      && typeof template.value === "string" && ANKI_OVERWRITE_MODES.includes(template.overwriteMode));
+  }
+
+  function validAnki(value, normalized) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    return Object.entries(normalized).every(([key, expected]) => {
+      if (key === "fieldTemplates") return validAnkiTemplates(value.fieldTemplates);
+      if (key === "fields") return value.fields && !Array.isArray(value.fields)
+        && ANKI_FIELDS.every(field => value.fields[field] === expected[field]);
+      if (key === "tags") return Array.isArray(value.tags) && value.tags.length === expected.length
+        && expected.every((tag, index) => value.tags[index] === tag);
+      return value[key] === expected;
+    });
+  }
+
+  function normaliseActivationKey(value, fallback = DEFAULT_OPTIONS.activationKey) {
+    if (value === " ") return "Space";
+    return typeof value === "string" ? ACTIVATION_NAMES.get(value.toLowerCase()) ?? fallback : fallback;
+  }
+
+  function clampOption(key, value) {
+    let number;
+    try {
+      number = Number(value);
+    } catch {
+      // Legacy writes accepted objects such as {toString: null}; keep them
+      // repairable instead of failing every subsequent read and valid save.
+      return DEFAULT_OPTIONS[key];
+    }
+    if (!Number.isFinite(number)) return DEFAULT_OPTIONS[key];
+    const [min, max] = NUMBER_RANGES[key];
+    return Math.max(min, Math.min(max, Math.trunc(number)));
+  }
+
+  /**
+   * Preserve legacy title-only selections until dictionary state can infer kind.
+   * @returns {string | {title: string, kind: "term" | "kanji"}}
+   */
+  function normaliseKanjiSelection(value) {
+    if (value && typeof value === "object" && typeof value.title === "string"
+        && value.title !== "" && (value.kind === "term" || value.kind === "kanji")) {
+      return { title: value.title, kind: value.kind };
+    }
+    return typeof value === "string" ? value : "";
+  }
+
+  function normaliseCorpusSeenUrl(value) {
+    if (typeof value !== "string" || value === "") return null;
+    try {
+      const url = new URL(value);
+      if (!["http:", "https:"].includes(url.protocol)
+          || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
+          || url.username || url.password) return null;
+      return url.origin;
+    } catch {
+      return null;
+    }
+  }
+
+  // Shared by the reader and the Design preview. A count that qualifies is
+  // blurred; a missing count fails open. Zero is a valid count for Below.
+  function definitionBlurQualifies(options, lookupCount) {
+    if (!options.definitionBlurEnabled || !Number.isSafeInteger(lookupCount) || lookupCount < 0) return false;
+    return options.definitionBlurDirection === "below"
+      ? lookupCount < options.definitionBlurThreshold
+      : lookupCount >= options.definitionBlurThreshold;
+  }
+
+  // Enumerated options fall back to their default outside the listed values.
+  const ENUMERATED_OPTIONS = {
+    lookupMode: new Set(LOOKUP_MODES),
+    popupTheme: POPUP_THEME_IDS,
+    popupToolbarPosition: POPUP_TOOLBAR_POSITIONS,
+    frequencyOrder: new Set(FREQUENCY_ORDERS),
+    definitionBlurDirection: new Set(DEFINITION_BLUR_DIRECTIONS),
+    definitionBlurReveal: new Set(DEFINITION_BLUR_REVEALS),
+  };
+
+  function normaliseField(key, value) {
+    if (Object.hasOwn(NUMBER_RANGES, key)) return clampOption(key, value);
+    if (typeof DEFAULT_OPTIONS[key] === "boolean") {
+      return typeof value === "boolean" ? value : DEFAULT_OPTIONS[key];
+    }
+    if (Object.hasOwn(ENUMERATED_OPTIONS, key)) return ENUMERATED_OPTIONS[key].has(value) ? value : DEFAULT_OPTIONS[key];
+    switch (key) {
+      case "activationKey": return normaliseActivationKey(value);
+      case "kanjiClickDictionary": return normaliseKanjiSelection(value);
+      case "popupImageSource": return normalisePopupImageSource(value);
+      case "corpusSeenUrl": return normaliseCorpusSeenUrl(value) ?? DEFAULT_OPTIONS.corpusSeenUrl;
+      case "audioSources": return normaliseAudioSources(value);
+      case "anki": return normaliseAnki(value);
+      case "mediaCapture": return normaliseMediaCapture(value);
+      default: return typeof value === "string" ? value : "";
+    }
+  }
+
+  function resolveKanjiDictionary(selection, dictionaries) {
+    const title = typeof selection === "string" ? selection : selection?.title;
+    if (typeof title !== "string" || title === "") return null;
+    const selected = dictionaries.find(entry => entry.title === title && entry.enabled !== false);
+    if (!selected) return null;
+    const requestedKind = typeof selection === "object" ? selection.kind : "";
+    const defaultKind = selected.kanjiCount > 0 ? "kanji" : "term";
+    const kind = requestedKind === "" ? defaultKind : requestedKind;
+    const available = kind === "kanji" ? selected.kanjiCount > 0 : selected.termCount > 0
+      || (selected.frequencyCount === 0 && selected.pitchCount === 0 && selected.kanjiCount === 0);
+    return available ? { kind, title } : null;
+  }
+
+  function normalisePopupImageSource(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    if (value.kind === "dictionary" && typeof value.title === "string" && value.title !== "") {
+      return { kind: "dictionary", title: value.title };
+    }
+    if (value.kind === "tabGroup" && typeof value.id === "string" && value.id !== "") {
+      return { kind: "tabGroup", id: value.id };
+    }
+    return null;
+  }
+
+  function legacyActivationOptions(source, strict) {
+    if (!Object.hasOwn(source, "modifier")) return {};
+    const key = LEGACY_MODIFIERS.get(source.modifier);
+    if (strict && key === undefined) {
+      throw new Error("the options write request carried an invalid reader option");
+    }
+    // Old Settings patches still pass through CAS. Plain hover changes mode
+    // only, preserving a newer configured key, without a second stored policy.
+    return source.modifier === "none" || key === undefined
+      ? { lookupMode: "hover" }
+      : { lookupMode: "activation", activationKey: key };
+  }
+
+  // Null uses the definition's dictionary. Empty means no eligible source;
+  // group membership order is the per-image fallback order.
+  function resolvePopupImageSources(source, dictionaries, groups) {
+    if (!source) return null;
+    if (source.kind === "dictionary") {
+      return dictionaries.some(entry => entry.enabled && entry.title === source.title) ? [source.title] : [];
+    }
+    const group = groups.find(entry => entry.id === source.id);
+    const titles = new Map(dictionaries.filter(entry => entry.enabled).map(entry => [entry.id, entry.title]));
+    return (group?.dictionaryIds || []).filter(id => titles.has(id)).map(id => titles.get(id));
+  }
+
+  function projectOptions(value, strict) {
+    const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const result = legacyActivationOptions(source, strict);
+    for (const key of OPTION_KEYS) {
+      if (!Object.hasOwn(source, key)) continue;
+      const raw = source[key];
+      const normalized = normaliseField(key, raw);
+      if (strict && !isValidOptionField(key, raw, normalized)) {
+        throw new Error("the options write request carried an invalid reader option");
+      }
+      result[key] = normalized;
+    }
+    return result;
+  }
+
+  function isValidOptionField(key, raw, normalized) {
+    if (key === "anki") return validAnki(raw, normalized);
+    if (key === "mediaCapture") return validMediaCapture(raw, normalized);
+    if (key === "kanjiClickDictionary") return typeof raw === "string" || typeof normalized === "object";
+    if (key === "popupImageSource") return raw === null || normalized !== null;
+    if (key === "corpusSeenUrl") return normaliseCorpusSeenUrl(raw) === raw;
+    if (key === "audioSources") return Array.isArray(raw) && raw.length === normalized.length
+      && normalized.every((source, index) => Object.entries(source).every(([field, value]) => raw[index][field] === value));
+    return typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
+  }
+
+  function projectStoredOptions(value) {
+    return projectOptions(value, false);
+  }
+
+  function validateOptionsPatch(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("the options write request carried no object");
+    }
+    return projectOptions(value, true);
+  }
+
+  function normaliseOptions(value) {
+    const options = { ...DEFAULT_OPTIONS, ...projectStoredOptions(value) };
+    options.mediaCapture = cloneMediaCapture(options.mediaCapture);
+    return options;
+  }
+
+  function projectContentOptions(value) {
+    const options = normaliseOptions(value);
+    return {
+      ...options,
+      mediaCapture: {
+        ...options.mediaCapture,
+        texthooker: {
+          enabled: options.mediaCapture.texthooker.enabled,
+          format: options.mediaCapture.texthooker.format,
+        },
+      },
+    };
+  }
+
+  globalThis.HDReaderOptions = {
+    ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS, ANKI_OVERWRITE_MODES,
+    DEFAULT_OPTIONS, DEFAULT_MEDIA_CAPTURE, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+    POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
+    AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
+    MEDIA_TIMING_MODES, MEDIA_HISTORY_SECONDS, MEDIA_CLIP_SECONDS, MEDIA_VIDEO_PRESETS, MEDIA_TEXTHOOKER_FORMATS,
+    clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
+    normaliseCorpusSeenUrl, normaliseTexthookerUrl, normaliseMediaCapture, definitionBlurQualifies,
+    DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
+    projectStoredOptions, projectContentOptions, validateOptionsPatch,
+    resolvePopupImageSources,
+    resolveKanjiDictionary,
+  };
+}());

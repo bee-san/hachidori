@@ -14,6 +14,7 @@ import {
   startEngine,
 } from "./engine-service.js";
 import createHoshidicts from "./vendor/hoshidicts-threaded.mjs";
+import { boundResponseFailure } from "./response-limits.js";
 
 let nextHostRequestId = 0;
 const HOST_REQUEST_TIMEOUT_MS = 30_000;
@@ -40,6 +41,8 @@ configureEngineService(requestHost, {
   createHoshidicts,
   storageBackend: "opfs",
   lowRam: false,
+  // Fire-and-forget: import phases need no reply and must not wait on one.
+  reportProgress: (progress) => globalThis.postMessage({ channel: "engine-progress", progress }),
 });
 startEngine();
 
@@ -64,12 +67,12 @@ globalThis.onmessage = (event) => { // NOSONAR
     (error) => globalThis.postMessage({
       channel: "engine-response",
       id: data.id,
-      response: {
+      response: boundResponseFailure({
         type: `${data.message?.type || "hd_unknown"}_result`,
         requestId: data.message?.requestId ?? null,
         ok: false,
         error: describe(error),
-      },
+      }),
     }),
   );
 };

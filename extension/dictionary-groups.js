@@ -1,28 +1,18 @@
 /*
- * Dictionary-group normalization and Settings controls.
+ * Dictionary-group Settings controls.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-function normaliseGroupName(value) {
-  return (typeof value === "string" ? value : "")
-    .normalize("NFKC")
-    .trim()
-    .replace(/\s+/gu, " ");
-}
+import "./dictionary-group-state.js";
 
-function groupNameKey(value) {
-  return normaliseGroupName(value).toLowerCase();
-}
+const { normaliseGroupName, groupNameKey } = globalThis.HDDictionaryGroups;
+export const normaliseDictionaryGroups = globalThis.HDDictionaryGroups.normaliseDictionaryGroups;
 
 const ALL_GROUP_NAME_KEY = groupNameKey("All");
 
 function element(id) {
   return document.getElementById(id);
-}
-
-function setError(message) {
-  element("dict-group-error").textContent = message;
 }
 
 function groupNameError(groups, name, excludedId = null) {
@@ -47,26 +37,8 @@ function bindMoveButtons(row, prefix, index, length, label, move) {
   down.addEventListener("click", () => move(1));
 }
 
-export function normaliseDictionaryGroups(value, installedDictionaries) {
-  if (!Array.isArray(value)) return [];
-  const installedIds = new Set(installedDictionaries.map((dictionary) => dictionary.id));
-  return value.map((group) => {
-    const id = typeof group?.id === "string" ? group.id : "";
-    const name = normaliseGroupName(group?.name);
-    if (id === "" || name === "") return null;
-    const seen = new Set();
-    const dictionaryIds = Array.isArray(group?.dictionaryIds)
-      ? group.dictionaryIds.filter((dictionaryId) => {
-        if (!installedIds.has(dictionaryId) || seen.has(dictionaryId)) return false;
-        seen.add(dictionaryId);
-        return true;
-      })
-      : [];
-    return { id, name, dictionaryIds };
-  }).filter((group) => group !== null);
-}
-
 export function createDictionaryGroupController({
+  setError,
   readState,
   readDictionaries,
   commitGroups,
@@ -74,6 +46,7 @@ export function createDictionaryGroupController({
   moveListItem,
   updateItemById,
   renderDeferredAfterBlur,
+  bindNameDraft,
 }) {
   function changeNamedGroup(name, excludedId, update) {
     void commitGroups((current) => {
@@ -137,20 +110,8 @@ export function createDictionaryGroupController({
 
   function bindName(row, group) {
     const input = row.querySelector(".dict-group-name");
-    input.value = group.name;
     input.setAttribute("aria-label", `Name for ${group.name}`);
-    input.addEventListener("change", () => {
-      const name = normaliseGroupName(input.value);
-      const error = groupNameError(readState().groups, name, group.id);
-      if (error) {
-        input.value = group.name;
-        setError(error);
-        return;
-      }
-      setError("");
-      changeNamedGroup(name, group.id, (current) => updateItemById(current, group.id, (entry) =>
-        entry.name === name ? entry : { ...entry, name }));
-    });
+    bindNameDraft(input, "groups", group.id, "name", group.name, normaliseGroupName, groupNameError);
     renderDeferredAfterBlur(input);
   }
 

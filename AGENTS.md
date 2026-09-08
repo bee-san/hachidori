@@ -20,11 +20,17 @@ These instructions apply to the entire repository.
 - Do not add broad or extensive test coverage by default. Add a focused regression test when behavior changes or a bug needs to stay fixed; do not duplicate coverage already provided by a suitable suite.
 - Avoid adding test-only dependencies or expanding fixtures unless the changed behavior genuinely needs them.
 
+## Issue #9 scope and phases
+
+- D1-D9 and E1-E27 are delivered. The user's subsequent request, "work on l2 to l5", authorizes L2 backup/restore, L3 per-dictionary update schedules, L4 lookup/corpus-seen statistics, and L5 definition blur as the current phase. Deliver them in focused pull requests preserving the completed dictionary and reader behavior, using GSM PR #549 as the reference.
+- L2 (#62), L3 (#63) and L4 (#65) are merged; L5 is #67. When asked to "do L1-L5", the user confirmed L2-L5 only: L1 profiles stay excluded.
+- The dictionary-only contract below limits dictionary-only tasks; it does not prohibit separately authorized E-series or L2-L5 work. L3 intentionally extends D6's original global-only schedule; L5 depends on L4. L1 profiles and L6 configurable/custom popup actions remain excluded, as does localization.
+
 ## Dictionary-only issue #9 contract
 
 When implementing the dictionary-only scope from issue #9:
 
-- D1-D9 are the complete scope. Do not pull in E-series or Later features, profiles, backup/restore, per-dictionary schedules, statistics, definition blur, or configurable popup actions.
+- For a dictionary-only task, D1-D9 are the complete scope. Do not pull E-series or Later features into that task; E-series work requires its own explicit authorization as recorded above.
 - The issue owner's later comment overrides the original D6 prose: a scheduled update run checks and automatically installs available updates. Manual Check now still records availability without installing.
 - Keep one global update schedule: Off, hourly, daily, weekly, or monthly. Do not add per-dictionary policy, hidden profiles, alternate backends, or due-time machinery.
 - Preserve stable package IDs, canonical-title engine keys, order, alias, enabled/favourite state, groups, and trusted source metadata across reimports and updates. A package with several bank kinds remains one package.
@@ -56,6 +62,14 @@ When implementing the dictionary-only scope from issue #9:
 - The fixed Note form is shared by term and kanji views. Treat append success separately from best-effort lookup refresh so a refresh error cannot invite a duplicate retry. Refresh the exact current request/view only if it is still current and anchored, and make reply/state-event ordering harmless by adopting only newer committed revisions.
 - While the Note form is open, Escape closes the form before document capture can hide the popup, and hover-hide timers must not discard the draft.
 
+## Lookup statistics and definition blur
+
+- A lookup increments one descriptor plus one term/reading row in a serialized worker write; neither the worker hot path nor the reader scans the collection. The renderer always provides a hidden count slot on the All tab and the reader owns its visibility, so a count setting never reprojects definitions or disturbs a Note draft.
+- The reader adopts a row event or a reply for a term only when it is newer than that term's own payload, without rolling the global descriptor back; older generations stay rejected. Unrelated revisions never refresh visible terms.
+- Corpus Seen is optional and off by default. Only worker replies set it, after the storage transaction is released, from GSM's read-only word-detail endpoint over a loopback origin; a confirmed "Word not found" is zero and every failure fails open. Never use GSM's `POST /api/hoshidicts/lookup-stats` for Seen: it increments GSM's own count. Row events keep the displayed Seen value.
+- Blur decisions live on the request, so tabs, Show more, Note refresh and Back keep them and a new request starts fresh. The view renders pending before the count and never re-blurs once revealed. One absolute deadline runs from first display; navigating away cancels only the live timer, Back and a persisted `pageshow` re-arm the remainder. The decision waits for the stored options when a lookup renders before the initial storage read.
+- The first count decides autoplay for the whole visit: a qualifying count suppresses every later bind for that request, anything else releases the held first result once. The audio controller keys held first results by owner, settles them only for the request whose decision applies, and keeps a retired hold's visit unspent; a manual play consumes every waiting result.
+
 ## Repository map
 
 - `extension/` contains the Chrome MV3 runtime, settings UI, content script, and popup renderer.
@@ -86,6 +100,11 @@ Do not claim a check that was not run. Report each command and its exact outcome
 
 Before opening the pull request:
 
+- Perform a simplification pass over the complete diff. Look for code that can
+  be removed or replaced by existing helpers, transaction paths, state
+  machines, and UI primitives. Apply worthwhile reuse when semantics,
+  ownership, lifetime, and trust boundaries match; do not force reuse across
+  genuinely different boundaries. Summarize the result in the pull request.
 - Self-review `git diff --check` and the complete branch diff against its base.
 - Remove accidental generated files, fixture output, debug logging, and unrelated edits.
 - Use a clear title and a body that explains the problem, the chosen behavior, the important implementation details, and the validation performed.
@@ -93,9 +112,12 @@ Before opening the pull request:
 
 Before merging a pull request:
 
+- Wait for GitHub Copilot's review comments before manually requesting Codex. Reserve manual Codex requests for meaningful code changes; batch review fixes and finish documentation, screenshots, and minor cleanup before requesting the final exact-head review.
 - Require a successful completed CI check and a clean merge state for the exact head SHA.
 - Require the current Codex review summary to be Completed for that exact head. Fix every substantive finding and resolve every review thread.
 - Query SonarQube Cloud directly and require zero unresolved issues, zero security hotspots, and zero new-code duplication. A green quality-gate badge alone is insufficient when it still reports issues.
 - Re-run the gate after every follow-up commit, including documentation-only fixes, then merge through GitHub and fast-forward the local `main` checkout.
 
 For real-Chrome update tests, intercept update-index fetches on the service-worker CDP target and archive fetches on the offscreen-document target, which also covers its dedicated engine worker. Do not attempt Fetch interception directly on the dedicated worker target.
+
+Screenshot clips passed to Puppeteer are page coordinates: it intersects them with the visual viewport, so add `scrollX`/`scrollY` after `scrollIntoView` or a scrolled element yields a zero-height clip.

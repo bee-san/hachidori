@@ -1,0 +1,226 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Layout for the first-run startup page. Colours, typography, links, buttons,
+   focus rings and reduced-motion rules come from settings.css. */
+
+.startup-page {
+  min-height: 100vh;
+  padding: 48px 16px 64px;
+}
+.startup-main {
+  width: min(100%, 560px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.startup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+.startup-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.startup-settings-link {
+  font-size: 13px;
+  font-weight: 600;
+}
+.startup-tagline {
+  margin: 2px 0 0;
+  color: var(--text-dim);
+}
+
+.setup-steps {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-step {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 500;
+}
+.setup-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.setup-step.is-current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.setup-step.is-current .setup-step-number {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.setup-step.is-done {
+  color: var(--ok);
+}
+.setup-step.is-done .setup-step-number {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.setup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.setup-card h2 {
+  font-size: 20px;
+}
+.setup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.setup-dictionary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-dictionary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  row-gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-sunken);
+}
+.setup-dictionary-name {
+  grid-area: 1 / 1;
+  font-weight: 600;
+}
+.setup-dictionary-purpose {
+  grid-area: 2 / 1;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.setup-dictionary-status {
+  grid-area: 1 / 2 / span 2;
+  align-self: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.setup-dictionary-status.is-ok {
+  color: var(--ok);
+}
+.setup-dictionary-status.is-error {
+  color: var(--error);
+  text-align: left;
+}
+.setup-dictionary .setup-track {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+}
+/* A known total fills the bar to --progress; an unknown one keeps the shared
+   indeterminate animation from settings.css. */
+.setup-track.is-determinate .track-fill {
+  width: var(--progress, 0%);
+  animation: none;
+  transition: width 120ms linear;
+}
+.setup-countdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.setup-countdown-label {
+  color: var(--text-dim);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+}
+.setup-actions:empty {
+  display: none;
+}
+.setup-status {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.setup-card .is-error {
+  color: var(--error);
+}
+.setup-status:empty {
+  /* Empty live regions must remain available for their first announcement. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+/* The practice sentence is the thing to hover: large, selectable, and plainly
+   the page's own text rather than a control. */
+.setup-practice-sample {
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-sunken);
+  font-size: 24px;
+  line-height: 1.6;
+}
+
+@media (max-width: 480px) {
+  .setup-steps {
+    flex-direction: column;
+  }
+  .setup-card {
+    padding: 20px 16px;
+  }
+  .setup-dictionary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .setup-dictionary-status {
+    grid-area: 3 / 1;
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-track.is-determinate .track-fill {
+    transition: none;
+  }
+}

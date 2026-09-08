@@ -26,6 +26,41 @@ export function managedUpdateSchedule(value) {
     : null;
 }
 
+export function normaliseUpdateSettings(value) {
+  return {
+    revision: Number.isSafeInteger(value?.revision) && value.revision >= 0 ? value.revision : 0,
+    schedule: managedUpdateSchedule(value?.schedule) ?? "off",
+    lastCheckedAt: typeof value?.lastCheckedAt === "string" ? value.lastCheckedAt : null,
+  };
+}
+
+export function effectiveDictionarySchedule(dictionary, globalSchedule) {
+  return managedUpdateSchedule(dictionary.updateScheduleOverride) ?? globalSchedule;
+}
+
+export function assertDictionaryUpdateSchedule(dictionary) {
+  if (dictionary.updateScheduleOverride != null && managedUpdateSchedule(dictionary.updateScheduleOverride) === null) {
+    throw new Error("The dictionary update schedule is invalid.");
+  }
+}
+
+export function nextDictionaryUpdateCheck(dictionary, globalSchedule, now) {
+  if (managedDictionarySource(dictionary) === null) return null;
+  const interval = MANAGED_UPDATE_SCHEDULE_MINUTES[effectiveDictionarySchedule(dictionary, globalSchedule)];
+  if (interval === null) return null;
+  const checkedAt = Date.parse(dictionary.lastUpdateCheck?.checkedAt);
+  return Number.isNaN(checkedAt) ? now : checkedAt + interval * 60_000;
+}
+
+export function nextManagedUpdateCheck(dictionaries, globalSchedule, now) {
+  let next = null;
+  for (const dictionary of dictionaries) {
+    const due = nextDictionaryUpdateCheck(dictionary, globalSchedule, now);
+    if (due !== null && (next === null || due < next)) next = due;
+  }
+  return next === null ? null : Math.max(now, next);
+}
+
 export const MANAGED_DICTIONARY_CHANGED =
   "the managed dictionary changed while its update was being prepared";
 
@@ -42,6 +77,34 @@ export function httpsUrl(value) {
 
 export function recommendedDictionarySource(sourceId) {
   return RECOMMENDED_BY_ID.get(sourceId) ?? null;
+}
+
+// A recommendation counts as installed through its validated catalogue identity
+// or its exact update index, never through a display name.
+export function installedRecommendedDictionary(entry, dictionaries) {
+  return dictionaries.find((dictionary) =>
+    dictionary.sourceId === entry.sourceId || dictionary.indexUrl === entry.indexUrl) ?? null;
+}
+
+export function recommendedDictionaryInstalled(entry, dictionaries) {
+  return installedRecommendedDictionary(entry, dictionaries) !== null;
+}
+
+export function assertRecommendedDictionary(source, dictionary) {
+  if (!new RegExp(source.titlePattern, "u").test(dictionary.title)) {
+    throw new Error(`${source.name} archive did not match its expected title`);
+  }
+  if (dictionary.indexUrl !== source.indexUrl) {
+    throw new Error(`${source.name} archive did not match its expected update source`);
+  }
+  if (typeof dictionary.revision !== "string" || dictionary.revision === "") {
+    throw new Error(`${source.name} archive did not declare a revision`);
+  }
+  const countKey = source.requiredCapability === "freq" ? "frequencyCount" : "termCount";
+  const hasCapability = dictionary[countKey] > 0;
+  if (!hasCapability) {
+    throw new Error(`${source.name} archive did not contain its expected capability`);
+  }
 }
 
 export function managedDictionarySource(dictionary) {

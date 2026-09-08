@@ -24,7 +24,79 @@
 
   const DEFAULT_INITIAL_RESULT_COUNT = 1;
   const DEFAULT_MAX_METADATA_TAGS = 12;
+  const METADATA_OPTION_KEYS = ["averageFrequency", "showFrequencyDictionaryNames", "showPitchAccentFurigana",
+    "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags"];
+
+  function metadataOptions(context) {
+    return Object.fromEntries(METADATA_OPTION_KEYS.map(key => [key, context[key]]));
+  }
+
+  function frequencyModes(context) {
+    return context.averageFrequency === true
+      ? JSON.stringify((context.dictionaryPresentation || []).map(({ title, frequencyMode }) => [title, frequencyMode]))
+      : "";
+  }
   const DEFAULT_HIGHLIGHT_NAME = "gsm-hoshidicts-match";
+  // Adopted sheets follow ordinary dictionary styles, even ones appended later.
+  // Shadow DOM provides the scope; wrapping user rules would change their CSS.
+  function createCustomPopupStyle(shadow) {
+    let current = "";
+    let sheet;
+    const detach = () => { shadow.adoptedStyleSheets = shadow.adoptedStyleSheets.filter(value => value !== sheet); };
+    return {
+      update(css) {
+        if (css === current) return false;
+        if (css) {
+          sheet ??= new shadow.ownerDocument.defaultView.CSSStyleSheet();
+          sheet.replaceSync(css);
+          if (!current) shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, sheet];
+        } else detach();
+        current = css;
+        return true;
+      },
+      destroy() { if (current) detach(); },
+    };
+  }
+  // Both the live reader and Settings preview use the same palette and sizing
+  // boundary. Colour edits touch styles only, not result projection or layout.
+  function createPopupAppearance(host) {
+    const document = host.ownerDocument;
+    const window = document.defaultView;
+    let current = {};
+    let highlightSheet;
+
+    function refreshHighlight() {
+      const primary = window.getComputedStyle(host).getPropertyValue("--hoshidicts-palette-primary").trim();
+      // The preview's linked palette is asynchronous; its load event retries.
+      if (!primary) return;
+      if (!highlightSheet) {
+        highlightSheet = new window.CSSStyleSheet();
+        highlightSheet.insertRule(`::highlight(${DEFAULT_HIGHLIGHT_NAME}) {}`, 0);
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, highlightSheet];
+      }
+      const mix = `color-mix(in srgb, ${primary} ${current.popupTheme === "high-contrast" ? 56 : 34}%, transparent)`;
+      highlightSheet.cssRules[0].style.setProperty("background-color", mix);
+    }
+
+    return {
+      update(options) {
+        const themeChanged = current.popupTheme !== options.popupTheme;
+        if (themeChanged) host.dataset.hoshidictsTheme = options.popupTheme;
+        for (const [key, variable, unit] of [
+          ["popupOpacityPercent", "opacity", "%"], ["popupWidthPx", "width", "px"], ["popupHeightPx", "height", "px"],
+        ]) {
+          if (current[key] !== options[key]) host.style.setProperty(`--gsm-hoshidicts-popup-${variable}`, `${options[key]}${unit}`);
+        }
+        current = { popupTheme: options.popupTheme, popupWidthPx: options.popupWidthPx,
+          popupHeightPx: options.popupHeightPx, popupOpacityPercent: options.popupOpacityPercent };
+        if (themeChanged) refreshHighlight();
+      },
+      refreshHighlight,
+      destroy() {
+        if (highlightSheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== highlightSheet);
+      },
+    };
+  }
   const MASONRY_GAP_PX = 8;
   const DEFINITION_BLUR_STATES = new Set(["pending", "blurred"]);
   const DEFAULT_COMPACT_DEFINITION_SUMMARY_COUNT = 3;
@@ -36,7 +108,6 @@
   const COMPACT_DEFINITION_BLOCK_TAGS = new Set([
     "article",
     "blockquote",
-    "br",
     "dd",
     "div",
     "dt",
@@ -55,11 +126,15 @@
   ]);
   const COMPACT_DEFINITION_IGNORED_TAGS = new Set([
     "audio",
+    "button",
     "canvas",
     "iframe",
     "img",
+    "input",
+    "rp",
     "rt",
     "script",
+    "source",
     "style",
     "svg",
     "video",
@@ -75,6 +150,76 @@
     /^(?:(?:version|ver(?:sion)?|v|revision|rev|release)\s*[:#.-]?\s*)?v?\d+(?:\.\d+)+(?:[-+][0-9a-z.-]+)?$/iu;
   const DICTIONARY_LABELED_REVISION_PATTERN =
     /^(?:version|ver(?:sion)?|v|revision|rev|release)\s*[:#.-]?\s*v?\d+(?:\.\d+)*(?:[-+][0-9a-z.-]+)?$/iu;
+
+  const DEINFLECTION_STRINGS = new Map([
+    ["en", {
+      steps: "Deinflection steps",
+      summary: (matched, deinflected) => `Why this matched: ${matched} became ${deinflected}`,
+    }],
+    ["ja", {
+      steps: "活用解除の手順",
+      summary: (matched, deinflected) => `一致した理由: ${matched} から ${deinflected} に戻しました`,
+    }],
+    ["uk", {
+      steps: "Кроки відновлення словникової форми",
+      summary: (matched, deinflected) => `Чому це збіглося: ${matched} перетворено на ${deinflected}`,
+    }],
+  ]);
+
+  function deinflectionSteps(result) {
+    return Array.isArray(result.trace)
+      ? result.trace.filter((step) => typeof step?.name === "string" && step.name.length > 0)
+      : [];
+  }
+
+  function buildDeinflectionDisclosure(documentRef, result, locale) {
+    const { matched, deinflected } = result;
+    if (typeof matched !== "string" || !matched
+        || typeof deinflected !== "string" || !deinflected || matched === deinflected) return null;
+    const steps = deinflectionSteps(result);
+    if (steps.length === 0) return null;
+
+    const strings = DEINFLECTION_STRINGS.get(locale.toLowerCase().split("-")[0])
+      ?? DEINFLECTION_STRINGS.get("en");
+    const details = documentRef.createElement("details");
+    details.className = "gsm-hoshidicts-deinflection";
+    const summary = documentRef.createElement("summary");
+    summary.setAttribute("aria-label", strings.summary(matched, deinflected));
+    const path = documentRef.createElement("span");
+    path.className = "gsm-hoshidicts-deinflection-path";
+    for (const [index, endpoint] of [matched, deinflected].entries()) {
+      if (index > 0) {
+        const arrow = documentRef.createElement("span");
+        arrow.setAttribute("aria-hidden", "true");
+        arrow.textContent = " → ";
+        path.appendChild(arrow);
+      }
+      const value = documentRef.createElement("span");
+      value.className = "gsm-hoshidicts-deinflection-endpoint";
+      value.textContent = endpoint;
+      path.appendChild(value);
+    }
+    summary.appendChild(path);
+    const list = documentRef.createElement("ol");
+    list.className = "gsm-hoshidicts-deinflection-steps";
+    list.setAttribute("aria-label", strings.steps);
+    for (const step of steps) {
+      const item = documentRef.createElement("li");
+      const name = documentRef.createElement("span");
+      name.className = "gsm-hoshidicts-deinflection-step-name";
+      name.textContent = step.name;
+      item.appendChild(name);
+      if (typeof step.description === "string" && step.description) {
+        const description = documentRef.createElement("span");
+        description.className = "gsm-hoshidicts-deinflection-step-description";
+        description.textContent = step.description;
+        item.appendChild(description);
+      }
+      list.appendChild(item);
+    }
+    details.append(summary, list);
+    return details;
+  }
 
   function isDictionaryDecoration(value) {
     const decoration = String(value || "").trim();
@@ -208,13 +353,6 @@
   }
 
   function frequencyNumberForAverage(frequency) {
-    if (typeof frequency.displayValue === "string") {
-      const match = /^\d+/u.exec(frequency.displayValue);
-      if (match) {
-        const value = Number.parseInt(match[0], 10);
-        if (value > 0) return value;
-      }
-    }
     return Number.isFinite(frequency.value) && frequency.value > 0
       ? frequency.value
       : null;
@@ -277,31 +415,37 @@
     showFrequencyDictionaryNames = true
   ) {
     if (averageFrequency) {
-      const frequencies = [];
+      const modes = new Map(dictionaryPresentation.map(({ title, frequencyMode }) => [title, frequencyMode]));
+      const aggregates = new Map();
+      const seen = new Set();
       for (const group of result.term.frequencies) {
+        if (seen.has(group.dictionary)) continue;
         for (const frequency of group.frequencies) {
           const value = frequencyNumberForAverage(frequency);
           if (value !== null) {
-            frequencies.push(value);
+            const mode = modes.get(group.dictionary);
+            const label = mode === "rank-based" ? "Rank average"
+              : mode === "occurrence-based" ? "Occurrence average" : "Frequency average (unspecified)";
+            const aggregate = aggregates.get(label) || { count: 0, reciprocalSum: 0 };
+            aggregate.count += 1;
+            aggregate.reciprocalSum += 1 / value;
+            aggregates.set(label, aggregate);
+            seen.add(group.dictionary);
             break;
           }
         }
       }
-      if (frequencies.length === 0) return [];
-      const value = Math.floor(
-        frequencies.length /
-          frequencies.reduce((total, frequency) => total + 1 / frequency, 0)
-      );
-      const frequency = { value, displayValue: null };
-      return [
-        createFrequencyTag(
+      return Array.from(aggregates, ([label, { count, reciprocalSum }]) => {
+        const value = Math.floor(count / reciprocalSum);
+        return createFrequencyTag(
           documentRef,
-          { dictionary: "Frequency" },
-          "Frequency:",
-          [{ display: formatCompactFrequencyNumber(value), frequency }],
-          showFrequencyDictionaryNames
-        ),
-      ];
+          { dictionary: label },
+          label,
+          [{ display: formatCompactFrequencyNumber(value), frequency: { value, displayValue: null } }],
+          // These labels identify units, not a source dictionary.
+          true
+        );
+      });
     }
     const tags = [];
     const seen = new Set();
@@ -365,15 +509,20 @@
       pitch.pattern ? `Pattern ${pitch.pattern}` : "",
       ...group.transcriptions,
     ].filter(Boolean).join(" · ");
-    const tag = createTag(documentRef, "", description, "pitch");
+    return createPronunciationTag(documentRef, group, dictionaryDisplayName, bodyText, description, "pitch");
+  }
+
+  function createPronunciationTag(documentRef, group, dictionaryDisplayName, bodyText, description, kind) {
+    const tag = createTag(documentRef, "", description, kind);
+    tag.dataset.dictionary = group.dictionary;
 
     const source = documentRef.createElement("span");
-    source.className = "gsm-hoshidicts-pitch-source";
+    source.className = `gsm-hoshidicts-${kind}-source`;
     source.textContent = dictionaryDisplayName;
     tag.appendChild(source);
 
     const body = documentRef.createElement("span");
-    body.className = "gsm-hoshidicts-pitch-body";
+    body.className = `gsm-hoshidicts-${kind}-body`;
     body.textContent = bodyText;
     tag.appendChild(body);
     tag.setAttribute(
@@ -390,19 +539,549 @@
     return `${label} ${value} ${value === 1 ? "time" : "times"}`;
   }
 
-  function createSourceHighlighter(windowRef, documentRef, highlightName) {
+  function intersectHighlightRect(rect, clip) {
+    const left = Math.max(rect.left, clip.left), right = Math.min(rect.right, clip.right);
+    const top = Math.max(rect.top, clip.top), bottom = Math.min(rect.bottom, clip.bottom);
+    return right > left && bottom > top ? { left, right, top, bottom } : null;
+  }
+
+  function subtractHighlightRect(rect, cover) {
+    const overlap = intersectHighlightRect(rect, cover);
+    if (!overlap) return [rect];
+    return [
+      { ...rect, bottom: overlap.top }, { ...rect, top: overlap.bottom },
+      { left: rect.left, right: overlap.left, top: overlap.top, bottom: overlap.bottom },
+      { left: overlap.right, right: rect.right, top: overlap.top, bottom: overlap.bottom },
+    ].filter(piece => piece.right > piece.left && piece.bottom > piece.top);
+  }
+
+  // Range.getClientRects() also includes fully selected inline element boxes.
+  // Text-node subranges avoid painting their padding or tinting text twice.
+  function highlightTextFragments(documentRef, match) {
+    const fragments = [];
+    for (const range of match.ranges) {
+      const root = range.commonAncestorContainer;
+      const walker = documentRef.createTreeWalker(root, 4);
+      let node = root.nodeType === 3 ? root : walker.nextNode();
+      while (node) {
+        if (range.intersectsNode(node)) {
+          const start = node === range.startContainer ? range.startOffset : 0;
+          const end = node === range.endContainer ? range.endOffset : node.length;
+          if (end > start) {
+            const fragment = documentRef.createRange();
+            fragment.setStart(node, start);
+            fragment.setEnd(node, end);
+            fragments.push(fragment);
+          }
+        }
+        node = walker.nextNode();
+      }
+    }
+    return fragments;
+  }
+
+  function createHighlightFallback(windowRef, documentRef, root) {
+    const layer = documentRef.createElement("div");
+    layer.className = "gsm-hoshidicts-source-highlight-layer";
+    layer.setAttribute("aria-hidden", "true");
+    root.appendChild(layer);
+    const owners = new Map();
+    let frame = null;
+    let resizeTargets = new Set();
+    let geometryTargets = new Map();
+    let motionTargets = new Map();
+    let coverTargets = new Set();
+    let layoutRoots = new Set();
+    let pageOccluders = null;
+    let stylesheetState = null;
+    let stylesheetTimer = null;
+    let polledStyles = false;
+    let watchedSheets = new Set();
+    const styleMedia = new Map();
+    let coverMotion = new WeakSet();
+    const animationWatches = new Map();
+    const motionRoots = new Set();
+    const motionStarts = ["animationstart", "transitionrun"];
+    const motionEnds = ["animationend", "animationcancel", "transitionend", "transitioncancel"];
+    const motionEvents = [...motionStarts, ...motionEnds, "pointerover", "pointerout", "focusin", "focusout"];
+    const resize = typeof windowRef.ResizeObserver === "function" ? new windowRef.ResizeObserver(schedule) : null;
+    const affectsGeometry = change => !layer.contains(change.target)
+      && (change.type === "attributes" || change.type === "characterData"
+        || [...change.addedNodes, ...change.removedNodes].some(node => node !== layer));
+    const geometry = new windowRef.MutationObserver(changes => { if (layoutMutations(changes)) schedule(); });
+    windowRef.addEventListener("scroll", schedule, true);
+    root.addEventListener("scroll", schedule, true);
+    windowRef.addEventListener("resize", layoutChanged);
+
+    function schedule() {
+      if (frame === null) frame = windowRef.requestAnimationFrame(paint);
+    }
+
+    function layoutChanged() {
+      pageOccluders = null;
+      schedule();
+    }
+
+    function stylesheetRules(sheet) {
+      try { return sheet.cssRules; }
+      catch (error) {
+        if (error.name !== "SecurityError") throw error;
+        // Cross-origin rules are unreadable and cannot be edited by page CSSOM
+        // either. Their load events still refresh effective styles.
+        return [];
+      }
+    }
+
+    function stylesheetSnapshot() {
+      const seen = new Set();
+      const snapshot = [];
+      function sheetState(sheet) {
+        // Object references retain shared-sheet identity without serializing
+        // each rule into a nested array and copying all CSS through JSON.
+        snapshot.push(sheet, sheet.disabled, sheet.media?.mediaText);
+        if (seen.has(sheet)) return;
+        seen.add(sheet);
+        for (const rule of stylesheetRules(sheet)) {
+          snapshot.push(rule.cssText);
+          if (rule.styleSheet) sheetState(rule.styleSheet);
+        }
+        snapshot.push(null);
+      }
+      for (const tree of layoutRoots) {
+        if (tree === root && root instanceof windowRef.ShadowRoot) continue;
+        snapshot.push(tree);
+        for (const sheet of [...(tree.styleSheets || []), ...(tree.adoptedStyleSheets || [])]) sheetState(sheet);
+      }
+      watchedSheets = seen;
+      return snapshot;
+    }
+
+    function refreshStyleMedia() {
+      // These common preference changes also cover unreadable page CSS.
+      const queries = new Set(["(prefers-color-scheme: dark)", "(prefers-reduced-motion: reduce)"]);
+      function collect(rules) {
+        for (const rule of rules) {
+          if (rule.media?.mediaText) queries.add(rule.media.mediaText);
+          const nested = rule.cssRules;
+          if (nested?.length) collect(nested);
+        }
+      }
+      for (const sheet of watchedSheets) {
+        if (sheet.media?.mediaText) queries.add(sheet.media.mediaText);
+        collect(stylesheetRules(sheet));
+      }
+      for (const [query, media] of styleMedia) {
+        if (!queries.has(query)) { media.removeEventListener("change", layoutChanged); styleMedia.delete(query); }
+      }
+      for (const query of queries) {
+        if (styleMedia.has(query)) continue;
+        const media = windowRef.matchMedia(query);
+        media.addEventListener("change", layoutChanged);
+        styleMedia.set(query, media);
+      }
+    }
+
+    function checkLayoutState() {
+      const next = stylesheetSnapshot();
+      if (next.length !== stylesheetState.length || next.some((value, index) => value !== stylesheetState[index])) {
+        stylesheetState = next;
+        polledStyles = true;
+        layoutChanged();
+      }
+      refreshAnimations(readAnimations());
+    }
+
+    function stylesheetLoaded(event) {
+      if (event.target.localName === "style"
+          || (event.target.localName === "link" && event.target.relList.contains("stylesheet"))) layoutChanged();
+    }
+
+    function changesCoverMembership(change) {
+      // Our shadow contents are excluded from the page catalogue. Their layout
+      // still matters, but cannot add a page header or change its selectors.
+      if (root instanceof windowRef.ShadowRoot && change.target.getRootNode() === root) return false;
+      const element = change.target.nodeType === 1 ? change.target : change.target.parentElement;
+      if (change.type === "attributes" || element?.localName === "style") return true;
+      // Text can change :dir() beneath automatic-direction elements even when
+      // both old and new values are non-empty.
+      if (element?.closest('[dir="auto" i], bdi')) return true;
+      if (change.type === "characterData") {
+        return change.target.nodeType === 3 && (change.oldValue === "") !== (change.target.data === "");
+      }
+      const added = [...change.addedNodes], removed = [...change.removedNodes];
+      if ([...added, ...removed].some(node => node.nodeType === 1)) return true;
+      const hasText = nodes => nodes.some(node => node.nodeType === 3 && node.data !== "");
+      // Non-empty text replacement leaves :empty/:has membership unchanged.
+      return hasText(added) !== hasText(removed);
+    }
+
+    function layoutMutations(changes) {
+      const relevant = changes.filter(affectsGeometry);
+      if (relevant.some(changesCoverMembership)) pageOccluders = null;
+      return relevant.length > 0;
+    }
+
+    function isCoverPosition(position) {
+      return position === "fixed" || position === "sticky";
+    }
+
+    function isPageElement(element) {
+      return element !== root.host && !layer.contains(element) && !element.closest(".gsm-hoshidicts-popup");
+    }
+
+    function isPageCover(element, style) {
+      return isCoverPosition(style.position) || element.localName === "dialog" || element.hasAttribute("popover");
+    }
+
+    function isCoverMotion(animation, frames = animation.effect.getKeyframes()) {
+      return (animation.playState === "running" || animation.playState === "paused")
+        && frames.some(keyframe => isCoverPosition(keyframe.position));
+    }
+
+    function isRunningMotion(animation) {
+      return animation.playState === "running" && animation.playbackRate !== 0;
+    }
+
+    function isMotionTarget(target) {
+      for (const [element, subtree] of motionTargets) {
+        if (element === target || (subtree && element.contains(target))) return true;
+      }
+      return false;
+    }
+
+    function readAnimations() {
+      const animations = new Set();
+      for (const tree of motionRoots) for (const animation of tree.getAnimations()) animations.add(animation);
+      return [...animations].filter(animation => motionRoots.has(animation.effect.target.getRootNode()))
+        .map(animation => ({ animation, effect: animation.effect, target: animation.effect.target,
+          frames: animation.effect.getKeyframes() }));
+    }
+
+    function unwatchAnimation(animation, record) {
+      animation.removeEventListener("finish", record.listener);
+      animation.removeEventListener("cancel", record.listener);
+      animationWatches.delete(animation);
+    }
+
+    function refreshAnimations(animations, discovering = false) {
+      const current = new Set();
+      for (const { animation, effect, target, frames } of animations) {
+        const cover = isPageElement(target) && frames.some(keyframe => isCoverPosition(keyframe.position));
+        if (!cover && !isMotionTarget(target)) continue;
+        current.add(animation);
+        let record = animationWatches.get(animation);
+        const structure = JSON.stringify([frames, effect.getTiming()]);
+        // Running frames already follow time. Paused/seeking/zero-rate effects
+        // need a wake when their time, timing or keyframes change without events.
+        const state = JSON.stringify([animation.playState, animation.playbackRate,
+          isRunningMotion(animation) ? null : animation.currentTime]);
+        const changed = !record || record.target !== target || record.effect !== effect
+          || record.structure !== structure || record.state !== state;
+        const membership = (record?.cover ?? false) !== cover || (cover && (!record || record.target !== target
+          || record.effect !== effect || record.structure !== structure));
+        if (!record) {
+          record = { listener() {
+            if (isPageElement(record.target) && coverMotionChanged(record.target, true)) layoutChanged();
+            else schedule();
+          } };
+          animation.addEventListener("finish", record.listener);
+          animation.addEventListener("cancel", record.listener);
+          animationWatches.set(animation, record);
+        }
+        Object.assign(record, { target, effect, cover, structure, state });
+        if (changed && !discovering) {
+          if (membership) layoutChanged();
+          else schedule();
+        }
+      }
+      for (const [animation, record] of animationWatches) {
+        if (current.has(animation)) continue;
+        unwatchAnimation(animation, record);
+        if (!discovering) {
+          if (record.cover && coverMotion.has(record.target)) layoutChanged();
+          else schedule();
+        }
+      }
+    }
+
+    function coverMotionChanged(target, ended) {
+      const tracked = coverMotion.has(target);
+      const active = target.getAnimations().some(animation => isCoverMotion(animation));
+      if (active) {
+        coverMotion.add(target);
+        return !tracked;
+      }
+      if (tracked) {
+        coverMotion.delete(target);
+        return true;
+      }
+      return ended && isPageCover(target, windowRef.getComputedStyle(target)) !== (pageOccluders?.includes(target) ?? false);
+    }
+
+    function sourceMotion(event) {
+      const target = event.target;
+      const ended = motionEnds.includes(event.type);
+      // A currently static element may become a cover halfway through motion.
+      // Track only effects with cover-position keyframes, not every animation
+      // on the page. Keep paused effects until they finish or are cancelled.
+      if ((ended || motionStarts.includes(event.type)) && isPageElement(target) && coverMotionChanged(target, ended)) {
+        layoutChanged();
+        return;
+      }
+      for (const [target, subtree] of motionTargets) {
+        if (target === event.target || (subtree && target.contains(event.target))
+            || (event.relatedTarget !== undefined && target instanceof windowRef.Element
+              && target.contains(event.target) !== target.contains(event.relatedTarget))) {
+          if (ended) schedule();
+          else layoutChanged();
+          return;
+        }
+      }
+    }
+
+    function unwatchMotion(target) {
+      for (const type of motionEvents) target.removeEventListener(type, sourceMotion, true);
+      target.removeEventListener("load", stylesheetLoaded, true);
+      motionRoots.delete(target);
+    }
+
+    function reconcileTargets() {
+      motionTargets = new Map(geometryTargets);
+      for (const target of coverTargets) if (!motionTargets.has(target)) motionTargets.set(target, false);
+      const nextResizeTargets = new Set([...motionTargets.keys()].filter(target => target instanceof windowRef.Element));
+      for (const target of nextResizeTargets) if (!resizeTargets.has(target)) resize?.observe(target);
+      for (const target of resizeTargets) if (!nextResizeTargets.has(target)) resize?.unobserve(target);
+      resizeTargets = nextResizeTargets;
+    }
+
+    function observeGeometry(targets) {
+      geometry.disconnect();
+      const nextMotionRoots = new Set();
+      for (const target of targets.keys()) {
+        if (target === documentRef || target instanceof windowRef.ShadowRoot) {
+          nextMotionRoots.add(target);
+        }
+      }
+      // A sibling can move the source inside a fixed-size ancestor without
+      // resizing any observed source. Layout notifications therefore span its
+      // containing trees; native range observers remain source-scoped.
+      const nextLayoutRoots = new Set(nextMotionRoots);
+      if (root instanceof windowRef.ShadowRoot) nextLayoutRoots.add(root);
+      if (layoutRoots.size !== nextLayoutRoots.size || [...layoutRoots].some(target => !nextLayoutRoots.has(target))) {
+        pageOccluders = null;
+      }
+      layoutRoots = nextLayoutRoots;
+      for (const target of layoutRoots) {
+        geometry.observe(target, { attributes: true, characterData: true, characterDataOldValue: true, childList: true, subtree: true });
+      }
+      for (const target of motionRoots) {
+        if (!nextMotionRoots.has(target)) unwatchMotion(target);
+      }
+      for (const target of nextMotionRoots) {
+        if (!motionRoots.has(target)) {
+          for (const type of motionEvents) target.addEventListener(type, sourceMotion, true);
+          target.addEventListener("load", stylesheetLoaded, true);
+          motionRoots.add(target);
+        }
+      }
+      geometryTargets = targets;
+      reconcileTargets();
+    }
+
+    function clipBounds(element, cache) {
+      if (cache.has(element)) return cache.get(element);
+      const style = windowRef.getComputedStyle(element);
+      const clips = value => value && value !== "visible";
+      const clipX = clips(style.overflowX), clipY = clips(style.overflowY);
+      let bounds = null;
+      if (clipX || clipY) {
+        const rect = element.getBoundingClientRect();
+        const sx = element.offsetWidth ? rect.width / element.offsetWidth : 1;
+        const sy = element.offsetHeight ? rect.height / element.offsetHeight : 1;
+        const left = rect.left + element.clientLeft * sx, top = rect.top + element.clientTop * sy;
+        bounds = { left: clipX ? left : -Infinity, right: clipX ? left + element.clientWidth * sx : Infinity,
+          top: clipY ? top : -Infinity, bottom: clipY ? top + element.clientHeight * sy : Infinity };
+      }
+      const result = { bounds, style, invisible: style.opacity === "0" || style.contentVisibility === "hidden",
+        hiddenText: style.visibility === "hidden" || style.visibility === "collapse" };
+      cache.set(element, result);
+      return result;
+    }
+
+    function visibleClip(source, cache, cover = false) {
+      let clip = { left: 0, top: 0, right: windowRef.innerWidth, bottom: windowRef.innerHeight };
+      // Overflow clips contents, not a cover's own painted border. Fixed boxes
+      // also escape intermediate scrollports before their containing block.
+      let clipping = !cover || clipBounds(source, cache).style.position !== "fixed";
+      const containingBlock = !clipping && source.offsetParent;
+      for (let ancestor = source; ancestor && clip; ancestor = ancestor.parentElement || ancestor.getRootNode().host) {
+        const { bounds, invisible, hiddenText } = clipBounds(ancestor, cache);
+        if (invisible || (ancestor === source && hiddenText)) return null;
+        if (ancestor === containingBlock) clipping = true;
+        if (bounds && clipping && (!cover || ancestor !== source)) clip = intersectHighlightRect(clip, bounds);
+      }
+      return clip;
+    }
+
+    function pageCovers(cache) {
+      if (pageOccluders === null) {
+        pageOccluders = [];
+        coverMotion = new WeakSet();
+        // Reuse one animation-list/keyframe read for discovery and listeners.
+        // Programmatic effects need listeners on Animation itself, not the DOM.
+        const animations = readAnimations();
+        for (const { animation, target, frames } of animations) {
+          if (isPageElement(target) && isCoverMotion(animation, frames)) coverMotion.add(target);
+        }
+        for (const tree of layoutRoots) {
+          if (tree === root && tree instanceof windowRef.ShadowRoot) continue;
+          for (const element of tree.querySelectorAll("*")) {
+            if (!isPageElement(element)) continue;
+            const style = windowRef.getComputedStyle(element);
+            if (isPageCover(element, style) || coverMotion.has(element)) pageOccluders.push(element);
+          }
+        }
+        coverTargets = new Set();
+        for (const element of pageOccluders) {
+          for (let ancestor = element; ancestor; ancestor = ancestor.parentElement || ancestor.getRootNode().host) {
+            coverTargets.add(ancestor);
+          }
+        }
+        reconcileTargets();
+        refreshAnimations(animations, true);
+        // CSSOM has no mutation event in the content-script world. A bounded
+        // fallback-only poll reads stylesheet text, never page geometry, and
+        // only a changed snapshot requests discovery/paint. Snapshot before
+        // starting the timer so early CSSOM edits cannot become its baseline.
+        if (!polledStyles) stylesheetState = stylesheetSnapshot();
+        polledStyles = false;
+        refreshStyleMedia();
+        stylesheetTimer ??= windowRef.setInterval(checkLayoutState, 250);
+      }
+      return pageOccluders.flatMap(element => {
+        if (!isPageCover(element, clipBounds(element, cache).style)) return [];
+        const clip = visibleClip(element, cache, true);
+        const rect = clip && intersectHighlightRect(element.getBoundingClientRect(), clip);
+        return rect ? [{ element, rect, tree: element.getRootNode(),
+          pointerEvents: clipBounds(element, cache).style.pointerEvents }] : [];
+      });
+    }
+
+    function coveredByPage(source, rect, cover) {
+      let localSource = source;
+      while (localSource && localSource.getRootNode() !== cover.tree) localSource = localSource.getRootNode().host;
+      if (!localSource || cover.element.contains(localSource)) return false;
+      const overlap = intersectHighlightRect(rect, cover.rect);
+      if (!overlap) return false;
+      const stack = cover.tree.elementsFromPoint((overlap.left + overlap.right) / 2, (overlap.top + overlap.bottom) / 2);
+      const coverIndex = stack.findIndex(element => cover.element.contains(element));
+      const sourceIndex = stack.findIndex(element => element.contains(localSource) || localSource.contains(element));
+      // Hit-testing cannot order pointer-transparent paint. Conservatively omit
+      // that intersection rather than tint an overlay above the page's text.
+      return coverIndex < 0 ? cover.pointerEvents === "none" : sourceIndex < 0 || coverIndex < sourceIndex;
+    }
+
+    function fragmentRects(fragment, cache, popups, page) {
+      const source = fragment.startContainer.parentElement;
+      const clip = visibleClip(source, cache);
+      if (!clip) return [];
+      let rects;
+      try { rects = [...fragment.getClientRects()].map(rect => intersectHighlightRect(rect, clip)).filter(Boolean); }
+      catch { return []; } // No exact geometry: never substitute a whole paragraph.
+      const popup = source.closest(".gsm-hoshidicts-popup");
+      const ownerIndex = popups.findIndex(entry => entry.popup === popup);
+      const covers = popups.slice(ownerIndex + 1).map(entry => entry.rect);
+      const toolbar = popup?.querySelector(".gsm-hoshidicts-result-chrome");
+      if (toolbar && !toolbar.contains(source)) covers.push(toolbar.getBoundingClientRect());
+      for (const cover of covers) rects = rects.flatMap(rect => subtractHighlightRect(rect, cover));
+      for (const cover of page) rects = rects.flatMap(rect => coveredByPage(source, rect, cover)
+        ? subtractHighlightRect(rect, cover.rect) : [rect]);
+      return rects;
+    }
+
+    function paint() {
+      frame = null;
+      const cache = new Map();
+      const popups = [...root.querySelectorAll(".gsm-hoshidicts-popup")].filter(popup => !popup.hidden)
+        .map(popup => ({ popup, rect: popup.getBoundingClientRect() }));
+      const page = pageCovers(cache);
+      // Read all owners before writing any paint rectangles.
+      const plans = [...owners.values()].map(owner => ({ owner,
+        rects: owner.fragments.flatMap(fragment => fragmentRects(fragment, cache, popups, page)) }));
+      const moving = [...motionTargets].some(([target, subtree]) => target instanceof windowRef.Element
+        && target.getAnimations({ subtree }).some(isRunningMotion));
+      if (root.lastChild !== layer) root.appendChild(layer);
+      for (const { owner, rects } of plans) {
+        while (owner.group.children.length > rects.length) owner.group.lastChild.remove();
+        rects.forEach((rect, index) => {
+          let mark = owner.group.children[index];
+          if (!mark) {
+            mark = documentRef.createElement("span");
+            mark.className = "gsm-hoshidicts-source-match";
+            owner.group.appendChild(mark);
+          }
+          Object.assign(mark.style, { left: `${rect.left}px`, top: `${rect.top}px`,
+            width: `${rect.right - rect.left}px`, height: `${rect.bottom - rect.top}px` });
+        });
+      }
+      // Transforms do not notify ResizeObserver, and CSS motion has no DOM
+      // mutations between frames. Stay live only while a source or cover moves.
+      if (moving) schedule();
+    }
+
+    return {
+      schedule,
+      update(records) {
+        let dirty = layoutMutations(geometry.takeRecords());
+        const current = new Set(records);
+        for (const [record, owner] of owners) {
+          if (!current.has(record)) { owner.group.remove(); owners.delete(record); }
+        }
+        const targets = new Map();
+        for (const record of records) {
+          let owner = owners.get(record);
+          if (!owner) {
+            owner = { group: documentRef.createElement("div") };
+            layer.appendChild(owner.group);
+            owners.set(record, owner);
+          }
+          if (owner.match !== record.match) {
+            owner.match = record.match;
+            owner.fragments = highlightTextFragments(documentRef, record.match);
+            dirty = true;
+          }
+          for (const [target, subtree] of record.observedTargets) targets.set(target, targets.get(target) || subtree);
+        }
+        observeGeometry(targets);
+        if (dirty) schedule();
+      },
+      destroy() {
+        if (frame !== null) windowRef.cancelAnimationFrame(frame);
+        if (stylesheetTimer !== null) windowRef.clearInterval(stylesheetTimer);
+        for (const media of styleMedia.values()) media.removeEventListener("change", layoutChanged);
+        for (const [animation, record] of animationWatches) unwatchAnimation(animation, record);
+        resize?.disconnect();
+        geometry.disconnect();
+        for (const target of motionRoots) unwatchMotion(target);
+        windowRef.removeEventListener("scroll", schedule, true);
+        root.removeEventListener("scroll", schedule, true);
+        windowRef.removeEventListener("resize", layoutChanged);
+        layer.remove();
+      },
+    };
+  }
+
+  function createSourceHighlighter(windowRef, documentRef, highlightName, fallbackRoot = documentRef.body) {
     const matches = new Map();
-    let highlightedSourceElements = new Set();
+    let fallback = null;
+    let publishedHighlight = null;
 
     function clearRenderedHighlight() {
       const highlights = windowRef.CSS && windowRef.CSS.highlights;
-      if (highlights && typeof highlights.delete === "function") {
+      if (publishedHighlight && highlights?.get(highlightName) === publishedHighlight) {
         highlights.delete(highlightName);
       }
-      for (const element of highlightedSourceElements) {
-        element.classList.remove("gsm-hoshidicts-source-match");
-      }
-      highlightedSourceElements = new Set();
+      publishedHighlight = null;
     }
 
     function createMatchRanges(candidate, matchedText) {
@@ -428,7 +1107,6 @@
       }
       const showText = windowRef.NodeFilter ? windowRef.NodeFilter.SHOW_TEXT : 4;
       const ranges = [];
-      const rangedSourceElements = new Set();
       let elementStart = 0;
       for (const element of sourceElements) {
         const elementEnd = elementStart + (element.textContent || "").length;
@@ -477,36 +1155,13 @@
             range.setStart(start.node, start.offset);
             range.setEnd(end.node, end.offset);
             ranges.push(range);
-            rangedSourceElements.add(element);
           } catch {
-            // The class fallback below handles invalid ranges.
+            // Without an exact range this source fragment stays unpainted.
           }
         }
         elementStart = elementEnd;
       }
-      return {
-        ranges,
-        rangedSourceElements,
-        sourceElements,
-        startOffset,
-        endOffset,
-      };
-    }
-
-    function applyElementFallback(match, skippedElements = new Set()) {
-      let elementStart = 0;
-      for (const element of match.sourceElements) {
-        const elementEnd = elementStart + (element.textContent || "").length;
-        if (
-          !skippedElements.has(element) &&
-          elementEnd > match.startOffset &&
-          elementStart < match.endOffset
-        ) {
-          element.classList.add("gsm-hoshidicts-source-match");
-          highlightedSourceElements.add(element);
-        }
-        elementStart = elementEnd;
-      }
+      return { ranges };
     }
 
     function render() {
@@ -517,38 +1172,82 @@
         highlights && typeof highlights.set === "function" && HighlightImpl
       );
       const ranges = [];
-      for (const { candidate, matchedText } of matches.values()) {
-        const match = createMatchRanges(candidate, matchedText);
-        if (!match) {
-          continue;
-        }
-        if (canUseRanges && match.ranges.length > 0) {
-          ranges.push(...match.ranges);
-          applyElementFallback(match, match.rangedSourceElements);
-        } else {
-          applyElementFallback(match);
-        }
+      for (const { match } of matches.values()) {
+        ranges.push(...match.ranges);
       }
       if (canUseRanges && ranges.length > 0) {
         try {
-          highlights.set(highlightName, new HighlightImpl(...ranges));
+          const next = new HighlightImpl(...ranges);
+          highlights.set(highlightName, next);
+          publishedHighlight = next;
         } catch {
-          for (const { candidate, matchedText } of matches.values()) {
-            const match = createMatchRanges(candidate, matchedText);
-            if (match) {
-              applyElementFallback(match);
-            }
-          }
+          // The same exact ranges supply owned fallback paint when unavailable.
         }
+      }
+      if (!publishedHighlight && matches.size > 0) {
+        fallback ??= createHighlightFallback(windowRef, documentRef, fallbackRoot);
+        fallback.update([...matches.values()]);
+      } else {
+        fallback?.destroy();
+        fallback = null;
       }
     }
 
+    function observeSource(record) {
+      record.observer.disconnect();
+      const targets = new Map();
+      for (const source of record.candidate.sourceElements) {
+        targets.set(source, true);
+        // Direct ancestor child lists detect a removed/moved source without
+        // observing unrelated page subtrees. Cross an owned shadow root too.
+        for (let parent = source.parentNode; parent; parent = parent.parentNode || parent.host) {
+          if (!targets.has(parent)) targets.set(parent, false);
+        }
+      }
+      for (const [target, subtree] of targets) {
+        record.observer.observe(target, { childList: true, characterData: subtree, subtree });
+      }
+      record.observedTargets = targets;
+    }
+
+    function sourceChanged(record, changes) {
+      return record.candidate.sourceElements.some(source => !source.isConnected
+        || changes.some(change => source.contains(change.target)
+          || [...change.addedNodes, ...change.removedNodes].some(node => record.observedTargets.has(node))));
+    }
+
+    function refreshSource(key, record) {
+      if (matches.get(key) !== record) return;
+      const match = createMatchRanges(record.candidate, record.matchedText);
+      if (!match) {
+        clearFor(key);
+        return;
+      }
+      record.match = match;
+      observeSource(record);
+      render();
+    }
+
     function applyFor(key, candidate, matchedText) {
-      matches.set(key, { candidate, matchedText });
+      const previous = matches.get(key);
+      if (previous?.candidate === candidate && previous.matchedText === matchedText) return;
+      const match = createMatchRanges(candidate, matchedText);
+      previous?.observer.disconnect();
+      if (!match) {
+        clearFor(key);
+        return;
+      }
+      const record = { candidate, matchedText, match };
+      record.observer = new windowRef.MutationObserver(changes => {
+        if (sourceChanged(record, changes)) refreshSource(key, record);
+      });
+      matches.set(key, record);
+      observeSource(record);
       render();
     }
 
     function clearFor(key) {
+      matches.get(key)?.observer.disconnect();
       if (matches.delete(key)) {
         render();
       }
@@ -561,6 +1260,7 @@
       clear() {
         clearFor("default");
       },
+      refresh() { fallback?.schedule(); },
       scope(key) {
         return {
           apply(candidate, matchedText) {
@@ -569,11 +1269,15 @@
           clear() {
             clearFor(key);
           },
+          refresh() { fallback?.schedule(); },
         };
       },
       clearAll() {
+        for (const record of matches.values()) record.observer.disconnect();
         matches.clear();
         clearRenderedHighlight();
+        fallback?.destroy();
+        fallback = null;
       },
     };
   }
@@ -590,6 +1294,73 @@
       }
     }
     return dictionaries;
+  }
+
+  function normaliseDictionaryTab(value) {
+    if (typeof value?.dictionary === "string") return { dictionary: value.dictionary };
+    if (typeof value?.groupId === "string") return { groupId: value.groupId };
+    return value?.favourites === true ? { favourites: true } : null;
+  }
+
+  function dictionaryTabKey(selection) {
+    if (typeof selection?.dictionary === "string") return `dictionary:${selection.dictionary}`;
+    if (typeof selection?.groupId === "string") return `group:${selection.groupId}`;
+    return selection?.favourites === true ? "favourites" : "all";
+  }
+
+  function sameTabMembers(left, right, dictionaries) {
+    return dictionaries.every(dictionary => (left.size === 0 || left.has(dictionary))
+      === (right.size === 0 || right.has(dictionary)));
+  }
+
+  function updateLabel(element, label) {
+    if (element.textContent === label) return false;
+    element.textContent = label;
+    return true;
+  }
+
+  function createDictionaryTabs(dictionaries, renderContext) {
+    const presentation = Array.isArray(renderContext.dictionaryPresentation)
+      ? renderContext.dictionaryPresentation : [];
+    const groups = Array.isArray(renderContext.dictionaryTabGroups)
+      ? renderContext.dictionaryTabGroups : [];
+    const dictionaryDisplayNames = createDictionaryDisplayNames(dictionaries, presentation);
+    const available = new Set(dictionaries);
+    const favourites = presentation
+      .filter(({ favorite, title }) => favorite === true && available.has(title))
+      .map(({ title }) => title);
+    const usedLabels = new Set();
+    function tab(label, title, selection, members, qualifier) {
+      let uniqueLabel = label;
+      let suffix = 1;
+      while (usedLabels.has(uniqueLabel)) {
+        uniqueLabel = `${label} (${qualifier}${suffix === 1 ? "" : ` ${suffix}`})`;
+        suffix += 1;
+      }
+      usedLabels.add(uniqueLabel);
+      return {
+        key: dictionaryTabKey(selection), label: uniqueLabel, title,
+        ...selection, dictionaries: new Set(members),
+      };
+    }
+    const tabs = [
+      tab("All", "All dictionaries", null, [], "tab"),
+      ...dictionaries.map((dictionary) => tab(
+        dictionaryDisplayNames.get(dictionary) || dictionary,
+        dictionary, { dictionary }, [dictionary], "dictionary",
+      )),
+    ];
+    if (favourites.length > 0) {
+      tabs.push(tab("Favourites", "Favourite dictionaries", { favourites: true }, favourites, "tab"));
+    }
+    for (const group of groups) {
+      const members = Array.isArray(group.dictionaries)
+        ? group.dictionaries.filter((title) => available.has(title)) : [];
+      if (members.length > 0) {
+        tabs.push(tab(group.name, `Tab group: ${group.name}`, { groupId: group.id }, members, "group"));
+      }
+    }
+    return { tabs, dictionaryDisplayNames };
   }
 
   function isRecord(value) {
@@ -626,57 +1397,127 @@
     );
   }
 
-  function normalizeCompactDefinitionText(value) {
-    return String(value || "").replace(/\s+/gu, " ").trim();
+  function* compactDefinitionItemsFromText(parts) {
+    const textRun = `[^\\s\\u2022]{1,${COMPACT_DEFINITION_MAX_CHARACTERS + 1}}`;
+    const firstText = new RegExp(textRun, "gu");
+    const nextText = new RegExp(`\\u2022|${textRun}`, "gu");
+    const buffer = { text: "", characters: 0 };
+    let pendingSpace = false;
+    for (const text of parts) {
+      let index = 0;
+      while (index < text.length) {
+        const matcher = buffer.characters > 0 ? nextText : firstText;
+        matcher.lastIndex = index;
+        const match = matcher.exec(text);
+        if (!match) {
+          pendingSpace = buffer.characters > 0;
+          break;
+        }
+        pendingSpace ||= buffer.characters > 0 && match.index > index;
+        index = matcher.lastIndex;
+        if (match[0] === "\u2022") {
+          yield buffer.text;
+          buffer.text = "";
+          buffer.characters = 0;
+          pendingSpace = false;
+          continue;
+        }
+        if (pendingSpace) {
+          buffer.text += " ";
+          buffer.characters += 1;
+        }
+        pendingSpace = false;
+        if (buffer.characters <= COMPACT_DEFINITION_MAX_CHARACTERS) {
+          appendCompactDefinitionText(buffer, match[0]);
+        }
+        // One extra normalized point proves truncation. Earlier accepted items
+        // are at most 240 points, so this cannot falsely match a seen duplicate.
+        if (buffer.characters > COMPACT_DEFINITION_MAX_CHARACTERS) {
+          yield buffer.text;
+          return;
+        }
+      }
+    }
+    if (buffer.characters > 0) yield buffer.text;
+  }
+
+  function appendCompactDefinitionText(buffer, text) {
+    // The native matcher already bounds this run to 241 points. Count internal
+    // surrogate pairs without building a point array unless truncation needs it.
+    const characters = text.length - (text.match(/[\ud800-\udbff][\udc00-\udfff]/g)?.length || 0);
+    const previous = buffer.text.charCodeAt(buffer.text.length - 1);
+    const first = text.charCodeAt(0);
+    const joined = previous >= 0xd800 && previous <= 0xdbff && first >= 0xdc00 && first <= 0xdfff ? 1 : 0;
+    const available = COMPACT_DEFINITION_MAX_CHARACTERS + 1 - buffer.characters + joined;
+    buffer.text += characters > available ? Array.from(text).slice(0, available).join("") : text;
+    buffer.characters += Math.min(characters, available) - joined;
+  }
+
+  // Typed wrappers select their payload before incidental tags, as in the full
+  // renderer. Discovery, collection and leading-image selection share this rule.
+  function compactDefinitionTag(value) {
+    if (value.type === "text" || value.type === "structured-content") return "";
+    if (value.type === "image") return "img";
+    return typeof value.tag === "string" ? value.tag.toLowerCase() : "";
+  }
+
+  function compactDefinitionContent(value) {
+    return value.type === "text" && Object.hasOwn(value, "text") ? value.text : value.content;
   }
 
   function isCompactDefinitionBlock(value) {
-    return isRecord(value) && COMPACT_DEFINITION_BLOCK_TAGS.has(
-      String(value.tag || "").toLowerCase()
-    );
+    return isRecord(value) && COMPACT_DEFINITION_BLOCK_TAGS.has(compactDefinitionTag(value));
   }
 
-  function collectCompactDefinitionText(value, state, depth = 0) {
+  function* collectCompactDefinitionText(value, state, depth = 0) {
     if (
       state.nodes >= COMPACT_DEFINITION_MAX_NODES ||
       depth > COMPACT_DEFINITION_MAX_DEPTH
     ) {
-      return "";
+      return;
     }
     state.nodes += 1;
     if (typeof value === "string" || typeof value === "number" ||
         typeof value === "boolean") {
-      return String(value);
+      const text = String(value);
+      if (text) yield text;
+      return;
     }
     if (Array.isArray(value)) {
-      let text = "";
+      let hasText = false;
       let previousWasBlock = false;
       for (const child of value) {
         if (state.nodes >= COMPACT_DEFINITION_MAX_NODES) break;
-        const childText = collectCompactDefinitionText(child, state, depth + 1);
-        if (!childText) continue;
-        const childIsBlock = isCompactDefinitionBlock(child);
-        if (text && (previousWasBlock || childIsBlock)) {
-          text += " ";
+        let childIsBlock = false;
+        let childHasText = false;
+        for (const text of collectCompactDefinitionText(child, state, depth + 1)) {
+          if (!childHasText) {
+            childIsBlock = isCompactDefinitionBlock(child);
+            if (hasText && (previousWasBlock || childIsBlock)) yield " ";
+          }
+          childHasText = true;
+          yield text;
         }
-        text += childText;
-        previousWasBlock = childIsBlock;
+        if (childHasText) {
+          hasText = true;
+          previousWasBlock = childIsBlock;
+        }
       }
-      return text;
+      return;
     }
     if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) {
-      return "";
+      return;
     }
-    const tag = typeof value.tag === "string" ? value.tag.toLowerCase() : "";
-    if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag) || value.type === "image") {
-      return "";
+    const tag = compactDefinitionTag(value);
+    if (COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) {
+      return;
     }
-    if (value.type === "text" && Object.prototype.hasOwnProperty.call(value, "text")) {
-      return collectCompactDefinitionText(value.text, state, depth + 1);
+    if (tag === "br") {
+      yield " ";
+      return;
     }
-    return Object.prototype.hasOwnProperty.call(value, "content")
-      ? collectCompactDefinitionText(value.content, state, depth + 1)
-      : "";
+    const content = compactDefinitionContent(value);
+    if (content !== undefined) yield* collectCompactDefinitionText(content, state, depth + 1);
   }
 
   function findCompactDefinitionNodes(value, predicate, state, depth = 0) {
@@ -703,48 +1544,48 @@
     if (!isRecord(value) || isIgnoredCompactDefinitionSection(value)) {
       return [];
     }
-    if (predicate(value)) {
+    const tag = compactDefinitionTag(value);
+    if (tag === "br" || COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) return [];
+    if (predicate(value, tag)) {
       return [value];
     }
-    return Object.prototype.hasOwnProperty.call(value, "content")
-      ? findCompactDefinitionNodes(value.content, predicate, state, depth + 1)
+    const content = compactDefinitionContent(value);
+    return content !== undefined
+      ? findCompactDefinitionNodes(content, predicate, state, depth + 1)
       : [];
   }
 
-  function isCompactDefinitionList(value) {
-    const tag = String(value.tag || "").toLowerCase();
+  function isCompactDefinitionList(_value, tag) {
     return tag === "ul" || tag === "ol";
   }
 
   /** Block nodes with no block descendants: the smallest sense-sized chunks. */
-  function findCompactDefinitionLeafBlocks(root) {
+  function findCompactDefinitionLeafBlocks(root, state = { nodes: 0 }) {
     return findCompactDefinitionNodes(
       root,
-      (value) => COMPACT_DEFINITION_BLOCK_TAGS.has(
-        String(value.tag || "").toLowerCase()
-      ) && findCompactDefinitionNodes(
+      (value, tag) => COMPACT_DEFINITION_BLOCK_TAGS.has(tag) && findCompactDefinitionNodes(
         value.content,
-        (child) => COMPACT_DEFINITION_BLOCK_TAGS.has(
-          String(child.tag || "").toLowerCase()
-        ),
+        (_child, childTag) => COMPACT_DEFINITION_BLOCK_TAGS.has(childTag),
         { nodes: 0 }
       ).length === 0,
-      { nodes: 0 }
+      state
     );
   }
 
-  function compactDefinitionItemsFromNodes(nodes) {
-    const items = [];
+  function* compactDefinitionItemsFromNodes(nodes) {
+    let found = false;
     let inspected = 0;
     for (const node of nodes) {
       if (inspected >= COMPACT_DEFINITION_MAX_NODES) break;
       inspected += 1;
-      const text = normalizeCompactDefinitionText(
-        collectCompactDefinitionText(node, { nodes: 0 })
-      );
-      if (text) items.push(text);
+      for (const item of compactDefinitionItemsFromText(collectCompactDefinitionText(node, { nodes: 0 }))) {
+        found = true;
+        yield item;
+      }
     }
-    return items;
+    // The first nonempty semantic list owns the preview, even if deduplication
+    // leaves fewer snippets than requested. Empty lists still fall through.
+    return found;
   }
 
   function compactDefinitionItemsFromList(list) {
@@ -754,7 +1595,7 @@
     const children = rawChildren.slice(0, COMPACT_DEFINITION_MAX_NODES);
     const listItems = [];
     for (const child of children) {
-      if (isRecord(child) && String(child.tag || "").toLowerCase() === "li") {
+      if (isRecord(child) && compactDefinitionTag(child) === "li") {
         listItems.push(child);
       }
     }
@@ -763,28 +1604,41 @@
     );
   }
 
-  function compactDefinitionItemsFromMarkedNode(node) {
-    const tag = String(node.tag || "").toLowerCase();
+  function* compactDefinitionItemsFromMarkedNode(node) {
+    const tag = compactDefinitionTag(node);
     if (tag === "ul" || tag === "ol") {
-      return compactDefinitionItemsFromList(node);
+      yield* compactDefinitionItemsFromList(node);
+      return;
     }
+    const content = compactDefinitionContent(node);
     const nestedLists = findCompactDefinitionNodes(
-      node.content,
+      content,
       isCompactDefinitionList,
       { nodes: 0 }
     );
     if (nestedLists.length > 0) {
-      return nestedLists.flatMap(compactDefinitionItemsFromList);
+      for (const list of nestedLists) yield* compactDefinitionItemsFromList(list);
+      return;
     }
-    const leafBlocks = findCompactDefinitionLeafBlocks(node.content);
-    return leafBlocks.length > 0
+    const leafBlocks = findCompactDefinitionLeafBlocks(content);
+    yield* leafBlocks.length > 0
       ? compactDefinitionItemsFromNodes(leafBlocks)
       : compactDefinitionItemsFromNodes([node]);
   }
 
-  function extractCompactDefinitionItems(rawGlossary) {
-    const parsed = parseCompactDefinitionValue(rawGlossary);
-    if (parsed === null) return [];
+  function* compactDefinitionFallbackNodes(parsed) {
+    // Top-level glossary-array entries are separate senses, unlike inline
+    // content arrays. Expand blocks within each sense without dropping siblings.
+    const discovery = { nodes: 0 };
+    for (const sense of Array.isArray(parsed) ? parsed : [parsed]) {
+      const leafBlocks = findCompactDefinitionLeafBlocks(sense, discovery);
+      if (leafBlocks.length > 0) yield* leafBlocks;
+      else yield sense;
+    }
+  }
+
+  function* extractCompactDefinitionItems(parsed) {
+    if (parsed === null) return;
 
     const glossaryNodes = findCompactDefinitionNodes(
       parsed,
@@ -792,7 +1646,8 @@
       { nodes: 0 }
     );
     if (glossaryNodes.length > 0) {
-      return glossaryNodes.flatMap(compactDefinitionItemsFromMarkedNode);
+      for (const node of glossaryNodes) yield* compactDefinitionItemsFromMarkedNode(node);
+      return;
     }
 
     const semanticLists = findCompactDefinitionNodes(
@@ -801,20 +1656,30 @@
       { nodes: 0 }
     );
     for (const list of semanticLists) {
-      const items = compactDefinitionItemsFromList(list);
-      if (items.length > 0) return items;
+      if (yield* compactDefinitionItemsFromList(list)) return;
     }
 
-    const leafBlocks = findCompactDefinitionLeafBlocks(parsed);
-    if (leafBlocks.length > 0) {
-      return compactDefinitionItemsFromNodes(leafBlocks);
-    }
+    yield* compactDefinitionItemsFromNodes(compactDefinitionFallbackNodes(parsed));
+  }
 
-    if (Array.isArray(parsed)) {
-      const items = compactDefinitionItemsFromNodes(parsed);
-      if (items.length > 0) return items;
+  // null means no visible content; false means text or another non-image lead.
+  // Stop at that first meaningful token, not at an image later in a definition.
+  function leadingCompactDefinitionImage(value, state, depth = 0) {
+    if (state.nodes >= COMPACT_DEFINITION_MAX_NODES || depth > COMPACT_DEFINITION_MAX_DEPTH) return false;
+    state.nodes += 1;
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        const leading = leadingCompactDefinitionImage(child, state, depth + 1);
+        if (leading !== null) return leading;
+      }
+      return null;
     }
-    return compactDefinitionItemsFromNodes([parsed]);
+    if (!isRecord(value)) return value != null && /\S/u.test(String(value)) ? false : null;
+    if (isIgnoredCompactDefinitionSection(value)) return null;
+    const tag = compactDefinitionTag(value);
+    if (tag === "img") return value;
+    if (tag === "br" || COMPACT_DEFINITION_IGNORED_TAGS.has(tag)) return null;
+    return leadingCompactDefinitionImage(compactDefinitionContent(value), state, depth + 1);
   }
 
   function extractCompactDefinitionSummary(
@@ -844,14 +1709,18 @@
       const items = [];
       const seen = new Set();
       let characterCount = 0;
+      let leading = null;
       for (const rawGlossary of rawGlossaries) {
-        for (const rawItem of extractCompactDefinitionItems(rawGlossary)) {
-          if (items.length >= itemLimit) break;
-          const item = normalizeCompactDefinitionText(rawItem);
+        const parsed = parseCompactDefinitionValue(rawGlossary);
+        if (leading === null) leading = leadingCompactDefinitionImage(parsed, { nodes: 0 });
+        for (const item of extractCompactDefinitionItems(parsed)) {
           if (!item || seen.has(item)) continue;
-          const codePoints = Array.from(item);
           const remaining = COMPACT_DEFINITION_MAX_CHARACTERS - characterCount;
-          if (remaining <= 0) break;
+          const codePoints = [];
+          for (const character of item) {
+            codePoints.push(character);
+            if (codePoints.length > remaining) break;
+          }
           const bounded = codePoints.length <= remaining
             ? item
             : remaining === 1
@@ -859,8 +1728,8 @@
               : `${codePoints.slice(0, remaining - 1).join("")}\u2026`;
           items.push(bounded);
           seen.add(item);
-          characterCount += Array.from(bounded).length;
-          if (bounded !== item) break;
+          characterCount += Math.min(codePoints.length, remaining);
+          if (bounded !== item || items.length >= itemLimit || characterCount >= COMPACT_DEFINITION_MAX_CHARACTERS) break;
         }
         if (
           items.length >= itemLimit ||
@@ -869,9 +1738,41 @@
           break;
         }
       }
-      if (items.length > 0) return { dictionary, items };
+      if (items.length > 0) return { dictionary, items, image: leading || null };
     }
     return null;
+  }
+
+  function calculatePopupPosition(anchorRect, popupSize, viewport, { gap = 4, padding = 6, vertical = false } = {}) {
+    const width = Math.min(popupSize.width, Math.max(1, viewport.width - padding * 2));
+    const height = Math.min(popupSize.height, Math.max(1, viewport.height - padding * 2));
+    const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(value, maximum));
+    let left;
+    let top;
+    let placement;
+    if (vertical) {
+      const spaceRight = viewport.width - anchorRect.right - gap;
+      const spaceLeft = anchorRect.left - gap;
+      left = spaceRight >= width || spaceRight >= spaceLeft
+        ? anchorRect.right + gap
+        : anchorRect.left - gap - width;
+      top = anchorRect.top;
+      placement = "beside";
+    } else {
+      const spaceBelow = Math.max(0, viewport.height - padding - anchorRect.bottom - gap);
+      const spaceAbove = Math.max(0, anchorRect.top - gap - padding);
+      const placeAbove = spaceAbove >= height || (spaceBelow < height && spaceAbove >= spaceBelow);
+      top = placeAbove ? anchorRect.top - gap - height : anchorRect.bottom + gap;
+      left = anchorRect.left;
+      placement = placeAbove ? "above" : "below";
+    }
+    return {
+      height,
+      left: clamp(Math.round(left), padding, viewport.width - width - padding),
+      placement,
+      top: clamp(Math.round(top), padding, viewport.height - height - padding),
+      width,
+    };
   }
 
   function createPopupView(options) {
@@ -880,8 +1781,12 @@
     const popup = options.popup;
     const appendExpressionRuby = options.appendExpressionRuby;
     const appendTextOnlyGlossary = options.appendTextOnlyGlossary;
+    const appendStructuredImage = options.appendStructuredImage;
     const parseTagList = options.parseTagList;
-    const positionPopup = options.positionPopup;
+    const positionPopup = () => {
+      options.positionPopup();
+      sourceHighlighter.refresh();
+    };
     // LookupKanji carries onyomi/kunyomi/tags as space-separated strings, but a
     // caller that already normalized them hands over arrays. Accept both.
     const tokenList = (value) =>
@@ -917,10 +1822,12 @@
     const maxMetadataTags = Number.isInteger(options.maxMetadataTags)
       ? Math.max(1, options.maxMetadataTags)
       : DEFAULT_MAX_METADATA_TAGS;
+    const popupRoot = popup.getRootNode();
     const sourceHighlighter = options.sourceHighlighter || createSourceHighlighter(
       windowRef,
       documentRef,
-      options.highlightName || DEFAULT_HIGHLIGHT_NAME
+      options.highlightName || DEFAULT_HIGHLIGHT_NAME,
+      popupRoot instanceof windowRef.ShadowRoot ? popupRoot : documentRef.body
     );
     let definitionBlurState = "revealed";
     let sourceHighlightEnabled = options.sourceHighlightEnabled === true;
@@ -928,11 +1835,94 @@
     let toolbarPosition = options.toolbarPosition === "bottom" ? "bottom" : "top";
     let currentToolbar = null;
     let currentNoteControls = null;
+    let renderRevision = 0;
+    let currentResultPanel = null;
+    let captureTermView = null;
+    let pendingScrollRestoration = null;
+    let currentPresentationUpdate = null;
+    let pendingPresentation = null;
+    let imagePreview = null;
+    const renderedImages = new Set();
     let masonryFrame = null;
     const masonryObserver = typeof windowRef.ResizeObserver === "function"
       ? new windowRef.ResizeObserver(() => scheduleMasonry())
       : null;
     popup.dataset.toolbarPosition = toolbarPosition;
+
+    function hideImagePreview(owner = null) {
+      if (!imagePreview || (owner && imagePreview.owner !== owner)) return;
+      imagePreview.element?.remove();
+      imagePreview = null;
+    }
+
+    function positionImagePreview(anchorRect = imagePreview.image.getBoundingClientRect()) {
+      const preview = imagePreview.element;
+      const position = calculatePopupPosition(anchorRect, preview.getBoundingClientRect(), {
+        width: windowRef.innerWidth, height: windowRef.innerHeight,
+      }, { gap: 8, padding: 8, vertical: true });
+      preview.style.left = `${position.left}px`;
+      preview.style.top = `${position.top}px`;
+    }
+
+    function refreshImagePreview(link, image) {
+      // Image completion resumes only the most recent interaction. It must
+      // not steal another image's focus or revive a dismissed pending preview.
+      if (imagePreview?.owner !== link) return;
+      const source = image.currentSrc || image.src;
+      if (image.hidden || !source) {
+        imagePreview.element?.remove();
+        imagePreview.element = null;
+        imagePreview.source = null;
+        return;
+      }
+      if (imagePreview.source === source) return;
+      imagePreview.element?.remove();
+      const preview = documentRef.createElement("div");
+      preview.className = "gsm-hoshidicts-image-hover-preview";
+      preview.setAttribute("aria-hidden", "true");
+      preview.dataset.appearance = link.dataset.appearance;
+      preview.dataset.imageRendering = link.dataset.imageRendering;
+      const expanded = documentRef.createElement("img");
+      expanded.src = source;
+      expanded.alt = image.alt;
+      expanded.decoding = "async";
+      expanded.draggable = false;
+      preview.appendChild(expanded);
+      // A sibling in the same shadow root retains the palette while escaping
+      // the glossary card's paint containment and the popup's scroll clipping.
+      popup.parentNode.appendChild(preview);
+      imagePreview.source = source;
+      imagePreview.element = preview;
+      positionImagePreview();
+    }
+
+    function requestImagePreview(link, image) {
+      if (imagePreview?.owner !== link) {
+        hideImagePreview();
+        imagePreview = { owner: link, image, source: null, element: null };
+      }
+      refreshImagePreview(link, image);
+    }
+
+    const onPopupScroll = () => {
+      if (!imagePreview) return;
+      const { owner, image, element } = imagePreview;
+      if (owner.getRootNode().activeElement !== owner || !element) {
+        hideImagePreview();
+        return;
+      }
+      const anchorRect = image.getBoundingClientRect();
+      const bounds = popup.getBoundingClientRect();
+      if (anchorRect.bottom <= bounds.top || anchorRect.top >= bounds.bottom
+          || anchorRect.right <= bounds.left || anchorRect.left >= bounds.right) {
+        hideImagePreview();
+        return;
+      }
+      // Native keyboard focus may scroll its image into view after focus.
+      // Retain that focused preview while closing ordinary hover previews.
+      positionImagePreview(anchorRect);
+    };
+    popup.addEventListener("scroll", onPopupScroll, true);
 
     function resetMasonry(grid) {
       grid.classList.remove("gsm-hoshidicts-glossary-grid-masonry");
@@ -956,21 +1946,30 @@
         grid.classList.add("gsm-hoshidicts-glossary-grid-masonry");
         const columnWidth =
           (grid.clientWidth - MASONRY_GAP_PX * (columns - 1)) / columns;
+        for (const card of cards) card.style.width = `${columnWidth}px`;
+        // Measure after every width is set, before placement writes begin.
+        const cardHeights = cards.map(card => card.offsetHeight);
         const columnHeights = Array.from({ length: columns }, () => 0);
-        for (const card of cards) {
+        cards.forEach((card, index) => {
           const column = columnHeights.indexOf(Math.min(...columnHeights));
           const x = column * (columnWidth + MASONRY_GAP_PX);
           const y = columnHeights[column];
-          card.style.width = `${columnWidth}px`;
           card.style.transform = `translate(${x}px, ${y}px)`;
           card.style.visibility = "visible";
-          columnHeights[column] += card.offsetHeight + MASONRY_GAP_PX;
-        }
+          columnHeights[column] += cardHeights[index] + MASONRY_GAP_PX;
+        });
         grid.style.height = `${Math.max(...columnHeights) - MASONRY_GAP_PX}px`;
       }
+      const restoreScroll = pendingScrollRestoration;
+      pendingScrollRestoration = null;
+      restoreScroll?.();
     }
 
     function scheduleMasonry() {
+      if (options.queueMasonry) {
+        options.queueMasonry(layoutMasonry);
+        return;
+      }
       if (masonryFrame !== null) {
         return;
       }
@@ -981,29 +1980,38 @@
       });
     }
 
-    const onWindowResize = () => scheduleMasonry();
+    const onWindowResize = () => {
+      hideImagePreview();
+      scheduleMasonry();
+    };
     windowRef.addEventListener("resize", onWindowResize);
 
     function applyToolbarLayout() {
-      if (!currentToolbar) {
-        return;
-      }
+      if (!currentToolbar) return;
       const noteForm = currentNoteControls?.form ?? null;
-      // Only touch the DOM when the toolbar is not already in the desired
-      // place. A no-op reposition must never detach a focused control, which
-      // throws in jsdom and reorders under focus.
-      if (toolbarPosition === "bottom") {
-        if (
-          popup.lastElementChild !== currentToolbar
-          || (noteForm && currentToolbar.previousElementSibling !== noteForm)
-        ) {
-          if (noteForm) popup.append(noteForm, currentToolbar);
-          else popup.append(currentToolbar);
-        }
-      } else if (
-        popup.firstElementChild !== currentToolbar
-        || (noteForm && currentToolbar.nextElementSibling !== noteForm)
-      ) {
+      const bottom = toolbarPosition === "bottom";
+      const atEdge = bottom ? popup.lastElementChild === currentToolbar
+        && (!noteForm || currentToolbar.previousElementSibling === noteForm)
+        : popup.firstElementChild === currentToolbar && (!noteForm || currentToolbar.nextElementSibling === noteForm);
+      if (atEdge) return;
+      const focused = popup.getRootNode().activeElement;
+      const children = [...popup.children];
+      const focusedOwner = children.find(child => child.contains(focused));
+      if (focusedOwner) {
+        // Move siblings around the focused subtree: removing and refocusing
+        // a tab, Note field or glossary link interrupts keyboard interaction.
+        const content = children.filter(child => child !== currentToolbar && child !== noteForm);
+        const controls = noteForm ? [currentToolbar, noteForm] : [currentToolbar];
+        const ordered = bottom ? [...content, ...controls.reverse()] : [...controls, ...content];
+        const focusIndex = ordered.indexOf(focusedOwner);
+        ordered.forEach((child, index) => {
+          if (index < focusIndex) popup.insertBefore(child, focusedOwner);
+          else if (index > focusIndex) popup.append(child);
+        });
+      } else if (bottom) {
+        if (noteForm) popup.append(noteForm, currentToolbar);
+        else popup.append(currentToolbar);
+      } else {
         if (noteForm) popup.prepend(currentToolbar, noteForm);
         else popup.prepend(currentToolbar);
       }
@@ -1042,19 +2050,114 @@
       return definitionBlurState;
     }
 
-    function clear() {
-      currentNoteControls?.close(false);
-      currentNoteControls = null;
+    function clear(preserveViewControls = false) {
+      currentPresentationUpdate = null;
+      pendingPresentation = null;
+      hideImagePreview();
+      renderedImages.clear();
+      renderRevision += 1;
+      currentResultPanel = null;
+      captureTermView = null;
+      pendingScrollRestoration = null;
+      if (!preserveViewControls) {
+        currentNoteControls?.close(false);
+        currentNoteControls = null;
+      }
       sourceHighlighter.clear();
       currentSourceHighlight = null;
       currentToolbar = null;
       masonryObserver?.disconnect();
-      popup.replaceChildren();
-      popup.scrollTop = 0;
+      const retainedForm = currentNoteControls?.form;
+      if (retainedForm?.parentNode === popup) {
+        // Keep the live form mounted: detaching it loses focus and selection.
+        for (const child of [...popup.childNodes]) {
+          if (child !== retainedForm) child.remove();
+        }
+      } else {
+        popup.replaceChildren();
+      }
+      // A hidden retirement needs no layout; the next visible render resets it.
+      if (!popup.hidden && !preserveViewControls) popup.scrollTop = 0;
       setDefinitionBlurState("revealed");
     }
 
+    function mountResultChrome(toolbar, content) {
+      const form = currentNoteControls?.form;
+      if (form?.parentNode === popup) {
+        if (toolbarPosition === "bottom") {
+          popup.prepend(content);
+          popup.append(toolbar);
+        } else {
+          popup.prepend(toolbar);
+          popup.append(content);
+        }
+      } else {
+        popup.append(toolbar, content);
+      }
+      setRenderedToolbar(toolbar);
+    }
+
+    function retainedFocus(preserveViewControls) {
+      if (!preserveViewControls) return null;
+      const focused = popup.getRootNode().activeElement;
+      if (!popup.contains(focused)) return null;
+      if (focused.matches('[role="tab"]')) return '[role="tab"][aria-selected="true"]';
+      if (focused.matches(".gsm-hoshidicts-kanji-back")) return ".gsm-hoshidicts-kanji-back";
+      return focused;
+    }
+
+    function restoreRetainedFocus(focused) {
+      const control = typeof focused === "string" ? popup.querySelector(focused) : focused;
+      if (!control || !popup.contains(control)) return;
+      if (popup.getRootNode().activeElement !== control) control.focus();
+      control.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    }
+
+    function canProjectPresentation() {
+      const form = currentNoteControls?.form;
+      if (form && (!form.hidden || form.getAttribute("aria-busy") === "true")) return false;
+      if (options.canProjectDictionaryPresentation?.() === false) return false;
+      const focused = popup.getRootNode().activeElement;
+      return !popup.contains(focused) || focused.matches('[role="tab"]')
+        || currentNoteControls?.actions.contains(focused);
+    }
+
+    function flushDictionaryPresentation() {
+      if (!pendingPresentation || !currentPresentationUpdate) return;
+      const pending = pendingPresentation;
+      if (currentPresentationUpdate(pending) && pendingPresentation === pending) pendingPresentation = null;
+    }
+
+    function onPresentationFocusOut() {
+      if (pendingPresentation) windowRef.queueMicrotask(flushDictionaryPresentation);
+    }
+    popup.addEventListener("focusout", onPresentationFocusOut);
+
+    function runRenderAction(isCurrent, renderContext, action) {
+      if (!isCurrent()) return;
+      try {
+        return action();
+      } catch (error) {
+        if (!isCurrent()) return;
+        clear();
+        renderContext.onRenderError?.(error);
+      }
+    }
+
+    function ownsResultPanel(panel, renderContext) {
+      return currentResultPanel === panel && renderContext.isCurrentRequest?.() !== false;
+    }
+
+    function ownsDisplayedPanel(panel, renderContext) {
+      const isCurrent = renderContext.isCurrentView || renderContext.isCurrentRequest;
+      return currentResultPanel === panel && isCurrent?.() !== false;
+    }
+
     function createNoteControls(readPrefill) {
+      if (currentNoteControls) {
+        currentNoteControls.setPrefillReader(readPrefill);
+        return currentNoteControls;
+      }
       const button = documentRef.createElement("button");
       button.type = "button";
       button.className = "gsm-hoshidicts-note-button";
@@ -1075,7 +2178,7 @@
       let editor = null;
       button.addEventListener("click", () => {
         if (!editor) {
-          editor = createNoteForm(button, readPrefill);
+          editor = createNoteForm(button, () => readPrefill());
           applyToolbarLayout();
         }
         if (editor.form.hidden) editor.open();
@@ -1085,6 +2188,7 @@
         actions,
         button,
         close: (restoreFocus) => editor?.close(restoreFocus) ?? false,
+        setPrefillReader(value) { readPrefill = value; },
         get form() { return editor?.form ?? null; },
       };
     }
@@ -1162,6 +2266,7 @@
         }
         if (restoreFocus && button.isConnected) button.focus();
         positionPopup();
+        flushDictionaryPresentation();
         return true;
       }
 
@@ -1178,10 +2283,10 @@
           editing = true;
           onNoteEditingChange(true);
         }
-        term.focus();
-        term.select();
         positionPopup();
         popup.scrollTop = toolbarPosition === "bottom" ? popup.scrollHeight : 0;
+        term.focus();
+        term.select();
       }
 
       cancel.addEventListener("click", () => close());
@@ -1287,6 +2392,9 @@
         includePitch = true,
         averageFrequency = false,
         showFrequencyDictionaryNames = true,
+        imageContext,
+        isCurrent,
+        onLayoutChange,
       } = {}
     ) {
       const frequencyRow = documentRef.createElement("div");
@@ -1295,25 +2403,30 @@
       const pitchRow = documentRef.createElement("div");
       pitchRow.className =
         "gsm-hoshidicts-metadata gsm-hoshidicts-pitch-metadata";
-      const seen = new Set();
-      let count = 0;
-      const pitchDictionaryDisplayNames = createDictionaryDisplayNames(
-        result.term.pitches.map(({ dictionary }) => dictionary),
-        dictionaryPresentation
-      );
-      if (includeFrequency) {
-        const frequencyTags = createFrequencyTags(
+      const ipaRow = documentRef.createElement("div");
+      ipaRow.className = "gsm-hoshidicts-metadata gsm-hoshidicts-ipa-metadata";
+      let frequencyCount = 0;
+      function updateFrequency(context) {
+        const frequencyTags = includeFrequency ? createFrequencyTags(
           documentRef,
           result,
-          dictionaryPresentation,
+          context.dictionaryPresentation || [],
           maxMetadataTags,
-          averageFrequency,
-          showFrequencyDictionaryNames
-        );
-        frequencyRow.append(...frequencyTags);
-        count += frequencyTags.length;
+          context.averageFrequency === true,
+          context.showFrequencyDictionaryNames !== false
+        ) : [];
+        const countChanged = frequencyCount !== frequencyTags.length;
+        frequencyCount = frequencyTags.length;
+        frequencyRow.replaceChildren(...frequencyTags);
+        return countChanged;
       }
-      if (includePitch) {
+      function updatePitch(context) {
+        pitchRow.replaceChildren();
+        if (context.showPitchAccentBadge !== true) return;
+        const names = createDictionaryDisplayNames(result.term.pitches.map(({ dictionary }) => dictionary),
+          context.dictionaryPresentation);
+        const seen = new Set();
+        let count = frequencyCount;
         for (const group of result.term.pitches) {
           for (const pitch of group.pitches) {
             const reading = String(
@@ -1330,7 +2443,7 @@
               pitchRow.appendChild(createPitchTag(
                 documentRef,
                 group,
-                pitchDictionaryDisplayNames.get(group.dictionary) || group.dictionary,
+                names.get(group.dictionary) || group.dictionary,
                 pitch,
                 reading
               ));
@@ -1339,12 +2452,42 @@
           }
         }
       }
-      if (frequencyRow.childNodes.length > 0) {
-        entry.appendChild(frequencyRow);
+      const ipaGroups = result.term.pitches.filter(group => group.transcriptions.length > 0);
+      let fillOpenIpa = () => {};
+      function appendTranscriptions(target) {
+        const names = createDictionaryDisplayNames(ipaGroups.map(({ dictionary }) => dictionary), imageContext.dictionaryPresentation);
+        for (const group of ipaGroups) {
+          const body = group.transcriptions.join(" · ");
+          target.appendChild(createPronunciationTag(documentRef, group, names.get(group.dictionary) || group.dictionary,
+            body, `${group.dictionary}: ${body}`, "ipa"));
+        }
       }
-      if (pitchRow.childNodes.length > 0) {
-        entry.appendChild(pitchRow);
-      }
+      if (ipaGroups.length > maxMetadataTags) {
+        // Reuse the existing metadata display budget as a lazy threshold, not
+        // a data limit. Opening the disclosure still renders every source.
+        const overflow = documentRef.createElement("details");
+        overflow.className = "gsm-hoshidicts-ipa-overflow";
+        const summary = documentRef.createElement("summary");
+        summary.textContent = `Phonetic transcriptions (${ipaGroups.length})`;
+        const body = documentRef.createElement("div");
+        body.className = "gsm-hoshidicts-metadata";
+        overflow.append(summary, body);
+        fillOpenIpa = () => {
+          if (overflow.open && !body.hasChildNodes()) appendTranscriptions(body);
+        };
+        overflow.addEventListener("toggle", () => {
+          if (!isCurrent()) return;
+          fillOpenIpa();
+          onLayoutChange();
+        });
+        ipaRow.appendChild(overflow);
+      } else appendTranscriptions(ipaRow);
+      const context = { dictionaryPresentation, averageFrequency, showFrequencyDictionaryNames,
+        showPitchAccentBadge: includePitch };
+      updateFrequency(context);
+      updatePitch(context);
+      entry.append(frequencyRow, pitchRow, ipaRow);
+      return { updateFrequency, updatePitch, fillOpenIpa, rows: [frequencyRow, pitchRow, ipaRow] };
     }
 
     function collectGrammarMetadata(result) {
@@ -1358,7 +2501,7 @@
         seen.add(value);
         metadata.push({ description, kind, text: value });
       };
-      for (const step of result.trace) {
+      for (const step of deinflectionSteps(result)) {
         append(step.name, step.description, "deinflection");
       }
       for (const tag of [
@@ -1372,46 +2515,61 @@
       return metadata;
     }
 
+    function renderGrammarRow(row, result, hideGrammarTags) {
+      row.replaceChildren();
+      if (hideGrammarTags) return;
+      for (const item of collectGrammarMetadata(result)) {
+        row.appendChild(createTag(documentRef, item.text, item.description, item.kind));
+      }
+    }
+
     function renderPrimaryMetadataCapsule(
       capsule,
       result,
       dictionaryPresentation,
       hideGrammarTags,
       averageFrequency,
-      showFrequencyDictionaryNames
+      showFrequencyDictionaryNames,
+      { frequencyChanged = true, grammarChanged = true } = {}
     ) {
-      capsule.replaceChildren();
-      const frequencyTags = createFrequencyTags(
-        documentRef,
-        result,
-        dictionaryPresentation,
-        maxMetadataTags,
-        averageFrequency,
-        showFrequencyDictionaryNames
-      );
-      if (frequencyTags.length > 0) {
-        const frequencies = documentRef.createElement("span");
-        frequencies.className = "gsm-hoshidicts-primary-frequencies";
-        frequencies.append(...frequencyTags);
-        capsule.appendChild(frequencies);
+      if (frequencyChanged) {
+        capsule.querySelector(".gsm-hoshidicts-primary-frequencies")?.remove();
+        const frequencyTags = createFrequencyTags(
+          documentRef,
+          result,
+          dictionaryPresentation,
+          maxMetadataTags,
+          averageFrequency,
+          showFrequencyDictionaryNames
+        );
+        if (frequencyTags.length > 0) {
+          const frequencies = documentRef.createElement("span");
+          frequencies.className = "gsm-hoshidicts-primary-frequencies";
+          frequencies.dataset.average = String(averageFrequency);
+          frequencies.append(...frequencyTags);
+          capsule.prepend(frequencies);
+        }
       }
-      if (!hideGrammarTags) {
-        const grammarMetadata = collectGrammarMetadata(result);
-        if (grammarMetadata.length > 0) {
-          const grammar = documentRef.createElement("span");
-          grammar.className = "gsm-hoshidicts-primary-grammar";
-          for (const item of grammarMetadata) {
-            const tag = documentRef.createElement("span");
-            tag.className =
-              `gsm-hoshidicts-primary-grammar-tag ` +
-              `gsm-hoshidicts-primary-grammar-tag-${item.kind}`;
-            tag.textContent = item.text;
-            if (item.description) {
-              tag.title = item.description;
+      if (grammarChanged) {
+        capsule.querySelector(".gsm-hoshidicts-primary-grammar")?.remove();
+        if (!hideGrammarTags) {
+          const grammarMetadata = collectGrammarMetadata(result);
+          if (grammarMetadata.length > 0) {
+            const grammar = documentRef.createElement("span");
+            grammar.className = "gsm-hoshidicts-primary-grammar";
+            for (const item of grammarMetadata) {
+              const tag = documentRef.createElement("span");
+              tag.className =
+                `gsm-hoshidicts-primary-grammar-tag ` +
+                `gsm-hoshidicts-primary-grammar-tag-${item.kind}`;
+              tag.textContent = item.text;
+              if (item.description) {
+                tag.title = item.description;
+              }
+              grammar.appendChild(tag);
             }
-            grammar.appendChild(tag);
+            capsule.appendChild(grammar);
           }
-          capsule.appendChild(grammar);
         }
       }
       capsule.hidden = capsule.childNodes.length === 0;
@@ -1419,6 +2577,56 @@
 
     function updateMetadataStripVisibility(strip, tabList, capsule) {
       strip.hidden = !tabList && capsule.hidden;
+    }
+
+    function updateCompactSummary(headword, result, context, media) {
+      const previous = headword.querySelector(".gsm-hoshidicts-compact-definition-summary");
+      if (previous) {
+        const imageLink = previous.querySelector(".gloss-image-link");
+        if (imageLink) hideImagePreview(imageLink);
+        previous.remove();
+      }
+      if (context.showCompactDefinitionSummary !== true) return Boolean(previous);
+      const compact = extractCompactDefinitionSummary(result.term.glossaries,
+        context.compactDefinitionSummaryDictionary, context.compactDefinitionSummaryCount);
+      if (!compact) return Boolean(previous);
+      const summary = documentRef.createElement("div");
+      summary.className = "gsm-hoshidicts-compact-definition-summary";
+      summary.dataset.hoshidictsDictionary = compact.dictionary;
+      // Establish ownership before synchronous media admission. Replacing this
+      // summary retires its consumer without retiring the complete card's one.
+      headword.querySelector(".gsm-hoshidicts-expression").after(summary);
+      if (compact.image) {
+        const thumbnail = documentRef.createElement("span");
+        thumbnail.className = "gsm-hoshidicts-compact-definition-image";
+        summary.appendChild(thumbnail);
+        appendStructuredImage(documentRef, thumbnail, { ...compact.image,
+          preferredWidth: 36, preferredHeight: 36, sizeUnits: "px", collapsed: false }, {
+          isCurrent: () => headword.contains(summary) && media.isCurrent(),
+          isImageCurrent: () => summary.isConnected && headword.contains(summary) && media.isCurrentLink(),
+          dictionary: compact.dictionary,
+          imageContext: media.imageContext,
+          imageSourceLabelHost: summary,
+          onImageCreated: media.onImageCreated,
+          onLayoutChange: media.onLayoutChange,
+          onImageError: () => thumbnail.remove(),
+          onImageStart: () => { if (!summary.contains(thumbnail)) summary.prepend(thumbnail); },
+          requestImagePreview, refreshImagePreview, hideImagePreview,
+          resolveMedia: typeof media.resolveMedia === "function"
+            ? query => media.resolveMedia({ ...query, dictionary: compact.dictionary, generation: media.generation })
+            : null,
+        });
+        if (!thumbnail.hasChildNodes()) thumbnail.remove();
+      }
+      const items = documentRef.createElement("ul");
+      items.className = "gsm-hoshidicts-compact-definition-items";
+      for (const item of compact.items) {
+        const li = documentRef.createElement("li");
+        li.textContent = item;
+        items.appendChild(li);
+      }
+      summary.appendChild(items);
+      return true;
     }
 
     function createEntryHeader(
@@ -1431,10 +2639,12 @@
         compactDefinitionSummaryCount =
           DEFAULT_COMPACT_DEFINITION_SUMMARY_COUNT,
         compactDefinitionSummaryDictionary = null,
+        summaryMedia = null,
         showPitchAccentFurigana = true,
         pitchAccentFuriganaDictionary = null,
         onBack = null,
         noteControls = null,
+        onDeinflectionToggle = null,
       } = {}
     ) {
       const header = element || documentRef.createElement("header");
@@ -1449,18 +2659,22 @@
       expression.className = "gsm-hoshidicts-expression";
       const expressionText = String(result.term.expression || "").trim();
       const readingText = String(result.term.reading || "").trim();
-      appendExpressionRuby(
-        documentRef,
-        expression,
-        expressionText,
-        readingText,
-        (character, sourceLink) => onKanjiClick(character, result, candidate, sourceLink),
-        {
-          enabled: showPitchAccentFurigana,
-          groups: result.term.pitches,
-          dictionary: pitchAccentFuriganaDictionary,
-        }
-      );
+      function populateRuby() {
+        expression.replaceChildren();
+        appendExpressionRuby(
+          documentRef,
+          expression,
+          expressionText,
+          readingText,
+          (character, sourceLink) => onKanjiClick(character, result, candidate, sourceLink),
+          {
+            enabled: showPitchAccentFurigana,
+            groups: result.term.pitches,
+            dictionary: pitchAccentFuriganaDictionary,
+          }
+        );
+      }
+      populateRuby();
       expression.setAttribute(
         "aria-label",
         readingText && readingText !== expressionText
@@ -1469,22 +2683,13 @@
       );
       headword.appendChild(expression);
       if (showCompactDefinitionSummary === true) {
-        const compactSummary = extractCompactDefinitionSummary(
-          result.term.glossaries,
-          compactDefinitionSummaryDictionary,
-          compactDefinitionSummaryCount
-        );
-        if (compactSummary) {
-          const summary = documentRef.createElement("ul");
-          summary.className = "gsm-hoshidicts-compact-definition-summary";
-          summary.dataset.hoshidictsDictionary = compactSummary.dictionary;
-          for (const item of compactSummary.items) {
-            const listItem = documentRef.createElement("li");
-            listItem.textContent = item;
-            summary.appendChild(listItem);
-          }
-          headword.appendChild(summary);
-        }
+        updateCompactSummary(headword, result, { showCompactDefinitionSummary,
+          compactDefinitionSummaryCount, compactDefinitionSummaryDictionary }, summaryMedia);
+      }
+      const deinflection = buildDeinflectionDisclosure(documentRef, result, windowRef.navigator.language);
+      if (deinflection) {
+        deinflection.addEventListener("toggle", onDeinflectionToggle);
+        headword.appendChild(deinflection);
       }
       if (primary && typeof onBack === "function") {
         const navigation = documentRef.createElement("div");
@@ -1500,10 +2705,38 @@
       } else {
         header.appendChild(headword);
       }
-      if (primary && noteControls) {
-        header.appendChild(noteControls.actions);
-      }
-      return { element: header };
+      const actions = primary && noteControls ? noteControls.actions : documentRef.createElement("div");
+      actions.className = "gsm-hoshidicts-entry-actions";
+      if (primary && noteControls) actions.querySelector(".gsm-hoshidicts-audio-control")?.remove();
+      const audio = documentRef.createElement("div");
+      audio.className = "gsm-hoshidicts-audio-control";
+      const button = documentRef.createElement("button");
+      button.type = "button";
+      button.className = "gsm-hoshidicts-audio-button";
+      button.textContent = "Audio";
+      button.title = "Play pronunciation; Shift-click, right-click or press Down for choices";
+      button.setAttribute("aria-label", `Play pronunciation for ${expressionText}`);
+      button.setAttribute("aria-haspopup", "dialog");
+      button.setAttribute("aria-expanded", "false");
+      audio.append(button);
+      actions.prepend(audio);
+      header.append(actions);
+      return { element: header, audio: { button, result }, mining: { actions, result },
+        updateRuby(context) {
+          const enabled = context.showPitchAccentFurigana !== false;
+          const dictionary = typeof context.pitchAccentFuriganaDictionary === "string"
+            ? context.pitchAccentFuriganaDictionary : null;
+          if (enabled === showPitchAccentFurigana && dictionary === pitchAccentFuriganaDictionary) return false;
+          const appearanceChanged = enabled !== showPitchAccentFurigana || enabled;
+          // A kanji button is part of this ruby. Keep its identity until blur;
+          // Note, disclosure and glossary focus need no such deferral.
+          if (appearanceChanged && expression.contains(popup.getRootNode().activeElement)) return null;
+          showPitchAccentFurigana = enabled;
+          pitchAccentFuriganaDictionary = dictionary;
+          if (appearanceChanged) populateRuby();
+          return appearanceChanged;
+        },
+      };
     }
 
     function projectResults(results, dictionaries) {
@@ -1536,17 +2769,66 @@
       renderContext,
       {
         dictionaryDisplayNames,
+        imageContext,
         metadataStrip,
         primaryHeader,
         primaryMetadataCapsule,
         tabList,
       } = {}
     ) {
+      const revision = ++renderRevision;
+      const isCurrent = () => revision === renderRevision && ownsResultPanel(panel, renderContext);
+      const isCurrentLink = () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext);
+      const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
+      const onImageCreated = handle => renderedImages.add(handle);
+      const resolveImage = query => imageContext.resolveMedia(query);
+      const summaryMedia = { isCurrent, isCurrentLink, generation: renderContext.generation,
+        imageContext, onImageCreated,
+        resolveMedia: typeof imageContext.resolveMedia === "function" ? resolveImage : null,
+        onLayoutChange: positionIfCurrent };
+      hideImagePreview();
+      renderedImages.clear();
       panel.replaceChildren();
       const deferredGlossaryFills = [];
+      const entryMetadata = [];
+      const audioButtons = [];
+      const miningActions = [];
+      let appliedMetadata = metadataOptions(imageContext);
+      let appliedFrequencyModes = frequencyModes(imageContext);
+      let appliedDictionaryPresentation = imageContext.dictionaryPresentation;
       let lookupStats = null;
+      let expanded = renderContext.expandAll === true;
+      let restoreScrollTop = renderContext.restoreScrollTop;
+      let restoreDisclosures = renderContext.restoreDisclosures;
+
+      function restoreViewportAfterFill() {
+        if (restoreDisclosures) {
+          const details = [...popup.querySelectorAll("details")];
+          if (details.length === restoreDisclosures.length
+              && details.every((node, index) => node.className === restoreDisclosures[index].className)) {
+            details.forEach((node, index) => { node.open = restoreDisclosures[index].open; });
+            // Native toggle delivery is deferred. Populate restored lazy IPA
+            // now so the first restored layout includes all its text.
+            for (const { metadata } of entryMetadata) metadata.fillOpenIpa();
+          }
+          restoreDisclosures = undefined;
+        }
+        if (restoreScrollTop === undefined) return;
+        const savedScrollTop = restoreScrollTop;
+        restoreScrollTop = undefined;
+        // Back's scroll height is meaningful only after the deferred bodies
+        // and masonry are laid out. A newer projection or deliberate scroll
+        // takes precedence over this one-shot restoration.
+        pendingScrollRestoration = () => {
+          // Back's fresh render reset scroll to zero. Reading it earlier,
+          // while the panel is empty, would force an unnecessary layout.
+          if (isCurrent() && popup.scrollTop === 0) popup.scrollTop = savedScrollTop;
+        };
+        scheduleMasonry();
+      }
 
       function appendResult(result, resultIndex) {
+        Object.assign(renderContext, metadataOptions(imageContext));
         const entry = documentRef.createElement("article");
         entry.className = "gsm-hoshidicts-entry";
         entry.dataset.expression = result.term.expression;
@@ -1562,6 +2844,7 @@
             typeof renderContext.compactDefinitionSummaryDictionary === "string"
               ? renderContext.compactDefinitionSummaryDictionary
               : null,
+          summaryMedia,
           showPitchAccentFurigana:
             renderContext.showPitchAccentFurigana !== false,
           pitchAccentFuriganaDictionary:
@@ -1570,12 +2853,15 @@
               : null,
           onBack: resultIndex === 0 ? renderContext.onBack : null,
           noteControls: resultIndex === 0 ? renderContext.noteControls : null,
+          onDeinflectionToggle: positionIfCurrent,
         });
+        audioButtons.push(renderedHeader.audio);
+        miningActions.push(renderedHeader.mining);
         if (resultIndex !== 0) {
           entry.appendChild(renderedHeader.element);
         }
 
-        if (resultIndex === 0 && renderContext.showLookupCounts === true) {
+        if (resultIndex === 0 && renderContext.lookupStatsSlot === true) {
           lookupStats = documentRef.createElement("div");
           lookupStats.className = "gsm-hoshidicts-lookup-stats";
           lookupStats.setAttribute("role", "status");
@@ -1604,14 +2890,17 @@
           }
         }
 
-        appendMetadata(
+        const metadata = appendMetadata(
           entry,
           result,
-          Array.isArray(renderContext.dictionaryPresentation)
-            ? renderContext.dictionaryPresentation
+          Array.isArray(imageContext.dictionaryPresentation)
+            ? imageContext.dictionaryPresentation
             : [],
           {
             includeFrequency: resultIndex !== 0,
+            imageContext,
+            isCurrent: isCurrentLink,
+            onLayoutChange: scheduleMasonry,
             includePitch: renderContext.showPitchAccentBadge === true,
             averageFrequency: renderContext.averageFrequency === true,
             showFrequencyDictionaryNames:
@@ -1619,24 +2908,13 @@
           }
         );
 
-        if (
-          resultIndex !== 0 &&
-          renderContext.hidePopupGrammarTags === false
-        ) {
-          const tagRow = documentRef.createElement("div");
-          tagRow.className = "gsm-hoshidicts-tags";
-          for (const item of collectGrammarMetadata(result)) {
-            tagRow.appendChild(createTag(
-              documentRef,
-              item.text,
-              item.description,
-              item.kind
-            ));
-          }
-          if (tagRow.childNodes.length > 0) {
-            entry.appendChild(tagRow);
-          }
+        const grammarRow = resultIndex === 0 ? null : documentRef.createElement("div");
+        if (grammarRow) {
+          grammarRow.className = "gsm-hoshidicts-tags";
+          renderGrammarRow(grammarRow, result, renderContext.hidePopupGrammarTags !== false);
+          entry.appendChild(grammarRow);
         }
+        entryMetadata.push({ header: renderedHeader, metadata, grammarRow });
 
         const groupedGlossaries = new Map();
         for (const glossary of result.term.glossaries) {
@@ -1686,9 +2964,17 @@
               {
                 dictionary,
                 generation: renderContext.generation,
+                isCurrent,
+                isCurrentLink,
+                onExternalLink: renderContext.onExternalLink,
                 onInternalLink: renderContext.onInternalLink,
-                onLayoutChange: positionPopup,
-                resolveMedia: renderContext.resolveMedia,
+                onLayoutChange: positionIfCurrent,
+                requestImagePreview,
+                refreshImagePreview,
+                hideImagePreview,
+                imageContext,
+                onImageCreated,
+                resolveMedia: typeof imageContext.resolveMedia === "function" ? resolveImage : null,
               }
             );
             // Glossary bodies are most of a render. Only the first entry is
@@ -1705,6 +2991,8 @@
           glossaryGrid.appendChild(details);
         }
         entry.appendChild(glossaryGrid);
+        // Fixed-width masonry cards cannot signal a change to their container.
+        masonryObserver?.observe(glossaryGrid);
         for (const card of glossaryGrid.children) {
           masonryObserver?.observe(card);
         }
@@ -1716,45 +3004,55 @@
       // had a chance to paint. Fills inline without a timer available.
       function flushDeferredGlossaries() {
         if (deferredGlossaryFills.length === 0) {
+          restoreViewportAfterFill();
           return;
         }
         const fills = deferredGlossaryFills.splice(0);
         const run = () => {
           for (const fill of fills) {
+            if (!isCurrent()) return;
             fill();
           }
-          positionPopup();
+          positionIfCurrent();
+          restoreViewportAfterFill();
         };
         if (typeof windowRef.setTimeout === "function") {
-          windowRef.setTimeout(run, 0);
+          windowRef.setTimeout(() => runRenderAction(isCurrent, renderContext, run), 0);
         } else {
           run();
         }
       }
 
-      results.slice(0, initialResultCount).forEach(appendResult);
+      const visibleCount = renderContext.expandAll === true ? results.length : initialResultCount;
+      results.slice(0, visibleCount).forEach(appendResult);
       flushDeferredGlossaries();
 
-      if (results.length > initialResultCount) {
+      if (results.length > visibleCount) {
         const showMore = documentRef.createElement("button");
         showMore.type = "button";
         showMore.className = "gsm-hoshidicts-show-more";
-        showMore.textContent = `Show ${results.length - initialResultCount} more`;
-        showMore.addEventListener("click", () => {
+        showMore.textContent = `Show ${results.length - visibleCount} more`;
+        showMore.addEventListener("click", () => runRenderAction(
+          () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
+          if (!isCurrent()) {
+            onBeforeResultsRendered({ expandAll: true });
+            return;
+          }
           showMore.remove();
-          results.slice(initialResultCount).forEach((result, resultIndex) => {
-            appendResult(result, resultIndex + initialResultCount);
+          expanded = true;
+          results.slice(visibleCount).forEach((result, resultIndex) => {
+            appendResult(result, resultIndex + visibleCount);
           });
           flushDeferredGlossaries();
-          onResultsExpanded();
+          onResultsExpanded({ audioButtons, miningActions });
           positionPopup();
-        });
+        }));
         panel.appendChild(showMore);
       }
 
       currentSourceHighlight = {
         candidate,
-        matchedText: results[0].matched || results[0].term.expression,
+        matchedText: renderContext.highlightText || results[0].matched || results[0].term.expression,
       };
       if (sourceHighlightEnabled) {
         sourceHighlighter.apply(
@@ -1762,23 +3060,106 @@
           currentSourceHighlight.matchedText
         );
       }
-      return { lookupStats };
+      function updateMetadataLabels(container, result) {
+        let changed = false;
+        for (const [kind, groups] of [["frequency", result.term.frequencies], ["pitch", result.term.pitches], ["ipa", result.term.pitches]]) {
+          if (kind === "frequency" && imageContext.averageFrequency === true) continue;
+          const names = createDictionaryDisplayNames(groups.map(({ dictionary }) => dictionary), imageContext.dictionaryPresentation);
+          for (const source of container.querySelectorAll(`.gsm-hoshidicts-${kind}-source`)) {
+            const dictionary = source.parentNode.dataset.dictionary;
+            changed = updateLabel(source, names.get(dictionary) || dictionary) || changed;
+          }
+        }
+        return changed;
+      }
+
+      return { lookupStats, audioButtons, miningActions,
+        isExpanded: () => expanded,
+        updateMetadata() {
+          const nextModes = frequencyModes(imageContext);
+          const labelsChanged = JSON.stringify(imageContext.dictionaryPresentation) !== JSON.stringify(appliedDictionaryPresentation);
+          const frequencyChanged = ["averageFrequency", "showFrequencyDictionaryNames"]
+            .some(key => imageContext[key] !== appliedMetadata[key]) || nextModes !== appliedFrequencyModes;
+          const grammarChanged = imageContext.hidePopupGrammarTags !== appliedMetadata.hidePopupGrammarTags;
+          const pitchChanged = imageContext.showPitchAccentBadge !== appliedMetadata.showPitchAccentBadge;
+          let changed = false;
+          let deferred = false;
+          if (labelsChanged) changed = updateMetadataLabels(primaryMetadataCapsule, results[0]);
+          if (frequencyChanged || grammarChanged) {
+            renderPrimaryMetadataCapsule(primaryMetadataCapsule, results[0], imageContext.dictionaryPresentation || [],
+              imageContext.hidePopupGrammarTags !== false, imageContext.averageFrequency === true,
+              imageContext.showFrequencyDictionaryNames !== false, { frequencyChanged, grammarChanged });
+            updateMetadataStripVisibility(metadataStrip, tabList, primaryMetadataCapsule);
+            changed = true;
+          }
+          entryMetadata.forEach(({ header, metadata, grammarRow }, index) => {
+            const countChanged = frequencyChanged && index > 0 && metadata.updateFrequency(imageContext);
+            if (pitchChanged || countChanged) { metadata.updatePitch(imageContext); changed = true; }
+            if (grammarChanged && grammarRow) renderGrammarRow(grammarRow, results[index], imageContext.hidePopupGrammarTags !== false);
+            if (labelsChanged) {
+              for (const row of metadata.rows) changed = updateMetadataLabels(row, results[index]) || changed;
+            }
+            const rubyChanged = header.updateRuby(imageContext);
+            deferred ||= rubyChanged === null;
+            changed ||= rubyChanged === true;
+          });
+          appliedMetadata = metadataOptions(imageContext);
+          appliedFrequencyModes = nextModes;
+          appliedDictionaryPresentation = imageContext.dictionaryPresentation;
+          return { changed, deferred };
+        },
+        updateImages() {
+          let changed = false;
+          for (const handle of renderedImages) {
+            if (!handle.isCurrent()) renderedImages.delete(handle);
+            else changed = handle.updatePresentation(imageContext) || changed;
+          }
+          return changed;
+        },
+        updateDictionaryPresentation(context, names, summaryChanged) {
+          summaryChanged &&= isCurrent();
+          const labelsChanged = names.size !== dictionaryDisplayNames.size
+            || [...names].some(([dictionary, label]) => dictionaryDisplayNames.get(dictionary) !== label);
+          Object.assign(renderContext, context);
+          dictionaryDisplayNames = names;
+          if (!labelsChanged && !summaryChanged) return false;
+          let changed = false;
+          if (summaryChanged) {
+            changed = updateCompactSummary(primaryHeader.querySelector(".gsm-hoshidicts-headword"),
+              results[0], renderContext, summaryMedia) || changed;
+          }
+          const entries = panel.querySelectorAll(":scope > .gsm-hoshidicts-entry");
+          entries.forEach((entry, index) => {
+            if (index > 0 && summaryChanged) {
+              changed = updateCompactSummary(entry.querySelector(".gsm-hoshidicts-headword"),
+                results[index], renderContext, summaryMedia) || changed;
+            }
+            if (labelsChanged) {
+              for (const summary of entry.querySelectorAll(":scope > .gsm-hoshidicts-glossary-grid > details > summary")) {
+                changed = updateLabel(summary, names.get(summary.title) || summary.title) || changed;
+              }
+            }
+          });
+          return changed;
+        },
+      };
     }
 
     function renderKanji(kanji, candidate, renderOptions = {}) {
-      clear();
+      renderOptions = { ...renderOptions };
+      const focused = retainedFocus(renderOptions.preserveViewControls);
+      clear(renderOptions.preserveViewControls);
+      const dictionaries = [...new Set(kanji.entries.map(({ dictionary }) => dictionary))];
+      let { tabs, dictionaryDisplayNames } = createDictionaryTabs(dictionaries, renderOptions);
+      const requestedKey = dictionaryTabKey(renderOptions.selectedDictionaryTab);
+      let selected = tabs.find((tab) => tab.key === requestedKey) || tabs[0];
+      renderOptions.onDictionaryTabSelected?.(normaliseDictionaryTab(selected));
       const noteControls = createNoteControls(() => ({
         term: kanji.character,
         reading: "",
         definition: "",
       }));
       currentNoteControls = noteControls;
-      const dictionaryDisplayNames = createDictionaryDisplayNames(
-        kanji.entries.map(({ dictionary }) => dictionary),
-        Array.isArray(renderOptions.dictionaryPresentation)
-          ? renderOptions.dictionaryPresentation
-          : []
-      );
       const primaryHeader = documentRef.createElement("header");
       primaryHeader.className =
         "gsm-hoshidicts-entry-header gsm-hoshidicts-primary-header";
@@ -1799,166 +3180,136 @@
       navigation.appendChild(glyph);
       primaryHeader.append(navigation, noteControls.actions);
       const toolbar = createResultChrome(primaryHeader);
-      popup.append(toolbar);
 
-      for (const kanjiEntry of kanji.entries) {
-        const entry = documentRef.createElement("article");
-        entry.className = "gsm-hoshidicts-kanji-entry";
-        entry.dataset.dictionary = kanjiEntry.dictionary;
+      function renderEntries() {
+        const entries = documentRef.createDocumentFragment();
 
-        const dictionary = documentRef.createElement("h3");
-        dictionary.className = "gsm-hoshidicts-kanji-dictionary";
-        dictionary.textContent = dictionaryDisplayNames.get(
-          kanjiEntry.dictionary
-        ) || kanjiEntry.dictionary;
-        dictionary.title = kanjiEntry.dictionary;
-        dictionary.setAttribute("aria-label", kanjiEntry.dictionary);
-        entry.appendChild(dictionary);
+        for (const kanjiEntry of kanji.entries) {
+          if (selected.dictionaries.size > 0 && !selected.dictionaries.has(kanjiEntry.dictionary)) continue;
+          const entry = documentRef.createElement("article");
+          entry.className = "gsm-hoshidicts-kanji-entry";
+          entry.dataset.dictionary = kanjiEntry.dictionary;
 
-        const kanjiTags = tokenList(kanjiEntry.tags);
-        if (kanjiTags.length > 0) {
-          const tags = documentRef.createElement("div");
-          tags.className = "gsm-hoshidicts-tags";
-          for (const tag of kanjiTags) {
-            tags.appendChild(createTag(documentRef, tag, "", "term"));
+          const dictionary = documentRef.createElement("h3");
+          dictionary.className = "gsm-hoshidicts-kanji-dictionary";
+          dictionary.textContent = dictionaryDisplayNames.get(
+            kanjiEntry.dictionary
+          ) || kanjiEntry.dictionary;
+          dictionary.title = kanjiEntry.dictionary;
+          dictionary.setAttribute("aria-label", kanjiEntry.dictionary);
+          entry.appendChild(dictionary);
+
+          const kanjiTags = tokenList(kanjiEntry.tags);
+          if (kanjiTags.length > 0) {
+            const tags = documentRef.createElement("div");
+            tags.className = "gsm-hoshidicts-tags";
+            for (const tag of kanjiTags) {
+              tags.appendChild(createTag(documentRef, tag, "", "term"));
+            }
+            entry.appendChild(tags);
           }
-          entry.appendChild(tags);
-        }
 
-        const readings = documentRef.createElement("div");
-        readings.className = "gsm-hoshidicts-kanji-readings";
-        for (const [label, values] of [
-          ["On", tokenList(kanjiEntry.onyomi)],
-          ["Kun", tokenList(kanjiEntry.kunyomi)],
-        ]) {
-          if (values.length === 0) continue;
-          const group = documentRef.createElement("div");
-          group.className = "gsm-hoshidicts-kanji-reading-group";
-          const heading = documentRef.createElement("strong");
-          heading.textContent = label;
-          group.appendChild(heading);
-          const value = documentRef.createElement("span");
-          value.textContent = values.join(" · ");
-          group.appendChild(value);
-          readings.appendChild(group);
-        }
-        if (readings.childNodes.length > 0) entry.appendChild(readings);
-
-        if (kanjiEntry.definitions.length > 0) {
-          const meaningsHeading = documentRef.createElement("h4");
-          meaningsHeading.textContent = "Meanings";
-          entry.appendChild(meaningsHeading);
-          const meanings = documentRef.createElement("ol");
-          meanings.className = "gsm-hoshidicts-kanji-meanings";
-          for (const meaning of kanjiEntry.definitions) {
-            const item = documentRef.createElement("li");
-            item.textContent = meaning;
-            meanings.appendChild(item);
+          const readings = documentRef.createElement("div");
+          readings.className = "gsm-hoshidicts-kanji-readings";
+          for (const [label, values] of [
+            ["On", tokenList(kanjiEntry.onyomi)],
+            ["Kun", tokenList(kanjiEntry.kunyomi)],
+          ]) {
+            if (values.length === 0) continue;
+            const group = documentRef.createElement("div");
+            group.className = "gsm-hoshidicts-kanji-reading-group";
+            const heading = documentRef.createElement("strong");
+            heading.textContent = label;
+            group.appendChild(heading);
+            const value = documentRef.createElement("span");
+            value.textContent = values.join(" · ");
+            group.appendChild(value);
+            readings.appendChild(group);
           }
-          entry.appendChild(meanings);
-        }
+          if (readings.childNodes.length > 0) entry.appendChild(readings);
 
-        if (kanjiEntry.stats.length > 0) {
-          const details = documentRef.createElement("details");
-          details.className = "gsm-hoshidicts-kanji-stats";
-          const summary = documentRef.createElement("summary");
-          summary.textContent = "Details";
-          details.appendChild(summary);
-          const list = documentRef.createElement("dl");
-          for (const stat of kanjiEntry.stats) {
-            const name = documentRef.createElement("dt");
-            name.textContent = stat.name;
-            const value = documentRef.createElement("dd");
-            value.textContent = stat.value;
-            list.append(name, value);
+          if (kanjiEntry.definitions.length > 0) {
+            const meaningsHeading = documentRef.createElement("h4");
+            meaningsHeading.textContent = "Meanings";
+            entry.appendChild(meaningsHeading);
+            const meanings = documentRef.createElement("ol");
+            meanings.className = "gsm-hoshidicts-kanji-meanings";
+            for (const meaning of kanjiEntry.definitions) {
+              const item = documentRef.createElement("li");
+              item.textContent = meaning;
+              meanings.appendChild(item);
+            }
+            entry.appendChild(meanings);
           }
-          details.appendChild(list);
-          entry.appendChild(details);
+
+          if (kanjiEntry.stats.length > 0) {
+            const details = documentRef.createElement("details");
+            details.className = "gsm-hoshidicts-kanji-stats";
+            const summary = documentRef.createElement("summary");
+            summary.textContent = "Details";
+            details.appendChild(summary);
+            const list = documentRef.createElement("dl");
+            for (const stat of kanjiEntry.stats) {
+              const name = documentRef.createElement("dt");
+              name.textContent = stat.name;
+              const value = documentRef.createElement("dd");
+              value.textContent = stat.value;
+              list.append(name, value);
+            }
+            details.appendChild(list);
+            entry.appendChild(details);
+          }
+          entries.appendChild(entry);
         }
-        popup.appendChild(entry);
+        return entries;
       }
 
-      setRenderedToolbar(toolbar);
+      mountResultChrome(toolbar, renderEntries());
+      const ownsKanji = () => currentToolbar === toolbar && renderOptions.isCurrentView?.() !== false;
+      currentPresentationUpdate = (context) => runRenderAction(ownsKanji, renderOptions, () => {
+        const next = createDictionaryTabs(dictionaries, context);
+        const nextSelected = next.tabs.find(tab => tab.key === selected.key) || next.tabs[0];
+        const sameMembers = sameTabMembers(selected.dictionaries, nextSelected.dictionaries, dictionaries);
+        if (!sameMembers && (renderOptions.isCurrentRequest?.() === false || !canProjectPresentation())) return false;
+        Object.assign(renderOptions, context);
+        dictionaryDisplayNames = next.dictionaryDisplayNames;
+        if (selected.key !== nextSelected.key) renderOptions.onDictionaryTabSelected?.(normaliseDictionaryTab(nextSelected));
+        selected = nextSelected;
+        let changed = false;
+        if (sameMembers) {
+          for (const heading of popup.querySelectorAll(":scope > .gsm-hoshidicts-kanji-entry > h3")) {
+            changed = updateLabel(heading, dictionaryDisplayNames.get(heading.title) || heading.title) || changed;
+          }
+        } else {
+          for (const entry of popup.querySelectorAll(":scope > .gsm-hoshidicts-kanji-entry")) entry.remove();
+          if (toolbarPosition === "bottom") popup.prepend(renderEntries());
+          else popup.append(renderEntries());
+          changed = true;
+        }
+        if (changed) scheduleMasonry();
+        return true;
+      });
 
-      if (sourceHighlightEnabled) {
-        sourceHighlighter.apply(
-          candidate,
-          renderOptions.highlightText || kanji.character
-        );
+      currentSourceHighlight = { candidate, matchedText: renderOptions.highlightText || kanji.character };
+      if (sourceHighlightEnabled) sourceHighlighter.apply(candidate, currentSourceHighlight.matchedText);
+      if (focused) {
+        positionPopup();
+        restoreRetainedFocus(focused);
       }
     }
 
     function renderResults(results, candidate, renderContext = {}) {
-      clear();
+      renderContext = { ...renderContext };
+      // Visual preferences are independent of tab/text changes that Note or a
+      // child may defer. Carry their current context through local tabs.
+      const imageContext = { popupImageSources: renderContext.popupImageSources ?? null,
+        dictionaryPresentation: renderContext.dictionaryPresentation, resolveMedia: renderContext.resolveMedia,
+        ...metadataOptions(renderContext) };
+      const focused = retainedFocus(renderContext.preserveViewControls);
+      clear(renderContext.preserveViewControls);
       setDefinitionBlurState(renderContext.definitionBlurState);
       const dictionaries = collectGlossaryDictionaries(results);
-      const dictionaryPresentation = Array.isArray(
-        renderContext.dictionaryPresentation
-      ) ? renderContext.dictionaryPresentation : [];
-      const dictionaryTabGroups = Array.isArray(
-        renderContext.dictionaryTabGroups
-      ) ? renderContext.dictionaryTabGroups : [];
-      const dictionaryDisplayNames = createDictionaryDisplayNames(
-        dictionaries,
-        dictionaryPresentation
-      );
-      const availableDictionaries = new Set(dictionaries);
-      const groupedDictionaries = new Set(
-        dictionaryTabGroups.flatMap(({ dictionaries: groupDictionaries }) =>
-          Array.isArray(groupDictionaries) ? groupDictionaries : []
-        )
-      );
-      const availableGroups = dictionaryTabGroups.flatMap((group) => {
-        const groupDictionaries = Array.isArray(group.dictionaries)
-          ? group.dictionaries.filter((title) => availableDictionaries.has(title))
-          : [];
-        return groupDictionaries.length > 0
-          ? [{ ...group, dictionaries: groupDictionaries }]
-          : [];
-      });
-      const favoriteDictionaries = dictionaryPresentation
-        .filter(({ favorite, title }) =>
-          favorite === true &&
-          availableDictionaries.has(title) &&
-          !groupedDictionaries.has(title)
-        )
-        .map(({ title }) => title);
-      const usedTabLabels = new Set();
-      function uniqueTabLabel(label, qualifier) {
-        let candidate = label;
-        let suffix = 1;
-        while (usedTabLabels.has(candidate)) {
-          const qualifiedSuffix = suffix === 1
-            ? qualifier
-            : `${qualifier} ${suffix}`;
-          candidate = `${label} (${qualifiedSuffix})`;
-          suffix += 1;
-        }
-        usedTabLabels.add(candidate);
-        return candidate;
-      }
-      const tabDescriptors = [
-        {
-          label: uniqueTabLabel("All", "tab"),
-          title: "All dictionaries",
-          dictionaries: new Set(),
-        },
-        ...availableGroups.map((group) => ({
-          label: uniqueTabLabel(group.name, "group"),
-          title: `Tab group: ${group.name}`,
-          groupId: group.id,
-          dictionaries: new Set(group.dictionaries),
-        })),
-        ...favoriteDictionaries.map((dictionary) => ({
-          label: uniqueTabLabel(
-            dictionaryDisplayNames.get(dictionary) || dictionary,
-            "dictionary"
-          ),
-          title: dictionary,
-          dictionary,
-          dictionaries: new Set([dictionary]),
-        })),
-      ];
+      let { tabs: tabDescriptors, dictionaryDisplayNames } = createDictionaryTabs(dictionaries, renderContext);
       const tabList = tabDescriptors.length > 1
         ? documentRef.createElement("div")
         : null;
@@ -1982,6 +3333,8 @@
       primaryMetadataCapsule.setAttribute("aria-label", "Entry metadata");
       metadataStrip.appendChild(primaryMetadataCapsule);
       const panel = documentRef.createElement("div");
+      currentResultPanel = panel;
+      const ownsView = () => ownsResultPanel(panel, renderContext);
       panel.id = `${idPrefix}-tab-panel`;
       panel.className = "gsm-hoshidicts-tab-panel";
       if (tabList) {
@@ -1999,22 +3352,12 @@
       }));
       currentNoteControls = noteControls;
       const toolbar = createResultChrome(primaryHeader, metadataStrip);
-      popup.append(toolbar, panel);
-      setRenderedToolbar(toolbar);
+      mountResultChrome(toolbar, panel);
 
-      const tabButtons = [];
-      const requestedTab = isRecord(renderContext.selectedDictionaryTab)
-        ? renderContext.selectedDictionaryTab
-        : null;
-      const requestedTabIndex = requestedTab
-        ? tabDescriptors.findIndex((descriptor) =>
-            typeof requestedTab.dictionary === "string"
-              ? descriptor.dictionary === requestedTab.dictionary
-              : typeof requestedTab.groupId === "string"
-                ? descriptor.groupId === requestedTab.groupId
-                : false
-          )
-        : -1;
+      let tabButtons = [];
+      let nextTabId = 0;
+      const requestedKey = dictionaryTabKey(renderContext.selectedDictionaryTab);
+      const requestedTabIndex = tabDescriptors.findIndex((descriptor) => descriptor.key === requestedKey);
       let focusedIndex = Math.max(0, requestedTabIndex);
       let selectedIndex = focusedIndex;
       let hasRendered = false;
@@ -2051,15 +3394,13 @@
         if ((!hasRendered || selectionChanged)
             && typeof renderContext.onDictionaryTabSelected === "function") {
           const descriptor = tabDescriptors[selectedIndex];
-          renderContext.onDictionaryTabSelected(
-            typeof descriptor.dictionary === "string"
-              ? { dictionary: descriptor.dictionary }
-              : typeof descriptor.groupId === "string"
-                ? { groupId: descriptor.groupId }
-                : null
-          );
+          renderContext.onDictionaryTabSelected(normaliseDictionaryTab(descriptor));
         }
         if (hasRendered && !selectionChanged) {
+          if (!ownsView()) {
+            onBeforeResultsRendered();
+            return;
+          }
           if (
             button && !popup.hidden
             && typeof button.scrollIntoView === "function"
@@ -2069,11 +3410,22 @@
           return;
         }
         if (hasRendered) {
-          onBeforeResultsRendered();
+          if (onBeforeResultsRendered() === false) return;
         }
-        popup.scrollTop = 0;
+        if (hasRendered || !renderContext.preserveViewControls) popup.scrollTop = 0;
+        renderProjection(!hasRendered && renderContext.expandAll === true);
+        hasRendered = true;
+        positionPopup();
+      }
+
+      function renderProjection(expandAll) {
+        if (hasRendered) masonryObserver?.disconnect();
         const selectedDictionaries = tabDescriptors[selectedIndex].dictionaries;
         const projectedResults = projectResults(results, selectedDictionaries);
+        const saved = !hasRendered && renderContext.disclosures;
+        const matchingDisclosures = saved && (saved.results === results
+          || JSON.stringify(saved.results) === JSON.stringify(results))
+          && sameTabMembers(new Set(saved.dictionaries), selectedDictionaries, dictionaries);
         projectedPrimary = projectedResults[0] || null;
         rendered = renderResultPanel(
           panel,
@@ -2081,50 +3433,50 @@
           candidate,
           {
             ...renderContext,
+            ...metadataOptions(imageContext),
+            dictionaryPresentation: imageContext.dictionaryPresentation,
             noteControls,
+            expandAll,
+            restoreScrollTop: !hasRendered ? renderContext.restoreScrollTop : undefined,
+            restoreDisclosures: matchingDisclosures ? saved.states : undefined,
             // Lookup statistics describe the first unfiltered result. Keep the
-            // line on the All tab so a dictionary projection cannot attach the
-            // original term's count to a different expression.
-            showLookupCounts:
-              selectedDictionaries.size === 0
-              && renderContext.showLookupCounts === true,
+            // slot on the All tab so a dictionary projection cannot attach the
+            // original term's count to a different expression. The owner paints
+            // or hides it, so a count setting never reprojects definitions.
+            lookupStatsSlot: selectedDictionaries.size === 0,
           },
           {
             dictionaryDisplayNames,
+            imageContext,
             metadataStrip,
             primaryHeader,
             primaryMetadataCapsule,
             tabList,
           }
         );
-        if (hasRendered) {
-          onResultsRendered(rendered);
-        }
-        hasRendered = true;
-        positionPopup();
+        onResultsRendered(rendered);
       }
 
-      tabDescriptors.forEach((descriptor, index) => {
-        if (!tabList) {
-          return;
-        }
+      function activateTabFromEvent(index, focusButton = false) {
+        runRenderAction(() => ownsDisplayedPanel(panel, renderContext), renderContext, () => activateTab(index, focusButton));
+      }
+
+      function createTabButton(descriptor) {
         const button = documentRef.createElement("button");
         button.type = "button";
-        button.id = `${idPrefix}-tab-${index}`;
+        button.id = `${idPrefix}-tab-${nextTabId++}`;
         button.className = "gsm-hoshidicts-tab";
         button.setAttribute("role", "tab");
         button.setAttribute("aria-controls", panel.id);
-        button.setAttribute("aria-selected", "false");
-        button.tabIndex = -1;
-        button.textContent = descriptor.label;
-        button.title = descriptor.title;
-        button.setAttribute("aria-label", descriptor.title);
         if (descriptor.groupId) button.dataset.groupId = descriptor.groupId;
         if (descriptor.dictionary) {
           button.dataset.dictionary = descriptor.dictionary;
         }
-        button.addEventListener("click", () => activateTab(index));
+        if (descriptor.favourites) button.dataset.favourites = "true";
+        button.addEventListener("click", () => activateTabFromEvent(tabButtons.indexOf(button)));
         button.addEventListener("keydown", (event) => {
+          const index = tabButtons.indexOf(button);
+          if (index < 0) return;
           let nextIndex = null;
           if (event.key === "ArrowRight") {
             nextIndex = (index + 1) % tabButtons.length;
@@ -2138,12 +3490,44 @@
           if (nextIndex !== null) {
             event.preventDefault();
             event.stopPropagation();
-            activateTab(nextIndex, true);
+            activateTabFromEvent(nextIndex, true);
           }
         });
-        tabButtons.push(button);
-        tabList.appendChild(button);
-      });
+        return button;
+      }
+
+      function syncTabButtons(previousDescriptors = []) {
+        if (!tabList) return false;
+        const previous = new Map(previousDescriptors.map((descriptor, index) => [descriptor.key, tabButtons[index]]));
+        const focused = popup.getRootNode().activeElement;
+        const focusedKey = previousDescriptors[tabButtons.indexOf(focused)]?.key;
+        let changed = false;
+        tabButtons = tabDescriptors.map(descriptor => {
+          const button = previous.get(descriptor.key) || createTabButton(descriptor);
+          changed = updateLabel(button, descriptor.label) || changed;
+          button.title = descriptor.title;
+          button.setAttribute("aria-label", descriptor.title);
+          previous.delete(descriptor.key);
+          return button;
+        });
+        for (const button of previous.values()) { button.remove(); changed = true; }
+        // Move the other buttons around the focused one, never detach it.
+        let next = null;
+        for (let index = tabButtons.length - 1; index >= 0; index -= 1) {
+          const button = tabButtons[index];
+          if (button !== focused && (button.parentNode !== tabList || button.nextSibling !== next)) {
+            tabList.insertBefore(button, next);
+            changed = true;
+          }
+          next = button;
+        }
+        focusedIndex = focusedKey ? tabDescriptors.findIndex(tab => tab.key === focusedKey) : selectedIndex;
+        if (focusedIndex < 0) focusedIndex = selectedIndex;
+        if (hasRendered) updateTabState();
+        if (focusedKey && !tabButtons.includes(focused)) tabButtons[focusedIndex]?.focus();
+        return changed;
+      }
+      syncTabButtons();
 
       tabList?.addEventListener("wheel", (event) => {
         if (
@@ -2163,42 +3547,139 @@
       }, { passive: false });
 
       activateTab(selectedIndex);
+      currentPresentationUpdate = (context) => runRenderAction(
+        () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
+          const summaryChanged = ["showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary"]
+            .some(key => Object.hasOwn(context, key) && context[key] !== renderContext[key]);
+          // Image-only changes may proceed while Note, focus or a child keeps
+          // the old tab/text projection mounted. Enter the same connected
+          // request boundary before admitting new asynchronous image work.
+          const imagesChanged = Object.hasOwn(context, "popupImageSources")
+            && context.popupImageSources !== imageContext.popupImageSources;
+          if ((imagesChanged || summaryChanged) && ownsView() && options.canUpdateCompactSummary?.() === false) return true;
+          const focused = popup.getRootNode().activeElement;
+          const next = createDictionaryTabs(dictionaries, context);
+          const previous = tabDescriptors;
+          const selectedKey = previous[selectedIndex].key;
+          let index = next.tabs.findIndex(tab => tab.key === selectedKey);
+          if (index < 0) index = 0;
+          const sameMembers = sameTabMembers(previous[selectedIndex].dictionaries, next.tabs[index].dictionaries, dictionaries);
+          const projectionDeferred = (summaryChanged && popup.contains(focused)
+            && focused.closest(".gsm-hoshidicts-compact-definition-summary"))
+            || (!sameMembers && (!ownsView() || !canProjectPresentation()));
+          // New cards and summaries use the latest route. Only refresh handles
+          // after replacing their owners, unless the projection is protected.
+          for (const key of ["popupImageSources", "dictionaryPresentation", "resolveMedia", ...METADATA_OPTION_KEYS]) {
+            if (Object.hasOwn(context, key)) imageContext[key] = context[key];
+          }
+          if (projectionDeferred) {
+            const metadata = rendered.updateMetadata();
+            if (rendered.updateImages() || metadata.changed) scheduleMasonry();
+            return false;
+          }
+          Object.assign(renderContext, context);
+          tabDescriptors = next.tabs;
+          dictionaryDisplayNames = next.dictionaryDisplayNames;
+          selectedIndex = index;
+          let changed = syncTabButtons(previous);
+          let metadataDeferred = false;
+          if (selectedKey !== tabDescriptors[index].key) {
+            renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
+          }
+          if (sameMembers) {
+            const metadata = rendered.updateMetadata();
+            changed = metadata.changed || changed;
+            metadataDeferred = metadata.deferred;
+            changed = rendered.updateDictionaryPresentation(context, dictionaryDisplayNames, summaryChanged) || changed;
+            changed = rendered.updateImages() || changed;
+          } else {
+            const focused = retainedFocus(true);
+            renderProjection(rendered.isExpanded());
+            if (focused && typeof focused !== "string") {
+              positionPopup();
+              restoreRetainedFocus(focused);
+            }
+            changed = true;
+          }
+          if (changed) scheduleMasonry();
+          return !metadataDeferred;
+        });
+      restoreRetainedFocus(focused);
+      captureTermView = () => ({ expandAll: rendered.isExpanded(), restoreScrollTop: popup.scrollTop,
+        disclosures: { results, dictionaries: [...tabDescriptors[selectedIndex].dictionaries],
+          states: [...popup.querySelectorAll("details")].map(node => ({ className: node.className, open: node.open })),
+        },
+      });
       return rendered;
     }
 
     return {
       clear,
+      hideImagePreview,
       closeNoteForm() {
         return currentNoteControls?.close() === true;
       },
       renderNotice,
       renderResults,
       renderKanji,
+      captureTermView: () => captureTermView?.(),
       setDefinitionBlurState,
       setLookupStats,
       setSourceHighlightEnabled,
       setToolbarPosition,
       scheduleMasonry,
+      updateDictionaryPresentation(context) {
+        if (!currentPresentationUpdate) return;
+        pendingPresentation = context;
+        flushDictionaryPresentation();
+      },
+      flushDictionaryPresentation,
       destroy() {
+        sourceHighlighter.clear();
+        currentPresentationUpdate = null;
+        pendingPresentation = null;
+        hideImagePreview();
+        renderedImages.clear();
+        renderRevision += 1;
+        currentResultPanel = null;
+        captureTermView = null;
+        pendingScrollRestoration = null;
+        options.cancelMasonry?.(layoutMasonry);
         if (masonryFrame !== null) {
           windowRef.cancelAnimationFrame(masonryFrame);
           masonryFrame = null;
         }
         masonryObserver?.disconnect();
         windowRef.removeEventListener("resize", onWindowResize);
+        popup.removeEventListener("scroll", onPopupScroll, true);
+        popup.removeEventListener("focusout", onPresentationFocusOut);
       },
     };
   }
 
+  // Automatic follows horizontal root placement; side panes retain their edge.
+  function resolveToolbarPosition(preference, placement, current = "top") {
+    if (preference === "top" || preference === "bottom") return preference;
+    if (placement === "above") return "bottom";
+    if (placement === "below") return "top";
+    return current;
+  }
+
   return {
+    createPopupAppearance,
+    createCustomPopupStyle,
+    resolveToolbarPosition,
+    calculatePopupPosition,
     createDictionaryDisplayNames,
     createFrequencyTags,
     createPitchTag,
     createPopupView,
     createSourceHighlighter,
     createTag,
+    normaliseDictionaryTab,
     extractCompactDefinitionSummary,
     formatCompactFrequencyNumber,
     formatFrequencyValue,
+    metadataOptions,
   };
 }));

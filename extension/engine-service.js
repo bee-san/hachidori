@@ -1,5 +1,6 @@
 import {
   httpsUrl,
+  assertRecommendedDictionary,
   MANAGED_DICTIONARY_CHANGED,
   managedDictionaryFingerprint,
   managedDictionaryMatches,
@@ -12,10 +13,18 @@ import {
   appendCustomDictionaryEntry,
   buildCustomDictionaryZip,
   customDictionarySemanticRevision,
+  customDictionaryMetadataMatches,
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
 } from "./custom-dictionary.js";
 import { sameJsonValue } from "./json-value.js";
+import {
+  boundResponseFailure,
+  isBoundedRequest,
+  responseFits,
+  responseLimitError,
+  validResponseRequestId,
+} from "./response-limits.js";
 
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
@@ -49,6 +58,10 @@ const MARKER_FILES = [".hoshidicts_4", ".hoshidicts_3", ".hoshidicts_2", ".hoshi
 const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
 const DEFAULT_MAX_RESULTS = 32;
 const DEFAULT_SCAN_LENGTH = 16;
+const MAX_LOOKUP_TEXT_BYTES = 4 * 1024;
+const MAX_MEDIA_DICTIONARY_BYTES = 1024;
+const MAX_MEDIA_PATH_BYTES = 4 * 1024;
+const UTF8 = new TextEncoder();
 
 const BASE64_CHUNK = 0x8000;
 const MEDIA_TYPES = {
@@ -63,7 +76,7 @@ const MEDIA_TYPES = {
 
 // No engine call, so this must not queue behind a long import: the settings page
 // polls hd_status while one is running.
-const UNQUEUED = new Set(["hd_status"]);
+const UNQUEUED = new Set(["hd_status", "hd_backup_release"]);
 
 // A storage read-modify-write spans two messages, so another context can write
 // in between; the worker refuses the write when that happens and the change is
@@ -87,6 +100,11 @@ let started = false;
 let createHoshidicts = null;
 let storageBackend = "memory";
 let lowRam = true;
+// Optional sink for import download/installation phases, keyed by request ID.
+let reportProgress = null;
+// Download progress is a transient UI signal; one report per chunk would flood
+// the host bridge on a fast connection.
+const PROGRESS_INTERVAL_MS = 100;
 
 export function configureEngineService(request, options = {}) {
   if (hostRequest !== null) {
@@ -96,6 +114,7 @@ export function configureEngineService(request, options = {}) {
   createHoshidicts = options.createHoshidicts;
   storageBackend = options.storageBackend ?? "memory";
   lowRam = options.lowRam !== false;
+  reportProgress = typeof options.reportProgress === "function" ? options.reportProgress : null;
 }
 
 function describe(error) {
@@ -154,6 +173,39 @@ function parseJson(json, source) {
   } catch (error) {
     throw new Error(`${source} returned malformed JSON: ${describe(error)}`);
   }
+}
+
+function boundedText(value, label, maxBytes, cString = true) {
+  const result = text(value);
+  if (cString && result.includes("\0")) throw new Error(`${label} contains NUL`);
+  // Three UTF-8 bytes per UTF-16 code unit is a conservative upper bound.
+  if (result.length * 3 > maxBytes && UTF8.encode(result).byteLength > maxBytes) {
+    throw new Error(`${label} exceeds the ${maxBytes}-byte limit`);
+  }
+  return result;
+}
+
+function lookupArguments(message) {
+  return [
+    boundedText(message.text, "lookup text", MAX_LOOKUP_TEXT_BYTES),
+    clampInt(message.maxResults, 1, 256, DEFAULT_MAX_RESULTS),
+    clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH),
+    JSON.stringify({
+      frequencyDictionary: boundedText(message.options?.frequencyDictionary, "frequency dictionary", MAX_LOOKUP_TEXT_BYTES, false),
+      frequencyOrder: FREQUENCY_ORDERS.includes(message.options?.frequencyOrder)
+        ? message.options.frequencyOrder : "auto",
+      primaryReading: boundedText(message.options?.primaryReading, "primary reading", MAX_LOOKUP_TEXT_BYTES, false),
+    }),
+  ];
+}
+
+function termLookupReply(json, source) {
+  const parsed = parseJson(json, source);
+  if (!Array.isArray(parsed?.results) || !Number.isSafeInteger(parsed?.dictionaryCount)
+      || parsed.dictionaryCount < 0) {
+    throw new Error(`${source} returned a malformed lookup response`);
+  }
+  return { results: parsed.results, dictionaryCount: parsed.dictionaryCount, nativeJsonLength: json.length };
 }
 
 let tail = Promise.resolve();
@@ -426,18 +478,7 @@ function withRecommendedSource(dictionary, source) {
 }
 
 function validateRecommendedImport(source, report, generated) {
-  if (!new RegExp(source.titlePattern, "u").test(report.title)) {
-    throw new Error(`${source.name} archive did not match its expected title`);
-  }
-  if (generated.indexUrl !== source.indexUrl) {
-    throw new Error(`${source.name} archive did not match its expected update source`);
-  }
-  if (generated.revision === "") {
-    throw new Error(`${source.name} archive did not declare a revision`);
-  }
-  if (!capabilities(report).includes(source.requiredCapability)) {
-    throw new Error(`${source.name} archive did not contain its expected capability`);
-  }
+  assertRecommendedDictionary(source, { ...report, indexUrl: generated.indexUrl, revision: generated.revision });
 }
 
 function installedAt(importDate, path) {
@@ -473,6 +514,7 @@ async function packageFromIndex(path) {
     indexUrl: optionalText(index?.indexUrl),
     downloadUrl: optionalText(index?.downloadUrl),
     language: optionalText(index?.sourceLanguage),
+    frequencyMode: optionalText(index?.frequencyMode),
     termCount: count(index?.counts?.terms?.total),
     frequencyCount: count(index?.counts?.termMeta?.freq),
     pitchCount: count(index?.counts?.termMeta?.pitch) + count(index?.counts?.termMeta?.ipa),
@@ -752,6 +794,7 @@ function withStoredPresentation(generated, stored) {
     indexUrl: stored?.indexUrl ?? generated.indexUrl,
     downloadUrl: stored?.downloadUrl ?? generated.downloadUrl,
     lastUpdateCheck: stored?.lastUpdateCheck ?? null,
+    ...(stored?.updateScheduleOverride === undefined ? {} : { updateScheduleOverride: stored.updateScheduleOverride }),
     ...(sourceId === null ? {} : { sourceId }),
   };
 }
@@ -878,12 +921,14 @@ function publishLoadedDictionaries(loadedCount) {
   generation += 1;
 }
 
-async function restoreCommittedDictionaries(state = null) {
+async function restoreCommittedDictionaries(state = null, { publish = true } = {}) {
   const committed = state ?? (await readDictionaryStorage()).state;
   if (committed === null) {
     throw new Error("the committed dictionary state is unavailable");
   }
-  publishLoadedDictionaries(loadDictionaries(committed.dictionaries, { strict: true }));
+  const loadedCount = loadDictionaries(committed.dictionaries, { strict: true });
+  if (publish) publishLoadedDictionaries(loadedCount);
+  else dictionaryCount = loadedCount;
   reloadError = null;
   return committed;
 }
@@ -919,7 +964,7 @@ async function ensureLoaded() {
 let reloadRetry = null;
 
 function retryReload() {
-  if (reloadRetry !== null) {
+  if (reloadRetry !== null || preparedBackup !== null) {
     return;
   }
   // Through serialise(), or this would call hdw_reset underneath a running
@@ -1046,17 +1091,7 @@ async function customPackageSatisfies(state, semanticRevision, entryCount) {
   }
   try {
     const generated = await packageFromIndex(custom.path);
-    if (generated.title !== CUSTOM_DICTIONARY_TITLE
-        || generated.revision !== semanticRevision
-        || generated.termCount !== entryCount
-        || generated.frequencyCount !== 0
-        || generated.pitchCount !== 0
-        || generated.kanjiCount !== 0
-        || generated.mediaCount !== 0
-        || generated.isUpdatable !== false
-        || generated.indexUrl !== null
-        || generated.downloadUrl !== null
-        || generated.language !== "ja"
+    if (!customDictionaryMetadataMatches(generated, semanticRevision, entryCount)
         || !sameDictionaries(
           state.dictionaries,
           withCustomDictionary(state.dictionaries, generated),
@@ -1185,7 +1220,7 @@ async function commitImportedGeneration(
   return committed.state;
 }
 
-async function rollbackImportedGeneration(generationRoot, failure) {
+async function rollbackImportedGenerations(generationRoots, failure) {
   let committed = null;
   let restoreError = null;
   try {
@@ -1194,18 +1229,21 @@ async function rollbackImportedGeneration(generationRoot, failure) {
     restoreError = error;
     reloadError = asError(error);
   }
-  const retained = committed?.dictionaries.some((dictionary) =>
-    dictionaryRoot(dictionary) === generationRoot) === true;
-  if (committed !== null && !retained) {
+  const retained = new Set(committed?.dictionaries.map(dictionaryRoot));
+  if (committed !== null) {
     try {
-      await discardGeneration(generationRoot);
+      await discardGenerations(generationRoots.filter(root => !retained.has(root)));
     } catch (error) {
-      console.warn(`hoshidicts: could not discard ${generationRoot}: ${describe(error)}`);
+      console.warn(`hoshidicts: could not discard failed dictionary generations: ${describe(error)}`);
     }
   }
   if (restoreError !== null) {
     throw new Error(`${describe(failure)}; dictionary rollback failed: ${describe(restoreError)}`);
   }
+}
+
+function rollbackImportedGeneration(generationRoot, failure) {
+  return rollbackImportedGenerations([generationRoot], failure);
 }
 
 function toBase64(bytes) {
@@ -1222,16 +1260,34 @@ function mediaType(path) {
   return MEDIA_TYPES[extension] ?? "application/octet-stream";
 }
 
-export async function streamResponseToFile(FS, response, path) {
+// A declared length is only comparable to the received bytes when the body is
+// not transformed in flight; a content-encoded response counts decoded bytes
+// against an encoded total, so it reports no total at all.
+export function declaredResponseLength(response) {
+  const headers = response?.headers;
+  if (typeof headers?.get !== "function") return null;
+  const encoding = headers.get("content-encoding");
+  if (encoding !== null && encoding !== "" && encoding.trim().toLowerCase() !== "identity") return null;
+  const length = Number(headers.get("content-length"));
+  return Number.isSafeInteger(length) && length > 0 ? length : null;
+}
+
+export async function streamResponseToFile(FS, response, path, onProgress = null) {
   const reader = response.body?.getReader?.();
+  const totalBytes = declaredResponseLength(response);
+  const report = (receivedBytes) => {
+    onProgress?.({ phase: "downloading", receivedBytes, totalBytes: totalBytes !== null && receivedBytes <= totalBytes ? totalBytes : null });
+  };
   if (reader === undefined) {
     const bytes = new Uint8Array(await response.arrayBuffer());
     FS.writeFile(path, bytes);
+    report(bytes.byteLength);
     return bytes.byteLength;
   }
 
   const output = FS.open(path, "w");
   let written = 0;
+  let reportedAt = -Infinity;
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -1240,21 +1296,28 @@ export async function streamResponseToFile(FS, response, path) {
       if (bytes.byteLength === 0) continue;
       FS.write(output, bytes, 0, bytes.byteLength);
       written += bytes.byteLength;
+      if (onProgress !== null && performance.now() - reportedAt >= PROGRESS_INTERVAL_MS) {
+        reportedAt = performance.now();
+        report(written);
+      }
     }
   } finally {
     FS.close(output);
     reader.releaseLock?.();
   }
+  report(written);
   return written;
 }
 
-async function importDictionaryArchive(response, archivePath, generationRoot, importLowRam, fileName) {
+async function importDictionaryArchive(response, archivePath, generationRoot, importLowRam, fileName, onProgress = null) {
   const FS = engine.FS;
   try {
-    const archiveBytes = await streamResponseToFile(FS, response, archivePath);
+    const archiveBytes = await streamResponseToFile(FS, response, archivePath, onProgress);
     if (archiveBytes === 0) {
       throw new Error(`${fileName} is empty`);
     }
+    // The native importer has no progress callback: installation is one call.
+    onProgress?.({ phase: "installing", receivedBytes: archiveBytes, totalBytes: archiveBytes });
     return normaliseReport(
       parseJson(
         engine.ccall(
@@ -1318,13 +1381,22 @@ function validateLocalImportRequest(message, managedSource, recommendedSource) {
   }
 }
 
-function validateManagedImportRequest(managedSource, expectedRevision) {
-  if (managedSource === null) {
+// A remote import is either a checked managed update or a first install of a
+// recommended source, which downloads only its catalogue-pinned archive.
+function validateRemoteImportRequest(message, managedSource, recommendedSource, expectedRevision) {
+  if (managedSource !== null) {
+    if (expectedRevision === null) {
+      throw new Error("the managed import request carried no expected revision");
+    }
+    return managedSource.archiveUrl;
+  }
+  if (recommendedSource === null) {
     throw new Error("the import request carried no archive URL");
   }
-  if (expectedRevision === null) {
-    throw new Error("the managed import request carried no expected revision");
+  if (httpsUrl(message.archiveUrl) !== recommendedSource.downloadUrl) {
+    throw new Error(`${recommendedSource.name} must be downloaded from its catalogue archive URL`);
   }
+  return recommendedSource.downloadUrl;
 }
 
 async function prepareImportRequest(message) {
@@ -1334,13 +1406,14 @@ async function prepareImportRequest(message) {
   const managedSource = await managedSourceForImport(message, recommendedSource);
   const expectedRevision = optionalText(message.expectedRevision);
   const remote = blobUrl === "";
+  let archiveUrl = blobUrl;
   if (remote) {
-    validateManagedImportRequest(managedSource, expectedRevision);
+    archiveUrl = validateRemoteImportRequest(message, managedSource, recommendedSource, expectedRevision);
   } else {
     validateLocalImportRequest(message, managedSource, recommendedSource);
   }
   return {
-    archiveUrl: remote ? managedSource.archiveUrl : blobUrl,
+    archiveUrl,
     expectedRevision,
     fileName: text(message.fileName) || recommendedSource?.archiveName || "the archive",
     importLowRam,
@@ -1368,7 +1441,7 @@ async function fetchImportArchive(request) {
   return response;
 }
 
-async function runImportTransaction(response, fileName, importLowRam, commit) {
+async function runImportTransaction(response, fileName, importLowRam, commit, onProgress = null) {
   const generationRoot = createGenerationRoot();
   // Unload before importing: the loaded dictionaries are mapped into the same
   // 32-bit address space the importer needs. Public count/generation state is
@@ -1385,6 +1458,7 @@ async function runImportTransaction(response, fileName, importLowRam, commit) {
       generationRoot,
       importLowRam,
       fileName,
+      onProgress,
     );
     if (report.success && report.title === "") {
       // hdw_import refuses a title it cannot use as a folder name, so this is
@@ -1623,6 +1697,162 @@ async function saveCustomDictionary(snapshot, source) {
   }
 }
 
+let preparedBackup = null;
+const backupUrls = new Set();
+
+async function readBackupStorage(raw = false) {
+  const reply = await ask(raw ? "hd_backup_base_read" : "hd_backup_read");
+  if (!reply.ok) throw new Error(reply.error || "Could not read the complete Hachidori state.");
+  return reply;
+}
+
+function backupFileBlob(path, size) {
+  const FS = engine.FS;
+  const input = FS.open(path, "r");
+  const parts = [];
+  try {
+    let offset = 0;
+    while (offset < size) {
+      // Transfer-sized chunks, not a limit on files or archive size.
+      const bytes = new Uint8Array(Math.min(64 * 1024, size - offset));
+      const read = FS.read(input, bytes, 0, bytes.length);
+      if (read !== bytes.length) throw new Error(`Could not read the complete dictionary file: ${path}`);
+      parts.push(new Blob([bytes]));
+      offset += read;
+    }
+    return new Blob(parts);
+  } finally {
+    FS.close(input);
+  }
+}
+
+function collectBackupFiles(root, prefix, assertPath, output) {
+  const FS = engine.FS;
+  if (!isDirectory(FS.lstat(root))) throw new Error(`Dictionary generation is not a directory: ${root}`);
+  for (const name of FS.readdir(root).filter(name => name !== "." && name !== "..").sort()) {
+    const path = `${prefix}/${name}`;
+    assertPath(path);
+    const absolute = `${root}/${name}`;
+    const stat = FS.lstat(absolute);
+    if (isDirectory(stat)) collectBackupFiles(absolute, path, assertPath, output);
+    else if ((stat.mode & 0o170000) === 0o100000) output.push({ path, data: backupFileBlob(absolute, stat.size) });
+    else throw new Error(`Dictionary generation contains a non-file entry: ${path}`);
+  }
+}
+
+async function discardPreparedBackup() {
+  const previous = preparedBackup;
+  preparedBackup = null;
+  if (previous) await discardGenerations(previous.roots);
+}
+
+async function discardGenerations(roots) {
+  for (const root of roots) {
+    if (!isGenerationRoot(root)) throw new Error("Refusing to discard a path outside the dictionary generation namespace.");
+  }
+  let changed = false;
+  for (const root of roots) {
+    if (exists(root)) { removeTree(root); changed = true; }
+  }
+  if (changed) await persistFilesystem();
+}
+
+async function stageBackupFiles(prepared, roots) {
+  const archived = prepared.snapshot.state.dictionaries;
+  const dictionaries = archived.map(dictionary => {
+    const root = createGenerationRoot();
+    roots.push(root);
+    const next = { ...dictionary, path: `${root}/${dictionary.title}` };
+    if (dictionaryRoot(next) === null) throw new Error("The backup contains an invalid dictionary title.");
+    return next;
+  });
+  for (const file of prepared.files) {
+    const [, ordinal, ...relative] = file.path.split("/");
+    const dictionary = dictionaries[Number(ordinal)];
+    if (!dictionary) throw new Error(`The backup file has no dictionary: ${file.path}`);
+    const path = `${dictionary.path}/${relative.join("/")}`;
+    engine.FS.mkdirTree(path.slice(0, path.lastIndexOf("/")));
+    await streamResponseToFile(engine.FS, new Response(file.data), path);
+  }
+  for (const dictionary of dictionaries) await validateBackupDictionary(dictionary);
+  await persistFilesystem();
+  return dictionaries;
+}
+
+async function validateBackupDictionary(dictionary) {
+  const generated = await packageFromIndex(dictionary.path);
+  const keys = ["title", "revision", "termCount", "frequencyCount", "pitchCount", "kanjiCount", "mediaCount"];
+  if (keys.some(key => generated[key] !== dictionary[key]) || !hasDictionaryMarker(dictionary.path)) {
+    throw new Error(`The backup dictionary metadata does not match its files: ${dictionary.title}`);
+  }
+  const required = ["hash.table", "bloom.filter", "blobs.bin"];
+  if (dictionary.mediaCount > 0) required.push("media.idx", "media.bin");
+  for (const name of required) {
+    if (!exists(`${dictionary.path}/${name}`)) throw new Error(`The backup is missing ${dictionary.title}/${name}`);
+  }
+  const recommended = recommendedDictionarySource(dictionary.sourceId);
+  if (recommended) assertRecommendedDictionary(recommended, generated);
+  if (dictionary.id === CUSTOM_DICTIONARY_ID
+      && !customDictionaryMetadataMatches(generated, dictionary.revision, dictionary.termCount)) {
+    throw new Error("The backup custom dictionary files do not satisfy the managed package invariants.");
+  }
+}
+
+async function commitBackupSnapshot(current, snapshot, lookupStatsRows) {
+  try {
+    return await ask("hd_backup_cas", { base: current, snapshot, lookupStatsRows });
+  } catch (commitError) {
+    let readback;
+    try { readback = (await readBackupStorage(true)).snapshot; }
+    catch (readError) { throw new UnknownDictionaryStateCommitError(commitError, readError, "backup restore"); }
+    if (sameJsonValue(readback, snapshot)) return { ok: true, snapshot };
+    if (!sameJsonValue(readback, current)) {
+      throw new UnknownDictionaryStateCommitError(commitError,
+        new Error("readback did not match the exact complete restore transaction"), "backup restore");
+    }
+    return { ok: false, error: describe(commitError) };
+  }
+}
+
+async function restoreBackup(message) {
+  requireEngine();
+  if (!preparedBackup || preparedBackup.token !== message.token) {
+    throw new Error("This prepared backup is no longer available. Choose the file again.");
+  }
+  const prepared = preparedBackup;
+  preparedBackup = null;
+  try {
+    const { restoredBackupSnapshot } = await import("./backup-state.js");
+    const current = (await readBackupStorage(true)).snapshot;
+    if (!sameJsonValue(current, prepared.current)) {
+      throw new Error("Hachidori changed since this backup was prepared. Prepare it again before restoring.");
+    }
+    const loadedCount = loadDictionaries(prepared.dictionaries, { strict: true });
+    const snapshot = restoredBackupSnapshot(current, prepared.snapshot, prepared.dictionaries);
+    const reply = await commitBackupSnapshot(current, snapshot, prepared.lookupStatsRows);
+    if (!reply.ok) throw new Error(reply.error || "Could not commit the backup restore.");
+    publishLoadedDictionaries(loadedCount);
+    reloadError = null;
+    await cleanupCommittedDictionaries();
+    let warning = reply.warning ?? null;
+    try {
+      const cleanup = await ask("hd_lookup_stats_cleanup");
+      if (!cleanup.ok) throw new Error(cleanup.error);
+    } catch (error) {
+      warning = [warning, `Restored successfully; old lookup statistics could not be cleaned up: ${describe(error)}`].filter(Boolean).join("; ");
+    }
+    return { restored: true, dictionaryCount, warning };
+  } catch (error) {
+    if (error instanceof UnknownDictionaryStateCommitError) {
+      reloadError = error;
+      throw error;
+    }
+    // Read authoritative state; never write an old snapshot over concurrent edits.
+    await rollbackImportedGenerations(prepared.roots, error);
+    throw error;
+  }
+}
+
 function removalTarget(dictionaries, id, title) {
   const target = dictionaries.find((dictionary) =>
     id === null ? text(dictionary?.title) === title : dictionary?.id === id);
@@ -1637,37 +1867,91 @@ function removalTarget(dictionaries, id, title) {
 }
 
 const HANDLERS = {
+  async hd_backup_export() {
+    await ensureLoaded();
+    const [{ createBackupArchive, assertBackupPath }, { assertBackupSnapshot }] = await Promise.all([
+      import("./backup-archive.js"), import("./backup-state.js"),
+    ]);
+    const { snapshot, lookupStatsRows } = await readBackupStorage();
+    await assertBackupSnapshot(snapshot);
+    const files = [];
+    for (const [index, dictionary] of snapshot.state.dictionaries.entries()) {
+      if (dictionaryRoot(dictionary) === null) throw new Error("Cannot back up an invalid dictionary path.");
+      collectBackupFiles(dictionary.path, `dictionaries/${index}`, assertBackupPath, files);
+    }
+    const archive = await createBackupArchive(snapshot, files, lookupStatsRows);
+    const blobUrl = URL.createObjectURL(archive);
+    backupUrls.add(blobUrl);
+    return { blobUrl, size: archive.size };
+  },
+
+  hd_backup_release(message) {
+    if (backupUrls.delete(message.blobUrl)) URL.revokeObjectURL(message.blobUrl);
+    return {};
+  },
+
+  async hd_backup_cancel(message) {
+    if (preparedBackup?.token === message.token) await discardPreparedBackup();
+    return {};
+  },
+
+  async hd_backup_prepare(message) {
+    requireEngine();
+    if (typeof message.token !== "string" || message.token === "") {
+      throw new Error("Backup preparation requires its Settings cancellation token.");
+    }
+    await discardPreparedBackup();
+    const current = (await readBackupStorage(true)).snapshot;
+    const [{ openBackupArchive }, { assertBackupSnapshot }] = await Promise.all([
+      import("./backup-archive.js"), import("./backup-state.js"),
+    ]);
+    if (typeof message.blobUrl !== "string" || !message.blobUrl.startsWith("blob:")) {
+      throw new Error("Choose a local Hachidori backup archive.");
+    }
+    const response = await fetch(message.blobUrl);
+    if (!response.ok) throw new Error("Could not read the selected backup.");
+    const prepared = await openBackupArchive(await response.blob());
+    await assertBackupSnapshot(prepared.snapshot);
+    const roots = [];
+    try {
+      const dictionaries = await stageBackupFiles(prepared, roots);
+      loadDictionaries(dictionaries, { strict: true });
+      let warning = null;
+      try { await restoreCommittedDictionaries(null, { publish: false }); }
+      catch (error) {
+        reloadError = asError(error);
+        warning = "The current dictionaries cannot be loaded. This validated backup can replace them.";
+      }
+      const token = message.token;
+      preparedBackup = { token, current, roots, dictionaries, snapshot: prepared.snapshot, lookupStatsRows: prepared.lookupStatsRows };
+      return { token, warning, createdAt: prepared.createdAt, dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
+        customEntryCount: parseCustomDictionary(prepared.snapshot.document.text).entries.length };
+    } catch (error) {
+      try { await restoreCommittedDictionaries(null, { publish: false }); }
+      catch (restoreError) { reloadError = asError(restoreError); }
+      // Prepare never publishes these paths, even when the old state is broken.
+      await discardGenerations(roots);
+      throw error;
+    }
+  },
+
+  hd_backup_restore: restoreBackup,
+
   async hd_lookup(message) {
     await ensureLoaded();
-    const options = {
-      frequencyDictionary: text(message.options?.frequencyDictionary),
-      frequencyOrder: FREQUENCY_ORDERS.includes(message.options?.frequencyOrder)
-        ? message.options.frequencyOrder
-        : "auto",
-      primaryReading: text(message.options?.primaryReading),
-    };
     const json = engine.ccall(
       "hdw_lookup",
       "string",
       ["string", "number", "number", "string"],
-      [
-        text(message.text),
-        clampInt(message.maxResults, 1, 256, DEFAULT_MAX_RESULTS),
-        clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH),
-        JSON.stringify(options),
-      ],
+      lookupArguments(message),
     );
     throwIfEngineFailed("hdw_lookup");
-    const parsed = parseJson(json, "hdw_lookup");
-    const count = Number(parsed?.dictionaryCount);
-    return {
-      results: Array.isArray(parsed?.results) ? parsed.results : [],
-      dictionaryCount: Number.isFinite(count) ? count : dictionaryCount,
-    };
+    return termLookupReply(json, "hdw_lookup");
   },
 
   async hd_lookup_dictionary(message) {
     await ensureLoaded();
+    const args = lookupArguments(message);
     const title = text(message.dictionary);
     const entry = (await readStoredDictionaries()).find((candidate) =>
       candidate?.enabled !== false
@@ -1676,44 +1960,29 @@ const HANDLERS = {
     if (!entry) {
       return { results: [], dictionaryCount };
     }
-    const options = {
-      frequencyDictionary: text(message.options?.frequencyDictionary),
-      frequencyOrder: FREQUENCY_ORDERS.includes(message.options?.frequencyOrder)
-        ? message.options.frequencyOrder
-        : "auto",
-      primaryReading: text(message.options?.primaryReading),
-    };
     const json = engine.ccall(
       "hdw_lookup_dictionary",
       "string",
       ["string", "string", "number", "number", "string"],
-      [
-        text(message.text),
-        text(entry.path),
-        clampInt(message.maxResults, 1, 256, DEFAULT_MAX_RESULTS),
-        clampInt(message.scanLength, 1, 64, DEFAULT_SCAN_LENGTH),
-        JSON.stringify(options),
-      ],
+      [args[0], text(entry.path), ...args.slice(1)],
     );
     throwIfEngineFailed("hdw_lookup_dictionary");
-    const parsed = parseJson(json, "hdw_lookup_dictionary");
-    const count = Number(parsed?.dictionaryCount);
-    return {
-      results: Array.isArray(parsed?.results) ? parsed.results : [],
-      dictionaryCount: Number.isFinite(count) ? count : dictionaryCount,
-    };
+    return termLookupReply(json, "hdw_lookup_dictionary");
   },
 
   async hd_kanji(message) {
     await ensureLoaded();
-    const character = text(message.character);
+    const character = boundedText(message.character, "kanji text", MAX_LOOKUP_TEXT_BYTES);
     if (character === "") {
       return { kanji: null };
     }
     const json = engine.ccall("hdw_kanji", "string", ["string"], [character]);
     throwIfEngineFailed("hdw_kanji");
     const kanji = parseJson(json, "hdw_kanji");
-    return { kanji: text(kanji?.character) === "" ? null : kanji };
+    if (typeof kanji?.character !== "string" || !Array.isArray(kanji.entries)) {
+      throw new TypeError("hdw_kanji returned a malformed lookup response");
+    }
+    return { kanji: kanji.character === "" ? null : kanji, nativeJsonLength: json.length };
   },
 
   async hd_styles() {
@@ -1726,12 +1995,16 @@ const HANDLERS = {
 
   async hd_media(message) {
     await ensureLoaded();
-    const dictionary = text(message.dictionary);
-    const path = text(message.path);
+    if (!Number.isSafeInteger(message.generation) || message.generation !== generation) {
+      throw new Error("media generation no longer matches the loaded dictionaries");
+    }
+    const dictionary = boundedText(message.dictionary, "media dictionary", MAX_MEDIA_DICTIONARY_BYTES);
+    const path = boundedText(message.path, "media path", MAX_MEDIA_PATH_BYTES);
     if (dictionary === "" || path === "") {
       return { dataUrl: null };
     }
     const length = engine.ccall("hdw_media", "number", ["string", "string"], [dictionary, path]);
+    throwIfEngineFailed("hdw_media");
     if (length <= 0) {
       return { dataUrl: null };
     }
@@ -1784,6 +2057,8 @@ const HANDLERS = {
       managedSource,
       recommendedSource,
     } = request;
+    const requestId = message.requestId ?? null;
+    const onProgress = reportProgress === null ? null : (event) => reportProgress({ requestId, ...event });
     const report = await runImportTransaction(
       response,
       fileName,
@@ -1796,6 +2071,7 @@ const HANDLERS = {
           managedSource,
           expectedRevision,
         ),
+      onProgress,
     );
 
     if (!report.success) {
@@ -1977,9 +2253,16 @@ function failurePayload(type) {
   }
 }
 
+function engineFailureReply(type, requestId, error) {
+  return boundResponseFailure({
+    type: `${type}_result`, requestId, ok: false, error: describe(error),
+    generation, ...failurePayload(type),
+  });
+}
+
 export async function handleEngineMessage(message) {
   const type = text(message.type);
-  const requestId = message.requestId ?? null;
+  let requestId = message.requestId ?? null;
   if (!Object.prototype.hasOwnProperty.call(HANDLERS, type)) {
     return {
       type: `${type || "hd_unknown"}_result`,
@@ -1990,23 +2273,30 @@ export async function handleEngineMessage(message) {
     };
   }
 
-  const handler = HANDLERS[type];
-  const run = UNQUEUED.has(type)
-    ? Promise.resolve().then(() => handler(message))
-    : serialise(() => handler(message));
+  const bounded = isBoundedRequest(type);
   try {
+    if (bounded) {
+      if (!validResponseRequestId(requestId)) {
+        requestId = null;
+        throw new Error("request ID must be a string, finite number, or null");
+      }
+      if (!responseFits({ type: `${type}_result`, requestId, ok: false,
+        error: responseLimitError(type), generation, ...failurePayload(type) })) {
+        requestId = null;
+        throw new Error(responseLimitError(type));
+      }
+    }
+    const handler = HANDLERS[type];
+    const run = UNQUEUED.has(type)
+      ? Promise.resolve().then(() => handler(message))
+      : serialise(() => handler(message));
     const result = await run;
-    const { ok = true, error = null, ...payload } = result ?? {};
-    return { type: `${type}_result`, requestId, ok, error, generation, ...payload };
+    const { ok = true, error = null, nativeJsonLength = 0, ...payload } = result ?? {};
+    const reply = { type: `${type}_result`, requestId, ok, error, generation, ...payload };
+    if (bounded && !responseFits(reply, nativeJsonLength)) throw new Error(responseLimitError(type));
+    return reply;
   } catch (error) {
-    return {
-      type: `${type}_result`,
-      requestId,
-      ok: false,
-      error: describe(error),
-      generation,
-      ...failurePayload(type),
-    };
+    return engineFailureReply(type, requestId, error);
   }
 }
 

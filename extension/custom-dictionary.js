@@ -14,6 +14,48 @@ export const CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION = 1;
 export const EMPTY_CUSTOM_DICTIONARY_SEMANTIC_REVISION =
   "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945";
 
+export function customDictionaryMetadataMatches(value, semanticRevision, entryCount) {
+  return value?.title === CUSTOM_DICTIONARY_TITLE && value.revision === semanticRevision
+    && value.termCount === entryCount
+    && ["frequencyCount", "pitchCount", "kanjiCount", "mediaCount"].every(key => value[key] === 0)
+    && value.isUpdatable === false && value.indexUrl === null && value.downloadUrl === null && value.language === "ja";
+}
+
+export function assertCustomDictionaryCommit(dictionaries) {
+  const customIndexes = dictionaries.flatMap((dictionary, index) =>
+    dictionary?.id === CUSTOM_DICTIONARY_ID ? [index] : []);
+  if (customIndexes.length > 1) {
+    throw new Error("the custom dictionary state contains duplicate managed packages");
+  }
+  if (customIndexes.length === 0) return;
+  const custom = dictionaries[customIndexes[0]];
+  if (customIndexes[0] !== 0
+      || custom?.title !== CUSTOM_DICTIONARY_TITLE
+      || custom?.enabled !== true) {
+    throw new Error("the managed custom dictionary must stay enabled and first");
+  }
+  if (dictionaries.some((dictionary, index) =>
+    index !== customIndexes[0] && dictionary?.title === CUSTOM_DICTIONARY_TITLE)) {
+    throw new Error(`a dictionary named ${CUSTOM_DICTIONARY_TITLE} is already installed`);
+  }
+}
+
+export function assertCustomSourceState(dictionaries, semanticRevision, entryCount) {
+  const custom = dictionaries.filter((dictionary) => dictionary?.id === CUSTOM_DICTIONARY_ID);
+  if (entryCount === 0) {
+    if (custom.length !== 0) {
+      throw new Error("a zero-entry custom source cannot retain its managed package");
+    }
+    return;
+  }
+  assertCustomDictionaryCommit(dictionaries);
+  const entry = custom[0];
+  if (custom.length !== 1
+      || !customDictionaryMetadataMatches(entry, semanticRevision, entryCount)) {
+    throw new Error("the custom dictionary package does not match its source semantics");
+  }
+}
+
 const TERM_BANK_SIZE = 1_000;
 const ZIP_UTF8_FLAG = 0x0800;
 const ZIP_STORE = 0;

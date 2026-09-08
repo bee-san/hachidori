@@ -89,6 +89,11 @@ Run framework unit tests separately:
 node --test benchmark/*.test.mjs
 ```
 
+The live descendant RSS/CPU integration check requires Linux `/proc` and is
+explicitly skipped on other platforms. Its Linux assertions remain unchanged;
+the other framework tests, including the current-account Chrome cache fixture,
+also run on macOS. This does not add non-Linux process metrics to the runner.
+
 ## Standard Jitendex + Pixiv Light matrix
 
 The checked-in `jitendex-pixiv-light.json` suite runs Jitendex and Pixiv Light as

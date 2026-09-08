@@ -4,12 +4,12 @@
 
 <h1 align="center">Hachidori</h1>
 
-<p align="center"><strong>Your Japanese dictionaries, on every webpage — fast, private, and entirely in Chrome.</strong></p>
+<p align="center"><strong>The fastest, most feature rich Japanese dictionary app in the world</strong></p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-7c3aed" alt="GPL-3.0-or-later license"></a>
   <a href="#install-in-60-seconds"><img src="https://img.shields.io/badge/Chrome-118%2B-4285F4?logo=googlechrome&logoColor=white" alt="Chrome 118 or newer"></a>
-  <a href="#privacy-by-default"><img src="https://img.shields.io/badge/lookups-100%25_local-0f766e" alt="Lookups run locally"></a>
+  <a href="#privacy-by-default"><img src="https://img.shields.io/badge/dictionary_engine-local-0f766e" alt="Dictionary engine runs locally"></a>
   <a href="https://sonarcloud.io/summary/new_code?id=bee-san_hachidori"><img src="https://sonarcloud.io/api/project_badges/measure?project=bee-san_hachidori&metric=alert_status" alt="SonarQube Cloud quality gate"></a>
   <a href="https://github.com/bee-san/hachidori"><img src="https://img.shields.io/github/stars/bee-san/hachidori?style=flat&logo=github&color=f59e0b" alt="GitHub stars"></a>
 </p>
@@ -23,7 +23,7 @@
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
-Hachidori turns any Yomitan-compatible `.zip` dictionary into instant Japanese definitions on the page you are reading. Hover a word, see the matching entry, and keep reading. You do not need a native helper, local server, account, or network lookup.
+Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature rich and optionated.
 
 ## Install in 60 seconds
 
@@ -34,173 +34,76 @@ git clone https://github.com/bee-san/hachidori.git
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked** and select the cloned `hachidori/extension` directory.
-4. Open Hachidori's **Options**, install the four recommended dictionaries or import your own Yomitan `.zip`, then hover Japanese text on any page.
-
-Hachidori requires Chrome 118 or newer. The WebAssembly bundle is committed, so using the extension needs no build step and no submodules.
-
-## See it in action
+4. Hachidori opens a short setup tab on its first install and starts installing the four recommended dictionaries by itself. Open **Settings** from it any time to import your own Yomitan `.zip`, then hover Japanese text on any page.
 
 <p align="center">
-  <img src="docs/assets/demo.png" alt="Hachidori showing a Japanese dictionary definition while hovering text in Chrome" width="820">
+  <img src="docs/assets/startup-installing.png" alt="Hachidori's first-run setup tab installing the four recommended dictionaries with a download progress bar" width="720">
 </p>
 
-Hachidori scans forward from the character under your pointer, deinflects forms such as `食べたかった` to `食べる`, ranks matches using your chosen dictionaries, and renders the result beside the text.
+The setup tab uses the Settings theme in light and dark mode and walks through **Dictionaries → Anki → Try it**. Dictionaries download and install one after another with real download progress and an installation phase; a source that fails is reported with its reason while the others continue, and **Retry missing dictionaries** fetches only what is still missing. Once every source is installed, the result stays on screen for five seconds and setup moves on. Setup then looks for Anki: if you already mine with a Senren, Lapis or Kiku note type, Hachidori picks the one you use most, the deck you send it to, and fills in the matching field mapping for you — reading your collection only, never changing it. If Anki is not running, or your setup needs a choice only you can make, it says so and points at **Settings**; either way setup moves on by itself and keeps the result on the last screen. The last step is a real lookup: hover the Japanese sentence on the page and the ordinary popup answers from the dictionaries setup just installed — the same behaviour you get on any webpage. Finishing is one click away whether or not you try it. Initial preferences are set once: three-line compact definition summaries, Jitendex as their source and Bee's Ultimate Kanji Dictionary for clicked kanji, each only while you have not chosen otherwise. The tab appears only for a fresh installation: updates and restarts never reopen it or reset your settings, and the installation continues even if you close the tab; Settings shows **Resume setup** until you finish.
 
-## Why Hachidori?
+# Blazing Fast
 
-- **Bring your own dictionaries.** Import the same open Yomitan `.zip` ecosystem used by established Japanese-learning tools.
-- **Stay on the page.** Definitions appear beside the word under your pointer, including structured content, images, frequencies, pitch accents, and kanji details.
-- **Keep lookups private.** The engine, your dictionaries, and every lookup stay inside Chrome.
-- **Keep the tool focused.** Hachidori does dictionary import and hover lookup instead of becoming a full study suite.
-
-## Use it
-
-<p align="center">
-  <img src="docs/assets/recommended-installer.png" alt="Hachidori Options showing local ZIP import and the one-click recommended dictionary installer" width="760">
-</p>
-
-Open Hachidori's options page to:
-
-- install Jitendex, JMnedict for Yomitan, Bee's Ultimate Kanji Dictionary, and Jiten Frequency Dictionary in one click;
-- import one or more Yomitan dictionaries;
-- enable or disable dictionaries without losing their place in your library;
-- search titles and aliases, select visible matches, and bulk enable, disable, favourite, or unfavourite them;
-- reorder dictionaries by dragging, with the arrow buttons, or by entering a position;
-- create ordered dictionary groups and arrange each group's dictionaries;
-- check managed dictionaries for updates or install them on one global schedule;
-- maintain a personal dictionary from editable source, and add entries from term or kanji popups;
-- configure the hover key, delay, scan length, result limit, frequency ranking, and the dictionary opened when you click a kanji.
-
-Settings opens with your library in lookup order. Section links take you straight
-to imports, updates, groups, personal entries, or lookup preferences. Bulk actions
-appear when you select dictionaries; disabled dictionaries stay readable and editable.
-
-Lookup preferences save automatically after a short delay. The save status shows
-when changes are durable. If another Settings page changes them first, your draft
-stays visible: choose **Save my changes** to retry or **Use saved settings** to
-discard it. Already-open readers accept only newer committed settings, without
-reloading dictionaries. [Lookup settings screenshot](docs/assets/lookup-settings.png).
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/settings-dark.png">
-    <img src="docs/assets/settings.png" alt="Hachidori Settings with section navigation and the installed dictionary library first" width="960">
-  </picture>
-</p>
-
-Selected dictionaries import one at a time, with an outcome retained for every archive; a failure does not stop the rest. The starter installer behaves the same way and retries only recommendations that are still missing. Large dictionaries can take several minutes, so keep the page open until the batch finishes.
-
-The kanji dictionary chooser accepts both traditional Yomitan kanji dictionaries and term dictionaries with single-kanji entries.
-
-<p align="center">
-  <img src="docs/assets/managed-dictionary-updates.png" alt="Hachidori Settings showing the automatic update schedule and manual check and install controls" width="760">
-</p>
-
-Recommended dictionaries and imported dictionaries that declare complete HTTPS
-update sources are managed. **Check now** queries every managed dictionary,
-including disabled ones, and records availability without downloading an
-archive. Install one available update, install them all, or choose one global
-hourly, daily, weekly, or monthly schedule; scheduled checks install available
-updates automatically. Local archives without an update source remain
-local-only. Replacements keep the package's identity, position, alias,
-enabled/favourite state, and group memberships.
-
-### Custom dictionary and Note
-
-<p align="center">
-  <img src="docs/assets/custom-dictionary.png" alt="Hachidori Options showing the editable source for a managed custom dictionary" width="760">
-</p>
-
-Open **Custom dictionary** in Options to keep personal entries as readable text.
-Each entry is `term, reading, definition`; only the first two commas are
-separators, so a definition may contain commas. Blank lines and lines beginning
-with `#` are ignored. Use `\n` for a newline in a definition, `\\` for a literal
-backslash, and `\\n` for a literal backslash followed by `n`. Saving reports
-every malformed line and compiles all valid lines in their original order,
-including duplicates. Saving no valid entries removes the compiled custom
-dictionary while retaining the source.
-
-The compiled package is always enabled and first, while its alias and favourite
-state remain editable. The **Note** action in both term and kanji views prefills
-from the result currently shown; saving appends the entry and refreshes that
-exact popup view.
-
-## Benchmarks
-
-This directional smoke comparison uses the full **VNDB Characters by Bee** dictionary: 6,648,310 term rows, 146,570 media files, a 291.7 MB archive, and 4.46 GB expanded.
+Hachidori is 83 times faster than the worlds most popular Japanese dictionary app at importing dictionaries.
 
 <p align="center">
   <img src="docs/assets/benchmark-import.jpg" alt="Import-to-usable benchmark for the 6.65-million-row VNDB Characters by Bee dictionary: Hachidori 15 seconds, JL 4 minutes 6 seconds, and Yomitan 20 minutes 36 seconds" width="820">
 </p>
 
-<p align="center">
-  <img src="docs/assets/benchmark-hit-latency.jpg" alt="Shared-hit lookup latency benchmark: Hachidori 1.03 milliseconds, JL 4.84 milliseconds, and Yomitan 3.20 milliseconds" width="820">
-</p>
+It is even 3.5 times faster at looking up words.
 
 <p align="center">
   <img src="docs/assets/benchmark-throughput.jpg" alt="Two-query lookup throughput benchmark: Hachidori 1,108 lookups per second, JL 375, and Yomitan 317" width="820">
 </p>
 
-## Hachidori vs the alternatives
+# Media mining
 
-| | **Hachidori** | **Yomitan** | **hoshidicts CLI** |
-| --- | --- | --- | --- |
-| Best for | Focused hover lookups | A complete browser study workflow | Native and command-line integrations |
-| Runs in the browser | Yes, including the engine | Yes | No |
-| Imports Yomitan dictionaries | Yes | Yes | Yes |
-| Hover popup on ordinary pages | Yes | Yes | No built-in browser popup |
-| Native helper or local server needed | No | No | The native program itself |
-| Audio, Anki, and mining workflows | Deliberately out of scope | Built in or integrated | Build your own integration |
+Hachidori can optionally keep a bounded local history of one shared browser tab,
+application window, or monitor, then attach an animated AVIF and captured-source
+WAV to a mined Anki note. Source audio availability depends on the browser and
+chosen share. Capture is off by default and requires an explicit **Start
+capture** click; the controls may then be closed while recording continues.
 
-Choose Hachidori when you want the shortest path from a Yomitan dictionary to a private hover definition. Choose Yomitan when you want the broader study ecosystem; choose the hoshidicts CLI when you want the native engine outside a browser.
+Timing prefers a matching live texthooker event, then accessible video cues,
+then changes in a linked webpage text area. If none is usable, Hachidori uses
+the recent history pinned when the root lookup began. Capture stays local until
+you explicitly mine a note; raw media and incoming text are not persisted.
 
-## Privacy by default
+![Media capture controls recording a linked reading page](docs/assets/media-capture-controls.png)
 
-Lookups make no network calls. Your dictionaries and lookup text stay in Chrome, and the bundled WebAssembly engine queries them locally.
+See [Media mining setup, limits, and verification](docs/media-capture.md).
 
-The optional starter action downloads its four named archives directly from the
-publishers linked on the Options page. Manual update checks and scheduled update
-runs request managed dictionaries' HTTPS indexes; installing an update also
-downloads its HTTPS archive. A generic index may select a new HTTPS archive URL,
-while recommended sources remain pinned to their built-in catalogue entries.
-Importing a local ZIP and every lookup remain local. Imported dictionaries are
-persisted in Chrome's extension storage.
+# Custom Dictionary
 
-Custom-dictionary source and its generated indexes also stay in Chrome. Saving
-or appending a Note compiles them locally and makes no network request.
+Do you keep on seeing a name pop up over & over again in a book, but it's not in the dictionary? 
 
-Only import dictionaries you trust. Hachidori validates the archive title before the engine creates its on-disk directory, but dictionary-supplied content and CSS still come from the archive you choose.
+With Hachidori, you can highlight the word and add it as a custom definition.
 
-## Documentation
+# Lookup blur
 
-- [Architecture and WebAssembly build](docs/architecture.md)
-- [Test harness and guarantees](test/README.md)
-- [Contributing](CONTRIBUTING.md)
-- [Issues and support](https://github.com/bee-san/hachidori/issues)
+Sometimes we fall into a trap of looking up a word over & over again, but never learning it.
 
-## Build and test
+Hachidori records how many times you have looked up a word and can blur it for you for a few seconds to force you to remember it.
 
-Building the bundled engine requires [Emscripten](https://emscripten.org/docs/getting_started/downloads.html) and CMake:
+# Optionated
 
-```sh
-git clone --recurse-submodules https://github.com/bee-san/hachidori.git
-cd hachidori
-. ./wasm/env.sh && ./wasm/build.sh
-```
+Hachidori is an optionated program. If it does not benefit me, the creator, personally than I will not add that feature.
 
-The fast checks use the committed WebAssembly bundle:
+For contributors, please try to imagine yourselves in my shoes as a Japanese learner. I mainly read visual novels and manga. Specifically what about your feature request will benefit me?
 
-```sh
-node test/make-fixture.mjs
-node test/node-smoke.mjs
-node test/extension-smoke.mjs
-```
+I do this because I am a pretty average learner, and if I make this tool great for myself than I am making it great for the average Japanese learner.
 
-The [test guide](test/README.md) explains the real-Chrome E2E test, dependencies, fixed assertion counts, and native baseline.
+I will not mindlessly merge PRs that add nothing for me other than bloat.
 
-## Contributing
+# AI Usage
 
-Bug reports, focused pull requests, and documentation improvements are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md); if you are unsure where a change belongs, [open an issue](https://github.com/bee-san/hachidori/issues/new).
+This program was created with the assistance of AI. I used GPT 5.6 Ultra, and then GPT 6.0 Astra Ultra exclusively. 
+
+I have reviewed all plans, I set the direction of how this program works. Most pull requests are reviewed. Large parts of the program such as the actual dictionary core are hand-written. 
+
+On top of this, there are countless tests. At some points I even had Astra Ultra work for 26 hours straight benchmarking & using every part of the program to ensure it was good (it found many bugs).
+
+I also have personally been using this for months, and as I am the main user of this program I find bugs pretty often which I fix.
 
 ## Credits
 

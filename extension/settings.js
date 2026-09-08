@@ -4,13 +4,21 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import "./reader-options.js";
+import { createAudioSettingsController } from "./audio-settings.js";
+import { createAnkiSettingsController } from "./anki-settings.js";
+import { createBackupSettingsController } from "./backup-settings.js";
+import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
 import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
 } from "./dictionary-groups.js";
 import {
+  effectiveDictionarySchedule,
   managedDictionarySource,
-  managedUpdateSchedule,
+  nextDictionaryUpdateCheck,
+  normaliseUpdateSettings,
+  recommendedDictionaryInstalled,
 } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 import {
@@ -19,40 +27,60 @@ import {
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
 } from "./custom-dictionary.js";
+import { SETUP_STATE_KEY, normaliseSetupState, setupIncomplete } from "./setup-state.js";
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
 const UPDATE_TARGET = "hachidori-updates";
-const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
-const MODIFIERS = ["none", "shift", "ctrl", "alt"];
-const FREQUENCY_ORDERS = ["auto", "ascending", "descending", "disabled"];
+const AUDIO_TARGET = "hachidori-audio";
+const CAPTURE_TARGET = "hachidori-capture";
+const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", media: "Media capture", anki: "Anki" };
+const {
+  DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+  POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
+  clampOption, normaliseCorpusSeenUrl, normaliseKanjiSelection, normaliseOptions, normaliseTexthookerUrl,
+} = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
 // settings page can be left open.
 const STATUS_RETRY_MS = 5000;
 
-const DEFAULT_OPTIONS = {
-  scanLength: 16,
-  maxResults: 32,
-  modifier: "none",
-  hoverDelayMs: 50,
-  kanjiClickDictionary: "",
-  frequencyDictionary: "",
-  frequencyOrder: "auto",
-};
-
 const NUMBER_FIELDS = [
-  { key: "scanLength", id: "opt-scan-length", min: 1, max: 64 },
-  { key: "maxResults", id: "opt-max-results", min: 1, max: 256 },
-  { key: "hoverDelayMs", id: "opt-hover-delay", min: 0, max: 2000 },
+  { key: "scanLength", id: "opt-scan-length" },
+  { key: "maxResults", id: "opt-max-results" },
+  { key: "hoverDelayMs", id: "opt-hover-delay" },
+  { key: "popupHideDelayMs", id: "opt-hide-delay" },
+  { key: "popupNestingMaxDepth", id: "opt-popup-nesting-depth" },
+  { key: "popupColumns", id: "opt-popup-columns" },
+  { key: "compactDefinitionSummaryCount", id: "opt-summary-count" },
+  { key: "definitionBlurThreshold", id: "opt-blur-threshold" },
+  { key: "popupWidthPx", id: "opt-popup-width", live: true },
+  { key: "popupHeightPx", id: "opt-popup-height", live: true },
+  { key: "popupOpacityPercent", id: "opt-popup-opacity", live: true },
+];
+const METADATA_FIELDS = [
+  { key: "showLookupCounts", id: "opt-lookup-counts" },
+  { key: "corpusSeenEnabled", id: "opt-corpus-seen" },
+  { key: "definitionBlurEnabled", id: "opt-blur-enabled" },
+  { key: "showFrequencyDictionaryNames", id: "opt-frequency-names" },
+  { key: "averageFrequency", id: "opt-average-frequency" },
+  { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },
+  { key: "showPitchAccentBadge", id: "opt-pitch-badge" },
+  { key: "hidePopupGrammarTags", id: "opt-grammar-tags", inverted: true },
+];
+const APPEARANCE_CHOICES = [
+  { key: "popupTheme", id: "opt-popup-theme" },
+  { key: "popupToolbarPosition", id: "opt-popup-toolbar" },
+  { key: "definitionBlurDirection", id: "opt-blur-direction", values: DEFINITION_BLUR_DIRECTIONS },
+  { key: "definitionBlurReveal", id: "opt-blur-reveal", values: DEFINITION_BLUR_REVEALS },
 ];
 
 const numberFormat = new Intl.NumberFormat();
 
 let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] };
 let dictionaries = dictionaryState.dictionaries;
-let options = { ...DEFAULT_OPTIONS };
-let savedOptions = { ...DEFAULT_OPTIONS };
+let options = normaliseOptions({});
+let savedOptions = normaliseOptions({});
 let optionsRevision = -1;
 let pendingOptions = {};
 let pendingOptionsRevision = 0;
@@ -61,7 +89,13 @@ let optionsTimer = null;
 let optionsSaveFailed = false;
 let optionsEditRevision = null;
 const OPTIONS_SAVE_DELAY_MS = 150;
-let updateSettings = { schedule: "off", lastCheckedAt: null };
+const nameDrafts = createDictionaryNameDrafts({
+  delayMs: OPTIONS_SAVE_DELAY_MS,
+  afterSave: () => renderChangedDictionaryState(),
+});
+let updateSettings = { revision: -1, schedule: "off", lastCheckedAt: null };
+let pendingSchedule = null, savingSchedule = null, scheduleTimer = null;
+let scheduleSaveFailed = false;
 let customDocument = null;
 let customBaseDocument = null;
 let customBaseEditorText = "";
@@ -83,12 +117,275 @@ let pendingManagementFocus = null;
 let managementPointerDown = false;
 let dictionarySearch = "";
 const selectedDictionaryIds = new Set();
+const expandedDictionaryIds = new Set();
 let draggedDictionaryId = null;
 let statusTimer = null;
 let requestCounter = 0;
+let audioController;
+let ankiController;
+let backupController;
+let backingUp = false;
+let mediaStatusEpoch = 0;
+let mediaRuntimeState = "unavailable";
+
+const SECTION_STATUSES = {
+  "import-state": { section: "add-dictionaries", label: "Import" },
+  "update-state": { section: "updates", label: "Updates" },
+  "custom-dictionary-status": { section: "custom-dictionary", label: "Personal dictionary" },
+  "options-status": { section: "lookup", label: "Reading" },
+  "dict-group-error": { section: "dictionary-groups", label: "Groups" },
+  "backup-status": { section: "backup", label: "Backup" },
+};
+let activeSection = "dictionaries";
+const unseenSectionCompletions = new Set();
 
 function element(id) {
   return document.getElementById(id);
+}
+
+function sectionHasPendingWork(id) {
+  switch (id) {
+    case "import-state": return importing;
+    case "update-state": return updating || savingSchedule !== null || pendingSchedule !== null;
+    case "custom-dictionary-status": return customLoading || customSaving || customDictionaryDirty();
+    case "backup-status": return backingUp;
+    case "options-status": return savingOptions !== null || Object.keys(pendingOptions).length > 0;
+    default: return false;
+  }
+}
+
+function syncNavigationStatus(id) {
+  const { section, label } = SECTION_STATUSES[id];
+  const source = element(id);
+  const notice = element(`nav-status-${section}`);
+  if (section === activeSection) unseenSectionCompletions.delete(id);
+  const attention = source.classList.contains("is-error") || unseenSectionCompletions.has(id) || sectionHasPendingWork(id);
+  const message = section !== activeSection && attention && source.textContent
+    ? `${label}: ${source.textContent}` : "";
+  if (notice.textContent !== message) notice.textContent = message;
+  notice.classList.toggle("is-error", source.classList.contains("is-error"));
+  notice.classList.toggle("is-ready", source.classList.contains("is-ready"));
+}
+
+function setSectionStatus(id, message, tone, completed = false) {
+  const output = element(id);
+  output.textContent = message;
+  output.classList.toggle("is-error", tone === "error");
+  output.classList.toggle("is-ready", tone === "ready");
+  if (completed && SECTION_STATUSES[id].section !== activeSection) unseenSectionCompletions.add(id);
+  syncNavigationStatus(id);
+}
+
+function showSettingsSection(focus = false) {
+  const fragment = window.location.hash.slice(1);
+  const requested = fragment === "settings-content" ? activeSection : fragment;
+  const sections = [...document.querySelectorAll("main > section")];
+  activeSection = sections.some((section) => section.id === requested) ? requested : "dictionaries";
+  pendingManagementFocus = null;
+  for (const section of sections) section.hidden = section.id !== activeSection;
+  for (const link of document.querySelectorAll(".settings-nav a")) {
+    if (link.hash === `#${activeSection}`) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+  if (Object.hasOwn(OPTION_SECTIONS, activeSection)) {
+    element(`nav-status-${SECTION_STATUSES["options-status"].section}`).textContent = "";
+    SECTION_STATUSES["options-status"] = { section: activeSection, label: OPTION_SECTIONS[activeSection] };
+    const slot = element(activeSection).querySelector(".options-feedback-slot");
+    if (element("options-feedback").parentElement !== slot) slot.append(element("options-feedback"));
+  }
+  for (const id of Object.keys(SECTION_STATUSES)) syncNavigationStatus(id);
+  renderThemeChoices();
+  updateDesignPreview();
+  updateAudioSettings();
+  updateMediaSettings();
+  updateAnkiSettings();
+  updateBackupSettings();
+  if (fragment === "settings-content") element("settings-content").focus();
+  else if (focus) element(activeSection).querySelector("h1").focus();
+}
+
+function updateAudioSettings() {
+  if (activeSection !== "audio") { audioController?.stop(); return; }
+  audioController ??= createAudioSettingsController({
+    document,
+    readSources: () => options.audioSources,
+    editSources: sources => {
+      options.audioSources = sources;
+      writeOptions();
+    },
+    send: (type, fields) => send(type, fields, AUDIO_TARGET),
+  });
+  audioController.render();
+}
+
+function updateAnkiSettings() {
+  if (activeSection !== "anki" || optionsRevision < 0) return;
+  ankiController ??= createAnkiSettingsController({ document, readConfig: () => options.anki,
+    editConfig: config => { options.anki = config; writeOptions(); },
+    send: (type, fields) => send(type, fields, WORKER_TARGET),
+  });
+  ankiController.render();
+}
+
+function renderMediaSettings() {
+  const capture = options.mediaCapture;
+  const values = {
+    "opt-media-enabled": capture.enabled,
+    "opt-media-animation": capture.includeAnimation,
+    "opt-media-audio": capture.includeCapturedAudio,
+    "opt-media-native-cues": capture.page.nativeCues,
+    "opt-media-dom-text": capture.page.domText,
+    "opt-media-auto-area": capture.page.autoLearnArea,
+    "opt-media-texthooker": capture.texthooker.enabled,
+  };
+  for (const [id, checked] of Object.entries(values)) element(id).checked = checked;
+  const choices = {
+    "opt-media-history": capture.historySeconds,
+    "opt-media-clip": capture.clipSeconds,
+    "opt-media-preset": capture.videoPreset,
+    "opt-media-timing": capture.timingMode,
+    "opt-media-offset": capture.estimatedOffsetMs,
+    "opt-media-texthooker-url": capture.texthooker.url,
+    "opt-media-texthooker-format": capture.texthooker.format,
+  };
+  for (const [id, value] of Object.entries(choices)) {
+    const input = element(id);
+    if (input !== document.activeElement) input.value = String(value);
+  }
+  element("opt-media-auto-area").disabled = !capture.page.domText;
+  element("opt-media-texthooker-format").disabled = !capture.texthooker.enabled;
+}
+
+async function updateMediaSettings() {
+  if (activeSection !== "media") return;
+  renderMediaSettings();
+  const epoch = ++mediaStatusEpoch;
+  try {
+    const reply = await send("hd_capture_status", {}, CAPTURE_TARGET);
+    if (epoch !== mediaStatusEpoch) return;
+    if (!reply.ok) throw new Error(reply.error || "Capture page unavailable.");
+    const state = { recording: "Recording", disabled: "Disabled" }[reply.state] ?? "Stopped";
+    mediaRuntimeState = reply.state;
+    const source = reply.mediaSource?.name ? ` · ${reply.mediaSource.name}` : "";
+    const linked = reply.linkedPage?.title ? ` · linked to ${reply.linkedPage.title}` : "";
+    element("media-runtime-status").textContent = `${state}${source}${linked}`;
+  } catch {
+    if (epoch === mediaStatusEpoch) {
+      mediaRuntimeState = "unavailable";
+      element("media-runtime-status").textContent = "Capture page closed. Open it before starting a reading session.";
+    }
+  }
+}
+
+async function editMediaCapture(mutator, { immediate = false } = {}) {
+  let recording = mediaRuntimeState === "recording";
+  if (!immediate) {
+    try {
+      const status = await send("hd_capture_status", {}, CAPTURE_TARGET);
+      recording = status.ok && status.state === "recording";
+      mediaRuntimeState = status.ok ? status.state : "unavailable";
+    } catch {
+      recording = false;
+      mediaRuntimeState = "unavailable";
+    }
+  }
+  const next = {
+    ...options.mediaCapture,
+    texthooker: { ...options.mediaCapture.texthooker },
+    page: { ...options.mediaCapture.page },
+  };
+  mutator(next);
+  if (!immediate && recording
+      && !window.confirm("Changing media capture settings stops the current capture and clears unsubmitted clips. Apply this change?")) {
+    renderMediaSettings();
+    return false;
+  }
+  options.mediaCapture = next;
+  renderMediaSettings();
+  writeOptions();
+  return true;
+}
+
+function updateBackupSettings() {
+  if (activeSection !== "backup") return;
+  backupController ??= createBackupSettingsController({
+    document, send,
+    download: () => send("hd_backup_download", {}, WORKER_TARGET),
+    checkReady() {
+      if (importing || updating || removing || committing || customLoading || customSaving || pendingDictionaryCommits > 0) {
+        throw new Error("Wait for the current dictionary operation to finish, then try again.");
+      }
+      if (customDictionaryDirty() || savingOptions !== null || optionsEditRevision !== null
+          || Object.keys(pendingOptions).length > 0 || savingSchedule !== null || pendingSchedule !== null
+          || nameDrafts.hasPendingChanges()) {
+        throw new Error("Save or discard your pending changes before working with a backup.");
+      }
+    },
+    setBusy(value) { backingUp = value; setControlsDisabled(importing); },
+    status: (message, tone, completed) => setSectionStatus("backup-status", message, tone, completed),
+    async refresh() {
+      const stored = await chrome.storage.local.get(["options", "dictionaryUpdates", CUSTOM_DICTIONARY_SOURCE_KEY]);
+      adoptOptions(stored.options);
+      adoptUpdateSettings(stored.dictionaryUpdates);
+      adoptCustomDictionaryDocument(stored[CUSTOM_DICTIONARY_SOURCE_KEY]);
+      await reloadDictionaries();
+      await refreshStatus();
+    },
+  });
+}
+
+function updateDesignPreview() {
+  if (activeSection !== "design") return;
+  let frame = element("design-preview");
+  if (!frame) {
+    frame = document.createElement("iframe");
+    frame.id = "design-preview";
+    frame.title = "Live dictionary popup preview";
+    frame.addEventListener("load", updateDesignPreview);
+    frame.src = "design-preview.html";
+    element("preview-canvas").append(frame);
+    resizeDesignPreview();
+    element("preview-size").addEventListener("change", resizeDesignPreview);
+    if (typeof ResizeObserver === "function") {
+      new ResizeObserver(resizeDesignPreview).observe(element("preview-viewport"));
+    }
+  }
+  if (frame.style.width !== `${options.popupWidthPx + 96}px`
+      || frame.style.height !== `${options.popupHeightPx + 136}px`) resizeDesignPreview();
+  frame.contentWindow.HDDesignPreview?.update(options, dictionaryState);
+}
+
+function resizeDesignPreview() {
+  const viewport = element("preview-viewport");
+  const frame = element("design-preview");
+  const width = options.popupWidthPx + 96;
+  const height = options.popupHeightPx + 136;
+  const scale = element("preview-size").value === "actual" ? 1 : Math.min(1, viewport.clientWidth / width);
+  frame.style.width = `${width}px`;
+  frame.style.height = `${height}px`;
+  frame.style.transform = `scale(${scale})`;
+  element("preview-canvas").style.width = `${width * scale}px`;
+  element("preview-canvas").style.height = `${height * scale}px`;
+}
+
+function attachSettingsNavigation() {
+  window.addEventListener("hashchange", () => showSettingsSection(true));
+  document.querySelector(".skip-link").addEventListener("click", (event) => {
+    event.preventDefault();
+    element("settings-content").focus();
+  });
+  for (const link of document.querySelectorAll(".settings-nav a, .section-action")) {
+    link.addEventListener("click", (event) => {
+      if (link.hash === window.location.hash
+          && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+        // The native same-fragment action would move focus back to the section
+        // after our heading focus. Modified clicks retain their browser action.
+        event.preventDefault();
+        showSettingsSection(true);
+      }
+    });
+  }
+  showSettingsSection();
 }
 
 function describe(error) {
@@ -110,14 +407,6 @@ async function send(type, fields = {}, target = TARGET) {
     throw new Error("the extension's service worker did not reply");
   }
   return reply;
-}
-
-function clampInt(value, min, max, fallback) {
-  const number = Math.trunc(Number(value));
-  if (!Number.isFinite(number)) {
-    return fallback;
-  }
-  return Math.min(max, Math.max(min, number));
 }
 
 function nonnegativeCount(value) {
@@ -156,6 +445,7 @@ function normaliseDictionary(row) {
     indexUrl: nonemptyString(row?.indexUrl),
     downloadUrl: nonemptyString(row?.downloadUrl),
     language: nonemptyString(row?.language),
+    frequencyMode: nonemptyString(row?.frequencyMode),
     termCount: nonnegativeCount(row?.termCount),
     frequencyCount: nonnegativeCount(row?.frequencyCount),
     pitchCount: nonnegativeCount(row?.pitchCount),
@@ -163,6 +453,7 @@ function normaliseDictionary(row) {
     mediaCount: nonnegativeCount(row?.mediaCount),
     installedAt: stringValue(row?.installedAt),
     lastUpdateCheck: row?.lastUpdateCheck ?? null,
+    ...(row?.updateScheduleOverride === undefined ? {} : { updateScheduleOverride: row.updateScheduleOverride }),
     ...(sourceId === null ? {} : { sourceId }),
   };
 }
@@ -188,13 +479,6 @@ function normaliseDictionaryState(value) {
   };
 }
 
-function normaliseUpdateSettings(value) {
-  return {
-    schedule: managedUpdateSchedule(value?.schedule) ?? "off",
-    lastCheckedAt: typeof value?.lastCheckedAt === "string" ? value.lastCheckedAt : null,
-  };
-}
-
 function adoptDictionaryState(value) {
   const next = normaliseDictionaryState(value);
   if (next.revision <= dictionaryState.revision) {
@@ -203,6 +487,15 @@ function adoptDictionaryState(value) {
   dictionaryState = next;
   dictionaries = dictionaryState.dictionaries;
   pruneDictionarySelection();
+  return true;
+}
+
+function adoptUpdateSettings(value) {
+  const next = normaliseUpdateSettings(value);
+  if (next.revision <= updateSettings.revision) return false;
+  const changedSchedule = next.schedule !== updateSettings.schedule;
+  updateSettings = next;
+  if (changedSchedule) refreshDictionarySchedules();
   return true;
 }
 
@@ -245,19 +538,6 @@ function isManagedCustomDictionary(dictionary) {
   return dictionary?.id === CUSTOM_DICTIONARY_ID;
 }
 
-function normaliseKanjiSelection(value) {
-  if (
-    value
-    && typeof value === "object"
-    && typeof value.title === "string"
-    && value.title !== ""
-    && KANJI_SELECTION_KINDS.has(value.kind)
-  ) {
-    return { title: value.title, kind: value.kind };
-  }
-  return typeof value === "string" ? value : "";
-}
-
 function selectionParts(value) {
   if (value && typeof value === "object") {
     return value;
@@ -286,15 +566,17 @@ function selectionFromValue(value) {
   return normaliseKanjiSelection(value);
 }
 
+function isAvailableFrequencyDictionary(dictionary) {
+  return dictionary.enabled !== false && hasCapability(dictionary, "freq");
+}
+
+function selectedFrequencyDictionary(title = options.frequencyDictionary) {
+  return dictionaries.find((dictionary) => dictionary.title === title
+    && isAvailableFrequencyDictionary(dictionary));
+}
+
 function normaliseDictionarySelections() {
   let changed = false;
-  if (options.frequencyDictionary) {
-    const selected = dictionaries.find((entry) => entry.title === options.frequencyDictionary);
-    if (!selected || selected.enabled === false || !hasCapability(selected, "freq")) {
-      options.frequencyDictionary = "";
-      changed = true;
-    }
-  }
   const kanjiSelection = selectionParts(options.kanjiClickDictionary);
   if (kanjiSelection) {
     const selected = dictionaries.find((entry) => entry.title === kanjiSelection.title);
@@ -310,22 +592,6 @@ function normaliseDictionarySelections() {
   return changed;
 }
 
-function normaliseOptions(value) {
-  const stored = value ?? {};
-  const next = { ...DEFAULT_OPTIONS };
-  for (const field of NUMBER_FIELDS) {
-    next[field.key] = clampInt(stored[field.key], field.min, field.max, DEFAULT_OPTIONS[field.key]);
-  }
-  next.modifier = MODIFIERS.includes(stored.modifier) ? stored.modifier : DEFAULT_OPTIONS.modifier;
-  next.frequencyOrder = FREQUENCY_ORDERS.includes(stored.frequencyOrder)
-    ? stored.frequencyOrder
-    : DEFAULT_OPTIONS.frequencyOrder;
-  next.frequencyDictionary =
-    typeof stored.frequencyDictionary === "string" ? stored.frequencyDictionary : "";
-  next.kanjiClickDictionary = normaliseKanjiSelection(stored.kanjiClickDictionary);
-  return next;
-}
-
 function setStatus(message, tone) {
   const status = element("engine-status");
   status.textContent = message;
@@ -334,25 +600,16 @@ function setStatus(message, tone) {
 }
 
 function setImportState(message, tone) {
-  const state = element("import-state");
-  state.textContent = message;
-  state.classList.toggle("is-error", tone === "error");
-  state.classList.toggle("is-ready", tone === "ready");
+  setSectionStatus("import-state", message, tone, tone === "ready");
   element("import-progress").hidden = tone !== "busy";
 }
 
 function setUpdateState(message, tone = "") {
-  const state = element("update-state");
-  state.textContent = message;
-  state.classList.toggle("is-error", tone === "error");
-  state.classList.toggle("is-ready", tone === "ready");
+  setSectionStatus("update-state", message, tone, tone === "ready");
 }
 
-function setCustomDictionaryStatus(message, tone = "") {
-  const status = element("custom-dictionary-status");
-  status.textContent = message;
-  status.classList.toggle("is-error", tone === "error");
-  status.classList.toggle("is-ready", tone === "ready");
+function setCustomDictionaryStatus(message, tone = "", completed = false) {
+  setSectionStatus("custom-dictionary-status", message, tone, completed);
 }
 
 function renderCustomDictionaryErrors(errors) {
@@ -386,7 +643,7 @@ function customDictionaryDraftSource() {
 }
 
 function renderCustomDictionaryControls() {
-  const busy = importing || updating || removing || committing || customLoading || customSaving;
+  const busy = importing || updating || removing || committing || customLoading || customSaving || backingUp;
   const open = element("custom-dictionary-open");
   const source = element("custom-dictionary-source");
   open.disabled = busy;
@@ -401,7 +658,7 @@ function showCustomDictionaryEditor(visible) {
   element("custom-dictionary-form").hidden = !visible;
   const open = element("custom-dictionary-open");
   open.setAttribute("aria-expanded", String(visible));
-  open.textContent = visible ? "Close source editor" : "Open source editor";
+  open.textContent = visible ? "Close editor" : "Edit source";
 }
 
 function cancelCustomDictionaryValidation() {
@@ -483,11 +740,12 @@ async function loadCustomDictionarySource() {
     customEditorLoaded = true;
     resetCustomDictionaryDraft(customDocument);
     showCustomDictionaryEditor(true);
-    setCustomDictionaryStatus(`Loaded source revision ${customDocument.revision}.`, "ready");
+    setCustomDictionaryStatus(`Loaded source revision ${customDocument.revision}.`, "ready", true);
   } catch (error) {
     setCustomDictionaryStatus(`Could not load the custom dictionary source: ${describe(error)}`, "error");
   } finally {
     customLoading = false;
+    syncNavigationStatus("custom-dictionary-status");
     renderCustomDictionaryControls();
   }
 }
@@ -570,12 +828,14 @@ async function saveCustomDictionarySource(event) {
       setCustomDictionaryStatus(
         customDictionarySavedMessage(reply, pending.parsed.entries.length, pending.parsed.errors.length),
         "ready",
+        true,
       );
     }
   } catch (error) {
     setCustomDictionaryStatus(`Could not save the custom dictionary: ${describe(error)}`, "error");
   } finally {
     customSaving = false;
+    syncNavigationStatus("custom-dictionary-status");
     setControlsDisabled(importing);
   }
 }
@@ -591,19 +851,27 @@ function availableUpdates() {
 
 function renderUpdateControls() {
   const schedule = element("update-schedule");
-  if (schedule !== document.activeElement) {
-    schedule.value = updateSettings.schedule;
-  }
+  const value = pendingSchedule?.schedule ?? savingSchedule?.schedule ?? updateSettings.schedule;
+  if (schedule.value !== value) schedule.value = value;
+  element("update-schedule-conflict-actions").hidden = !scheduleSaveFailed;
   const checked = updateSettings.lastCheckedAt === null
     ? null
     : new Date(updateSettings.lastCheckedAt);
   element("update-last-checked").textContent = checked !== null && !Number.isNaN(checked.getTime())
     ? `Last checked ${checked.toLocaleString()}.`
     : "Never checked.";
-  const busy = updating || importing || removing || committing || customSaving;
+  const busy = updating || importing || removing || committing || customSaving || backingUp;
   element("update-all").disabled = busy || availableUpdates().length === 0;
   element("update-check-now").disabled = busy;
-  schedule.disabled = busy;
+  schedule.disabled = busy || updateSettings.revision < 0;
+}
+
+function refreshDictionarySchedules() {
+  const byId = new Map(dictionaries.map(dictionary => [dictionary.id, dictionary]));
+  for (const row of document.querySelectorAll(".dict-row")) {
+    const entry = byId.get(row.dataset.dictionaryId);
+    if (entry) renderDictionarySchedule(row, entry);
+  }
 }
 
 function clearImportResults() {
@@ -639,8 +907,7 @@ function renderRecommendedCatalogue() {
 }
 
 function missingRecommendedDictionaries() {
-  return RECOMMENDED_DICTIONARIES.filter((entry) => !dictionaries.some((dictionary) =>
-    dictionary.sourceId === entry.sourceId || dictionary.indexUrl === entry.indexUrl));
+  return RECOMMENDED_DICTIONARIES.filter((entry) => !recommendedDictionaryInstalled(entry, dictionaries));
 }
 
 function renderRecommendedActions() {
@@ -651,12 +918,13 @@ function renderRecommendedActions() {
 }
 
 function setControlsDisabled(disabled) {
-  const blocked = disabled || removing || updating || customSaving;
+  const blocked = disabled || removing || updating || customSaving || backingUp;
   element("import-file").disabled = blocked || committing;
   element("install-recommended").disabled = blocked || committing;
   element("retry-recommended").disabled = blocked || committing;
   for (const control of document.querySelectorAll(".dict-row select, .dict-row input, .dict-row button")) {
-    control.disabled = blocked || control.dataset.pinnedDisabled === "true";
+    control.disabled = blocked || control.dataset.pinnedDisabled === "true"
+      || (committing && control.classList.contains("dict-update-schedule"));
   }
   for (const drag of document.querySelectorAll(".dict-drag")) {
     drag.draggable = !blocked && drag.dataset.pinnedDisabled !== "true";
@@ -727,17 +995,18 @@ async function refreshStatus() {
 
 function renderFrequencyChoices() {
   const select = element("opt-frequency-dictionary");
+  if (select === document.activeElement) return;
   const previous = options.frequencyDictionary;
   select.textContent = "";
 
   const automatic = document.createElement("option");
   automatic.value = "";
-  automatic.textContent = "Any — use every frequency dictionary";
+  automatic.textContent = "Any — automatic across all dictionaries";
   select.appendChild(automatic);
 
-  const enabled = dictionaries.filter((entry) => entry.enabled !== false);
+  const enabled = dictionaries.filter(isAvailableFrequencyDictionary);
   const withFrequencies = new Set(
-    enabled.filter((entry) => hasCapability(entry, "freq")).map((entry) => entry.title),
+    enabled.map((entry) => entry.title),
   );
   const groups = [{ label: "Frequency dictionaries", titles: [...withFrequencies] }];
   for (const group of groups) {
@@ -757,13 +1026,123 @@ function renderFrequencyChoices() {
   }
 
   // Keep a removed selection visible rather than silently rewriting the option.
-  if (previous !== "" && !enabled.some((entry) => entry.title === previous)) {
+  if (previous !== "" && !withFrequencies.has(previous)) {
     const stale = document.createElement("option");
     stale.value = previous;
-    stale.textContent = `${previous} (not imported)`;
+    stale.textContent = `${previous} (unavailable)`;
+    stale.disabled = true;
     select.appendChild(stale);
   }
   select.value = previous;
+}
+
+function renderCompactSummaryControls() {
+  const enabled = options.showCompactDefinitionSummary;
+  element("opt-compact-summary").checked = enabled;
+  const count = element("opt-summary-count");
+  // Disabling Chrome's focused select emits blur before its pending change.
+  // Keep that draft's captured revision until the existing focusout boundary.
+  if (count !== document.activeElement) count.disabled = !enabled;
+  renderPreferredDictionary("opt-summary-dictionary", options.compactDefinitionSummaryDictionary,
+    "term", "Automatic — first available definition", enabled);
+}
+
+// Blur needs counts. The delay applies only to the timed reveal; the field
+// shows seconds, fractions allowed, for the stored milliseconds.
+function renderDefinitionBlurControls() {
+  const enabled = options.definitionBlurEnabled && options.showLookupCounts;
+  for (const [id, key] of [["opt-blur-direction", "definitionBlurDirection"], ["opt-blur-reveal", "definitionBlurReveal"],
+    ["opt-blur-threshold", "definitionBlurThreshold"]]) {
+    const control = element(id);
+    if (control === document.activeElement) continue;
+    control.value = String(options[key]);
+    control.disabled = !enabled;
+  }
+  const delay = element("opt-blur-delay");
+  if (delay !== document.activeElement) {
+    delay.value = String(options.definitionBlurDelayMs / 1000);
+    delay.disabled = !enabled || options.definitionBlurReveal !== "timed";
+  }
+}
+
+function renderPreferredDictionary(id, preferred, kind, automaticLabel, enabled) {
+  const select = element(id);
+  if (select === document.activeElement) return;
+  select.disabled = !enabled;
+  select.replaceChildren(new Option(automaticLabel, ""));
+  let available = preferred === "";
+  for (const dictionary of dictionaries) {
+    if (!hasCapability(dictionary, kind)) continue;
+    const label = dictionaryLabel(dictionary) + (dictionary.enabled === false ? " (disabled)" : "");
+    select.add(new Option(label, dictionary.title));
+    available ||= dictionary.title === preferred;
+  }
+  // Already-missing sources remain a soft preference, not a lookup filter.
+  if (!available) select.add(new Option(`${preferred} (unavailable)`, preferred));
+  select.value = preferred;
+}
+
+function renderMetadataControls() {
+  for (const field of METADATA_FIELDS) {
+    element(field.id).checked = field.inverted ? !options[field.key] : options[field.key];
+  }
+  const corpusUrl = element("opt-corpus-url");
+  if (corpusUrl !== document.activeElement) {
+    corpusUrl.value = options.corpusSeenUrl;
+    corpusUrl.disabled = !options.corpusSeenEnabled;
+  }
+  renderDefinitionBlurControls();
+  renderPreferredDictionary("opt-pitch-dictionary", options.pitchAccentFuriganaDictionary,
+    "pitch", "Automatic — first available pitch", options.showPitchAccentFurigana);
+}
+
+function renderPopupImageSources() {
+  const select = element("opt-image-source");
+  if (select === document.activeElement) return;
+  const source = options.popupImageSource;
+  const previous = selectionValue(source);
+  select.replaceChildren(new Option("Automatic — current tab", ""));
+  let available = source === null;
+  function addSource(value, label) {
+    const encoded = selectionValue(value);
+    select.add(new Option(label, encoded));
+    available ||= encoded === previous;
+  }
+  for (const dictionary of dictionaries) {
+    addSource({ kind: "dictionary", title: dictionary.title },
+      `Dictionary: ${dictionaryLabel(dictionary)}${dictionary.enabled === false ? " (disabled)" : ""}`);
+  }
+  for (const group of dictionaryState.groups) {
+    addSource({ kind: "tabGroup", id: group.id }, `Group: ${group.name}`);
+  }
+  if (!available) addSource(source, `${source.title || source.id} (unavailable)`);
+  select.value = previous;
+}
+
+function renderFrequencyOrder() {
+  const order = element("opt-frequency-order");
+  if (order !== document.activeElement) order.value = options.frequencyOrder;
+  const selected = selectedFrequencyDictionary();
+  for (const choice of order.options) {
+    choice.disabled = !selected && (choice.value === "ascending" || choice.value === "descending");
+  }
+  element("opt-frequency-auto").disabled = !selected;
+  let hint;
+  if (options.frequencyOrder === "auto") hint = "Automatic compares all enabled frequency dictionaries in their listed order.";
+  else if (options.frequencyOrder === "disabled") hint = "Frequency sorting is off. Your dictionary choice is remembered.";
+  else if (!selected) hint = "Choose an available frequency dictionary to use this direction.";
+  else if (selected.frequencyMode === "rank-based") hint = "Rank-based: Auto puts the lowest numbers first.";
+  else if (selected.frequencyMode === "occurrence-based") hint = "Occurrence-based: Auto puts the highest numbers first.";
+  else hint = "No mode declared: Auto uses highest numbers first.";
+  const hintElement = element("frequency-order-hint");
+  if (hintElement.textContent !== hint) hintElement.textContent = hint;
+}
+
+function applyFrequencyDirection() {
+  const direction = selectedFrequencyDictionary()?.frequencyMode === "rank-based" ? "ascending" : "descending";
+  options.frequencyOrder = options.frequencyDictionary === "" ? "auto" : direction;
+  renderFrequencyOrder();
+  writeOptions();
 }
 
 function appendKanjiGroup(select, enabled, group, availableValues) {
@@ -843,6 +1222,28 @@ function renderKanjiChoices() {
   select.value = selectedValue;
 }
 
+function renderThemeChoices() {
+  if (activeSection !== "design") return;
+  const theme = element("opt-popup-theme");
+  if (theme.options.length === 0) {
+    for (const group of POPUP_THEME_GROUPS) {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = group.label;
+      for (const entry of group.themes) optgroup.append(new Option(entry.label, entry.id));
+      theme.append(optgroup);
+    }
+  }
+  if (theme !== document.activeElement) theme.value = options.popupTheme;
+}
+
+function renderCustomCss(force = false) {
+  const editor = element("opt-custom-popup-css");
+  if ((force || editor !== document.activeElement) && editor.value !== options.customPopupCss) {
+    editor.value = options.customPopupCss;
+  }
+  element("custom-css-count").textContent = `${numberFormat.format(editor.value.length)} characters`;
+}
+
 function renderOptions() {
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
@@ -850,16 +1251,32 @@ function renderOptions() {
       input.value = String(options[field.key]);
     }
   }
-  const modifier = element("opt-modifier");
-  if (modifier !== document.activeElement) {
-    modifier.value = options.modifier;
+  element("opt-hover-enabled").checked = options.hoverEnabled;
+  element("opt-japanese-only").checked = options.onlyScanJapaneseText;
+  element("opt-source-highlight").checked = options.sourceHighlightEnabled;
+  element("opt-audio-autoplay").checked = options.audioAutoplay;
+  renderThemeChoices();
+  renderCustomCss();
+  const toolbar = element("opt-popup-toolbar");
+  if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
+  const mode = element("opt-lookup-mode");
+  if (mode !== document.activeElement) mode.value = options.lookupMode;
+  const activation = element("opt-activation-key");
+  if (activation.options.length === 0) {
+    for (const key of ACTIVATION_KEYS) activation.add(new Option(key, key));
   }
-  const order = element("opt-frequency-order");
-  if (order !== document.activeElement) {
-    order.value = options.frequencyOrder;
-  }
+  if (activation !== document.activeElement) activation.value = options.activationKey;
+  activation.disabled = options.lookupMode !== "activation";
+  renderFrequencyOrder();
   renderKanjiChoices();
   renderFrequencyChoices();
+  renderCompactSummaryControls();
+  renderPopupImageSources();
+  renderMetadataControls();
+  updateDesignPreview();
+  updateAudioSettings();
+  updateMediaSettings();
+  updateAnkiSettings();
 }
 
 function addCountBadge(container, label, count) {
@@ -912,6 +1329,7 @@ function bindDictionaryUpdate(row, entry) {
   const status = dictionaryUpdateStatus(entry);
   const output = row.querySelector(".dict-update-status");
   output.textContent = status.text;
+  output.hidden = !entry.lastUpdateCheck;
   output.classList.toggle("is-ready", status.tone === "ready");
   output.classList.toggle("is-available", status.tone === "available");
   output.classList.toggle("is-error", status.tone === "error");
@@ -923,6 +1341,48 @@ function bindDictionaryUpdate(row, entry) {
   update.addEventListener("click", () => {
     void runManagedUpdate("hd_updates_install", [entry.id]);
   });
+  renderDictionarySchedule(row, entry);
+  const schedule = row.querySelector(".dict-update-schedule");
+  schedule.value = entry.updateScheduleOverride ?? "inherit";
+  schedule.setAttribute("aria-label", `Automatic updates for ${dictionaryLabel(entry)}`);
+  schedule.addEventListener("change", async () => {
+    const value = schedule.value === "inherit" ? null : schedule.value;
+    let stale = false;
+    await commitDictionaries(updateDictionary(entry.id, current => {
+      if ((current.updateScheduleOverride ?? null) !== (entry.updateScheduleOverride ?? null)
+          || !isUpdateCheckable(current)) {
+        stale = true;
+        return current;
+      }
+      return value === (current.updateScheduleOverride ?? null) ? current : { ...current, updateScheduleOverride: value };
+    }), false);
+    if (stale) {
+      const current = dictionaries.find(dictionary => dictionary.id === entry.id);
+      if (current) {
+        schedule.value = current.updateScheduleOverride ?? "inherit";
+        renderDictionarySchedule(row, current);
+      }
+      setStatus("The dictionary schedule changed elsewhere. Review its current value before choosing again.", "error");
+    }
+  });
+}
+
+function renderDictionarySchedule(row, entry) {
+  row.querySelector(".dict-schedule").hidden = !isUpdateCheckable(entry);
+  const schedule = row.querySelector(".dict-update-schedule");
+  const effective = effectiveDictionarySchedule(entry, updateSettings.schedule);
+  const inherit = schedule.querySelector('[value="inherit"]');
+  const label = `Use default (${updateSettings.schedule})`;
+  if (inherit.textContent !== label) inherit.textContent = label;
+  const now = Date.now();
+  const due = nextDictionaryUpdateCheck(entry, updateSettings.schedule, now);
+  const output = row.querySelector(".dict-next-check");
+  let text = "Automatic updates off";
+  if (due !== null) {
+    const next = due <= now ? "Due now" : `Next check ${new Date(due).toLocaleString()}`;
+    text = `${effective.charAt(0).toUpperCase()}${effective.slice(1)} · ${next}`;
+  }
+  if (output.textContent !== text) output.textContent = text;
 }
 
 function updateItemById(current, id, update) {
@@ -976,6 +1436,7 @@ function focusedManagementControl() {
   if (dictionaryRow?.dataset.dictionaryId) {
     const controlClass = [
       "dict-selected",
+      "dict-details-toggle",
       "dict-display-name",
       "dict-enabled",
       "dict-up",
@@ -983,6 +1444,7 @@ function focusedManagementControl() {
       "dict-position-input",
       "dict-move",
       "dict-update",
+      "dict-update-schedule",
       "dict-remove",
     ].find((name) => active.classList.contains(name));
     return controlClass
@@ -1096,15 +1558,10 @@ function renderDeferredAfterBlur(control) {
 
 function bindDictionaryAlias(row, entry) {
   const input = row.querySelector(".dict-display-name");
-  input.value = entry.displayName || "";
   input.placeholder = entry.title;
   input.setAttribute("aria-label", `Display name for ${entry.title}`);
   input.title = `Display name for ${entry.title}`;
-  input.addEventListener("change", () => {
-    const value = input.value.trim() || null;
-    void commitDictionaries(updateDictionary(entry.id, (dictionary) =>
-      dictionary.displayName === value ? dictionary : { ...dictionary, displayName: value }), false);
-  });
+  bindNameDraft(input, "dictionaries", entry.id, "displayName", entry.displayName ?? "", value => value.trim());
   renderDeferredAfterBlur(input);
 }
 
@@ -1188,6 +1645,9 @@ function bindDictionaryOrder(row, entry, index) {
 function renderDictionaryRow(template, entry, index) {
   const row = template.content.firstElementChild.cloneNode(true);
   row.dataset.dictionaryId = entry.id;
+  row.querySelector(".dict-details").open = expandedDictionaryIds.has(entry.id);
+  row.querySelector(".dict-details-toggle").setAttribute("aria-label", `Details for ${entry.title}`);
+  row.querySelector(".dict-pinned").hidden = !isManagedCustomDictionary(entry);
   row.classList.toggle("is-off", !entry.enabled);
   row.querySelector(".dict-rank").textContent = String(index + 1);
   bindDictionarySelection(row, entry);
@@ -1233,19 +1693,33 @@ function renderDictionaryRow(template, entry, index) {
   return row;
 }
 
-function renderDictionaries() {
+function renderDictionaries(reuseRows = false) {
   const list = element("dict-list");
+  const reusableRows = new Map();
+  // Retain disclosure state by package identity, including temporarily filtered rows.
+  for (const row of list.children) {
+    if (row.querySelector(".dict-details").open) expandedDictionaryIds.add(row.dataset.dictionaryId);
+    else expandedDictionaryIds.delete(row.dataset.dictionaryId);
+    // Filtering can retain unchanged controls, but an adopted state awaiting
+    // blur has newer metadata and listener inputs than the displayed rows.
+    if (reuseRows && !dictionaryRenderDeferred) reusableRows.set(row.dataset.dictionaryId, row);
+  }
+  const installedIds = new Set(dictionaries.map((entry) => entry.id));
+  for (const id of expandedDictionaryIds) {
+    if (!installedIds.has(id)) expandedDictionaryIds.delete(id);
+  }
   const template = element("dict-row-template");
   const visible = visibleDictionaries();
   const visibleIds = new Set(visible.map((dictionary) => dictionary.id));
   draggedDictionaryId = null;
+  if (reusableRows.size > 0) clearDictionaryDropTargets();
   list.textContent = "";
 
   dictionaries.forEach((entry, index) => {
     if (!visibleIds.has(entry.id)) {
       return;
     }
-    list.appendChild(renderDictionaryRow(template, entry, index));
+    list.appendChild(reusableRows.get(entry.id) ?? renderDictionaryRow(template, entry, index));
   });
 
   element("dict-controls").hidden = dictionaries.length === 0;
@@ -1299,11 +1773,13 @@ function directionalFocus(row, controlClass, upClass, downClass) {
 }
 
 function restoreManagementFocus(focus) {
+  const section = focus.kind === "dictionary" ? "dictionaries" : "dictionary-groups";
+  if (element(section).hidden) return;
   if (focus.kind === "dictionary") {
     const row = [...element("dict-list").children]
       .find((candidate) => candidate.dataset.dictionaryId === focus.id);
     const control = directionalFocus(row, focus.controlClass, "dict-up", "dict-down")
-      ?? row?.querySelector(".dict-display-name");
+      ?? row?.querySelector(".dict-details-toggle");
     control?.focus();
     return;
   }
@@ -1340,6 +1816,10 @@ function renderDictionaryState() {
     ?? (document.activeElement === document.body ? pendingManagementFocus : null);
   pendingManagementFocus = null;
   dictionaries = dictionaryState.dictionaries;
+  nameDrafts.retain(new Set([
+    ...dictionaries.map(entry => `dictionaries:${entry.id}`),
+    ...dictionaryState.groups.map(group => `groups:${group.id}`),
+  ]));
   dictionaryRenderDeferred = false;
   renderDictionaries();
   dictionaryGroupController.render();
@@ -1353,7 +1833,7 @@ function renderDictionaryState() {
 async function commitDictionaryStateChange(update, reloadEngine) {
   const next = update(dictionaryState);
   if (next === null) {
-    return;
+    return { ok: true, state: dictionaryState };
   }
   const baseRevision = dictionaryState.revision;
   try {
@@ -1371,9 +1851,10 @@ async function commitDictionaryStateChange(update, reloadEngine) {
       await restoreAuthoritativeState(reply);
       dictionaryCommitFailed = true;
       setStatus(`Dictionary change was not saved: ${reply.error ?? "the state changed elsewhere"}`, "error");
-      return;
+      return reply;
     }
     adoptDictionaryState(reply.state);
+    return reply;
   } catch (error) {
     try {
       await restoreAuthoritativeState();
@@ -1383,6 +1864,7 @@ async function commitDictionaryStateChange(update, reloadEngine) {
     }
     dictionaryCommitFailed = true;
     setStatus(`Dictionary change was not saved: ${describe(error)}`, "error");
+    return { ok: false, error: describe(error) };
   }
 }
 
@@ -1431,7 +1913,26 @@ function commitGroups(update) {
   }, false);
 }
 
+function bindNameDraft(input, collection, id, field, value, normalise, validate) {
+  nameDrafts.bind(`${collection}:${id}`, input, {
+    value, normalise,
+    readName: () => {
+      const entry = dictionaryState[collection].find(item => item.id === id);
+      return entry ? entry[field] ?? "" : undefined;
+    },
+    async save(baseName, name) {
+      let renamed;
+      const reply = await queueDictionaryStateChange(current => {
+        renamed = renameWithBaseline(current[collection], id, field, baseName, name, validate);
+        return renamed.error || renamed.items === current[collection] ? null : { ...current, [collection]: renamed.items };
+      }, false);
+      return renamed?.error ? { ok: false, ...renamed } : reply;
+    },
+  });
+}
+
 const dictionaryGroupController = createDictionaryGroupController({
+  setError: (message) => setSectionStatus("dict-group-error", message, "error"),
   readState: () => dictionaryState,
   readDictionaries: () => dictionaries,
   commitGroups,
@@ -1439,6 +1940,7 @@ const dictionaryGroupController = createDictionaryGroupController({
   moveListItem,
   updateItemById,
   renderDeferredAfterBlur,
+  bindNameDraft,
 });
 
 async function removeDictionary(id, title) {
@@ -1591,6 +2093,7 @@ async function runImportBatch(items, importOne, singular, plural) {
     await refreshStatus();
   } finally {
     importing = false;
+    syncNavigationStatus("import-state");
     setControlsDisabled(false);
   }
 }
@@ -1643,7 +2146,7 @@ async function runManagedUpdate(type, dictionaryIds = null) {
     if (!reply.ok) {
       throw new Error(reply.error || "the dictionary update operation failed");
     }
-    updateSettings = normaliseUpdateSettings(reply.settings);
+    adoptUpdateSettings(reply.settings);
     await reloadDictionaries();
     const summary = updateOutcomeSummary(type, reply.outcomes ?? []);
     setUpdateState(summary.message, summary.tone);
@@ -1651,21 +2154,50 @@ async function runManagedUpdate(type, dictionaryIds = null) {
     setUpdateState(`Dictionary updates failed: ${describe(error)}`, "error");
   } finally {
     updating = false;
+    syncNavigationStatus("update-state");
     setControlsDisabled(importing);
   }
 }
 
-async function writeUpdateSchedule(schedule) {
+function writeUpdateSchedule(schedule) {
+  pendingSchedule = { schedule, baseRevision: pendingSchedule?.baseRevision ?? savingSchedule?.baseRevision ?? updateSettings.revision };
+  window.clearTimeout(scheduleTimer);
+  scheduleTimer = null;
+  if (scheduleSaveFailed) return;
+  setUpdateState("Unsaved schedule…", "");
+  scheduleTimer = window.setTimeout(() => { void flushUpdateSchedule(); }, OPTIONS_SAVE_DELAY_MS);
+}
+
+async function flushUpdateSchedule() {
+  window.clearTimeout(scheduleTimer);
+  scheduleTimer = null;
+  if (savingSchedule || scheduleSaveFailed || !pendingSchedule) return;
+  const sent = pendingSchedule;
+  pendingSchedule = null;
+  savingSchedule = sent;
+  renderUpdateControls();
+  setUpdateState("Saving schedule…", "");
   try {
-    const reply = await send("hd_updates_schedule", { schedule }, UPDATE_TARGET);
-    if (!reply.ok) {
-      throw new Error(reply.error || "the dictionary update schedule could not be saved");
-    }
-    updateSettings = normaliseUpdateSettings(reply.settings);
-    renderUpdateControls();
+    const reply = await send("hd_updates_schedule", sent, UPDATE_TARGET);
+    if (reply.settings) adoptUpdateSettings(reply.settings);
+    if (!reply.ok) throw new Error(reply.error || "the dictionary update schedule could not be saved");
+    // Advance a queued draft only through our own commit, never through an
+    // unrelated newer event that happened to arrive before this reply.
+    if (pendingSchedule) pendingSchedule.baseRevision = Math.max(pendingSchedule.baseRevision, reply.settings.revision);
+    setUpdateState(pendingSchedule ? "Unsaved schedule…" : "Schedule saved.", pendingSchedule ? "" : "ready");
   } catch (error) {
-    element("update-schedule").value = updateSettings.schedule;
-    setUpdateState(`Could not save the update schedule: ${describe(error)}`, "error");
+    pendingSchedule ??= sent;
+    scheduleSaveFailed = true;
+    try {
+      const stored = await chrome.storage.local.get("dictionaryUpdates");
+      adoptUpdateSettings(stored.dictionaryUpdates);
+    } catch { /* Keep the draft even if the committed state cannot be read. */ }
+    setUpdateState(`Could not save the schedule: ${describe(error)} Current schedule: ${updateSettings.schedule}. Your draft is retained.`, "error");
+  } finally {
+    savingSchedule = null;
+    renderUpdateControls();
+    syncNavigationStatus("update-state");
+    if (!scheduleSaveFailed && scheduleTimer === null && pendingSchedule) void flushUpdateSchedule();
   }
 }
 
@@ -1714,18 +2246,27 @@ function attachHandlers() {
 
   element("dict-search").addEventListener("input", (event) => {
     dictionarySearch = event.target.value;
-    renderDictionaries();
+    renderDictionaries(true);
   });
 
   element("dict-select-visible").addEventListener("change", (event) => {
-    for (const dictionary of visibleDictionaries()) {
+    const visible = visibleDictionaries();
+    for (const dictionary of visible) {
       if (event.target.checked) {
         selectedDictionaryIds.add(dictionary.id);
       } else {
         selectedDictionaryIds.delete(dictionary.id);
       }
     }
-    renderDictionaries();
+    if (dictionaryRenderDeferred) {
+      renderDictionaries();
+    } else {
+      for (const row of element("dict-list").children) {
+        row.querySelector(".dict-selected").checked = selectedDictionaryIds.has(row.dataset.dictionaryId);
+      }
+      renderDictionarySelection(visible);
+      setControlsDisabled(importing);
+    }
   });
 
   element("dict-bulk-enable").addEventListener("click", () => {
@@ -1766,48 +2307,239 @@ function attachHandlers() {
     void runManagedUpdate("hd_updates_install", availableUpdates().map((dictionary) => dictionary.id));
   });
   element("update-schedule").addEventListener("change", (event) => {
-    void writeUpdateSchedule(event.target.value);
+    writeUpdateSchedule(event.target.value);
+  });
+  element("update-schedule-retry").addEventListener("click", () => {
+    if (!pendingSchedule) return;
+    pendingSchedule.baseRevision = updateSettings.revision;
+    scheduleSaveFailed = false;
+    void flushUpdateSchedule();
+  });
+  element("update-schedule-discard").addEventListener("click", () => {
+    window.clearTimeout(scheduleTimer);
+    scheduleTimer = pendingSchedule = null;
+    scheduleSaveFailed = false;
+    renderUpdateControls();
+    setUpdateState("Current schedule restored.", "ready");
   });
 
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
     input.addEventListener("change", () => {
-      options[field.key] = clampInt(input.value, field.min, field.max, DEFAULT_OPTIONS[field.key]);
+      options[field.key] = clampOption(field.key, input.value);
       input.value = String(options[field.key]);
       writeOptions();
     });
   }
 
-  element("opt-modifier").addEventListener("change", (event) => {
-    options.modifier = MODIFIERS.includes(event.target.value) ? event.target.value : "none";
+  element("opt-hover-enabled").addEventListener("change", (event) => {
+    options.hoverEnabled = event.target.checked;
+    writeOptions();
+  });
+  for (const field of APPEARANCE_CHOICES) {
+    element(field.id).addEventListener("change", (event) => {
+      options[field.key] = field.values && !field.values.includes(event.target.value)
+        ? DEFAULT_OPTIONS[field.key] : event.target.value;
+      if (field.key === "definitionBlurReveal") renderDefinitionBlurControls();
+      writeOptions();
+    });
+  }
+  element("opt-blur-delay").addEventListener("change", (event) => {
+    options.definitionBlurDelayMs = clampOption("definitionBlurDelayMs", Math.round(Number(event.target.value) * 1000));
+    event.target.value = String(options.definitionBlurDelayMs / 1000);
+    writeOptions();
+  });
+  element("opt-source-highlight").addEventListener("change", (event) => {
+    options.sourceHighlightEnabled = event.target.checked;
+    writeOptions();
+  });
+  element("reset-design").addEventListener("click", () => {
+    for (const key of DESIGN_OPTION_KEYS) options[key] = DEFAULT_OPTIONS[key];
+    renderCustomCss(true);
+    renderOptions();
+    writeOptions();
+  });
+  element("opt-custom-popup-css").addEventListener("input", event => {
+    // This target listener runs before the section's bubbling draft listener.
+    optionsEditRevision ??= Math.max(0, optionsRevision);
+    options.customPopupCss = event.target.value;
+    renderCustomCss();
+    writeOptions();
+  });
+  element("reset-custom-css").addEventListener("click", () => {
+    options.customPopupCss = DEFAULT_OPTIONS.customPopupCss;
+    renderCustomCss(true);
+    writeOptions();
+  });
+  for (const field of METADATA_FIELDS) {
+    element(field.id).addEventListener("change", (event) => {
+      options[field.key] = field.inverted ? !event.target.checked : event.target.checked;
+      renderMetadataControls();
+      writeOptions();
+    });
+  }
+  element("opt-corpus-url").addEventListener("change", (event) => {
+    const value = normaliseCorpusSeenUrl(event.target.value);
+    if (value === null) {
+      event.target.value = options.corpusSeenUrl;
+      setOptionsStatus("GameSentenceMiner must use a loopback HTTP or HTTPS URL.");
+      return;
+    }
+    options.corpusSeenUrl = value;
+    event.target.value = value;
+    writeOptions();
+  });
+  element("opt-pitch-dictionary").addEventListener("change", (event) => {
+    options.pitchAccentFuriganaDictionary = event.target.value;
+    writeOptions();
+  });
+  element("opt-japanese-only").addEventListener("change", (event) => {
+    options.onlyScanJapaneseText = event.target.checked;
+    writeOptions();
+  });
+  element("opt-audio-autoplay").addEventListener("change", (event) => {
+    options.audioAutoplay = event.target.checked;
+    writeOptions();
+  });
+  element("opt-compact-summary").addEventListener("change", (event) => {
+    options.showCompactDefinitionSummary = event.target.checked;
+    renderCompactSummaryControls();
+    writeOptions();
+  });
+  element("opt-summary-dictionary").addEventListener("change", (event) => {
+    options.compactDefinitionSummaryDictionary = event.target.value;
+    writeOptions();
+  });
+  element("opt-image-source").addEventListener("change", (event) => {
+    // Values come from the canonical descriptors rendered above, not labels.
+    options.popupImageSource = event.target.value ? JSON.parse(event.target.value) : null;
+    writeOptions();
+  });
+  element("opt-lookup-mode").addEventListener("change", (event) => {
+    options.lookupMode = LOOKUP_MODES.includes(event.target.value) ? event.target.value : "hover";
+    element("opt-activation-key").disabled = options.lookupMode !== "activation";
+    writeOptions();
+  });
+  element("opt-activation-key").addEventListener("change", (event) => {
+    options.activationKey = event.target.value;
     writeOptions();
   });
 
   element("opt-frequency-order").addEventListener("change", (event) => {
     options.frequencyOrder = FREQUENCY_ORDERS.includes(event.target.value) ? event.target.value : "auto";
+    renderFrequencyOrder();
     writeOptions();
   });
 
   element("opt-frequency-dictionary").addEventListener("change", (event) => {
+    // A focused native chooser can outlive a dictionary capability change.
+    if (event.target.value && !selectedFrequencyDictionary(event.target.value)) {
+      event.target.value = options.frequencyDictionary;
+      setOptionsStatus("That frequency dictionary is no longer available.");
+      return;
+    }
     options.frequencyDictionary = event.target.value;
-    writeOptions();
+    applyFrequencyDirection();
   });
+  element("opt-frequency-auto").addEventListener("click", applyFrequencyDirection);
 
   element("opt-kanji-dictionary").addEventListener("change", (event) => {
     options.kanjiClickDictionary = selectionFromValue(event.target.value);
     writeOptions();
   });
-  element("lookup").addEventListener("input", () => {
-    optionsEditRevision ??= Math.max(0, optionsRevision);
+  element("media-open-capture").addEventListener("click", async () => {
+    try {
+      const reply = await send("hd_capture_open", {}, CAPTURE_TARGET);
+      if (!reply.ok) throw new Error(reply.error || "The capture page could not be opened.");
+      element("media-runtime-status").textContent = "Capture controls opened in a separate tab.";
+    } catch (error) {
+      element("media-runtime-status").textContent = `Could not open capture controls: ${describe(error)}`;
+    }
   });
-  element("lookup").addEventListener("change", () => {
-    optionsEditRevision = null;
+  element("opt-media-enabled").addEventListener("change", event => {
+    void editMediaCapture(capture => { capture.enabled = event.target.checked; }, {
+      immediate: !event.target.checked,
+    });
   });
-  element("lookup").addEventListener("focusout", (event) => {
-    optionsEditRevision = null;
-    const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
-    if (field) event.target.value = String(options[field.key]);
+  for (const [id, key] of [["opt-media-animation", "includeAnimation"], ["opt-media-audio", "includeCapturedAudio"]]) {
+    element(id).addEventListener("change", event => {
+      const other = key === "includeAnimation" ? options.mediaCapture.includeCapturedAudio : options.mediaCapture.includeAnimation;
+      if (!event.target.checked && !other) {
+        event.target.checked = true;
+        setOptionsStatus("Keep at least one captured-media output enabled.");
+        return;
+      }
+      void editMediaCapture(capture => { capture[key] = event.target.checked; });
+    });
+  }
+  for (const [id, key] of [["opt-media-history", "historySeconds"], ["opt-media-clip", "clipSeconds"]]) {
+    element(id).addEventListener("change", event => {
+      void editMediaCapture(capture => { capture[key] = Number(event.target.value); });
+    });
+  }
+  for (const [id, key] of [["opt-media-preset", "videoPreset"], ["opt-media-timing", "timingMode"]]) {
+    element(id).addEventListener("change", event => {
+      void editMediaCapture(capture => { capture[key] = event.target.value; });
+    });
+  }
+  element("opt-media-offset").addEventListener("change", event => {
+    const value = Math.max(-2000, Math.min(2000, Math.trunc(Number(event.target.value))));
+    void editMediaCapture(capture => { capture.estimatedOffsetMs = Number.isFinite(value) ? value : -500; });
   });
+  for (const [id, key] of [["opt-media-native-cues", "nativeCues"], ["opt-media-dom-text", "domText"],
+    ["opt-media-auto-area", "autoLearnArea"]]) {
+    element(id).addEventListener("change", event => {
+      void editMediaCapture(capture => { capture.page[key] = event.target.checked; });
+    });
+  }
+  element("opt-media-texthooker").addEventListener("change", event => {
+    if (event.target.checked && !options.mediaCapture.texthooker.url) {
+      event.target.checked = false;
+      setOptionsStatus("Enter a loopback WebSocket URL before enabling texthooker timing.");
+      return;
+    }
+    void editMediaCapture(capture => { capture.texthooker.enabled = event.target.checked; });
+  });
+  element("opt-media-texthooker-url").addEventListener("change", event => {
+    const value = normaliseTexthookerUrl(event.target.value);
+    if (value === null || (options.mediaCapture.texthooker.enabled && value === "")) {
+      event.target.value = options.mediaCapture.texthooker.url;
+      setOptionsStatus("Texthooker must use a loopback ws or wss URL without credentials or fragments.");
+      return;
+    }
+    void editMediaCapture(capture => { capture.texthooker.url = value; });
+  });
+  element("opt-media-texthooker-format").addEventListener("change", event => {
+    void editMediaCapture(capture => { capture.texthooker.format = event.target.value; });
+  });
+  const optionSections = Object.keys(OPTION_SECTIONS).map(element);
+  for (const section of optionSections) {
+    section.addEventListener("input", (event) => {
+      if (!event.target.id.startsWith("opt-")) return;
+      optionsEditRevision ??= Math.max(0, optionsRevision);
+      const field = NUMBER_FIELDS.find(({ id, live }) => live && id === event.target.id);
+      if (field && event.target.value !== "" && event.target.validity.valid) {
+        options[field.key] = Number(event.target.value);
+        writeOptions();
+      }
+    });
+    section.addEventListener("change", () => {
+      optionsEditRevision = null;
+    });
+    section.addEventListener("focusout", (event) => {
+      optionsEditRevision = null;
+      if (event.target.id === "opt-custom-popup-css") renderCustomCss(true);
+      if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
+      if (event.target.id === "opt-image-source") renderPopupImageSources();
+      if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
+      if (event.target.id === "opt-corpus-url" || event.target.id === "opt-blur-delay") renderMetadataControls();
+      if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
+      const choice = APPEARANCE_CHOICES.find(({ id }) => id === event.target.id);
+      if (choice) event.target.value = options[choice.key];
+      const field = NUMBER_FIELDS.find(({ id }) => id === event.target.id);
+      if (field) event.target.value = String(options[field.key]);
+    });
+  }
   element("options-retry").addEventListener("click", () => {
     optionsSaveFailed = false;
     pendingOptionsRevision = optionsRevision;
@@ -1820,15 +2552,17 @@ function attachHandlers() {
     optionsEditRevision = null;
     optionsSaveFailed = false;
     renderCurrentOptions();
+    renderCustomCss(true);
     setOptionsStatus("Using saved settings.");
   });
 
   window.addEventListener("beforeunload", (event) => {
-    if (!importing && savingOptions === null && optionsEditRevision === null
-        && Object.keys(pendingOptions).length === 0) {
+    if (!importing && !backingUp && savingOptions === null && optionsEditRevision === null
+        && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null
+        && !nameDrafts.hasPendingChanges()) {
       return;
     }
-    // Leaving revokes the blob URL the offscreen document is still reading from.
+    // Leaving can revoke an import's blob URL or discard a queued settings draft.
     event.preventDefault();
     event.returnValue = "";
   });
@@ -1843,7 +2577,7 @@ function dictionaryNameIsBeingEdited() {
 }
 
 function renderChangedDictionaryState() {
-  if (committing || managementPointerDown || dictionaryNameIsBeingEdited()) {
+  if (committing || nameDrafts.hasInFlightSave() || managementPointerDown || dictionaryNameIsBeingEdited()) {
     dictionaryRenderDeferred = true;
     return;
   }
@@ -1890,9 +2624,22 @@ function handleCustomDictionarySourceChange(change) {
   }
 }
 
+function renderSetupResume(value) {
+  let incomplete = false;
+  try {
+    incomplete = setupIncomplete(normaliseSetupState(value));
+  } catch {
+    // An unreadable setup record hides the resume link; the startup page reports it.
+  }
+  element("setup-resume").hidden = !incomplete;
+}
+
 function handleStorageChange(changes, area) {
   if (area !== "local") {
     return;
+  }
+  if (changes[SETUP_STATE_KEY]) {
+    renderSetupResume(changes[SETUP_STATE_KEY].newValue);
   }
   if (changes[CUSTOM_DICTIONARY_SOURCE_KEY]) {
     handleCustomDictionarySourceChange(changes[CUSTOM_DICTIONARY_SOURCE_KEY]);
@@ -1904,20 +2651,19 @@ function handleStorageChange(changes, area) {
     handleOptionsChange(changes.options);
   }
   if (changes.dictionaryUpdates) {
-    updateSettings = normaliseUpdateSettings(changes.dictionaryUpdates.newValue);
-    renderUpdateControls();
+    if (adoptUpdateSettings(changes.dictionaryUpdates.newValue)) renderUpdateControls();
   }
 }
 
-function setOptionsStatus(message) {
-  element("options-status").textContent = message;
-  element("options-status").classList.toggle("is-error", optionsSaveFailed);
+function setOptionsStatus(message, completed = false) {
+  setSectionStatus("options-status", message, optionsSaveFailed ? "error" : "", completed);
   element("options-conflict-actions").hidden = !optionsSaveFailed;
 }
 
 // Keep only edited fields. A storage event can update the committed snapshot,
 // but cannot replace a local draft or authorize a stale draft's write.
 function writeOptions() {
+  updateDesignPreview();
   const previous = { ...savedOptions, ...savingOptions?.patch };
   const changes = Object.fromEntries(Object.entries(options).filter(([key, value]) =>
     JSON.stringify(value) !== JSON.stringify(previous[key])));
@@ -1959,7 +2705,7 @@ async function flushOptions() {
     if (optionsEditRevision !== null) {
       optionsEditRevision = Math.max(optionsEditRevision, reply.options.revision);
     }
-    setOptionsStatus(Object.keys(pendingOptions).length > 0 ? "Unsaved changes…" : "Saved.");
+    setOptionsStatus(Object.keys(pendingOptions).length > 0 ? "Unsaved changes…" : "Saved.", true);
   } catch (error) {
     pendingOptions = { ...sent.patch, ...pendingOptions };
     optionsSaveFailed = true;
@@ -1972,6 +2718,7 @@ async function flushOptions() {
     setOptionsStatus(`Could not save settings: ${describe(error)}`);
   } finally {
     savingOptions = null;
+    syncNavigationStatus("options-status");
     renderCurrentOptions();
     if (!optionsSaveFailed && optionsTimer === null && Object.keys(pendingOptions).length > 0) {
       void flushOptions();
@@ -1980,11 +2727,13 @@ async function flushOptions() {
 }
 
 async function start() {
+  attachSettingsNavigation();
   renderRecommendedCatalogue();
   attachHandlers();
-  const stored = await chrome.storage.local.get(["options", "dictionaryUpdates"]);
+  const stored = await chrome.storage.local.get(["options", "dictionaryUpdates", SETUP_STATE_KEY]);
   adoptOptions(stored.options);
-  updateSettings = normaliseUpdateSettings(stored.dictionaryUpdates);
+  adoptUpdateSettings(stored.dictionaryUpdates);
+  renderSetupResume(stored[SETUP_STATE_KEY]);
   renderCustomDictionaryControls();
   if (await reloadDictionaries()) {
     writeOptions();

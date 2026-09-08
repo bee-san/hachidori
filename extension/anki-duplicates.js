@@ -1,0 +1,119 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import { isAnkiAudioOnlyTemplate } from "./anki-templates.js";
+
+// GSM PR #549 hoshidicts_anki.py and hoshidicts_markers.py. These policies
+// receive the gateway's private invoker, never a page-selected API action.
+const rootDeck = deck => deck.split("::", 1)[0];
+const escapeQuery = value => value.replace(/[\\"*_:]/gu, String.raw`\$&`);
+const positiveId = value => Number.isSafeInteger(value) && value > 0;
+export const isAnkiDuplicateError = error => /cannot create note because it is a duplicate/iu.test(error || "");
+
+export function ankiBrowseQuery(expression) {
+  return `"${escapeQuery(expression.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"))}"`;
+}
+
+export function ankiNoteOptions(config) {
+  const root = config.duplicateScope === "deck-root";
+  return { allowDuplicate: !config.checkForDuplicates || config.duplicateBehavior === "new",
+    duplicateScope: root ? "deck" : config.duplicateScope,
+    duplicateScopeOptions: { deckName: root ? rootDeck(config.deck) : null,
+      checkChildren: root, checkAllModels: config.duplicateScopeCheckAllModels } };
+}
+
+function overwriteValue(existing, incoming, mode) {
+  if (mode === "overwrite") return incoming;
+  if (mode === "skip") return existing;
+  if (mode === "append") return existing + incoming;
+  if (mode === "prepend") return incoming + existing;
+  if (mode === "coalesce-new") return incoming || existing;
+  return existing || incoming;
+}
+
+export function canonicalAnkiFields(fields, templates, existing) {
+  const names = new Map(Object.keys(existing).map(name => [name.toLowerCase(), name]));
+  const canonicalTemplates = [], incoming = [];
+  for (const [field, template] of Object.entries(templates)) {
+    const name = Object.hasOwn(existing, field) ? field : names.get(field.toLowerCase());
+    if (name === undefined) throw new Error("Anki model fields changed. Refresh before overwriting this note.");
+    canonicalTemplates.push([name, template]);
+    incoming.push([name, fields[field]]);
+  }
+  return { templates: Object.fromEntries(canonicalTemplates), fields: Object.fromEntries(incoming) };
+}
+
+export function overwriteAnkiFields(incoming, existing, templates, { includeAudio = false } = {}) {
+  return Object.fromEntries(Object.entries(templates).filter(([, template]) => includeAudio || !isAnkiAudioOnlyTemplate(template.value))
+    .map(([field, template]) => [field, overwriteValue(existing[field] ?? "", incoming[field] ?? "", template.overwriteMode)]));
+}
+
+function checkResult(result, detailed) {
+  if (!Array.isArray(result) || result.length !== 1
+      || (detailed ? typeof result[0]?.canAdd !== "boolean" : typeof result[0] !== "boolean")) {
+    throw new Error("AnkiConnect returned invalid duplicate check results.");
+  }
+  return result[0];
+}
+
+export async function checkAnkiDuplicate(invoke, note, config) {
+  if (!config.checkForDuplicates) return { duplicate: false, addable: true, error: null };
+  // Anki also validates clozes in non-first fields. Keep all rendered fields,
+  // but omit media-upload objects: preflight must not write collection media.
+  const checkNote = allowDuplicate => ({ deckName: note.deckName, modelName: note.modelName, fields: note.fields, tags: note.tags,
+    options: { ...note.options, allowDuplicate } });
+  let result;
+  try {
+    result = checkResult(await invoke("canAddNotesWithErrorDetail", { notes: [checkNote(false)] }), true);
+  } catch (error) {
+    if (!/unsupported action/iu.test(error.message)) throw error;
+    const allowed = checkResult(await invoke("canAddNotes", { notes: [checkNote(true)] }), false);
+    const prevented = checkResult(await invoke("canAddNotes", { notes: [checkNote(false)] }), false);
+    return { duplicate: allowed && !prevented, addable: allowed && prevented, error: null };
+  }
+  const error = typeof result.error === "string" && result.error ? result.error : null;
+  return { duplicate: isAnkiDuplicateError(error), addable: result.canAdd && !error, error };
+}
+
+function duplicateQuery(note, firstField, modelId) {
+  // Native Anki dupe search uses the same case-sensitive, HTML-stripped
+  // comparison as duplicate validation. Ordinary field search does not.
+  // Unlike ordinary search, dupe text treats wildcard/colon/comma literally.
+  const text = (note.fields[firstField] ?? "").replace(/[\\"]/gu, String.raw`\$&`);
+  return `"dupe:${modelId},${text}"`;
+}
+
+async function scopedNoteIds(invoke, infos, config) {
+  if (config.duplicateScope === "collection") return null;
+  const ids = infos.flatMap(info => Array.isArray(info?.cards) ? info.cards.filter(positiveId) : []);
+  if (!ids.length) return new Set();
+  const cards = await invoke("cardsInfo", { cards: ids });
+  if (!Array.isArray(cards)) throw new Error("AnkiConnect returned invalid duplicate card details.");
+  const exact = config.deck.toLowerCase(), root = rootDeck(exact);
+  return new Set(cards.filter(card => {
+    if (typeof card?.deckName !== "string" || !positiveId(card.note)) return false;
+    const deck = card.deckName.toLowerCase();
+    return config.duplicateScope === "deck" ? deck === exact : deck === root || deck.startsWith(`${root}::`);
+  }).map(card => card.note));
+}
+
+export async function findAnkiOverwriteTarget(invoke, note, firstField, config) {
+  const models = await invoke("modelNamesAndIds");
+  const modelId = models?.[config.model];
+  if (Array.isArray(models) || !positiveId(modelId)) throw new Error("AnkiConnect returned no valid ID for the selected note type.");
+  const ids = await invoke("findNotes", { query: duplicateQuery(note, firstField, modelId) });
+  if (!Array.isArray(ids) || !ids.every(positiveId)) throw new Error("AnkiConnect returned invalid duplicate note IDs.");
+  if (!ids.length) return null;
+  const infos = await invoke("notesInfo", { notes: ids });
+  if (!Array.isArray(infos)) throw new Error("AnkiConnect returned invalid duplicate note details.");
+  const scoped = await scopedNoteIds(invoke, infos, config);
+  const byId = new Map(infos.filter(info => positiveId(info?.noteId)).map(info => [info.noteId, info]));
+  for (const id of ids) {
+    if (scoped && !scoped.has(id)) continue;
+    const info = byId.get(id);
+    if (typeof info?.modelName !== "string" || info.modelName.toLowerCase() !== config.model.toLowerCase()) continue;
+    if (!info.fields || typeof info.fields !== "object" || Array.isArray(info.fields)) continue;
+    const fields = Object.entries(info.fields).map(([field, value]) => [field, typeof value === "string" ? value : value?.value]);
+    if (fields.some(([, value]) => typeof value !== "string")) throw new Error("AnkiConnect returned invalid duplicate note fields.");
+    return { noteId: id, fields: Object.fromEntries(fields) };
+  }
+  return null;
+}
