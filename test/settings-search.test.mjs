@@ -87,6 +87,10 @@ test("Library exposes its related views together and search reports that hierarc
   const result = f.match("Default automatic updates");
   assert.ok(result);
   assert.equal(result.querySelector("small").textContent, "Library › Updates");
+  f.query("dictionaries search");
+  const dictionarySearch = f.match("Search");
+  assert.ok(dictionarySearch);
+  assert.equal(dictionarySearch.querySelector("small").textContent, "Library › Dictionaries");
 });
 
 test("result opens collapsed details and focuses the existing textarea without touching its draft", t => {

@@ -55,7 +55,7 @@ export function createSettingsSearch({ document, navigate }) {
 
   function searchSection(section, words) {
     section.hidden = true;
-    const sectionName = text(section.querySelector("h1"));
+    const sectionName = section.dataset.settingsName || text(section.querySelector("h1"));
     const sectionGroup = section.dataset.settingsGroup || "";
     // Read mounted labels on demand, including lazy controls once populated.
     const candidates = section.querySelectorAll("h1, h2, h3, legend, summary, label, button[id]");
