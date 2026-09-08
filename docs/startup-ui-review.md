@@ -55,6 +55,15 @@ The capture driver and complete state matrix remain in ignored
 `test/tmp/merge-pr75/capture-artwork.mjs`. Production-path checks are documented in
 [the test guide](../test/README.md#chrome-e2emjs).
 
+A partial dictionary can answer a passage word while lacking **辞書**. In that
+case the scene and ordinary reader stay available, but the unanswered shortcut
+and its instruction are hidden. This Chromium 150 / Arch Linux capture uses
+the same 360 × 900 controlled setup with only **蝉** answering the probe;
+`test/tmp/merge-pr75/capture-partial.mjs` reported no console errors or horizontal
+overflow. The actual page and CSS were captured without editing the image.
+
+![A partial dictionary retains the practice scene without an unanswered lookup button](assets/startup-practice-partial.png)
+
 The separate real-Chrome run imports the catalogue fixtures through the normal
 WASM engine. Pressing Enter on **Look up 辞書** returns their actual glossary
 content in the ordinary popup; pointer lookup is checked too. This viewport
@@ -111,6 +120,31 @@ the updated page retained the row. These short samples show no median
 synchronous-update regression, with visible warmup/noise. They exclude layout,
 paint, asynchronous work, downloads, native import and lookup latency, and do
 not establish an end-to-end speedup.
+
+## Practice readiness probe comparison
+
+`node test/tmp/merge-pr75/probe-timing.mjs` compares production startup modules
+at `c93eedc` and `22b7bbf` through the existing jsdom startup harness. On Arch
+Linux, Node 26.4.0 and jsdom 30.0.1, each sample creates a fresh practice page
+with the 61-character passage, one enabled term dictionary, scan length 16 and
+maximum results 32. Immediate mocked lookup replies answer only **辞書**, only
+**蝉**, or nothing. Each revision/scenario has two warmups and 11 samples,
+repeated in before/after and after/before order. Timing begins at the first
+probe request and ends when the rendered outcome settles.
+
+| Available word | Requests, before → after | Median ms, first / reversed order |
+| --- | --- | --- |
+| 辞書 | 32 → 1 | 1.695 → 1.665 / 1.347 → 1.347 |
+| 蝉 only | 9 → 10 | 1.173 → 1.019 / 0.911 → 0.938 |
+| None | 61 → 62 | 1.159 → 1.080 / 0.983 → 1.343 |
+
+Ranges across both orders were 1.070–6.036 / 0.717–4.337 ms for **辞書**,
+0.780–3.735 / 0.835–5.562 ms for **蝉**, and 0.832–6.235 / 0.921–5.699 ms
+for no result (before / after). The partial and missing cases add one necessary
+exact-selection query; there is still only one fallback passage sweep. These
+short, noisy timings establish no latency improvement or consistent regression.
+They exclude Chrome, messaging IPC, native dictionary lookup, paint and reader
+loading. The raw samples remain in `test/tmp/merge-pr75/probe-timing.json`.
 
 The scene uses an illustration generated for Hachidori without reference
 images. [Asset provenance](../extension/assets/ATTRIBUTION.md) records the full
