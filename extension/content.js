@@ -1482,8 +1482,7 @@
     const entry = request?.lookupStats;
     const statistics = entry?.payload?.descriptor.generation === lookupStatsDescriptor.generation
       ? entry.payload.statistics : null;
-    level.view.setLookupStats(level.lookupStatsElement,
-      statistics && { ...statistics, seenCount: entry.seenCount });
+    level.view.setLookupStats(level.lookupStatsElement, statistics);
   }
 
   function adoptLookupStatsDescriptor(descriptor, changes = {}) {
@@ -1526,8 +1525,6 @@
     entry.pending = true;
     entry.needsRefresh = false;
     const requestedOptionsRevision = optionsStorageRevision;
-    const requestedCorpusSeenEnabled = options.corpusSeenEnabled;
-    const requestedCorpusSeenUrl = options.corpusSeenUrl;
     void sendRequest(record ? "hd_lookup_stats_record" : "hd_lookup_stats_read", {
       term: entry.term, reading: entry.reading,
     }, "hoshidicts-worker").then(payload => {
@@ -1536,15 +1533,10 @@
         entry.needsRefresh = true;
         return;
       }
-      const corpusChanged = requestedCorpusSeenEnabled !== options.corpusSeenEnabled
-        || requestedCorpusSeenUrl !== options.corpusSeenUrl;
-      // Only replies carry the corpus value. A newer row event owns the local
-      // count, but the Seen value it lacks still belongs to this term.
-      if (payload.statistics !== null && !corpusChanged) entry.seenCount = payload.statistics.seenCount ?? null;
       if (!(entry.payload?.descriptor.revision > payload.descriptor.revision)) {
         entry.payload = payload;
-        entry.needsRefresh = options.showLookupCounts && (corpusChanged
-          || (payload.statistics === null && requestedOptionsRevision !== optionsStorageRevision));
+        entry.needsRefresh = options.showLookupCounts
+          && payload.statistics === null && requestedOptionsRevision !== optionsStorageRevision;
       }
       if (request.lookupStats === entry) {
         paintLookupStatistics(request, level);
@@ -1565,7 +1557,7 @@
     const firstVisit = !request.lookupStats;
     let entry = request.lookupStats;
     if (!entry || entry.term !== term || entry.reading !== reading) {
-      entry = request.lookupStats = { term, reading, pending: false, payload: null, seenCount: null, needsRefresh: true };
+      entry = request.lookupStats = { term, reading, pending: false, payload: null, needsRefresh: true };
     } else if (entry.payload && entry.payload.descriptor.generation !== lookupStatsDescriptor.generation) {
       entry.needsRefresh = true;
     }
@@ -2872,9 +2864,7 @@
     const metadataChanged = Object.entries(window.HDPopup.metadataOptions(next)).some(([key, value]) => value !== options[key]);
     // The caller adopts the complete storage delivery before new summary work.
     // A simultaneous dictionary replacement must invalidate the old view first.
-    const corpusChanged = next.corpusSeenEnabled !== options.corpusSeenEnabled
-      || next.corpusSeenUrl !== options.corpusSeenUrl;
-    const countsChanged = next.showLookupCounts !== options.showLookupCounts || corpusChanged;
+    const countsChanged = next.showLookupCounts !== options.showLookupCounts;
     const ankiChanged = JSON.stringify(next.anki) !== JSON.stringify(options.anki);
     if (ankiChanged || next.definitionBlurAnkiMature !== options.definitionBlurAnkiMature) ankiMaturityEpoch++;
     const blurChanged = ankiChanged || next.showLookupCounts !== options.showLookupCounts || DEFINITION_BLUR_KEYS
@@ -2893,8 +2883,7 @@
         const request = level.currentViewRequest;
         const entry = request?.lookupStats;
         if (!entry) continue;
-        if (corpusChanged) entry.seenCount = null;
-        if (corpusChanged || next.showLookupCounts) entry.needsRefresh = true;
+        if (next.showLookupCounts) entry.needsRefresh = true;
         paintLookupStatistics(request, level);
         refreshLookupStatistics(request, level);
       }
