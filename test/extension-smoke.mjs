@@ -6644,8 +6644,9 @@ async function startupPageStage() {
       && heading() === "Setup is complete." && currentStep() === null && doneSteps() === 3
       && document.getElementById("setup-actions").childElementCount === 0;
     const configuredResume = await startupConfiguredAnkiResume(jsdom);
+    const lostAnkiReply = await startupAnkiLostReplyStage(jsdom);
     return { requestFailed, attached, determinate, ordered, indeterminate, installing, installed, failedRow, failureView, focusKept, continued,
-      retried, oldRunIgnored, success, advanced, practice, practicePreserved, finished, configuredResume };
+      retried, oldRunIgnored, success, advanced, practice, practicePreserved, finished, configuredResume, lostAnkiReply };
   } finally {
     window.close();
   }
@@ -6760,6 +6761,48 @@ async function startupConfiguredAnkiResume(jsdom) {
   } finally {
     page.window.close();
   }
+}
+
+// The setup record is authoritative even when the request carrying the same
+// outcome loses its reply. Either event order must retire only the stale Anki
+// request error and leave the settled result readable.
+async function startupAnkiLostReplyStage(jsdom) {
+  const initial = { ...structuredClone(SETUP_AT_DICTIONARIES), revision: 7, stage: "anki", anki: null };
+  async function run(recordFirst) {
+    const recorded = { ...initial, revision: 8, anki: recordFirst
+      ? { status: "unavailable", detail: "AnkiConnect timed out", model: null, deck: null }
+      : { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" } };
+    let rejectReply;
+    const page = startupCase(jsdom, { setup: initial,
+      reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }),
+      anki: () => new Promise((_resolve, reject) => { rejectReply = reject; }) });
+    try {
+      await page.load();
+      await page.until(() => typeof rejectReply === "function", "the pending Anki request");
+      if (recordFirst) page.record(recorded);
+      rejectReply(new Error("the extension's service worker did not reply"));
+      await new Promise(setImmediate);
+      if (!recordFirst) {
+        await page.until(() => page.heading() === "Anki could not be checked", "the lost Anki reply");
+        page.record(recorded);
+        await new Promise(setImmediate);
+      }
+      const expectedHeading = recordFirst ? "Could not find Anki" : "Finding your Anki setup…";
+      await page.until(() => page.heading() === expectedHeading, "the recorded Anki outcome");
+      const status = page.document.getElementById("setup-status");
+      const stagedChoice = page.document.querySelector('.setup-anki-progress-step[aria-current="step"] small')?.textContent;
+      const settled = page.document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
+        && page.document.getElementById("setup-countdown-label") !== null;
+      const staged = stagedChoice === "Selected Kiku v2"
+        && page.document.getElementById("setup-countdown-label") === null;
+      return status.textContent === expectedHeading && !status.classList.contains("is-error")
+        && page.document.getElementById("setup-retry") === null
+        && (recordFirst ? settled : staged);
+    } finally {
+      page.window.close();
+    }
+  }
+  return await run(true) && await run(false);
 }
 
 async function startupWelcomeStage() {
