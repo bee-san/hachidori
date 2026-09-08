@@ -581,9 +581,12 @@ before the change event completes.
 
 Design has independent controls for frequency source names and averages, pitch
 contour and its preferred dictionary, pitch badges, and grammar tags. Frequency
-badges default to compact numbers, with source and kana-frequency detail available
-on hover and to screen readers. Grammar tags default to hidden; opting in places
-them outside the frequency badge. Explicit saved display choices are preserved.
+metadata defaults to compact numbers without dictionary names, with source and
+kana-frequency detail available on hover and to screen readers. It sits as quiet,
+borderless text beside or beneath the headword instead of claiming a separate
+row. The lower chrome row is reserved for dictionary tabs and is omitted when no
+tabs exist. Grammar tags default to hidden; opting in places them in the same
+inline metadata group. Explicit saved display choices are preserved.
 Contour and pitch badges remain on, and averages remain off. IPA transcriptions
 and definition tags remain visible independently. Pitch and IPA show pronunciation
 data without source-name labels; tooltips and accessibility labels retain source
@@ -597,8 +600,10 @@ Averages retain GSM PR #549's floored harmonic mean, with two corrections for
 the standalone contract: arithmetic uses the native positive numeric value, not
 its display label, and rank, occurrence and unspecified dictionaries aggregate
 separately. Each dictionary contributes its first usable value once. Type labels
-remain visible even with source names hidden; these display controls do not
-change native frequency sorting or lookup results.
+remain visible as concise `Avg rank`, `Avg count`, or `Avg frequency` text even
+with source names hidden; individual dictionary names are not shown for an
+aggregate. These display controls do not change native frequency sorting or
+lookup results.
 
 The preferred pitch source is a soft canonical-title preference: unavailable or
 disabled sources fall back to another usable pitch source. A committed rename
@@ -612,7 +617,7 @@ A focused kanji button defers ruby replacement until blur. The shared visual
 context carries current preferences through deferred group changes, local tabs
 and Show more; an unchanged delivery performs no metadata rebuild.
 
-![Independent pitch contour and IPA with typed frequency averages](assets/metadata-popup.png)
+![Inline typed frequency average beside the headword, above dictionary tabs](assets/metadata-popup.png)
 
 ## Lookup statistics and definition blur
 
