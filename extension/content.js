@@ -1262,20 +1262,6 @@
     });
   }
 
-  // The source-term highlight is painted by the document, not by the shadow tree,
-  // so hiding the host alone would leave it in the picture. Its ranges live in
-  // the registered Highlight, so unregistering and re-registering the same object
-  // suspends and restores the exact paint.
-  function suspendMatchHighlight() {
-    const highlights = window.CSS?.highlights;
-    const painted = highlights?.get?.(HIGHLIGHT_NAME) ?? null;
-    if (painted !== null) highlights.delete(HIGHLIGHT_NAME);
-    return () => {
-      // Only what was suspended: a newer lookup may have published its own.
-      if (painted !== null && highlights.get(HIGHLIGHT_NAME) === undefined) highlights.set(HIGHLIGHT_NAME, painted);
-    };
-  }
-
   // A screenshot of the page must not contain anything Hachidori drew: the host
   // carries the popup, its image preview and the fallback highlight paint, and the
   // registered highlight is suspended beside it. Two frames give the change time
@@ -1286,7 +1272,10 @@
   let restoreMatchHighlight = null;
   async function concealReader(during) {
     if (host === null) return during();
-    if (concealing === 0) restoreMatchHighlight = suspendMatchHighlight();
+    // The source-term highlight is painted by the document, not by the shadow
+    // tree, so the highlighter stops publishing for as long as this lasts —
+    // including for a lookup that settles while the picture is being taken.
+    if (concealing === 0) restoreMatchHighlight = highlighter?.suspend() ?? null;
     concealing += 1;
     host.style.setProperty("visibility", "hidden", "important");
     try {

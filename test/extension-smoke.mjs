@@ -5310,6 +5310,8 @@ async function main() {
     sourceHighlight?.mutations === true, JSON.stringify(sourceHighlight));
   check("source fallback paints exact Range bounds in its own layer without editing page text, classes or selection",
     sourceHighlight?.fallback === true, JSON.stringify(sourceHighlight));
+  check("a suspended source highlight publishes nothing, ignores matches meanwhile and repaints its exact ranges",
+    sourceHighlight?.restored === true, JSON.stringify(sourceHighlight));
   check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
     frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
   check("Design resets only its shared appearance and content keys through one sparse options write",
@@ -6800,8 +6802,32 @@ async function sourceHighlightStage() {
     disposableView.destroy();
     const mutations = replacement && stale && detached && shadowDetached && ranges().length === 0
       && window.CSS.highlights.get("page-owned") === unrelated && window.getSelection().toString() === "Keep selection";
+    // A screenshot must not contain the highlight: publication stops for as long
+    // as it is suspended, including for a match that arrives meanwhile, and the
+    // exact ranges come back when it is released.
+    highlighter.clearAll();
+    const suspendSource = document.createElement("p");
+    suspendSource.textContent = "食べる";
+    document.body.append(suspendSource);
+    const suspendScope = highlighter.scope("suspend");
+    const suspendCandidate = { sourceElements: [suspendSource], sentence: suspendSource.textContent, matchOffset: 0 };
+    suspendScope.apply(suspendCandidate, "食べる");
+    const publishedBefore = texts() === "食べる";
+    const releaseFirst = highlighter.suspend();
+    const releaseSecond = highlighter.suspend();
+    const suspendedEmpty = ranges().length === 0;
+    suspendScope.clear();
+    suspendScope.apply(suspendCandidate, "食べる");
+    const suspendedQuiet = ranges().length === 0;
+    releaseFirst();
+    releaseFirst();
+    const heldBySecond = ranges().length === 0;
+    releaseSecond();
+    const restored = publishedBefore && suspendedEmpty && suspendedQuiet && heldBySecond && texts() === "食べる";
+    highlighter.clearAll();
+    suspendSource.remove();
     const fallback = await sourceHighlightFallbackCase(window);
-    return { ownership, mutations, fallback, visits, replacement, stale };
+    return { ownership, restored, mutations, fallback, visits, replacement, stale };
   } finally {
     highlighter.clearAll();
     window.close();

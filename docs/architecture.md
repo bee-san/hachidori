@@ -1311,10 +1311,14 @@ The reader takes it. Preflight reports `screenshot: true` only when the fields
 that will actually be applied map `{screenshot}` and the Settings switch is on,
 and the content script then hides Hachidori's own overlays: the popup, its image
 preview and the fallback highlight paint all live in one host element, and the
-document-registered source highlight is suspended beside it by unregistering the
-exact `Highlight` object and registering it again afterwards. It waits two frames
+document-registered source highlight is suspended beside it — the highlighter
+stops publishing for the whole interval, so a lookup that settles while the
+picture is being taken cannot paint into it either, and releasing repaints the
+exact ranges. It waits two frames
 so the change has painted, asks the worker for the picture, and restores
-everything whatever the outcome. Concealment is counted, so one capture cannot
+everything whatever the outcome. The picture is taken before any clip export is
+prepared, so it is of the moment the user clicked rather than of whatever the page
+shows minutes later. Concealment is counted, so one capture cannot
 reveal the reader while another still owns it. The worker validates the request against
 its sender before every attempt: `tabs.captureVisibleTab` takes the window's
 active tab, so the asking tab must still be that tab, and a top-level frame must

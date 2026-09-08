@@ -199,7 +199,7 @@
       text(record.output, "Saving to Anki…");
       let writeSent = false;
       try {
-        const prepared = await prepareScreenshot(record, await prepareCapture(record, request, owns), owns);
+        const prepared = await prepareCapture(record, await prepareScreenshot(record, request, owns), owns);
         if (owns()) text(record.output, "Saving to Anki…");
         writeSent = true;
         const result = await send("hd_anki_submit", { request: prepared });
