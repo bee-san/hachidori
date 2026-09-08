@@ -211,13 +211,16 @@
         if (owns()) text(record.output, "Saving to Anki…");
         writeSent = true;
         const result = await send("hd_anki_submit", { request: prepared });
-        // These replies confirm that no note was written. Release the export
+        // These replies confirm that no note was written. Release its media
         // even if its popup retired while Anki was checking the submission.
-        if (["duplicate", "invalid"].includes(result.state)) await cancelCapture(record);
+        if (["duplicate", "invalid"].includes(result.state)) {
+          await discardScreenshot(record);
+          await cancelCapture(record);
+        }
         if (!submitted(record, result) && owns()) { decision(record, { ...result, canAdd: false }); refreshAll(); }
       } catch (error) {
-        // Nothing was sent, so the picture this submission took is nobody's.
-        if (!writeSent) await discardScreenshot(record);
+        // Release a known no-write, but retain a sent picture if its reply was lost.
+        if (!writeSent || error.responseReceived) await discardScreenshot(record);
         if (writeSent && !error.responseReceived) uncertain(record, `The write could not be confirmed. Use View in Anki before trying again. ${error.message}`);
         else if (owns()) text(record.output, `Could not add: ${error.message}`);
       } finally {

@@ -384,6 +384,70 @@ test("uncertain replies and lost submission responses retain the prepared job an
   }
 });
 
+test("definitive no-write outcomes discard their screenshot even after the popup retires", async t => {
+  for (const outcome of ["duplicate", "invalid", "configuration changed", "generation changed", "fresh discovery failed"]) {
+    for (const retired of [false, true]) {
+      await t.test(`${outcome}, ${retired ? "retired" : "current"} popup`, async t => {
+        const held = Promise.withResolvers(), discards = [];
+        const screenshot = { token: "rejected-picture", filename: "hachidori-screenshot-rejected.jpg" };
+        let submitted;
+        const f = fixture(t, async (type, { request } = {}) => {
+          if (type === "hd_anki_status") return { available: true, configKey: "current" };
+          if (type === "hd_anki_preflight") return { state: "addable", canAdd: true, screenshot: true };
+          if (type === "hd_anki_screenshot") return screenshot;
+          if (type === "hd_anki_screenshot_discard") { discards.push(request.token); return { discarded: true }; }
+          if (type === "hd_anki_submit") { submitted = request; return held.promise; }
+          throw new Error(`Unexpected ${type}`);
+        });
+        f.controller.update(configured);
+        f.controller.bind([f.items[0]], f.context);
+        await until(() => f.items[0].add && !f.items[0].add.disabled);
+        f.items[0].add.click();
+        await until(() => submitted);
+        assert.deepEqual(submitted.screenshot, screenshot);
+        assert.deepEqual(discards, [], "an in-flight submission still owns its picture");
+        if (retired) f.controller.retire(f.context.owner);
+        if (["duplicate", "invalid"].includes(outcome)) held.resolve({ state: outcome });
+        else held.reject(Object.assign(new Error(outcome), { responseReceived: true }));
+        await tick();
+        assert.deepEqual(discards, [screenshot.token], "a confirmed no-write must release its picture exactly once");
+        assert.notEqual(f.items[0].add.dataset.state, "uncertain");
+      });
+    }
+  }
+});
+
+test("uncertain and lost submission replies do not discard a screenshot that the write may still need", async t => {
+  for (const transportLost of [false, true]) {
+    await t.test(transportLost ? "lost response" : "uncertain reply", async t => {
+      const discards = [];
+      let writes = 0;
+      const f = fixture(t, async (type, { request } = {}) => {
+        if (type === "hd_anki_status") return { available: true, configKey: "current" };
+        if (type === "hd_anki_preflight") return { state: "addable", canAdd: true, screenshot: true };
+        if (type === "hd_anki_screenshot") return { token: "pending-picture", filename: "hachidori-screenshot-pending.jpg" };
+        if (type === "hd_anki_screenshot_discard") { discards.push(request.token); return { discarded: true }; }
+        if (type === "hd_anki_submit") {
+          writes++;
+          if (transportLost) throw new Error("response lost");
+          return { state: "uncertain", error: "Check Anki" };
+        }
+        throw new Error(`Unexpected ${type}`);
+      });
+      f.controller.update(configured);
+      f.controller.bind([f.items[0]], f.context);
+      await until(() => f.items[0].add && !f.items[0].add.disabled);
+      f.items[0].add.click();
+      await until(() => f.items[0].add.dataset.state === "uncertain");
+      assert.deepEqual(discards, []);
+      assert.equal(f.items[0].add.disabled, true);
+      assert.equal(f.items[0].view.disabled, false);
+      f.items[0].add.click();
+      assert.equal(writes, 1);
+    });
+  }
+});
+
 test("a note that maps a screenshot captures one with the reader concealed and never fails the note for it", async t => {
   const calls = [];
   const concealed = [];
