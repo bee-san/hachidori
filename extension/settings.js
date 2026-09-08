@@ -356,7 +356,7 @@ function updateDesignPreview() {
     }
   }
   if (frame.style.width !== `${options.popupWidthPx + 96}px`
-      || frame.style.height !== `${options.popupHeightPx + 136}px`) resizeDesignPreview();
+      || frame.style.height !== `${options.popupHeightPx + 216}px`) resizeDesignPreview();
   frame.contentWindow.HDDesignPreview?.update(options, dictionaryState);
 }
 
@@ -364,7 +364,7 @@ function resizeDesignPreview() {
   const viewport = element("preview-viewport");
   const frame = element("design-preview");
   const width = options.popupWidthPx + 96;
-  const height = options.popupHeightPx + 136;
+  const height = options.popupHeightPx + 216;
   const scale = element("preview-size").value === "actual" ? 1 : Math.min(1, viewport.clientWidth / width);
   frame.style.width = `${width}px`;
   frame.style.height = `${height}px`;

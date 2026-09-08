@@ -35,6 +35,12 @@ fails if `git status` in the submodule comes back dirty.
 
 ---
 
+## `issue-template.test.mjs`
+
+Run `node --test test/issue-template.test.mjs` for changes to issue templates or their enforcement workflow. This dependency-free suite uses the production validator and mocked GitHub issue calls to check completed and incomplete submissions, Markdown comments and code fences, the acknowledgement, closure feedback, and stale issue events. It never closes real issues. The Issue template workflow runs this check on relevant pull requests and pushes to `main`; its separate issue-event job enforces the template on opened, edited, and reopened issues.
+
+---
+
 ## `submodule-identity.mjs`
 
 Guards that the `third_party/hoshidicts` submodule's declared tracking branch in

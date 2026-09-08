@@ -348,7 +348,12 @@ first-install dark appearance and compact summaries.
 
 The card shows the instruction that matches the current `lookupMode` — hover, or
 holding the configured activation key — and one sentence to try,
-**朝ごはんを食べる。** **Finish** and **Open Settings** stay available: the
+**朝ごはんを食べる。** The sentence sits in the dialogue panel of the
+repository owner's visual novel artwork. The scene and Design preview share
+`visual-novel.css` and the packaged, unchanged image; its source and copyright
+declaration are recorded in [asset ownership](asset-rights.md). The
+practice scene uses ordinary selectable page text, so the real reader can
+highlight it and open a lookup above it. **Finish** and **Open Settings** stay available: the
 exercise is optional. The invitation appears only when it can be answered, and that is
 proved rather than assumed: the page runs an ordinary `hd_lookup` from every
 offset in the sentence, through the same engine the reader would use and with the
@@ -1143,7 +1148,7 @@ recording-duration limit.
 
 ### Live Design preview
 
-![Appearance controls beside the production popup preview](assets/popup-toolbar-settings.png)
+![Appearance controls beside the visual novel popup preview](assets/design-preview.png)
 
 Design moves the existing appearance controls out of Reading, without a second
 options store or save queue. Both sections capture the same revision-bound
@@ -1153,14 +1158,15 @@ or a failed save. Other sections do not load or update the preview.
 
 The same-origin iframe and its resize observer are created only on first
 visiting Design; Library startup does not create even a blank browsing context.
-It contains a neutral
-sample webpage and a shadow root using `render/popup.js`, `render/glossary.js`,
+It contains a visual novel scene with Japanese dialogue and a shadow root using `render/popup.js`, `render/glossary.js`,
 and `render/reader.css`; the page uses the production `content.css` highlight.
 Four deterministic glossary cards demonstrate all retained column choices,
 alongside structured media, frequency, pitch, and kanji content. Selected
 installed sources are represented by sample entries, not real lookup results.
 The packaged SVG is fetched once and reused as a blob URL; the preview does not
-contact the engine, fetch dictionary data, or write personal notes.
+contact the engine, fetch dictionary data, or write personal notes. The same
+local street background as first-run practice makes popup opacity visible over
+game artwork; the dialogue stays below the lookup as popup dimensions change.
 
 An unchanged presentation snapshot does no renderer work. Metadata, summary,
 and image-route changes use the production incremental projection; a changed
