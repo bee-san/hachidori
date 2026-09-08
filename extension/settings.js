@@ -1287,6 +1287,10 @@ function renderThemeChoices() {
   if (theme !== document.activeElement) theme.value = options.popupTheme;
 }
 
+function applySettingsTheme() {
+  document.documentElement.dataset.hoshidictsTheme = options.popupTheme;
+}
+
 function renderCustomCss(force = false) {
   const editor = element("opt-custom-popup-css");
   if ((force || editor !== document.activeElement) && editor.value !== options.customPopupCss) {
@@ -1296,6 +1300,7 @@ function renderCustomCss(force = false) {
 }
 
 function renderOptions() {
+  applySettingsTheme();
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
     if (input !== document.activeElement) {
@@ -2729,6 +2734,7 @@ function setOptionsStatus(message, completed = false) {
 // Keep only edited fields. A storage event can update the committed snapshot,
 // but cannot replace a local draft or authorize a stale draft's write.
 function writeOptions() {
+  applySettingsTheme();
   updateDesignPreview();
   const previous = { ...savedOptions, ...savingOptions?.patch };
   const changes = Object.fromEntries(Object.entries(options).filter(([key, value]) =>

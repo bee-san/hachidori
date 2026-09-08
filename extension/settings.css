@@ -10,6 +10,7 @@
   --text: #20232b;
   --text-dim: #5c6370;
   --accent: #2455bd;
+  --accent-fill: var(--accent);
   --accent-soft: #e8efff;
   --accent-contrast: #ffffff;
   --ok: #21704b;
@@ -18,7 +19,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-hoshidicts-theme]) {
     --bg: #15171b;
     --surface: #1d2026;
     --surface-sunken: #242830;
@@ -27,12 +28,76 @@
     --text: #edf0f5;
     --text-dim: #a8b0be;
     --accent: #a8c2ff;
+    --accent-fill: var(--accent);
     --accent-soft: #27354d;
     --accent-contrast: #162449;
     --ok: #8bd3ab;
     --error: #ffaaa7;
     --favorite: #eac887;
   }
+}
+
+:root[data-hoshidicts-theme] {
+  color-scheme: var(--hoshidicts-palette-color-scheme);
+  --bg: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-base-200) 55%,
+    var(--hoshidicts-palette-base-100)
+  );
+  --surface: var(--hoshidicts-palette-base-100);
+  --surface-sunken: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-base-200) 55%,
+    var(--hoshidicts-palette-base-100)
+  );
+  --border: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-base-content) 20%,
+    var(--hoshidicts-palette-base-100)
+  );
+  --border-strong: var(--hoshidicts-palette-base-content);
+  --text: var(--hoshidicts-palette-base-content);
+  --text-dim: var(--hoshidicts-palette-base-content);
+  --accent: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-primary) 6%,
+    var(--hoshidicts-palette-base-content)
+  );
+  --accent-fill: var(--accent);
+  --accent-soft: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-primary) 5%,
+    var(--hoshidicts-palette-base-100)
+  );
+  --accent-contrast: var(--hoshidicts-palette-base-100);
+  --ok: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-success) 5%,
+    var(--hoshidicts-palette-base-content)
+  );
+  --error: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-error) 5%,
+    var(--hoshidicts-palette-base-content)
+  );
+  --favorite: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-warning) 5%,
+    var(--hoshidicts-palette-base-content)
+  );
+}
+
+:root[data-hoshidicts-theme="high-contrast"] {
+  --border: #777777;
+  --border-strong: #ffffff;
+  --text-dim: #f0f0f0;
+  --accent: #ffe000;
+  --accent-fill: #ffe000;
+  --accent-soft: #141414;
+  --accent-contrast: #000000;
+  --ok: #51ff8f;
+  --error: #ff6b6b;
+  --favorite: #ffd400;
 }
 
 * {
@@ -380,7 +445,7 @@ code {
   padding: 9px 15px;
   border: 1px solid transparent;
   border-radius: 4px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: var(--accent-contrast);
   font-weight: 600;
 }
@@ -561,7 +626,7 @@ button.danger:hover:not(:disabled) {
 .track-fill {
   width: 34%;
   height: 100%;
-  background: var(--accent);
+  background: var(--accent-fill);
   animation: slide 1.4s ease-in-out infinite;
 }
 @keyframes slide {
@@ -615,7 +680,7 @@ input[type="checkbox"] {
   width: 16px;
   height: 16px;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
 }
 .lookup-enable {
   display: flex;
@@ -646,7 +711,7 @@ input[type="checkbox"] {
   border-top: 1px solid var(--border);
 }
 .dict-row.is-drop-target {
-  box-shadow: inset 0 3px var(--accent);
+  box-shadow: inset 0 3px var(--accent-fill);
 }
 .dict-row.is-off {
   background: var(--surface-sunken);
