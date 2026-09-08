@@ -20,6 +20,7 @@
   <a href="#benchmarks">Benchmarks</a> ·
   <a href="#hachidori-vs-the-alternatives">Compare</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/chrome-web-store.md">Chrome Web Store guide</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
