@@ -282,6 +282,21 @@ test("overwrite skip policy can suppress all captured media without a pin, expor
   assert.equal(f.calls.includes("storeMediaFile"), false);
 });
 
+test("unchanged captured fields do not require another export or upload", async () => {
+  const f = captureFixture({ duplicate: true, templates: {
+    Front: { value: "{expression}", overwriteMode: "overwrite" },
+    Media: { value: "{capture-animation}", overwriteMode: "overwrite" },
+    CapturedAudio: { value: "", overwriteMode: "overwrite" },
+  } });
+  f.fields.Media = '<img src="hachidori-abc123.avif">';
+  f.request.configKey = (await f.service.status()).configKey;
+  assert.equal((await f.service.preflight(f.request)).capture, null);
+  assert.equal((await f.service.submit(f.request)).state, "updated");
+  assert.equal(f.fields.Media, '<img src="hachidori-abc123.avif">');
+  assert.deepEqual(f.captureCalls, []);
+  assert.equal(f.calls.includes("storeMediaFile"), false);
+});
+
 test("an uncertain note write retains confirmed capture uploads for an explicit retry", async () => {
   const f = captureFixture({
     failFirstWrite: true,
