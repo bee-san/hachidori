@@ -2985,6 +2985,15 @@ async function main() {
     [...new Set(offscreenApis)].join(", "),
   );
   check(
+    "dictionary storage relies on unlimitedStorage without a redundant persistence request",
+    EXTENSION_MANIFEST.permissions?.includes("unlimitedStorage") === true
+      && !offscreenSource.includes("navigator.storage.persist"),
+    JSON.stringify({
+      permissions: EXTENSION_MANIFEST.permissions,
+      requestsPersistentStorage: offscreenSource.includes("navigator.storage.persist"),
+    }),
+  );
+  check(
     "runtime selection depends on capabilities rather than stored dictionaries",
     !offscreenSource.includes("hd_dicts_read") && !offscreenSource.includes("opfsDictionaryTitles"),
     "offscreen.js still contains legacy-storage selection logic",
