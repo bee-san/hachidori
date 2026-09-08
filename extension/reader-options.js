@@ -48,8 +48,6 @@
     sourceHighlightEnabled: true,
     popupColumns: 1,
     showLookupCounts: true,
-    corpusSeenEnabled: false,
-    corpusSeenUrl: "http://127.0.0.1:7275",
     definitionBlurEnabled: false,
     definitionBlurAnkiMature: false,
     definitionBlurDirection: "atLeast",
@@ -102,8 +100,6 @@
   const POPUP_THEME_IDS = new Set(POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id)));
   const DESIGN_OPTION_KEYS = [
     "popupTheme", "popupToolbarPosition", "customPopupCss", "popupWidthPx", "popupHeightPx", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
-    "showLookupCounts", "corpusSeenEnabled", "corpusSeenUrl",
-    "definitionBlurEnabled", "definitionBlurAnkiMature", "definitionBlurDirection", "definitionBlurThreshold", "definitionBlurReveal", "definitionBlurDelayMs",
     "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "averageFrequency", "showFrequencyDictionaryNames",
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "showPitchAccentBadge", "hidePopupGrammarTags",
@@ -284,19 +280,6 @@
     return typeof value === "string" ? value : "";
   }
 
-  function normaliseCorpusSeenUrl(value) {
-    if (typeof value !== "string" || value === "") return null;
-    try {
-      const url = new URL(value);
-      if (!["http:", "https:"].includes(url.protocol)
-          || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
-          || url.username || url.password) return null;
-      return url.origin;
-    } catch {
-      return null;
-    }
-  }
-
   // Shared by the reader and the Design preview. Either enabled rule can
   // qualify; missing values fail open. Zero is a valid count for Below.
   function definitionBlurQualifies(options, lookupCount, ankiMature = false) {
@@ -327,7 +310,6 @@
       case "activationKey": return normaliseActivationKey(value);
       case "kanjiClickDictionary": return normaliseKanjiSelection(value);
       case "popupImageSource": return normalisePopupImageSource(value);
-      case "corpusSeenUrl": return normaliseCorpusSeenUrl(value) ?? DEFAULT_OPTIONS.corpusSeenUrl;
       case "audioSources": return normaliseAudioSources(value);
       case "anki": return normaliseAnki(value);
       case "mediaCapture": return normaliseMediaCapture(value);
@@ -404,7 +386,6 @@
     if (key === "mediaCapture") return validMediaCapture(raw, normalized);
     if (key === "kanjiClickDictionary") return typeof raw === "string" || typeof normalized === "object";
     if (key === "popupImageSource") return raw === null || normalized !== null;
-    if (key === "corpusSeenUrl") return normaliseCorpusSeenUrl(raw) === raw;
     if (key === "audioSources") return Array.isArray(raw) && raw.length === normalized.length
       && normalized.every((source, index) => Object.entries(source).every(([field, value]) => raw[index][field] === value));
     return typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
@@ -448,7 +429,7 @@
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
     MEDIA_TIMING_MODES, MEDIA_HISTORY_SECONDS, MEDIA_CLIP_SECONDS, MEDIA_VIDEO_PRESETS, MEDIA_TEXTHOOKER_FORMATS,
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
-    normaliseCorpusSeenUrl, normaliseTexthookerUrl, normaliseMediaCapture, definitionBlurQualifies,
+    normaliseTexthookerUrl, normaliseMediaCapture, definitionBlurQualifies,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
     projectStoredOptions, projectContentOptions, validateOptionsPatch,
     resolvePopupImageSources,

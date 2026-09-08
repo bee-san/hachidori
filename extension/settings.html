@@ -16,6 +16,25 @@
           <div><span>Hachidori</span><span class="brand-context">Settings</span></div>
         </div>
         <a class="setup-resume" id="setup-resume" href="startup.html" hidden>Resume setup</a>
+        <label class="settings-section-picker" for="settings-section">
+          <span class="field-label">Section</span>
+          <select id="settings-section">
+            <option value="dictionaries">Library</option>
+            <option value="lookup">Reading</option>
+            <option value="design">Design</option>
+            <option value="audio">Audio</option>
+            <option value="media">Media capture</option>
+            <option value="anki">Anki</option>
+            <option value="custom-dictionary">Personal dictionary</option>
+            <optgroup label="Library tools">
+              <option value="add-dictionaries">Import</option>
+              <option value="updates">Updates</option>
+              <option value="dictionary-groups">Groups</option>
+              <option value="backup">Backup &amp; restore</option>
+            </optgroup>
+          </select>
+        </label>
+        <output id="settings-navigation-status" class="compact-nav-status" aria-live="polite"></output>
         <nav class="settings-nav" aria-label="Settings sections">
           <div class="nav-item"><a href="#dictionaries">Library</a></div>
           <div class="nav-item">
@@ -77,7 +96,7 @@
           <div class="section-heading">
             <div class="card-head">
               <h1 id="dictionaries-heading" tabindex="-1">Library</h1>
-              <p class="hint">Results follow this order.</p>
+              <p class="hint">Your dictionaries, in the order they appear in lookups.</p>
             </div>
             <a class="section-action" href="#add-dictionaries"
               >Add dictionaries</a
@@ -127,8 +146,17 @@
             </div>
           </div>
           <ol class="dict-list" id="dict-list"></ol>
-          <p class="empty-state" id="dict-empty">Nothing imported yet.</p>
-          <p class="section-note">
+          <div class="empty-state library-empty" id="dict-empty">
+            <span class="empty-state-icon" aria-hidden="true">辞</span>
+            <h2 id="dict-empty-heading">Build your dictionary library</h2>
+            <p id="dict-empty-description">Start with recommended dictionaries, or bring your own Yomitan ZIP files.</p>
+            <div class="empty-state-actions" id="dict-empty-actions">
+              <button class="primary-button" id="empty-install-recommended" type="button">Install recommended dictionaries</button>
+              <button class="ghost" id="empty-import-dictionaries" type="button">Import ZIP files</button>
+            </div>
+            <button class="ghost" id="empty-clear-search" type="button" hidden>Clear search</button>
+          </div>
+          <p class="section-note" id="dict-reorder-help">
             Drag to reorder, or use the arrow buttons. Open Details to rename or remove a dictionary.
           </p>
         </section>
@@ -176,14 +204,13 @@
             class="recommendations"
             id="recommended-starter"
             aria-labelledby="recommended-dictionaries-heading"
-            hidden
           >
             <div class="recommendations-head">
               <h2 id="recommended-dictionaries-heading">
                 Recommended dictionaries
               </h2>
               <p class="hint">
-                Four trusted sources, from their original publishers.
+                Four trusted sources for words, names, kanji and frequency. Already installed sources are skipped.
               </p>
             </div>
             <button
@@ -357,7 +384,16 @@
         <section class="card" id="lookup" aria-labelledby="lookup-heading" hidden>
           <div class="card-head">
             <h1 id="lookup-heading" tabindex="-1">Reading</h1>
-            <p class="hint">Changes save automatically.</p>
+            <p class="hint">Choose how Hachidori responds while you read. Changes save automatically.</p>
+          </div>
+          <div class="options-feedback-slot">
+            <div id="options-feedback">
+              <output id="options-status" class="custom-dictionary-status" aria-live="polite"></output>
+              <div id="options-conflict-actions" class="options-actions" hidden>
+                <button id="options-retry" class="primary-button" type="button">Save my changes</button>
+                <button id="options-use-saved" class="ghost" type="button">Use saved settings</button>
+              </div>
+            </div>
           </div>
           <fieldset class="lookup-group">
             <legend>Activation</legend>
@@ -478,22 +514,63 @@
               </div>
             </div>
           </fieldset>
-          <div class="options-feedback-slot">
-            <div id="options-feedback">
-          <output id="options-status" class="custom-dictionary-status" aria-live="polite"></output>
-          <div id="options-conflict-actions" class="options-actions" hidden>
-            <button id="options-retry" class="primary-button" type="button">Save my changes</button>
-            <button id="options-use-saved" class="ghost" type="button">Use saved settings</button>
-          </div>
-            </div>
-          </div>
+          <fieldset class="lookup-group" id="lookup-history-settings">
+            <legend>Lookup history</legend>
+            <label class="lookup-enable">
+              <span>Record and show lookup counts</span>
+              <input id="opt-lookup-counts" type="checkbox" aria-describedby="lookup-counts-help" />
+            </label>
+            <p class="field-hint" id="lookup-counts-help">See how often you look up a word. Counts stay in this browser and are included in backups; turning this off keeps your past counts.</p>
+          </fieldset>
+          <fieldset class="lookup-group" id="definition-blur-settings">
+            <legend>Definition blur</legend>
+            <label class="lookup-enable">
+              <span>Blur definitions by lookup count</span>
+              <input id="opt-blur-enabled" type="checkbox" aria-describedby="definition-blur-help" />
+            </label>
+            <label class="lookup-enable">
+              <span>Blur definitions for mature Anki words</span>
+              <input id="opt-blur-anki-mature" type="checkbox" aria-describedby="definition-blur-anki-help definition-blur-help" />
+            </label>
+            <p class="field-hint">Give yourself a moment to recall a word before showing its meaning.</p>
+            <details class="settings-disclosure">
+              <summary>Threshold and reveal behaviour</summary>
+              <div class="fields">
+                <label class="field">
+                  <span class="field-label">Blur when looked up</span>
+                  <select id="opt-blur-direction">
+                    <option value="atLeast">At least</option>
+                    <option value="below">Below</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Threshold (lookups)</span>
+                  <input id="opt-blur-threshold" type="number" min="1" max="1000000" step="1" inputmode="numeric" />
+                </label>
+                <label class="field">
+                  <span class="field-label">Reveal</span>
+                  <select id="opt-blur-reveal">
+                    <option value="timed">After a delay</option>
+                    <option value="hover">On hover only</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Delay (seconds)</span>
+                  <input id="opt-blur-delay" type="number" min="1" max="3600" step="0.5" inputmode="decimal" />
+                </label>
+              </div>
+              <p class="field-hint" id="definition-blur-help">Either enabled rule can blur. Count blur needs lookup counts. Hover over a definition to reveal it in either mode. Blurred results do not play pronunciation automatically. If a check is unavailable, reading continues normally.</p>
+              <p class="field-hint" id="definition-blur-anki-help">A mature word has a matching Anki review card with an interval of at least 21 days. This uses the first result and your configured note type across all decks. In <a href="#anki">Anki settings</a>, map Expression to a dedicated field, or a template containing only <code>{expression}</code>. Anki blur works independently of lookup counts.</p>
+            </details>
+          </fieldset>
         </section>
 
         <section class="card" id="design" aria-labelledby="design-heading" hidden>
           <div class="card-head">
             <h1 id="design-heading" tabindex="-1">Design</h1>
-            <p class="hint">Adjust your popup. Changes save automatically.</p>
+            <p class="hint">Appearance and content, with a live preview. Changes save automatically.</p>
           </div>
+          <div class="options-feedback-slot"></div>
           <div class="design-layout">
             <div class="design-controls">
               <fieldset class="lookup-group">
@@ -567,60 +644,6 @@
                   </label>
                 </div>
               </fieldset>
-              <fieldset class="lookup-group" id="lookup-history-settings">
-                <legend>Lookup history</legend>
-                <label class="lookup-enable">
-                  <span>Record and show lookup counts</span>
-                  <input id="opt-lookup-counts" type="checkbox" aria-describedby="lookup-counts-help" />
-                </label>
-                <p class="field-hint" id="lookup-counts-help">Counts stay in this browser and are included in backups. Turning this off pauses recording without erasing past counts. The All tab shows the primary word's count; other tabs may show a different word.</p>
-                <label class="lookup-enable">
-                  <span>Show GameSentenceMiner corpus Seen counts</span>
-                  <input id="opt-corpus-seen" type="checkbox" aria-describedby="corpus-seen-help" />
-                </label>
-                <label class="field">
-                  <span class="field-label">GameSentenceMiner URL</span>
-                  <input id="opt-corpus-url" type="url" inputmode="url" spellcheck="false" value="http://127.0.0.1:7275" />
-                </label>
-                <p class="field-hint" id="corpus-seen-help">Optional and read-only. Hachidori asks the local GameSentenceMiner word-detail endpoint for the saved-corpus occurrence count. Only loopback URLs are accepted; pages and browsing history are not collected.</p>
-              </fieldset>
-              <fieldset class="lookup-group" id="definition-blur-settings">
-                <legend>Definition blur</legend>
-                <label class="lookup-enable">
-                  <span>Blur definitions by lookup count</span>
-                  <input id="opt-blur-enabled" type="checkbox" aria-describedby="definition-blur-help" />
-                </label>
-                <label class="lookup-enable">
-                  <span>Blur definitions for mature Anki words</span>
-                  <input id="opt-blur-anki-mature" type="checkbox" aria-describedby="definition-blur-anki-help definition-blur-help" />
-                </label>
-                <p class="field-hint" id="definition-blur-anki-help">Mature means a matching word has a review card with an interval of at least 21 days. Uses the first result and your configured Anki note type across all decks. Map Expression to a dedicated field, or use a field template containing only <code>{expression}</code>. Read-only; works independently of lookup counts.</p>
-                <div class="fields">
-                  <label class="field">
-                    <span class="field-label">Blur when looked up</span>
-                    <select id="opt-blur-direction">
-                      <option value="atLeast">At least</option>
-                      <option value="below">Below</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span class="field-label">Threshold (lookups)</span>
-                    <input id="opt-blur-threshold" type="number" min="1" max="1000000" step="1" inputmode="numeric" />
-                  </label>
-                  <label class="field">
-                    <span class="field-label">Reveal</span>
-                    <select id="opt-blur-reveal">
-                      <option value="timed">After a delay</option>
-                      <option value="hover">On hover only</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span class="field-label">Delay (seconds)</span>
-                    <input id="opt-blur-delay" type="number" min="1" max="3600" step="0.5" inputmode="decimal" />
-                  </label>
-                </div>
-                <p class="field-hint" id="definition-blur-help">Either enabled rule can blur. Count blur needs lookup counts. Definitions start blurred while checking; unavailable checks do not qualify, and Anki being closed never prevents lookup. Hovering a definition or the compact summary reveals in either mode. Pronunciation does not auto-play for blurred results. Preview: 3 lookups and a mature word.</p>
-              </fieldset>
               <fieldset class="lookup-group">
                 <legend>Frequency labels</legend>
                 <label class="lookup-enable">
@@ -685,26 +708,25 @@
                   </label>
                 </div>
               </fieldset>
-              <fieldset class="lookup-group">
-                <legend>Custom CSS</legend>
+              <details class="settings-disclosure custom-css-disclosure">
+                <summary>Custom CSS</summary>
                 <label class="field-label" for="opt-custom-popup-css">Popup stylesheet</label>
                 <p class="field-hint" id="custom-css-help">Applied after built-in and dictionary styles, inside the popup only. Changes preview as you type.</p>
                 <textarea id="opt-custom-popup-css" rows="8" spellcheck="false" autocapitalize="off"
                   aria-describedby="custom-css-help custom-css-count"
-                  placeholder=".gsm-hoshidicts-popup {&#10;  font-size: 16px;&#10;}"></textarea>
+                  placeholder=".gloss-image {&#10;  border-radius: 8px;&#10;}"></textarea>
                 <div class="custom-css-footer">
                   <span id="custom-css-count" class="field-hint">0 characters</span>
                   <button id="reset-custom-css" type="button" class="ghost">Reset custom CSS</button>
                 </div>
-                <p class="field-hint">CSS only, not scripts or actions. Invalid rules are ignored by the browser. Styles using URLs can request external resources.</p>
-                <div class="options-feedback-slot"></div>
-              </fieldset>
+                <p class="field-hint">Invalid rules are ignored by the browser. Styles using URLs can request external resources.</p>
+              </details>
               <button id="reset-design" type="button" class="ghost">Reset Design to defaults</button>
               <p class="field-hint">Resets appearance and content controls above. Reading and your library stay unchanged.</p>
             </div>
-            <div class="design-sample">
+            <details class="design-sample" id="design-preview-disclosure" open>
+              <summary>Live preview</summary>
               <div class="preview-heading">
-                <h2>Live preview</h2>
                 <label class="preview-size-label">View
                   <select id="preview-size">
                     <option value="fit">Scale to fit</option>
@@ -712,11 +734,11 @@
                   </select>
                 </label>
               </div>
-              <p class="field-hint">Sample entries, not a lookup. Click a kanji to try its view. Notes are not saved.</p>
+              <p class="field-hint">Try a sample word or click a kanji. Notes here are not saved.</p>
               <div class="preview-viewport" id="preview-viewport">
                 <div id="preview-canvas"></div>
               </div>
-            </div>
+            </details>
           </div>
         </section>
         <section class="card" id="audio" aria-labelledby="audio-heading" hidden>
@@ -724,15 +746,18 @@
             <h1 id="audio-heading" tabindex="-1">Audio</h1>
             <p class="hint">Choose where pronunciations come from, in priority order.</p>
           </div>
-          <p>Text-to-speech is enabled on a fresh install. Keep it, choose a voice, or add your own audio URLs below.</p>
+          <div class="options-feedback-slot"></div>
+          <p class="section-note">Choose a voice for text-to-speech, or add an audio provider. Hachidori tries enabled sources from top to bottom.</p>
           <label class="lookup-enable"><span>Automatically play the first lookup result</span><input id="opt-audio-autoplay" type="checkbox"></label>
           <p class="field-hint">Off by default. You can always use Audio in the popup; Shift-click or right-click it to choose a pronunciation.</p>
-          <p class="field-hint">URL templates accept <code>{term}</code>, <code>{expression}</code>, <code>{reading}</code> and <code>{language}</code> (ja). Substitutions are URL-encoded. Yomitan JSON sources return an <code>audioSourceList</code>.</p>
           <ol id="audio-source-list" class="audio-source-list"></ol>
           <p id="audio-source-empty" class="hint" hidden>No audio sources. Add one to configure pronunciation.</p>
           <button id="audio-source-add" type="button" class="ghost">Add source</button>
-          <p class="field-hint">Test plays 聞く / きく using this row, even if it is disabled. URL sources contact the configured provider; some system voices use an online service.</p>
-          <div class="options-feedback-slot"></div>
+          <details class="settings-disclosure">
+            <summary>Audio URLs and testing</summary>
+            <p class="field-hint">URL templates accept <code>{term}</code>, <code>{expression}</code>, <code>{reading}</code> and <code>{language}</code> (ja). Substitutions are URL-encoded. Yomitan JSON sources return an <code>audioSourceList</code>.</p>
+            <p class="field-hint">Test plays 聞く / きく using that source, even if it is disabled. URL sources contact the configured provider; some system voices use an online service.</p>
+          </details>
         </section>
         <section class="card" id="media" aria-labelledby="media-heading" hidden>
           <div class="section-heading">
@@ -742,6 +767,7 @@
             </div>
             <button id="media-open-capture" type="button" class="primary-button">Open capture controls</button>
           </div>
+          <div class="options-feedback-slot"></div>
           <output id="media-runtime-status" class="anki-status" aria-live="polite">
             Capture is stopped.
           </output>
@@ -840,7 +866,7 @@
                 <span class="field-label">Message format</span>
                 <select id="opt-media-texthooker-format">
                   <option value="plain">Plain live text</option>
-                  <option value="gsm">GameSentenceMiner text_received</option>
+                  <option value="gsm">JSON · text_received</option>
                 </select>
               </label>
             </div>
@@ -849,16 +875,16 @@
             Anki templates use <code>{capture-animation}</code> and <code>{capture-audio}</code>.
             Captured media cannot be placed in the first Anki field.
           </p>
-          <div class="options-feedback-slot"></div>
         </section>
         <section class="card" id="anki" aria-labelledby="anki-heading" hidden>
           <div class="section-heading">
             <div class="card-head">
               <h1 id="anki-heading" tabindex="-1">Anki</h1>
-              <p class="hint">One destination for your dictionary notes. Changes save automatically.</p>
+              <p class="hint">Optional flashcards for the words you want to keep. Changes save automatically.</p>
             </div>
             <button id="anki-refresh" type="button" class="ghost">Refresh connection</button>
           </div>
+          <div class="options-feedback-slot"></div>
           <output id="anki-status" class="anki-status" aria-live="polite">Open Anki to discover your decks and note types.</output>
           <p class="field-hint">Requires the <a href="https://ankiweb.net/shared/info/2055492159" target="_blank" rel="noopener noreferrer">AnkiConnect add-on</a> in Anki, running on this computer at <code>127.0.0.1:8765</code>.</p>
           <fieldset class="lookup-group">
@@ -896,7 +922,6 @@
             <summary>Connection credentials</summary>
             <label class="field"><span class="field-label">API key</span><input id="opt-anki-api-key" type="password" autocomplete="off"><span class="field-hint">Leave blank unless you configured an API key in AnkiConnect. Stored locally in this browser.</span></label>
           </details>
-          <div class="options-feedback-slot"></div>
         </section>
         <section class="card" id="backup" aria-labelledby="backup-heading" hidden>
           <div class="card-head">
