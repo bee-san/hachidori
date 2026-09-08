@@ -53,7 +53,7 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
     await page.click("#backup-restore");
     await page.waitForFunction(() => !document.getElementById("backup-export").disabled, { timeout: 120_000 });
   };
-  await page.click('.settings-nav a[href="#backup"]');
+  await page.evaluate(() => { location.hash = "#backup"; });
   await page.waitForSelector("#backup-export", { visible: true });
   const before = await read();
   await page.click("#backup-export");
