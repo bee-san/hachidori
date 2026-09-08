@@ -23,8 +23,9 @@ the distribution and listing. Google makes the final acceptance decision.
 | First-run disclosure | [Setup](../extension/startup.js) automatically downloads recommended dictionaries and probes local Anki, including reading collection metadata to infer configuration. | Explain both before installation and prominently in setup; verify that the disclosure and consent sequence covers the actual automatic behavior. Creating notes and starting capture are separate actions. |
 | Store assets | Icons exist, but no dedicated promotional tile was found; current documentation screenshots are not store screenshot dimensions. | Prepare the assets listed below using the actual release UI. |
 | Distribution notices | A ZIP containing only `extension/` omits the root GPL license and the AVIF binary notices. | Include licenses, dependency notices and an exact source reference in the staged package; make corresponding source/build instructions available. |
+| Public links | GitHub reports this repository as private; its source and issue links return 404 without authentication. | Provide public privacy/support pages and arrange accessible corresponding source for recipients. A private development repository is not itself a store violation. |
 
-These findings apply Google's [privacy and secure-handling FAQ](https://developer.chrome.com/docs/webstore/program-policies/user-data-faq),
+The privacy, transport and permission findings apply Google's [privacy and secure-handling FAQ](https://developer.chrome.com/docs/webstore/program-policies/user-data-faq),
 [minimum-permissions policy](https://developer.chrome.com/docs/webstore/program-policies/permissions)
 and [disclosure requirements](https://developer.chrome.com/docs/webstore/program-policies/disclosure-requirements).
 A reviewer might accept well-explained broad access; its presence alone does not
@@ -103,7 +104,7 @@ found in the audited runtime. That does **not** mean the extension handles no
 user data or never contacts third parties. Ordinary Chrome storage and backup
 ZIPs are not application-encrypted; review API-key storage and exported secrets
 against Google's current secure-handling guidance before certifying. Google's
-FAQ expressly exempts traffic to native programs on the same computer from the
+[FAQ](https://developer.chrome.com/docs/webstore/program-policies/user-data-faq) expressly exempts traffic to native programs on the same computer from the
 transmission-encryption requirement; that does not cover remote HTTP audio.
 
 For the dashboard's data categories, evaluate **Website content**, **Web history**
@@ -206,6 +207,12 @@ alongside its distribution. Do not include private dictionaries, backups, test
 profiles or capture recordings in the upload. Load the staged directory in a
 fresh Chrome profile and check setup, lookup and configured optional features.
 
+The example records the repository's source identity. If the repository remains
+private, update the `SOURCE.txt` generation to include the actual source delivery
+location before producing a distribution ZIP. An inaccessible GitHub link does
+not provide recipients with the corresponding source. This audit does not change
+repository visibility or publish source archives.
+
 ### 3. Register the publisher account
 
 Open the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole),
@@ -232,9 +239,11 @@ The longer description should cover supported reading pages, automatic starter
 dictionary downloads, local lookup/storage, pronunciation provider behavior,
 optional Anki/GSM features and explicitly started capture. Explain that Anki
 Desktop with AnkiConnect is needed for mining; ordinary lookup works without it.
-Link the project, [support issues](https://github.com/bee-san/hachidori/issues)
-and the published privacy policy. Choose the closest current education/language
-category and the actual listing language.
+Link a publicly reachable project/support destination and the published privacy
+policy. The current [issue tracker](https://github.com/bee-san/hachidori/issues)
+is only accessible to repository collaborators; do not use it as the sole public
+support route while the repository is private. Choose the closest current
+education/language category and the actual listing language.
 
 Prepare these [required store images](https://developer.chrome.com/docs/webstore/images):
 
