@@ -192,6 +192,7 @@ await chrome.alarms.create("hachidori-anki-maturity", { when: Date.now() });
    refresh, rather than stopping after a fixed interval. Require exactly one
    `notesInfo` request, zero per-lookup requests, identical Boolean answers, and
    the same sorted-word cache signature after publication.
+
 8. With the fresh attempt timestamp retained, use CDP `ServiceWorker.enable`
    to identify the running worker version. Detach the direct worker debugger,
    call `ServiceWorker.stopWorker`, and verify its target disappears. Issue the
