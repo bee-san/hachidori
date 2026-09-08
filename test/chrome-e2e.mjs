@@ -335,7 +335,7 @@ const PLANNED = [
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
   "internal links open a positioned popup chain with level-local Note and Back and live depth limits",
-  "Popup tabs project every contributing dictionary, favourites and ordered groups without another lookup",
+  "Popup tabs project ordered groups and ungrouped favourites without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
   "Saved popup columns reflow complete cards after expansion, media load and resize",
   "Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts",
@@ -344,7 +344,7 @@ const PLANNED = [
   "external dictionary Enter activation creates one safe browser tab through the extension",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
-  "the dictionary alias labels its popup tab without replacing the canonical key",
+  "a grouped favourite uses only its group tab",
   "selected term dictionary wins even when maximum results is one",
   "Back preserves the complete clicked-kanji drill-down history",
   "Back restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
@@ -1677,15 +1677,15 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await tab.keyboard.press("Escape");
     await hoverForPopup(tab, popup, "#verb");
     const all = await until(rootState, value => selectedReady("all")(value) && imageReady(value), "E8 complete root");
-    const expectedKeys = ["all", ...titles.map(title => `dictionary:${title}`), "favourites", studyKey, `group:${examplesId}`];
+    const expectedKeys = ["all", studyKey, `group:${examplesId}`, `dictionary:${reference}`];
     require(equal(all.tabs.map(tab => tab.key), expectedKeys)
-      && equal(all.tabs.map(tab => tab.label), ["All", "Links", "Usage", "Examples", "Reference", "Favourites", "Study", "Examples (group)"])
+      && equal(all.tabs.map(tab => tab.label), ["All", "Study", "Examples", "Reference"])
       && all.tabs.every(tab => tab.controls === all.panelId && tab.aria === tab.title)
       && all.labelledBy === all.tabs[0].id, "E8 semantic tabs and accessible panel linkage");
     const projectionStart = (await requests()).length;
     for (const [key, members] of [
-      ...titles.map(title => [`dictionary:${title}`, [title]]),
-      ["favourites", [links, reference]], [studyKey, [links, usage]], [`group:${examplesId}`, [links, examples]], ["all", titles],
+      [studyKey, [links, usage]], [`group:${examplesId}`, [links, examples]],
+      [`dictionary:${reference}`, [reference]], ["all", titles],
     ]) {
       await popup.dictionaryTabs("select", key);
       await until(rootState, selectedReady(key), `E8 projection ${key}`);
@@ -1971,8 +1971,8 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
   if (failure) throw failure;
   check("Back restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
     evidence.back === true, JSON.stringify(evidence.inheritance));
-  check("Popup tabs project every contributing dictionary, favourites and ordered groups without another lookup",
-    evidence.passed && evidence.projections.length === 8, JSON.stringify({ projections: evidence.projections, inheritance: evidence.inheritance }));
+  check("Popup tabs project ordered groups and ungrouped favourites without another lookup",
+    evidence.passed && evidence.projections.length === 4, JSON.stringify({ projections: evidence.projections, inheritance: evidence.inheritance }));
   check("Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
     evidence.passed && evidence.live.liveRequests.length === 1, JSON.stringify(evidence.live));
   check("Saved popup columns reflow complete cards after expansion, media load and resize",
@@ -2027,14 +2027,19 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     }), fixture.query);
     require(evidence.native.ok && evidence.native.results.length === 1
       && evidence.native.results[0].term.glossaries[0].glossary === JSON.stringify(fixture.leading), "E10 real native leading glossary");
-    await settings.evaluate(async names => {
+    await settings.evaluate(async ({ names, favourite }) => {
       const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
       const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
         baseRevision: dictionaryState.revision,
         dictionaries: dictionaryState.dictionaries.map(dictionary => ({ ...dictionary,
-          displayName: names[dictionary.title] ?? dictionary.displayName })), groups: dictionaryState.groups });
+          displayName: names[dictionary.title] ?? dictionary.displayName,
+          favorite: dictionary.title === favourite ? true : dictionary.favorite })),
+        groups: dictionaryState.groups });
       if (!reply.ok) throw new Error(reply.error);
-    }, { [fixture.illustrated]: "Illustrated definitions", [fixture.plain]: "Brief meanings" });
+    }, {
+      names: { [fixture.illustrated]: "Illustrated definitions", [fixture.plain]: "Brief meanings" },
+      favourite: fixture.plain,
+    });
     await settings.bringToFront();
     await editSettingsControls(settings, { "opt-compact-summary": true, "opt-summary-count": "2",
       "opt-summary-dictionary": fixture.illustrated, "opt-max-results": "32" });
@@ -2527,8 +2532,10 @@ async function checkRetainedLinkControls(browser, settings, tab, popup, child, f
       await waitHeld();
       await release();
       const keyboard = await refreshed();
-      evidence.push(keyboard?.sameForm && keyboard.mounted && keyboard.tabFocused && keyboard.draft === before.draft
-        || { position, phase: "keyboard", before, after: keyboard });
+      const keyboardRetained = keyboard?.sameForm && keyboard.tabFocused
+        && keyboard.inputReachable && keyboard.draft === before.draft
+        && (keyboard.mounted || keyboard.replaced);
+      evidence.push(keyboardRetained || { position, phase: "keyboard", before, after: keyboard });
       await tab.keyboard.press("Escape");
       await tab.keyboard.press("Escape");
     }
@@ -8729,9 +8736,9 @@ async function main() {
   check("the popup renders the frequency tag from term_meta_bank",
     verbState.text.includes("142"), `popup text: ${verbState.text.slice(0, 400)}`);
   check(
-    "the dictionary alias labels its popup tab without replacing the canonical key",
-    Array.isArray(verbState.tabs)
-      && verbState.tabs.includes(FIXTURE_ALIAS)
+    "a grouped favourite uses only its group tab",
+    JSON.stringify(verbState.tabs) === JSON.stringify(["All", "Externally focused reading"])
+      && !verbState.tabs.includes(FIXTURE_ALIAS)
       && !verbState.tabs.includes("hachidori-fixture")
       && replacedPackage?.title === "hachidori-fixture",
     `popup tabs: ${JSON.stringify(verbState.tabs)}`,

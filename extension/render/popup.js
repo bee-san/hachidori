@@ -1345,8 +1345,16 @@
       ? renderContext.dictionaryTabGroups : [];
     const dictionaryDisplayNames = createDictionaryDisplayNames(dictionaries, presentation);
     const available = new Set(dictionaries);
+    const grouped = new Set(groups.flatMap(({ dictionaries: members }) =>
+      Array.isArray(members) ? members : []));
+    const availableGroups = groups.flatMap((group) => {
+      const members = Array.isArray(group.dictionaries)
+        ? group.dictionaries.filter((title) => available.has(title)) : [];
+      return members.length > 0 ? [{ ...group, dictionaries: members }] : [];
+    });
     const favourites = presentation
-      .filter(({ favorite, title }) => favorite === true && available.has(title))
+      .filter(({ favorite, title }) =>
+        favorite === true && available.has(title) && !grouped.has(title))
       .map(({ title }) => title);
     const usedLabels = new Set();
     function tab(label, title, selection, members, qualifier) {
@@ -1364,21 +1372,15 @@
     }
     const tabs = [
       tab("All", "All dictionaries", null, [], "tab"),
-      ...dictionaries.map((dictionary) => tab(
+      ...availableGroups.map((group) => tab(
+        group.name, `Tab group: ${group.name}`,
+        { groupId: group.id }, group.dictionaries, "group",
+      )),
+      ...favourites.map((dictionary) => tab(
         dictionaryDisplayNames.get(dictionary) || dictionary,
         dictionary, { dictionary }, [dictionary], "dictionary",
       )),
     ];
-    if (favourites.length > 0) {
-      tabs.push(tab("Favourites", "Favourite dictionaries", { favourites: true }, favourites, "tab"));
-    }
-    for (const group of groups) {
-      const members = Array.isArray(group.dictionaries)
-        ? group.dictionaries.filter((title) => available.has(title)) : [];
-      if (members.length > 0) {
-        tabs.push(tab(group.name, `Tab group: ${group.name}`, { groupId: group.id }, members, "group"));
-      }
-    }
     return { tabs, dictionaryDisplayNames };
   }
 

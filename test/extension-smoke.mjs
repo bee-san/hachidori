@@ -7576,8 +7576,8 @@ async function designPreviewStage() {
     const note = popup.textContent.includes("This is a preview. Notes are not saved.")
       && form.elements.definition.value === "A preview draft";
     state = { revision: 1, dictionaries: [
-      { id: "first", title: "First", termCount: 1, pitchCount: 1, enabled: true },
-      { id: "second", title: "Second", termCount: 1, kanjiCount: 1, pitchCount: 1, enabled: true },
+      { id: "first", title: "First", termCount: 1, pitchCount: 1, enabled: true, favorite: true },
+      { id: "second", title: "Second", termCount: 1, kanjiCount: 1, pitchCount: 1, enabled: true, favorite: true },
     ], groups: [] };
     options = { ...options, pitchAccentFuriganaDictionary: "Second", compactDefinitionSummaryDictionary: "Second" };
     update();
@@ -14539,9 +14539,17 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
     positionPopup() {},
   });
   const results = [result, result];
+  const dictionaryPresentation = [{
+    title: result.term.glossaries[0].dictionary,
+    favorite: true,
+  }];
+  const render = (values, options = {}) => view.renderResults(values, candidate, {
+    dictionaryPresentation,
+    ...options,
+  });
   const tab = () => popup.querySelectorAll('[role="tab"]')[1].click();
   try {
-    view.renderResults(results, candidate, { expandAll: true });
+    render(results, { expandAll: true });
     tab();
     const collapsed = view.captureTermView().expandAll === false;
     popup.querySelector(".gsm-hoshidicts-show-more").click();
@@ -14549,7 +14557,7 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
     const snapshot = view.captureTermView();
     check("Back captures the current projected tab's expansion and scroll, not the initial panel",
       collapsed && snapshot.expandAll && snapshot.restoreScrollTop === 80);
-    view.renderResults(results, candidate, snapshot);
+    render(results, snapshot);
     layout();
     const beforeFill = view.scrollElement.scrollTop === 0;
     await settle();
@@ -14561,12 +14569,12 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
     layout();
     check("Back restores scroll after deferred bodies and masonry only once",
       beforeFill && restored && view.scrollElement.scrollTop === 0);
-    view.renderResults(results, candidate, snapshot);
+    render(results, snapshot);
     tab();
     await settle();
     layout();
     const newerTab = view.scrollElement.scrollTop === 0;
-    view.renderResults(results, candidate, snapshot);
+    render(results, snapshot);
     await settle();
     view.scrollElement.scrollTop = 23;
     layout();
@@ -14579,14 +14587,14 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
       } }]) }],
     } };
     const disclosureResults = [disclosureResult, disclosureResult];
-    view.renderResults(disclosureResults, candidate, { expandAll: true });
+    render(disclosureResults, { expandAll: true });
     await settle();
     for (const details of popup.querySelectorAll("details")) details.open = !details.classList.contains("gsm-hoshidicts-glossary-card");
     await settle();
     const states = () => [...popup.querySelectorAll("details")].map(details => [details.className, details.open]);
     const beforeDetails = states();
     const prior = view.captureTermView();
-    view.renderResults(disclosureResults, candidate, prior);
+    render(disclosureResults, prior);
     await settle();
     layout();
     check("Back restores collapsed cards, open structured details and complete lazy IPA before layout",
@@ -14595,7 +14603,7 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
     const changed = disclosureResults.map(value => ({ ...value, term: { ...value.term,
       glossaries: [{ ...value.term.glossaries[0], glossary: '["Changed definition"]' }],
     } }));
-    view.renderResults(changed, candidate, prior);
+    render(changed, prior);
     await settle();
     layout();
     check("Back does not apply saved disclosures to changed dictionary content",
@@ -14607,11 +14615,11 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
       get() { scrollReads++; return retainedScroll; },
       set(value) { retainedScroll = value; },
     });
-    view.renderResults(results, candidate, snapshot);
+    render(results, snapshot);
     const backAvoidsEarlyLayout = scrollReads === 0 && retainedScroll === 0;
     retainedScroll = 85;
     scrollReads = 0;
-    view.renderResults(results, candidate, { preserveViewControls: true });
+    render(results, { preserveViewControls: true });
     check("Back and ordinary retained renders do not force scroll layout while their replacement panel is empty",
       backAvoidsEarlyLayout && scrollReads === 0 && retainedScroll === 85);
     delete view.scrollElement.scrollTop;
@@ -14902,7 +14910,7 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
       showPitchAccentBadge: false, showPitchAccentFurigana: false, hidePopupGrammarTags: true,
       showFrequencyDictionaryNames: false });
     const beforeTab = requests.length;
-    popup.querySelector('[role="tab"][data-dictionary="Illustrated"]').click();
+    popup.querySelector('[role="tab"]').click();
     settle(requests.slice(beforeTab));
     await tick();
     const projectedLabels = [...popup.querySelectorAll(".gloss-image-source")];
@@ -14988,7 +14996,10 @@ function lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candid
   });
   const line = () => popup.querySelector(".gsm-hoshidicts-lookup-stats");
   try {
-    view.renderResults(results, candidate, {});
+    const dictionary = results[0].term.glossaries[0].dictionary;
+    view.renderResults(results, candidate, {
+      dictionaryPresentation: [{ title: dictionary, favorite: true }],
+    });
     const slotHidden = line() !== null && line().hidden;
     showCounts = true;
     if (line()) view.setLookupStats(line(), { lookupCount: 3 });
