@@ -1530,17 +1530,18 @@ async function audioRelayStage() {
     JSON.stringify({ authoritative, progress }));
 
   const read = chrome.storage.local.get;
-  let releaseRead;
+  const heldReads = [];
   chrome.storage.local.get = async key => {
-    if (key === "options") await new Promise(resolve => { releaseRead = resolve; });
+    // Maturity scheduling can read options concurrently with this audio request.
+    if (key === "options") await new Promise(resolve => { heldReads.push(resolve); });
     return read(key);
   };
   const retiredRead = play("retired-read");
   await new Promise(resolve => setImmediate(resolve));
   await send("hd_audio_stop", "retire-read", { playRequestId: "retired-read" }, "reader-document");
-  releaseRead();
-  const retiredReply = await retiredRead;
   chrome.storage.local.get = read;
+  for (const release of heldReads) release();
+  const retiredReply = await retiredRead;
   const invalid = await send("hd_audio_play", "invalid-choice", { term, selection: { index: "toString" } });
   check("Stop retires popup audio awaiting source storage and malformed choices never reach the offscreen player",
     retiredReply.status === "cancelled" && invalid.ok === false

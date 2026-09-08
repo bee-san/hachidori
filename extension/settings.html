@@ -537,36 +537,36 @@
             <p class="field-hint">Give yourself a moment to recall a word before showing its meaning.</p>
             <details class="settings-disclosure" id="definition-blur-reveal-controls" hidden>
               <summary>Threshold and reveal behaviour</summary>
-            <p class="field-hint" id="definition-blur-either-help" hidden>Either the lookup count or Anki maturity is enough to blur a definition.</p>
-            <div class="fields" id="definition-blur-count-controls" hidden>
-              <label class="field">
-                <span class="field-label">Blur when looked up</span>
-                <select id="opt-blur-direction">
-                  <option value="atLeast">At least</option>
-                  <option value="below">Below</option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="field-label">Threshold (lookups)</span>
-                <input id="opt-blur-threshold" type="number" min="1" max="1000000" step="1" inputmode="numeric" />
-              </label>
-            </div>
-            <p class="field-hint" id="definition-blur-count-paused" hidden>Lookup count blur is paused. <label for="opt-lookup-counts">Turn on Record and show lookup counts above</label> to use this condition.</p>
-            <p class="field-hint" id="definition-blur-anki-help" hidden>Mature means a review card with an interval of at least 21 days. Uses your configured Anki note type and dedicated Expression field across all decks. Set the mapping in <a href="#anki">Anki settings</a>. Refreshes every 30 minutes; the last saved results still work when Anki is closed.</p>
-            <div class="fields">
-              <label class="field">
-                <span class="field-label">Reveal</span>
-                <select id="opt-blur-reveal">
-                  <option value="timed">After a delay</option>
-                  <option value="hover">On hover only</option>
-                </select>
-              </label>
-              <label class="field" id="definition-blur-delay-control">
-                <span class="field-label">Delay (seconds)</span>
-                <input id="opt-blur-delay" type="number" min="1" max="3600" step="0.5" inputmode="decimal" />
-              </label>
-            </div>
-            <p class="field-hint" id="definition-blur-help" hidden>Hovering a definition or the compact summary always reveals it. Pronunciation does not auto-play for blurred results. Preview: 3 lookups and a mature word.</p>
+              <p class="field-hint" id="definition-blur-either-help" hidden>Either the lookup count or Anki maturity is enough to blur a definition.</p>
+              <div class="fields" id="definition-blur-count-controls" hidden>
+                <label class="field">
+                  <span class="field-label">Blur when looked up</span>
+                  <select id="opt-blur-direction">
+                    <option value="atLeast">At least</option>
+                    <option value="below">Below</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Threshold (lookups)</span>
+                  <input id="opt-blur-threshold" type="number" min="1" max="1000000" step="1" inputmode="numeric" />
+                </label>
+              </div>
+              <p class="field-hint" id="definition-blur-count-paused" hidden>Lookup count blur is paused. <label for="opt-lookup-counts">Turn on Record and show lookup counts above</label> to use this condition.</p>
+              <p class="field-hint" id="definition-blur-anki-help" hidden>Mature means a review card with an interval of at least 21 days. Uses your configured Anki note type and dedicated Expression field across all decks. Set the mapping in <a href="#anki">Anki settings</a>. Refreshes every 30 minutes; the last saved results still work when Anki is closed.</p>
+              <div class="fields">
+                <label class="field">
+                  <span class="field-label">Reveal</span>
+                  <select id="opt-blur-reveal">
+                    <option value="timed">After a delay</option>
+                    <option value="hover">On hover only</option>
+                  </select>
+                </label>
+                <label class="field" id="definition-blur-delay-control">
+                  <span class="field-label">Delay (seconds)</span>
+                  <input id="opt-blur-delay" type="number" min="1" max="3600" step="0.5" inputmode="decimal" />
+                </label>
+              </div>
+              <p class="field-hint" id="definition-blur-help" hidden>Hovering a definition or the compact summary always reveals it. Pronunciation does not auto-play for blurred results. Preview: 3 lookups and a mature word.</p>
             </details>
           </fieldset>
         </section>
