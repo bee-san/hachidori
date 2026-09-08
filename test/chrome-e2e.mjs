@@ -250,7 +250,7 @@ const PLANNED = [
   "Popup audio cancels obsolete discovery and playback on dismissal, source changes and navigation",
   "accepted reader lookups persist canonical counts without delaying definitions",
   "live lookup-count Settings pause recording and preserve the displayed reader view",
-  "optional GSM Seen counts use the configured loopback corpus and fail open",
+  "local count and blur settings belong to Reading without external corpus controls",
   "definition blur follows real lookup counts and settings and holds autoplay for blurred results",
   "blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
   "Anki maturity blur is opt-in and persists independently of lookup counts",
@@ -279,7 +279,7 @@ const PLANNED = [
   "recommended dictionaries stack without overflow on narrow screens",
   "a clean profile shows one recommended install action beside local import",
   "the recommended installer continues after a mocked download failure",
-  "the starter card stays hidden after a settings reload",
+  "missing recommended dictionaries stay available after a settings reload",
   "recommended retry downloads only the missing trusted dictionary",
   "settings page exposes a .zip file input",
   "the .zip file input accepts multiple .zip files",
@@ -354,7 +354,7 @@ const PLANNED = [
   "an open Note draft survives hover and consumes Escape before popup dismissal",
   "term and kanji Note forms append and refresh the managed custom dictionary",
   "the settings page lists the dictionary again after a restart",
-  "the starter card stays hidden after a browser restart",
+  "local-only libraries can install recommended dictionaries after a browser restart",
   "the dictionary survives a browser restart via OPFS",
   "lookups work after a restart with no re-import",
   "removing the dictionary clears its settings rows",
@@ -2786,7 +2786,13 @@ async function imageSizingChrome({ page, tab, popup }) {
 async function showSettingsSection(page, id) {
   // Do not foreground the tab here: reader activation tests deliberately keep
   // their popup focused while changing a visible Settings view in another tab.
-  await page.$eval(`.settings-nav a[href="#${id}"]`, (link) => link.click());
+  await page.evaluate(section => {
+    const picker = document.getElementById("settings-section");
+    if (picker.checkVisibility()) {
+      picker.value = section;
+      picker.dispatchEvent(new Event("change", { bubbles: true }));
+    } else document.querySelector(`.settings-nav a[href="#${section}"]`).click();
+  }, id);
   await page.waitForFunction((sectionId) => {
     const visible = [...document.querySelectorAll("main > section")].filter((section) => !section.hidden);
     return visible.length === 1 && visible[0].id === sectionId
@@ -4034,6 +4040,7 @@ async function editSettingsControls(settings, values) {
   await settings.evaluate((changes) => {
     for (const [id, value] of Object.entries(changes)) {
       const input = document.getElementById(id);
+      for (let parent = input.closest("details"); parent; parent = parent.parentElement.closest("details")) parent.open = true;
       if (input.type === "checkbox") input.checked = value;
       else input.value = value;
       input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -4069,11 +4076,10 @@ async function readLookupStatistics(settings) {
   })).catch(error => ({ error: String(error) }));
 }
 
-async function checkLookupStatistics({ browser, settings, tab, popup, extensionId }) {
+async function checkLookupStatistics({ settings, tab, popup }) {
   const original = await readSettingsControls(settings, [
-    "opt-lookup-counts", "opt-corpus-seen", "opt-corpus-url",
+    "opt-lookup-counts",
   ]);
-  let corpusSession = null;
   const freshLookup = async () => {
     await tab.bringToFront();
     await tab.keyboard.press("Escape");
@@ -4083,7 +4089,6 @@ async function checkLookupStatistics({ browser, settings, tab, popup, extensionI
   try {
     await updateSettingsControls(settings, {
       "opt-lookup-counts": true,
-      "opt-corpus-seen": false,
     });
     const initialDefinition = await popup.state();
     const initialLine = await waitForLookupStatistics(
@@ -4157,91 +4162,21 @@ async function checkLookupStatistics({ browser, settings, tab, popup, extensionI
       }),
     );
 
-    const workerTarget = browser.targets().find(target =>
-      target.type() === "service_worker"
-        && target.url() === `chrome-extension://${extensionId}/background.js`);
-    const corpusRoute = {
-      requests: 0,
-      body: JSON.stringify({ total_occurrences: 9 }),
-      status: 200,
-      contentType: "application/json",
-    };
-    const corpusUrl = "http://127.0.0.1:7275/api/tokenization/word/%E9%A3%9F%E3%81%B9%E3%82%8B";
-    let corpusEvidence;
-    if (workerTarget === undefined) {
-      corpusEvidence = { error: "service worker target unavailable" };
-    } else {
-      corpusSession = await interceptFetches(
-        workerTarget,
-        new Map([[corpusUrl, corpusRoute]]),
-        "lookup-statistics-corpus",
-      );
-      await updateSettingsControls(settings, {
-        "opt-corpus-url": "http://127.0.0.1:7275",
-        "opt-corpus-seen": true,
-      });
-      const available = await waitForLookupStatistics(
-        popup,
-        value => value?.text.includes("Seen 9 times") && value.text.includes("Looked up"),
-      );
-      setJsonResponse(corpusRoute, { error: "Tokenization unavailable" }, 503);
-      const failedDefinition = await freshLookup();
-      const unavailable = await waitForLookupStatistics(
-        popup,
-        value => corpusRoute.requests >= 2 && value !== null && !value.hidden
-          && value.text.includes("Looked up") && !value.text.includes("Seen"),
-      );
-      if (process.env.HACHIDORI_LOOKUP_STATS_SCREENSHOT) {
-        await settings.bringToFront();
-        await settings.setViewport({ width: 960, height: 900 });
-        await showSettingsSection(settings, "design");
-        const screenshotClip = await settings.$eval("#lookup-history-settings", (element) => {
-          element.scrollIntoView({ block: "center" });
-          const rect = element.getBoundingClientRect();
-          const padding = 12;
-          const x = Math.max(0, rect.x - padding);
-          const y = Math.max(0, rect.y - padding);
-          return {
-            x,
-            y,
-            width: Math.min(innerWidth - x, rect.width + (2 * padding)),
-            height: Math.min(innerHeight - y, rect.height + (2 * padding)),
-          };
-        });
-        await settings.screenshot({
-          captureBeyondViewport: false,
-          clip: screenshotClip,
-          path: process.env.HACHIDORI_LOOKUP_STATS_SCREENSHOT,
-        });
-      }
-      await updateSettingsControls(settings, { "opt-corpus-seen": false });
-      const afterCorpusFailure = await readLookupStatistics(settings);
-      corpusEvidence = {
-        available,
-        unavailable,
-        failedDefinition,
-        requests: corpusRoute.requests,
-        afterCorpusFailure,
-      };
+    const localControls = await settings.evaluate(() => ({
+      counts: document.getElementById("opt-lookup-counts").closest("section").id,
+      blur: document.getElementById("opt-blur-enabled").closest("section").id,
+      external: document.querySelectorAll("#opt-corpus-url, #opt-corpus-seen").length,
+    }));
+    check("local count and blur settings belong to Reading without external corpus controls",
+      localControls.counts === "lookup" && localControls.blur === "lookup" && localControls.external === 0,
+      JSON.stringify(localControls));
+    if (process.env.HACHIDORI_LOOKUP_STATS_SCREENSHOT) {
+      await settings.bringToFront();
+      await showSettingsSection(settings, "lookup");
+      await settings.$eval("#lookup-history-settings", node => node.scrollIntoView({ block: "center" }));
+      await settings.screenshot({ path: process.env.HACHIDORI_LOOKUP_STATS_SCREENSHOT });
     }
-    check(
-      "optional GSM Seen counts use the configured loopback corpus and fail open",
-      corpusEvidence?.available?.text.includes("Seen 9 times")
-        && corpusEvidence.available.text.includes(`Looked up ${afterResume.statistics.lookupCount}`)
-        && corpusEvidence.failedDefinition?.plain.includes("食べる")
-        && corpusEvidence.unavailable?.text.includes(
-          `Looked up ${corpusEvidence.afterCorpusFailure?.statistics?.lookupCount}`,
-        )
-        && !corpusEvidence.unavailable.text.includes("Seen")
-        && corpusEvidence.afterCorpusFailure?.statistics?.lookupCount === afterResume.statistics.lookupCount + 1
-        && corpusEvidence.requests === 2,
-      JSON.stringify(corpusEvidence),
-    );
   } finally {
-    if (corpusSession !== null) {
-      await corpusSession.send("Fetch.disable").catch(() => {});
-      await corpusSession.detach().catch(() => {});
-    }
     await updateSettingsControls(settings, original).catch(error => {
       diagnostics.push(`[lookup statistics restore] ${error?.stack ?? error}`);
     });
@@ -4619,6 +4554,7 @@ async function checkDesignAppearance(page, frame) {
 }
 
 async function checkCustomCssPreview(page, frame) {
+  await page.$eval("#opt-custom-popup-css", editor => { editor.closest("details").open = true; });
   const saved = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
   const css = "/* My popup */\n.gsm-hoshidicts-popup {\n  outline-color: rgb(12, 34, 56);\n  font-size: 17px;\n}\nbody { background: red; }\n.bad { color: ???; }";
   const savedStatus = () => page.waitForFunction(() => document.getElementById("options-status").textContent === "Saved.");
@@ -4781,6 +4717,7 @@ async function checkDesignPreview(page) {
   try {
     await page.setViewport({ width: 1280, height: 900 });
     await showSettingsSection(page, "design");
+    await page.$eval("#design-preview-disclosure", node => { node.open = true; });
     const frame = await (await page.$("#design-preview")).contentFrame();
     await frame.waitForFunction(() => document.getElementById("preview-host")?.shadowRoot
       ?.querySelector('.gloss-image-link[data-image-load-state="loaded"] img')?.naturalWidth > 0,
@@ -6138,7 +6075,7 @@ async function main() {
       phaseOrders: ["jitendex", "jmnedict", "bees-ultimate-kanji-dictionary", "jiten"].map(phaseOrder), events: setupEvents.length }),
   );
 
-  // Settings meanwhile shows the partial state: no starter card, a retry control.
+  // Settings keeps the catalogue and the missing-only retry available during partial setup.
   const settingsAfterRun = await page.evaluate(() => ({
     starterHidden: document.getElementById("recommended-starter")?.hidden,
     retryHidden: document.getElementById("recommended-retry")?.hidden,
@@ -6157,7 +6094,7 @@ async function main() {
   const retryOutcomes = afterRetry.setupState?.dictionaries?.outcomes ?? {};
   check(
     "Retry installs only the missing dictionary and the committed entries settle their selections once",
-    settingsAfterRun.starterHidden === true && settingsAfterRun.retryHidden === false
+    settingsAfterRun.starterHidden === false && settingsAfterRun.retryHidden === false
       && JSON.stringify(setupArchives.requests.slice(4)) === JSON.stringify(["jmnedict"])
       && retried?.heading === `All dictionaries installed in ${afterRetry.setupState.dictionaries.totalSeconds < 10
         ? afterRetry.setupState.dictionaries.totalSeconds.toFixed(1) : Math.round(afterRetry.setupState.dictionaries.totalSeconds)} seconds`
@@ -6634,7 +6571,7 @@ async function main() {
         RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId),
       )
       && recommendedFirst.progressHidden === true
-      && recommendedFirst.starterHidden === true
+      && recommendedFirst.starterHidden === false
       && recommendedFirst.retryHidden === false
       && recommendedFirst.localInputVisible === true
       && recommendedFirst.outcomes.length === 4
@@ -6665,9 +6602,9 @@ async function main() {
     } : false;
   }, { timeout: 90_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
   check(
-    "the starter card stays hidden after a settings reload",
+    "missing recommended dictionaries stay available after a settings reload",
     reloadedRecommended?.rows === 3
-      && reloadedRecommended.starterHidden === true
+      && reloadedRecommended.starterHidden === false
       && reloadedRecommended.retryHidden === false
       && reloadedRecommended.localInputVisible === true,
     JSON.stringify(reloadedRecommended),
@@ -6975,16 +6912,20 @@ async function main() {
     return rect.top >= 0 && rect.bottom <= window.innerHeight;
   });
   await page.setViewport({ width: 320, height: 900 });
-  await page.focus('.settings-nav a[href="#lookup"]');
+  await page.focus("#settings-section");
+  // Native menu arrows are not delivered by headless macOS CDP. Type-ahead
+  // exercises the select's real keyboard path without opening that OS menu.
+  await page.keyboard.press("r");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => location.hash === "#lookup" && !document.getElementById("lookup").hidden
     && document.querySelector('.settings-nav [aria-current="page"]')?.hash === "#lookup");
+  const pickerKeepsFocus = await page.evaluate(() => document.activeElement.id === "settings-section");
   const narrowThemes = [];
   for (const theme of ["light", "dark"]) {
     await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
     narrowThemes.push(await page.evaluate(() => {
       const width = document.documentElement.clientWidth;
-      const inputs = [...document.querySelectorAll("#lookup input, #lookup select")];
+      const inputs = [...document.querySelectorAll("#lookup input, #lookup select")].filter(input => input.checkVisibility());
       return {
         noOverflow: document.documentElement.scrollWidth <= width,
         fieldsFit: inputs.every((input) => {
@@ -7008,14 +6949,15 @@ async function main() {
   await readingNode.dispose();
   await page.goForward();
   await page.waitForFunction(() => !document.getElementById("updates").hidden);
+  await page.setViewport({ width: 1280, height: 900 });
   await page.focus('.settings-nav a[href="#updates"]');
   await page.keyboard.press("Enter");
   const sameHashFocus = await page.evaluate(() => document.activeElement.id === "updates-heading");
   check(
     "Settings puts the library first and supports keyboard navigation at 320px",
-    libraryFirst && selectionActions && skipFocusedMain && shortWindowNavigation && historyRetainedView && sameHashFocus
+    libraryFirst && selectionActions && skipFocusedMain && pickerKeepsFocus && shortWindowNavigation && historyRetainedView && sameHashFocus
       && narrowThemes.every((theme) => theme.noOverflow && theme.fieldsFit && theme.statusExposed),
-    JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, shortWindowNavigation, historyRetainedView, sameHashFocus, narrowThemes }),
+    JSON.stringify({ libraryFirst, selectionActions, skipFocusedMain, pickerKeepsFocus, shortWindowNavigation, historyRetainedView, sameHashFocus, narrowThemes }),
   );
   const themeLayouts = [];
   for (const width of [320, 1280]) {
@@ -7445,7 +7387,8 @@ async function main() {
   const externalFocus = await page.evaluate(async (groupId) => {
     const before = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
     const input = document.querySelector(`[data-group-id="${groupId}"] .dict-group-name`);
-    const outsideControl = document.querySelector('.settings-nav a[href="#lookup"]');
+    const picker = document.getElementById("settings-section");
+    const outsideControl = picker.checkVisibility() ? picker : document.querySelector('.settings-nav a[href="#lookup"]');
     input.focus();
     input.value = "Externally focused reading";
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -7460,13 +7403,13 @@ async function main() {
     } while (Date.now() < deadline);
     await new Promise((resolveWait) => setTimeout(resolveWait, 50));
     return {
-      focusedHref: document.activeElement?.getAttribute("href"),
+      preserved: document.activeElement === outsideControl,
       name: current.groups.find((group) => group.id === groupId)?.name,
     };
   }, groupManagement.studyGroupId);
   check(
     "a newer external focus survives a group rerender",
-    externalFocus.focusedHref === "#lookup"
+    externalFocus.preserved
       && externalFocus.name === "Externally focused reading",
     JSON.stringify(externalFocus),
   );
@@ -8860,8 +8803,8 @@ async function main() {
     starterHidden: document.getElementById("recommended-starter")?.hidden,
   }));
   check(
-    "the starter card stays hidden after a browser restart",
-    restartedSettingsUi.starterHidden === true && restartedSettingsUi.localInputVisible === true,
+    "local-only libraries can install recommended dictionaries after a browser restart",
+    restartedSettingsUi.starterHidden === false && restartedSettingsUi.localInputVisible === true,
     JSON.stringify(restartedSettingsUi),
   );
 

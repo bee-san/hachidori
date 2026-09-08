@@ -536,7 +536,8 @@ The reader displays a result before dispatching its independent statistics and
 optional Anki maturity requests. Lookup statistics retain their serialized
 descriptor-plus-term/reading-row transaction; neither the reader nor the worker
 scans the statistics collection. See [lookup statistics](lookup-statistics.md)
-for recording, corpus Seen, revision adoption and backup behavior.
+for local recording, revision adoption and backup behavior. Lookup counts never
+contact an external application; retired corpus connection settings are ignored.
 
 `definitionBlurEnabled` remains the count criterion and requires
 `showLookupCounts`. The independent, default-off `definitionBlurAnkiMature`
@@ -1062,10 +1063,12 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 Settings is one document with native hash links and one visible task section.
 All sections stay mounted, so navigation and browser history preserve reader
 drafts and the lazy custom editor without storage writes or engine requests.
-The rail becomes wrapping navigation in narrow windows; light and dark palettes
+The rail becomes a compact section chooser in narrow windows; light and dark palettes
 follow the system preference. Inactive sections mirror pending work, errors, and
 unseen operation completions next to their links. Visiting a section clears its
-completion notice, not its source output or draft. Status setters own these
+completion notice, not its source output or draft. The compact navigation mirrors
+inactive notices, and shared options feedback stays near the section heading.
+Status setters own these
 notices; there are no observers or additional polling loops.
 
 Dictionary Details expansion is kept by stable package ID across focus-aware
@@ -1074,6 +1077,12 @@ alias, full metadata, exact position, and removal are inside the disclosure.
 Bulk actions appear when a selection exists, including selections outside the
 current search. Source editing remains lazy, and lookup preferences apply
 immediately; custom source still requires Save.
+
+Reading owns local lookup history and definition blur. Design contains appearance
+and displayed-content controls; its reset leaves reading behaviour and history
+preferences untouched. The preview and advanced CSS use native disclosures.
+Recommended sources remain reachable while any are missing, including after a
+local ZIP import; the empty Library offers both installation and import actions.
 
 Reader options carry a worker-owned monotonic `revision` in the existing
 `options` storage value. Legacy values start at revision zero. Settings coalesces
