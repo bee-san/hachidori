@@ -359,11 +359,16 @@ directly; a fragment created before it attaches still works after reload.
 
 The shared `visual-novel.js` picks one of six local images at random when each
 scene is created. A small **Next background** arrow cycles through them and
-wraps to the first. It changes only the background and dialogue text color,
+wraps to the first. It changes only the scene background and dialogue colors,
 keeping the passage and Design popup mounted; no selection is stored. Images
 load as selected. The startup arrow can retain keyboard focus while the reader
 looks up the dialogue; ordinary page controls still pause hover. Pointer clicks
 outside the real popup retain its usual dismissal behavior.
+
+The startup passage's opaque surface follows the light or dark scene palette
+so its text stays readable on every background.
+
+![The production practice scene with dark dialogue and its next-background arrow](assets/startup-carousel-dark.png)
 
 Before inviting a lookup, the page probes **辞書** with the reader's selection
 payload: the word's length and a full matched-text result. If it misses, the
