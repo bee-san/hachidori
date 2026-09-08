@@ -1389,6 +1389,7 @@ async function ankiScreenshotStage() {
   const captures = [];
   let tab = { id: 7, active: true, url: "https://reader.test/page", windowId: 3 };
   let captureFailures = 0;
+  let moveDuringCapture = false;
   chrome.tabs = {
     async get(id) {
       if (id !== tab.id) throw new Error("No tab with id");
@@ -1400,6 +1401,7 @@ async function ankiScreenshotStage() {
         captureFailures -= 1;
         throw new Error("MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND quota exceeded");
       }
+      if (moveDuringCapture) tab = { ...tab, windowId: 4 };
       return "data:image/jpeg;base64,c2hvdA==";
     },
   };
@@ -1437,6 +1439,12 @@ async function ankiScreenshotStage() {
   captureFailures = 3;
   const givenUp = await ask(reader);
   captureFailures = 0;
+  // Dragging the active reading tab to another window leaves it active with the
+  // same URL, but the capture was bound to the old window's replacement tab.
+  moveDuringCapture = true;
+  const movedWindow = await ask(reader);
+  moveDuringCapture = false;
+  tab = { ...tab, windowId: 3 };
   tab = { ...tab, active: false };
   const background = await ask(reader);
   tab = { ...tab, active: true, url: "https://reader.test/elsewhere" };
@@ -1456,11 +1464,12 @@ async function ankiScreenshotStage() {
       && switchedAway?.ok === false && switchedAway.error.includes("no longer the active tab")
       && capturesAfterSwitch === capturesBeforeSwitch + 1
       && givenUp?.ok === false && givenUp.error.includes("quota")
+      && movedWindow?.ok === false && movedWindow.error.includes("moved to another window")
       && background?.ok === false && background.error.includes("no longer the active tab")
       && navigated?.ok === false && navigated.error.includes("moved to another page")
       && fromExtensionPage?.ok === false && fromExtensionPage.error.includes("reading tab")
       && switchedOff?.ok === false && switchedOff.error.includes("turned off in Settings"),
-    JSON.stringify({ taken, retried, switchedAway, givenUp, background, navigated, fromExtensionPage, switchedOff, uploads, captures }));
+    JSON.stringify({ taken, retried, switchedAway, givenUp, movedWindow, background, navigated, fromExtensionPage, switchedOff, uploads, captures }));
 }
 
 async function ankiBackgroundStage() {
