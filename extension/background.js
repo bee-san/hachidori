@@ -1320,8 +1320,66 @@ function failureReply(message, error) {
   });
 }
 
-const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight", hd_anki_submit: "submit", hd_anki_browse: "browse",
+const ANKI_METHODS = { hd_anki_status: "status", hd_anki_preflight: "preflight", hd_anki_submit: "submit",
+  hd_anki_browse: "browse", hd_anki_screenshot: "screenshot", hd_anki_screenshot_discard: "discardScreenshot",
   hd_anki_maturity: "maturity" };
+
+// Chrome rate-limits viewport captures, so a second mining action in the same
+// second waits once rather than losing its screenshot.
+const CAPTURE_VISIBLE_RETRY_MS = 600;
+
+// Extension pages have no sender.tab and cannot answer tabs.sendMessage. Chrome's
+// live extension contexts bind startup to the same document before and after capture.
+async function screenshotOwnedTab(sender, startup) {
+  let tabId = sender.tab?.id;
+  if (startup) {
+    const [context] = await chrome.runtime.getContexts({ contextTypes: ["TAB"], documentIds: [sender.documentId] });
+    if (!context) throw new Error("The reading document changed before the screenshot.");
+    tabId = context.tabId;
+  }
+  const tab = await chrome.tabs.get(tabId);
+  if (tab?.active !== true) throw new Error("The reading tab is no longer the active tab.");
+  if ((sender.frameId ?? 0) === 0 && tab.url !== sender.url) {
+    throw new Error("The reading tab moved to another page before the screenshot.");
+  }
+  if (!startup) {
+    // Address the exact content-script document, so a same-URL reload cannot
+    // answer on its predecessor's behalf.
+    const document = await chrome.tabs.sendMessage(tabId, {
+      target: CAPTURE_CONTENT_TARGET, type: "hd_capture_document",
+    }, { documentId: sender.documentId }).catch(() => null);
+    if (document?.present !== true) throw new Error("The reading document changed before the screenshot.");
+  }
+  return tab;
+}
+
+// captureVisibleTab takes the window's active tab. Both the active page and its
+// document owner are checked around every attempt, including a rate-limit retry.
+async function captureSenderViewport(sender) {
+  const startup = typeof sender.tab?.id !== "number" && startupSender(sender);
+  if (typeof sender.tab?.id !== "number" && !startup) {
+    throw new Error("Only a reading tab can be captured.");
+  }
+  if (!sender.documentId) throw new Error("The reading document identity is unavailable.");
+  for (let attempt = 1; ; attempt += 1) {
+    const tab = await screenshotOwnedTab(sender, startup);
+    let captured;
+    try {
+      captured = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
+    } catch (error) {
+      if (attempt >= 2 || !/per second|too many|MAX_CAPTURE/iu.test(describe(error))) throw error;
+      await sleep(CAPTURE_VISIBLE_RETRY_MS);
+      continue;
+    }
+    // Capturing stays bound to this window even if the active reading tab is
+    // dragged to another one before the pixels return.
+    const afterCapture = await screenshotOwnedTab(sender, startup);
+    if (afterCapture.windowId !== tab.windowId) {
+      throw new Error("The reading tab moved to another window during the screenshot.");
+    }
+    return captured;
+  }
+}
 
 const CAPTURE_CONTROL_TYPES = new Set([
   "hd_capture_open",
@@ -1694,6 +1752,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         capture: fields => relayCapture({ ...fields, requestId: `anki-capture-${crypto.randomUUID()}` }),
       });
     }
+    // Only the screenshot needs to know which page asked, and it is given the
+    // capture rather than the sender, so nothing else can capture a tab.
+    if (message.type === "hd_anki_screenshot") return ankiMining.screenshot(() => captureSenderViewport(sender));
     return ankiMining[ANKI_METHODS[message.type]](message.type === "hd_anki_browse" ? message.expression : message.request);
   }).then(result => sendResponse(workerReply(message, result)), error => sendResponse(failureReply(message, error)));
   return true;
