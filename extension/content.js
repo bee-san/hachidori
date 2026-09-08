@@ -708,6 +708,45 @@
       candidateStart(other).node === candidateStart(candidate).node;
   }
 
+  /** Returns the last scanned source character covered by the engine match. */
+  function matchedScanEnd(candidate, matched) {
+    const wanted = typeof matched === "string" ? matched.length : 0;
+    if (wanted <= 0 || !Array.isArray(candidate.scanEntries)) return null;
+    let consumed = 0;
+    let last = null;
+    for (const entry of candidate.scanEntries) {
+      if (consumed >= wanted) {
+        break;
+      }
+      consumed += entry.text.length;
+      last = entry;
+    }
+    return last;
+  }
+
+  function expandCandidateAnchor(candidate, matched) {
+    if (candidate.linkAnchor || candidate.exactSelection === true || !candidate.anchorRange) return;
+    const first = candidate.scanEntries?.[0];
+    const last = matchedScanEnd(candidate, matched);
+    if (!first || !last) return;
+    try {
+      // Scanning starts with a one-glyph range. Once lookup identifies the
+      // complete match, place the popup against that word like Yomitan/PR 549.
+      const range = document.createRange();
+      range.setStart(first.node, first.offset);
+      range.setEnd(
+        last.node,
+        Math.min(
+          (last.node.nodeValue || "").length,
+          last.offset + last.sourceLength
+        )
+      );
+      if (!range.collapsed) candidate.anchorRange = range;
+    } catch {
+      // Keep the original hovered-glyph range if the page changed meanwhile.
+    }
+  }
+
   /**
    * Translates a matched length in scan coordinates into the raw substring of
    * `candidate.sentence` that covers it. createSourceHighlighter measures the
@@ -719,19 +758,7 @@
   function rawMatchedText(candidate, matched) {
     if (candidate.linkAnchor) return candidate.sentence;
     if (candidate.exactSelection === true) return candidate.rawSelectionText;
-    const wanted = typeof matched === "string" ? matched.length : 0;
-    if (wanted <= 0) {
-      return "";
-    }
-    let consumed = 0;
-    let last = null;
-    for (const entry of candidate.scanEntries) {
-      if (consumed >= wanted) {
-        break;
-      }
-      consumed += entry.text.length;
-      last = entry;
-    }
+    const last = matchedScanEnd(candidate, matched);
     if (!last) {
       return "";
     }
@@ -2120,8 +2147,9 @@
     if (results.length === 0) {
       return handleTermMiss(request, reply.dictionaryCount, token, level, replayOptions);
     }
-    if (!replayOptions?.preserveViewControls) show(request.candidate, level);
     const matched = results[0].matched || results[0].term.expression;
+    expandCandidateAnchor(request.candidate, matched);
+    if (!replayOptions?.preserveViewControls) show(request.candidate, level);
     if (request.highlightText === undefined) {
       request.highlightText = rawMatchedText(request.candidate, matched);
     }

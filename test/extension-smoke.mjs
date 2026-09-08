@@ -10147,16 +10147,20 @@ async function contentNoteStage() {
     const popup = driver.install();
     const popupRecord = (depth = 0) => popupRecords.get(driver.popupAt(depth));
     const anchor = window.document.getElementById("anchor");
+    const anchorRange = window.document.createRange();
+    anchorRange.setStart(anchor.firstChild, 0);
+    anchorRange.setEnd(anchor.firstChild, 1);
     const candidate = {
       anchor,
+      anchorRange,
       matchOffset: 0,
       query: "\u98df\u3079\u305f",
-      scanEntries: [{
+      scanEntries: Array.from("\u98df\u3079\u305f", (text, offset) => ({
         node: anchor.firstChild,
-        offset: 0,
-        sourceLength: 3,
-        text: "\u98df\u3079\u305f",
-      }],
+        offset,
+        sourceLength: text.length,
+        text,
+      })),
       sentence: "\u98df\u3079\u305f",
       sourceElements: [anchor],
       vertical: false,
@@ -12607,6 +12611,20 @@ async function contentNoteStage() {
     };
   }
 
+  async function matchedAnchorCase() {
+    const harness = await createHarness();
+    try {
+      const initial = harness.candidate.anchorRange.toString();
+      await harness.initialLookup();
+      return {
+        "term lookup expands popup placement from the hovered glyph to the complete matched word":
+          initial === "\u98df" && harness.candidate.anchorRange.toString() === "\u98df\u3079\u305f",
+      };
+    } finally {
+      harness.close();
+    }
+  }
+
   async function focusedEditingCase() {
     const harness = await createHarness();
     const window = harness.popup.ownerDocument.defaultView;
@@ -13513,7 +13531,8 @@ async function contentNoteStage() {
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
+    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(),
+      ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),

@@ -327,6 +327,7 @@ const PLANNED = [
   "a legacy title-only kanji selection migrates to and persists its native capability",
   "the selected kanji dictionary is saved",
   "custom Settings lazily saves a source through the real WASM importer",
+  "the popup opens below the complete wrapped match instead of the hovered glyph",
   "hovering an inflected verb shows a popup",
   "the content script attached its closed-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
@@ -8257,6 +8258,50 @@ async function main() {
     const highlight = CSS.highlights.get(name);
     return highlight ? highlight.size : 0;
   }, HIGHLIGHT_NAME);
+
+  const originalVerb = await tab.$eval("#verb", element => ({
+    html: element.innerHTML,
+    style: element.getAttribute("style"),
+  }));
+  await tab.$eval("#verb", element => {
+    element.innerHTML = '<b id="placement-start">\u98df</b>\u3079\u305f\u304b\u3063\u305f';
+    element.style.cssText = [
+      "position: fixed",
+      "top: 10px",
+      "left: 20px",
+      "width: 3em",
+      "word-break: break-all",
+    ].join(";");
+  });
+  const wrappedPopup = await hover("#placement-start");
+  const wrappedPopupState = wrappedPopup === null ? null : await popup.dictionaryTabs();
+  const wrappedSource = await tab.evaluate(name => {
+    const highlight = CSS.highlights.get(name);
+    const ranges = highlight ? [...highlight] : [];
+    const rects = ranges.flatMap(range => [...range.getClientRects()]);
+    if (rects.length === 0) return null;
+    return {
+      bottom: Math.max(...rects.map(rect => rect.bottom)),
+      rectCount: rects.length,
+      text: ranges.map(range => range.toString()).join(""),
+      top: Math.min(...rects.map(rect => rect.top)),
+    };
+  }, HIGHLIGHT_NAME);
+  check(
+    "the popup opens below the complete wrapped match instead of the hovered glyph",
+    wrappedPopupState !== null
+      && wrappedSource?.text === "\u98df\u3079\u305f\u304b\u3063\u305f"
+      && wrappedSource.rectCount > 1
+      && wrappedPopupState.rect.top >= wrappedSource.bottom + 3,
+    JSON.stringify({ popup: wrappedPopupState?.rect, source: wrappedSource }),
+  );
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await tab.$eval("#verb", (element, original) => {
+    element.innerHTML = original.html;
+    if (original.style === null) element.removeAttribute("style");
+    else element.setAttribute("style", original.style);
+  }, originalVerb);
 
   const verb = await hover("#verb");
   check("hovering an inflected verb shows a popup", verb !== null,
