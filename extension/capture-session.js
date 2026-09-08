@@ -364,11 +364,14 @@ export function createCaptureSession({
   }
 
   function releasePin(token) {
-    const released = pins.release(token);
-    if (released && activePin?.token === token) {
+    let released = pins.release(token);
+    // Status may have expired the token before the reader dismisses its clip.
+    // The session still owns those media copies until this reference is retired.
+    if (activePin !== null && activePin.token === token) {
       activePin.finishDrain?.();
       activePin.rejectReady(new Error("The capture pin was released."));
       activePin = null;
+      released = true;
     }
     return released;
   }
