@@ -5005,8 +5005,9 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
       const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision, options: { anki } });
       if (!reply.ok) throw new Error(reply.error);
     }, originalAnki);
-    await session?.detach();
-    await refreshSession.detach();
+    // The restarted service worker can retire again before fixture cleanup.
+    await session?.detach().catch(() => {});
+    await refreshSession.detach().catch(() => {});
     await tab.bringToFront();
     if (!popup.visible(await popup.state())) await hoverForPopup(tab, popup, "#verb");
   }
