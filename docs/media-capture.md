@@ -64,7 +64,7 @@ Hachidori does not use voice activity detection.
 
 The texthooker client accepts only an explicitly configured loopback `ws://`
 or `wss://` endpoint. Enter the endpoint before enabling the feed. Plain mode
-requires a live-only stream. GSM mode recognizes the
+requires a live-only stream. The **JSON · text_received** format recognizes the
 tested live text messages and ignores snapshots, acknowledgements,
 translations, and unrelated commands. Incoming text is never displayed, used
 as HTML, or treated as an instruction to create a note.

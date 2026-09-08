@@ -92,6 +92,10 @@ export async function openBackupArchive(blob) {
       throw new Error("The selected archive is not a supported Hachidori backup.");
     }
     const snapshot = manifest.version === 1 ? { ...manifest.snapshot, lookupStats: emptyLookupStats() } : manifest.snapshot;
+    // Older backups include the retired external corpus integration. Drop only
+    // those fields before the complete snapshot contract validates the restore.
+    delete snapshot?.options?.corpusSeenEnabled;
+    delete snapshot?.options?.corpusSeenUrl;
     const lookupStatsRows = manifest.version === 1 ? [] : manifest.lookupStatsRows;
     assertLookupStatsRows(snapshot?.lookupStats, lookupStatsRows);
     assertFileList(manifest.files);

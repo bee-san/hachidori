@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { BlobReader, BlobWriter, ZipReader, ZipWriter } from "../extension/vendor/zip.js";
 import { createBackupArchive, openBackupArchive } from "../extension/backup-archive.js";
+import { assertBackupSnapshot } from "../extension/backup-state.js";
+import { emptyCustomDictionaryDocument } from "../extension/custom-dictionary.js";
 
 const snapshot = { state: { dictionaries: [{ id: "dictionary-id", title: "辞書" }] }, lookupStats: { generation: "archived", revision: 3 } };
 const lookupStatsRows = [{ term: "猫", reading: "ねこ", lookupCount: 3, firstLookedUpAt: 100, lastLookedUpAt: 200 }];
@@ -25,6 +27,23 @@ test("backup ZIP64 preserves snapshot, UTF-8 paths and binary files", async () =
   const entries = await reader.getEntries();
   assert.ok(entries.every(entry => entry.zip64 && entry.compressionMethod === 0));
   await reader.close();
+});
+
+test("older backups discard retired corpus options and preserve standalone reader settings", async () => {
+  const archived = {
+    state: { schemaVersion: 1, revision: 8, dictionaries: [], groups: [] },
+    document: emptyCustomDictionaryDocument(),
+    options: { revision: 21, popupTheme: "dark", showLookupCounts: true,
+      corpusSeenEnabled: true, corpusSeenUrl: "http://127.0.0.1:55000" },
+    updates: { revision: 4, schedule: "daily", lastCheckedAt: null },
+    lookupStats: { generation: "archived", revision: 3 },
+  };
+  const prepared = await openBackupArchive(await createBackupArchive(archived, [], lookupStatsRows));
+  assert.deepEqual(prepared.snapshot.options, { revision: 21, popupTheme: "dark", showLookupCounts: true });
+  assert.deepEqual(prepared.lookupStatsRows, lookupStatsRows);
+  await assertBackupSnapshot(prepared.snapshot);
+  prepared.snapshot.options.unknown = true;
+  await assert.rejects(assertBackupSnapshot(prepared.snapshot));
 });
 
 async function rewrite(archive, change) {
