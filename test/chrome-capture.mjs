@@ -33,6 +33,7 @@ let fixtureOrigin;
 const FORCE_AUDIO_WORKLET = process.env.HACHIDORI_CAPTURE_FORCE_AUDIO_WORKLET === "1";
 
 const CHECKS = [
+  "host permissions expose reading tab title and URL and reuse capture controls without tabs permission",
   "real tab capture records bounded video and source audio",
   "default ten-second moving-text export decodes roughly eighty frames with equal AVIF/WAV duration",
   "dictionary lookups remain responsive during a full export",
@@ -802,15 +803,33 @@ async function main() {
     resources = await captureResourceMonitor(browser);
     await new Promise(done => setTimeout(done, 5000));
 
-    let capture = await browser.newPage();
-    await capture.setViewport({ width: 1280, height: 960, deviceScaleFactor: 1 });
     if (FORCE_AUDIO_WORKLET) {
       const target = await browser.waitForTarget(candidate => candidate.url() === `chrome-extension://${id}/offscreen.html`);
       const client = await target.createCDPSession();
       await client.send("Runtime.evaluate", { expression: "globalThis.__hachidoriForceAudioWorklet = true" });
       await client.detach();
     }
-    await capture.goto(`chrome-extension://${id}/capture.html`, { waitUntil: "domcontentloaded" });
+    const permissions = await settings.evaluate(() => chrome.permissions.getAll());
+    assert.ok(!permissions.permissions.includes("tabs"), "capture does not request the redundant tabs permission");
+    assert.ok(permissions.origins.includes("<all_urls>"), "hover lookup retains its required host permission");
+    const [openedControls, concurrentControls] = await Promise.all([
+      captureControl(settings, "hd_capture_open"), captureControl(settings, "hd_capture_open"),
+    ]);
+    assert.equal(concurrentControls.tabId, openedControls.tabId, "concurrent opens share one controls tab");
+    assert.equal((await captureControl(settings, "hd_capture_open")).tabId, openedControls.tabId,
+      "immediately reopening capture focuses its existing controls tab");
+    const controlsPage = async () => (await browser.waitForTarget(target =>
+      target.type() === "page" && target.url() === `chrome-extension://${id}/capture.html`)).page();
+    let capture = await controlsPage();
+    await capture.goto("about:blank");
+    assert.notEqual((await captureControl(settings, "hd_capture_open")).tabId, openedControls.tabId,
+      "navigated controls are not mistaken for the capture page");
+    await capture.close();
+    capture = await controlsPage();
+    await capture.setViewport({ width: 1280, height: 960, deviceScaleFactor: 1 });
+    const readingTabs = await captureControl(capture, "hd_capture_tabs");
+    assert.ok(readingTabs.tabs.some(tab => tab.title === SOURCE_TITLE && tab.url === `${fixtureOrigin}/fixture`),
+      "the production reading-tab picker receives both title and URL from the host permission");
     await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped",
       { polling: 100 });
     assert.equal(await capture.$eval("#capture-state", element => element.textContent), "Stopped",

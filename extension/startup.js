@@ -32,7 +32,6 @@ const RUN_SILENCE_MS = 4000;
 const PROBE_RETRY_MS = 400;
 const PROBE_ATTEMPTS = 5;
 const { normaliseOptions } = globalThis.HDReaderOptions;
-const STEP_STAGES = SETUP_STAGES.slice(0, 3);
 
 let setupState = null;
 let setupError = null;
@@ -747,7 +746,23 @@ function practiceView() {
   };
 }
 
+function welcomeView() {
+  return {
+    heading: "Welcome to Hachidori",
+    body: [
+      paragraph("Japanese page text is looked up on this computer. Words, readings, counts and lookup times are saved locally, even when counts are hidden."),
+      paragraph("Start setup downloads four starter dictionaries from their publishers, who receive your IP address. It also reads deck, note-type, card and note metadata from local AnkiConnect to configure an existing mining setup. No Anki notes are changed."),
+      paragraph("Optional pronunciation sends words and readings to your audio provider or browser voice service. Mining sends selected study content to local Anki. Capture stays off until you start it and choose a source in Chrome."),
+    ],
+    actions: [
+      button("setup-start", "Start setup", () => { void advance("dictionaries"); }),
+      button("setup-manual", "Set up manually", () => { void advance("practice"); }, "ghost"),
+    ],
+  };
+}
+
 const VIEWS = {
+  welcome: welcomeView,
   dictionaries: dictionariesView,
   anki: ankiView,
   practice: practiceView,
@@ -777,7 +792,7 @@ function failedView() {
 function renderSteps(stage) {
   const position = stage === null ? -1 : SETUP_STAGES.indexOf(stage);
   for (const step of element("setup-steps").querySelectorAll(".setup-step")) {
-    const index = STEP_STAGES.indexOf(step.dataset.stage);
+    const index = SETUP_STAGES.indexOf(step.dataset.stage);
     const current = index === position;
     step.classList.toggle("is-current", current);
     step.classList.toggle("is-done", position > index);

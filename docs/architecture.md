@@ -147,7 +147,7 @@ launch for an unpacked extension loaded from the command line, so the absence
 of that record, not the reason alone, identifies a new installation.
 
 - `setupState`: `{ schemaVersion: 1, revision, startedAt, stage, completedAt,
-  dictionaries, anki }`, where `stage` is `dictionaries`, `anki`, `practice` or
+  dictionaries, anki }`, where `stage` is `welcome`, `dictionaries`, `anki`, `practice` or
   `complete`, `dictionaries` holds `{ outcomes, totalSeconds, continued,
   selectionsApplied, recordedRuns }` and `anki` is `null` until the Anki stage
   settles once as `{ status, detail, model, deck }` with `status` one of
@@ -167,6 +167,18 @@ of that record, not the reason alone, identifies a new installation.
   user's popup, and a later edit through the ordinary revisioned options write
   is the value that persists.
 
+New installations begin at `welcome`, which discloses local page processing,
+lookup statistics, publisher downloads, local Anki metadata discovery, optional
+pronunciation sharing, mining and explicitly started capture. **Start setup**
+uses the ordinary revisioned stage write to enter `dictionaries`; automatic
+downloads and the later Anki check wait for that successful write. The worker
+also refuses setup downloads and Anki checks while the stored stage is
+`welcome`. **Set up manually** advances directly to `practice`, where an empty
+library links to Settings without downloading or checking Anki. The
+[privacy policy](privacy.md) in the repository is linked from setup and Settings.
+
+Previously stored setup stages are preserved, so an accepted or existing run
+resumes through the same installer attachment path without asking again.
 Extension updates, browser starts and service-worker restarts only run
 `warmUp()`; they cannot reopen setup or reset preferences. Setup state is not
 part of a backup: it describes this installation's onboarding, not user data.
@@ -271,7 +283,8 @@ records `continued: true`. Only settled outcomes are announced, never bytes.
 
 ### Anki stage
 
-The Anki stage checks for an existing mining setup by itself. The startup page
+After the welcome disclosure and **Start setup**, the Anki stage checks for an
+existing mining setup by itself. The startup page
 asks the worker once with `hd_setup_anki`, accepted from the exact startup page
 URL only and answered outside the storage queue, so a read-only AnkiConnect
 conversation never holds up a commit. Duplicate startup pages share the one

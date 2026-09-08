@@ -1081,7 +1081,7 @@ async function firstRunBackgroundStage() {
   const seeded = { setup: storage.raw.get("setupState"), options: storage.raw.get("options") };
   const seededOnce = tabs.length === 1 && tabs[0].url === startupUrl
     && JSON.stringify(seeded.setup) === JSON.stringify({
-      schemaVersion: 1, revision: 1, startedAt: seeded.setup?.startedAt, stage: "dictionaries", completedAt: null,
+      schemaVersion: 1, revision: 1, startedAt: seeded.setup?.startedAt, stage: "welcome", completedAt: null,
       dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] },
       anki: null,
     }) && validIso(seeded.setup?.startedAt)
@@ -1118,7 +1118,7 @@ async function firstRunBackgroundStage() {
   await settle(() => carriedTabs.length === 1);
   const carriedKept = carriedTabs.length === 1
     && JSON.stringify(carried.raw.get("options")) === JSON.stringify({ scanLength: 20, revision: 4 })
-    && carried.raw.get("setupState")?.stage === "dictionaries"
+    && carried.raw.get("setupState")?.stage === "welcome"
     && JSON.stringify(carried.sets.at(-1)) === JSON.stringify(["setupState"]);
   check("a fresh installation opens one startup tab and seeds first-install preferences exactly once",
     seededOnce && preserved && carriedKept,
@@ -1126,11 +1126,17 @@ async function firstRunBackgroundStage() {
 
   // Stage transitions are compare-and-set writes from the startup page only.
   const startupSender = { id: chrome.runtime.id, url: `${startupUrl}#resume` };
+  const refusedInstall = await bus.sendMessage("startup-page", {
+    target: "hachidori-setup", type: "hd_setup_install", requestId: "unaccepted-install", sourceIds: ["jitendex"],
+  }, startupSender);
+  check("the worker refuses starter downloads until the welcome stage has been accepted",
+    refusedInstall?.ok === false && refusedInstall.error.includes("Start setup")
+      && !bus.log.some((message) => message.relayed), JSON.stringify(refusedInstall));
   const send = (fields, sender = startupSender) => bus.sendMessage("startup-page", {
     target: "hoshidicts-worker", type: "hd_setup_cas", requestId: "setup-cas", ...fields,
   }, sender);
   const writesBefore = storage.sets.length;
-  const advanced = await send({ baseRevision: 1, stage: "anki" });
+  const advanced = await send({ baseRevision: 1, stage: "dictionaries" });
   const stale = await send({ baseRevision: 1, stage: "practice" });
   const rejected = [
     await send({ baseRevision: 2, stage: "lookup" }),
@@ -1146,7 +1152,7 @@ async function firstRunBackgroundStage() {
   const validReply = (reply) => reply?.type === "hd_setup_cas_result" && reply.requestId === "setup-cas";
   check("startup-page setup writes are revision-checked, forward-only and refused from other senders",
     advanced?.ok && validReply(advanced)
-      && JSON.stringify(advanced.state) === JSON.stringify({ ...seeded.setup, revision: 2, stage: "anki" })
+      && JSON.stringify(advanced.state) === JSON.stringify({ ...seeded.setup, revision: 2, stage: "dictionaries" })
       && stale?.ok === false && stale.conflict === true && validReply(stale)
       && JSON.stringify(stale.state) === JSON.stringify(advanced.state)
       && rejected.every((reply) => validReply(reply) && reply.ok === false && typeof reply.error === "string" && reply.conflict === undefined)
@@ -1279,6 +1285,12 @@ async function firstRunAnkiStage() {
       default: throw new Error(`unexpected ${action}`);
     }
   };
+
+  const unaccepted = worldFor("anki-unaccepted", { answer: collection, setup: setupRecord({ stage: "welcome" }) });
+  const unacceptedReply = await unaccepted.send();
+  check("the worker refuses first-run Anki discovery before Start setup without contacting Anki",
+    unacceptedReply?.ok === false && unacceptedReply.error.includes("Start setup") && unaccepted.requests.length === 0,
+    JSON.stringify({ unacceptedReply, requests: unaccepted.requests }));
 
   // Ordinary absence: the connection never answers.
   const absent = worldFor("anki-absent", { answer: () => new TypeError("Failed to fetch") });
@@ -5181,6 +5193,9 @@ async function main() {
     navigationSettings?.design === true, JSON.stringify(navigationSettings));
   check("Settings shows Resume setup only while the first-run setup record is incomplete",
     navigationSettings?.resume === true, JSON.stringify(navigationSettings));
+  const welcome = await startupWelcomeStage();
+  check("first-run setup discloses data use before any request, waits for a saved Start, resumes it and permits manual setup",
+    welcome !== null && Object.values(welcome).every((value) => value === true), JSON.stringify(welcome));
   const startup = await startupPageStage();
   check("the startup page mirrors its own installer run, keeps focus, retries only missing dictionaries and advances after the five-second result",
     startup !== null && Object.values(startup).every((value) => value === true), JSON.stringify(startup));
@@ -6374,6 +6389,7 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, optio
       eventListener({ target: "hachidori-setup-events", type: "hd_setup_progress", ...snapshot });
     },
     installs: () => requests.filter((message) => message.type === "hd_setup_install").map((message) => message.sourceIds),
+    requestTypes: () => requests.map((message) => message.type),
     lookups: () => requests.filter((message) => message.type === "hd_lookup").map((message) => message.text),
     saves: () => requests.filter((message) => message.type === "hd_setup_cas"),
     heading: () => document.getElementById("setup-heading").textContent,
@@ -6399,6 +6415,60 @@ const MANIFEST_READER_SCRIPTS = EXTENSION_MANIFEST.content_scripts[0].js.filter(
 const SETUP_AT_DICTIONARIES = Object.freeze({ schemaVersion: 1, revision: 2, startedAt: "2026-09-07T10:00:00.000Z",
   stage: "dictionaries", completedAt: null,
   dictionaries: Object.freeze({ outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }) });
+
+async function startupWelcomeStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) return null;
+  const setup = { ...structuredClone(SETUP_AT_DICTIONARIES), stage: "welcome", revision: 1, anki: null };
+  const accepted = { ...setup, stage: "dictionaries", revision: 2 };
+  const reply = () => ({ runId: "accepted-run", sequence: 1, finished: false, entries: [] });
+  let saveReply;
+  const page = startupCase(jsdom, { setup, reply, cas: () => new Promise((done) => { saveReply = done; }) });
+  let resumed;
+  let manual;
+  try {
+    await page.load();
+    const disclosure = page.document.getElementById("setup-body").textContent;
+    const quiet = page.heading() === "Welcome to Hachidori" && page.requestTypes().length === 0
+      && readerScripts(page.document).length === 0 && /page text/iu.test(disclosure)
+      && /counts/iu.test(disclosure) && /IP address/u.test(disclosure) && /card and note metadata/u.test(disclosure)
+      && /Capture stays off/u.test(disclosure)
+      && page.document.querySelector('a[href="https://github.com/bee-san/hachidori/blob/main/docs/privacy.md"]') !== null;
+    // A failed save leaves the disclosure and no network work; a later click
+    // still must wait until the accepted stage is committed.
+    page.document.getElementById("setup-start").click();
+    await page.until(() => saveReply !== undefined, "the Start setup write");
+    saveReply({ ok: false, error: "storage unavailable" });
+    await page.until(() => page.document.getElementById("setup-status").textContent.includes("storage unavailable"), "the failed Start save");
+    const refused = page.heading() === "Welcome to Hachidori" && page.installs().length === 0;
+    saveReply = undefined;
+    page.document.getElementById("setup-start").click();
+    await page.until(() => saveReply !== undefined, "the retried Start write");
+    const held = page.installs().length === 0 && page.document.getElementById("setup-start").disabled;
+    saveReply({ ok: true, state: accepted });
+    await page.until(() => page.installs().length === 1, "the accepted dictionary run");
+    const started = held && page.saves().every((message) => message.stage === "dictionaries" && message.baseRevision === 1)
+      && page.heading() === "Installing default dictionaries…";
+    page.window.close();
+    resumed = startupCase(jsdom, { setup: accepted, reply });
+    await resumed.load();
+    const resumes = resumed.heading() === "Installing default dictionaries…" && resumed.installs().length === 1
+      && resumed.saves().length === 0 && resumed.document.getElementById("setup-start") === null;
+    manual = startupCase(jsdom, { setup, reply,
+      cas: (message) => ({ ok: true, state: { ...setup, revision: 2, stage: message.stage } }) });
+    await manual.load();
+    manual.document.getElementById("setup-manual").click();
+    await manual.until(() => manual.heading() === "You’re ready.", "manual setup");
+    const skipped = manual.saves()[0].stage === "practice" && manual.installs().length === 0
+      && !manual.requestTypes().includes("hd_setup_anki")
+      && manual.document.querySelector('a[href="settings.html#add-dictionaries"]') !== null;
+    return { quiet, refused, started, resumes, skipped };
+  } finally {
+    page.window.close();
+    resumed?.window.close();
+    manual?.window.close();
+  }
+}
 
 // A run whose offscreen document disappeared stops reporting with the page
 // still holding an unfinished snapshot. After a silence longer than any phase

@@ -206,7 +206,8 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
-  "a fresh install opens one startup tab at the dictionary stage with first-install preferences",
+  "a fresh install waits for Start setup before dictionary downloads or Anki discovery",
+  "Start setup begins automatic dictionary installation with first-install preferences",
   "Settings shows Resume setup while first-run setup is incomplete",
   "a reconnecting startup page rejoins the running installer whose held download stays indeterminate",
   "the automatic installer continues after a mocked failure through real download and installation phases",
@@ -5794,8 +5795,8 @@ async function main() {
   );
   // ---------------------------------------------------------- first-run setup
   // chrome.runtime.onInstalled fired with reason "install" for this clean
-  // profile, so the extension itself opened startup.html and its installer is
-  // already waiting on the held first archive request.
+  // profile, so the extension itself opened startup.html. Downloads and Anki
+  // discovery wait for the user's informed Start setup action.
   await showSettingsSection(page, "add-dictionaries");
   // Settings renders the starter card once its first dictionary-state read answers.
   await page.waitForFunction(() => document.getElementById("recommended-starter")?.hidden === false,
@@ -5867,7 +5868,24 @@ async function main() {
     }
     return null;
   };
-  // The engine boots first; the held request means Jitendex sits in Downloading.
+  const welcome = startup === null ? null
+    : await waitStartup((state) => state.actions.some(([id]) => id === "setup-start"), 30_000);
+  const refusedBeforeStart = startup === null ? null : await startup.evaluate(async () => ({
+    anki: await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_setup_anki", requestId: "before-start-anki" }),
+    dictionaries: await chrome.runtime.sendMessage({ target: "hachidori-setup", type: "hd_setup_install",
+      sourceIds: ["jitendex"], requestId: "before-start-dictionaries" }),
+    setup: (await chrome.storage.local.get("setupState")).setupState,
+    privacy: document.querySelector('a[href="https://github.com/bee-san/hachidori/blob/main/docs/privacy.md"]') !== null,
+  }));
+  check("a fresh install waits for Start setup before dictionary downloads or Anki discovery",
+    startupTabs() === 1 && welcome?.rows.length === 0 && refusedBeforeStart?.setup.stage === "welcome"
+      && refusedBeforeStart.setup.revision === 1 && refusedBeforeStart.privacy
+      && refusedBeforeStart.anki.error === "Start setup before checking Anki."
+      && refusedBeforeStart.dictionaries.error === "Start setup before downloading dictionaries."
+      && setupArchives.requests.length === 0,
+    JSON.stringify({ welcome, refusedBeforeStart, requests: setupArchives.requests }));
+  if (startup !== null) await clickStartupControl("setup-start");
+  // After the click, the held request means Jitendex sits in Downloading.
   const startupShell = startup === null ? null
     : await waitStartup((state) => state.rows[0]?.[1]?.startsWith("Downloading"), 120_000);
   // The row turns to Downloading when the import is dispatched; the archive
@@ -5890,7 +5908,7 @@ async function main() {
       && document.getElementById("opt-summary-count")?.value === "3",
   { timeout: 30_000, polling: 100 }).then(() => true).catch(() => false);
   check(
-    "a fresh install opens one startup tab at the dictionary stage with first-install preferences",
+    "Start setup begins automatic dictionary installation with first-install preferences",
     startupTabs() === 1 && seededInSettings
       && startupShell?.title === "Set up Hachidori"
       && startupShell.heading === "Installing default dictionaries…"
@@ -5907,7 +5925,7 @@ async function main() {
       && startupShell.background === settingsPalette.background
       && startupShell.cardBackground === settingsPalette.surface
       && firstInstallStorage.setupState?.stage === "dictionaries"
-      && firstInstallStorage.setupState.revision === 1
+      && firstInstallStorage.setupState.revision === 2
       && firstInstallStorage.setupState.completedAt === null
       && JSON.stringify(firstInstallStorage.setupState.dictionaries?.outcomes) === "{}"
       && firstInstallStorage.setupState.dictionaries.totalSeconds === null
