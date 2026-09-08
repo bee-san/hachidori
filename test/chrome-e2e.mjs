@@ -224,7 +224,7 @@ const PLANNED = [
   "first-run detection configures an existing Kiku mining setup read-only from the startup page",
   "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
-  "Settings light and dark themes keep every task view readable without horizontal overflow",
+  "Settings follows every popup theme and keeps each task view readable without horizontal overflow",
   "Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts",
   "Settings rejects malformed and oversized option frames before commit and still autosaves without reload",
   "Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup",
@@ -6621,6 +6621,11 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   const settingsPalette = await page.evaluate(() => ({
+    theme: document.documentElement.dataset.hoshidictsTheme,
+    base100: getComputedStyle(document.documentElement)
+      .getPropertyValue("--hoshidicts-palette-base-100").trim(),
+    base200: getComputedStyle(document.documentElement)
+      .getPropertyValue("--hoshidicts-palette-base-200").trim(),
     background: getComputedStyle(document.body).backgroundColor,
     surface: getComputedStyle(document.querySelector(".page")).backgroundColor,
   }));
@@ -6650,8 +6655,13 @@ async function main() {
       ])
       && startupShell.importLink && startupShell.settingsLink && startupShell.actions.length === 0
       && startupShell.status === "Installing default dictionaries."
-      && startupShell.background === settingsPalette.background
-      && startupShell.cardBackground === settingsPalette.surface
+      && startupShell.background !== "rgba(0, 0, 0, 0)"
+      && startupShell.cardBackground !== "rgba(0, 0, 0, 0)"
+      && settingsPalette.theme === "default"
+      && settingsPalette.base100 === "#1a1a1a"
+      && settingsPalette.base200 === "#2a2a2a"
+      && settingsPalette.background !== "rgba(0, 0, 0, 0)"
+      && settingsPalette.surface === "rgb(26, 26, 26)"
       && firstInstallStorage.setupState?.stage === "dictionaries"
       && firstInstallStorage.setupState.revision === 2
       && firstInstallStorage.setupState.completedAt === null
@@ -7641,13 +7651,34 @@ async function main() {
   await page.waitForFunction(() => location.hash === "#lookup" && !document.getElementById("lookup").hidden
     && document.querySelector('.settings-nav [aria-current="page"]')?.hash === "#lookup");
   const pickerKeepsFocus = await page.evaluate(() => document.activeElement.id === "settings-section");
+  const originalSettingsTheme = await page.evaluate(async () =>
+    (await chrome.storage.local.get("options")).options.popupTheme ?? "default");
+  const setSettingsTheme = async (theme) => {
+    await page.evaluate(async nextTheme => {
+      const { options } = await chrome.storage.local.get("options");
+      if ((options.popupTheme ?? "default") === nextTheme) return;
+      const reply = await chrome.runtime.sendMessage({
+        target: "hoshidicts-worker",
+        type: "hd_options_write",
+        requestId: "settings-theme-e2e",
+        baseRevision: options.revision,
+        options: { popupTheme: nextTheme },
+      });
+      if (!reply.ok) throw new Error(reply.error);
+    }, theme);
+    await page.waitForFunction(nextTheme =>
+      document.documentElement.dataset.hoshidictsTheme === nextTheme,
+    { polling: 50, timeout: 10_000 }, theme);
+  };
   const narrowThemes = [];
-  for (const theme of ["light", "dark"]) {
-    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
+  for (const theme of ["light", "default"]) {
+    await setSettingsTheme(theme);
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme === "light" ? "dark" : "light" }]);
     narrowThemes.push(await page.evaluate(() => {
       const width = document.documentElement.clientWidth;
       const inputs = [...document.querySelectorAll("#lookup input, #lookup select")].filter(input => input.checkVisibility());
       return {
+        theme: document.documentElement.dataset.hoshidictsTheme,
         noOverflow: document.documentElement.scrollWidth <= width,
         fieldsFit: inputs.every((input) => {
           const rect = input.getBoundingClientRect();
@@ -7683,53 +7714,109 @@ async function main() {
   const themeLayouts = [];
   for (const width of [320, 1280]) {
     await page.setViewport({ width, height: 900 });
-    for (const theme of ["light", "dark"]) {
-      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
-      for (const section of ["dictionaries", "lookup", "design", "audio", "anki", "custom-dictionary", "add-dictionaries", "updates", "dictionary-groups", "backup"]) {
+    for (const theme of ["light", "default"]) {
+      await setSettingsTheme(theme);
+      for (const section of ["dictionaries", "lookup", "design", "audio", "media", "anki", "custom-dictionary",
+        "add-dictionaries", "updates", "dictionary-groups", "backup"]) {
         await showSettingsSection(page, section);
         themeLayouts.push(await page.evaluate(({ theme, section }) => {
-          const root = getComputedStyle(document.documentElement);
-          const token = (name) => root.getPropertyValue(name).trim();
-          const luminance = (hex) => {
-            const rgb = hex.slice(1).match(/../gu).map((part) => Number.parseInt(part, 16) / 255)
-              .map((part) => part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4);
-            return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
-          };
-          const contrast = (first, second) => {
-            const a = luminance(token(first));
-            const b = luminance(token(second));
-            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-          };
           const panel = document.getElementById(section);
           const primary = {
-            dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns", audio: "audio-source-add", anki: "anki-refresh", "custom-dictionary": "custom-dictionary-source",
+            dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns",
+            audio: "audio-source-add", media: "media-open-capture", anki: "anki-refresh",
+            "custom-dictionary": "custom-dictionary-source",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new", backup: "backup-export",
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
             .filter((control) => control.checkVisibility());
-          const textPairs = [
-            ["--text", "--surface"], ["--text-dim", "--surface"], ["--text-dim", "--bg"],
-            ["--text-dim", "--surface-sunken"], ["--accent", "--accent-soft"],
-            ["--accent", "--surface"], ["--accent-contrast", "--accent"],
-            ["--error", "--surface"], ["--ok", "--bg"],
-          ];
           return { theme, section, width: innerWidth,
+            selectedTheme: document.documentElement.dataset.hoshidictsTheme,
             taskVisible: panel.querySelector("h1").checkVisibility() && document.getElementById(primary[section]).checkVisibility(),
             noOverflow: document.documentElement.scrollWidth <= innerWidth,
             controlsFit: controls.every((control) => {
               const rect = control.getBoundingClientRect();
               return rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth + 1;
             }),
-            textContrast: Math.min(...textPairs.map(([first, second]) => contrast(first, second))),
-            controlContrast: Math.min(contrast("--border-strong", "--surface"), contrast("--border-strong", "--surface-sunken")),
           };
         }, { theme, section }));
       }
     }
   }
-  check("Settings light and dark themes keep every task view readable without horizontal overflow",
-    themeLayouts.every((layout) => layout.taskVisible && layout.noOverflow && layout.controlsFit
-      && layout.textContrast >= 4.5 && layout.controlContrast >= 3), JSON.stringify(themeLayouts));
+  const themes = await page.evaluate(() => HDReaderOptions.POPUP_THEME_GROUPS.flatMap(group =>
+    group.themes.map(theme => theme.id)));
+  const themePalettes = [];
+  await page.setViewport({ width: 1280, height: 900 });
+  await showSettingsSection(page, "design");
+  for (const theme of themes) {
+    await setSettingsTheme(theme);
+    themePalettes.push(await page.evaluate(expectedTheme => {
+      const probe = document.createElement("span");
+      probe.style.cssText = "position:fixed;visibility:hidden";
+      document.body.append(probe);
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      const color = name => {
+        probe.style.color = `var(${name})`;
+        const value = getComputedStyle(probe).color;
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = value;
+        context.fillRect(0, 0, 1, 1);
+        return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+      };
+      const luminance = name => color(name).map(part => part / 255)
+        .map(part => part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4)
+        .reduce((sum, part, index) => sum + part * [0.2126, 0.7152, 0.0722][index], 0);
+      const contrast = (first, second) => {
+        const a = luminance(first);
+        const b = luminance(second);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      };
+      const textPairs = [
+        ["--text", "--surface"], ["--text-dim", "--surface"], ["--text-dim", "--bg"],
+        ["--text-dim", "--surface-sunken"], ["--accent", "--accent-soft"],
+        ["--accent", "--surface"], ["--accent-contrast", "--accent-fill"],
+        ["--error", "--surface"], ["--ok", "--bg"],
+      ];
+      const textContrasts = Object.fromEntries(textPairs.map(([first, second]) =>
+        [`${first}/${second}`, contrast(first, second)]));
+      const root = getComputedStyle(document.documentElement);
+      const result = {
+        expectedTheme,
+        selectedTheme: document.documentElement.dataset.hoshidictsTheme,
+        palette: root.getPropertyValue("--hoshidicts-palette-primary").trim(),
+        scheme: root.colorScheme,
+        paletteScheme: root.getPropertyValue("--hoshidicts-palette-color-scheme").trim(),
+        stylesheet: document.querySelector('link[href="render/reader.css"]') !== null,
+        textContrast: Math.min(...Object.values(textContrasts)),
+        textContrasts,
+        controlContrast: Math.min(contrast("--border-strong", "--surface"),
+          contrast("--border-strong", "--surface-sunken")),
+      };
+      probe.remove();
+      return result;
+    }, theme));
+  }
+  if (process.env.HACHIDORI_SETTINGS_THEME_SCREENSHOT) {
+    await setSettingsTheme("miku");
+    await showSettingsSection(page, "design");
+    await page.setViewport({ width: 1280, height: 1000 });
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.mouse.move(1275, 5);
+    await page.screenshot({ path: process.env.HACHIDORI_SETTINGS_THEME_SCREENSHOT, fullPage: true });
+  }
+  await setSettingsTheme(originalSettingsTheme);
+  await page.emulateMediaFeatures([]);
+  check("Settings follows every popup theme and keeps each task view readable without horizontal overflow",
+    themes.length === 42
+      && narrowThemes.every(({ theme, noOverflow, fieldsFit, statusExposed }) =>
+        ["light", "default"].includes(theme) && noOverflow && fieldsFit && statusExposed)
+      && themeLayouts.every((layout) => layout.selectedTheme === layout.theme
+        && layout.taskVisible && layout.noOverflow && layout.controlsFit)
+      && themePalettes.every((theme) => theme.selectedTheme === theme.expectedTheme && theme.palette
+        && theme.scheme === theme.paletteScheme && theme.stylesheet
+        && theme.textContrast >= 4.5 && theme.controlContrast >= 3),
+    JSON.stringify({ narrowThemes, themeLayouts, themePalettes }));
   await ankiSession.detach();
   await page.emulateMediaFeatures([]);
   await page.setViewport({ width: 480, height: 900 });

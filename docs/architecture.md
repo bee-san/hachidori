@@ -1180,11 +1180,13 @@ disclosures and focuses its control without changing values or discarding drafts
 The activation-key selector remains editable in either lookup mode.
 All sections stay mounted, so navigation and browser history preserve reader
 and personal-dictionary drafts. Personal source loads on first entering its section.
-The rail becomes a compact section chooser in narrow windows; light and dark palettes
-follow the system preference. Inactive sections mirror pending work, errors, and
-unseen operation completions next to their links. Visiting a section clears its
-completion notice, not its source output or draft. The compact navigation mirrors
-inactive notices, and shared options feedback stays near the section heading.
+The rail becomes a compact section chooser in narrow windows. Settings applies
+the saved lookup theme to its document and updates it immediately after local or
+external option changes; startup pages retain their independent system light/dark
+fallback. Inactive sections mirror pending work, errors, and unseen operation
+completions next to their links. Visiting a section clears its completion notice,
+not its source output or draft. The compact navigation mirrors inactive notices,
+and shared options feedback stays near the section heading.
 Status setters own these
 notices; there are no observers or additional polling loops.
 
@@ -1324,12 +1326,14 @@ Reading preferences, dictionaries, groups, and update policy are untouched.
 The source-audited bounds are width 280–1,200 px, height 200–900 px, and opacity
 0–100%. Viewport clamping never changes the saved dimensions.
 
-The shared popup appearance helper sets theme and size/opacity variables only
-on the extension host. All palette and theme-specific popup rules match that
-shadow host; page html is never themed. A tiny owned constructed stylesheet
-colours page ranges from the host's computed primary colour, reading it only
-on theme changes (and after the preview's async palette load). It preserves
-unrelated adopted sheets and removes only its own sheet on teardown.
+The palette catalogue can select either the Settings document or the
+extension-owned popup host. Settings loads that same catalogue and derives its
+semantic UI colours from the selected palette, while popup appearance still sets
+theme and size/opacity variables only on the shadow host; content-page html is
+never themed. A tiny owned constructed stylesheet colours page ranges from the
+host's computed primary colour, reading it only on theme changes (and after the
+preview's async palette load). It preserves unrelated adopted sheets and removes
+only its own sheet on teardown.
 Colour/opacity changes do not project results or schedule masonry. Size changes
 apply inline geometry before scheduling masonry so cards measure the new width
 on their first layout. Existing Note, tabs, and disclosure state remain mounted.

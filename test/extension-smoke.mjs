@@ -5438,6 +5438,8 @@ async function main() {
     sourceHighlight?.restored === true, JSON.stringify(sourceHighlight));
   check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
     frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
+  check("Settings applies the selected popup theme live across local edits and storage events",
+    frequencySettings?.settingsTheme === true, JSON.stringify(frequencySettings));
   check("Design resets only its shared appearance and content keys through one sparse options write",
     frequencySettings?.designReset === true, JSON.stringify(frequencySettings));
   check("Settings derives frequency direction only on dictionary selection or explicit Auto",
@@ -7963,6 +7965,7 @@ async function settingsFrequencyStage() {
     const theme = window.document.getElementById("opt-popup-theme");
     window.location.hash = "#design";
     await until(() => theme.options.length === 42);
+    let settingsTheme = window.document.documentElement.dataset.hoshidictsTheme === "default";
     const toolbarSelect = window.document.getElementById("opt-popup-toolbar");
     await editControl(toolbarSelect, "bottom");
     let toolbar = JSON.stringify(writes.at(-1).options) === JSON.stringify({ popupToolbarPosition: "bottom" });
@@ -7987,6 +7990,7 @@ async function settingsFrequencyStage() {
       sourceHighlightEnabled: false, popupColumns: 4, scanLength: 24, frequencyOrder: "disabled",
       kanjiClickDictionary: { title: "Rank", kind: "term" } });
     const focusedThemeKept = theme.value === previousTheme;
+    settingsTheme &&= window.document.documentElement.dataset.hoshidictsTheme === "miku";
     theme.blur();
     const themeRefreshed = focusedThemeKept && theme.value === "miku";
     const beforeReset = { ...storedOptions };
@@ -7999,6 +8003,7 @@ async function settingsFrequencyStage() {
       && Object.keys(beforeReset).filter(key => key !== "revision" && !DESIGN_OPTION_KEYS.includes(key))
         .every(key => JSON.stringify(storedOptions[key]) === JSON.stringify(beforeReset[key]))
       && Object.keys(writes.at(-1).options).every(key => DESIGN_OPTION_KEYS.includes(key));
+    settingsTheme &&= window.document.documentElement.dataset.hoshidictsTheme === "default";
     toolbar &&= toolbarSelect.value === "auto";
     let css = false;
     const editor = window.document.getElementById("opt-custom-popup-css");
@@ -8015,6 +8020,7 @@ async function settingsFrequencyStage() {
       emitOptions({ popupTheme: "light" });
       css = editor.value === text && editor.selectionStart === 4 && editor.selectionEnd === 7
         && window.document.getElementById("custom-css-count").textContent === `${text.length} characters`;
+      settingsTheme &&= window.document.documentElement.dataset.hoshidictsTheme === "light";
       await until(() => status().includes("Could not save"));
       css &&= writes.at(-1).baseRevision === revision && writes.at(-1).options.customPopupCss === text;
       editor.blur();
@@ -8073,7 +8079,9 @@ async function settingsFrequencyStage() {
     emitOptions({ popupTheme: "light" });
     audio &&= storedOptions.audioSources.length === 0 && audioRows().length === 0
       && !window.document.getElementById("audio-source-empty").hidden;
-    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset, toolbar, css, audio,
+    settingsTheme &&= window.document.documentElement.dataset.hoshidictsTheme === "light";
+    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails,
+      designReset, settingsTheme, toolbar, css, audio,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {

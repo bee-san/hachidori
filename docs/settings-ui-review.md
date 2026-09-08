@@ -9,6 +9,8 @@ Source attribution and the compatible text-receiver protocol remain intact.
 Lookup history and definition blur live in **Reading**. **Design** concentrates
 on appearance and definition presentation, with wider selectors, compact numeric
 rows and a collapsible live preview. Reset Design preserves the Reading rules.
+The selected lookup theme now colours the complete Settings document as well as
+the lookup and preview.
 Threshold/reveal details and custom CSS use native disclosures. Narrow windows
 use a section picker that keeps keyboard focus and browser history; background
 operation notices remain available beside it.
@@ -36,6 +38,14 @@ Design control moved from y=1022 to y=510 with the preview initially collapsed.
 An intentionally opened preview stays open during subsequent navigation/resizing.
 The save-error panel stays at y=12–108.5 in a 1000-pixel-high scrolled viewport.
 These are browser geometry checks, not a screen-reader usability study.
+
+The theme follow-up was checked in Chrome for Testing 152.0.7977.75. All 42
+lookup palettes resolved on Settings with at least 4.5:1 text contrast and 3:1
+control-boundary contrast. Every one of the eleven sections also fit at 320 and
+1280 pixels under representative light and dark palettes, with the opposite
+system colour preference forced to prove that the saved theme wins.
+
+![Settings using the selected Miku lookup theme](assets/settings-theme-miku.png)
 
 | Desktop Design | Narrow Design |
 | --- | --- |
