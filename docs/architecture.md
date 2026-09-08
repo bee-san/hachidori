@@ -175,7 +175,7 @@ part of a backup: it describes this installation's onboarding, not user data.
 focus rings and reduced-motion rules, and adds only layout in `startup.css`. The
 page reads `setupState`, `dictionaryState` and `options` from storage, adopts
 only newer revisions from storage events, and renders one card per stage under
-a **Dictionaries → Anki → Try it** indicator (`aria-current="step"`). Continue
+a **Dictionaries → Anki (optional) → Try it** indicator (`aria-current="step"`). Continue
 and Finish send `hd_setup_cas` with the revision the page rendered; a conflict
 adopts the newer state and reports it in the card's live region, unless that
 state has already reached the requested stage — a second tab making the same
@@ -261,8 +261,12 @@ rendered only when the current inventory holds every catalogue source and this
 setup installed at least one of them; a profile that already carried them all
 reads **All dictionaries are already installed**. Either result
 stays for five seconds with a labelled countdown that is not a live region,
-then the page advances to Anki. If both automatic writes are refused, the
-countdown is cancelled and the result keeps an explicit **Continue setup**
+then the page advances to Anki. **Continue now** advances immediately;
+**Pause countdown** leaves the result available until Continue or
+**Resume countdown**, which starts a fresh five seconds. The page explains
+that installation continues after closing the tab and can be resumed from
+Settings. If both automatic writes are refused, the
+countdown is cancelled and the result keeps an explicit **Continue now**
 instead of saving again on a timer. **Continue setup** with missing sources
 records `continued: true`. Only settled outcomes are announced, never bytes.
 
@@ -320,7 +324,10 @@ own reason. The page renders the settled outcome as one sentence with a link to
 the Anki section of Settings, and that outcome moves setup to the last stage by
 itself and stays readable there. A request the worker does not answer is
 reported once with **Retry** beside **Continue setup**; the page never re-asks
-on its own.
+on its own. Anki is explicitly optional. **Continue now** is available during
+the check; its eventual reply adopts the latest recorded stage without moving
+the user back. A failed connection says **Anki isn’t connected**, rather than
+claiming Anki is absent.
 
 ![The final step after an absent Anki, light palette](assets/startup-ready.png)
 
@@ -363,7 +370,11 @@ Changing those retires the invitation and probes again; group-only and
 presentation writes preserve the result and the connected scene. Turning
 lookups off or removing every enabled term dictionary also retires an in-flight
 probe. A library that cannot answer any word in the passage gets a dictionary
-recovery link rather than an invitation.
+recovery link rather than an invitation. The heading reflects the current
+readiness: add a term dictionary, enable an installed term dictionary, turn on
+lookups, wait for the probe, or try the working exercise. Recovery uses a
+prominent action to the relevant Settings section; **Finish setup** stays
+available. The practice controller and page share this readiness decision.
 
 A dictionary mutation can refuse lookups while publishing or cleaning up a
 generation. The probe waits for `hd_status` to report a ready, idle engine and
