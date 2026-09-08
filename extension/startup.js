@@ -530,7 +530,10 @@ function ankiProgressView(anki = null) {
     const label = document.createElement("strong");
     label.textContent = title;
     const detail = document.createElement("small");
-    detail.textContent = done ? details[index] : active ? "Checking Anki…" : "Waiting";
+    let detailText = "Waiting";
+    if (done) detailText = details[index];
+    else if (active) detailText = "Checking Anki…";
+    detail.textContent = detailText;
     copy.append(label, detail);
     row.append(marker, copy);
     list.appendChild(row);
