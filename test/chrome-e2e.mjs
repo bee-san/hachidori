@@ -3773,6 +3773,11 @@ async function checkAnkiGlossaryExport(page) {
 }
 
 async function checkStartupPractice(startup, browser, startupUrl) {
+  // Native skip navigation can precede startup.js's click handler. Reload that
+  // exact URL so a fresh reader must accept the fragment, not an earlier reader
+  // that was already running at the bare URL.
+  await startup.goto(`${startupUrl}#setup-heading`);
+  await startup.reload({ waitUntil: "networkidle0" });
   await startup.bringToFront();
   await startup.waitForSelector("#setup-practice-lookup:not([disabled])");
   const popup = await popupReader(startup);
@@ -3810,6 +3815,7 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   });
   await startup.waitForFunction(() => window.__practiceRender.events > 0);
   const source = await startup.evaluate(() => ({
+    url: location.href,
     selected: getSelection().toString(),
     text: document.getElementById("setup-practice-text")?.textContent,
     sameScene: document.getElementById("setup-practice-scene") === window.__practiceScene,
@@ -3826,6 +3832,7 @@ async function checkStartupPractice(startup, browser, startupUrl) {
     && state.text.includes(`${RECOMMENDED_DICTIONARIES[0].title} term fixture`);
   check("startup practice uses the installed dictionaries through keyboard selection and the ordinary reader",
     keyboardReached && genuine(selected) && genuine(hovered) && escaped
+      && source.url === `${startupUrl}#setup-heading`
       && source.selected === "辞書" && source.text.includes("辞書") && source.sameScene && !source.detached
       && source.readerScripts === 1 && source.finish && source.settings,
     JSON.stringify({ keyboardReached, selected, hovered, source, escaped }));
@@ -3843,7 +3850,9 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   // list explicitly so this checks its URL boundary, not just missing scripts.
   const scriptPaths = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8")).content_scripts[0].js;
   const restricted = [];
-  for (const relative of ["settings.html", "design-preview.html", "startup.html?reader-boundary"]) {
+  const excluded = ["settings.html", "design-preview.html", "startup.html?reader-boundary",
+    "startup.html?reader-boundary#setup-heading", "startup.html#other-heading"];
+  for (const relative of excluded) {
     const internal = await browser.newPage();
     try {
       await internal.goto(new URL(relative, startupUrl).href, { waitUntil: "networkidle0" });
@@ -3872,8 +3881,10 @@ async function checkStartupPractice(startup, browser, startupUrl) {
     } finally { await internal.close(); }
   }
   check("the startup reader exception keeps Settings and the static preview excluded",
-    restricted.length === 3 && restricted.every(result => result.requests === 0 && result.hosts === 0 && result.scripts >= 1),
+    restricted.length === excluded.length && restricted.every(result => result.requests === 0 && result.hosts === 0 && result.scripts >= 1),
     JSON.stringify(restricted));
+  // Later lifecycle checks identify the setup tab by its original bare URL.
+  await startup.evaluate(url => history.replaceState(null, "", url), startupUrl);
 }
 
 // Run last: Chrome reloads the extension when its native file switch changes,

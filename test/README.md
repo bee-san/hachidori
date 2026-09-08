@@ -767,6 +767,13 @@ Settings, hovers Japanese text there with the real mouse, and requires the
 renderer to be present but no reader host to exist, which is what proves the
 page restriction rather than the absence of an injection.
 
+The keyboard/hover practice check first reloads `startup.html#setup-heading`,
+the URL its native skip link can create before the module attaches a handler,
+then requires the ordinary reader to answer from the real installed fixture.
+The internal-page exclusion check also injects the same scripts into query
+variants (including one with the known fragment) and an unknown fragment,
+requiring no reader host or selection lookup there.
+
 Four further assertions cover the real practice and saved-page flow. The
 keyboard lookup button selects 辞書 from the scene and the ordinary reader
 returns the just-installed catalogue fixture's glossary; pointer lookup works
