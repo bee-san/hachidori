@@ -793,8 +793,9 @@ its distinct notes, save that model, deck and the resolved preset templates
 through the revisioned options write, record the `configured` outcome, and
 issue only the fixed read-only actions in ranking order at protocol version 6.
 The page visibly advances through finding the most popular mining card, finding
-its most popular deck and applying both, then shows the selected names for five
-seconds before practice.
+its most popular deck and applying both. Each step holds for two seconds and
+shows its chosen card or deck as that step is reached, then the settled result
+holds for three seconds before practice.
 The mock is detached and the previous setup record and Anki options are
 restored, so the Anki Settings checks below still begin with a lazy, offline
 connection and an unconfigured mapping.
@@ -802,8 +803,8 @@ connection and an unconfigured mapping.
 `HACHIDORI_STARTUP_COMPLETE_SCREENSHOT`/`_DARK_SCREENSHOT` the countdown
 result, `HACHIDORI_STARTUP_READY_SCREENSHOT`/`_DARK_SCREENSHOT` the final step
 after an absent Anki, and
-`HACHIDORI_STARTUP_ANKI_SCREENSHOT`/`_DARK_SCREENSHOT` the held automatic Anki
-result with all three selection steps, and
+`HACHIDORI_STARTUP_ANKI_SCREENSHOT`/`_DARK_SCREENSHOT` the automatic Anki
+progress with the chosen card complete and the chosen deck current, and
 `HACHIDORI_STARTUP_PRACTICE_SCREENSHOT`/`_DARK_SCREENSHOT` the practice step with
 a real lookup open. `HACHIDORI_SETTINGS_SCREENSHOT` captures the empty import
 drop target and `HACHIDORI_IMPORT_SCREENSHOT` captures its completed shared
