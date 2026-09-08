@@ -603,19 +603,47 @@ rule. Its subject is the logical request's first canonical expression, retained
 through tab projections, Show more, Note refresh and Back. Native kanji entries
 remain outside term blur.
 
-The worker handles `hd_anki_maturity` separately from its Anki mutation queue,
-dictionary engine and storage-write queue. It reads the saved Anki note type
-and dedicated plain `{expression}` field, then makes one AnkiConnect
-`findCards` query across all decks for review cards with an interval of at least
-21 days, explicitly excluding relearning. This implements
-[Anki's mature-card definition](https://docs.ankiweb.net/getting-started.html#card-states).
-It uses the existing loopback gateway, API key and timeout. It does not perform
-discovery, render mining fields, fetch media, or write the collection. Missing
-or unsupported mappings, failed requests and malformed replies fail open.
-Fields named Anki search operators, such as `note` or `deck`, are skipped so
-their names cannot broaden the query beyond the exact expression.
-Maturity evidence belongs only to that request; there is no persistent cache or
-offline mirror of Anki's collection.
+The worker answers `hd_anki_maturity` from a local `Set`, independently of the
+Anki mutation queue and dictionary engine. The `ankiMaturityCache` storage key
+holds one compact snapshot, the last refresh attempt and a configuration revision.
+The worker hydrates the Set once; individual lookups never query Anki or scan
+the saved collection.
+The cache is derived state and is excluded from backups.
+
+The dedicated `hachidori-anki-maturity` alarm schedules a refresh when enabled
+or when the note type, eligible expression fields, or API key changes, then
+every 30 minutes while the feature is enabled. Recording the attempt and next
+alarm before network I/O prevents worker restarts from repeatedly retrying an
+unavailable Anki. Startup restores a missing alarm without resetting its due
+time; an overdue attempt runs once. Disabling clears the alarm and invalidates
+pending publication, while retaining the previous snapshot for re-enabling.
+Triggers share one in-flight refresh; a changed source waits for the old pull
+to settle before starting its own.
+
+Each refresh makes one read-only AnkiConnect `notesInfo` request, selecting the
+configured note type across all decks with `is:review -is:learn prop:ivl>=21`.
+This implements [Anki's mature-card definition](https://docs.ankiweb.net/getting-started.html#card-states).
+Only eligible dedicated plain `{expression}` fields enter the cache. Stored
+HTML stays literal, ASCII case is folded as in Anki's ordinary field search,
+and lookup expressions use Anki's default NFC query normalization. Custom
+Anki configurations with `normalize_note_text=false` are not mirrored by this
+bulk API. Operator-named fields remain excluded. Refresh requests have a
+25-second timeout; ordinary Anki operations keep their existing timeout.
+
+A short-lived dedicated worker launched by the existing Anki offscreen service
+fetches, parses and extracts the complete response. It returns only the compact
+word list, then terminates, keeping the large JSON allocation off both the
+service-worker request thread and the dictionary engine thread.
+The refresh builds a complete replacement outside the background storage queue,
+then rechecks the effective configuration, enablement and reserved configuration
+revision inside the queue before persisting and publishing it. All options writes
+bump that revision and clear the attempt in the same transaction when the enabled
+source changes. Delayed storage events only reconcile scheduling; they cannot
+invalidate a new pull or allow an old pull to publish after an off/on toggle.
+Failures retain the previous successful snapshot; before any successful refresh,
+the Anki criterion returns false promptly.
+A successful empty result clears the cached words. Current visits retain their
+original decision when a snapshot changes, including visits retained for Back.
 
 Each request owns one blur decision and the original first-display deadline.
 Pending rules hide definitions immediately, and qualifying evidence can settle
@@ -631,9 +659,12 @@ including requests retained for Back, so late replies cannot revive it or
 overwrite a current decision. The opt-in does not change the count-only path
 when disabled, and unavailable Anki never delays the local lookup.
 
-Settings uses the existing revisioned options queue. Count direction and
-threshold depend on the count criterion; either criterion enables the common
-reveal controls. The Design preview passes a fixed mature sample and a count of
+Settings uses the existing revisioned options queue. One source picker offers
+Off, Lookup count, Mature Anki cards and Either condition. It maps to the existing
+two booleans; there is no separate combination option. Count direction and threshold appear
+only for Lookup count or Either. A paused notice links to the count recording
+toggle when recording is disabled. Any active source shows the common reveal
+controls. The Design preview passes a fixed mature sample and a count of
 three through the same rule, hover and timer without making Anki requests.
 
 ## Lookup response boundary
