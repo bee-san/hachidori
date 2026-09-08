@@ -53,7 +53,7 @@ test("Anki exports the first decodable pronunciation without playback and reuses
 test("selected TTS warns without inventing audio or substituting a different pronunciation", async () => {
   const f = fixture();
   const speech = { ...source, id: "tts", type: "text-to-speech-reading", url: "" };
-  const selection = { sourceId: speech.id, sourceKey: JSON.stringify(speech), ...term, index: 0, name: "System default", url: null };
+  const selection = { sourceId: speech.id, sourceKey: JSON.stringify(speech), ...term, index: 0, name: "Automatic Japanese", url: null };
   await assert.rejects(exportAnkiAudio(f.window, f.repository, { term, sources: [speech, source], selection },
     new AbortController().signal), /Browser text-to-speech cannot be attached/u);
   assert.deepEqual(f.downloads, []);

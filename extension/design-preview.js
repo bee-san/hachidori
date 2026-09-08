@@ -95,8 +95,17 @@
     onResultsRendered({ lookupStats }) {
       sampleLookupStats = lookupStats;
       paintSampleLookupStats();
+      updateSampleAudio();
     },
   });
+
+  function updateSampleAudio() {
+    const available = options.audioSources.some(source => source.enabled
+      && (source.type.startsWith("text-to-speech") || source.url.trim()));
+    for (const control of popup.querySelectorAll(".gsm-hoshidicts-audio-control")) {
+      if (control.hidden !== !available) control.hidden = !available;
+    }
+  }
 
   // A static sample count; the switch only paints or hides the rendered slot.
   function paintSampleLookupStats() {
@@ -208,6 +217,7 @@
     // A blur edit restarts the sample decision so its effect is visible.
     const blurChanged = !state || DEFINITION_BLUR_KEYS.some(key => options[key] !== nextOptions[key]);
     options = { ...nextOptions };
+    updateSampleAudio();
     if (geometryChanged || toolbarChanged) positionPopup(toolbarChanged);
     if (geometryChanged || cssChanged) view.scheduleMasonry();
     if (countsChanged) paintSampleLookupStats();

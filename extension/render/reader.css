@@ -1411,8 +1411,10 @@ html,
   background: var(--hoshidicts-surface);
 }
 
-.gsm-hoshidicts-audio-control { display: grid; justify-items: end; gap: 4px; }
-.gsm-hoshidicts-audio-status { max-width: 200px; color: var(--text-color-light1); font-size: 11px; overflow-wrap: anywhere; }
+.gsm-hoshidicts-audio-control { display: flex; align-items: flex-start; justify-content: end; gap: 6px; }
+.gsm-hoshidicts-audio-control[hidden] { display: none; }
+.gsm-hoshidicts-audio-control > button { flex-shrink: 0; }
+.gsm-hoshidicts-audio-status { max-width: 160px; padding-top: 4px; color: var(--text-color-light1); font-size: 11px; overflow-wrap: anywhere; }
 .gsm-hoshidicts-audio-status:empty { display: none; }
 .gsm-hoshidicts-anki-control { display: flex; flex-wrap: wrap; justify-content: end; gap: 4px; max-width: 240px; }
 .gsm-hoshidicts-anki-control[hidden] { display: none; }

@@ -2460,7 +2460,7 @@
     }
     if (!options.hoverEnabled) return;
     if (transferTimer !== null) return;
-    if (hasProtectedNote() || popupHasFocus() || pageEditorFocused()) {
+    if (hasProtectedNote() || popupHasFocus()) {
       cancelCandidateScan();
       clearHideTimer();
       return;
@@ -2545,7 +2545,7 @@
     pointerInPopup = false;
     pointerLevel = null;
     if (leavingChain) scheduleTransferCheck();
-    if (hasProtectedNote() || popupHasFocus() || pageEditorFocused()) {
+    if (hasProtectedNote() || popupHasFocus()) {
       cancelCandidateScan();
       return;
     }
@@ -2632,7 +2632,11 @@
   }
 
   function onPageFocusIn() {
-    if (!disposed && pageEditorFocused()) cancelCandidateScan();
+    if (!disposed && pageEditorFocused()) {
+      cancelCandidateScan();
+      activationPressed = false;
+      activationCode = null;
+    }
   }
 
   function onKeyDown(event) {
@@ -2661,7 +2665,11 @@
       hide();
       if (dismissedCandidate || options.activationKey !== "Escape") return;
     }
-    if (!options.hoverEnabled || pageEditorFocused()) return;
+    if (!options.hoverEnabled) return;
+    // Autofocused search fields (such as Jisho's) must not disable lookups on
+    // the rest of the page. Modifier activation leaves native typing intact;
+    // printable/editor keys stay reserved for the focused field.
+    if (pageEditorFocused() && !MODIFIER_PROPERTIES.has(options.activationKey)) return;
     // Pressing the gate key while the pointer is stationary should reveal the
     // word under it without asking the reader to jiggle the mouse.
     const wasPressed = activationPressed;

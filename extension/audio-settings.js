@@ -23,7 +23,7 @@ export function createAudioSettingsController({ document, readSources, editSourc
     if (!active) return;
     const previous = active;
     active = null;
-    previous.row.status.textContent = "Stopped.";
+    previous.row.status.textContent = "";
     setTesting(previous.row, false);
     void send("hd_audio_stop", { playRequestId: previous.requestId }).catch(() => {});
   }
@@ -40,17 +40,13 @@ export function createAudioSettingsController({ document, readSources, editSourc
     const operation = { id, row, source: JSON.stringify(source), requestId: window.crypto.randomUUID() };
     row.testedSource = operation.source;
     active = operation;
-    row.status.textContent = "Testing 聞く / きく…";
+    row.status.textContent = "";
     setTesting(row, true);
     try {
       const reply = await send("hd_audio_test", { source, requestId: operation.requestId });
       if (active !== operation) return;
       if (!reply.ok) throw new Error(reply.error);
-      if (reply.status === "success") {
-        const name = reply.candidate?.name ? ` — ${reply.candidate.name}` : "";
-        row.status.textContent = `Played 聞く / きく${name}.`;
-      } else if (reply.status === "no-result") row.status.textContent = "No pronunciation was returned.";
-      else row.status.textContent = "Stopped.";
+      row.status.textContent = reply.status === "no-result" ? "No pronunciation was returned." : "";
     } catch (error) {
       if (active === operation) row.status.textContent = `Could not play: ${error.message}`;
     } finally {
@@ -107,7 +103,7 @@ export function createAudioSettingsController({ document, readSources, editSourc
   function renderVoice(row, source) {
     if (row.voice === document.activeElement) return;
     if (row.voiceVersion !== voiceVersion || row.voice.value !== source.voice) {
-      row.voice.replaceChildren(new window.Option("System default", ""));
+      row.voice.replaceChildren(new window.Option("Automatic Japanese", ""));
       for (const voice of voices) row.voice.add(new window.Option(
         `${voice.name} (${voice.lang})${voice.localService ? "" : " — online"}`, voice.voiceURI));
       if (source.voice && !voices.some(voice => voice.voiceURI === source.voice)) {
@@ -156,7 +152,7 @@ export function createAudioSettingsController({ document, readSources, editSourc
   }
 
   function adoptVoices(value) {
-    voices = value;
+    voices = [...value].sort((a, b) => Number(/^ja(?:[-_]|$)/i.test(b.lang)) - Number(/^ja(?:[-_]|$)/i.test(a.lang)));
     voiceVersion += 1;
     render();
   }

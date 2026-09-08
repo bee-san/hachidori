@@ -8,17 +8,16 @@
 
   function setBusy(record, busy) {
     record.button.setAttribute("aria-busy", String(busy));
+    if (busy) record.button.dataset.state = "loading";
+    else if (record.button.dataset.state !== "error") delete record.button.dataset.state;
     record.button.setAttribute("aria-label", `${busy ? "Stop" : "Play"} pronunciation for ${record.term.expression}`);
     record.button.title = `${busy ? "Stop" : "Play"} pronunciation; Shift-click, right-click or press Down for choices`;
-  }
-
-  function candidateLabel(candidate) {
-    return candidate?.name ? ` — ${candidate.name}` : "";
   }
 
   function createAudioController({ window, send, onMenuChange, onSelectionChange = () => {} }) {
     const document = window.document;
     const bound = new WeakMap(), visited = new WeakMap(), feedback = new WeakMap();
+    const controls = new Set();
     let selections = new WeakMap();
     let options = window.HDReaderOptions.DEFAULT_OPTIONS;
     let sourceKey = JSON.stringify(options.audioSources);
@@ -27,6 +26,21 @@
     // One first result per owner may wait for options or for the owner's
     // definition-blur decision; its first-visit key stays unconsumed meanwhile.
     const pendingAutoplay = new Map();
+
+    function audioAvailable() {
+      return options.audioSources.some(source => source.enabled
+        && (source.type.startsWith("text-to-speech") || source.url.trim()));
+    }
+
+    function updateControls() {
+      const available = audioAvailable();
+      for (const record of controls) {
+        if (!record.button.isConnected) { controls.delete(record); continue; }
+        record.button.hidden = !available;
+        const control = record.button.closest(".gsm-hoshidicts-audio-control");
+        if (control) control.hidden = !available;
+      }
+    }
 
     function firstVisit(record) {
       if (!record.request) return false;
@@ -62,7 +76,7 @@
         pendingAutoplay.set(record.owner, record);
         return;
       }
-      if (firstVisit(record) && options.audioAutoplay) void play(record);
+      if (firstVisit(record) && options.audioAutoplay && audioAvailable()) void play(record);
     }
 
     function owns(operation) {
@@ -70,7 +84,9 @@
     }
 
     function setStatus(record, text) {
+      if (text) record.button.dataset.state = "error";
       let output = feedback.get(record.button) || record.status;
+      if (!output && !text) return;
       if (!output) {
         output = document.createElement("output");
         output.className = "gsm-hoshidicts-audio-status";
@@ -86,7 +102,7 @@
       const previous = active;
       active = null;
       setBusy(previous.record, false);
-      setStatus(previous.record, "Stopped.");
+      setStatus(previous.record, "");
       void send("hd_audio_stop", { playRequestId: previous.requestId }).catch(() => {});
     }
 
@@ -112,11 +128,11 @@
       cancelAutoplay();
       firstVisit(record);
       stop();
-      if (!current(record)) return;
+      if (!current(record) || !audioAvailable()) return;
       const operation = { record, type, requestId: window.crypto.randomUUID() };
       active = operation;
       setBusy(record, true);
-      setStatus(record, type === "hd_audio_play" ? "Finding pronunciation…" : "Finding choices…");
+      setStatus(record, "");
       try {
         const reply = await send(type, { term: record.term, requestId: operation.requestId, ...fields });
         if (!owns(operation)) return;
@@ -139,16 +155,13 @@
     function play(record, selection = selections.get(record.result)) {
       closeMenu();
       return request(record, "hd_audio_play", selection ? { selection } : {}, reply => {
-        let text = "Stopped.";
-        if (reply.status === "success") text = `Played${candidateLabel(reply.candidate)}.`;
-        else if (reply.status === "no-result") text = "No pronunciation was returned. Check Audio Settings.";
-        setStatus(record, text);
+        setStatus(record, reply.status === "no-result" ? "No pronunciation was returned. Check Audio Settings." : "");
       });
     }
 
     function choices(record) {
       closeMenu(false);
-      if (!current(record)) return;
+      if (!current(record) || !audioAvailable()) return;
       const element = document.createElement("section");
       element.className = "gsm-hoshidicts-audio-menu gsm-hoshidicts-audio-choices";
       element.setAttribute("role", "dialog");
@@ -218,6 +231,7 @@
         const record = { ...item, ...context, autoplayKey,
           term: { expression: item.result.term.expression, reading: item.result.term.reading || "" } };
         bound.set(item.button, record);
+        controls.add(record);
         item.button.addEventListener("click", event => {
           if (event.shiftKey) choices(record);
           else if (active?.record.button === item.button) stop();
@@ -228,13 +242,14 @@
           if (event.key === "ArrowDown") { event.preventDefault(); choices(record); }
         });
       }
+      updateControls();
       autoplay(bound.get(first.button));
     }
 
     const listener = message => {
       if (!active || message?.target !== "hachidori-audio-content" || message.type !== "hd_audio_playing"
           || message.requestId !== active?.requestId || !current(active.record)) return;
-      setStatus(active.record, `Playing${candidateLabel(message.candidate)}…`);
+      active.record.button.dataset.state = "playing";
     };
     window.chrome.runtime.onMessage.addListener(listener);
     return {
@@ -260,6 +275,7 @@
         sourceKey = nextKey;
         options = next;
         optionsReady = ready;
+        updateControls();
         for (const [owner, record] of waiting) {
           pendingAutoplay.set(owner, record);
           // Adopt the complete storage event, including lookup invalidation,
@@ -271,7 +287,7 @@
           });
         }
       },
-      dispose() { retire(); window.chrome.runtime.onMessage.removeListener(listener); },
+      dispose() { retire(); controls.clear(); window.chrome.runtime.onMessage.removeListener(listener); },
     };
   }
   globalThis.HDAudio = { createAudioController };
