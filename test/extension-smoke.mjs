@@ -14193,28 +14193,24 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       { title: "Missing", favorite: true },
     ],
     dictionaryTabGroups: [
-      { id: "bc", name: "Favourite B", dictionaries: ["Dictionary B", "Dictionary C"] },
-      { id: "a", name: "Favourites", dictionaries: ["Dictionary A"] },
+      { id: "c", name: "Favourite B", dictionaries: ["Dictionary C"] },
+      { id: "a", name: "All", dictionaries: ["Dictionary A"] },
       { id: "empty", name: "Empty", dictionaries: ["Missing"] },
     ],
     onDictionaryTabSelected(selection) { tabSelections.push(selection); },
   };
   view.renderResults(tabResults, candidate, tabContext);
   const allTabs = [...popup.querySelectorAll('[role="tab"]')];
-  check("dictionary tabs include every contributor, aggregate favourites and ordered nonempty groups",
+  check("dictionary tabs include ordered nonempty groups and only ungrouped favourites",
     JSON.stringify(allTabs.map((tab) => [tab.textContent, { ...tab.dataset }])) === JSON.stringify([
       ["All", {}],
-      ["All (dictionary)", { dictionary: "Dictionary A" }],
-      ["Dictionary C", { dictionary: "Dictionary C" }],
-      ["Favourite B", { dictionary: "Dictionary B" }],
-      ["Favourites", { favourites: "true" }],
-      ["Favourite B (group)", { groupId: "bc" }],
-      ["Favourites (group)", { groupId: "a" }],
+      ["Favourite B", { groupId: "c" }],
+      ["All (group)", { groupId: "a" }],
+      ["Favourite B (dictionary)", { dictionary: "Dictionary B" }],
     ]), JSON.stringify(allTabs.map((tab) => [tab.textContent, { ...tab.dataset }])));
   const tabProjections = [];
   for (const selector of [
-    '[data-dictionary="Dictionary B"]', '[data-favourites="true"]',
-    '[data-group-id="bc"]', '[data-group-id="a"]',
+    '[data-dictionary="Dictionary B"]', '[data-group-id="c"]', '[data-group-id="a"]',
   ]) {
     const tab = popup.querySelector(`[role="tab"]${selector}`);
     tab?.click();
@@ -14225,13 +14221,12 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   const sameTabPanel = popup.querySelector(".gsm-hoshidicts-tab-panel").firstElementChild;
   const beforeSameTab = positioned;
   popup.querySelector('[role="tab"][data-group-id="a"]')?.click();
-  check("dictionary, favourites and group tabs project locally in native order without mutating results",
+  check("favourite and group tabs project locally in native order without mutating results",
     JSON.stringify(tabProjections) === JSON.stringify([
-      ["Dictionary B"], ["Dictionary A", "Dictionary B"],
-      ["Dictionary C", "Dictionary B"], ["Dictionary A"],
+      ["Dictionary B"], ["Dictionary C"], ["Dictionary A"],
     ])
       && JSON.stringify(tabSelections) === JSON.stringify([
-        null, { dictionary: "Dictionary B" }, { favourites: true }, { groupId: "bc" }, { groupId: "a" },
+        null, { dictionary: "Dictionary B" }, { groupId: "c" }, { groupId: "a" },
       ])
       && JSON.stringify(tabResults) === originalTabResults
       && sameTabPanel === popup.querySelector(".gsm-hoshidicts-tab-panel").firstElementChild
@@ -14239,7 +14234,8 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     JSON.stringify({ tabProjections, tabSelections, positioned, beforeSameTab }));
   const inheritedProjections = [];
   for (const selection of [
-    { dictionary: "Dictionary C" }, { groupId: "bc" }, { favourites: true }, { groupId: "empty" },
+    { dictionary: "Dictionary B" }, { groupId: "c" }, { dictionary: "Dictionary C" },
+    { favourites: true }, { groupId: "empty" },
   ]) {
     let selected;
     const context = { ...tabContext, selectedDictionaryTab: selection, expandAll: true,
@@ -14253,11 +14249,12 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     inheritedProjections.push([selected,
       [...popup.querySelectorAll(".gsm-hoshidicts-kanji-entry")].map((item) => item.dataset.dictionary)]);
   }
-  check("term and native-kanji destinations adopt contributing tab context or explicitly fall back to All",
+  check("term and native-kanji destinations adopt favourite or group context and otherwise fall back to All",
     JSON.stringify(inheritedProjections) === JSON.stringify([
-      [{ dictionary: "Dictionary C" }, ["Dictionary C"]], [{ dictionary: "Dictionary C" }, ["Dictionary C"]],
-      [{ groupId: "bc" }, ["Dictionary C", "Dictionary B"]], [{ groupId: "bc" }, ["Dictionary C", "Dictionary B"]],
-      [{ favourites: true }, ["Dictionary A", "Dictionary B"]], [{ favourites: true }, ["Dictionary A", "Dictionary B"]],
+      [{ dictionary: "Dictionary B" }, ["Dictionary B"]], [{ dictionary: "Dictionary B" }, ["Dictionary B"]],
+      [{ groupId: "c" }, ["Dictionary C"]], [{ groupId: "c" }, ["Dictionary C"]],
+      [null, ["Dictionary A", "Dictionary C", "Dictionary B"]], [null, ["Dictionary A", "Dictionary C", "Dictionary B"]],
+      [null, ["Dictionary A", "Dictionary C", "Dictionary B"]], [null, ["Dictionary A", "Dictionary C", "Dictionary B"]],
       [null, ["Dictionary A", "Dictionary C", "Dictionary B"]], [null, ["Dictionary A", "Dictionary C", "Dictionary B"]],
     ]), JSON.stringify(inheritedProjections));
   const selectedTabs = [];
@@ -15306,7 +15303,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
       panelLabel: writes.panelLabel.length,
       observerDisconnects: observerDisconnects - beforeInitialDisconnects,
     };
-    live.push(initialTabs.length === 6 && tabStateCounts.tabs.every(row => row.selected === 1 && row.tabIndex === 1)
+    live.push(initialTabs.length === 3 && tabStateCounts.tabs.every(row => row.selected === 1 && row.tabIndex === 1)
       && tabStateCounts.observerDisconnects === 1
       && tabStateCounts.panelLabel === 1 && writes.panelLabel[0] === initialPanel
       && initialTabs.every(button => button.getAttribute("aria-controls") === initialPanel.id
