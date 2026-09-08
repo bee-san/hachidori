@@ -5,18 +5,25 @@ import "../extension/reader-options.js";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { buildAnkiFields } from "../extension/anki-values.js";
 
-function fixture(firstAudio = false) {
+function fixture(firstAudio = false, overwrite = false) {
   const calls = [];
-  let fields, generation = 3, changeDuringCheck = false, audioUnavailable = false;
+  let fields = overwrite ? { Front: "猫", Audio: "pronunciation[sound:checked.wav]" } : undefined;
+  let generation = 3, changeDuringCheck = false, audioUnavailable = false;
   const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic", deck: "Default",
+    duplicateBehavior: overwrite ? "overwrite" : "prevent",
     fieldTemplates: { Front: { value: firstAudio ? "{expression}{audio}" : "{expression}", overwriteMode: "overwrite" },
-      Audio: { value: "{audio}", overwriteMode: "overwrite" } } } });
+      Audio: { value: overwrite ? "pronunciation{audio}" : "{audio}", overwriteMode: "overwrite" } } } });
   const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Audio"],
     models: ["Basic"], decks: ["Default"], errors: [] }), async invoke(action, params) {
     calls.push(action);
-    if (action === "canAddNotesWithErrorDetail") { if (changeDuringCheck) generation++; return [{ canAdd: true }]; }
+    if (action === "canAddNotesWithErrorDetail") {
+      if (changeDuringCheck) generation++;
+      return [{ canAdd: !overwrite, error: overwrite ? "cannot create note because it is a duplicate" : null }];
+    }
+    if (action === "modelNamesAndIds") return { Basic: 1 };
+    if (action === "findNotes") return [12];
     if (action === "addNote") { fields = params.note.fields; return 12; }
-    if (action === "notesInfo") return [{ noteId: 12, fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
+    if (action === "notesInfo") return [{ noteId: 12, modelName: "Basic", fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
     if (action === "storeMediaFile") return params.filename;
     if (action === "updateNoteFields") { fields = { ...fields, ...params.note.fields }; return null; }
     throw new Error(`Unexpected ${action}`);
@@ -63,6 +70,18 @@ test("first-field audio is resolved before duplicate checking and its exact prep
   assert.ok(f.calls.indexOf("hd_anki_audio") < f.calls.indexOf("canAddNotesWithErrorDetail"));
   assert.equal(f.fields.Front, "猫[sound:checked.wav]");
   assert.equal(f.fields.Audio, "[sound:checked.wav]");
+});
+
+test("mixed text/audio overwrite restores pronunciation when its final value matches the original note", async () => {
+  const f = fixture(false, true);
+  f.request.configKey = (await f.service.status()).configKey;
+  const result = await f.service.submit(f.request);
+  assert.equal(result.state, "updated");
+  assert.deepEqual(result.warnings, []);
+  assert.equal(f.fields.Audio, "pronunciation[sound:checked.wav]");
+  assert.equal(f.calls.filter(action => action === "updateNoteFields").length, 2,
+    "the text-only write is followed by restoring the selected pronunciation");
+  assert.equal(f.calls.includes("addNote"), false);
 });
 
 test("a dictionary update during authoritative Anki checking cannot reach the note write", async () => {
@@ -279,6 +298,21 @@ test("overwrite skip policy can suppress all captured media without a pin, expor
   const result = await f.service.submit(f.request);
   assert.equal(result.state, "updated");
   assert.equal(f.fields.Media, "kept");
+  assert.deepEqual(f.captureCalls, []);
+  assert.equal(f.calls.includes("storeMediaFile"), false);
+});
+
+test("unchanged captured fields do not require another export or upload", async () => {
+  const f = captureFixture({ duplicate: true, templates: {
+    Front: { value: "{expression}", overwriteMode: "overwrite" },
+    Media: { value: "{capture-animation}", overwriteMode: "overwrite" },
+    CapturedAudio: { value: "", overwriteMode: "overwrite" },
+  } });
+  f.fields.Media = '<img src="hachidori-abc123.avif">';
+  f.request.configKey = (await f.service.status()).configKey;
+  assert.equal((await f.service.preflight(f.request)).capture, null);
+  assert.equal((await f.service.submit(f.request)).state, "updated");
+  assert.equal(f.fields.Media, '<img src="hachidori-abc123.avif">');
   assert.deepEqual(f.captureCalls, []);
   assert.equal(f.calls.includes("storeMediaFile"), false);
 });

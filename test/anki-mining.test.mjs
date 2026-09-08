@@ -175,3 +175,42 @@ test("a coalesced screenshot remains prepared when the overwrite target disappea
     assert.equal(saved.Back, unavailable ? "" : '<img src="picture.jpg">');
   }
 });
+
+test("overwrite leaves preserved fields out of the mutation when Anki changes during preparation", async () => {
+  const f = fixture();
+  const fieldTemplates = {
+    Front: { value: "{expression}", overwriteMode: "coalesce" },
+    Keep: { value: "incoming", overwriteMode: "skip" },
+    Fill: { value: "incoming", overwriteMode: "coalesce" },
+    Fallback: { value: "", overwriteMode: "coalesce-new" },
+    Back: { value: "cat", overwriteMode: "overwrite" },
+  };
+  f.change({ duplicateBehavior: "overwrite", fieldTemplates });
+  f.gateway.discover = async () => ({ connected: true, model: "Basic", models: ["Basic"], decks: ["Default"],
+    fields: Object.keys(fieldTemplates), errors: [] });
+  let fields = { Front: "猫", Keep: "old keep", Fill: "old fill", Fallback: "old fallback", Back: "old definition" };
+  const updates = [];
+  f.gateway.invoke = async (action, params) => {
+    if (action === "canAddNotesWithErrorDetail") return [{ canAdd: false, error: "cannot create note because it is a duplicate" }];
+    if (action === "modelNamesAndIds") return { Basic: 1 };
+    if (action === "findNotes") return [123];
+    if (action === "notesInfo") return [{ noteId: 123, modelName: "Basic", fields: Object.fromEntries(
+      Object.entries(fields).map(([field, value]) => [field, { value }]),
+    ) }];
+    if (action === "updateNoteFields") { updates.push(params.note.fields); Object.assign(fields, params.note.fields); return null; }
+    assert.fail(`Unexpected ${action}`);
+  };
+  const service = createAnkiMiningService({ ...f.dependencies,
+    buildFields: async () => ({ fields: { Front: "猫", Keep: "incoming", Fill: "incoming", Fallback: "", Back: "cat" } }),
+    beforeWrite: async () => {
+      // Anki stays editable while Hachidori prepares media for the write.
+      Object.assign(fields, { Keep: "edited keep", Fill: "edited fill", Fallback: "edited fallback" });
+    },
+  });
+  const { configKey } = await service.status();
+  const result = await service.submit({ expression: "猫", configKey });
+  assert.equal(result.state, "updated");
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(updates, [{ Back: "cat" }]);
+  assert.deepEqual(fields, { Front: "猫", Keep: "edited keep", Fill: "edited fill", Fallback: "edited fallback", Back: "cat" });
+});

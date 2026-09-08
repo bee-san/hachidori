@@ -1,0 +1,50 @@
+name: Issue template
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  pull_request:
+    paths:
+      - .github/ISSUE_TEMPLATE/**
+      - .github/scripts/issue-template.mjs
+      - .github/workflows/issue-template.yml
+      - test/issue-template.test.mjs
+  push:
+    branches: [main]
+    paths:
+      - .github/ISSUE_TEMPLATE/**
+      - .github/scripts/issue-template.mjs
+      - .github/workflows/issue-template.yml
+      - test/issue-template.test.mjs
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.event_name != 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: node --test test/issue-template.test.mjs
+
+  enforce:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: issue-template-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { enforceIssueTemplate } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-template.mjs`);
+            await enforceIssueTemplate({ github, context });
