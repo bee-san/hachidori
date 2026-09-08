@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { escapeAnkiHtml, resolveAnkiTemplates } from "./anki-templates.js";
+import { ankiDigest } from "./anki-digest.js";
+import { ankiFieldNames, escapeAnkiHtml, resolveAnkiTemplates } from "./anki-templates.js";
 
 // Anki parses these names as operators before considering a field search.
 // Treating an identically named field as an operator could match another word.
@@ -7,6 +8,7 @@ import { escapeAnkiHtml, resolveAnkiTemplates } from "./anki-templates.js";
 const SEARCH_OPERATORS = new Set(["deck", "note", "tag", "card", "flag", "resched", "prop", "added", "edited",
   "introduced", "rated", "is", "did", "mid", "nid", "cid", "re", "nc", "sc", "w", "dupe", "has-cd", "preset"]);
 const escapeQuery = value => value.replace(/[\\"*_:]/gu, String.raw`\$&`);
+const foldAscii = value => value.replace(/[A-Z]/gu, character => character.toLowerCase());
 
 function expressionFields(config) {
   const names = config.fieldTemplates === null ? Object.values(config.fields).filter(Boolean) : Object.keys(config.fieldTemplates);
@@ -15,21 +17,47 @@ function expressionFields(config) {
     && !SEARCH_OPERATORS.has(field.toLowerCase())).map(([field]) => field);
 }
 
-export async function findAnkiMatureWord(gateway, config, expression) {
-  if (!config.model || typeof expression !== "string" || !expression) return false;
-  const fields = expressionFields(config);
-  if (!fields.length) return false;
-  // Exact field searches match stored HTML, just as the plain {expression}
-  // marker exports it. They must never become a substring or regex search.
-  const value = escapeQuery(escapeAnkiHtml(expression));
-  const terms = fields.map(field => `"${escapeQuery(field)}:${value}"`);
-  const expressionQuery = terms.length === 1 ? terms[0] : `(${terms.join(" or ")})`;
+export async function ankiMaturitySource(config) {
+  if (!config.model) return null;
+  const fields = [...new Set(expressionFields(config).map(field => field.normalize("NFC").toLowerCase()))].sort();
+  if (!fields.length) return null;
+  const source = { model: config.model, fields, apiKey: config.apiKey };
+  return { key: await ankiDigest(new TextEncoder().encode(JSON.stringify(source))), ...source };
+}
+
+export function ankiMaturityWordKey(expression) {
+  if (typeof expression !== "string" || !expression) return null;
+  // Ordinary Anki field search uses SQLite LIKE: fold ASCII only and retain
+  // the exact HTML emitted by {expression}. Anki's default text normalization
+  // applies NFC to query text, not to existing stored field values.
+  // https://github.com/ankitects/anki/blob/main/rslib/src/search/sqlwriter.rs
+  return foldAscii(escapeAnkiHtml(expression).normalize("NFC"));
+}
+
+export async function fetchAnkiMatureWords(gateway, source) {
   // Mature means a review interval >=21 days. Anki's is:review also includes
   // relearning cards, so exclude is:learn. Deck and mining duplicate policy
   // do not limit knowledge in the configured note type's collection.
   // https://docs.ankiweb.net/getting-started.html#card-states
   // https://docs.ankiweb.net/searching.html#card-state
-  const query = `"note:${escapeQuery(config.model)}" ${expressionQuery} is:review -is:learn prop:ivl>=21`;
-  const ids = await gateway.invoke("findCards", { query }, config.apiKey);
-  return Array.isArray(ids) && ids.length > 0 && ids.every(id => Number.isSafeInteger(id) && id > 0);
+  const query = `"note:${escapeQuery(source.model)}" is:review -is:learn prop:ivl>=21`;
+  const notes = await gateway.invoke("notesInfo", { query }, source.apiKey, 25_000);
+  if (!Array.isArray(notes)) throw new Error("AnkiConnect returned invalid mature note details.");
+  const words = new Set();
+  for (const note of notes) {
+    if (!Number.isSafeInteger(note?.noteId) || note.noteId <= 0 || typeof note.modelName !== "string"
+      || note.modelName.normalize("NFC").toLowerCase() !== source.model.normalize("NFC").toLowerCase()
+      || !note.fields || typeof note.fields !== "object" || Array.isArray(note.fields)
+      || Object.values(note.fields).some(field => typeof field?.value !== "string")) {
+      throw new Error("AnkiConnect returned invalid mature note details.");
+    }
+    const names = ankiFieldNames(Object.keys(note.fields));
+    for (const field of source.fields) {
+      const value = note.fields[names.get(field)]?.value;
+      // Do not normalize stored text: legacy NFD fields also fail an ordinary
+      // NFC-normalized Anki query and must not become new mature matches.
+      if (value) words.add(foldAscii(value));
+    }
+  }
+  return [...words];
 }
