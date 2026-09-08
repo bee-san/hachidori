@@ -722,8 +722,8 @@ manifest's own `content_scripts` order, that the sentence is probed offset by
 offset until one lookup answers, that removing the package which answered retires
 the invitation and probes again while a group-only revision does not, and covers every state that must not invite a
 hover: a frequency-only library, a library that answers nothing, an engine that
-refuses the first pass and is retried after a failed status, a busy status and
-then an idle one, an engine that
+refuses the first pass and is retried after a failed status, a long loading
+recovery and then an idle engine, an engine that
 never answers, and lookups switched off. The group-only step also requires the
 sentence to be the same node afterwards, which is what keeps an in-flight lookup
 anchored.

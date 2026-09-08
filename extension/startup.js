@@ -639,7 +639,8 @@ async function awaitIdleEngine(signature) {
     }
     if (practiceProbed !== signature) return false;
     if (status?.ok === true && status.ready === true && status.loading !== true) return true;
-    if (status?.ok !== true) failures += 1;
+    // A failure that is still loading is recovery in progress, not a verdict.
+    if (status?.ok !== true && status?.loading !== true) failures += 1;
     await wait(PROBE_RETRY_MS);
     if (practiceProbed !== signature) return false;
   }

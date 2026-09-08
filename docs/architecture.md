@@ -363,9 +363,10 @@ and the matching Settings link, and none of them loads the reader. A dictionary 
 engine — including a long generation cleanup — so a refused pass waits for
 `hd_status` to report a ready, idle engine and then asks again. A failed status is
 waited on too, because a status poll is what drives the engine's own reload
-recovery, so the next one can describe a repaired engine; only an engine that is
-unreachable, one whose status keeps failing, or one that keeps refusing while
-idle, falls back to the
+recovery, so the next one can describe a repaired engine, and a failure that is
+itself loading is that recovery in progress rather than a verdict; only an engine
+that is unreachable, one whose status keeps failing while idle, or one that keeps
+refusing while idle, falls back to the
 instruction that is true anywhere, in the mode the user has configured. The
 sentence itself is one node for the life of the page, so a rerender moves it
 rather than replacing it and cannot cancel a lookup already in flight.

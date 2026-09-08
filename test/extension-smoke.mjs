@@ -6527,7 +6527,15 @@ async function startupPracticeStage() {
   let busySweeps = 1;
   // The engine reports a failed reload once, which a status poll repairs, then a
   // mutation still holds it, and only then is it idle.
-  const recovering = [{ ok: false, error: "the dictionary reload failed" }, { ready: true, loading: true }];
+  const recovering = [{ ok: false, error: "the dictionary reload failed" },
+    // A recovery that is itself loading may take as long as it needs.
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ok: false, error: "the dictionary reload failed", ready: true, loading: true },
+    { ready: true, loading: true }];
   const answersVerb = (message) => {
     if (busySweeps > 0) {
       busySweeps -= 1;
