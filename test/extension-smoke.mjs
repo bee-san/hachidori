@@ -1390,10 +1390,18 @@ async function ankiScreenshotStage() {
   let tab = { id: 7, active: true, url: "https://reader.test/page", windowId: 3 };
   let captureFailures = 0;
   let moveDuringCapture = false;
+  let documentId = "reading-document";
+  let reloadDuringCapture = false;
+  const documentChecks = [];
   chrome.tabs = {
     async get(id) {
       if (id !== tab.id) throw new Error("No tab with id");
       return { ...tab };
+    },
+    async sendMessage(id, message, options) {
+      documentChecks.push({ id, message, options });
+      if (id !== tab.id || options.documentId !== documentId) throw new Error("The document was removed.");
+      return { visible: true };
     },
     async captureVisibleTab(windowId, options) {
       captures.push({ windowId, options });
@@ -1402,6 +1410,7 @@ async function ankiScreenshotStage() {
         throw new Error("MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND quota exceeded");
       }
       if (moveDuringCapture) tab = { ...tab, windowId: 4 };
+      if (reloadDuringCapture) documentId = "replacement-document";
       return "data:image/jpeg;base64,c2hvdA==";
     },
   };
@@ -1415,7 +1424,7 @@ async function ankiScreenshotStage() {
   await storage.api().local.set({ options: { revision: 1, anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" } } });
   const ask = (sender) => bus.sendMessage("reader", { target: "hachidori-anki", type: "hd_anki_screenshot",
     requestId: "anki-screenshot", request: {} }, sender);
-  const reader = { id: chrome.runtime.id, url: tab.url, frameId: 0, tab: { id: tab.id } };
+  const reader = { id: chrome.runtime.id, url: tab.url, frameId: 0, documentId, tab: { id: tab.id } };
 
   const taken = await ask(reader);
   // Chrome rate-limits captures, so one wait is worth a screenshot.
@@ -1445,6 +1454,15 @@ async function ankiScreenshotStage() {
   const movedWindow = await ask(reader);
   moveDuringCapture = false;
   tab = { ...tab, windowId: 3 };
+  // A reload can replace the document while its tab, URL and window all stay
+  // the same. It must fail both before capture and after pixels return.
+  reloadDuringCapture = true;
+  const reloadedDuring = await ask(reader);
+  reloadDuringCapture = false;
+  const capturesBeforeReload = captures.length;
+  const alreadyReloaded = await ask(reader);
+  const capturesAfterReload = captures.length;
+  documentId = reader.documentId;
   tab = { ...tab, active: false };
   const background = await ask(reader);
   tab = { ...tab, active: true, url: "https://reader.test/elsewhere" };
@@ -1465,11 +1483,18 @@ async function ankiScreenshotStage() {
       && capturesAfterSwitch === capturesBeforeSwitch + 1
       && givenUp?.ok === false && givenUp.error.includes("quota")
       && movedWindow?.ok === false && movedWindow.error.includes("moved to another window")
+      && reloadedDuring?.ok === false && reloadedDuring.error.includes("document")
+      && alreadyReloaded?.ok === false && alreadyReloaded.error.includes("document")
+      && capturesBeforeReload === capturesAfterReload
+      && documentChecks.length > 0 && documentChecks.every(value => value.id === tab.id
+        && value.options.documentId === reader.documentId
+        && value.message.target === "hachidori-capture-content" && value.message.type === "hd_capture_document")
       && background?.ok === false && background.error.includes("no longer the active tab")
       && navigated?.ok === false && navigated.error.includes("moved to another page")
       && fromExtensionPage?.ok === false && fromExtensionPage.error.includes("reading tab")
       && switchedOff?.ok === false && switchedOff.error.includes("turned off in Settings"),
-    JSON.stringify({ taken, retried, switchedAway, givenUp, movedWindow, background, navigated, fromExtensionPage, switchedOff, uploads, captures }));
+    JSON.stringify({ taken, retried, switchedAway, givenUp, movedWindow, reloadedDuring, alreadyReloaded,
+      background, navigated, fromExtensionPage, switchedOff, uploads, captures, documentChecks }));
 }
 
 async function ankiBackgroundStage() {

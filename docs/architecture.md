@@ -1426,6 +1426,10 @@ active tab, so the asking tab must still be that tab, and a top-level frame must
 still show the document that asked. The post-capture check also requires the
 same window ID: dragging the reading tab to another window can otherwise leave
 it active while the original window captures a different tab.
+Before and after each attempt, a read-only message addressed to the original
+sender's Chrome document ID must also reach a visible document. Reloading the
+same URL or retaining an old document in the back/forward cache cannot pass as
+the document that requested the picture.
 Chrome's capture rate limit is honoured with
 one wait and retry, and that wait is long enough to switch tabs, so ownership is
 checked again after it rather than once at the start. The
@@ -1436,7 +1440,9 @@ it through the ordinary `storeMediaFile` gateway under its own
 generation, configuration and duplicate decisions have been made, so duplicate
 checks, overwrite policies and existing values are untouched and a note that is
 rejected uploads nothing at all. Only that note's own picture is consumed, so a
-second Add's newer capture is never taken from it, and a picture that the applied
+second Add's newer capture is never taken from it. The worker allocates the request
+token before awaiting capture; a superseded capture completion is refused instead
+of replacing the newer pending bytes. A picture that the applied
 fields turn out not to use — a coalescing field that keeps its existing image — is
 released rather than held. The worker also discards that request's pending bytes
 after an authoritative duplicate, invalid note or preparation error, even when

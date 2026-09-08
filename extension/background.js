@@ -1373,6 +1373,7 @@ const CAPTURE_VISIBLE_RETRY_MS = 600;
 async function captureSenderViewport(sender) {
   const tabId = sender.tab?.id;
   if (typeof tabId !== "number") throw new Error("Only a reading tab can be captured.");
+  if (!sender.documentId) throw new Error("The reading document identity is unavailable.");
   // Checked before and after every attempt: a rate-limit wait, and the capture
   // itself, are both long enough to switch tabs or navigate, and the API takes
   // whichever tab is active when it runs.
@@ -1382,6 +1383,12 @@ async function captureSenderViewport(sender) {
     if ((sender.frameId ?? 0) === 0 && tab.url !== sender.url) {
       throw new Error("The reading tab moved to another page before the screenshot.");
     }
+    // Chrome addresses this exact document, so a reload at the same URL cannot
+    // answer on its predecessor's behalf. Hidden cached documents cannot own it.
+    const document = await chrome.tabs.sendMessage(tabId, {
+      target: CAPTURE_CONTENT_TARGET, type: "hd_capture_document",
+    }, { documentId: sender.documentId }).catch(() => null);
+    if (document?.visible !== true) throw new Error("The reading document changed before the screenshot.");
     return tab;
   };
   for (let attempt = 1; ; attempt += 1) {

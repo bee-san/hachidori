@@ -475,7 +475,11 @@ test("a mining screenshot is held until the note is written, then stored under i
   }
 
   const older = await service.screenshot(async () => "data:image/jpeg;base64,b2xk");
+  const heldCapture = Promise.withResolvers();
+  const delayedPicture = service.screenshot(async () => heldCapture.promise);
   const newer = await service.screenshot(async () => "data:image/jpeg;base64,bmV3");
+  heldCapture.resolve("data:image/jpeg;base64,b2xk");
+  await assert.rejects(delayedPicture, /newer capture/u);
   await assert.rejects(service.submit({ ...request, configKey: "stale", screenshot: older }), /configuration changed/u);
   const currentPicture = await service.submit({ ...request, configKey: status.configKey, screenshot: newer });
   assert.deepEqual(currentPicture.warnings, [], "old submission cleanup must leave a newer pending picture intact");

@@ -114,6 +114,7 @@ export function createAnkiWorkerService({
   // earlier one, and a note that is written consumes it. Nothing is uploaded
   // until then, so a rejected note leaves no unreferenced media in Anki.
   let pendingScreenshot = null;
+  let screenshotRequestToken = null;
 
   // Stored inside the queued write, once the generation, configuration and
   // duplicate decisions have been made. A refused upload is a warning, and the
@@ -265,13 +266,18 @@ export function createAnkiWorkerService({
   // note is written, so this reply is immediate and the reader can show itself
   // again without waiting for Anki.
   async function screenshot(captureViewport) {
+    const token = crypto.randomUUID();
+    screenshotRequestToken = token;
     const { anki } = await readOptions();
     if (anki.captureScreenshot !== true) throw new Error("Screenshots when mining are turned off in Settings.");
     const dataUrl = await captureViewport();
+    // Capture retries can complete out of order. Only the latest request may
+    // publish its bytes, even if a newer picture has already been consumed.
+    if (screenshotRequestToken !== token) throw new Error("A newer capture replaced this screenshot request.");
     const data = typeof dataUrl === "string" && dataUrl.startsWith("data:image/")
       ? dataUrl.slice(dataUrl.indexOf(",") + 1) : "";
     if (decodedBase64Length(data) === null) throw new Error("This page produced no screenshot.");
-    pendingScreenshot = { token: crypto.randomUUID(), filename: `hachidori-screenshot-${crypto.randomUUID()}.jpg`, data };
+    pendingScreenshot = { token, filename: `hachidori-screenshot-${crypto.randomUUID()}.jpg`, data };
     return { token: pendingScreenshot.token, filename: pendingScreenshot.filename };
   }
 
