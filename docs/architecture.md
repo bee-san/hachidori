@@ -331,10 +331,12 @@ own reason. The page renders the settled outcome as one sentence with a link to
 the Anki section of Settings, and that outcome moves setup to the last stage by
 itself and stays readable there. A request the worker does not answer is
 reported once with **Retry** beside **Continue setup**; the page never re-asks
-on its own. Anki is explicitly optional. **Continue now** is available during
-the check; its eventual reply adopts the latest recorded stage without moving
-the user back. A failed connection says **Anki isn’t connected**, rather than
-claiming Anki is absent. A successful automatic configuration keeps each of
+on its own. If the worker's saved outcome still arrives around a lost reply,
+that authoritative outcome retires only the stale request error. Anki is
+explicitly optional. **Continue now** is available during the check; its
+eventual reply adopts the latest recorded stage without moving the user back.
+A failed connection says **Anki isn’t connected**, rather than claiming Anki
+is absent. A successful automatic configuration keeps each of
 its three progress steps visible for two seconds. The chosen model appears on
 the first step and the chosen deck on the second as that staged result is
 displayed. Every settled outcome remains for three seconds before setup
