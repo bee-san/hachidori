@@ -4529,7 +4529,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
       return target;
     });
     const cachedReply = await settings.evaluate(() => chrome.runtime.sendMessage({
-      target: "hoshidicts-worker", type: "hd_anki_maturity", request: { term: { expression: "食べる" } } }));
+      target: "hachidori-anki", type: "hd_anki_maturity", request: { term: { expression: "食べる" } } }));
     worker = await replacementPromise;
     const restored = await settings.waitForFunction(async ({ alarmName, expectedTime }) => {
       const alarm = await chrome.alarms.get(alarmName);
@@ -4548,7 +4548,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
     await updateSettingsControls(settings, { "opt-lookup-counts": true, "opt-blur-source": "either",
       "opt-blur-direction": "atLeast", "opt-blur-threshold": "1" });
     const cachedMiss = await settings.evaluate(() => chrome.runtime.sendMessage({
-      target: "hoshidicts-worker", type: "hd_anki_maturity", request: { term: { expression: "not in the fixture" } } }));
+      target: "hachidori-anki", type: "hd_anki_maturity", request: { term: { expression: "not in the fixture" } } }));
     // An empty new snapshot lets this visit prove the independent count branch.
     mode = "empty";
     await triggerRefresh();
