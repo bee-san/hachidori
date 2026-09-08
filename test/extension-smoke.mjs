@@ -14028,6 +14028,8 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     JSON.stringify(aggregateTags.map(tag => Number(tag.querySelector("[data-frequency]")?.dataset.frequency)))
       === JSON.stringify([1645, 1000, 7])
       && JSON.stringify(aggregateTags.map(tag => tag.querySelector(".gsm-hoshidicts-frequency-source")?.textContent))
+        === JSON.stringify(["Avg rank", "Avg count", "Avg frequency"])
+      && JSON.stringify(aggregateTags.map(tag => tag.title))
         === JSON.stringify(["Rank average", "Occurrence average", "Frequency average (unspecified)"])
       && JSON.stringify(aggregateResult) === aggregateInput,
     aggregateTags.map(tag => tag.outerHTML).join("\n"));

@@ -1047,9 +1047,12 @@ async function popupReader(page, depth = 0) {
         };
         const saved = this.__dictionaryTabs;
         const metadataCapsule = this.querySelector(".gsm-hoshidicts-primary-metadata-capsule");
+        const metadataStrip = this.querySelector(".gsm-hoshidicts-metadata-strip");
+        const metadataHeadword = metadataCapsule?.closest(".gsm-hoshidicts-headword");
         const primaryHeader = this.querySelector(".gsm-hoshidicts-primary-header");
         const capsuleRect = metadataCapsule?.getBoundingClientRect();
         const headerRect = primaryHeader?.getBoundingClientRect();
+        const capsuleStyle = metadataCapsule ? getComputedStyle(metadataCapsule) : null;
         const entries = [...this.querySelectorAll(".gsm-hoshidicts-entry")].map((entry, index) => ({
           expression: entry.dataset.expression,
           aria: (index === 0 ? this.querySelector(".gsm-hoshidicts-primary-header") : entry)
@@ -1130,7 +1133,15 @@ async function popupReader(page, depth = 0) {
               .every(node => node.parentElement === metadataCapsule),
             grammarInsideCapsule: [...this.querySelectorAll(".gsm-hoshidicts-primary-grammar")]
               .every(node => node.parentElement === metadataCapsule),
-            capsuleBelowToolbar: Boolean(capsuleRect && headerRect && capsuleRect.top >= headerRect.bottom - 1),
+            inlineWithHeadword: metadataCapsule?.parentElement === metadataHeadword,
+            insideHeader: Boolean(capsuleRect && headerRect
+              && capsuleRect.top >= headerRect.top - 1 && capsuleRect.bottom <= headerRect.bottom + 1),
+            plain: Boolean(capsuleStyle
+              && capsuleStyle.borderTopStyle === "none"
+              && capsuleStyle.backgroundColor === "rgba(0, 0, 0, 0)"),
+            separateFromTabStrip: !metadataStrip?.contains(metadataCapsule),
+            tabStripOnly: !metadataStrip || [...metadataStrip.children]
+              .every(node => node.classList.contains("gsm-hoshidicts-tab-list")),
           },
           rect: this.getBoundingClientRect().toJSON(), viewport: { width: innerWidth, height: innerHeight },
           grids: [...this.querySelectorAll(".gsm-hoshidicts-glossary-grid")].map(grid => ({
@@ -5727,7 +5738,8 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
 
 async function checkPopupMetadata(browser, settings, tab, popup) {
   const controls = ["opt-frequency-names", "opt-average-frequency", "opt-pitch-furigana",
-    "opt-pitch-dictionary", "opt-pitch-badge", "opt-grammar-tags"];
+    "opt-pitch-dictionary", "opt-pitch-badge", "opt-grammar-tags", "opt-popup-width",
+    "opt-popup-toolbar"];
   const original = await readSettingsControls(settings, controls);
   const originalAlias = await settings.evaluate(async () => (await chrome.storage.local.get("dictionaryState"))
     .dictionaryState.dictionaries.find(dictionary => dictionary.title === "hachidori-fixture").displayName || "");
@@ -5737,21 +5749,40 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
   const counts = () => worker.evaluate(() => ({ lookups: globalThis.__ownedMediaProbe.lookups.length,
     media: globalThis.__ownedMediaProbe.requests.length }));
   const read = () => popup.dictionaryTabs();
-  async function expectMetadata(predicate) {
+  async function expectState(predicate) {
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const value = await read();
-      if (predicate(value.metadata)) return value;
+      if (predicate(value)) return value;
       await new Promise(resolve => setTimeout(resolve, 40));
     }
     throw new Error(`metadata did not settle: ${JSON.stringify(await read())}`);
   }
+  const expectMetadata = predicate => expectState(value => predicate(value.metadata));
   try {
     await editSettingsControls(settings, { "opt-frequency-names": true, "opt-average-frequency": false,
-      "opt-pitch-furigana": true, "opt-pitch-dictionary": "", "opt-pitch-badge": true, "opt-grammar-tags": true });
+      "opt-pitch-furigana": true, "opt-pitch-dictionary": "", "opt-pitch-badge": true, "opt-grammar-tags": true,
+      "opt-popup-width": "560", "opt-popup-toolbar": "top" });
     await tab.bringToFront();
     await hoverForPopup(tab, popup, "#verb");
-    await expectMetadata(value => value.frequencyNames.length > 0 && value.pitch > 0
+    const normal = await expectMetadata(value => value.frequencyNames.length > 0 && value.pitch > 0
       && value.ruby.length > 0 && value.grammar > 0 && value.ipa.includes("tabeɾɯ"));
+    evidence.push(normal.rect.width === 560 && !normal.metadata.clippedFrequencies
+      && normal.metadata.inlineWithHeadword && normal.metadata.insideHeader && normal.metadata.plain
+      && normal.metadata.separateFromTabStrip && normal.metadata.tabStripOnly);
+    await editSettingsControls(settings, { "opt-popup-width": "280", "opt-popup-toolbar": "bottom" });
+    const narrow = await expectState(value => value.rect.width === 280 && value.toolbar === "bottom"
+      && value.metadata.insideHeader);
+    evidence.push(!narrow.metadata.clippedFrequencies && narrow.metadata.inlineWithHeadword
+      && narrow.metadata.plain && narrow.metadata.separateFromTabStrip && narrow.metadata.tabStripOnly);
+    if (process.env.HACHIDORI_METADATA_NARROW_SCREENSHOT) {
+      const { x, y, width, height } = narrow.rect;
+      await tab.screenshot({
+        path: process.env.HACHIDORI_METADATA_NARROW_SCREENSHOT,
+        clip: { x, y, width, height },
+      });
+    }
+    await editSettingsControls(settings, { "opt-popup-width": "560", "opt-popup-toolbar": "top" });
+    await expectState(value => value.rect.width === 560 && value.toolbar === "top");
     worker = await installMediaReplyProbe(browser);
     await worker.evaluate(() => { globalThis.__ownedMediaProbe.holdNext = false; });
     await popup.click(".gsm-hoshidicts-note-button");
@@ -5769,12 +5800,13 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     evidence.push(hidden.metadata.ipa.includes("tabeɾɯ") && hidden.metadata.definitionTags === before.metadata.definitionTags
       && before.metadata.capsuleAria === "Entry metadata"
       && before.metadata.frequencyInsideCapsule && before.metadata.grammarInsideCapsule
-      && before.metadata.capsuleBelowToolbar
+      && before.metadata.inlineWithHeadword && before.metadata.insideHeader && before.metadata.plain
+      && before.metadata.separateFromTabStrip && before.metadata.tabStripOnly
       && hidden.sameCards && hidden.samePanel && await popup.dictionaryTabs("matches", before.entries)
       && retained.sameForm && retained.mounted && retained.inputFocused && retained.draft === "Keep the metadata draft"
       && JSON.stringify(retained.selection) === "[2,7]");
     await editSettingsControls(settings, { "opt-average-frequency": true });
-    const averaged = await expectMetadata(value => value.frequencyNames.includes("Frequency average (unspecified)"));
+    const averaged = await expectMetadata(value => value.frequencyNames.includes("Avg frequency"));
     evidence.push(averaged.metadata.frequencies.length > 0 && averaged.metadata.frequencies.every(Number.isFinite)
       && !averaged.metadata.clippedFrequencies
       && averaged.sameCards && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
@@ -5814,7 +5846,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     await tab.keyboard.press("Escape");
   }
   check("Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
-    evidence.length === 4 && evidence.every(Boolean), JSON.stringify(evidence));
+    evidence.length === 6 && evidence.every(Boolean), JSON.stringify(evidence));
 }
 
 async function checkReaderActivation(settings, tab, popup) {

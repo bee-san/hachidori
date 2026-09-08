@@ -1313,35 +1313,27 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-primary-metadata-capsule {
   display: inline-flex;
   flex: 0 1 auto;
-  align-items: center;
-  gap: 8px;
-  max-width: min(58%, 420px);
-  min-height: 30px;
-  margin-left: auto;
-  padding: 4px 9px;
-  overflow: hidden;
-  border: 1px solid var(--hoshidicts-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--hoshidicts-surface) 74%, transparent);
+  flex-wrap: wrap;
+  align-self: flex-end;
+  align-items: baseline;
+  max-width: 100%;
+  margin-block: 0 3px;
   color: var(--text-color-light1);
   font-size: 12px;
-  line-height: 18px;
-  white-space: nowrap;
+  line-height: 1.45;
+  white-space: normal;
 }
 
 .gsm-hoshidicts-primary-metadata-capsule[hidden] {
   display: none;
 }
 
-.gsm-hoshidicts-primary-metadata-capsule:only-child {
-  max-width: 100%;
-}
-
 .gsm-hoshidicts-primary-frequencies,
 .gsm-hoshidicts-primary-grammar {
   display: inline-flex;
+  flex-wrap: wrap;
   min-width: 0;
-  align-items: center;
+  align-items: baseline;
 }
 
 .gsm-hoshidicts-primary-metadata-capsule .gsm-hoshidicts-tag-frequency {
@@ -1361,17 +1353,17 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gsm-hoshidicts-primary-metadata-capsule .gsm-hoshidicts-frequency-source {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: 14ch;
-  margin-right: 6px;
-  color: var(--text-color);
-  font-weight: 650;
+  margin-right: 4px;
+  color: var(--text-color-light1);
+  font-weight: 600;
 }
 
 .gsm-hoshidicts-primary-metadata-capsule .gsm-hoshidicts-frequency-body {
   flex: 0 0 auto;
-  color: var(--text-color-light1);
+  color: var(--text-color);
+  font-variant-numeric: tabular-nums;
 }
 
 .gsm-hoshidicts-primary-frequencies[data-average="true"] {
@@ -1390,19 +1382,12 @@ html[data-hoshidicts-theme="girlypop"],
 .gsm-hoshidicts-primary-grammar-tag +
   .gsm-hoshidicts-primary-grammar-tag::before {
   margin: 0 7px;
-  color: var(--accent-color);
+  color: var(--text-color-light2);
   content: "•";
 }
 
 .gsm-hoshidicts-primary-grammar {
-  overflow: hidden;
   color: var(--text-color-light1);
-  text-overflow: ellipsis;
-}
-
-.gsm-hoshidicts-primary-grammar-tag {
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .gsm-hoshidicts-tab-list::-webkit-scrollbar {
