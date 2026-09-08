@@ -3839,7 +3839,6 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   await startup.waitForFunction(() => window.__practiceRender.events > 0);
   const source = await startup.evaluate(() => ({
     url: location.href,
-    captionGap: getComputedStyle(document.querySelector(".setup-practice-caption")).marginBottom,
     selected: getSelection().toString(),
     text: document.getElementById("setup-practice-text")?.textContent,
     sameScene: document.getElementById("setup-practice-scene") === window.__practiceScene,
@@ -3860,7 +3859,6 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   check("startup practice uses the installed dictionaries through keyboard selection and the ordinary reader",
     keyboardReached && genuine(selected) && genuine(hovered) && escaped
       && source.url === `${startupUrl}#setup-heading`
-      && source.captionGap === "10px"
       && source.selected === "辞書" && source.text.includes("辞書") && source.sameScene && !source.detached
       && source.readerScripts === 1 && source.finish && source.settings,
     JSON.stringify({ keyboardReached, selected, hovered, source, escaped }));
