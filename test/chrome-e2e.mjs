@@ -6557,7 +6557,7 @@ async function main() {
         ["jiten", "Waiting", null, null],
       ])
       && startupShell.importLink && startupShell.settingsLink && startupShell.actions.length === 0
-      && startupShell.status === "Installing default dictionaries…"
+      && startupShell.status === "Installing default dictionaries."
       && startupShell.background === settingsPalette.background
       && startupShell.cardBackground === settingsPalette.surface
       && firstInstallStorage.setupState?.stage === "dictionaries"
