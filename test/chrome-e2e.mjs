@@ -1142,7 +1142,7 @@ async function popupReader(page, depth = 0) {
         const menuRect = menu?.getBoundingClientRect();
         const popupRect = this.getBoundingClientRect();
         const candidateRect = candidate?.getBoundingClientRect();
-        return { text: this.textContent, button: button?.textContent,
+        return { text: this.textContent, button: button?.textContent, audioBusy: button?.getAttribute("aria-busy"),
           feedback: [...this.querySelectorAll(".gsm-hoshidicts-audio-status")].map(node => node.textContent),
           choices: [...this.querySelectorAll(".gsm-hoshidicts-audio-choices div button")].map(node => node.textContent),
           menu: Boolean(this.querySelector(".gsm-hoshidicts-audio-choices")),
@@ -3393,7 +3393,7 @@ async function checkPopupAudio(settings, tab, popup, browser) {
     }
     throw new Error(`Popup audio state timed out: ${JSON.stringify(await popup.audio())}`);
   }
-  const completed = () => until(state => state?.button === "Audio" && state.feedback[0].startsWith("Played"));
+  const completed = () => until(state => state?.button === "" && state.audioBusy === "false" && state.feedback[0].startsWith("Played"));
   const rehover = async () => {
     await tab.keyboard.press("Escape");
     await hoverForPopup(tab, popup, "#verb");
