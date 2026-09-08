@@ -14,7 +14,7 @@
     let index = crypto.getRandomValues(new Uint32Array(1))[0] % backgrounds.length;
     const show = () => {
       const background = backgrounds[index];
-      scene.style.backgroundImage = `url("assets/${background.file}")`;
+      scene.style.setProperty("--vn-background", `url("assets/${background.file}")`);
       scene.classList.toggle("vn-dark-dialogue", background.dark === true);
     };
     const next = scene.ownerDocument.createElement("button");

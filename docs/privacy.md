@@ -27,9 +27,12 @@ AnkiConnect service on your own computer.
 
 ## Downloads and optional connections
 
-**First-run setup.** Choosing **Start setup** starts downloads of Jitendex,
-JMnedict, Bee's Ultimate Kanji Dictionary and Jiten Frequency Dictionary. Setup
-then checks local Anki to suggest a note type, deck and field mapping. You can
+**First-run setup.** Choosing **Start Setup** starts downloads of Jitendex,
+JMnedict, Bee's Ultimate Kanji Dictionary and Jiten Frequency Dictionary from
+their publishers, who receive your IP address. Setup also reads deck, note-type,
+card and note metadata from local AnkiConnect to configure an existing mining
+setup, including a note type, deck and field mapping. No Anki notes are changed
+during setup. You can
 choose **Set up manually** instead. Dictionary installation continues if you
 close the setup tab after starting it.
 
