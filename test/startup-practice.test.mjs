@@ -52,6 +52,16 @@ test("the keyboard lookup control selects the exercise's real text after the ord
   assert.equal(f.document.activeElement, f.el("setup-practice-text"));
 });
 
+test("the final step can trigger the same precise lookup as soon as the reader is ready", async t => {
+  const f = fixture(t);
+  f.update();
+  assert.equal(f.view.lookup(), false);
+  await f.loaded();
+  assert.equal(f.view.lookup(), true);
+  assert.equal(f.window.getSelection().toString(), "辞書");
+  assert.equal(f.document.activeElement, f.el("setup-practice-text"));
+});
+
 test("a passage-only result keeps the reader available without advertising an unanswered shortcut", async t => {
   const f = fixture(t);
   assert.equal(f.update(OPTIONS, DICTIONARIES, "passage").heading, "You’re ready.");

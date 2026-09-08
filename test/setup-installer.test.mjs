@@ -12,7 +12,8 @@ function harness({ installed = [], statuses = null, imports = {}, recordFailures
   let statusIndex = 0;
   let ids = 0;
   const releases = new Map();
-  const installer = createSetupInstaller({
+  let installer;
+  installer = createSetupInstaller({
     now: () => clock,
     randomId: () => `run-${++ids}`,
     async dispatch(message) {
@@ -23,9 +24,11 @@ function harness({ installed = [], statuses = null, imports = {}, recordFailures
       }
       const behaviour = imports[message.sourceId] ?? { seconds: 2 };
       if (behaviour.hold) await new Promise((resolve) => releases.set(message.sourceId, resolve));
-      clock += (behaviour.seconds ?? 2) * 1000;
       if (behaviour.busy && behaviour.busy-- > 0) return { type: "hd_import_result", requestId: message.requestId, ok: false, error: BUSY };
+      clock += (behaviour.downloadSeconds ?? 0) * 1000;
       if (behaviour.error) return { type: "hd_import_result", requestId: message.requestId, ok: false, error: behaviour.error };
+      installer.progress({ requestId: message.requestId, phase: "installing", receivedBytes: 4096, totalBytes: 4096 });
+      clock += (behaviour.seconds ?? 2) * 1000;
       installed.push({ sourceId: message.sourceId });
       return { type: "hd_import_result", requestId: message.requestId, ok: true, report: { success: true } };
     },
@@ -69,7 +72,7 @@ test("a run installs requested sources in catalogue order, skips installed ones 
   const final = installer.snapshot();
   assert.deepEqual(final.entries.map((entry) => [entry.sourceId, entry.phase, entry.seconds, entry.error]), [
     ["jitendex", "installed", 3, null],
-    ["jmnedict", "failed", 1, "could not read JMnedict.zip: HTTP 503"],
+    ["jmnedict", "failed", null, "could not read JMnedict.zip: HTTP 503"],
     ["bees-ultimate-kanji-dictionary", "already-installed", null, null],
     ["jiten", "installed", 2, null],
   ]);
@@ -83,15 +86,16 @@ test("a run installs requested sources in catalogue order, skips installed ones 
   // The inventory is rechecked before every import and again after waiting for the idle engine.
   assert.equal(log.asked.length, 7);
   assert.ok(log.dispatched.filter((message) => message.type === "hd_status").length >= 3);
-  // One durable record per outcome; the last one also carries the run duration,
+  // One durable record per outcome; the last one also carries the run's summed
+  // installation duration,
   // so outcomes can never be settled with the run accounting still missing.
   assert.deepEqual(log.recorded.map((message) => [message.type, message.runId, Object.keys(message.outcomes ?? {})[0] ?? null, message.runSeconds ?? null]), [
     ["hd_setup_record", "run-1", "jitendex", null],
     ["hd_setup_record", "run-1", "jmnedict", null],
     ["hd_setup_record", "run-1", "bees-ultimate-kanji-dictionary", null],
-    ["hd_setup_record", "run-1", "jiten", 6],
+    ["hd_setup_record", "run-1", "jiten", 5],
   ]);
-  assert.deepEqual(log.recorded[1].outcomes.jmnedict, { status: "failed", seconds: 1, error: "could not read JMnedict.zip: HTTP 503" });
+  assert.deepEqual(log.recorded[1].outcomes.jmnedict, { status: "failed", seconds: null, error: "could not read JMnedict.zip: HTTP 503" });
   assert.deepEqual(log.recorded[2].outcomes["bees-ultimate-kanji-dictionary"], { status: "already-installed" });
   // Every broadcast names the run and increases its sequence; the last one is the finished snapshot.
   assert.ok(log.broadcast.length >= 8);
@@ -134,6 +138,14 @@ test("download and installation phases are mirrored only for this run's own impo
   assert.equal(installer.snapshot().entries[0].receivedBytes, 4096);
 });
 
+test("reported durations start at installation and exclude download time", async () => {
+  const { installer, log } = harness({ imports: { jiten: { downloadSeconds: 30, seconds: 2.5 } } });
+  installer.attach(["jiten"]);
+  await untilFinished(installer);
+  assert.equal(installer.snapshot().entries[0].seconds, 2.5);
+  assert.equal(log.recorded[0].runSeconds, 2.5);
+});
+
 test("a source committed elsewhere while the installer waited is settled as already installed, not reimported", async () => {
   const installed = [];
   const statuses = [{ ok: true, ready: true, loading: true }, { ok: true, ready: true, loading: false }];
@@ -171,7 +183,7 @@ test("an outcome record is resent until the worker answers, and the entry settle
   // Two failed attempts (a lost reply and a thrown send) keep the entry unsettled.
   for (let attempt = 0; attempt < 100 && log.recorded.length < 2; attempt += 1) await settle();
   assert.equal(log.recorded.length, 2);
-  assert.equal(installer.snapshot().entries[0].phase, "downloading");
+  assert.equal(installer.snapshot().entries[0].phase, "installing");
   assert.equal(log.broadcast.some((event) => event.entries[0].phase === "installed"), false);
   await untilFinished(installer);
   const outcomeRecords = log.recorded.filter((message) => message.outcomes?.jiten);

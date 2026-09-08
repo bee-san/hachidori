@@ -5402,7 +5402,7 @@ async function main() {
   check("first-run setup waits for a saved Start, resumes it and permits manual setup",
     welcome !== null && Object.values(welcome).every((value) => value === true), JSON.stringify(welcome));
   const startup = await startupPageStage();
-  check("the startup page mirrors its own installer run, keeps focus, retries only missing dictionaries and advances after the five-second result",
+  check("the startup page mirrors its own installer run, keeps focus, retries only missing dictionaries and advances immediately",
     startup !== null && Object.values(startup).every((value) => value === true), JSON.stringify(startup));
   const runRecovery = await startupRunRecoveryStage();
   check("a startup page whose run went silent observes the installer again and restarts the unrecorded sources",
@@ -5411,7 +5411,7 @@ async function main() {
   check("a failed source the user installed from Settings is reconciled once while a missing failure waits for Retry",
     reconcile !== null && Object.values(reconcile).every((value) => value === true), JSON.stringify(reconcile));
   const advanceFailure = await startupAdvanceFailureStage();
-  check("a refused automatic advance leaves an explicit Continue and cancels the countdown instead of saving again on a timer",
+  check("a refused immediate advance leaves an explicit Continue without saving again",
     advanceFailure !== null && Object.values(advanceFailure).every((value) => value === true), JSON.stringify(advanceFailure));
   const practice = await startupPracticeStage();
   check("the practice step invites a lookup only when a dictionary can answer one and loads the reader once with that step",
@@ -6498,39 +6498,20 @@ async function startupPageStage() {
       outcomes: { ...setupState.dictionaries.outcomes, jiten: { status: "installed", seconds: 2.5, error: null } } } };
     storage({ setupState: { newValue: structuredClone(setupState) } });
     event({ runId: "run-b", sequence: 3, finished: true, entries: [entry("jiten", "installed", { seconds: 2.5 })] });
-    let successStarted = Date.now();
-    let success = heading() === "All dictionaries installed in 7.5 seconds"
-      && document.getElementById("setup-countdown-label")?.textContent === "Continuing to Anki in 5 seconds"
-      && document.getElementById("setup-countdown-track")?.getAttribute("role") === "progressbar"
+    const successStarted = Date.now();
+    const success = heading() === "All dictionaries installed in 7.5 seconds"
+      && document.getElementById("setup-countdown-label") === null
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
-      && JSON.stringify(actions().map(([id]) => id)) === JSON.stringify(["setup-continue", "setup-pause"])
+      && actions().length === 0
       && status().textContent === "All dictionaries installed in 7.5 seconds";
-    const countdownTrack = document.getElementById("setup-countdown-track");
-    dictionaryState = { ...dictionaryState, revision: dictionaryState.revision + 1 };
-    storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
-    success &&= document.getElementById("setup-countdown-track") === countdownTrack
-      && countdownTrack.style.getPropertyValue("--countdown-duration") === "5000ms";
-    document.getElementById("setup-pause").focus();
-    document.getElementById("setup-pause").click();
-    await new Promise((done) => setTimeout(done, 5100));
-    dictionaryState = { ...dictionaryState, revision: dictionaryState.revision + 1 };
-    storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
-    success &&= pendingReply === null && document.getElementById("setup-countdown-label") === null
-      && document.getElementById("setup-pause")?.textContent === "Resume countdown"
-      && document.activeElement?.id === "setup-pause";
-    document.getElementById("setup-pause").click();
-    successStarted = Date.now();
-    // The result stays for five seconds; a conflicting write (the run total landed) is retried with the newer revision.
-    await new Promise((done) => setTimeout(done, 3000));
-    // The label ticks every 250 ms, so three seconds in it reads two or three.
-    const heldAtThree = heading() === "All dictionaries installed in 7.5 seconds" && pendingReply === null
-      && /Continuing to Anki in [123] seconds?/u.test(document.getElementById("setup-countdown-label")?.textContent ?? "");
-    await until(() => pendingReply !== null, "the countdown write");
+    // The successful result queues its write immediately; a conflict (the run
+    // total landed) is retried with the newer revision.
+    await until(() => pendingReply !== null, "the immediate dictionary advance");
     const elapsed = Date.now() - successStarted;
     const firstAdvance = requests.at(-1);
     setupState = { ...setupState, revision: 6 };
     reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
-    await until(() => pendingReply !== null, "the retried countdown write");
+    await until(() => pendingReply !== null, "the retried dictionary advance");
     const secondAdvance = requests.at(-1);
     setupState = { ...setupState, revision: 7, stage: "anki" };
     reply({ state: structuredClone(setupState) });
@@ -6538,7 +6519,7 @@ async function startupPageStage() {
     const ankiRequests = () => requests.filter((message) => message.type === "hd_setup_anki").length;
     // The first check is not answered: shown once with Retry and Continue, never re-asked on its own.
     storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
-    const advanced = elapsed >= 4900 && firstAdvance.stage === "anki" && firstAdvance.baseRevision === 5 && firstAdvance.continued === undefined
+    const advanced = elapsed < 1000 && firstAdvance.stage === "anki" && firstAdvance.baseRevision === 5 && firstAdvance.continued === undefined
       && secondAdvance.stage === "anki" && secondAdvance.baseRevision === 6 && currentStep() === "anki" && doneSteps() === 1
       && document.activeElement === document.getElementById("setup-heading")
       && status().textContent === "Could not check Anki: the extension's service worker did not reply" && ankiRequests() === 1
@@ -6559,19 +6540,21 @@ async function startupPageStage() {
     const ankiStarted = Date.now();
     document.getElementById("setup-retry").click();
     await until(() => heading() === "Anki is set up"
-      && document.getElementById("setup-countdown-label")?.textContent === "Continuing to practice in 5 seconds",
+      && document.getElementById("setup-countdown-label")?.textContent === "Continuing to practice in 3 seconds",
     "the configured Anki result");
+    const configuredAt = Date.now();
     const checkedHeading = heading();
     const automaticProgress = [...document.querySelectorAll(".setup-anki-progress-step")].map((row) => ({
       title: row.querySelector("strong")?.textContent,
       detail: row.querySelector("small")?.textContent,
       done: row.classList.contains("is-done"),
     }));
-    await new Promise((done) => setTimeout(done, 3000));
+    await new Promise((done) => setTimeout(done, 1500));
     const ankiHeld = heading() === "Anki is set up" && pendingReply === null
-      && /Continuing to practice in [123] seconds?/u.test(document.getElementById("setup-countdown-label")?.textContent ?? "");
+      && /Continuing to practice in [12] seconds?/u.test(document.getElementById("setup-countdown-label")?.textContent ?? "");
     await until(() => pendingReply !== null, "the practice write");
-    const ankiElapsed = Date.now() - ankiStarted;
+    const progressElapsed = configuredAt - ankiStarted;
+    const ankiElapsed = Date.now() - configuredAt;
     const practiceRequest = requests.at(-1);
     // A second startup tab made the same move first: the conflict it leaves is
     // the move this page asked for, so the final step is not an error screen.
@@ -6580,7 +6563,7 @@ async function startupPageStage() {
     await until(() => document.getElementById("setup-practice-instruction")?.textContent.startsWith("Try looking up a word below."), "the practice stage");
     const outcomeNote = document.querySelector(".setup-anki-outcome");
     const practice = emptyReplyShown && ankiRequests() === 3 && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
-      && checkedHeading === "Anki is set up" && ankiHeld && ankiElapsed >= 4900
+      && checkedHeading === "Anki is set up" && ankiHeld && progressElapsed >= 2900 && ankiElapsed >= 2900
       && JSON.stringify(automaticProgress) === JSON.stringify([
         { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: true },
         { title: "Looking for the most popular deck", detail: "Selected Mining::Words", done: true },
@@ -6608,7 +6591,7 @@ async function startupPageStage() {
       && heading() === "Setup is complete." && currentStep() === null && doneSteps() === 3
       && document.getElementById("setup-actions").childElementCount === 0;
     return { requestFailed, attached, determinate, ordered, indeterminate, installing, installed, failedRow, failureView, focusKept, continued,
-      retried, oldRunIgnored, success, heldAtThree, advanced, practice, practicePreserved, finished };
+      retried, oldRunIgnored, success, advanced, practice, practicePreserved, finished };
   } finally {
     window.close();
   }
@@ -6840,9 +6823,8 @@ async function startupReconcileStage() {
   }
 }
 
-// Both automatic advances failing is an action-required state: the countdown a
-// render during those attempts restarted is cancelled, so nothing saves again
-// on a timer behind the explicit Continue setup.
+// Both immediate advances failing is an action-required state: nothing saves
+// again behind the explicit Continue setup.
 async function startupAdvanceFailureStage() {
   const jsdom = await loadJsdom();
   if (jsdom === null) return null;
@@ -6858,24 +6840,23 @@ async function startupAdvanceFailureStage() {
   try {
     await page.load();
     await page.until(() => page.heading() === "All dictionaries installed in 4.0 seconds", "the complete result");
-    const counting = label() !== null && page.saves().length === 0;
-    // The five-second countdown elapses; both automatic writes are refused.
+    const immediate = label() === null;
     await page.until(() => page.saves().length === 2 && label() === null, "the failed advance");
-    const failed = counting && page.saves().length === 2 && label() === null
+    const failed = immediate && page.saves().length === 2 && label() === null
       && page.heading() === "All dictionaries installed in 4.0 seconds";
-    // Another display period passes without a further write of its own.
-    await new Promise((done) => setTimeout(done, 6000));
+    await new Promise((done) => setTimeout(done, 100));
     const quiet = page.saves().length === 2 && label() === null && page.actionIds().includes("setup-continue");
     const continuedNow = await startupContinueNowStage(jsdom, setup, dictionaries);
     const completedWhileChecking = await startupContinueNowStage(jsdom, setup, dictionaries, true);
-    return { counting, failed, quiet, continuedNow, completedWhileChecking };
+    return { immediate, failed, quiet, continuedNow, completedWhileChecking };
   } finally {
     page.window.close();
   }
 }
 
-// Continue now advances the installed result and the optional pending Anki
-// check. Its late reply preserves the stage the user already reached.
+// The immediate dictionary advance starts the optional Anki check. Continue
+// now can leave that check pending, and its late reply preserves the stage the
+// user already reached.
 async function startupContinueNowStage(jsdom, initialSetup, dictionaries, finishBeforeReply = false) {
   let setup = structuredClone(initialSetup);
   let settleAnki;
@@ -6889,8 +6870,6 @@ async function startupContinueNowStage(jsdom, initialSetup, dictionaries, finish
     anki: () => new Promise(resolve => { settleAnki = resolve; }) });
   try {
     await page.load();
-    await page.until(() => page.document.getElementById("setup-countdown-label") !== null, "the installed result");
-    page.document.getElementById("setup-continue").click();
     await page.until(() => typeof settleAnki === "function", "the optional Anki check");
     const progress = [...page.document.querySelectorAll(".setup-anki-progress-step")];
     const checking = page.heading() === "Finding your Anki setup…"
