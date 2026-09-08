@@ -72,7 +72,7 @@ Google requires [a justification for each permission](https://developer.chrome.c
 | Permission | Hachidori use and proposed explanation |
 | --- | --- |
 | `storage` | Save dictionary configuration, reader preferences, custom entries, lookup counts and Anki settings locally. The engine stores dictionary indexes separately in OPFS or IndexedDB. |
-| `unlimitedStorage` | Keep user-imported dictionaries and their generated indexes available locally, including dictionaries larger than ordinary extension storage quotas. |
+| `unlimitedStorage` | Keep user-imported dictionaries and their generated indexes in OPFS or IndexedDB exempt from ordinary extension storage quotas and storage-pressure eviction. |
 | `offscreen` | Run the local dictionary engine and pronunciation playback, and retain an explicitly started capture session when its controls close. [The worker](../extension/background.js) requests `DOM_SCRAPING`, `AUDIO_PLAYBACK` and `DISPLAY_MEDIA`. |
 | `alarms` | Run the user's configured dictionary update schedules and refresh the optional local mature-word cache every 30 minutes while enabled. Scheduled runs can install dictionary data updates; they do not replace extension code. |
 | `downloads` | Save an explicitly requested local backup ZIP and monitor that export's completion. [The implementation](../extension/backup-downloads.js) tracks its own export IDs. |
