@@ -6877,7 +6877,9 @@ async function main() {
   });
   await page.setViewport({ width: 320, height: 900 });
   await page.focus("#settings-section");
-  await page.keyboard.press("ArrowDown");
+  // Native menu arrows are not delivered by headless macOS CDP. Type-ahead
+  // exercises the select's real keyboard path without opening that OS menu.
+  await page.keyboard.press("r");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => location.hash === "#lookup" && !document.getElementById("lookup").hidden
     && document.querySelector('.settings-nav [aria-current="page"]')?.hash === "#lookup");
