@@ -30,7 +30,8 @@ const blocked = [];
 const interception = new Map();
 
 async function isolate(target) {
-  if (!["page", "service_worker", "background_page"].includes(target.type())) return;
+  if (!["page", "service_worker", "background_page"].includes(target.type())
+      && !target.url().endsWith("/offscreen.html")) return;
   if (!interception.has(target)) interception.set(target, (async () => {
     const cdp = await target.createCDPSession();
     cdp.on("Fetch.requestPaused", async event => {
@@ -86,6 +87,9 @@ try {
     args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--disable-audio-output",
       `--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
   browser.on("targetcreated", target => { isolate(target).catch(() => {}); });
+  // Chrome names the offscreen target after creating it. Its Fetch domain also
+  // covers the dedicated engine worker's dictionary downloads.
+  browser.on("targetchanged", target => { isolate(target).catch(() => {}); });
   await Promise.all(browser.targets().map(isolate));
   const target = await browser.waitForTarget(candidate => candidate.type() === "page" && candidate.url().endsWith("/startup.html"));
   await isolate(target);
@@ -94,6 +98,8 @@ try {
   await startup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
   await until(() => startup.evaluate(() => document.getElementById("setup-heading")?.textContent),
     value => value === "Welcome to Hachidori", "the welcome disclosure");
+  const offscreen = await browser.waitForTarget(candidate => candidate.url().endsWith("/offscreen.html"));
+  await isolate(offscreen);
   assert.equal(blocked.length, 0, "The untouched welcome page should make no dictionary or Anki request.");
   await startup.screenshot({ path: resolve(output, "welcome-1280x800.png") });
   // Startup rebuilds its controls on storage events; resolve and click in the
@@ -141,6 +147,8 @@ try {
   await promo.setViewport({ width: 440, height: 280, deviceScaleFactor: 1 });
   await promo.goto(pathToFileURL(resolve(output, "promo.html")).href);
   await promo.screenshot({ path: resolve(output, "promo-440x280.png") });
+  // Event handlers cache attachment failures; never certify an unmonitored run.
+  await Promise.all(interception.values());
   writeFileSync(resolve(output, "capture.json"), `${JSON.stringify({ chrome: await browser.version(),
     viewport: { width: 1280, height: 800 }, promo: { width: 440, height: 280 },
     dictionarySource: source, readerOptions, blockedRequests: blocked }, null, 2)}\n`);
