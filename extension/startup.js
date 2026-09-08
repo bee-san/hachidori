@@ -631,24 +631,26 @@ function ankiHeading(anki) {
   }
 }
 
+function pendingAnkiView() {
+  if (ankiFailed) {
+    return {
+      heading: "Anki could not be checked",
+      body: [settingsNote("Anki is optional. You can set it up later in ", "settings.html#anki")],
+      actions: [
+        button("setup-retry", "Retry", () => { void requestAnkiSetup(); }),
+        button("setup-continue", "Continue setup", () => { void advance("practice"); }, "ghost"),
+      ],
+    };
+  }
+  void requestAnkiSetup();
+  return automaticAnkiView();
+}
+
 // Detection runs once per installation; its recorded outcome stays readable
 // for three seconds before setup moves on by itself.
 function ankiView() {
   const anki = setupState.anki;
-  if (anki === null) {
-    if (ankiFailed) {
-      return {
-        heading: "Anki could not be checked",
-        body: [settingsNote("Anki is optional. You can set it up later in ", "settings.html#anki")],
-        actions: [
-          button("setup-retry", "Retry", () => { void requestAnkiSetup(); }),
-          button("setup-continue", "Continue setup", () => { void advance("practice"); }, "ghost"),
-        ],
-      };
-    }
-    void requestAnkiSetup();
-    return automaticAnkiView();
-  }
+  if (anki === null) return pendingAnkiView();
   // A fast local AnkiConnect response can finish before the browser paints.
   // Keep each real detection step visible once before revealing a successful
   // automatic choice; the worker's existing detection and saved result remain
