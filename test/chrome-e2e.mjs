@@ -2891,12 +2891,18 @@ async function showSettingsSection(page, id) {
     if (picker.checkVisibility()) {
       picker.value = section;
       picker.dispatchEvent(new Event("change", { bubbles: true }));
-    } else document.querySelector(`.settings-nav a[href="#${section}"]`).click();
+    } else document.querySelector(`.settings-nav a[href="#${section}"], #library-navigation a[href="#${section}"]`).click();
   }, id);
   await page.waitForFunction((sectionId) => {
+    const librarySections = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
     const visible = [...document.querySelectorAll("main > section")].filter((section) => !section.hidden);
+    const primaryHash = librarySections.has(sectionId) ? "#dictionaries" : `#${sectionId}`;
+    const libraryContext = librarySections.has(sectionId)
+      ? document.querySelector('#library-navigation [aria-current="page"]')?.hash === `#${sectionId}`
+      : document.getElementById("library-navigation")?.hidden;
     return visible.length === 1 && visible[0].id === sectionId
-      && document.querySelector('.settings-nav [aria-current="page"]')?.hash === `#${sectionId}`;
+      && document.querySelector('.settings-nav [aria-current="page"]')?.hash === primaryHash
+      && libraryContext;
   }, {}, id);
 }
 
@@ -7842,10 +7848,15 @@ async function main() {
     window.scrollTo(0, 0);
     const row = document.querySelector("#dict-list .dict-row");
     const links = [...document.querySelectorAll(".settings-nav a")];
+    const libraryLinks = [...document.querySelectorAll("#library-navigation a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 11
-      && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION");
+      && links.length === 7
+      && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION")
+      && JSON.stringify(libraryLinks.map(link => link.hash)) === JSON.stringify([
+        "#dictionaries", "#add-dictionaries", "#updates", "#dictionary-groups", "#custom-dictionary",
+      ])
+      && libraryLinks.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION");
   });
   const selectionActions = await page.evaluate(() => {
     const actions = document.getElementById("dict-bulk-actions");
@@ -7922,7 +7933,7 @@ async function main() {
   await page.goForward();
   await page.waitForFunction(() => !document.getElementById("updates").hidden);
   await page.setViewport({ width: 1280, height: 900 });
-  await page.focus('.settings-nav a[href="#updates"]');
+  await page.focus('#library-navigation a[href="#updates"]');
   await page.keyboard.press("Enter");
   const sameHashFocus = await page.evaluate(() => document.activeElement.id === "updates-heading");
   check(

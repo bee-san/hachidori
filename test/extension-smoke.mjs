@@ -6141,10 +6141,15 @@ async function settingsNavigationStage() {
     }
     const initial = active()[0].id === "lookup";
     const reading = document.getElementById("lookup");
+    const libraryNavigation = document.getElementById("library-navigation");
+    const initialLibraryContext = libraryNavigation?.hidden === true;
     const source = document.getElementById("custom-dictionary-source");
     const beforeNavigation = requests.length;
     await navigate("custom-dictionary");
     await until(() => !source.disabled);
+    const personalLibraryContext = libraryNavigation?.hidden === false
+      && document.querySelector('.settings-nav [aria-current="page"]')?.hash === "#dictionaries"
+      && libraryNavigation.querySelector('[aria-current="page"]')?.hash === "#custom-dictionary";
     const emptyEditor = !document.getElementById("custom-dictionary-form").hidden
       && source.value === "" && source.placeholder.split("\n").length === 3
       && parseCustomDictionary(source.value).entries.length === 0
@@ -6157,6 +6162,7 @@ async function settingsNavigationStage() {
     source.dispatchEvent(new window.Event("input", { bubbles: true }));
     await navigate("lookup");
     const navigation = initial && active().length === 1 && active()[0] === reading
+      && initialLibraryContext && personalLibraryContext && libraryNavigation.hidden
       && source === document.getElementById("custom-dictionary-source")
       && document.querySelector('.settings-nav [aria-current="page"]').hash === "#lookup"
       && requests.length === beforeNavigation + 1

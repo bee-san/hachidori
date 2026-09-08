@@ -63,6 +63,26 @@ test("global search finds inactive section controls and lazy Audio by its voice 
   assert.ok(f.match("Anki"), "flashcard settings are discoverable before lazy field mappings are mounted");
 });
 
+test("Library exposes its related views together and search reports that hierarchy", t => {
+  const f = fixture(t);
+  const navigation = f.el("library-navigation");
+  assert.ok(navigation);
+  assert.deepEqual(
+    [...navigation.querySelectorAll("a")].map(link => [link.hash, link.textContent.trim()]),
+    [
+      ["#dictionaries", "Dictionaries"],
+      ["#add-dictionaries", "Add"],
+      ["#updates", "Updates"],
+      ["#dictionary-groups", "Groups"],
+      ["#custom-dictionary", "Personal dictionary"],
+    ],
+  );
+  f.query("default automatic updates");
+  const result = f.match("Default automatic updates");
+  assert.ok(result);
+  assert.equal(result.querySelector("small").textContent, "Library › Updates");
+});
+
 test("result opens collapsed details and focuses the existing textarea without touching its draft", t => {
   const f = fixture(t);
   const draft = f.el("opt-custom-popup-css");
