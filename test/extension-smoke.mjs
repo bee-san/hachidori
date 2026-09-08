@@ -1461,11 +1461,13 @@ async function ankiScreenshotStage() {
   tab = { ...tab, url: chrome.runtime.getURL("startup.html#setup-heading") };
   const startup = { id: chrome.runtime.id, url: tab.url, documentId };
   const startupTaken = await ask(startup);
+  const startupWithTab = { ...startup, frameId: 0, tab: { id: tab.id } };
+  const startupTabTaken = await ask(startupWithTab);
   reloadDuringCapture = true;
-  const startupReloaded = await ask(startup);
+  const startupReloaded = await ask(startupWithTab);
   reloadDuringCapture = false;
   const capturesBeforeStartupReload = captures.length;
-  const startupGone = await ask(startup);
+  const startupGone = await ask(startupWithTab);
   const capturesAfterStartupReload = captures.length;
   await storage.api().local.set({ options: { revision: 2,
     anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", captureScreenshot: false } } });
@@ -1491,13 +1493,13 @@ async function ankiScreenshotStage() {
       && background?.ok === false && background.error.includes("no longer the active tab")
       && navigated?.ok === false && navigated.error.includes("moved to another page")
       && fromExtensionPage?.ok === false && fromExtensionPage.error.includes("reading tab")
-      && startupTaken?.ok === true && contextChecks.length > 0
+      && startupTaken?.ok === true && startupTabTaken?.ok === true && contextChecks.length > 0
       && startupReloaded?.ok === false && startupReloaded.error.includes("document")
       && startupGone?.ok === false && startupGone.error.includes("document")
       && capturesBeforeStartupReload === capturesAfterStartupReload
       && switchedOff?.ok === false && switchedOff.error.includes("turned off in Settings"),
     JSON.stringify({ taken, retried, switchedAway, givenUp, movedWindow, reloadedDuring, alreadyReloaded,
-      background, navigated, fromExtensionPage, startupTaken, startupReloaded, startupGone, switchedOff, uploads, captures, documentChecks, contextChecks }));
+      background, navigated, fromExtensionPage, startupTaken, startupTabTaken, startupReloaded, startupGone, switchedOff, uploads, captures, documentChecks, contextChecks }));
 }
 
 async function ankiBackgroundStage() {
