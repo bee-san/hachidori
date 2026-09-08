@@ -7441,6 +7441,29 @@ async function settingsFrequencyStage() {
       window.document.getElementById("options-use-saved").click();
       metadataDetails.push(blurSource.value === "anki" && blurControl("definition-blur-count-controls").hidden);
       await editControl(blurSource, "count");
+      for (const { control, group, draft, external, key, saved, restore } of [
+        { control: "opt-blur-threshold", group: "definition-blur-count-controls", draft: "7",
+          external: { definitionBlurEnabled: false }, key: "definitionBlurThreshold", saved: 7, restore: ["opt-blur-source", "count"] },
+        { control: "opt-blur-reveal", group: "definition-blur-reveal-controls", draft: "hover",
+          external: { definitionBlurEnabled: false }, key: "definitionBlurReveal", saved: "hover", restore: ["opt-blur-source", "count"] },
+        { control: "opt-blur-delay", group: "definition-blur-delay-control", draft: "2.5",
+          external: { definitionBlurReveal: "hover" }, key: "definitionBlurDelayMs", saved: 2500, restore: ["opt-blur-reveal", "timed"] },
+      ]) {
+        const focusedControl = blurControl(control);
+        focusedControl.focus();
+        focusedControl.value = draft;
+        focusedControl.dispatchEvent(new window.Event("input", { bubbles: true }));
+        const focusedRevision = storedOptions.revision;
+        emitOptions(external);
+        metadataDetails.push(!blurControl(group).hidden && !focusedControl.disabled && focusedControl.value === draft);
+        focusedControl.dispatchEvent(new window.Event("change", { bubbles: true }));
+        await until(() => status().includes("Could not save"));
+        metadataDetails.push(writes.at(-1).baseRevision === focusedRevision && writes.at(-1).options[key] === saved);
+        focusedControl.blur();
+        window.document.getElementById("options-use-saved").click();
+        metadataDetails.push(blurControl(group).hidden && focusedControl.disabled);
+        await editControl(blurControl(restore[0]), restore[1]);
+      }
       metadataDetails.push(!blurControl("opt-blur-direction").disabled && !blurControl("opt-blur-delay").disabled);
       await editControl(blurControl("opt-blur-direction"), "below");
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurDirection: "below" }));

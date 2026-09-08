@@ -1058,12 +1058,16 @@ function renderDefinitionBlurControls() {
   if (source !== document.activeElement) source.value = definitionBlurSource();
   const countEnabled = options.definitionBlurEnabled;
   const enabled = countEnabled || options.definitionBlurAnkiMature;
-  element("definition-blur-count-controls").hidden = !countEnabled;
+  // Hiding a focused native control can emit blur before its pending change.
+  // Defer hiding until focusout so the change keeps its captured revision.
+  for (const [id, hidden] of [["definition-blur-count-controls", !countEnabled],
+    ["definition-blur-reveal-controls", !enabled], ["definition-blur-delay-control", options.definitionBlurReveal !== "timed"]]) {
+    const group = element(id);
+    if (!hidden || !group.contains(document.activeElement)) group.hidden = hidden;
+  }
   element("definition-blur-count-paused").hidden = !countEnabled || options.showLookupCounts;
   element("definition-blur-anki-help").hidden = !options.definitionBlurAnkiMature;
   element("definition-blur-either-help").hidden = definitionBlurSource() !== "either";
-  element("definition-blur-reveal-controls").hidden = !enabled;
-  element("definition-blur-delay-control").hidden = options.definitionBlurReveal !== "timed";
   element("definition-blur-help").hidden = !enabled;
   for (const [id, key, controlEnabled] of [["opt-blur-direction", "definitionBlurDirection", countEnabled],
     ["opt-blur-reveal", "definitionBlurReveal", enabled], ["opt-blur-threshold", "definitionBlurThreshold", countEnabled]]) {
@@ -2552,9 +2556,9 @@ function attachHandlers() {
       if (event.target.id === "opt-frequency-dictionary") renderFrequencyChoices();
       if (event.target.id === "opt-image-source") renderPopupImageSources();
       if (event.target.id === "opt-pitch-dictionary") renderMetadataControls();
-      if (event.target.id === "opt-corpus-url" || event.target.id === "opt-blur-delay") renderMetadataControls();
-      if (event.target.id === "opt-blur-source") {
-        event.target.value = definitionBlurSource();
+      if (event.target.id === "opt-corpus-url") renderMetadataControls();
+      if (event.target.closest("#definition-blur-settings")) {
+        if (event.target.id === "opt-blur-source") event.target.value = definitionBlurSource();
         renderDefinitionBlurControls();
       }
       if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
