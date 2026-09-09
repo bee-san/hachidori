@@ -46,15 +46,12 @@ git clone https://github.com/bee-san/hachidori.git
 
 Hachidori is 83 times faster than the worlds most popular Japanese dictionary app at importing dictionaries.
 
-<p align="center">
-  <img src="docs/assets/benchmark-import.jpg" alt="Import-to-usable benchmark for the 6.65-million-row VNDB Characters by Bee dictionary: Hachidori 15 seconds, JL 4 minutes 6 seconds, and Yomitan 20 minutes 36 seconds" width="820">
-</p>
+<img width="1672" height="941" alt="ChatGPT Image Sep 9, 2026, 09_18_59 AM" src="https://github.com/user-attachments/assets/c507c940-f61e-4063-8d2c-9e43184cd7d3" />
 
 It is even 3.5 times faster at looking up words.
 
-<p align="center">
-  <img src="docs/assets/benchmark-throughput.jpg" alt="Two-query lookup throughput benchmark: Hachidori 1,108 lookups per second, JL 375, and Yomitan 317" width="820">
-</p>
+<img width="1774" height="887" alt="ChatGPT Image Sep 9, 2026, 09_19_05 AM" src="https://github.com/user-attachments/assets/1236ca54-394e-403e-84d8-9441b31b4786" />
+
 
 # Media mining
 
@@ -99,7 +96,7 @@ I will not mindlessly merge PRs that add nothing for me other than bloat.
 
 This program was created with the assistance of AI. I used GPT 5.6 Ultra, and then GPT 6.0 Astra Ultra exclusively. 
 
-I have reviewed all plans, I set the direction of how this program works. Most pull requests are reviewed. Large parts of the program such as the actual dictionary core are hand-written. 
+I have reviewed all plans, I set the direction of how this program works. Large parts of the program such as the actual dictionary core are hand-written. 
 
 On top of this, there are countless tests. At some points I even had Astra Ultra work for 26 hours straight benchmarking & using every part of the program to ensure it was good (it found many bugs).
 
