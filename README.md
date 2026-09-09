@@ -55,8 +55,11 @@ It is even 3.5 times faster at looking up words.
 
 # Media mining
 
+<img width="917" height="362" alt="Screenshot 2026-09-09 at 11 26 31" src="https://github.com/user-attachments/assets/c0f6d1b5-187d-45b7-9bda-aadf32879586" />
 
-![Media capture controls recording a linked reading page](docs/assets/media-capture-controls.png)
+Hachidori can record your screen and capture sentence audio + a gif. Not just in Chrome but in all windows on your desktop.
+
+This feature is **experimental** and may not work very well.
 
 See [Media mining setup, limits, and verification](docs/media-capture.md).
 
