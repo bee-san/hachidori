@@ -1371,7 +1371,7 @@ async function firstRunAnkiStage() {
       && found.requests.find((request) => request.action === "findCards").params.query === "mid:2 -deck:filtered"
       && savedOptions.revision === 3 && savedOptions.anki.model === "Kiku v2" && savedOptions.anki.deck === "Mining" && savedOptions.anki.apiKey === "local-key"
       && savedOptions.anki.fieldTemplates.Expression.value === "{expression}"
-      && savedOptions.anki.fieldTemplates.SentenceAudio.value === "{capture-audio}"
+      && savedOptions.anki.fieldTemplates.SentenceAudio.value === ""
       && savedOptions.anki.fieldTemplates.Picture.value === "{screenshot}"
       && Object.keys(savedOptions.anki.fieldTemplates).length === KIKU_FIELDS.length
       && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([["options", "setupState"]])
