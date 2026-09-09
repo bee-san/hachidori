@@ -10401,8 +10401,14 @@ async function contentNoteStage() {
     hideTimerPending() { return hideTimer !== null; },
     viewRequest(depth = 0) { return levels[depth]?.currentViewRequest; },
     resolveCandidate,
+    resolveDefinitionCandidate(clientX, clientY, depth = 0) {
+      return resolveDefinitionCandidate(clientX, clientY, levels[depth]);
+    },
     setScanCandidate(candidate) { resolveCandidate = () => candidate; },
     onMouseMove,
+    onPopupMouseMove(event, depth = 0) {
+      return onPopupMouseMove(event, levels[depth]);
+    },
     onMouseDown,
     onMouseOut,
     onWindowBlur,
@@ -13167,6 +13173,227 @@ async function contentNoteStage() {
     return { "pending pointer candidates deduplicate by node and query without losing retries or newer ownership": passed };
   }
 
+  async function definitionTextLookupCase() {
+    function appendGlossary(harness, text, depth = 0) {
+      const document = harness.popup.ownerDocument;
+      const glossary = document.createElement("div");
+      glossary.className = "gsm-hoshidicts-glossary-content";
+      glossary.append(document.createTextNode("説明："));
+      const term = document.createElement("span");
+      term.textContent = text;
+      glossary.append(term, document.createTextNode("です。"));
+      harness.driver.popupAt(depth).querySelector(".gsm-hoshidicts-definitions").append(glossary);
+      return { glossary, term, textNode: term.firstChild };
+    }
+
+    const hover = await createHarness();
+    try {
+      await hover.initialLookup();
+      const parent = hover.driver.viewRequest();
+      const first = appendGlossary(hover, "食用語");
+      const caretCalls = [];
+      hover.popup.ownerDocument.caretPositionFromPoint = (_x, _y, options) => {
+        caretCalls.push(options);
+        return { offsetNode: first.textNode, offset: 0 };
+      };
+      const pointer = { clientX: 120, clientY: 80, target: first.term };
+      hover.driver.onPopupMouseMove(pointer);
+      await hover.settle();
+      const request = hover.take("hd_lookup");
+      if (request) hover.reply(request, { dictionaryCount: 1, results: [hover.term("食用語")] });
+      await hover.settle();
+      const childRequest = hover.driver.viewRequest(1);
+      const nativeCaret = request?.request.text.startsWith("食用語")
+        && request.request.scanLength === 9
+        && caretCalls[0]?.shadowRoots?.[0] === first.glossary.getRootNode();
+      const childContext = childRequest?.candidate;
+      const context = childContext?.sourceDepth === 0
+        && childContext.sentence === "説明：食用語です。"
+        && childContext.matchOffset === 3
+        && childContext.sourceElements?.[0] === first.glossary;
+      const parentRetained = hover.driver.viewRequest() === parent
+        && !hover.driver.snapshot().popupHidden
+        && !hover.driver.snapshot(1).popupHidden;
+
+      hover.driver.onPopupMouseMove(pointer);
+      await hover.settle();
+      const deduplicated = hover.take("hd_lookup") === null;
+
+      const missing = appendGlossary(hover, "未登録語");
+      hover.popup.ownerDocument.caretPositionFromPoint = () => ({
+        offsetNode: missing.textNode,
+        offset: 0,
+      });
+      hover.driver.onPopupMouseMove({ ...pointer, target: missing.term });
+      await hover.settle();
+      const miss = hover.take("hd_lookup");
+      if (miss) hover.reply(miss, { dictionaryCount: 1, results: [] });
+      await hover.settle();
+      const missPreservedParent = miss?.request.text.startsWith("未登録語")
+        && hover.driver.viewRequest() === parent
+        && !hover.driver.snapshot().popupHidden
+        && hover.driver.snapshot(1).popupHidden;
+
+      hover.emitOptions({ popupNestingMaxDepth: 0 });
+      hover.driver.onPopupMouseMove(pointer);
+      await hover.settle();
+      const depthLimited = hover.take("hd_lookup") === null && !hover.driver.popupAt(1);
+
+      hover.emitOptions({ popupNestingMaxDepth: 1 });
+      const chrome = hover.popup.ownerDocument.createElement("button");
+      chrome.textContent = "食用語";
+      hover.driver.popupAt(0).append(chrome);
+      hover.popup.ownerDocument.caretPositionFromPoint = () => ({
+        offsetNode: chrome.firstChild,
+        offset: 0,
+      });
+      hover.driver.onPopupMouseMove({ ...pointer, target: chrome });
+      await hover.settle();
+      const glossaryOnly = hover.take("hd_lookup") === null;
+
+      const internal = hover.popup.ownerDocument.createElement("a");
+      internal.dataset.hoshidictsQuery = "食用語";
+      internal.textContent = "食用語";
+      first.glossary.append(internal);
+      const linked = hover.render().context.onInternalLink({
+        anchor: internal,
+        query: "食用語",
+      });
+      const linkedRequest = hover.take("hd_lookup");
+      if (linkedRequest) hover.reply(linkedRequest, {
+        dictionaryCount: 1,
+        results: [hover.term("食用語")],
+      });
+      await linked;
+      hover.popup.ownerDocument.caretPositionFromPoint = () => ({
+        offsetNode: internal.firstChild,
+        offset: 0,
+      });
+      hover.driver.popupAt(0).dispatchEvent(
+        new hover.popup.ownerDocument.defaultView.MouseEvent("mouseenter"),
+      );
+      hover.driver.onPopupMouseMove({ ...pointer, target: internal });
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const explicitLink = hover.driver.resolveDefinitionCandidate(120, 80) === null
+        && hover.take("hd_lookup") === null
+        && !hover.driver.snapshot(1).popupHidden;
+
+      const boundaryGlossary = hover.popup.ownerDocument.createElement("div");
+      boundaryGlossary.className = "gsm-hoshidicts-glossary-content";
+      const boundaryText = hover.popup.ownerDocument.createTextNode("食");
+      const boundaryLink = hover.popup.ownerDocument.createElement("a");
+      boundaryLink.dataset.hoshidictsQuery = "用語";
+      boundaryLink.textContent = "用語";
+      boundaryGlossary.append(boundaryText, boundaryLink);
+      hover.driver.popupAt(0).querySelector(".gsm-hoshidicts-definitions")
+        .append(boundaryGlossary);
+      hover.popup.ownerDocument.caretPositionFromPoint = () => ({
+        offsetNode: boundaryText,
+        offset: 0,
+      });
+      const linkBoundary = hover.driver.resolveDefinitionCandidate(120, 80)?.query === "食";
+
+      async function latinLookup(onlyScanJapaneseText) {
+        const language = await createHarness(
+          { title: "Generic", kind: "term" },
+          { options: { onlyScanJapaneseText } },
+        );
+        try {
+          await language.initialLookup();
+          const latin = appendGlossary(language, "hello");
+          language.popup.ownerDocument.caretPositionFromPoint = () => ({
+            offsetNode: latin.textNode,
+            offset: 0,
+          });
+          language.driver.onPopupMouseMove({
+            clientX: 120,
+            clientY: 80,
+            target: latin.term,
+          });
+          await language.settle();
+          const lookup = language.take("hd_lookup");
+          if (lookup) language.reply(lookup, { dictionaryCount: 1, results: [] });
+          await language.settle();
+          return lookup?.request.text ?? null;
+        } finally {
+          language.close();
+        }
+      }
+      const japaneseOnly = await latinLookup(true) === null;
+      const unrestrictedText = await latinLookup(false);
+      const firstDetails = {
+        context,
+        deduplicated,
+        depthLimited,
+        explicitLink,
+        glossaryOnly,
+        japaneseOnly,
+        linkBoundary,
+        missPreservedParent,
+        nativeCaret,
+        parentRetained,
+        unrestricted: unrestrictedText?.startsWith("hello") === true,
+      };
+      const firstResult = Object.values(firstDetails).every((value) => value === true);
+
+      const activation = await createHarness();
+      try {
+        activation.emitOptions({
+          activationKey: "Shift",
+          hoverDelayMs: 0,
+          lookupMode: "activation",
+          popupNestingMaxDepth: 1,
+        });
+        const selection = activation.popup.ownerDocument.defaultView.getSelection();
+        selection.selectAllChildren(activation.anchor);
+        activation.popup.ownerDocument.dispatchEvent(
+          new activation.popup.ownerDocument.defaultView.Event("selectionchange"),
+        );
+        const root = activation.take("hd_lookup");
+        if (root) activation.reply(root, {
+          dictionaryCount: 1,
+          results: [activation.term(activation.candidate.query)],
+        });
+        await activation.settle();
+        const definition = appendGlossary(activation, "食用語");
+        activation.popup.ownerDocument.caretPositionFromPoint = () => ({
+          offsetNode: definition.textNode,
+          offset: 0,
+        });
+        const definitionPointer = {
+          clientX: 120,
+          clientY: 80,
+          target: definition.term,
+        };
+        activation.driver.onPopupMouseMove(definitionPointer);
+        await activation.settle();
+        const gated = activation.take("hd_lookup") === null;
+        activation.popup.ownerDocument.dispatchEvent(
+          new activation.popup.ownerDocument.defaultView.KeyboardEvent("keydown", {
+            bubbles: true,
+            code: "ShiftLeft",
+            key: "Shift",
+            shiftKey: true,
+          }),
+        );
+        await activation.settle();
+        const stationary = activation.take("hd_lookup");
+        if (stationary) activation.reply(stationary, { dictionaryCount: 1, results: [] });
+        await activation.settle();
+        return {
+          "definition text uses native closed-shadow caret scanning and preserves its parent popup":
+            firstResult || firstDetails,
+          "definition text inherits Japanese gating, depth limits and stationary activation":
+            gated && stationary?.request.text.startsWith("食用語"),
+        };
+      } finally {
+        activation.close();
+      }
+    } finally {
+      hover.close();
+    }
+  }
+
   async function activationCase() {
     const result = {};
     const harness = await createHarness();
@@ -13957,7 +14184,7 @@ async function contentNoteStage() {
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await movedMatchEndpointCase(),
+    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),

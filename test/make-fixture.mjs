@@ -531,19 +531,31 @@ export function nestedLinksFixture() {
   const child = '食用語';
   const reading = 'しょくようご';
   const grandchild = '終点';
+  const missing = '未登録語';
   const link = (query, primaryReading, label) => ({ tag: 'a',
     href: `?query=${encodeURIComponent(query)}&primary_reading=${encodeURIComponent(primaryReading)}`,
     content: label,
   });
-  const glossary = (text, next) => [{ type: 'structured-content', content: { tag: 'div', content: [
-    text, ' ', next, { tag: 'img', path: 'media/kanji.png', width: 16, height: 16 },
-  ] } }];
+  const glossary = (text, hoverTerm, next, missingTerm = null) => {
+    const content = [
+      text, ' 定義内の語：', { tag: 'span', content: hoverTerm }, '。 ',
+    ];
+    if (missingTerm) {
+      content.push('未登録：', { tag: 'span', content: missingTerm }, '。 ');
+    }
+    content.push(next,
+      { tag: 'img', path: 'media/kanji.png', width: 16, height: 16 });
+    return [{ type: 'structured-content', content: { tag: 'div', content } }];
+  };
   const archive = buildTitledZip(title, { mediaEntries: [['media/kanji.png', makePng()]], terms: [
-    [query, 'れんさご', '', '', 0, glossary('A linked definition.', link(child, reading, 'Open the referenced entry')), 1, ''],
-    [child, reading, '', '', 0, glossary('The referenced entry.', link(grandchild, 'しゅうてん', 'Continue to the final entry')), 2, ''],
-    [grandchild, 'しゅうてん', '', '', 0, glossary('The final entry.', link(query, 'れんさご', 'Return to the first entry')), 3, ''],
+    [query, 'れんさご', '', '', 0, glossary('A linked definition.', child,
+      link(child, reading, 'Open the referenced entry'), missing), 1, ''],
+    [child, reading, '', '', 0, glossary('The referenced entry.', grandchild,
+      link(grandchild, 'しゅうてん', 'Continue to the final entry')), 2, ''],
+    [grandchild, 'しゅうてん', '', '', 0, glossary('The final entry.', query,
+      link(query, 'れんさご', 'Return to the first entry')), 3, ''],
   ] });
-  return { title, query, child, reading, grandchild, archive };
+  return { title, query, child, reading, grandchild, missing, archive };
 }
 
 export function dictionaryTabsFixture() {
