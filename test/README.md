@@ -1274,7 +1274,10 @@ starts capture through the visible controls, links the reading page, and tests:
   decoding and looping playback, non-silent mono WAV samples, and decoded
   flash/beep alignment within 125 ms;
 - production Anki preflight, one-at-a-time media uploads, note mutation, and
-  readback against a fixture intercepted at the service-worker network boundary;
+  readback against a stock Kiku field fixture intercepted at the service-worker
+  network boundary: its saved templates contain only `{screenshot}` and a blank
+  `SentenceAudio`, a pin routes AVIF/WAV without uploading a JPEG, and an
+  unpinned note still uploads the static page screenshot;
 - settings-change confirmation, stop/clear behavior, no automatic rearming, and
   absence of raw text/media in extension storage;
 - relinking enforcing one current reading document, and linked-page navigation
@@ -1352,11 +1355,13 @@ xvfb-run -a node test/chrome-capture.mjs
 ```
 
 The same external browser variables as `chrome-e2e.mjs` are accepted, plus
-`HACHIDORI_CAPTURE_PROFILE` to retain a dedicated test profile. With no override,
-the temporary profile is removed after the run. Never point this at a personal
-browser profile. `HACHIDORI_CAPTURE_ASSET_DIR` saves `capture.avif`, `capture.wav`,
-the ten-second `full-capture.avif` / `full-capture.wav`, and each period's
-`soak-<index>-<scene>.avif` / `.wav` for independent playback checks.
+`HACHIDORI_FFMPEG` for the synchronization-fixture encoder and
+`HACHIDORI_CAPTURE_PROFILE` to retain a dedicated test profile. With no
+override, the temporary profile is removed after the run. Never point this at
+a personal browser profile. `HACHIDORI_CAPTURE_ASSET_DIR` saves
+`capture.avif`, `capture.wav`, the ten-second `full-capture.avif` /
+`full-capture.wav`, and each period's `soak-<index>-<scene>.avif` / `.wav` for
+independent playback checks.
 
 The HTTP/WebSocket fixture uses an operating-system-assigned local port.
 AnkiConnect requests to port 8765 are intercepted and answered inside this
