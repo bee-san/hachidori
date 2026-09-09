@@ -1050,9 +1050,11 @@ async function popupReader(page, depth = 0) {
         const metadataStrip = this.querySelector(".gsm-hoshidicts-metadata-strip");
         const primaryEntry = this.querySelector(".gsm-hoshidicts-entry");
         const primaryHeader = this.querySelector(".gsm-hoshidicts-primary-header");
+        const primaryFrequencies = this.querySelector(".gsm-hoshidicts-primary-frequencies");
         const capsuleRect = metadataCapsule?.getBoundingClientRect();
         const entryRect = primaryEntry?.getBoundingClientRect();
         const capsuleStyle = metadataCapsule ? getComputedStyle(metadataCapsule) : null;
+        const primaryFrequencyStyle = primaryFrequencies ? getComputedStyle(primaryFrequencies) : null;
         const entries = [...this.querySelectorAll(".gsm-hoshidicts-entry")].map((entry, index) => ({
           expression: entry.dataset.expression,
           aria: (index === 0 ? this.querySelector(".gsm-hoshidicts-primary-header") : entry)
@@ -1108,6 +1110,16 @@ async function popupReader(page, depth = 0) {
           metadata: {
             frequencyNames: [...this.querySelectorAll(".gsm-hoshidicts-frequency-source")].map(node => node.textContent),
             frequencies: [...this.querySelectorAll(".gsm-hoshidicts-frequency-value")].map(node => Number(node.dataset.frequency)),
+            frequencyText: primaryFrequencies?.textContent ?? "",
+            defaultFrequencyLabel: primaryFrequencies
+              ?.querySelector(".gsm-hoshidicts-primary-frequency-label")?.textContent ?? null,
+            defaultFrequencyPill: Boolean(
+              primaryFrequencies?.classList.contains("gsm-hoshidicts-primary-frequencies-default")
+              && primaryFrequencyStyle
+              && primaryFrequencyStyle.borderTopStyle === "solid"
+              && primaryFrequencyStyle.borderRadius === "999px"
+              && primaryFrequencyStyle.backgroundColor !== "rgba(0, 0, 0, 0)"
+            ),
             clippedFrequencies: [...this.querySelectorAll(".gsm-hoshidicts-primary-frequencies .gsm-hoshidicts-frequency-value")].some(node => {
               const value = node.getBoundingClientRect();
               const tag = node.closest(".gsm-hoshidicts-tag-frequency").getBoundingClientRect();
@@ -5813,8 +5825,16 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       "opt-pitch-badge": false, "opt-grammar-tags": false });
     const hidden = await expectMetadata(value => value.frequencyNames.length === 0 && value.pitch === 0
       && value.ruby.length === 0 && value.grammar === 0);
+    await editSettingsControls(settings, { "opt-popup-width": "280", "opt-popup-toolbar": "bottom" });
+    const defaultNarrow = await expectState(value => value.rect.width === 280 && value.toolbar === "bottom"
+      && value.metadata.defaultFrequencyPill);
+    await editSettingsControls(settings, { "opt-popup-width": "560", "opt-popup-toolbar": "top" });
+    await expectState(value => value.rect.width === 560 && value.toolbar === "top");
     const retained = await popup.retainedControls();
     evidence.push(hidden.metadata.ipa.includes("tabeɾɯ") && hidden.metadata.definitionTags === before.metadata.definitionTags
+      && hidden.metadata.defaultFrequencyPill && hidden.metadata.defaultFrequencyLabel === "Freq:"
+      && hidden.metadata.frequencyText.startsWith("Freq: ")
+      && defaultNarrow.metadata.defaultFrequencyPill && !defaultNarrow.metadata.clippedFrequencies
       && before.metadata.capsuleAria === "Entry metadata"
       && before.metadata.frequencyInsideCapsule && before.metadata.grammarInsideCapsule
       && before.metadata.insidePrimaryEntry && before.metadata.outsideHeader && before.metadata.insideResult
@@ -5835,6 +5855,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       && contourState?.furiganaAlignment?.difference <= 1
       && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     if (process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT) {
+      await editSettingsControls(settings, { "opt-average-frequency": false });
+      await expectMetadata(value => value.defaultFrequencyPill);
       await popup.click(".gsm-hoshidicts-note-cancel");
       const { x, y, width, height } = (await read()).rect;
       await tab.screenshot({ path: process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT, clip: { x, y, width, height } });

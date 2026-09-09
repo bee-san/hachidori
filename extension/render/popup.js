@@ -332,6 +332,12 @@
       && frequency.displayValue.trim().endsWith(JITEN_KANA_FREQUENCY_MARKER);
   }
 
+  function formatCompactFrequencyValue(frequency) {
+    return `${formatCompactFrequencyNumber(frequency.value)}${
+      isKanaFrequency(frequency) ? JITEN_KANA_FREQUENCY_MARKER : ""
+    }`;
+  }
+
   function formatFrequencyValue(frequency) {
     if (typeof frequency.displayValue === "string") {
       const displayValue = frequency.displayValue.trim();
@@ -346,7 +352,7 @@
         return displayValue;
       }
       if (isKanaFrequency(frequency)) {
-        return `${formatCompactFrequencyNumber(frequency.value)}${JITEN_KANA_FREQUENCY_MARKER}`;
+        return formatCompactFrequencyValue(frequency);
       }
     }
     return formatCompactFrequencyNumber(frequency.value);
@@ -468,7 +474,7 @@
         if (originalDisplay === null) {
           continue;
         }
-        const display = showFrequencyDictionaryNames ? originalDisplay : formatCompactFrequencyNumber(frequency.value);
+        const display = showFrequencyDictionaryNames ? originalDisplay : formatCompactFrequencyValue(frequency);
         const key = JSON.stringify([frequency.value, originalDisplay]);
         if (!seenFrequencies.has(key)) {
           seenFrequencies.add(key);
@@ -2617,6 +2623,14 @@
           const frequencies = documentRef.createElement("span");
           frequencies.className = "gsm-hoshidicts-primary-frequencies";
           frequencies.dataset.average = String(averageFrequency);
+          if (!averageFrequency && !showFrequencyDictionaryNames) {
+            frequencies.classList.add("gsm-hoshidicts-primary-frequencies-default");
+            const label = documentRef.createElement("span");
+            label.className = "gsm-hoshidicts-primary-frequency-label";
+            label.textContent = "Freq:";
+            label.setAttribute("aria-hidden", "true");
+            frequencies.append(label, " ");
+          }
           frequencies.append(...frequencyTags);
           capsule.prepend(frequencies);
         }

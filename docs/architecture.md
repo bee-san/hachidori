@@ -585,14 +585,15 @@ before the change event completes.
 
 Design has independent controls for frequency source names and averages, pitch
 contour and its preferred dictionary, pitch badges, and grammar tags. Frequency
-metadata defaults to compact numbers without dictionary names, with source and
-kana-frequency detail available on hover and to screen readers. It sits as quiet,
-borderless text inside the primary result, before its pronunciation metadata and
-definition cards, instead of occupying the popup-wide headword header or claiming
-a separate chrome row. The lower chrome row is reserved for dictionary tabs and
-is omitted when no tabs exist. Grammar tags default to hidden; opting in places
-them in the same result metadata group. Explicit saved display choices are
-preserved.
+metadata defaults to one neutral `Freq:` pill with compact numbers and no
+dictionary names. Kana-derived values retain the visible Yomitan/Jiten `㋕`
+marker, while source and numeric detail remain available on hover and to screen
+readers. The pill sits inside the primary result, before its pronunciation
+metadata and definition cards, instead of occupying the popup-wide headword
+header or claiming a separate chrome row. The lower chrome row is reserved for
+dictionary tabs and is omitted when no tabs exist. Grammar tags default to
+hidden; opting in places them in the same result metadata group. Explicit saved
+display choices are preserved.
 Contour and pitch badges remain on, and averages remain off. IPA transcriptions
 and definition tags remain visible independently. Pitch and IPA show pronunciation
 data without source-name labels; tooltips and accessibility labels retain source
@@ -623,7 +624,7 @@ A focused kanji button defers ruby replacement until blur. The shared visual
 context carries current preferences through deferred group changes, local tabs
 and Show more; an unchanged delivery performs no metadata rebuild.
 
-![Typed frequency average inside the primary result](assets/metadata-popup.png)
+![Default frequency pill inside the primary result](assets/metadata-popup.png)
 
 ## Lookup statistics and definition blur
 
