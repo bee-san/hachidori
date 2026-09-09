@@ -13,7 +13,7 @@ const extension = file => readFileSync(new URL(`../extension/${file}`, import.me
 const withoutModules = source => source.replace(/^import(?:[^;]+);\s*/gmu, "").replace(/^export\s+/gmu, "");
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-test("fresh Settings lets a user enter a texthooker endpoint before enabling the feed", async t => {
+test("Settings exposes one recent window while advanced timing remains dormant", async t => {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: "https://settings.example" });
   t.after(() => dom.window.close());
   const { window } = dom;
@@ -35,19 +35,42 @@ test("fresh Settings lets a user enter a texthooker endpoint before enabling the
     attachHandlers();
     renderMediaSettings();
     globalThis.readMediaSettings = () => options.mediaCapture;
+    globalThis.readActiveMediaSettings = () => HDReaderOptions.activeMediaCapture(options.mediaCapture);
   `));
   const el = id => window.document.getElementById(id);
-  const endpoint = el("opt-media-texthooker-url"), enabled = el("opt-media-texthooker");
-  assert.equal(enabled.checked, false);
-  assert.equal(endpoint.value, "");
-  assert.equal(endpoint.disabled, false);
+  const duration = el("opt-media-clip");
+  assert.equal(duration.type, "number");
+  assert.equal(duration.min, "1");
+  assert.equal(duration.max, "60");
+  assert.equal(duration.value, "10");
+  assert.equal(el("media-history-field").hidden, true);
+  assert.equal(el("media-timing-settings").hidden, true);
+  assert.equal(el("media-texthooker-settings").hidden, true);
+
+  duration.value = "37";
+  duration.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await tick();
+  assert.equal(window.readMediaSettings().clipSeconds, 37);
+  assert.deepEqual(JSON.parse(JSON.stringify(window.readActiveMediaSettings())), {
+    ...window.readMediaSettings(),
+    timingMode: "recent",
+    historySeconds: 37,
+    texthooker: { ...window.readMediaSettings().texthooker, enabled: false },
+    page: { nativeCues: false, domText: false, autoLearnArea: false },
+  });
+
+  for (const invalid of ["", "0", "61", "1.5"]) {
+    duration.value = invalid;
+    duration.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await tick();
+    assert.equal(duration.value, "37");
+    assert.equal(window.readMediaSettings().clipSeconds, 37);
+  }
+
+  const endpoint = el("opt-media-texthooker-url");
   endpoint.value = "ws://127.0.0.1:6677";
   endpoint.dispatchEvent(new window.Event("change", { bubbles: true }));
   await tick();
   assert.equal(window.readMediaSettings().texthooker.url, "ws://127.0.0.1:6677/");
-  assert.equal(enabled.checked, false);
-  enabled.click();
-  await tick();
-  assert.equal(window.readMediaSettings().texthooker.enabled, true);
-  assert.equal(el("opt-media-texthooker-format").disabled, false);
+  assert.equal(window.readActiveMediaSettings().texthooker.enabled, false);
 });

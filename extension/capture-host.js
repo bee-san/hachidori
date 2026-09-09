@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createCaptureSession } from "./capture-session.js";
 import { createCaptureFrameEncoder } from "./capture-frame-client.js";
+import { captureVideoFrameRate } from "./capture-buffer.js";
 import {
   MAX_TEXTHOOKER_FRAME_LENGTH,
   MAX_TEXTHOOKER_TEXT_LENGTH,
@@ -173,7 +174,7 @@ function startFallbackFrames() {
   const video = preview;
   const dimensions = captureDimensions(video.videoWidth, video.videoHeight);
   const ownedStream = stream;
-  const fps = config.videoPreset === "compact" ? 6 : 8;
+  const fps = captureVideoFrameRate(config.videoPreset, config.clipSeconds);
   const intervalMs = 1000 / fps;
   let lastStartedAt = -Infinity;
   let lastTimestamp = -Infinity;
@@ -483,7 +484,7 @@ async function startCapture() {
   if (starting || stream) throw new Error("A capture source is already being selected or recorded.");
   if (!config?.enabled) throw new Error("Enable media capture in Settings first.");
   const version = ++captureVersion;
-  const frameRate = config.videoPreset === "compact" ? 6 : 8;
+  const frameRate = captureVideoFrameRate(config.videoPreset, config.clipSeconds);
   starting = true;
   try {
     const requested = await navigator.mediaDevices.getDisplayMedia({

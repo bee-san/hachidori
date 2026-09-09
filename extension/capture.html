@@ -34,6 +34,7 @@
         <div>
           <h2 id="reading-heading">Reading page</h2>
           <p id="linked-page">No reading page is linked.</p>
+          <p>Root lookups from this page pin the preceding configured window.</p>
         </div>
         <div class="field-row">
           <label>
@@ -49,7 +50,7 @@
           </label>
           <button id="select-video" type="button">Use video</button>
         </div>
-        <div class="button-row">
+        <div class="button-row" id="timing-controls" hidden>
           <button id="track-area" type="button">Track this text area</button>
           <button id="clear-area" type="button">Clear tracked area</button>
         </div>
@@ -57,11 +58,11 @@
       </section>
 
       <section class="card status-grid" aria-labelledby="timing-heading">
-        <h2 id="timing-heading">Timing sources</h2>
-        <div><span>Texthooker</span><strong id="texthooker-status">Disabled</strong></div>
+        <h2 id="timing-heading">Rolling history</h2>
+        <div id="texthooker-row" hidden><span>Texthooker</span><strong id="texthooker-status">Disabled</strong></div>
         <div><span>Video history</span><strong id="video-history">0 frames</strong></div>
         <div><span>Audio history</span><strong id="audio-history">0 samples</strong></div>
-        <div><span>Lookup pin</span><strong id="pin-status">None</strong></div>
+        <div><span>Recent clip</span><strong id="pin-status">None</strong></div>
       </section>
 
       <p class="privacy">

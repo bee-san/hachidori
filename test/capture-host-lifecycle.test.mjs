@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import { createCaptureSession } from "../extension/capture-session.js";
+import { captureVideoFrameRate } from "../extension/capture-buffer.js";
 
 const source = readFileSync(new URL("../extension/capture-host.js", import.meta.url), "utf8")
   .replace(/^import[\s\S]*?;\n/gmu, "").replace(/^export\s/gmu, "");
@@ -20,7 +21,7 @@ async function fixture() {
   const frameEncoders = [];
   const preview = { videoWidth: 640, videoHeight: 360, play: async () => {} };
   const context = vm.createContext({
-    createCaptureSession, structuredClone, performance, crypto,
+    captureVideoFrameRate, createCaptureSession, structuredClone, performance, crypto,
     createCaptureFrameEncoder: () => {
       const encoder = { closed: false, close() { this.closed = true; } };
       frameEncoders.push(encoder);

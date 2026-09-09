@@ -800,7 +800,7 @@
           </output>
           <p class="section-note">
             Open the capture controls to choose a tab, window, or entire screen. Capture keeps running when you close
-            the controls. Hachidori never requests microphone access.
+            the controls. Each root lookup pins the preceding configured window. Hachidori never requests microphone access.
           </p>
           <fieldset class="lookup-group">
             <legend>Recording</legend>
@@ -817,7 +817,7 @@
                 <span>Captured WAV audio</span>
                 <input id="opt-media-audio" type="checkbox" />
               </label>
-              <label class="field">
+              <label class="field" id="media-history-field" hidden>
                 <span class="field-label">History</span>
                 <select id="opt-media-history">
                   <option value="30">30 seconds</option>
@@ -826,11 +826,12 @@
                 <span class="field-hint">Recorder history retained only in memory.</span>
               </label>
               <label class="field">
-                <span class="field-label">Maximum clip</span>
-                <select id="opt-media-clip">
-                  <option value="5">5 seconds</option>
-                  <option value="10">10 seconds</option>
-                </select>
+                <span class="field-label">Recent window</span>
+                <span class="input-suffix">
+                  <input id="opt-media-clip" type="number" min="1" max="60" step="1" inputmode="numeric" />
+                  <span class="suffix">seconds</span>
+                </span>
+                <span class="field-hint">Keeps only this rolling window in memory. Longer windows reduce video and audio sampling.</span>
               </label>
               <label class="field">
                 <span class="field-label">Video preset</span>
@@ -842,7 +843,7 @@
               </label>
             </div>
           </fieldset>
-          <fieldset class="lookup-group">
+          <fieldset class="lookup-group" id="media-timing-settings" hidden>
             <legend>Timing</legend>
             <div class="fields">
               <label class="field">
@@ -876,7 +877,7 @@
               <input id="opt-media-auto-area" type="checkbox" />
             </label>
           </fieldset>
-          <fieldset class="lookup-group">
+          <fieldset class="lookup-group" id="media-texthooker-settings" hidden>
             <legend>Texthooker</legend>
             <label class="lookup-enable">
               <span>Use a loopback WebSocket text feed</span>

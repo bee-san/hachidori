@@ -44,7 +44,9 @@ const CAPTURE_TARGET = "hachidori-capture";
 const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", media: "Media capture", anki: "Anki" };
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
+  ADVANCED_CAPTURE_TIMING_ENABLED,
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
+  MEDIA_CLIP_SECONDS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   clampOption, normaliseKanjiSelection, normaliseOptions, normaliseTexthookerUrl,
 } = globalThis.HDReaderOptions;
@@ -281,6 +283,9 @@ function updateAnkiSettings() {
 
 function renderMediaSettings() {
   const capture = options.mediaCapture;
+  element("media-history-field").hidden = !ADVANCED_CAPTURE_TIMING_ENABLED;
+  element("media-timing-settings").hidden = !ADVANCED_CAPTURE_TIMING_ENABLED;
+  element("media-texthooker-settings").hidden = !ADVANCED_CAPTURE_TIMING_ENABLED;
   const values = {
     "opt-media-enabled": capture.enabled,
     "opt-media-animation": capture.includeAnimation,
@@ -2658,11 +2663,18 @@ function attachHandlers() {
       void editMediaCapture(capture => { capture[key] = event.target.checked; });
     });
   }
-  for (const [id, key] of [["opt-media-history", "historySeconds"], ["opt-media-clip", "clipSeconds"]]) {
-    element(id).addEventListener("change", event => {
-      void editMediaCapture(capture => { capture[key] = Number(event.target.value); });
-    });
-  }
+  element("opt-media-history").addEventListener("change", event => {
+    void editMediaCapture(capture => { capture.historySeconds = Number(event.target.value); });
+  });
+  element("opt-media-clip").addEventListener("change", event => {
+    const value = Number(event.target.value);
+    if (!MEDIA_CLIP_SECONDS.includes(value)) {
+      event.target.value = String(options.mediaCapture.clipSeconds);
+      setOptionsStatus("Recent window must be a whole number from 1 to 60 seconds.");
+      return;
+    }
+    void editMediaCapture(capture => { capture.clipSeconds = value; });
+  });
   for (const [id, key] of [["opt-media-preset", "videoPreset"], ["opt-media-timing", "timingMode"]]) {
     element(id).addEventListener("change", event => {
       void editMediaCapture(capture => { capture[key] = event.target.value; });

@@ -81,6 +81,7 @@ export function createAvifSequenceEncoder(module, {
 
 export async function encodeJpegSequence(module, frames, {
   endMs,
+  timescale = AVIF_TIMESCALE,
   quality = 55,
   speed = 8,
   createBitmap = globalThis.createImageBitmap?.bind(globalThis),
@@ -95,14 +96,14 @@ export async function encodeJpegSequence(module, frames, {
   if (frames.some(frame => frame.width !== width || frame.height !== height)) {
     throw new Error("Captured frame dimensions changed during the selected interval.");
   }
-  const durations = frameDurations(frames, endMs);
+  const durations = frameDurations(frames, endMs, timescale);
   if (frames.length === 1 && durations[0] < 2) {
     throw new Error("AVIF sequence duration is below the timebase precision");
   }
   const canvas = createCanvas(width, height);
   const context = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
   if (!context) throw new Error("Could not create the AVIF frame decoder canvas.");
-  const encoder = createAvifSequenceEncoder(module, { width, height, quality, speed });
+  const encoder = createAvifSequenceEncoder(module, { width, height, timescale, quality, speed });
   try {
     for (let index = 0; index < frames.length; index += 1) {
       const frame = frames[index];

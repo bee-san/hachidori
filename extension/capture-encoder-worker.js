@@ -20,6 +20,7 @@ self.addEventListener("message", async event => { // NOSONAR -- S2819 applies to
     const module = await encoderModule();
     const data = await encodeJpegSequence(module, request.frames, {
       endMs: request.endMs,
+      timescale: request.timescale,
       quality: request.videoPreset === "compact" ? 50 : 55,
       speed: 8,
       onProgress(completed, total) {

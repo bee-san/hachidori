@@ -25,13 +25,16 @@ function render(status) {
   selectedTabId = status.linkedPage?.tabId ?? null;
   const recording = status.state === "recording";
   const linkedPage = Boolean(status.linkedPage);
+  const advancedTiming = config?.timingMode !== "recent";
   const videos = status.videos ?? [];
   const serializedVideos = JSON.stringify(videos);
   if (serializedVideos !== lastVideos) {
     elements["reading-video"].replaceChildren(...videos.map(video => new Option(video.label, video.id)));
-    elements["video-row"].hidden = videos.length < 2;
     lastVideos = serializedVideos;
   }
+  elements["video-row"].hidden = !advancedTiming || videos.length < 2;
+  elements["timing-controls"].hidden = !advancedTiming;
+  elements["texthooker-row"].hidden = !advancedTiming;
   if (lastPageStatus !== status.pageStatus) {
     elements["page-status"].textContent = status.pageStatus || "";
     lastPageStatus = status.pageStatus;

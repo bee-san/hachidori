@@ -5,6 +5,26 @@ export const MAX_PINNED_FRAME_BYTES = 32 * 1024 * 1024;
 export const MAX_FRAME_BYTES = 256 * 1024;
 export const MAX_WAV_BYTES = 1024 * 1024;
 export const CAPTURE_SAMPLE_RATE = 48_000;
+export const FULL_QUALITY_CAPTURE_SECONDS = 10;
+export const MIN_CAPTURE_SAMPLE_RATE = 8_000;
+
+export function captureVideoFrameRate(videoPreset, seconds) {
+  if (!["standard", "compact"].includes(videoPreset)
+      || !Number.isInteger(seconds) || seconds < 1 || seconds > 60) {
+    throw new Error("capture frame-rate settings are invalid");
+  }
+  const baseRate = videoPreset === "compact" ? 6 : 8;
+  return baseRate * Math.min(1, FULL_QUALITY_CAPTURE_SECONDS / seconds);
+}
+
+export function captureAudioSampleRate(durationMs) {
+  if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 60_000) {
+    throw new Error("capture audio duration is invalid");
+  }
+  return Math.max(MIN_CAPTURE_SAMPLE_RATE, Math.floor(
+    CAPTURE_SAMPLE_RATE * Math.min(1, FULL_QUALITY_CAPTURE_SECONDS * 1000 / durationMs),
+  ));
+}
 
 function finiteTime(value, label) {
   if (!Number.isFinite(value)) throw new Error(`${label} must be finite`);

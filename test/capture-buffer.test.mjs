@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  captureAudioSampleRate,
+  captureVideoFrameRate,
   createAudioRing,
   createCapturePinStore,
   createFrameRing,
@@ -22,6 +24,23 @@ test("frame history stores compressed bytes, evicts by age and bytes, and pins b
   assert.throws(() => ring.append({ timestampMs: 2200, width: 2, height: 1, data: new Uint8Array([1]) }), /increase/u);
   assert.throws(() => ring.append({ timestampMs: 2300, width: 2, height: 1, data: new Uint8Array(5) }), /limit/u);
   assert.throws(() => ring.select(1500, 2300, 7), /pinned-frame/u);
+});
+
+test("long recent windows keep one clip-sized video and audio budget", () => {
+  assert.equal(captureVideoFrameRate("standard", 1), 8);
+  assert.equal(captureVideoFrameRate("standard", 10), 8);
+  assert.equal(captureVideoFrameRate("standard", 20), 4);
+  assert.equal(captureVideoFrameRate("standard", 60), 8 / 6);
+  assert.equal(captureVideoFrameRate("compact", 60), 1);
+  assert.equal(captureAudioSampleRate(1000), 48_000);
+  assert.equal(captureAudioSampleRate(10_000), 48_000);
+  assert.equal(captureAudioSampleRate(20_000), 24_000);
+  assert.equal(captureAudioSampleRate(60_000), 8_000);
+  assert.equal(encodeMonoWav(new Float32Array(60 * 8_000), 8_000).byteLength, 960_044);
+  for (const value of [0, 60_001, Infinity]) {
+    assert.throws(() => captureAudioSampleRate(value), /duration/u);
+  }
+  assert.throws(() => captureVideoFrameRate("standard", 61), /frame-rate/u);
 });
 
 test("irregular frames retain their start predecessor and give AVIF and WAV identical sample durations", () => {

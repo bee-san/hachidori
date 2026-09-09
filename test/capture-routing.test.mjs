@@ -24,6 +24,7 @@ function freshWorker({ readerDocument = reader.documentId, linked = true, status
     capturePage: null, captureRecovery: null, captureContentDocument: null, captureLink: null,
     OPTIONS_KEY: 'options', OFFSCREEN_DOCUMENT: 'offscreen.html',
     ensureOffscreen: async () => {}, HDReaderOptions: { normaliseOptions: value => value,
+      activeMediaCapture: globalThis.HDReaderOptions.activeMediaCapture,
       projectContentOptions: globalThis.HDReaderOptions.projectContentOptions },
     CAPTURE_DOCUMENT: 'capture.html', CAPTURE_CONTENT_TARGET: 'hachidori-capture-content',
     CAPTURE_PAGE_TARGET: 'hachidori-capture-page',

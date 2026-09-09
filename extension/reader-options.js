@@ -126,9 +126,12 @@
   const AUDIO_SOURCE_LABELS = { custom: "Audio URL", "custom-json": "Yomitan JSON",
     "text-to-speech": "Speech: term", "text-to-speech-reading": "Speech: reading" };
   const AUDIO_SOURCE_TYPES = Object.keys(AUDIO_SOURCE_LABELS);
+  // Keep the reviewed texthooker/cue/DOM timing implementation available for
+  // a future return without letting stored legacy settings activate it today.
+  const ADVANCED_CAPTURE_TIMING_ENABLED = false;
   const MEDIA_TIMING_MODES = ["auto", "page", "recent"];
   const MEDIA_HISTORY_SECONDS = [30, 60];
-  const MEDIA_CLIP_SECONDS = [5, 10];
+  const MEDIA_CLIP_SECONDS = Array.from({ length: 60 }, (_, index) => index + 1);
   const MEDIA_VIDEO_PRESETS = ["standard", "compact"];
   const MEDIA_TEXTHOOKER_FORMATS = ["plain", "gsm"];
   const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -187,6 +190,18 @@
     }
     normaliseCaptureCollectors(source, result);
     return result;
+  }
+
+  function activeMediaCapture(value) {
+    const result = normaliseMediaCapture(value);
+    if (ADVANCED_CAPTURE_TIMING_ENABLED) return result;
+    return {
+      ...result,
+      timingMode: "recent",
+      historySeconds: result.clipSeconds,
+      texthooker: { ...result.texthooker, enabled: false },
+      page: { ...result.page, nativeCues: false, domText: false, autoLearnArea: false },
+    };
   }
 
   function sameMediaCapture(left, right) {
@@ -438,13 +453,14 @@
 
   function projectContentOptions(value) {
     const options = normaliseOptions(value);
+    const mediaCapture = activeMediaCapture(options.mediaCapture);
     return {
       ...options,
       mediaCapture: {
-        ...options.mediaCapture,
+        ...mediaCapture,
         texthooker: {
-          enabled: options.mediaCapture.texthooker.enabled,
-          format: options.mediaCapture.texthooker.format,
+          enabled: mediaCapture.texthooker.enabled,
+          format: mediaCapture.texthooker.format,
         },
       },
     };
@@ -455,9 +471,11 @@
     DEFAULT_OPTIONS, DEFAULT_MEDIA_CAPTURE, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
+    ADVANCED_CAPTURE_TIMING_ENABLED,
     MEDIA_TIMING_MODES, MEDIA_HISTORY_SECONDS, MEDIA_CLIP_SECONDS, MEDIA_VIDEO_PRESETS, MEDIA_TEXTHOOKER_FORMATS,
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
-    normaliseTexthookerUrl, normaliseAnkiConnectUrl, normaliseMediaCapture, definitionBlurQualifies,
+    normaliseTexthookerUrl, normaliseAnkiConnectUrl, normaliseMediaCapture, activeMediaCapture,
+    definitionBlurQualifies,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
     projectStoredOptions, projectContentOptions, validateOptionsPatch,
     resolvePopupImageSources,

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import {
+  CAPTURE_SAMPLE_RATE,
+  captureAudioSampleRate,
   createAudioRing,
   createCapturePinStore,
   createFrameRing,
@@ -288,7 +290,7 @@ export function createCaptureSession({
       if (currentPin() !== pin || pin.deadlineVersion !== version || pin.finalized) return;
       pin.frames = config.includeAnimation ? frameRing.select(pin.startMs, pin.endMs) : [];
       pin.audio = config.includeCapturedAudio && pin.audioAvailable
-        ? audioRing.select(pin.startMs, pin.endMs) : null;
+        ? audioRing.select(pin.startMs, pin.endMs, captureAudioSampleRate(pin.endMs - pin.startMs)) : null;
       pin.mediaErrors = {};
       // A display-capture track can emit only changed frames. Once the bounded
       // drain ends, its last pixels remain valid until source mute/loss stops us.
@@ -431,7 +433,11 @@ export function createCaptureSession({
         if (includeAnimation) {
           job.assets.animation = {
             filename: pin.animationFilename,
-            data: await encodeAnimation(pin.frames, { endMs: pin.endMs, videoPreset: config.videoPreset }, {
+            data: await encodeAnimation(pin.frames, {
+              endMs: pin.endMs,
+              timescale: pin.audio?.sampleRate ?? CAPTURE_SAMPLE_RATE,
+              videoPreset: config.videoPreset,
+            }, {
               signal: controller.signal,
               onProgress(completed, total, heapBytes) {
                 job.progress = completed;

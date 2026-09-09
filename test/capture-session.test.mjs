@@ -124,6 +124,7 @@ test("root lookup pins once, shortens an unfinished DOM tail when the line close
   assert.equal(status.assets.audio.filename, pin.audioFilename);
   assert.equal(h.encoded.length, 1);
   assert.equal(h.encoded[0].options.endMs, h.now() - 1);
+  assert.equal(h.encoded[0].options.timescale, 48_000);
   assert.deepEqual([...h.session.jobAsset(started.jobId, "animation").data], [1, 2, 3]);
   assert.equal(h.session.completeExport(started.jobId), true);
   assert.equal(h.session.status().pinActive, false);

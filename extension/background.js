@@ -1463,8 +1463,12 @@ let captureConfigTail = Promise.resolve();
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes[OPTIONS_KEY]) return;
-  const previous = globalThis.HDReaderOptions.normaliseOptions(changes[OPTIONS_KEY].oldValue).mediaCapture;
-  const mediaCapture = globalThis.HDReaderOptions.normaliseOptions(changes[OPTIONS_KEY].newValue).mediaCapture;
+  const previous = globalThis.HDReaderOptions.activeMediaCapture(
+    globalThis.HDReaderOptions.normaliseOptions(changes[OPTIONS_KEY].oldValue).mediaCapture,
+  );
+  const mediaCapture = globalThis.HDReaderOptions.activeMediaCapture(
+    globalThis.HDReaderOptions.normaliseOptions(changes[OPTIONS_KEY].newValue).mediaCapture,
+  );
   if (sameJsonValue(previous, mediaCapture)) return;
   const revision = ++captureConfigRevision;
   const apply = () => relayCapture({ type: "hd_capture_configure", mediaCapture },
@@ -1578,7 +1582,9 @@ async function handleCaptureHostMessage(message, sender) {
   await recoverCaptureBinding(message.linkedPage);
   const stored = await chrome.storage.local.get(OPTIONS_KEY);
   return { documentId,
-    mediaCapture: globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]).mediaCapture };
+    mediaCapture: globalThis.HDReaderOptions.activeMediaCapture(
+      globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]).mediaCapture,
+    ) };
 }
 
 // A newly created tab can be reopened before its TAB context is published.

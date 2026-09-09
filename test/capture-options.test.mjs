@@ -4,7 +4,9 @@ import test from "node:test";
 import "../extension/reader-options.js";
 
 const {
+  ADVANCED_CAPTURE_TIMING_ENABLED,
   DEFAULT_MEDIA_CAPTURE,
+  activeMediaCapture,
   normaliseOptions,
   normaliseTexthookerUrl,
   projectContentOptions,
@@ -28,13 +30,13 @@ test("media capture defaults are disabled and normalize into independent nested 
   assert.equal(second.page.domText, true);
 });
 
-test("media capture accepts only bounded enumerated settings and loopback websocket endpoints", () => {
+test("media capture accepts a whole-second recent window and retains dormant advanced settings", () => {
   const value = configured({
     enabled: true,
     timingMode: "page",
     includeAnimation: false,
     historySeconds: 30,
-    clipSeconds: 5,
+    clipSeconds: 37,
     videoPreset: "compact",
     estimatedOffsetMs: 2000,
     texthooker: { enabled: true, url: "ws://localhost:7275/ws/texthooker", format: "gsm" },
@@ -43,6 +45,10 @@ test("media capture accepts only bounded enumerated settings and loopback websoc
   assert.deepEqual(validateOptionsPatch({ mediaCapture: value }), {
     mediaCapture: { ...value, texthooker: { ...value.texthooker, url: "ws://localhost:7275/ws/texthooker" } },
   });
+  for (const clipSeconds of [1, 5, 10, 37, 60]) {
+    assert.equal(validateOptionsPatch({ mediaCapture: configured({ clipSeconds }) })
+      .mediaCapture.clipSeconds, clipSeconds);
+  }
   for (const url of ["ws://127.0.0.1:7275/", "wss://localhost/ws/texthooker", "ws://[::1]:7275/ws/plaintext"]) {
     assert.equal(normaliseTexthookerUrl(url), url);
   }
@@ -57,7 +63,9 @@ test("media capture rejects inert output, armed empty texthooker, malformed rang
     configured({ texthooker: { enabled: true, url: "", format: "plain" } }),
     configured({ estimatedOffsetMs: 2001 }),
     configured({ historySeconds: 45 }),
-    configured({ clipSeconds: 8 }),
+    configured({ clipSeconds: 0 }),
+    configured({ clipSeconds: 61 }),
+    configured({ clipSeconds: 1.5 }),
     { ...configured({}), surprise: true },
     { ...configured({}), page: { ...DEFAULT_MEDIA_CAPTURE.page, selector: "body" } },
   ];
@@ -66,9 +74,29 @@ test("media capture rejects inert output, armed empty texthooker, malformed rang
   assert.equal(normaliseOptions({ mediaCapture: invalid[1] }).mediaCapture.texthooker.enabled, false);
 });
 
-test("content option projection never exposes the configured texthooker URL", () => {
-  const options = projectContentOptions({ mediaCapture: configured({
+test("active capture projection keeps advanced timing dormant and bounds history to the recent window", () => {
+  const stored = configured({
+    timingMode: "auto",
+    historySeconds: 60,
+    clipSeconds: 37,
     texthooker: { enabled: true, url: "ws://127.0.0.1:7275/ws/texthooker", format: "gsm" },
-  }) });
-  assert.deepEqual(options.mediaCapture.texthooker, { enabled: true, format: "gsm" });
+    page: { nativeCues: true, domText: true, autoLearnArea: true },
+  });
+  assert.equal(ADVANCED_CAPTURE_TIMING_ENABLED, false);
+  assert.deepEqual(activeMediaCapture(stored), {
+    ...stored,
+    timingMode: "recent",
+    historySeconds: 37,
+    texthooker: { ...stored.texthooker, enabled: false },
+    page: { nativeCues: false, domText: false, autoLearnArea: false },
+  });
+  assert.deepEqual(normaliseOptions({ mediaCapture: stored }).mediaCapture, stored,
+    "stored legacy settings remain available for a future re-enable");
+  const options = projectContentOptions({ mediaCapture: stored });
+  assert.deepEqual(options.mediaCapture.texthooker, { enabled: false, format: "gsm" });
+  assert.deepEqual(options.mediaCapture.page, {
+    nativeCues: false,
+    domText: false,
+    autoLearnArea: false,
+  });
 });
