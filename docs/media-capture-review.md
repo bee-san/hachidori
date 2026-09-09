@@ -11,6 +11,12 @@ AudioWorklet capture checks on Chrome for Testing
 152.0.7977.82 at later revisions with the same extension tree. The headful
 thirty-minute run at `9cc5907` completed **13/13 checks** and **27 repeated exports**.
 
+This is a historical record for PR #71. The current production configuration
+keeps its texthooker, cue, and DOM-timing implementation dormant and uses one
+configurable 1–60 second recent window instead. The measurements below still
+document the retained encoder, capture, and lifecycle foundations; they do not
+describe the current Settings surface.
+
 The final merge review additionally identified cleanup needed after a definitive
 Anki duplicate/invalid response and after a replacement reader fails to link.
 Those lifecycle corrections and their final validation are recorded separately

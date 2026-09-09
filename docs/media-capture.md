@@ -6,11 +6,13 @@ Media mining is an optional, default-off recorder for attaching local gameplay
 or reading context to Anki notes. It produces two independent assets over the
 same pinned interval:
 
-- an animated AVIF, fitted to 640 × 360 at up to 8 fps in Standard mode or
-  480 × 270 at up to 6 fps in Compact mode;
+- an animated AVIF, fitted to 640 × 360 in Standard mode or 480 × 270 in
+  Compact mode;
 - a 16-bit mono WAV from the selected share's source audio, when Chrome makes
   that audio available.
 
+The default recent window is ten seconds. Longer windows reduce video and
+audio sampling so the same output limits can cover up to sixty seconds.
 Pronunciation `{audio}` remains separate. Media-mining templates use
 `{capture-animation}` and `{capture-audio}`.
 
@@ -23,17 +25,16 @@ Pronunciation `{audio}` remains separate. Media-mining templates use
 4. Open **Capture controls**, click **Start capture**, and choose one browser
    tab, application window, or monitor in Chrome's picker. Source audio depends
    on the browser, operating system, chosen surface, and picker audio option.
-5. Select and link the reading page. If it has several videos, select the
-   relevant one. Hachidori may learn an ordinary accessible text area from the
-   first root lookup, or you can use **Track this text area**.
+5. Select and link the reading page. Each root lookup from that page pins the
+   preceding configured recent window.
 6. The controls may be closed and reopened while recording continues. The
    recorder lives in the extension's shared offscreen document.
 
 Changing collection settings while recording asks for confirmation, then stops
 capture and clears transient history. **Stop capture** cancels pending capture
-and export work and clears media, text timing records, source bindings, and
-unsubmitted pins. A note mutation already sent to Anki may still succeed;
-stopping during media upload prevents a new note mutation from being sent.
+and export work and clears media, source bindings, and unsubmitted pins. A note
+mutation already sent to Anki may still succeed; stopping during media upload
+prevents a new note mutation from being sent.
 
 Settings, imports, extension restarts, and browser restarts never arm capture
 automatically. A service-worker restart can recover the same recording and
@@ -68,49 +69,26 @@ fields intact, and no duplicate retry is invited.
 
 ![The Anki settings section with the mining screenshot switch](assets/anki-screenshot-settings.png)
 
-## Timing
+## Recent window
 
-Auto mode resolves each root lookup independently:
+**Recent window** accepts a whole number from 1 through 60 seconds and defaults
+to 10. Hachidori retains only that rolling window. A root lookup pins the window
+immediately preceding the lookup; partial warmup can produce a shorter clip.
+Nested lookups inherit the root pin, so reading definitions does not move it.
 
-1. a matching accepted live record from the configured loopback texthooker;
-2. a matching cue transition witnessed on the selected linked-page video;
-3. a matching change witnessed in the tracked ordinary DOM text area;
-4. the recent history ending at lookup time.
-
-The first text already present when an area is learned has no observed onset,
-so it falls back. Later replacement, typewriter, append, hide, pause, seek, and
-cue transitions can supply timing. Repeated or cross-session matches that
-cannot be distinguished fail closed and continue down the priority chain.
-Nested lookups inherit the root pin, so reading definitions does not move the
-clip.
-
-**Webpage only** skips texthooker input. **Recent clip only** skips all text and
-cue collectors. A matching clip remains valid when its audio contains silence;
-Hachidori does not use voice activity detection.
-
-The texthooker client accepts only an explicitly configured loopback `ws://`
-or `wss://` endpoint. Enter the endpoint before enabling the feed. Plain mode
-requires a live-only stream. The **JSON · text_received** format recognizes the
-tested live text messages and ignores snapshots, acknowledgements,
-translations, and unrelated commands. Incoming text is never displayed, used
-as HTML, or treated as an instruction to create a note.
-
-Closing a line keeps its timing eligible in the current live feed epoch.
-Disconnecting or reconnecting invalidates that feed's previous epoch. Page
-timing uses the lookup's DOM range to distinguish nearby occurrences; an
-ambiguous range falls back to recent history.
+The linked reading page establishes which document may pin and submit a clip.
+Hachidori does not currently connect to a capture WebSocket, watch moving page
+text, or inspect video cues to change the interval.
 
 ## Retention and export bounds
 
-The recorder targets the configured 30- or 60-second history and exports clips
-of up to the configured 5 or 10 seconds. A closed text interval or partial
-warmup history can produce a shorter clip. It enforces these resource limits:
+The recorder retains and exports the same configured 1–60 second recent window.
+It enforces these resource limits:
 
 | Resource | Bound |
 | --- | --- |
 | Live compressed frames | 64 MiB, 256 KiB per frame |
 | Extra pinned compressed frames | 32 MiB |
-| Text timing records | 1,000 records, 4,096 characters each |
 | Animated AVIF | 4 MiB |
 | Mono WAV | 1 MiB |
 | Encoder heap | 256 MiB |
@@ -118,14 +96,16 @@ warmup history can produce a shorter clip. It enforces these resource limits:
 | Capture asset message | 6 MiB serialized |
 
 Frames are fitted without upscaling and JPEG-compressed in a dedicated worker
-before entering the ring. This keeps Chrome's background-page idle encoding
-from delaying frame delivery. Audio uses a sample-clocked mono Float32 ring.
-Each new frame preserves its aspect ratio inside the session's original canvas,
-with letterboxing after a source resize when needed. A byte limit can shorten
-the available video history.
+before entering the ring. Each frame preserves its aspect ratio inside the
+session's original canvas, with letterboxing after a source resize when needed.
+Audio uses a sample-clocked mono Float32 ring. A byte limit can shorten the
+available video history.
 
-The 8/6 fps settings are ceilings. A static or background source may deliver
-fewer frames, and capture cannot restore frames the browser did not deliver.
+For windows up to ten seconds, Standard requests at most 8 fps and Compact at
+most 6 fps. Longer windows multiply that ceiling by `10 / seconds`; a
+sixty-second window requests about 1.33 fps Standard or 1 fps Compact. A static
+or background source may deliver fewer frames, and capture cannot restore
+frames the browser did not deliver.
 In a controlled Chrome test, moving the captured tab behind the controls
 reduced delivery from 7.99 to 6.49 fps; returning to the source restored
 7.99 fps. Every delivered frame reached the JPEG worker in that probe.
@@ -134,9 +114,11 @@ At the selected interval's end, the recorder allows up to 250 ms for already
 captured audio and JPEG frames to arrive. This delivery drain does not move
 the lookup anchor or extend the clip. The frame displayed at the interval's
 start is retained, including when it precedes the boundary; a stationary source
-can hold its last frame. AVIF frame durations and WAV samples use a common
-48 kHz timebase so both files cover the same duration. Equal duration alone
-does not establish flash/beep synchronization; see the acceptance record below.
+can hold its last frame. WAV output is 48 kHz through ten seconds. Longer full
+windows scale the output rate by `10 / seconds`, with an 8 kHz minimum; a
+sixty-second WAV is 8 kHz. AVIF frame durations use the same output timebase, so
+both files cover the same duration. Equal duration alone does not establish
+flash/beep synchronization; see the acceptance record below.
 
 If audio samples are still missing after the bounded drain, an export requiring
 that audio fails explicitly. Fully delivered source silence remains valid.
@@ -151,18 +133,15 @@ write is not automatically retried or duplicated.
 
 ## Privacy and limitations
 
-Raw frames, PCM, received text, identifiers, timing records, and source
-bindings stay in the offscreen recorder and linked page's transient state,
-and are not written to
+Raw frames, PCM, identifiers, and source bindings stay in the offscreen
+recorder and linked page's transient state and are not written to
 `chrome.storage.local`. Only explicitly mined final assets are sent to the
 configured local AnkiConnect endpoint.
 
-The generic page collector supports ordinary accessible DOM where Hachidori can
-already locate text. Unsupported iframe or shadow-root combinations,
-canvas-only text, burned-in subtitles, and private player surfaces require a
-texthooker or recent-history timing. This release intentionally has no OCR,
-speech recognition, VAD, subtitle interception/download, site-specific player
-adapters, or microphone capture.
+The recent-window recorder does not inspect subtitles or detect moving strings.
+The active recorder opens no capture WebSocket and performs no OCR, speech
+recognition, VAD, subtitle interception/download, site-specific player
+adaptation, or microphone capture.
 
 Navigating away from or unlinking the reading page clears its binding and
 unsubmitted pins while recording continues. An export already admitted owns
@@ -177,10 +156,11 @@ Anki devices have not been validated.
 
 ## Verification
 
-The focused Node suite exercises production settings handlers, lookup ownership,
-collector messages, restart routing, buffer and drain behavior, AVIF/WAV
-encoding, and the final Anki mutation boundary. Separate browser, Linux surface,
-and installed-Anki harnesses cover the real runtimes.
+The focused Node suite exercises production settings handlers, 1–60 second
+intervals, lookup ownership, restart routing, buffer and drain behavior,
+AVIF/WAV encoding, and the final Anki mutation boundary. The dormant collector
+modules retain their focused regressions. Separate browser, Linux surface, and
+installed-Anki harnesses cover the real runtimes.
 
 The [PR #71 acceptance record](media-capture-review.md) records passing processor
 and AudioWorklet capture, flash/beep alignment within 125 ms, a thirty-minute

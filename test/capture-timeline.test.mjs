@@ -22,6 +22,31 @@ test("capture text normalization is modest NFC plus whitespace normalization", (
   assert.notEqual(normaliseCaptureText("猫、いる"), normaliseCaptureText("猫いる"));
 });
 
+test("recent lookup accepts every whole-second window from one through sixty", () => {
+  for (const clipSeconds of [1, 10, 60]) {
+    const result = resolveCaptureInterval({
+      records: [],
+      lookupTimeMs: 100_000,
+      availableStartMs: 0,
+      clipSeconds,
+      timingMode: "recent",
+    });
+    assert.equal(result.sourceKind, "recent");
+    assert.equal(result.startMs, 100_000 - clipSeconds * 1000);
+    assert.equal(result.endMs, 100_000);
+    assert.equal(result.partial, false);
+  }
+  for (const clipSeconds of [0, 1.5, 61]) {
+    assert.throws(() => resolveCaptureInterval({
+      records: [],
+      lookupTimeMs: 100_000,
+      availableStartMs: 0,
+      clipSeconds,
+      timingMode: "recent",
+    }), /clip length/u);
+  }
+});
+
 test("timeline revisions preserve onset while repeated occurrences remain distinct", () => {
   const timeline = createCaptureTimeline();
   timeline.begin(record());

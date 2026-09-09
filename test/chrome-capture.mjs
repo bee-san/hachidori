@@ -35,18 +35,18 @@ const FORCE_AUDIO_WORKLET = process.env.HACHIDORI_CAPTURE_FORCE_AUDIO_WORKLET ==
 const CHECKS = [
   "host permissions expose reading tab title and URL and reuse capture controls without tabs permission",
   "real tab capture records bounded video and source audio",
-  "default ten-second moving-text export decodes roughly eighty frames with equal AVIF/WAV duration",
+  "default ten-second recent export decodes roughly eighty frames with equal AVIF/WAV duration",
   "dictionary lookups remain responsive during a full export",
   "closing and reopening controls preserves the recording and reading document",
   "service-worker restart recovers the same capture session and linked reader",
-  "learned DOM timing falls back first, then pins an observed line",
+  "legacy WebSocket and moving-text settings remain stored but inactive",
   "animated AVIF and mono WAV upload through Anki one at a time",
   "Chrome decodes changing AVIF frames and non-silent WAV samples",
   "decoded flash and beep stay aligned within 125 ms",
-  "live texthooker priority, active state and reconnect use the real loopback WebSocket",
+  "a sixty-second recent export scales frame and audio density within the same asset limits",
   "a second pinned interval encodes and cleans up independently",
   "one linked reading document is enforced and navigation clears it without stopping capture",
-  "capture-setting confirmation stops and clears without auto-rearming",
+  "recent-window confirmation stops and clears without auto-rearming",
 ];
 
 function cachedChrome() {
@@ -236,54 +236,12 @@ function createFixtureServer(anki) {
   });
 }
 
-function websocketTextFrame(value) {
-  const payload = Buffer.from(value, "utf8");
-  if (payload.length <= 125) return Buffer.concat([Buffer.from([0x81, payload.length]), payload]);
-  if (payload.length <= 0xffff) {
-    const header = Buffer.alloc(4);
-    header[0] = 0x81;
-    header[1] = 126;
-    header.writeUInt16BE(payload.length, 2);
-    return Buffer.concat([header, payload]);
-  }
-  throw new Error("test WebSocket frame is too large");
-}
-
-function attachTexthooker(server, state) {
+function attachWebSocketTripwire(server, state) {
   server.on("upgrade", (req, socket) => {
-    if (req.url !== "/ws" || typeof req.headers["sec-websocket-key"] !== "string") {
-      socket.destroy();
-      return;
-    }
-    const accept = createHash("sha1")
-      .update(`${req.headers["sec-websocket-key"]}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
-      .digest("base64");
-    socket.write([
-      "HTTP/1.1 101 Switching Protocols",
-      "Upgrade: websocket",
-      "Connection: Upgrade",
-      `Sec-WebSocket-Accept: ${accept}`,
-      "",
-      "",
-    ].join("\r\n"));
-    state.origins.push(req.headers.origin || "");
     state.connections.push(socket);
     socket.on("error", () => {});
-    socket.on("close", () => {
-      if (state.current === socket) state.current = null;
-    });
-    state.current = socket;
+    socket.destroy();
   });
-  state.send = value => {
-    if (!state.current || state.current.destroyed) throw new Error("texthooker client is not connected");
-    state.current.write(websocketTextFrame(value));
-  };
-  state.disconnect = () => {
-    const socket = state.current;
-    if (!socket) return false;
-    socket.write(Buffer.from([0x88, 0x00]), () => socket.destroy());
-    return true;
-  };
 }
 
 async function listen(server) {
@@ -624,6 +582,110 @@ async function verifyFullRecentExport({ world, capture, source, pin, anki, stopp
   return summary;
 }
 
+async function verifyScaledRecentExport({ world, source, anki, seconds = 60, assetName = "scaled-capture" }) {
+  const ankiStatus = await runtimeMessage(world, "hachidori-anki", "hd_anki_status");
+  const engineStatus = await runtimeMessage(world, "hoshidicts-offscreen", "hd_status");
+  const pin = await world.evaluate(`(async () => {
+    const node = document.getElementById("subtitle").firstChild;
+    const value = await HDCapture.rootLookup({
+      anchor: node,
+      sentence: node.nodeValue,
+      query: node.nodeValue,
+    });
+    globalThis.__capturePin = value;
+    return value;
+  })()`);
+  assert.ok(pin, "the long retained window can be pinned");
+  assert.equal(pin.sourceLabel, "Recent clip");
+  assert.equal(pin.partial, false, "the long export has a fully warmed recent window");
+
+  const started = performance.now();
+  const exported = await captureMessage(world, "hd_capture_export", {
+    token: pin.token,
+    requirements: { includeAnimation: true, includeAudio: true },
+  });
+  let job;
+  const deadline = Date.now() + 40_000;
+  do {
+    job = await captureMessage(world, "hd_capture_job_status", { jobId: exported.jobId });
+    if (job.state === "error") throw new Error(job.error);
+    if (job.state !== "ready") await new Promise(done => setTimeout(done, 100));
+  } while (job.state !== "ready" && Date.now() < deadline);
+  assert.equal(job.state, "ready", `${seconds}-second export finishes within its watchdog`);
+
+  const submitted = await runtimeMessage(world, "hachidori-anki", "hd_anki_submit", {
+    request: {
+      term: {
+        expression: "長い",
+        reading: "ながい",
+        rules: "",
+        glossaries: [],
+        frequencies: [],
+        pitches: [],
+      },
+      generation: engineStatus.generation,
+      trace: [],
+      sentence: "長い場面",
+      matched: "長い",
+      matchOffset: 0,
+      popupSelectionText: "",
+      searchQuery: "長い",
+      documentTitle: SOURCE_TITLE,
+      dictionaryAliases: {},
+      frequencyDictionaries: [],
+      configKey: ankiStatus.configKey,
+      capturePin: pin,
+      captureJobId: exported.jobId,
+      captureUnavailable: [],
+    },
+  });
+  assert.equal(submitted.state, "added");
+  const animationData = anki.media.get(pin.animationFilename);
+  const audioData = anki.media.get(pin.audioFilename);
+  assert.ok(animationData);
+  assert.ok(audioData);
+  const avif = Buffer.from(animationData, "base64");
+  const wav = Buffer.from(audioData, "base64");
+  const decoded = await decodedFrameHashes(source, animationData);
+  const timing = avifTiming(avif);
+  const videoSeconds = timing.durations.reduce((sum, value) => sum + value, 0) / timing.timescale;
+  const sampleRate = wav.readUInt32LE(24);
+  const audioSeconds = wav.readUInt32LE(40) / 2 / sampleRate;
+  const expectedSampleRate = Math.max(8_000, Math.floor(48_000 * Math.min(1, 10 / seconds)));
+
+  assert.equal(sampleRate, expectedSampleRate);
+  assert.equal(timing.timescale, sampleRate, "animation and audio use the scaled sample timebase");
+  assert.ok(Math.abs(videoSeconds - seconds) <= 1 / sampleRate,
+    `scaled animation duration ${videoSeconds}`);
+  assert.ok(Math.abs(videoSeconds - audioSeconds) <= 1 / sampleRate,
+    "scaled AVIF and WAV cover the same recent window");
+  assert.ok(decoded.frameCount >= 55 && decoded.frameCount <= 90,
+    `${seconds}-second moving export keeps roughly one standard clip's frame budget (${decoded.frameCount})`);
+  assert.ok(new Set(decoded.hashes).size >= 30, "the scaled export still contains changing frames");
+  assert.ok(avif.byteLength <= 4 * 1024 * 1024);
+  assert.ok(wav.byteLength <= 1024 * 1024);
+
+  if (ASSET_DIR) {
+    mkdirSync(resolve(ASSET_DIR), { recursive: true });
+    writeFileSync(resolve(ASSET_DIR, `${assetName}.avif`), avif);
+    writeFileSync(resolve(ASSET_DIR, `${assetName}.wav`), wav);
+  }
+  const summary = {
+    assetName,
+    seconds,
+    encodeMs: performance.now() - started,
+    encoderHeapBytes: job.encoderHeapBytes,
+    frames: decoded.frameCount,
+    sampleRate,
+    videoSeconds,
+    audioSeconds,
+    avifBytes: avif.byteLength,
+    wavBytes: wav.byteLength,
+  };
+  console.log("SCALED_EXPORT", JSON.stringify(summary));
+  return summary;
+}
+
 async function main() {
   assert.ok(CHROME && existsSync(CHROME), "Chrome for Testing is available");
   assert.ok(existsSync(PUPPETEER), "puppeteer-core is available");
@@ -639,9 +701,9 @@ async function main() {
     media: new Map(),
     note: null,
   };
-  const texthooker = { connections: [], origins: [], current: null, send: null, disconnect: null };
+  const texthooker = { connections: [] };
   const server = createFixtureServer(anki);
-  attachTexthooker(server, texthooker);
+  attachWebSocketTripwire(server, texthooker);
   await listen(server);
   fixtureOrigin = `http://127.0.0.1:${server.address().port}`;
   rmSync(PROFILE, { recursive: true, force: true });
@@ -752,6 +814,7 @@ async function main() {
     const ankiConfig = {
       deck: "Default",
       model: "CaptureModel",
+      url: "http://127.0.0.1:8765",
       apiKey: "",
       tags: ["hachidori", "capture-e2e"],
       fields: {
@@ -764,11 +827,13 @@ async function main() {
         audio: "",
         captureAnimation: "",
         captureAudio: "",
+        screenshot: "",
       },
       checkForDuplicates: true,
       duplicateScope: "collection",
       duplicateScopeCheckAllModels: false,
       duplicateBehavior: "prevent",
+      captureScreenshot: true,
       fieldTemplates: {
         Front: { value: "{expression}", overwriteMode: "overwrite" },
         Animation: { value: "{capture-animation}", overwriteMode: "overwrite" },
@@ -778,6 +843,18 @@ async function main() {
     await writeOptions(settings, { mediaCapture, anki: ankiConfig });
     await settings.reload({ waitUntil: "domcontentloaded" });
     await settings.waitForSelector("#media:not([hidden])");
+    const storedAdvancedCapture = await settings.evaluate(async () =>
+      (await chrome.storage.local.get("options")).options.mediaCapture);
+    assert.equal(storedAdvancedCapture.timingMode, "auto");
+    assert.equal(storedAdvancedCapture.historySeconds, 60);
+    assert.equal(storedAdvancedCapture.texthooker.enabled, true);
+    assert.deepEqual(storedAdvancedCapture.page,
+      { nativeCues: true, domText: true, autoLearnArea: true });
+    assert.equal(await settings.$eval("#opt-media-clip", element => element.value), "10");
+    for (const selector of ["#media-history-field", "#media-timing-settings", "#media-texthooker-settings"]) {
+      assert.equal(await settings.$eval(selector, element => element.hidden), true,
+        `${selector} remains dormant in Settings`);
+    }
     if (SETTINGS_SCREENSHOT) {
       // Keep the whole section inside the viewport before measuring its crop;
       // resizing during an element screenshot can shift the centered layout.
@@ -830,6 +907,17 @@ async function main() {
     const readingTabs = await captureControl(capture, "hd_capture_tabs");
     assert.ok(readingTabs.tabs.some(tab => tab.title === SOURCE_TITLE && tab.url === `${fixtureOrigin}/fixture`),
       "the production reading-tab picker receives both title and URL from the host permission");
+    const initialCaptureStatus = await captureControl(capture, "hd_capture_status");
+    assert.equal(initialCaptureStatus.config.timingMode, "recent");
+    assert.equal(initialCaptureStatus.config.historySeconds, 10);
+    assert.equal(initialCaptureStatus.config.clipSeconds, 10);
+    assert.equal(initialCaptureStatus.config.texthooker.enabled, false);
+    assert.deepEqual(initialCaptureStatus.config.page,
+      { nativeCues: false, domText: false, autoLearnArea: false });
+    for (const selector of ["#video-row", "#timing-controls", "#texthooker-row"]) {
+      assert.equal(await capture.$eval(selector, element => element.hidden), true,
+        `${selector} remains dormant in Capture controls`);
+    }
     await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped",
       { polling: 100 });
     assert.equal(await capture.$eval("#capture-state", element => element.textContent), "Stopped",
@@ -845,11 +933,10 @@ async function main() {
     const startError = await capture.$eval("#capture-error", element => element.textContent);
     assert.equal(startError, "", `display capture starts without an error: ${startError}`);
     await capture.bringToFront();
-    await capture.waitForFunction(() =>
-      (document.getElementById("texthooker-status")?.textContent || "").includes("waiting"),
-    { timeout: 10_000, polling: 100 });
-    assert.equal(texthooker.connections.length, 1);
-    assert.equal(texthooker.origins[0], `chrome-extension://${id}`);
+    await new Promise(done => setTimeout(done, 500));
+    assert.equal(texthooker.connections.length, 0,
+      "stored legacy WebSocket settings do not open a connection");
+    assert.equal((await captureControl(capture, "hd_capture_status")).texthookerStatus, "Disabled");
     await capture.waitForFunction(() => /[1-9][0-9]* frames/u.test(
       document.getElementById("video-history")?.textContent || ""), { polling: 100 });
     await capture.waitForFunction(() => {
@@ -906,7 +993,7 @@ async function main() {
     await source.bringToFront();
     await capture.waitForFunction(async () => {
       const reply = await chrome.runtime.sendMessage({target:"hachidori-capture",type:"hd_capture_status"});
-      return reply.ok && reply.history.newestMs - reply.history.oldestMs >= 10_100;
+      return reply.ok && reply.history.newestMs - reply.history.oldestMs >= 9_500;
     }, { timeout: 20_000, polling: 100 });
     const beforeClose = await captureControl(settings, "hd_capture_status");
     await capture.close();
@@ -975,7 +1062,7 @@ async function main() {
     })()`);
     assert.ok(initialPin, "the recovered reader can pin the retained capture history");
     assert.equal(initialPin.sourceLabel, "Recent clip",
-      "the first learned DOM baseline has unknown onset and falls back");
+      "root lookup always pins the configured recent window");
     await resources.phase("full-export");
     const fullExport = await verifyFullRecentExport({ world, capture, source, pin: initialPin, anki, stoppedLookup });
     await resources.phase("recording");
@@ -996,7 +1083,7 @@ async function main() {
           const status = await captureControl(capture, "hd_capture_status");
           assert.equal(status.state, "recording");
           assert.ok(status.history.frameBytes <= 64 * 1024 * 1024);
-          assert.ok(status.history.audioSamples <= 61 * 48000);
+          assert.ok(status.history.audioSamples <= (mediaCapture.clipSeconds + 1) * 48000);
           console.log("SOAK", JSON.stringify({ seconds: (performance.now()-soakStarted)/1000,
             mode, history: status.history }));
         }
@@ -1014,8 +1101,12 @@ async function main() {
       await source.evaluate(() => window.setFixtureSceneMode("dense"));
       const retained = await captureControl(capture, "hd_capture_status");
       const audioSeconds = (retained.history.audioNewestMs-retained.history.audioOldestMs)/1000;
-      assert.ok(audioSeconds > 0 && audioSeconds <= 61, `soaked retained audio duration ${audioSeconds}`);
-      if (sustainedSeconds >= 70) assert.ok(audioSeconds >= 55, `full retained audio duration ${audioSeconds}`);
+      assert.ok(audioSeconds > 0 && audioSeconds <= mediaCapture.clipSeconds + 1,
+        `soaked retained audio duration ${audioSeconds}`);
+      if (sustainedSeconds >= mediaCapture.clipSeconds + 10) {
+        assert.ok(audioSeconds >= mediaCapture.clipSeconds - 1,
+          `full retained audio duration ${audioSeconds}`);
+      }
       captureThroughput.soakSeconds = (performance.now()-soakStarted)/1000;
       captureThroughput.soakExports = soakExports;
       captureThroughput.soakFinalHistory = retained.history;
@@ -1024,13 +1115,32 @@ async function main() {
 
     await source.$eval("#subtitle", element => { element.textContent = "次の行"; });
     await new Promise(done => setTimeout(done, 250));
+    await source.bringToFront();
+    const markerFrameTimestamp = (await captureControl(capture, "hd_capture_status")).history.frameNewestMs;
+    await source.evaluate(() => window.triggerSyncMarker());
+    await source.waitForFunction(() => document.getElementById("scene").currentTime >= 2.2,
+      { timeout: 10_000, polling: 50 });
+    const markerDeadline = Date.now() + 2_000;
+    let markerStatus;
+    do {
+      markerStatus = await captureControl(capture, "hd_capture_status");
+      if (markerStatus.history.frameNewestMs <= markerFrameTimestamp) {
+        await new Promise(done => setTimeout(done, 50));
+      }
+    } while (markerStatus.history.frameNewestMs <= markerFrameTimestamp
+      && Date.now() < markerDeadline);
+    assert.ok(markerStatus.history.frameNewestMs > markerFrameTimestamp,
+      "capture continues sampling while the clocked synchronization fixture plays");
+
     const pin = await world.evaluate(`(async () => {
       const node = document.getElementById("subtitle").firstChild;
       const value = await HDCapture.rootLookup({ anchor: node, sentence: node.nodeValue, query: node.nodeValue });
       globalThis.__capturePin = value;
       return value;
     })()`);
-    assert.equal(pin.sourceLabel, "Page-text estimate");
+    assert.equal(pin.sourceLabel, "Recent clip",
+      "changing visible page text does not activate dormant DOM timing");
+    assert.equal(texthooker.connections.length, 0);
 
     const ankiStatus = await runtimeMessage(world, "hachidori-anki", "hd_anki_status");
     assert.equal(ankiStatus.available, true);
@@ -1058,7 +1168,8 @@ async function main() {
       capturePin: pin,
     };
     const preflight = await runtimeMessage(world, "hachidori-anki", "hd_anki_preflight", { request });
-    assert.deepEqual(preflight.capture.requirements, { includeAnimation: true, includeAudio: true });
+    assert.deepEqual(preflight.capture.requirements,
+      { includeAnimation: true, includeAudio: true, includeScreenshot: false });
 
     const encodeStartedAt = performance.now();
     const exported = await captureMessage(world, "hd_capture_export", {
@@ -1066,28 +1177,6 @@ async function main() {
       requirements: preflight.capture.requirements,
     });
     assert.equal(exported.state, "finishing");
-    await source.bringToFront();
-    await source.evaluate(() => window.triggerSyncMarker());
-    // The final independently decoded AVIF must contain the white frame.
-    // Controls no longer own a preview or any raw capture data.
-    await new Promise(done => setTimeout(done, 350));
-    const markerFrameTimestamp = (await captureControl(capture, "hd_capture_status")).history.frameNewestMs;
-    await new Promise(done => setTimeout(done, 160));
-
-    const markerDeadline = Date.now() + 2_000;
-    let markerStatus;
-    do {
-      markerStatus = await captureControl(capture, "hd_capture_status");
-      if (markerStatus.history.frameNewestMs <= markerFrameTimestamp) {
-        await new Promise(done => setTimeout(done, 50));
-      }
-    } while (markerStatus.history.frameNewestMs <= markerFrameTimestamp
-      && Date.now() < markerDeadline);
-    assert.ok(markerStatus.history.frameNewestMs > markerFrameTimestamp,
-      "capture continues sampling while the clocked synchronization fixture plays");
-
-    await source.waitForFunction(() => document.getElementById("scene").currentTime >= 2.2,
-      { timeout: 10_000, polling: 50 });
     await source.$eval("#subtitle", element => { element.textContent = "終了"; });
 
     let job;
@@ -1167,35 +1256,23 @@ async function main() {
       `Chrome plays the animated AVIF (${JSON.stringify({ frameDecode, playback: decoded.hashes })})`);
 
     await source.evaluate(() => window.restoreFixtureScene());
-    texthooker.send("接続行");
-    await capture.waitForFunction(() =>
-      document.getElementById("texthooker-status")?.textContent === "Active",
-    { polling: 100 });
-    await source.$eval("#subtitle", element => { element.textContent = "接続行"; });
+    await source.$eval("#subtitle", element => { element.textContent = "もう一度"; });
     await new Promise(done => setTimeout(done, 250));
-    const texthookerPin = await world.evaluate(`(async () => {
+    const repeatedPin = await world.evaluate(`(async () => {
       const node = document.getElementById("subtitle").firstChild;
       const value = await HDCapture.rootLookup({ anchor: node, sentence: node.nodeValue, query: node.nodeValue });
       globalThis.__capturePin = value;
       return value;
     })()`);
-    assert.equal(texthookerPin.sourceLabel, "Texthooker estimate",
-      "a usable live texthooker record wins over matching page text");
-    await new Promise(done => setTimeout(done, 1000));
-    assert.equal(await capture.$eval("#texthooker-status", element => element.textContent), "Active",
-      "an accepted live record has no inactivity timeout");
+    assert.equal(repeatedPin.sourceLabel, "Recent clip");
+    assert.equal(texthooker.connections.length, 0);
 
     await resources.phase("repeat-export");
     const repeatEncodeStartedAt = performance.now();
     const repeatedExport = await captureMessage(world, "hd_capture_export", {
-      token: texthookerPin.token,
+      token: repeatedPin.token,
       requirements: { includeAnimation: true, includeAudio: false },
     });
-    await source.evaluate(() => window.setFixtureFrame("#7c3aed"));
-    await new Promise(done => setTimeout(done, 500));
-    await source.evaluate(() => window.setFixtureFrame("#f59e0b"));
-    await new Promise(done => setTimeout(done, 500));
-    texthooker.send("後続行");
     let repeatedJob;
     const repeatedDeadline = Date.now() + 30_000;
     do {
@@ -1212,28 +1289,6 @@ async function main() {
     assert.equal((await captureMessage(world, "hd_capture_cancel", {
       jobId: repeatedExport.jobId,
     })).cancelled, true);
-
-    assert.equal(texthooker.disconnect(), true, "the fixture closes the active texthooker socket");
-    await capture.waitForFunction(() =>
-      ["Disconnected", "Connecting"].includes(document.getElementById("texthooker-status")?.textContent),
-    { timeout: 5_000, polling: 100 }).catch(() => {});
-    try {
-      await capture.waitForFunction(() =>
-        (document.getElementById("texthooker-status")?.textContent || "").includes("waiting"),
-      { timeout: 10_000, polling: 100 });
-    } catch (error) {
-      const status = await capture.$eval("#texthooker-status", element => element.textContent);
-      throw new Error(`texthooker did not reconnect: ${JSON.stringify({
-        status,
-        connections: texthooker.connections.length,
-        current: Boolean(texthooker.current && !texthooker.current.destroyed),
-      })}`, { cause: error });
-    }
-    assert.ok(texthooker.connections.length >= 2, "texthooker reconnects with a new connection epoch");
-    texthooker.send("再接続");
-    await capture.waitForFunction(() =>
-      document.getElementById("texthooker-status")?.textContent === "Active",
-    { polling: 100 });
 
     const alternate = await browser.newPage();
     await alternate.goto(`${fixtureOrigin}/fixture`, { waitUntil: "domcontentloaded" });
@@ -1273,10 +1328,78 @@ async function main() {
       await dialog.dismiss();
       resolveDialog();
     }));
-    await settings.select("#opt-media-history", "30");
+    await settings.$eval("#opt-media-clip", element => {
+      element.value = "60";
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     await dismissed;
-    assert.equal(await settings.$eval("#opt-media-history", element => element.value), "60");
+    assert.equal(await settings.$eval("#opt-media-clip", element => element.value), "10");
     assert.equal((await captureControl(settings, "hd_capture_status")).state, "recording");
+
+    const accepted = new Promise(resolveDialog => settings.once("dialog", async dialog => {
+      await dialog.accept();
+      resolveDialog();
+    }));
+    await settings.$eval("#opt-media-clip", element => {
+      element.value = "60";
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await accepted;
+    await settings.waitForFunction(async () => {
+      const stored = await chrome.storage.local.get("options");
+      return stored.options?.mediaCapture?.clipSeconds === 60;
+    }, { timeout: 10_000 });
+    await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped",
+      { timeout: 10_000, polling: 100 });
+    let stopped = await captureControl(settings, "hd_capture_status");
+    assert.equal(stopped.config.clipSeconds, 60);
+    assert.equal(stopped.config.historySeconds, 60);
+    assert.equal(stopped.history.frameCount, 0);
+    assert.equal(stopped.history.audioSamples, 0);
+    assert.equal(stopped.linkedPage, null);
+    await new Promise(done => setTimeout(done, 500));
+    assert.equal((await captureControl(settings, "hd_capture_status")).state, "stopped",
+      "settings changes do not auto-rearm capture");
+
+    await resources.phase("scaled-recording");
+    await capture.bringToFront();
+    await capture.click("#capture-start");
+    await capture.waitForFunction(() => {
+      const state = document.getElementById("capture-state")?.textContent;
+      const error = document.getElementById("capture-error")?.textContent;
+      return state === "Recording" || Boolean(error);
+    }, { timeout: 30_000, polling: 100 });
+    assert.equal(await capture.$eval("#capture-error", element => element.textContent), "");
+    const scaledStatus = await captureControl(capture, "hd_capture_status");
+    assert.equal(scaledStatus.config.clipSeconds, 60);
+    assert.equal(scaledStatus.config.historySeconds, 60);
+    assert.equal(scaledStatus.config.timingMode, "recent");
+    await captureControl(capture, "hd_capture_link", { tabId: Number(sourceTab) });
+    await capture.waitForFunction(title =>
+      document.getElementById("linked-page")?.textContent === title,
+    { polling: 100 }, SOURCE_TITLE);
+    await source.bringToFront();
+    await capture.waitForFunction(async seconds => {
+      const reply = await chrome.runtime.sendMessage({
+        target: "hachidori-capture",
+        type: "hd_capture_status",
+      });
+      const videoMs = reply.history.frameNewestMs - reply.history.frameOldestMs;
+      const audioMs = reply.history.audioNewestMs - reply.history.audioOldestMs;
+      return reply.ok && reply.config.clipSeconds === seconds
+        && videoMs >= seconds * 1000 - 1
+        && audioMs >= seconds * 1000 - 1;
+    }, { timeout: 75_000, polling: 250 }, 60);
+    const scaledRetention = await captureControl(capture, "hd_capture_status");
+    assert.ok(scaledRetention.history.frameCount >= 55
+      && scaledRetention.history.frameCount <= 95,
+    `sixty-second retention scales the frame budget: ${JSON.stringify(scaledRetention.history)}`);
+    assert.ok(scaledRetention.history.frameBytes <= 64 * 1024 * 1024);
+    assert.ok(scaledRetention.history.audioSamples <= 61 * 48_000);
+    assert.equal(texthooker.connections.length, 0);
+    await resources.phase("scaled-export");
+    const scaledExport = await verifyScaledRecentExport({ world, source, anki });
+    await resources.phase("recording");
 
     await source.goto(`${fixtureOrigin}/fixture?navigation=1`, {
       waitUntil: "domcontentloaded",
@@ -1287,27 +1410,16 @@ async function main() {
     assert.equal((await captureControl(settings, "hd_capture_status")).state, "recording",
       "reading-page navigation clears only the page binding");
 
-    const accepted = new Promise(resolveDialog => settings.once("dialog", async dialog => {
-      await dialog.accept();
-      resolveDialog();
-    }));
-    await settings.select("#opt-media-history", "30");
-    await accepted;
-    await settings.waitForFunction(async () => {
-      const stored = await chrome.storage.local.get("options");
-      return stored.options?.mediaCapture?.historySeconds === 30;
-    }, { timeout: 10_000 });
+    await capture.bringToFront();
+    await capture.click("#capture-stop");
     await capture.waitForFunction(() => document.getElementById("capture-state")?.textContent === "Stopped",
       { timeout: 10_000, polling: 100 });
     await resources.phase("stopped");
     await source.bringToFront();
-    const stopped = await captureControl(settings, "hd_capture_status");
+    stopped = await captureControl(settings, "hd_capture_status");
     assert.equal(stopped.history.frameCount, 0);
     assert.equal(stopped.history.audioSamples, 0);
     assert.equal(stopped.linkedPage, null);
-    await new Promise(done => setTimeout(done, 500));
-    assert.equal((await captureControl(settings, "hd_capture_status")).state, "stopped",
-      "settings changes do not auto-rearm capture");
 
     const storage = await settings.evaluate(async () => chrome.storage.local.get(null));
     const serialized = JSON.stringify(storage);
@@ -1328,6 +1440,7 @@ async function main() {
       extensionModified,
       stoppedLookup,
       fullExport,
+      scaledExport,
       recordingLookup,
       captureThroughput,
       encodeMs,
@@ -1340,7 +1453,6 @@ async function main() {
     console.log(`${CHECKS.length} passed, 0 failed`);
   } finally {
     await resources?.stop().catch(() => {});
-    texthooker.disconnect?.();
     for (const socket of texthooker.connections) socket.destroy();
     await browser?.close().catch(() => {});
     await new Promise(done => server.close(done));

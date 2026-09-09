@@ -67,9 +67,9 @@ definition, sentence, page
 title, image or audio, and creates or updates a note according to your settings.
 Any later Anki synchronization is controlled by Anki and your Anki configuration.
 
-**Texthookers.** Optional media-capture texthookers receive text and timing from
-a WebSocket service on the same computer. Lookup counts use only local browser
-storage and never contact an external service.
+**Lookup counts.** Lookup counts use only local browser storage and never
+contact an external service. The current media-capture runtime does not connect
+to a texthooker WebSocket or watch moving page text.
 
 **Links and styling.** Activating a link in a dictionary opens the URL supplied
 by that dictionary. Custom toolbar links open the URL template you configured,
@@ -92,12 +92,12 @@ can include everything visible on that source and its audio when available.
 Hachidori does not request microphone recording.
 
 The reading-page picker uses tab titles and URLs to identify a page to link.
-While recording, recent frames, source audio and text/timing stay in temporary
-memory. Closing the capture controls leaves recording active. **Stop capture**
-ends recording and clears the temporary history; it does not delete notes or
-media already sent to Anki. Final clips are sent to your configured AnkiConnect
-server only when you explicitly mine a note. Raw recording history is not included
-in backups.
+While recording, only the configured recent frame/audio window and source
+binding stay in temporary memory. Closing the capture controls leaves recording
+active. **Stop capture** ends recording and clears the temporary history; it
+does not delete notes or media already sent to Anki. Final clips are sent to
+your configured AnkiConnect server only when you explicitly mine a note. Raw
+recording history is not included in backups.
 
 ## Backups, retention and deletion
 

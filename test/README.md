@@ -41,7 +41,7 @@ node test/threaded-bridge-smoke.mjs # 7. both-backend bridge admission/control t
 node test/extension-smoke.mjs    # 8. the extension's own JS against that wasm
 node --test benchmark/*.test.mjs # 9. fail-closed benchmark framework tests
 node test/chrome-e2e.mjs         # 10. pthread/OPFS path in a real Chrome
-HACHIDORI_CAPTURE_HEADFUL=1 xvfb-run -a node test/chrome-capture.mjs # 11. real display capture, audio, timing and Anki path on Linux
+HACHIDORI_CAPTURE_HEADFUL=1 xvfb-run -a node test/chrome-capture.mjs # 11. real display capture, recent windows and Anki path on Linux
 node test/chrome-fallback.mjs    # 12. capability fallback through IDBFS in real Chrome
 ./test/baseline.sh               # 13. optional native cross-check
 ```
@@ -1260,14 +1260,15 @@ starts capture through the visible controls, links the reading page, and tests:
 
 - compressed frame history through the dedicated JPEG worker and sample-clocked
   audio history;
-- full-rate capture while the reading/source tab is foreground, including
+- default-rate capture while the reading/source tab is foreground, including
   closing and reopening Capture controls;
 - recovery of the same recording and linked reader after service-worker restart;
-- first-baseline fallback and later observed DOM timing;
-- a real loopback plain-text WebSocket, texthooker priority, active state,
-  disconnect, and reconnect epoch;
+- stored legacy WebSocket/page-timing settings remaining intact while the active
+  runtime and both settings surfaces keep them dormant;
 - a full ten-second moving-text export with roughly eighty decoded frames,
   matching AVIF/WAV durations, and responsive lookups during encoding;
+- a fully warmed sixty-second export with a scaled frame ceiling, 8 kHz WAV,
+  shared AVIF timebase, and unchanged output-size limits;
 - root pinning, bounded delivery drain, animated AVIF encoding, Chrome frame
   decoding and looping playback, non-silent mono WAV samples, and decoded
   flash/beep alignment within 125 ms;
@@ -1291,15 +1292,16 @@ HACHIDORI_CAPTURE_HEADFUL=1 HACHIDORI_CAPTURE_FORCE_AUDIO_WORKLET=1 \
   xvfb-run -a node test/chrome-capture.mjs
 ```
 
-The default measures five seconds of production throughput and then exercises
-the full ten-second export and lifecycle checks. A sustained duration greater
-than five seconds adds a soak with static, moving, and dense scenes in periods
-of up to sixty seconds, an export and lookup measurement after each period,
-and retention checks every ten seconds. Use at least seventy seconds to fill
-the history; 1,800 seconds requests a thirty-minute soak. The final audio
-history must cover 55–61 seconds, compressed frames must stay within 64 MiB,
-and retained audio must stay within 61 × 48,000 samples. The duration accepts
-finite values of at least five seconds and has no ninety-second ceiling.
+The default measures five seconds of production throughput, exercises the full
+ten-second export and lifecycle checks, then restarts with a sixty-second window
+and waits for a full scaled export. A sustained duration greater than five
+seconds adds a soak before that restart, with static, moving, and dense scenes
+in periods of up to sixty seconds, an export and lookup measurement after each
+period, and retention checks every ten seconds. The soak retains only the
+default ten-second window; once warmed, its audio history must cover 9–11
+seconds. Compressed frames stay within 64 MiB and retained source audio stays
+within 11 × 48,000 samples. The duration accepts finite values of at least five
+seconds and has no ninety-second ceiling.
 
 The throughput and sustained-export gates use a foreground source tab. Lifecycle
 checks temporarily open controls and restore source focus before comparing
@@ -1353,12 +1355,15 @@ The same external browser variables as `chrome-e2e.mjs` are accepted, plus
 `HACHIDORI_CAPTURE_PROFILE` to retain a dedicated test profile. With no override,
 the temporary profile is removed after the run. Never point this at a personal
 browser profile. `HACHIDORI_CAPTURE_ASSET_DIR` saves `capture.avif`, `capture.wav`,
-the ten-second `full-capture.avif` / `full-capture.wav`, and each period's
+the ten-second `full-capture.avif` / `full-capture.wav`, the sixty-second
+`scaled-capture.avif` / `scaled-capture.wav`, and each period's
 `soak-<index>-<scene>.avif` / `.wav` for independent playback checks.
 
-The HTTP/WebSocket fixture uses an operating-system-assigned local port.
-AnkiConnect requests to port 8765 are intercepted and answered inside this
-browser; this test does not send note mutations to an installed Anki collection.
+The HTTP fixture and an unused loopback WebSocket endpoint share an
+operating-system-assigned local port; the test asserts that dormant legacy
+settings create zero WebSocket connections. AnkiConnect requests to port 8765
+are intercepted and answered inside this browser; this test does not send note
+mutations to an installed Anki collection.
 
 Two of those checks cover the mining screenshot. The first maps `{screenshot}`
 into a field, adds a note from the real popup with a real double click, then

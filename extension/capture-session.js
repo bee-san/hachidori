@@ -58,6 +58,14 @@ export function createCaptureSession({
   const jobs = new Map();
   let activeJobId = null;
 
+  function logicalOldestTimestamp(ring) {
+    if (!config || !ring) return null;
+    const oldest = ring.oldestTimestamp();
+    const newest = ring.newestTimestamp();
+    if (!Number.isFinite(oldest) || !Number.isFinite(newest)) return null;
+    return Math.max(oldest, newest - config.historySeconds * 1000);
+  }
+
   function status() {
     const frameSize = frameRing?.size() ?? { count: 0, bytes: 0 };
     const audioSize = audioRing?.size() ?? { blocks: 0, samples: 0 };
@@ -74,9 +82,9 @@ export function createCaptureSession({
         frameBytes: frameSize.bytes,
         audioBlocks: audioSize.blocks,
         audioSamples: audioSize.samples,
-        frameOldestMs: frameRing?.oldestTimestamp() ?? null,
+        frameOldestMs: logicalOldestTimestamp(frameRing),
         frameNewestMs: frameRing?.newestTimestamp() ?? null,
-        audioOldestMs: audioRing?.oldestTimestamp() ?? null,
+        audioOldestMs: logicalOldestTimestamp(audioRing),
         audioNewestMs: audioRing?.newestTimestamp() ?? null,
         oldestMs: oldestRequiredTimestamp(),
         newestMs: (() => {
@@ -91,6 +99,8 @@ export function createCaptureSession({
   function oldestRequiredTimestamp() {
     if (!config) return null;
     const values = [];
+    // Admission can use the hidden delivery margin; the resolver still caps
+    // the selected interval to the configured clip length.
     if (config.includeAnimation) values.push(frameRing?.oldestTimestamp());
     if (config.includeCapturedAudio && capturedAudioAvailable) values.push(audioRing?.oldestTimestamp());
     const available = values.filter(Number.isFinite);
@@ -100,8 +110,13 @@ export function createCaptureSession({
   function configure(value) {
     cancelOwnedCapture("Capture settings changed.");
     config = structuredClone(value);
-    frameRing = createFrameRing({ maxAgeMs: config.historySeconds * 1000 });
-    audioRing = createAudioRing({ maxAgeMs: config.historySeconds * 1000 });
+    // Finalization deliberately waits for in-flight JPEG/audio delivery. Keep
+    // that bounded margin internally so arrivals cannot evict the frozen
+    // window's first frame or samples; status and interval admission remain
+    // clamped to the configured recent window.
+    const retainedMs = config.historySeconds * 1000 + MEDIA_DRAIN_MS;
+    frameRing = createFrameRing({ maxAgeMs: retainedMs });
+    audioRing = createAudioRing({ maxAgeMs: retainedMs });
     pins = createCapturePinStore({ now: wallNow });
     timeline.reset();
     jobs.clear();

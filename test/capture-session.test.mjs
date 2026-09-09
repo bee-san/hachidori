@@ -217,6 +217,46 @@ for (const futureTail of [false, true]) {
   });
 }
 
+test("a clip-sized ring keeps its frozen start through the delivery drain", async () => {
+  const h = harness({
+    enabled: true,
+    timingMode: "recent",
+    historySeconds: 5,
+    clipSeconds: 5,
+  });
+  h.session.start();
+  for (let timestampMs = 5000; timestampMs <= 10_000; timestampMs += 125) {
+    h.session.addFrame({ timestampMs, width: 2, height: 2, data: new Uint8Array([1]) });
+  }
+  h.session.addAudio({
+    startMs: 5000,
+    sampleRate: 8000,
+    samples: new Float32Array(39_000).fill(0.25),
+  });
+  assert.equal(h.session.status().history.frameOldestMs, 5000,
+    "the reported history remains exactly the configured five seconds");
+  const pin = h.session.pinLookup({ lookupText: "猫", lookupTimeMs: h.now() });
+  assert.equal(pin.partial, false);
+  const job = h.session.beginExport(pin.token, { includeAnimation: true, includeAudio: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.jobStatus(job.jobId).state, "finishing");
+
+  // These encoded frames arrive after the lookup. Without the hidden drain
+  // margin, ordinary age eviction would remove the frame displayed at 5000 ms.
+  for (const timestampMs of [10_125, 10_249]) {
+    h.session.addFrame({ timestampMs, width: 2, height: 2, data: new Uint8Array([2]) });
+  }
+  h.session.addAudio({
+    startMs: 9875,
+    sampleRate: 8000,
+    samples: new Float32Array(1000).fill(0.5),
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.jobStatus(job.jobId).state, "ready");
+  assert.equal(h.encoded[0].frames[0].timestampMs, 5000);
+  assert.equal(h.session.jobAsset(job.jobId, "audio").data.byteLength, 480_044);
+});
+
 test("the bounded drain reports missing continuous audio instead of exporting silent gaps", async () => {
   const h = harness({ enabled: true, timingMode: "recent", clipSeconds: 5 });
   h.session.start();

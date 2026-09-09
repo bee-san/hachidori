@@ -55,6 +55,8 @@ It is even 3.5 times faster at looking up words.
 
 # Media mining
 
+Start capture, link the reading page, and each root lookup keeps the preceding
+10 seconds by default. The recent window is configurable from 1 to 60 seconds.
 
 ![Media capture controls recording a linked reading page](docs/assets/media-capture-controls.png)
 

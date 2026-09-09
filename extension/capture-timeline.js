@@ -149,8 +149,10 @@ export function resolveCaptureInterval({
 }) {
   finiteTime(lookupTimeMs, "lookup time");
   finiteTime(availableStartMs, "available capture start");
+  if (!Number.isInteger(clipSeconds) || clipSeconds < 1 || clipSeconds > 60) {
+    throw new Error("capture clip length is invalid");
+  }
   const clipMs = clipSeconds * 1000;
-  if (![5000, 10000].includes(clipMs)) throw new Error("capture clip length is invalid");
   let priorities = [];
   if (timingMode !== "recent") {
     priorities = ["cue", "dom"];
