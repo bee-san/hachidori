@@ -76,9 +76,13 @@ test("Anki stays quiet when unconfigured and preflights all rendered candidates 
 });
 
 test("Anki actions match the GSM toolbar order and use its add, duplicate, overwrite, and view icons", async t => {
+  const browse = [];
+  let writes = 0;
   const f = fixture(t, async (type, { request } = {}) => {
     if (type === "hd_anki_status") return { available: true, configKey: "current" };
-    if (request.term.expression === "犬") return { state: "duplicate", canAdd: false };
+    if (type === "hd_anki_browse") { browse.push(request); return { opened: true }; }
+    if (type === "hd_anki_submit") { writes++; return { state: "added", noteId: 1, warnings: [] }; }
+    if (request.term.expression === "犬") return { state: "duplicate", canAdd: false, noteIds: [22, 23] };
     if (request.term.expression === "鳥") return { state: "duplicate", canAdd: true, action: "overwrite" };
     return { state: "addable", canAdd: true };
   });
@@ -98,10 +102,16 @@ test("Anki actions match the GSM toolbar order and use its add, duplicate, overw
   assert.equal(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon, "big-circle");
   assert.match(f.items[0].add.querySelector(".gsm-hoshidicts-mine-icon").getAttribute("src"),
     /render\/icons\/big-circle\.svg$/u);
-  assert.equal(f.items[1].add.dataset.state, "duplicate");
+  assert.equal(f.items[1].add.dataset.state, "view-existing");
   assert.equal(f.items[1].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon,
-    "add-duplicate-big-circle");
-  assert.equal(f.items[1].add.disabled, true);
+    "view-note");
+  assert.equal(f.items[1].add.disabled, false);
+  assert.equal(f.items[1].add.title, "View existing notes in Anki");
+  assert.equal(f.items[1].view.hidden, true);
+  f.items[1].add.click();
+  await until(() => browse.length === 1);
+  assert.deepEqual(browse, [{ noteIds: [22, 23], expression: "犬" }]);
+  assert.equal(writes, 0);
   assert.equal(f.items[2].add.querySelector(".gsm-hoshidicts-mine-icon").dataset.icon,
     "overwrite-big-circle");
   assert.ok(f.items[0].view.classList.contains("gsm-hoshidicts-view-in-anki-button"));
