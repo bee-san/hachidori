@@ -12,7 +12,11 @@ same pinned interval:
   that audio available.
 
 Pronunciation `{audio}` remains separate. Media-mining templates use
-`{capture-animation}` and `{capture-audio}`.
+`{capture-animation}` and `{capture-audio}`. When `{audio}` resolves to browser
+text-to-speech, an active capture with shared audio can record the exact selected
+voice at mining time and attach its WAV to Anki. This does not reuse the pinned
+sentence clip. A downloadable pronunciation source remains the fallback when
+speech is not captured.
 
 ## Setup
 

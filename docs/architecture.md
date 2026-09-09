@@ -1530,9 +1530,15 @@ bind to committed generation paths. First-field audio is resolved before the
 duplicate check without playback or uploads. Confirmed text is followed by
 best-effort media uploads and a field readback before pronunciation updates;
 external edits are preserved. AnkiConnect has no cross-client CAS, so its final
-read/write interval is not atomic. Browser TTS cannot be attached to a note;
-downloadable sources are required for audio fields. Sentence-furigana markers
-use the GSM fallback when its optional native tokenizer is unavailable.
+read/write interval is not atomic. Browser TTS can be attached while an active
+media-capture share supplies audio: the selected voice is spoken only after the
+mining action, read back from the transient PCM ring with short leading/trailing
+padding, encoded as WAV, and uploaded through the same pronunciation path.
+Silent preflight checks only recording availability and defers first-field
+duplicate identity until the authoritative submission. Missing, incomplete or
+effectively silent capture falls through to later URL sources; an explicit TTS
+choice reports the capture failure instead. Sentence-furigana markers use the
+GSM fallback when its optional native tokenizer is unavailable.
 
 Capture markers are prepared through the same Anki queue rather than a second
 gateway. Preflight reports only the outputs referenced by fields that will

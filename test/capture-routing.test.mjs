@@ -85,7 +85,7 @@ function routedCaptureSession() {
     selectedTabId: null, linkedDocumentId: '', pageStatus: '', pageVideos: [], btoa,
     captureStatus: () => session.status() });
   vm.runInContext(capture.slice(capture.indexOf('function linked(message)'), capture.indexOf('await register();'))
-    .replace('export async function', 'async function'), hostContext);
+    .replaceAll('export async function', 'async function'), hostContext);
   const f = freshWorker();
   f.context.capturePage = { documentId: hostDocumentId };
   f.context.chrome.runtime.sendMessage = async message => {

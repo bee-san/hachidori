@@ -69,6 +69,17 @@ test("capture session accepts explicit monitor capture, reports real history and
   assert.equal(h.session.status().history.frameCount, 0);
 });
 
+test("browser speech can select complete active capture audio without accepting a clock gap", () => {
+  const h = harness({ enabled: true, includeCapturedAudio: true });
+  h.session.start({ audioAvailable: true });
+  h.session.addAudio({ startMs: 9000, sampleRate: 8000, samples: new Float32Array(4000).fill(0.25) });
+  h.session.addAudio({ startMs: 9600, sampleRate: 8000, samples: new Float32Array(3200).fill(0.25) });
+  assert.equal(h.session.selectAudio(9600, 10_000).samples.length, 19_200);
+  assert.throws(() => h.session.selectAudio(9000, 10_000), /did not record all/u);
+  h.session.stop();
+  assert.throws(() => h.session.assertAudioCapture(), /Start media capture with shared audio/u);
+});
+
 test("document unlink and replacement release unsubmitted pins while an admitted export retains ownership", async () => {
   const h = harness({ enabled: true, timingMode: "recent", includeCapturedAudio: false, clipSeconds: 5 });
   seed(h, { withText: false });

@@ -6,9 +6,9 @@ import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { buildAnkiFields } from "../extension/anki-values.js";
 
 function fixture(firstAudio = false, overwrite = false) {
-  const calls = [];
+  const calls = [], audioRequests = [];
   let fields = overwrite ? { Front: "猫", Audio: "pronunciation[sound:checked.wav]" } : undefined;
-  let generation = 3, changeDuringCheck = false, audioUnavailable = false;
+  let generation = 3, changeDuringCheck = false, audioUnavailable = false, deferSpeech = false, deferAllSpeech = false;
   const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic", deck: "Default",
     duplicateBehavior: overwrite ? "overwrite" : "prevent",
     fieldTemplates: { Front: { value: firstAudio ? "{expression}{audio}" : "{expression}", overwriteMode: "overwrite" },
@@ -34,7 +34,9 @@ function fixture(firstAudio = false, overwrite = false) {
     offscreen: async message => {
       calls.push(message.type);
       if (message.type === "hd_anki_audio") {
+        audioRequests.push(message);
         if (audioUnavailable) throw new Error("The chosen pronunciation is unavailable");
+        if (deferAllSpeech || (deferSpeech && message.recordSpeech === false)) return { recordingRequired: true };
         return { filename: "checked.wav", data: "YXVkaW8=" };
       }
       assert.deepEqual(message.dictionaryPaths, { A: "/dicts/generation/A" });
@@ -45,7 +47,9 @@ function fixture(firstAudio = false, overwrite = false) {
   const request = { term: { expression: "猫", reading: "ねこ", rules: "", glossaries: [], frequencies: [], pitches: [] },
     generation: 3, trace: [], sentence: "猫", matched: "猫", matchOffset: 0, popupSelectionText: "", searchQuery: "猫", documentTitle: "Test",
     dictionaryAliases: {}, frequencyDictionaries: [] };
-  return { service, calls, request, changedGeneration() { generation++; }, duringCheck() { changeDuringCheck = true; },
+  return { service, calls, audioRequests, request, changedGeneration() { generation++; },
+    duringCheck() { changeDuringCheck = true; }, deferSpeech() { deferSpeech = true; },
+    deferAllSpeech() { deferAllSpeech = true; },
     failAudio() { audioUnavailable = true; }, get fields() { return fields; } };
 }
 
@@ -70,6 +74,31 @@ test("first-field audio is resolved before duplicate checking and its exact prep
   assert.ok(f.calls.indexOf("hd_anki_audio") < f.calls.indexOf("canAddNotesWithErrorDetail"));
   assert.equal(f.fields.Front, "猫[sound:checked.wav]");
   assert.equal(f.fields.Audio, "[sound:checked.wav]");
+});
+
+test("first-field browser speech stays silent during preflight and records once on authoritative submit", async () => {
+  const f = fixture(true);
+  f.deferSpeech();
+  f.request.configKey = (await f.service.status()).configKey;
+  const preflight = await f.service.preflight(f.request);
+  assert.equal(preflight.deferred, true);
+  assert.equal(preflight.canAdd, true);
+  assert.equal(f.calls.includes("canAddNotesWithErrorDetail"), false);
+  assert.equal(f.audioRequests[0].recordSpeech, false);
+  const result = await f.service.submit(f.request);
+  assert.equal(result.state, "added");
+  assert.deepEqual(f.audioRequests.map(request => request.recordSpeech), [false, true]);
+  assert.equal(f.calls.filter(action => action === "canAddNotesWithErrorDetail").length, 1);
+  assert.equal(f.fields.Front, "猫[sound:checked.wav]");
+});
+
+test("authoritative first-field speech cannot write the silent preflight placeholder", async () => {
+  const f = fixture(true);
+  f.deferAllSpeech();
+  f.request.configKey = (await f.service.status()).configKey;
+  assert.equal((await f.service.preflight(f.request)).deferred, true);
+  await assert.rejects(f.service.submit(f.request), /was not recorded/u);
+  assert.equal(f.calls.includes("addNote"), false);
 });
 
 test("mixed text/audio overwrite restores pronunciation when its final value matches the original note", async () => {
@@ -405,6 +434,8 @@ test("a mining screenshot is held until the note is written, then stored under i
     models: ["Basic"], decks: ["Default"], errors: [] }),
     async invoke(action, params, apiKey) {
       if (action === "canAddNotesWithErrorDetail") return [check];
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "findNotes") return [12];
       if (action === "deleteMediaFile") { deletions.push(params.filename); return null; }
       if (action === "addNote") {
         if (duplicate) throw new Error("cannot create note because it is a duplicate");
@@ -413,7 +444,8 @@ test("a mining screenshot is held until the note is written, then stored under i
         notes.set(12, fields);
         return 12;
       }
-      if (action === "notesInfo") return [{ noteId: 12, fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
+      if (action === "notesInfo") return [{ noteId: 12, modelName: "Basic", cards: [],
+        fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
       if (action !== "storeMediaFile") throw new Error(`Unexpected ${action}`);
       uploads.push({ ...params, apiKey });
       if (refuse) throw new Error("media folder is read-only");
