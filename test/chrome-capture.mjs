@@ -24,6 +24,8 @@ const EXTENSION = resolve(ROOT, "extension");
 const FIXTURE = resolve(HERE, "fixtures/hachidori-fixture.zip");
 const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
 const SOURCE_TITLE = "Hachidori Capture Fixture";
+const ANKI_MODEL = "Kiku Capture";
+const ANKI_FIELDS = ["Expression", "Picture", "SentenceAudio"];
 const PROFILE = process.env.HACHIDORI_CAPTURE_PROFILE
   || resolve(tmpdir(), `hachidori-capture-profile-${process.pid}`);
 const SETTINGS_SCREENSHOT = process.env.HACHIDORI_MEDIA_SETTINGS_SCREENSHOT || "";
@@ -40,7 +42,8 @@ const CHECKS = [
   "closing and reopening controls preserves the recording and reading document",
   "service-worker restart recovers the same capture session and linked reader",
   "learned DOM timing falls back first, then pins an observed line",
-  "animated AVIF and mono WAV upload through Anki one at a time",
+  "stock Kiku fields route pinned AVIF and WAV without saved markers or a JPEG",
+  "unpinned stock Kiku mining keeps the static page screenshot",
   "Chrome decodes changing AVIF frames and non-silent WAV samples",
   "decoded flash and beep stay aligned within 125 ms",
   "live texthooker priority, active state and reconnect use the real loopback WebSocket",
@@ -205,8 +208,8 @@ function createFixtureServer(anki) {
       anki.actions.push(action);
       let result;
       if (action === "deckNames") result = ["Default"];
-      else if (action === "modelNames") result = ["CaptureModel"];
-      else if (action === "modelFieldNames") result = ["Front", "Animation", "Audio"];
+      else if (action === "modelNames") result = [ANKI_MODEL];
+      else if (action === "modelFieldNames") result = ANKI_FIELDS;
       else if (action === "canAddNotesWithErrorDetail") result = [{ canAdd: true, error: null }];
       else if (action === "addNote") {
         anki.note = structuredClone(params.note);
@@ -214,7 +217,7 @@ function createFixtureServer(anki) {
       } else if (action === "notesInfo") {
         result = [{
           noteId: 101,
-          modelName: "CaptureModel",
+          modelName: ANKI_MODEL,
           cards: [],
           fields: Object.fromEntries(Object.entries(anki.note?.fields ?? {})
             .map(([field, value]) => [field, { value }])),
@@ -594,6 +597,8 @@ async function verifyFullRecentExport({ world, capture, source, pin, anki, stopp
     capturePin: pin, captureJobId: exported.jobId, captureUnavailable: [],
   } });
   assert.equal(result.state, "added");
+  assert.equal(anki.note.fields.Picture, `<img src="${pin.animationFilename}">`);
+  assert.equal(anki.note.fields.SentenceAudio, `[sound:${pin.audioFilename}]`);
   const avif = Buffer.from(anki.media.get(pin.animationFilename), "base64");
   const wav = Buffer.from(anki.media.get(pin.audioFilename), "base64");
   const decoded = await decodedFrameHashes(source, avif.toString("base64"));
@@ -751,7 +756,7 @@ async function main() {
     };
     const ankiConfig = {
       deck: "Default",
-      model: "CaptureModel",
+      model: ANKI_MODEL,
       apiKey: "",
       tags: ["hachidori", "capture-e2e"],
       fields: {
@@ -772,14 +777,20 @@ async function main() {
       duplicateBehavior: "prevent",
       captureScreenshot: true,
       fieldTemplates: {
-        Front: { value: "{expression}", overwriteMode: "overwrite" },
-        Animation: { value: "{capture-animation}", overwriteMode: "overwrite" },
-        Audio: { value: "{capture-audio}", overwriteMode: "overwrite" },
+        Expression: { value: "{expression}", overwriteMode: "overwrite" },
+        Picture: { value: "{screenshot}", overwriteMode: "overwrite" },
+        SentenceAudio: { value: "", overwriteMode: "overwrite" },
       },
     };
     await writeOptions(settings, { mediaCapture, anki: ankiConfig });
     await settings.reload({ waitUntil: "domcontentloaded" });
     await settings.waitForSelector("#media:not([hidden])");
+    const savedAnki = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options?.anki);
+    assert.equal(savedAnki.model, ANKI_MODEL);
+    assert.equal(savedAnki.fieldTemplates.Picture.value, "{screenshot}");
+    assert.equal(savedAnki.fieldTemplates.SentenceAudio.value, "");
+    assert.equal(JSON.stringify(savedAnki.fieldTemplates).includes("{capture-"), false,
+      "the stock preset stores no captured-media marker");
     if (SETTINGS_SCREENSHOT) {
       // Keep the whole section inside the viewport before measuring its crop;
       // resizing during an element screenshot can shift the centered layout.
@@ -1115,8 +1126,10 @@ async function main() {
     });
     assert.equal(submitted.state, "added");
     assert.equal(anki.maxActiveUploads, 1, "captured assets upload one at a time");
-    assert.equal(anki.note.fields.Animation, `<img src="${pin.animationFilename}">`);
-    assert.equal(anki.note.fields.Audio, `[sound:${pin.audioFilename}]`);
+    assert.equal(anki.note.fields.Picture, `<img src="${pin.animationFilename}">`);
+    assert.equal(anki.note.fields.SentenceAudio, `[sound:${pin.audioFilename}]`);
+    assert.equal([...anki.media.keys()].some(filename => filename.endsWith(".jpg")), false,
+      "animation routing does not upload a second screenshot JPEG");
 
     const animationBase64 = anki.media.get(pin.animationFilename);
     const audioBase64 = anki.media.get(pin.audioFilename);
@@ -1170,6 +1183,31 @@ async function main() {
       `Chrome plays the animated AVIF (${JSON.stringify({ frameDecode, playback: decoded.hashes })})`);
 
     await source.evaluate(() => window.restoreFixtureScene());
+    const unpinnedRequest = structuredClone(request);
+    delete unpinnedRequest.capturePin;
+    unpinnedRequest.term.expression = "静";
+    unpinnedRequest.term.reading = "しずか";
+    unpinnedRequest.sentence = "静かな画面";
+    unpinnedRequest.matched = "静";
+    unpinnedRequest.searchQuery = "静";
+    const unpinnedPreflight = await runtimeMessage(world, "hachidori-anki", "hd_anki_preflight", {
+      request: unpinnedRequest,
+    });
+    assert.equal(unpinnedPreflight.capture, null);
+    assert.equal(unpinnedPreflight.screenshot, true);
+    await source.bringToFront();
+    const staticScreenshot = await runtimeMessage(world, "hachidori-anki", "hd_anki_screenshot");
+    assert.match(staticScreenshot.filename, /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u);
+    const staticSubmitted = await runtimeMessage(world, "hachidori-anki", "hd_anki_submit", {
+      request: { ...unpinnedRequest, screenshot: staticScreenshot },
+    });
+    assert.equal(staticSubmitted.state, "added");
+    assert.equal(anki.note.fields.Picture, `<img src="${staticScreenshot.filename}">`);
+    assert.equal(anki.note.fields.SentenceAudio, "");
+    const screenshotBytes = Buffer.from(anki.media.get(staticScreenshot.filename), "base64");
+    assert.equal(screenshotBytes.subarray(0, 2).toString("hex"), "ffd8",
+      "the unpinned note uploads a JPEG page screenshot");
+
     texthooker.send("接続行");
     await capture.waitForFunction(() =>
       document.getElementById("texthooker-status")?.textContent === "Active",

@@ -4558,7 +4558,7 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && detected.options.revision === saved.options.revision + 1
         && Object.keys(templates).length === KIKU_FIELDS.length
         && templates.Expression?.value === "{expression}"
-        && templates.SentenceAudio?.value === "{capture-audio}"
+        && templates.SentenceAudio?.value === ""
         && templates.Picture?.value === "{screenshot}"
         && anki.captureScreenshot === true
         // Only the fixed read-only actions ran, in ranking order, at protocol version 6.

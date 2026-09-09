@@ -137,7 +137,10 @@ function captureFixture({
     Media: { value: "{capture-animation}", overwriteMode: "overwrite" },
     CapturedAudio: { value: "{capture-audio}", overwriteMode: "overwrite" },
   },
+  model = "Basic",
+  mediaCapture = {},
   duplicate = false,
+  existingFields,
   failFirstWrite = false,
   failReadback = false,
   stopAfterLastUpload = false,
@@ -151,31 +154,35 @@ function captureFixture({
 } = {}) {
   const calls = [];
   const endpointCalls = [];
-  let fields = duplicate ? { Front: "猫", Media: "kept", CapturedAudio: "" } : null;
+  const storedMedia = [];
+  const renderedTemplates = [];
+  let fields = duplicate ? structuredClone(existingFields
+    ?? { Front: "猫", Media: "kept", CapturedAudio: "" }) : null;
   let writes = 0;
   let captureAvailable = true, uploads = 0;
   const options = globalThis.HDReaderOptions.normaliseOptions({
     mediaCapture: {
       ...globalThis.HDReaderOptions.DEFAULT_MEDIA_CAPTURE,
       enabled: true,
+      ...mediaCapture,
     },
     anki: {
-      model: "Basic",
+      model,
       deck: "Default",
       duplicateBehavior: duplicate ? "overwrite" : "prevent",
       fieldTemplates: templates,
     },
   });
   const gateway = {
-    discover: async () => ({ connected: true, model: "Basic", fields: Object.keys(templates),
-      models: ["Basic"], decks: ["Default"], errors: [] }),
+    discover: async () => ({ connected: true, model, fields: Object.keys(templates),
+      models: [model], decks: ["Default"], errors: [] }),
     async invoke(action, params, apiKey, timeoutMs, url) {
       calls.push(action);
       endpointCalls.push({ action, url });
       if (action === "canAddNotesWithErrorDetail") {
         return [{ canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null }];
       }
-      if (action === "modelNamesAndIds") return { Basic: 7 };
+      if (action === "modelNamesAndIds") return { [model]: 7 };
       if (action === "findNotes") return duplicate ? [44] : [];
       if (action === "addNote") {
         if (stopDuringWrite) captureAvailable = false;
@@ -191,12 +198,13 @@ function captureFixture({
       if (action === "notesInfo") {
         if (failReadback) throw new Error("readback failed");
         const noteId = params.notes[0];
-        return [{ noteId, modelName: "Basic", cards: [], fields: Object.fromEntries(
+        return [{ noteId, modelName: model, cards: [], fields: Object.fromEntries(
           Object.entries(fields).map(([field, value]) => [field, { value }]),
         ) }];
       }
       if (action === "storeMediaFile") {
         uploads++;
+        storedMedia.push(params.filename);
         if (stopAfterLastUpload && uploads === Object.keys(assets).length) captureAvailable = false;
         return params.filename;
       }
@@ -230,16 +238,19 @@ function captureFixture({
       calls.push(message.type);
       return { generation: 3, ready: true, loading: false };
     },
-    offscreen: async message => ({
-      fields: Object.fromEntries(Object.entries(message.templates).map(([field, template]) => [field,
-        template.value
-          .replaceAll("{expression}", "猫")
-          .replaceAll("{capture-animation}", message.request.captureUnavailable?.includes("animation")
-            ? "" : `<img src="${message.request.capturePin?.animationFilename || ""}">`)
-          .replaceAll("{capture-audio}", message.request.captureUnavailable?.includes("audio")
-            ? "" : `[sound:${message.request.capturePin?.audioFilename || ""}]`)])),
-      media: [],
-    }),
+    offscreen: async message => {
+      renderedTemplates.push(structuredClone(message.templates));
+      return {
+        fields: Object.fromEntries(Object.entries(message.templates).map(([field, template]) => [field,
+          template.value
+            .replaceAll("{expression}", "猫")
+            .replaceAll("{capture-animation}", message.request.captureUnavailable?.includes("animation")
+              ? "" : `<img src="${message.request.capturePin?.animationFilename || ""}">`)
+            .replaceAll("{capture-audio}", message.request.captureUnavailable?.includes("audio")
+              ? "" : `[sound:${message.request.capturePin?.audioFilename || ""}]`)])),
+        media: [],
+      };
+    },
     capture,
   });
   const request = {
@@ -265,10 +276,158 @@ function captureFixture({
       readyAtMs: Date.now(),
     },
   };
-  return { service, calls, endpointCalls, captureCalls, request,
+  return { service, calls, endpointCalls, storedMedia, renderedTemplates, captureCalls, request,
     changeEndpoint(url) { options.anki.url = url; },
-    stop() { captureAvailable = false; }, get fields() { return fields; } };
+    stop() { captureAvailable = false; },
+    get configuredTemplates() { return options.anki.fieldTemplates; },
+    get fields() { return fields; } };
 }
+
+function presetCaptureTemplates(family, {
+  picture = "before{screenshot}after",
+  audio = "",
+  pictureMode = "append",
+  audioMode = "coalesce-new",
+} = {}) {
+  if (family === "senren") {
+    return {
+      word: { value: "{expression}", overwriteMode: "overwrite" },
+      picture: { value: picture, overwriteMode: pictureMode },
+      sentenceAudio: { value: audio, overwriteMode: audioMode },
+    };
+  }
+  return {
+    Expression: { value: "{expression}", overwriteMode: "overwrite" },
+    Picture: { value: picture, overwriteMode: pictureMode },
+    SentenceAudio: { value: audio, overwriteMode: audioMode },
+  };
+}
+
+test("pinned Kiku, Lapis and Senren clips route stock picture and sentence-audio fields without changing saved templates", async t => {
+  for (const [family, model] of [["kiku", "Kiku v2"], ["lapis", "Lapis-1.4"], ["senren", "Senren (2026)"]]) {
+    await t.test(family, async () => {
+      const templates = presetCaptureTemplates(family);
+      const saved = structuredClone(templates);
+      const f = captureFixture({ model, templates });
+      f.request.configKey = (await f.service.status()).configKey;
+      const preflight = await f.service.preflight(f.request);
+      assert.deepEqual(preflight.capture.requirements,
+        { includeAnimation: true, includeAudio: true, includeScreenshot: false });
+      assert.equal(preflight.screenshot, false);
+      const picture = family === "senren" ? "picture" : "Picture";
+      const audio = family === "senren" ? "sentenceAudio" : "SentenceAudio";
+      assert.equal(f.renderedTemplates.at(-1)[picture].value, "before{capture-animation}after");
+      assert.equal(f.renderedTemplates.at(-1)[picture].overwriteMode, "append");
+      assert.equal(f.renderedTemplates.at(-1)[audio].value, "{capture-audio}");
+      assert.equal(f.renderedTemplates.at(-1)[audio].overwriteMode, "coalesce-new");
+
+      f.request.captureJobId = `job-${family}`;
+      assert.equal((await f.service.submit(f.request)).state, "added");
+      assert.equal(f.fields[picture], 'before<img src="hachidori-abc123.avif">after');
+      assert.equal(f.fields[audio], "[sound:hachidori-abc123.wav]");
+      assert.deepEqual(f.storedMedia, ["hachidori-abc123.avif", "hachidori-abc123.wav"]);
+      assert.deepEqual(f.configuredTemplates, saved);
+    });
+  }
+});
+
+test("automatic preset routing follows independent outputs and preserves custom, disabled and unpinned mappings", async t => {
+  const variants = [
+    {
+      name: "animation only",
+      mediaCapture: { includeAnimation: true, includeCapturedAudio: false },
+      capture: { includeAnimation: true, includeAudio: false, includeScreenshot: false },
+      screenshot: false,
+      picture: "before{capture-animation}after",
+      audio: "",
+    },
+    {
+      name: "audio only",
+      mediaCapture: { includeAnimation: false, includeCapturedAudio: true },
+      capture: { includeAnimation: false, includeAudio: true, includeScreenshot: true },
+      screenshot: true,
+      picture: "before{screenshot}after",
+      audio: "{capture-audio}",
+    },
+    {
+      name: "capture disabled",
+      mediaCapture: { enabled: false },
+      capture: null,
+      screenshot: true,
+      picture: "before{screenshot}after",
+      audio: "",
+    },
+  ];
+  for (const variant of variants) await t.test(variant.name, async () => {
+    const f = captureFixture({
+      model: "Kiku v2",
+      templates: presetCaptureTemplates("kiku"),
+      mediaCapture: variant.mediaCapture,
+    });
+    f.request.configKey = (await f.service.status()).configKey;
+    const preflight = await f.service.preflight(f.request);
+    assert.deepEqual(preflight.capture?.requirements ?? null, variant.capture);
+    assert.equal(preflight.screenshot, variant.screenshot);
+    assert.equal(f.renderedTemplates.at(-1).Picture.value, variant.picture);
+    assert.equal(f.renderedTemplates.at(-1).SentenceAudio.value, variant.audio);
+  });
+
+  await t.test("nonblank sentence audio", async () => {
+    const f = captureFixture({
+      model: "Kiku",
+      templates: presetCaptureTemplates("kiku", { audio: "custom {audio}" }),
+    });
+    f.request.configKey = (await f.service.status()).configKey;
+    const preflight = await f.service.preflight(f.request);
+    assert.deepEqual(preflight.capture.requirements,
+      { includeAnimation: true, includeAudio: false, includeScreenshot: false });
+    assert.equal(f.renderedTemplates.at(-1).SentenceAudio.value, "custom {audio}");
+  });
+
+  await t.test("custom model", async () => {
+    const f = captureFixture({ model: "My Kiku", templates: presetCaptureTemplates("kiku") });
+    f.request.configKey = (await f.service.status()).configKey;
+    const preflight = await f.service.preflight(f.request);
+    assert.equal(preflight.capture, null);
+    assert.equal(preflight.screenshot, true);
+    assert.deepEqual(f.renderedTemplates.at(-1), f.configuredTemplates);
+  });
+
+  await t.test("request cache remains immutable", async () => {
+    const f = captureFixture({ model: "Kiku", templates: presetCaptureTemplates("kiku") });
+    f.request.configKey = (await f.service.status()).configKey;
+    assert.equal((await f.service.preflight(f.request)).screenshot, false);
+    delete f.request.capturePin;
+    const unpinned = await f.service.preflight(f.request);
+    assert.equal(unpinned.capture, null);
+    assert.equal(unpinned.screenshot, true);
+    assert.equal(f.renderedTemplates.at(-1).Picture.value, "before{screenshot}after");
+    assert.equal(f.renderedTemplates.at(-1).SentenceAudio.value, "");
+  });
+});
+
+test("automatic preset routing happens before overwrite filtering so retained fields need no export or upload", async () => {
+  const templates = presetCaptureTemplates("kiku", {
+    picture: "{screenshot}",
+    pictureMode: "coalesce",
+    audioMode: "coalesce",
+  });
+  const existingFields = {
+    Expression: "猫",
+    Picture: '<img src="existing.avif">',
+    SentenceAudio: "[sound:existing.wav]",
+  };
+  const f = captureFixture({ model: "Kiku", templates, duplicate: true, existingFields });
+  f.request.configKey = (await f.service.status()).configKey;
+  const preflight = await f.service.preflight(f.request);
+  assert.equal(preflight.action, "overwrite");
+  assert.equal(preflight.capture, null);
+  assert.equal(preflight.screenshot, false);
+  assert.equal((await f.service.submit(f.request)).state, "updated");
+  assert.deepEqual(f.fields, existingFields);
+  assert.deepEqual(f.captureCalls, []);
+  assert.deepEqual(f.storedMedia, []);
+});
 
 test("captured media preflight stays read-only and submission uploads referenced assets before the note", async () => {
   const f = captureFixture();

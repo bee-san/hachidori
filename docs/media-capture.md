@@ -22,15 +22,20 @@ speech is not captured.
 
 1. Open **Settings → Media capture**.
 2. Enable media capture and keep at least one output enabled.
-3. Map `{capture-animation}` and/or `{capture-audio}` into non-first Anki
-   fields. Unmapped outputs are neither encoded nor uploaded.
-4. Open **Capture controls**, click **Start capture**, and choose one browser
+3. Kiku, Lapis and Senren use their stock fields automatically for a pinned
+   clip: animation replaces `{screenshot}` in `Picture`/`picture`, and captured
+   audio fills a blank `SentenceAudio`/`sentenceAudio`. A nonblank custom
+   sentence-audio template is left alone.
+4. For a custom note type, map `{capture-animation}` and/or `{capture-audio}`
+   into non-first Anki fields manually. Unmapped outputs are neither encoded
+   nor uploaded.
+5. Open **Capture controls**, click **Start capture**, and choose one browser
    tab, application window, or monitor in Chrome's picker. Source audio depends
    on the browser, operating system, chosen surface, and picker audio option.
-5. Select and link the reading page. If it has several videos, select the
+6. Select and link the reading page. If it has several videos, select the
    relevant one. Hachidori may learn an ordinary accessible text area from the
    first root lookup, or you can use **Track this text area**.
-6. The controls may be closed and reopened while recording continues. The
+7. The controls may be closed and reopened while recording continues. The
    recorder lives in the extension's shared offscreen document.
 
 Changing collection settings while recording asks for confirmation, then stops
@@ -58,6 +63,13 @@ anything. It needs no share, no **Start capture**, and no session:
    type actually has.
 3. Add a note as usual. One picture of the visible page is taken at that moment,
    with Hachidori's popup and image preview hidden for it.
+
+Without a pinned clip, the recognised presets keep this normal static
+screenshot. With a pin and animation output enabled, Hachidori replaces only
+the request's `{screenshot}` marker with `{capture-animation}`; the saved
+template is unchanged and no JPEG is taken. If animation encoding later fails,
+the existing capture error is reported without taking a second, fallback
+screenshot. Audio-only capture leaves the static picture mapping in place.
 
 The picture is stored through the same AnkiConnect media gateway as dictionary
 images and pronunciation audio, under its own `hachidori-screenshot-<uuid>.jpg`
@@ -148,10 +160,13 @@ If the selected share supplies no audio track, animation can still be exported
 with a warning; an audio-only mapping reports unavailable source audio.
 Hachidori never substitutes microphone or fabricated silent audio.
 
-Anki preflight performs no media work. On submission, Hachidori encodes only
-referenced outputs, rechecks duplicate/configuration state, uploads assets one
-at a time, revalidates, writes the note, and verifies the result. An uncertain
-write is not automatically retried or duplicated.
+Anki preflight performs no media work. For recognised presets, preflight and
+submission each derive an independent request-only copy of the saved templates
+before duplicate and overwrite filtering. A skipped, retained or unchanged
+field therefore requests no encoding or upload. On submission, Hachidori
+encodes only referenced outputs, rechecks duplicate/configuration state,
+uploads assets one at a time, revalidates, writes the note, and verifies the
+result. An uncertain write is not automatically retried or duplicated.
 
 ## Privacy and limitations
 

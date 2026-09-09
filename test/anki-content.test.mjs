@@ -318,11 +318,15 @@ test("captured media polls its job and preserves an unavailable screenshot when 
     ["hd_capture_export", "hd_capture_job_status", "hd_capture_job_status", "hd_capture_job_status"]);
 });
 
-test("capture encoding failure is safely retryable and never becomes an uncertain Anki write", async t => {
-  let writes = 0;
+test("capture encoding failure is safely retryable without a fallback screenshot or uncertain Anki write", async t => {
+  let screenshots = 0, writes = 0;
   const f = fixture(t, async (type) => {
     if (type === "hd_anki_status") return { available: true, configKey: "current" };
-    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true, capture: {
+    if (type === "hd_anki_screenshot") {
+      screenshots++;
+      return { token: "unexpected", filename: "hachidori-screenshot-unexpected.jpg" };
+    }
+    if (type === "hd_anki_preflight") return { state: "addable", canAdd: true, screenshot: false, capture: {
       requirements: { includeAnimation: true, includeAudio: false },
       sourceLabel: "Recent clip",
       partial: false,
@@ -350,6 +354,7 @@ test("capture encoding failure is safely retryable and never becomes an uncertai
   await until(() => f.items[0].output.textContent.includes("encoder failed"));
   assert.equal(f.items[0].add.dataset.state, "ready");
   assert.equal(f.items[0].add.disabled, false);
+  assert.equal(screenshots, 0);
   assert.equal(writes, 0);
 });
 

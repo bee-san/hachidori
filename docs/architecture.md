@@ -1543,8 +1543,21 @@ choice reports the capture failure instead. Sentence-furigana markers use the
 GSM fallback when its optional native tokenizer is unavailable.
 
 Capture markers are prepared through the same Anki queue rather than a second
-gateway. Preflight reports only the outputs referenced by fields that will
-actually be applied. Submission waits for the capture job, refreshes
+gateway. Before rendering either preflight or the authoritative submission,
+the existing Senren/Lapis/Kiku family recogniser selects the stock media fields
+and the worker clones every resolved template for that request. With a valid
+pin and media capture enabled, an enabled animation output replaces only
+`{screenshot}` inside Kiku/Lapis `Picture` or Senren `picture`, preserving the
+rest of the value and its overwrite mode. Enabled captured audio maps only a
+blank Kiku/Lapis `SentenceAudio` or Senren `sentenceAudio`; an explicit
+nonblank template is preserved. No pin or disabled capture leaves the static
+screenshot mapping intact. Custom model mappings, saved options and the cached
+resolved templates are never changed.
+
+This routing happens before duplicate and overwrite filtering. Preflight
+therefore reports only the outputs referenced by fields that will actually be
+applied, and a skipped, retained or unchanged field causes no encoding or
+upload. Submission waits for the capture job, refreshes
 configuration, generation, duplicate and overwrite decisions, uploads final
 assets one at a time, revalidates capture ownership immediately before the note
 mutation, then performs and verifies the existing write. Stop during the final
@@ -1562,16 +1575,19 @@ taken at the moment the user adds it. It is the same media path as any other Ank
 image, not a second one: nothing is captured during hover, preflight, first-run
 discovery or background reading.
 
-The reader takes it. Preflight reports `screenshot: true` when the configured
-mapping contains `{screenshot}` and the Settings switch is on — the whole mapping,
-not the subset that preflight would apply, because the authoritative decision is
-made again inside the write and may apply a field this one would have kept —
-and the content script then hides Hachidori's own overlays: the popup, its image
-preview and the fallback highlight paint all live in one host element, and the
-document-registered source highlight is suspended beside it — the highlighter
-stops publishing for the whole interval, so a lookup that settles while the
-picture is being taken cannot paint into it either, and releasing repaints the
-exact ranges. It waits two frames
+The reader takes it. Preflight reports `screenshot: true` when the effective
+request mapping contains `{screenshot}` and the Settings switch is on — the
+whole mapping, not the subset that preflight would apply, because the
+authoritative decision is made again inside the write and may apply a field
+this one would have kept. A pinned recognised preset with animation enabled has
+already replaced that marker in its request copy, so the reader takes no JPEG;
+an encoder failure does not trigger a second screenshot. When a screenshot is
+required, the content script hides Hachidori's own overlays: the popup, its
+image preview and the fallback highlight paint all live in one host element,
+and the document-registered source highlight is suspended beside it — the
+highlighter stops publishing for the whole interval, so a lookup that settles
+while the picture is being taken cannot paint into it either, and releasing
+repaints the exact ranges. It waits two frames
 so the change has painted, asks the worker for the picture, and restores
 everything whatever the outcome. The host uses `opacity: 0 !important` so even
 masonry cards with explicit `visibility: visible` remain concealed; its previous
@@ -1621,9 +1637,10 @@ later pronunciation enrichment cannot restore its image reference in a mixed
 A capture or upload that fails is a warning carried with the note's own outcome:
 the marker renders empty — a refused upload also empties the fields that
 referenced the picture, so no note points at an image Anki does not have — the
-note is still added or updated, and nothing invites a duplicate retry. The Kiku and Lapis presets map their verified `Picture` field
-and Senren its `picture` field to this marker, and a first installation has the
-switch on, so a recognised mining setup gets screenshots without further
+note is still added or updated, and nothing invites a duplicate retry. The Kiku
+and Lapis presets map their verified `Picture` field and Senren its `picture`
+field to this marker, and a first installation has the switch on, so an
+unpinned recognised mining setup gets screenshots without further
 configuration. A note type without a picture field maps nothing and captures
 nothing, and `{screenshot}` is refused in the first Anki field for the same
 reason as the other captured media: a note's identity cannot be a fresh picture
