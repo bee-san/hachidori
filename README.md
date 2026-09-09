@@ -97,7 +97,7 @@ I will not mindlessly merge PRs that add nothing for me other than bloat.
 
 # AI Usage
 
-This program was created with the assistance of AI. I used GPT 5.6 Ultra, and then GPT 6.0 Astra Ultra exclusively. 
+This program was created with the assistance of AI. I used GPT 5.6 Ultra, and then GPT 6.0 Astra Ultra exclusively. When Codex goes down, I use Fable 5.1 with ultrathink and ultracode.
 
 I have reviewed all plans, I set the direction of how this program works. Large parts of the program such as the actual dictionary core are hand-written. 
 
