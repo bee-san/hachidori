@@ -98,6 +98,11 @@ const UPDATE_SETTINGS_KEY = "dictionaryUpdates";
 const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
 const DICTIONARY_STATE_SCHEMA_VERSION = 1;
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
+const alarms = chrome.alarms ?? {
+  async clear() { return false; },
+  async get() { return undefined; },
+  create() {},
+};
 
 async function readAnkiOptions() {
   return normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
@@ -135,7 +140,7 @@ function getAnkiMaturityCache() {
       }
       return next ?? state;
     }),
-    alarms: chrome.alarms,
+    alarms,
   });
   return ankiMaturityCache;
 }
@@ -334,6 +339,12 @@ async function createOffscreen() {
 // createDocument() rejects when called while another call is in flight, so every
 // caller waits on the same promise.
 async function ensureOffscreen() {
+  if (typeof chrome.runtime.getContexts !== "function"
+      || typeof chrome.offscreen?.createDocument !== "function") {
+    // Some extension hosts keep this page alive themselves instead of exposing
+    // Chrome's offscreen-document lifecycle API.
+    return;
+  }
   if (await offscreenExists()) {
     return;
   }
@@ -1283,17 +1294,17 @@ function reconcileUpdateAlarm() {
     const { dictionaries, settings } = await serialiseStorage(readUpdatePlan);
     const now = Date.now();
     const when = nextManagedUpdateCheck(dictionaries, settings.schedule, now);
-    const existing = await chrome.alarms.get(UPDATE_ALARM);
+    const existing = await alarms.get(UPDATE_ALARM);
     if (updateCycleActive) return;
     if (when === null) {
-      if (existing) await chrome.alarms.clear(UPDATE_ALARM);
+      if (existing) await alarms.clear(UPDATE_ALARM);
       return;
     }
     if (existing && existing.periodInMinutes === undefined
         && (existing.scheduledTime === when || (when === now && existing.scheduledTime <= now))) {
       return;
     }
-    await chrome.alarms.create(UPDATE_ALARM, { when });
+    await alarms.create(UPDATE_ALARM, { when });
   });
   alarmTail = run.then(
     () => undefined,
@@ -2010,7 +2021,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-chrome.alarms.onAlarm.addListener((alarm) => {
+chrome.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === ANKI_MATURITY_ALARM) {
     void getAnkiMaturityCache().reconcile();
     return;
@@ -2023,7 +2034,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   });
 });
 
-chrome.downloads.onChanged.addListener(delta => {
+chrome.downloads?.onChanged?.addListener(delta => {
   if (!delta.state || delta.state.current === "in_progress") return;
   getBackupDownloads().changed(delta.id).catch(error => {
     console.warn("hoshidicts: could not release a finished backup download:", describe(error));
