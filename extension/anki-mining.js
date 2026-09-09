@@ -2,10 +2,34 @@
 import { ankiAvailability } from "./anki.js";
 import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
+import { ankiSetupFamily } from "./anki-setup.js";
 import { ankiBrowseQuery, ankiNoteIdsQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, findAnkiDuplicateNotes,
   isAnkiDuplicateError, overwriteAnkiFields } from "./anki-duplicates.js";
 
 const CONFIG_CHANGED = "Anki configuration changed. Refresh this result before adding a note.";
+const AUTOMATIC_CAPTURE_FIELDS = {
+  kiku: { picture: "Picture", audio: "SentenceAudio" },
+  lapis: { picture: "Picture", audio: "SentenceAudio" },
+  senren: { picture: "picture", audio: "sentenceAudio" },
+};
+
+function requestConfiguration(current, request) {
+  const fields = AUTOMATIC_CAPTURE_FIELDS[ankiSetupFamily(current.config.model)];
+  if (!fields) return current;
+  const templates = Object.fromEntries(Object.entries(current.resolved.templates)
+    .map(([field, template]) => [field, { ...template }]));
+  const routed = { ...current, resolved: { ...current.resolved, templates } };
+  const capture = current.config.mediaCapture;
+  if (!request.capturePin || capture?.enabled !== true) return routed;
+  if (capture.includeAnimation === true && templates[fields.picture]) {
+    templates[fields.picture].value = templates[fields.picture].value
+      .replaceAll("{screenshot}", "{capture-animation}");
+  }
+  if (capture.includeCapturedAudio === true && templates[fields.audio]?.value.trim() === "") {
+    templates[fields.audio].value = "{capture-audio}";
+  }
+  return routed;
+}
 
 export async function readAnkiNoteFields(invoke, noteId) {
   const infos = await invoke("notesInfo", { notes: [noteId] });
@@ -134,7 +158,8 @@ export function createAnkiMiningService({
   }
 
   async function prepare(request, fresh) {
-    const current = await configuration(fresh);
+    const configured = await configuration(fresh);
+    const current = requestConfiguration(configured, request);
     if (request.configKey !== current.configKey) throw new Error(CONFIG_CHANGED);
     if (current.errors.length) throw new Error(current.errors.join("\n"));
     const resources = await buildFields(request, current, { preflight: !fresh });
