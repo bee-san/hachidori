@@ -1335,6 +1335,28 @@ html[data-hoshidicts-theme="girlypop"],
   align-items: baseline;
 }
 
+.gsm-hoshidicts-primary-frequencies-default {
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 3px 7px;
+  border: 1px solid var(--hoshidicts-border);
+  border-radius: 999px;
+  background: var(--hoshidicts-card-background);
+  color: var(--hoshidicts-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.gsm-hoshidicts-primary-frequency-label {
+  flex: 0 0 auto;
+  color: inherit;
+}
+
+.gsm-hoshidicts-primary-frequency-label + .gsm-hoshidicts-tag-frequency {
+  margin-left: 4px;
+}
+
 .gsm-hoshidicts-primary-metadata-capsule .gsm-hoshidicts-tag-frequency {
   flex: 0 1 auto;
   min-width: 0;
