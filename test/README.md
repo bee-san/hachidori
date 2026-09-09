@@ -759,7 +759,7 @@ not; the padded 4 MiB fixtures come from `buildRecommendedZip({ paddingBytes })`
 Eight assertions cover the tab: exactly one startup page at the dictionary
 stage with the Settings palette, Jitendex held in an indeterminate
 **Downloading… 0 KB** row and the seeded first-install options (compact
-summaries on at three, TTS and the dark popup defaults untouched); the Settings
+summaries on at two, TTS and the dark popup defaults untouched); the Settings
 sidebar's **Resume setup** link outside the section navigation; a reload that
 rejoins the same run without a second archive request; the released run, whose
 recorded broadcasts and every rendered row prove waiting → downloading →

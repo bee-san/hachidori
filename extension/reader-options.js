@@ -60,7 +60,7 @@
     definitionBlurReveal: "timed",
     definitionBlurDelayMs: 5000,
     showCompactDefinitionSummary: false,
-    compactDefinitionSummaryCount: 3,
+    compactDefinitionSummaryCount: 2,
     compactDefinitionSummaryDictionary: "",
     popupImageSource: null,
     averageFrequency: false,

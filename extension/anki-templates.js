@@ -29,7 +29,7 @@ const genericAliases = {
 // donkuri/lapis f4eb29bd build/anki_fields.yaml; non-mining fields stay blank.
 const KIKU = {
   Expression: "{expression}", ExpressionFurigana: "{furigana-plain}", ExpressionReading: "{reading}", ExpressionAudio: "{audio}",
-  Picture: "{screenshot}",
+  Picture: "{screenshot}", SentenceAudio: "{capture-audio}",
   SelectionText: "{popup-selection-text}", MainDefinition: "{main-definition}", Glossary: "{glossary}",
   Sentence: "{cloze-prefix}<b>{cloze-body}</b>{cloze-suffix}", SentenceFurigana: "{sentence-furigana-plain}",
   PitchPosition: "{pitch-accent-positions}", PitchCategories: "{pitch-accent-categories}", Frequency: "{frequencies}",
@@ -146,6 +146,16 @@ export function resolveAnkiTemplates(config, fields) {
   }));
   const staleFields = Object.keys(saved).filter(field => !used.has(field));
   const errors = staleFields.map(field => `Template field “${field}” is unavailable.`);
+  // The beta Kiku/Lapis preset originally left SentenceAudio blank. Repair only
+  // that exact untouched generated shape; customized templates stay untouched.
+  const sentenceAudio = fields.find(field => fieldKey(field) === fieldKey("SentenceAudio"));
+  const expected = new Map(Object.entries(KIKU).map(([field, value]) =>
+    [fieldKey(field), fieldKey(field) === fieldKey("SentenceAudio") ? "" : value]));
+  const legacyKiku = sentenceAudio !== undefined && staleFields.length === 0
+    && Object.keys(saved).length === fields.length
+    && fields.every(field => templates[field].overwriteMode === "coalesce"
+      && templates[field].value === (expected.get(fieldKey(field)) ?? ""));
+  if (legacyKiku) templates[sentenceAudio].value = KIKU.SentenceAudio;
   for (const [field, template] of Object.entries(templates)) {
     errors.push(...ankiTemplateErrors(template.value).map(error => `${field}: ${error}`));
   }

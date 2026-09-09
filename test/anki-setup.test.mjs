@@ -4,7 +4,7 @@ import "../extension/reader-options.js";
 import { ankiSetupFamily, detectAnkiSetup } from "../extension/anki-setup.js";
 
 const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
-  "Glossary", "Sentence", "SentenceFurigana", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
+  "Glossary", "Sentence", "SentenceFurigana", "SentenceAudio", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
 const SENREN_FIELDS = ["word", "reading", "sentence", "definition", "wordAudio", "picture", "glossary", "frequencies", "freqSort", "miscInfo"];
 const baseConfig = () => globalThis.HDReaderOptions.normaliseOptions({}).anki;
 
@@ -68,6 +68,7 @@ test("the note type with the unique highest distinct-note count wins and its bus
   assert.equal(result.fieldTemplates.Expression.value, "{expression}");
   // The verified Kiku picture field is the screenshot destination.
   assert.equal(result.fieldTemplates.Picture.value, "{screenshot}");
+  assert.equal(result.fieldTemplates.SentenceAudio.value, "{capture-audio}");
   assert.equal(Object.keys(result.fieldTemplates).length, KIKU_FIELDS.length);
   // Senren is named like a family but lacks its fields; Basic and Kikuchi are never consulted for notes.
   assert.deepEqual(calls.filter((call) => call.action === "findNotes").map((call) => call.params.query), ["mid:2", "mid:3"]);

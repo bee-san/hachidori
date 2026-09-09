@@ -1101,7 +1101,7 @@ async function firstRunBackgroundStage() {
       dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] },
       anki: null,
     }) && validIso(seeded.setup?.startedAt)
-    && JSON.stringify(seeded.options) === JSON.stringify({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3, revision: 1 })
+    && JSON.stringify(seeded.options) === JSON.stringify({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1 })
     && JSON.stringify(storage.sets) === JSON.stringify([["options", "setupState"]]);
 
   // The user edits a seeded preference; updates, browser starts, a restarted
@@ -1257,7 +1257,7 @@ async function firstRunBackgroundStage() {
 // revisioned options write for a recognised setup, one durable outcome.
 async function firstRunAnkiStage() {
   const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
-    "Glossary", "Sentence", "SentenceFurigana", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
+    "Glossary", "Sentence", "SentenceFurigana", "SentenceAudio", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
   const setupRecord = (patch = {}) => ({ schemaVersion: 1, revision: 4, startedAt: "2026-09-07T10:00:00.000Z", stage: "anki", completedAt: null,
     dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }, anki: null, ...patch });
   const defaultAnki = () => globalThis.HDReaderOptions.normaliseOptions({}).anki;
@@ -1370,7 +1370,9 @@ async function firstRunAnkiStage() {
       && found.requests.find((request) => request.action === "findNotes").params.query === "mid:2"
       && found.requests.find((request) => request.action === "findCards").params.query === "mid:2 -deck:filtered"
       && savedOptions.revision === 3 && savedOptions.anki.model === "Kiku v2" && savedOptions.anki.deck === "Mining" && savedOptions.anki.apiKey === "local-key"
-      && savedOptions.anki.fieldTemplates.Expression.value === "{expression}" && savedOptions.anki.fieldTemplates.Picture.value === "{screenshot}"
+      && savedOptions.anki.fieldTemplates.Expression.value === "{expression}"
+      && savedOptions.anki.fieldTemplates.SentenceAudio.value === "{capture-audio}"
+      && savedOptions.anki.fieldTemplates.Picture.value === "{screenshot}"
       && Object.keys(savedOptions.anki.fieldTemplates).length === KIKU_FIELDS.length
       && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([["options", "setupState"]])
       && first.state.revision === 5,
@@ -2562,8 +2564,8 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
       const reply = await send(message(patch));
       summaryRejected.push(reply.ok === false && await unchanged(saved));
     }
-    check("compact summaries default off with three snippets and preserve a soft source preference through strict options CAS",
-      summaryDefaults.showCompactDefinitionSummary === false && summaryDefaults.compactDefinitionSummaryCount === 3
+    check("compact summaries default off with two snippets and preserve a soft source preference through strict options CAS",
+      summaryDefaults.showCompactDefinitionSummary === false && summaryDefaults.compactDefinitionSummaryCount === 2
         && summaryDefaults.compactDefinitionSummaryDictionary === ""
         && summaryAccepted.every(Boolean) && summaryRejected.every(Boolean),
       JSON.stringify({ summaryDefaults, summaryAccepted, summaryRejected }));
@@ -7921,7 +7923,7 @@ async function settingsFrequencyStage() {
     const snippets = window.document.getElementById("opt-summary-count");
     const preferred = window.document.getElementById("opt-summary-dictionary");
     if (!summaryToggle || !snippets || !preferred) return { explicit, availability, draft, writes, summary: false };
-    const summaryDefault = !summaryToggle.checked && snippets.value === "3" && snippets.disabled
+    const summaryDefault = !summaryToggle.checked && snippets.value === "2" && snippets.disabled
       && preferred.value === "" && preferred.disabled;
     async function editControl(control, value) {
       const before = writes.length;

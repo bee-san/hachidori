@@ -162,7 +162,7 @@ of that record, not the reason alone, identifies a new installation.
   stage becomes `complete`, and records `continued` when the user leaves the
   dictionary stage with an incomplete set.
 - `options`: the first-install preferences (`showCompactDefinitionSummary: true`,
-  `compactDefinitionSummaryCount: 3`) at revision 1. The `reader-options.js`
+  `compactDefinitionSummaryCount: 2`) at revision 1. The `reader-options.js`
   defaults are unchanged, so an extension update never alters an existing
   user's popup, and a later edit through the ordinary revisioned options write
   is the value that persists.

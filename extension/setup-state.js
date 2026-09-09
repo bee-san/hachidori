@@ -15,7 +15,7 @@ export const SETUP_ANKI_STATUSES = Object.freeze(["configured", "already-configu
 // reader defaults or overrides a later edit.
 export const FIRST_INSTALL_OPTIONS = Object.freeze({
   showCompactDefinitionSummary: true,
-  compactDefinitionSummaryCount: 3,
+  compactDefinitionSummaryCount: 2,
 });
 
 // Dictionary-dependent initial preferences, applied once from the committed

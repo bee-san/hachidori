@@ -41,12 +41,14 @@ test("Automatic and named presets materialize only discovered fields with visibl
   assert.equal(aliases.fieldTemplates.Reading.value, "");
   assert.equal(aliases.fieldTemplates.WordAudio.value, "");
   for (const preset of ["kiku", "lapis"]) {
-    const result = applyAnkiPreset(config(), ["Expression", "ExpressionFurigana", "MainDefinition", "PitchPosition", "FreqSort"], preset);
+    const result = applyAnkiPreset(config(),
+      ["Expression", "ExpressionFurigana", "MainDefinition", "PitchPosition", "FreqSort", "SentenceAudio"], preset);
     assert.equal(result.fieldTemplates.ExpressionFurigana.value, "{furigana-plain}");
     assert.equal(result.fieldTemplates.MainDefinition.value, "{main-definition}");
     assert.equal(result.fieldTemplates.PitchPosition.value, "{pitch-accent-positions}");
     assert.equal(result.fieldTemplates.FreqSort.value, "{frequency-harmonic-rank}");
-    assert.equal(Object.keys(result.fieldTemplates).length, 5);
+    assert.equal(result.fieldTemplates.SentenceAudio.value, "{capture-audio}");
+    assert.equal(Object.keys(result.fieldTemplates).length, 6);
   }
   const senren = applyAnkiPreset(config(), ["word", "definition", "wordAudio", "pitchPositions", "sentenceTranslation"], "senren");
   assert.equal(senren.fieldTemplates.word.value, "{expression}");
@@ -54,6 +56,15 @@ test("Automatic and named presets materialize only discovered fields with visibl
   assert.equal(senren.fieldTemplates.wordAudio.value, "{audio}");
   assert.equal(senren.fieldTemplates.pitchPositions.value, "{pitch-accent-positions}");
   assert.equal(senren.fieldTemplates.sentenceTranslation.value, "");
+});
+
+test("an untouched beta Kiku preset gains SentenceAudio without changing customized templates", () => {
+  const fields = ["Expression", "ExpressionReading", "Sentence", "Glossary", "SentenceAudio"];
+  const legacy = applyAnkiPreset(config(), fields, "kiku");
+  legacy.fieldTemplates.SentenceAudio.value = "";
+  assert.equal(resolveAnkiTemplates(legacy, fields).templates.SentenceAudio.value, "{capture-audio}");
+  legacy.fieldTemplates.Glossary.value = "{glossary-brief}";
+  assert.equal(resolveAnkiTemplates(legacy, fields).templates.SentenceAudio.value, "");
 });
 
 test("marker validation retains unknown tokens as errors and recognizes nonempty dictionary-specific markers", () => {

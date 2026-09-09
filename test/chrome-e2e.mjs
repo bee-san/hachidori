@@ -2284,7 +2284,7 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     await clean(() => write({ maxResults: original.options.maxResults,
       popupImageSource: original.options.popupImageSource ?? null,
       showCompactDefinitionSummary: original.options.showCompactDefinitionSummary ?? false,
-      compactDefinitionSummaryCount: original.options.compactDefinitionSummaryCount ?? 3,
+      compactDefinitionSummaryCount: original.options.compactDefinitionSummaryCount ?? 2,
       compactDefinitionSummaryDictionary: original.options.compactDefinitionSummaryDictionary ?? "" }));
     await clean(() => settings.evaluate(async () => {
       const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
@@ -4388,7 +4388,7 @@ async function checkStartupFileAccess(settings, browser, startupUrl) {
 // options are restored afterwards so the later Anki checks start as they did.
 async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
   const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
-    "Glossary", "Sentence", "SentenceFurigana", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
+    "Glossary", "Sentence", "SentenceFurigana", "SentenceAudio", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
   const calls = [];
   const route = { requests: 0, respond(request) {
     const { action, params, version } = JSON.parse(request.postData);
@@ -4532,7 +4532,9 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && anki.model === "Kiku v2" && anki.deck === "Mining"
         && detected.options.revision === saved.options.revision + 1
         && Object.keys(templates).length === KIKU_FIELDS.length
-        && templates.Expression?.value === "{expression}" && templates.Picture?.value === "{screenshot}"
+        && templates.Expression?.value === "{expression}"
+        && templates.SentenceAudio?.value === "{capture-audio}"
+        && templates.Picture?.value === "{screenshot}"
         && anki.captureScreenshot === true
         // Only the fixed read-only actions ran, in ranking order, at protocol version 6.
         && JSON.stringify(calls.map(({ action }) => action)) === JSON.stringify(
@@ -6923,7 +6925,7 @@ async function main() {
       && JSON.stringify(Object.keys(seededOptions).sort()) === JSON.stringify(
         ["compactDefinitionSummaryCount", "revision", "showCompactDefinitionSummary"],
       )
-      && seededOptions.showCompactDefinitionSummary === true && seededOptions.compactDefinitionSummaryCount === 3
+      && seededOptions.showCompactDefinitionSummary === true && seededOptions.compactDefinitionSummaryCount === 2
       && seededOptions.revision === 1
       && effective.popupTheme === "default" && effective.popupOpacityPercent === 85
       && effective.audioAutoplay === false
