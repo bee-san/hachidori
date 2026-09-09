@@ -3892,6 +3892,11 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     await hoverForPopup(tab, popup, "#verb");
     const duplicate = await settled(state => state?.controls[0]?.state === "view-existing"
       && !state.controls[0].disabled && state.controls[0].viewHidden);
+    if (process.env.HACHIDORI_ANKI_DUPLICATE_SCREENSHOT) {
+      const { x, y, width, height } = duplicate.rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_ANKI_DUPLICATE_SCREENSHOT,
+        clip: { x, y, width, height } });
+    }
     const exactBrowseCount = calls.filter(call => call.action === "guiBrowse").length;
     await popup.click(".gsm-hoshidicts-mine-button");
     await settled(() => calls.filter(call => call.action === "guiBrowse").length > exactBrowseCount);
