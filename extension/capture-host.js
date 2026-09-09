@@ -223,23 +223,38 @@ function audioTimestampOrigin(mediaTimeMs, videoOriginMs, observedAtMs = timesta
     < Math.abs(videoOriginMs + mediaTimeMs - observedAtMs) ? pageOriginMs : videoOriginMs;
 }
 
-function createAudioSampleClock(originMs) {
-  let firstMs = null;
-  let samples = 0;
+function createAudioSampleClock(originMs, observedNow = timestamp) {
+  let offsetMs = 0;
+  let nextMs = null;
   let sampleRate = null;
+  let previousBlockMs = null;
   return value => {
-    const observedMs = originMs + value.timestamp / 1000;
-    sampleRate ??= value.sampleRate;
-    firstMs ??= observedMs;
-    const startMs = firstMs + samples * 1000 / sampleRate;
+    const rawMs = originMs + value.timestamp / 1000;
+    const observedMs = rawMs + offsetMs;
+    const blockMs = value.numberOfFrames * 1000 / value.sampleRate;
+    if (nextMs === null) {
+      sampleRate = value.sampleRate;
+      previousBlockMs = blockMs;
+      nextMs = observedMs + blockMs;
+      return observedMs;
+    }
     // AudioData timestamps are privacy-rounded (100 us on observed Chrome
     // 152). Count delivered samples instead of making holes at rounded block
-    // boundaries. A missing block or a changed sample clock remains an error.
-    const blockMs = value.numberOfFrames * 1000 / sampleRate;
-    if (value.sampleRate !== sampleRate || Math.abs(observedMs - startMs) >= blockMs / 2) {
-      throw new Error("The captured audio clock was interrupted. Start capture again.");
+    // boundaries. Forward jumps remain real gaps. A reset or sample-rate
+    // change starts a new local epoch after a gap so later blocks can recover.
+    let startMs = nextMs;
+    if (value.sampleRate !== sampleRate || Math.abs(observedMs - nextMs) >= blockMs / 2) {
+      if (value.sampleRate === sampleRate && observedMs > nextMs) {
+        startMs = observedMs;
+      } else {
+        const minimum = nextMs + Math.max(previousBlockMs, blockMs);
+        startMs = Math.max(minimum, observedNow() - blockMs);
+        offsetMs = startMs - rawMs;
+      }
     }
-    samples += value.numberOfFrames;
+    sampleRate = value.sampleRate;
+    previousBlockMs = blockMs;
+    nextMs = startMs + blockMs;
     return startMs;
   };
 }
@@ -319,10 +334,7 @@ async function startWorkletAudio(sharedStream, sourceTrack) {
   let originMs = null;
   ownedNode.port.addEventListener("message", event => {
     if (stream !== sharedStream || audioContext !== ownedContext) return;
-    if (event.data.error) {
-      stopCapture(`Audio capture stopped: ${event.data.error}`);
-      return;
-    }
+    if (event.data.discontinuity) return;
     if (!Number.isFinite(originMs)) return;
     const samples = new Float32Array(event.data.samples);
     session.addAudio({

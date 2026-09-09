@@ -167,9 +167,11 @@ adapters, or microphone capture.
 Navigating away from or unlinking the reading page clears its binding and
 unsubmitted pins while recording continues. An export already admitted owns
 its clip independently. A shared track ending or becoming unavailable stops
-capture and clears history. Detected capture-clock interruptions also stop
-capture. Minimize behavior depends on the selected share: it may keep producing
-frames or make the source unavailable. Stopped capture never resumes itself.
+capture and clears history. An audio sample-clock interruption leaves an
+explicit gap in history and recording continues; a clip crossing that gap
+reports missing samples, while later complete clips remain usable. Minimize
+behavior depends on the selected share: it may keep producing frames or make
+the source unavailable. Stopped capture never resumes itself.
 
 Animated AVIF and WAV are separate Anki media files; client media support and
 playback scheduling can vary. Physical sleep/wake and media sync to additional

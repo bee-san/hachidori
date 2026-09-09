@@ -1712,11 +1712,14 @@ video origin and `performance.timeOrigin` by proximity to the block's observed
 arrival time, then keeps that choice for the stream. This is a clock-domain
 comparison, not a browser-version branch or a mapping from preview playback
 `mediaTime`. Delivered sample counts determine subsequent block boundaries,
-tolerating timestamp rounding while rejecting dropped blocks or sample-rate
-changes. The AudioWorklet compatibility path establishes its origin only after
-`AudioContext.resume()` and maps `startFrame` to that origin; interrupted input
-reports an error. Retired stream/context callbacks cannot append to a new
-session.
+tolerating timestamp rounding. Forward jumps remain explicit gaps; a backward
+clock or sample-rate change starts a new monotonic local epoch after a gap, so
+later audio remains usable. The AudioWorklet compatibility path establishes its
+origin only after `AudioContext.resume()` and maps `startFrame` to that origin.
+Interrupted input drops only its partial batch and resumes at the next absolute
+frame. Clips crossing either kind of gap fail continuous-audio validation while
+later clips can export normally. Retired stream/context callbacks cannot append
+to a new session.
 
 At a pin's selected end time, finalization waits up to 250 ms for outstanding
 JPEG and continuous audio delivery, finishing early if both cover the interval.
