@@ -87,6 +87,27 @@
   );
 }
 
+/*
+ * The branded default keeps the popup palette while lowering Settings' border
+ * glare and separating supporting text from primary content.
+ */
+:root[data-hoshidicts-theme="default"] {
+  --bg: #22232c;
+  --surface: #2b2b36;
+  --surface-sunken: #252630;
+  --border: #454653;
+  --border-strong: #747586;
+  --text: #e8e5eb;
+  --text-dim: #aaa8b2;
+  --accent: #b1a5ee;
+  --accent-fill: #a89ce4;
+  --accent-soft: #353247;
+  --accent-contrast: #211d30;
+  --ok: #8bb79b;
+  --error: #d28a8c;
+  --favorite: #d1aa71;
+}
+
 :root[data-hoshidicts-theme="high-contrast"] {
   --border: #777777;
   --border-strong: #ffffff;

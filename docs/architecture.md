@@ -1352,12 +1352,14 @@ The source-audited bounds are width 280–1,200 px, height 200–900 px, and opa
 
 The palette catalogue can select either the Settings document or the
 extension-owned popup host. Settings loads that same catalogue and derives its
-semantic UI colours from the selected palette, while popup appearance still sets
-theme and size/opacity variables only on the shadow host; content-page html is
-never themed. A tiny owned constructed stylesheet colours page ranges from the
-host's computed primary colour, reading it only on theme changes (and after the
-preview's async palette load). It preserves unrelated adopted sheets and removes
-only its own sheet on teardown.
+semantic UI colours from the selected palette. The branded Hachidori default
+uses tuned blue-charcoal surfaces and quieter borders, supporting text and
+lavender controls; the other catalogue themes use the shared derivation.
+Popup appearance still sets theme and size/opacity variables only on the shadow
+host; content-page html is never themed. A tiny owned constructed stylesheet
+colours page ranges from the host's computed primary colour, reading it only on
+theme changes (and after the preview's async palette load). It preserves
+unrelated adopted sheets and removes only its own sheet on teardown.
 Colour/opacity changes do not project results or schedule masonry. Size changes
 apply inline geometry before scheduling masonry so cards measure the new width
 on their first layout. Existing Note, tabs, and disclosure state remain mounted.

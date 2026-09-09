@@ -6876,6 +6876,12 @@ async function main() {
       .getPropertyValue("--hoshidicts-palette-base-100").trim(),
     base200: getComputedStyle(document.documentElement)
       .getPropertyValue("--hoshidicts-palette-base-200").trim(),
+    accent: getComputedStyle(document.documentElement)
+      .getPropertyValue("--accent").trim(),
+    borderStrong: getComputedStyle(document.documentElement)
+      .getPropertyValue("--border-strong").trim(),
+    textDim: getComputedStyle(document.documentElement)
+      .getPropertyValue("--text-dim").trim(),
     background: getComputedStyle(document.body).backgroundColor,
     surface: getComputedStyle(document.querySelector(".page")).backgroundColor,
   }));
@@ -6908,10 +6914,13 @@ async function main() {
       && startupShell.background !== "rgba(0, 0, 0, 0)"
       && startupShell.cardBackground !== "rgba(0, 0, 0, 0)"
       && settingsPalette.theme === "default"
-      && settingsPalette.base100 === "#1a1a1a"
-      && settingsPalette.base200 === "#2a2a2a"
+      && settingsPalette.base100 === "#272630"
+      && settingsPalette.base200 === "#302f3b"
+      && settingsPalette.accent === "#b1a5ee"
+      && settingsPalette.borderStrong === "#747586"
+      && settingsPalette.textDim === "#aaa8b2"
       && settingsPalette.background !== "rgba(0, 0, 0, 0)"
-      && settingsPalette.surface === "rgb(26, 26, 26)"
+      && settingsPalette.surface === "rgb(43, 43, 54)"
       && firstInstallStorage.setupState?.stage === "dictionaries"
       && firstInstallStorage.setupState.revision === 2
       && firstInstallStorage.setupState.completedAt === null
