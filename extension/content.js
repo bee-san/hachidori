@@ -18,6 +18,8 @@
   const HIGHLIGHT_NAME = "gsm-hoshidicts-match";
   const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
+  const POPUP_SHOWN_EVENT = "hachidori-popup-shown";
+  const POPUP_HIDDEN_EVENT = "hachidori-popup-hidden";
 
   const {
     DEFAULT_OPTIONS,
@@ -184,6 +186,10 @@
     } catch {
       return false;
     }
+  }
+
+  function publishPopupVisibility(visible) {
+    window.dispatchEvent(new CustomEvent(visible ? POPUP_SHOWN_EVENT : POPUP_HIDDEN_EVENT));
   }
 
   function nonnegativeCount(value) {
@@ -807,6 +813,7 @@
     if (disposed) {
       return;
     }
+    const popupWasVisible = rootLevel.popup && !rootLevel.popup.hidden;
     releaseRootCapture();
     audio?.dispose();
     mining?.retire();
@@ -854,12 +861,14 @@
     rootLevel.activeTermRender = null;
     rootLevel.currentViewRequest = null;
     rootLevel.noteEditing = false;
+    if (popupWasVisible) publishPopupVisibility(false);
     if (reason) {
       console.debug(`hachidori: content script stopped (${reason})`);
     }
   }
 
   function discardUi() {
+    const popupWasVisible = rootLevel.popup && !rootLevel.popup.hidden;
     releaseRootCapture();
     audio?.retire();
     mining?.retire();
@@ -882,6 +891,7 @@
     rootLevel.activeTermRender = null;
     rootLevel.currentViewRequest = null;
     rootLevel.noteEditing = false;
+    if (popupWasVisible) publishPopupVisibility(false);
   }
 
   function clearDictionaryResources() {
@@ -1765,6 +1775,7 @@
   }
 
   function show(candidate, level = rootLevel) {
+    const popupWasHidden = level === rootLevel && level.popup.hidden;
     level.activeCandidate = candidate;
     level.activeSignature = candidateSignature(candidate);
     if (!host.isConnected && document.body) {
@@ -1773,6 +1784,7 @@
     }
     level.popup.hidden = false;
     level.view.scrollElement.scrollTop = 0;
+    if (popupWasHidden) publishPopupVisibility(true);
   }
 
   function pruneLevels(depth, restoreFocus = true) {
@@ -1813,6 +1825,7 @@
       }
       return;
     }
+    const popupWasVisible = rootLevel.popup && !rootLevel.popup.hidden;
     cancelPopupLayout();
     clearScanTimer();
     selectionDragActive = false;
@@ -1839,6 +1852,7 @@
     rootLevel.popup.hidden = true;
     rootLevel.view.clear();
     highlighter.clearAll();
+    if (popupWasVisible) publishPopupVisibility(false);
   }
 
   function clearHideTimer() {
