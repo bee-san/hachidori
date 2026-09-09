@@ -52,6 +52,10 @@ lookup palettes resolved on Settings with at least 4.5:1 text contrast and 3:1
 control-boundary contrast. Every one of the eleven sections also fit at 320 and
 1280 pixels under representative light and dark palettes, with the opposite
 system colour preference forced to prove that the saved theme wins.
+The Hachidori default uses blue-charcoal surfaces, lavender controls and muted
+rose, sage and slate metadata. Its Settings mapping lowers border glare and
+separates supporting text from the primary content without changing the other
+41 themes.
 
 ![Settings using the selected Miku lookup theme](assets/settings-theme-miku.png)
 
