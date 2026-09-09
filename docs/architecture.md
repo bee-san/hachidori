@@ -764,26 +764,35 @@ Safe hrefs and `noopener noreferrer` remain for Copy link and native browser
 context-menu commands; those browser-owned commands do not emit routed clicks.
 No dictionary frame, fetch, new permission or configurable action is introduced.
 
-### Linked definition popup chains
+### Definition popup chains
 
-Activating a structured internal link opens a child beside its parent, using the
-link's exact query and primary reading, not its displayed label or page-scan
-offsets. This is linked-query navigation, not automatic scanning of glossary
-text. The revisioned `popupNestingMaxDepth` option defaults to 10 children; zero
-disables child navigation, and a nonnegative safe integer is accepted without a
-second product cap. At the configured depth or without drawable viewport space,
-activation retains the existing chain without allocating a pane or sending a
-lookup. Lowering the depth prunes existing excess descendants immediately.
+Hovering ordinary text inside a rendered glossary opens a child beside its
+parent. The closed shadow root is resolved with the native shadow-aware caret
+API, then the ordinary page scanner's inline, ruby, whitespace, Japanese-only
+and scan-length rules build the child query. The complete glossary remains the
+sentence and offset coordinate space for mining. Headwords, metadata, compact
+summaries, toolbars and controls are not scanned.
+
+Activating a structured internal link uses the same child lifecycle, but keeps
+the link's exact query and primary reading rather than its displayed label or
+scan offsets. The revisioned `popupNestingMaxDepth` option defaults to 10
+children; zero disables child navigation, and a nonnegative safe integer is
+accepted without a second product cap. At the configured depth or without
+drawable viewport space, activation retains the existing chain without
+allocating a pane or sending a lookup. Lowering the depth prunes existing excess
+descendants immediately.
 
 One closed shadow host and stylesheet serve the chain. Each lazily constructed
 level has a stable object identity, renderer, scoped source highlight, request
 token, exact current request, kanji Back snapshot, and Note state. Pruned objects
 are retired before clearing their hidden DOM or destroying renderer callbacks;
 a late reply cannot acquire a replacement object at the same numeric depth.
-The same pending/current linked query reuses its child. Another link or a parent
-tab redraw prunes only that parent's descendants. A child miss or failure does
-not dismiss its ancestors. Kanji Back first restores that child's term request;
-its next Back closes the child and returns focus to its connected source link.
+The same pending/current source query reuses its child. Leaving definition text
+cancels an unfinished hover child; clicked links continue independently.
+Another source or a parent tab redraw prunes only that parent's descendants. A
+child miss or failure does not dismiss its ancestors. Kanji Back first restores
+that child's term request; its next Back closes the child and returns focus to a
+connected source link when one initiated the lookup.
 
 Keyboard link activation focuses the child's Back control; mouse activation
 does not invent keyboard focus that would block pointer-return pruning. Returning

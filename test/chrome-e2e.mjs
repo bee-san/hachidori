@@ -277,6 +277,7 @@ const PLANNED = [
   "exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
   "source highlights reconcile selected text mutations without changing selection",
   "nested source highlights retain ancestor ownership when children close in native and fallback modes",
+  "plain definition text opens nested child lookups with native hover, activation, miss and depth behavior",
   "fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
   "fallback source paint tracks CSS transitions and animated ancestors",
   "fallback source paint follows sibling layout changes inside fixed-size ancestors",
@@ -754,6 +755,39 @@ async function popupReader(page, depth = 0) {
     return result.value;
   }
 
+  async function definitionTextRect(text) {
+    const object = await resolvePopupObject();
+    if (object === null) return null;
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId,
+      returnByValue: true,
+      arguments: [{ value: text }],
+      functionDeclaration: `function (text) {
+        for (const glossary of this.querySelectorAll(".gsm-hoshidicts-glossary-content")) {
+          const walker = this.ownerDocument.createTreeWalker(glossary, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (node.parentElement?.closest("a, button, input, select, textarea, [contenteditable]")) continue;
+            const offset = (node.nodeValue || "").indexOf(text);
+            if (offset < 0) continue;
+            const first = String.fromCodePoint(text.codePointAt(0));
+            const range = this.ownerDocument.createRange();
+            range.setStart(node, offset);
+            range.setEnd(node, offset + first.length);
+            const rect = range.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) continue;
+            return {
+              glossary: glossary.textContent,
+              rect: rect.toJSON(),
+              text: range.toString(),
+            };
+          }
+        }
+        return null;
+      }`,
+    });
+    return result.value ?? null;
+  }
+
   async function writeNote(values, submit = false) {
     const object = await resolvePopupObject();
     if (object === null) return null;
@@ -904,9 +938,16 @@ async function popupReader(page, depth = 0) {
         if (action === "remember") { root.__nestedParent = this; root.__nestedAnchor = link; }
         if (action === "blur") root.activeElement?.blur();
         const rect = this.getBoundingClientRect();
+        const linkRect = link?.getBoundingClientRect();
+        const linkFragment = link && [...link.getClientRects()]
+          .find(fragment => fragment.width > 0 && fragment.height > 0);
         return {
           depth: Number(this.dataset.hoshidictsDepth), rect: rect.toJSON(),
-          linkRect: link?.getBoundingClientRect().toJSON(),
+          linkRect: linkRect?.toJSON(),
+          linkPoint: linkFragment && {
+            x: linkFragment.x + linkFragment.width / 2,
+            y: linkFragment.y + linkFragment.height / 2,
+          },
           query: link?.dataset.hoshidictsQuery, reading: link?.dataset.hoshidictsReading,
           linkFocused: root.activeElement === link,
           sameParent: root.querySelector('[data-hoshidicts-depth="0"]') === root.__nestedParent,
@@ -1328,7 +1369,7 @@ async function popupReader(page, depth = 0) {
   }
 
   return {
-    anki, audio, click, compactSummaries, definitionBlur, dictionaryTabs, deinflection, externalLink, imagePreview,
+    anki, audio, click, compactSummaries, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, imagePreview,
     lookupStatistics, nested, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
     waitForVisible, waitForHidden, writeNote,
   };
@@ -2331,15 +2372,22 @@ async function checkNestedLinks(settings, tab, popup, browser) {
   const originalViewport = tab.viewport();
   const child = await popupReader(tab, 1);
   const grandchild = await popupReader(tab, 2);
-  const setDepth = (value) => settings.evaluate(async (popupNestingMaxDepth) => {
+  const writeOptions = (patch) => settings.evaluate(async (optionsPatch) => {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
-      baseRevision: options.revision, options: { popupNestingMaxDepth } });
+      baseRevision: options.revision, options: optionsPatch });
     if (!reply.ok) throw new Error(reply.error);
-  }, value);
+  }, patch);
+  const setDepth = (value) => writeOptions({ popupNestingMaxDepth: value });
+  const moveToDefinition = async (hit) => {
+    if (!hit?.rect) return false;
+    await tab.mouse.move(hit.rect.x + hit.rect.width / 2, hit.rect.y + hit.rect.height / 2);
+    return true;
+  };
   const bounded = (value) => value && value.rect.width > 0 && value.rect.height > 0
     && value.rect.left >= 5 && value.rect.top >= 5
     && value.rect.right <= value.viewport.width - 5 && value.rect.bottom <= value.viewport.height - 5;
+  let definitionEvidence;
   let evidence;
   await installMediaArchive(settings, fixture.archive);
   try {
@@ -2349,12 +2397,83 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.bringToFront();
     await tab.keyboard.press("Escape");
     await hoverForPopup(tab, popup, "#verb");
+    const definitionSource = await popup.definitionTextRect(fixture.child);
+    await moveToDefinition(definitionSource);
+    const definitionChild = await waitForPopupState(child,
+      state => state.plain.includes(fixture.child));
+    const definitionParent = await popup.state();
+    const definitionChildLayout = await child.nested();
+    const definitionGrandchildSource = await child.definitionTextRect(fixture.grandchild);
+    await moveToDefinition(definitionGrandchildSource);
+    const definitionGrandchild = await waitForPopupState(grandchild,
+      state => state.plain.includes(fixture.grandchild));
+    const definitionChain = await grandchild.nested();
+    const definitionHighlights = await tab.evaluate(name =>
+      [...(CSS.highlights.get(name) || [])].map(range => range.toString()), HIGHLIGHT_NAME);
+    if (definitionGrandchild) {
+      await tab.keyboard.press("Escape");
+      await grandchild.waitForHidden();
+    }
+    if (definitionChild) {
+      await tab.keyboard.press("Escape");
+      await child.waitForHidden();
+    }
+
+    const missingSource = await popup.definitionTextRect(fixture.missing);
+    await moveToDefinition(missingSource);
+    await new Promise(resolve => setTimeout(resolve, 800));
+    const missingParent = await popup.state();
+    const missingChild = await child.state();
+
+    await setDepth(0);
+    await moveToDefinition(definitionSource);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const depthDisabledChild = await child.state();
+    await setDepth(2);
+
+    await writeOptions({ lookupMode: "activation", activationKey: "Shift" });
+    await moveToDefinition(definitionSource);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const activationGated = !child.visible(await child.state());
+    let activationChild;
+    await tab.keyboard.down("Shift");
+    try {
+      activationChild = await waitForPopupState(child,
+        state => state.plain.includes(fixture.child));
+    } finally {
+      await tab.keyboard.up("Shift");
+    }
+    if (activationChild) {
+      await tab.keyboard.press("Escape");
+      await child.waitForHidden();
+    }
+    await popup.nested("focus-link");
+    await writeOptions({
+      activationKey: originalOptions.activationKey ?? "Shift",
+      lookupMode: originalOptions.lookupMode ?? "hover",
+    });
+    definitionEvidence = {
+      activationChild,
+      activationGated,
+      definitionChain,
+      definitionChild,
+      definitionChildLayout,
+      definitionGrandchild,
+      definitionGrandchildSource,
+      definitionHighlights,
+      definitionParent,
+      definitionSource,
+      depthDisabledChild,
+      missingChild,
+      missingParent,
+      missingSource,
+    };
     await tab.evaluate(name => {
       window.__sourceAncestorRanges = [...CSS.highlights.get(name)];
     }, HIGHLIGHT_NAME);
     await popup.nested("remember");
     const source = await popup.nested("focus-link");
-    await tab.mouse.click(source.linkRect.x + source.linkRect.width / 2, source.linkRect.y + source.linkRect.height / 2);
+    await tab.mouse.click(source.linkPoint.x, source.linkPoint.y);
     const mouseChild = await child.waitForVisible();
     const mousePosition = await child.nested();
     let corridorRetained = false;
@@ -2453,7 +2572,11 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     evidence = { source, mouseChild, corridorRetained, pointerReturn, first, chain, draft, parentDraft, childDraft, parentClosed, childStillEditing,
       second, fullChain, limited, narrow, lowered, kanji, back, returned, retained, disabled, refreshedControls };
   } finally {
-    await setDepth(originalOptions.popupNestingMaxDepth ?? 10);
+    await writeOptions({
+      activationKey: originalOptions.activationKey ?? "Shift",
+      lookupMode: originalOptions.lookupMode ?? "hover",
+      popupNestingMaxDepth: originalOptions.popupNestingMaxDepth ?? 10,
+    });
     const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
       target: "hoshidicts-offscreen", type: "hd_remove", title,
     }), fixture.title);
@@ -2466,6 +2589,25 @@ async function checkNestedLinks(settings, tab, popup, browser) {
     await tab.bringToFront();
     await tab.keyboard.press("Escape");
   }
+  check("plain definition text opens nested child lookups with native hover, activation, miss and depth behavior",
+    definitionEvidence.definitionSource?.text === fixture.child[0]
+      && definitionEvidence.definitionChild?.plain.includes(fixture.child)
+      && definitionEvidence.definitionParent?.plain.includes(fixture.query)
+      && bounded(definitionEvidence.definitionChildLayout)
+      && definitionEvidence.definitionGrandchildSource?.text === fixture.grandchild[0]
+      && definitionEvidence.definitionGrandchild?.plain.includes(fixture.grandchild)
+      && bounded(definitionEvidence.definitionChain)
+      && JSON.stringify(definitionEvidence.definitionChain.depths) === "[0,1,2]"
+      && definitionEvidence.definitionHighlights.includes(fixture.query)
+      && definitionEvidence.definitionHighlights.includes(fixture.child)
+      && definitionEvidence.definitionHighlights.includes(fixture.grandchild)
+      && definitionEvidence.missingSource?.text === fixture.missing[0]
+      && definitionEvidence.missingParent?.plain.includes(fixture.query)
+      && !child.visible(definitionEvidence.missingChild)
+      && !child.visible(definitionEvidence.depthDisabledChild)
+      && definitionEvidence.activationGated
+      && definitionEvidence.activationChild?.plain.includes(fixture.child),
+    JSON.stringify(definitionEvidence));
   check("internal links open a positioned popup chain with level-local Note and Back and live depth limits",
     evidence.source.query === fixture.child && evidence.source.reading === fixture.reading
       && evidence.mouseChild !== null && evidence.corridorRetained && evidence.pointerReturn
