@@ -790,6 +790,53 @@ function loadBackgroundScript(sandbox) {
   return context;
 }
 
+async function hostedExtensionBackgroundStage() {
+  const bus = makeBus(), storage = makeStorage();
+  const chrome = makeChrome("hosted-worker", bus, storage);
+  delete chrome.alarms;
+  delete chrome.downloads;
+  delete chrome.offscreen;
+  delete chrome.runtime.getContexts;
+  Object.assign(offscreenState, { created: 0, exists: false, concurrent: 0, peakConcurrent: 0 });
+
+  const relayed = [];
+  bus.addListener("hosted-engine", (message, sender, sendResponse) => {
+    if (message?.target !== "hoshidicts-offscreen" || message.relayed !== true) return false;
+    relayed.push(structuredClone(message));
+    sendResponse({
+      type: `${message.type}_result`,
+      requestId: message.requestId,
+      ok: true,
+      hosted: true,
+    });
+    return true;
+  });
+
+  let loadError = null;
+  try {
+    loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error });
+  } catch (error) {
+    loadError = error;
+  }
+  const reply = loadError === null
+    ? await bus.sendMessage("hosted-page", {
+        target: "hoshidicts-offscreen",
+        type: "hd_status",
+        requestId: "hosted-status",
+      })
+    : null;
+  check(
+    "a host-owned engine works without offscreen, alarm or download APIs",
+    loadError === null
+      && reply?.ok === true
+      && reply.hosted === true
+      && reply.requestId === "hosted-status"
+      && relayed.length === 1
+      && offscreenState.created === 0,
+    JSON.stringify({ loadError: loadError?.message, reply, relayed, offscreenState }),
+  );
+}
+
 async function lookupStatsStage() {
   const bus = makeBus(), storage = makeStorage();
   const chrome = makeChrome("lookup-stats-worker", bus, storage);
@@ -2877,6 +2924,7 @@ async function main() {
   checkOptionRanges();
 
   section("external dictionary links");
+  await hostedExtensionBackgroundStage();
   await externalLinksBackgroundStage();
   await firstRunBackgroundStage();
   await firstRunAnkiStage();
@@ -5660,6 +5708,11 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  check(
+    "the root popup publishes one shown/hidden event for each visibility transition",
+    noteContent?.popupVisibility === true,
+    JSON.stringify(noteContent?.popupVisibility),
+  );
   for (const [name, passed] of Object.entries(noteContent?.lookupStatistics ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -10160,6 +10213,9 @@ async function contentNoteStage() {
       },
     );
     const { window } = dom;
+    const popupEvents = [];
+    window.addEventListener("hachidori-popup-shown", () => popupEvents.push("shown"));
+    window.addEventListener("hachidori-popup-hidden", () => popupEvents.push("hidden"));
     let storageListener = null;
     let deferredInitialStorage = null;
     const popupRecords = new Map();
@@ -10352,6 +10408,8 @@ async function contentNoteStage() {
     onInternalLink,
     pointInsidePopup,
     onKeyDown,
+    show,
+    hide,
     runLookup,
     scanPointer,
     scheduleHide,
@@ -10523,6 +10581,7 @@ async function contentNoteStage() {
       },
       pending,
       popup,
+      popupEvents,
       render: (depth = 0) => popupRecord(depth)?.renders.at(-1),
       setTermViewport(value) { popupRecord().viewport = value; },
       presentations: (depth = 0) => popupRecord(depth)?.presentations,
@@ -10579,6 +10638,21 @@ async function contentNoteStage() {
   const newestOnlyOptions = (await probe.initialLookup()).request.maxResults === 50;
   probe.close();
   if (!callbacksWired) return { callbacksWired };
+
+  async function popupVisibilityCase() {
+    const harness = await createHarness();
+    try {
+      harness.driver.show(harness.candidate);
+      harness.driver.show(harness.candidate);
+      harness.driver.hide();
+      harness.driver.hide();
+      harness.driver.show(harness.candidate);
+      harness.driver.teardown("popup-visibility-test");
+      return JSON.stringify(harness.popupEvents) === JSON.stringify(["shown", "hidden", "shown", "hidden"]);
+    } finally {
+      harness.close();
+    }
+  }
 
   async function lookupStatisticsCase() {
     const outcomes = {
@@ -13876,6 +13950,7 @@ async function contentNoteStage() {
 
   return {
     callbacksWired,
+    popupVisibility: await popupVisibilityCase(),
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
