@@ -1915,16 +1915,6 @@ html[data-hoshidicts-theme="girlypop"],
   animation: gsm-hoshidicts-spin 0.8s linear infinite;
 }
 
-.gsm-hoshidicts-mine-button[data-state="duplicate"] {
-  border-color: var(--hoshidicts-text-muted);
-  color: var(--hoshidicts-text-muted);
-}
-
-.gsm-hoshidicts-mine-button[data-state="duplicate"] .gsm-hoshidicts-mine-icon {
-  filter: grayscale(100%);
-  opacity: 0.55;
-}
-
 .gsm-hoshidicts-note-button {
   border: 1px solid var(--hoshidicts-border-strong);
   color: var(--text-color);

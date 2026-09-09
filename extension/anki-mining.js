@@ -2,7 +2,7 @@
 import { ankiAvailability } from "./anki.js";
 import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
-import { ankiBrowseQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, findAnkiOverwriteTarget,
+import { ankiBrowseQuery, ankiNoteIdsQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, findAnkiDuplicateNotes,
   isAnkiDuplicateError, overwriteAnkiFields } from "./anki-duplicates.js";
 
 const CONFIG_CHANGED = "Anki configuration changed. Refresh this result before adding a note.";
@@ -27,12 +27,15 @@ async function decision(prepared) {
   const { invoke, note, config, firstField } = prepared;
   const check = await checkAnkiDuplicate(invoke, note, config);
   if (!check.duplicate) return { state: check.addable ? "addable" : "invalid", canAdd: check.addable, error: check.error };
+  const matches = await findAnkiDuplicateNotes(invoke, note, firstField, config);
+  const noteIds = matches.map(match => match.noteId);
   if (config.duplicateBehavior === "overwrite") {
-    const target = await findAnkiOverwriteTarget(invoke, note, firstField, config);
-    return { state: "duplicate", canAdd: target !== null, action: "overwrite", target,
+    const match = matches.find(value => value.fields !== null);
+    const target = match ? { noteId: match.noteId, fields: match.fields } : null;
+    return { state: "duplicate", canAdd: target !== null, action: "overwrite", target, noteIds,
       error: target ? null : "A duplicate exists, but no matching note type is inside the selected deck scope." };
   }
-  return { state: "duplicate", canAdd: config.duplicateBehavior === "new", error: null };
+  return { state: "duplicate", canAdd: config.duplicateBehavior === "new", error: null, noteIds };
 }
 
 function omitUnchangedFields(fields, existing) {
@@ -134,7 +137,7 @@ export function createAnkiMiningService({
     const current = await configuration(fresh);
     if (request.configKey !== current.configKey) throw new Error(CONFIG_CHANGED);
     if (current.errors.length) throw new Error(current.errors.join("\n"));
-    const resources = await buildFields(request, current);
+    const resources = await buildFields(request, current, { preflight: !fresh });
     const { fields } = resources;
     const firstField = current.discovery.fields[0];
     if (!fields[firstField]?.trim()) throw new Error(`The first Anki field, “${firstField}”, is empty for this result.`);
@@ -145,6 +148,19 @@ export function createAnkiMiningService({
 
   async function preflight(request) {
     const prepared = await prepare(request, false);
+    if (prepared.resources.deferDuplicateCheck === true) {
+      const capture = captureForApplication(request, prepared.resolved.templates);
+      if (capture) await validateCapture({ request, prepared, capture });
+      return {
+        state: "addable",
+        canAdd: true,
+        error: null,
+        deferred: true,
+        capture,
+        screenshot: prepared.config.captureScreenshot === true
+          && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot,
+      };
+    }
     const result = await decision(prepared);
     const applied = result.canAdd ? fieldsForDecision(prepared, result) : null;
     const capture = applied ? captureForApplication(request, applied.templates) : null;
@@ -154,6 +170,7 @@ export function createAnkiMiningService({
       canAdd: result.canAdd,
       error: result.error,
       action: result.action,
+      noteIds: result.noteIds,
       capture,
       // A mapped {screenshot} that the user has left switched on: the reader
       // takes the viewport picture itself, when it submits. The whole configured
@@ -168,7 +185,8 @@ export function createAnkiMiningService({
   async function write(request) {
     const prepared = await prepare(request, true);
     const checked = await decision(prepared);
-    if (!checked.canAdd) return { state: checked.state, error: checked.error };
+    if (!checked.canAdd) return { state: checked.state, error: checked.error,
+      action: checked.action, noteIds: checked.noteIds };
     const { configJson, note, invoke } = prepared;
     const { fields, target, templates } = fieldsForDecision(prepared, checked);
     const capture = captureForApplication(request, templates);
@@ -206,7 +224,11 @@ export function createAnkiMiningService({
     } catch (error) {
       if (isAnkiDuplicateError(error.message)) {
         await releaseRejected();
-        return { state: "duplicate", error: "This note already exists in Anki." };
+        let noteIds = [];
+        try {
+          noteIds = (await findAnkiDuplicateNotes(invoke, note, firstField, config)).map(match => match.noteId);
+        } catch { /* The duplicate result is definitive even if browse discovery fails. */ }
+        return { state: "duplicate", error: "This note already exists in Anki.", noteIds };
       }
       // A lost acknowledgement may follow a completed write. Neither this
       // worker nor the reader retries it automatically, including append modes.
@@ -251,9 +273,12 @@ export function createAnkiMiningService({
     return operation;
   }
 
-  async function browse(expression) {
+  async function browse(request) {
     const config = await readConfig();
-    await invokeFor(config)("guiBrowse", { query: ankiBrowseQuery(expression) });
+    const value = typeof request === "string" ? { expression: request } : request;
+    const query = Array.isArray(value?.noteIds) && value.noteIds.length
+      ? ankiNoteIdsQuery(value.noteIds) : ankiBrowseQuery(value?.expression ?? "");
+    await invokeFor(config)("guiBrowse", { query });
     return { opened: true };
   }
 

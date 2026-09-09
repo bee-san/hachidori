@@ -50,7 +50,10 @@ configured audio providers. Automatic playback does this when enabled.
 Provider responses may identify additional media hosts. HTTP localhost
 audio servers are supported; use HTTPS for services on other computers. Browser
 speech uses your selected browser/operating-system voice, which may be provided
-by an online service. Hachidori does not guarantee that every voice works offline.
+by an online service. If active Media capture is used to attach that speech to
+Anki, its transient shared-audio PCM is read locally and only the mined WAV is
+sent to the configured AnkiConnect endpoint. Hachidori does not guarantee that
+every voice works offline or that every selected share captures browser speech.
 
 **Anki.** Hachidori communicates with the AnkiConnect URL in Anki settings,
 defaulting to `http://127.0.0.1:8765` on your computer. If you configure another

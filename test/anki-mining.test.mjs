@@ -16,8 +16,10 @@ function fixture() {
     async invoke(action, params) {
       calls.push(action);
       if (action === "canAddNotesWithErrorDetail") return [{ canAdd: !exists, error: exists ? "cannot create note because it is a duplicate" : null }];
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "findNotes") return exists ? [123] : [];
       if (action === "addNote") { exists = true; notes.set(123, params.note.fields); return 123; }
-      if (action === "notesInfo") return params.notes.map(noteId => ({ noteId,
+      if (action === "notesInfo") return params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [],
         fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value]) => [field, { value }])) }));
       throw new Error(`Unexpected ${action}`);
     },
@@ -88,12 +90,13 @@ test("endpoint changes invalidate mining readiness and bind duplicates, media, w
   const request = { configKey: current.configKey };
   assert.equal((await service.preflight(request)).canAdd, true);
   assert.equal((await service.submit(request)).state, "added");
-  await service.browse("猫");
+  await service.browse({ noteIds: [27], expression: "猫" });
   const currentRequests = requests.slice(boundary);
   assert.ok(currentRequests.every(value => value.url === config.url && value.key === config.apiKey));
   for (const action of ["canAddNotesWithErrorDetail", "storeMediaFile", "addNote", "notesInfo", "updateNoteFields", "guiBrowse"]) {
     assert.ok(currentRequests.some(request => request.action === action), `${action} uses the new endpoint`);
   }
+  assert.equal(currentRequests.find(request => request.action === "guiBrowse").params.query, "nid:27");
 });
 
 test("submissions recheck inside one queue so stale cross-tab preflight cannot add a second prevented note", async () => {
@@ -105,6 +108,7 @@ test("submissions recheck inside one queue so stale cross-tab preflight cannot a
   assert.equal(first.state, "added");
   assert.equal(first.noteId, 123);
   assert.equal(second.state, "duplicate");
+  assert.deepEqual(second.noteIds, [123]);
   assert.equal(f.calls.filter(action => action === "addNote").length, 1);
   assert.equal(f.calls.filter(action => action === "canAddNotesWithErrorDetail").length, 3);
   assert.equal(f.discovers, 3, "each mutation refreshes authoritative model fields");

@@ -32,7 +32,7 @@ test("raw audio uses the measured Chrome 150 shared clock or Chrome 152 page clo
     epoch + 107.9, "buffered audio retains its capture anchor when processing starts later");
 });
 
-test("privacy-rounded AudioData timestamps make contiguous PCM while a dropped block remains an error", () => {
+test("privacy-rounded AudioData timestamps stay contiguous while a dropped block becomes a recoverable gap", () => {
   const context = clockContext();
   const epoch = context.performance.timeOrigin;
   const sampleClock = context.createAudioSampleClock(epoch);
@@ -47,8 +47,66 @@ test("privacy-rounded AudioData timestamps make contiguous PCM while a dropped b
   const pcm = audio.select(epoch + 107.9, epoch + 1107.9);
   assert.equal(pcm.partial, false);
   assert.equal(pcm.samples.length, 48000);
-  assert.throws(() => sampleClock({ timestamp: 1117900, sampleRate: 48000, numberOfFrames: 480 }),
-    /clock was interrupted/u);
+  const resumedAt = sampleClock({ timestamp: 1117900, sampleRate: 48000, numberOfFrames: 480 });
+  audio.append({ startMs: resumedAt, sampleRate: 48000, samples: new Float32Array(480).fill(0.5) });
+  const nextAt = sampleClock({ timestamp: 1127900, sampleRate: 48000, numberOfFrames: 480 });
+  audio.append({ startMs: nextAt, sampleRate: 48000, samples: new Float32Array(480).fill(0.5) });
+  assert.equal(resumedAt, epoch + 1117.9);
+  assert.equal(audio.select(epoch + 1097.9, epoch + 1137.9).partial, true);
+  assert.equal(audio.select(epoch + 1117.9, epoch + 1137.9).partial, false);
+});
+
+test("a backward raw audio clock reanchors one local epoch and then resumes contiguously", () => {
+  const context = clockContext();
+  const epoch = context.performance.timeOrigin;
+  const sampleClock = context.createAudioSampleClock(epoch, () => epoch + 140);
+  assert.equal(sampleClock({ timestamp: 100000, sampleRate: 48000, numberOfFrames: 480 }), epoch + 100);
+  assert.equal(sampleClock({ timestamp: 0, sampleRate: 48000, numberOfFrames: 480 }), epoch + 130);
+  assert.equal(sampleClock({ timestamp: 10000, sampleRate: 48000, numberOfFrames: 480 }), epoch + 140);
+});
+
+test("raw audio capture stays active across a gap and later complete clips remain usable", async () => {
+  const audio = [], closed = [], errors = [];
+  const sharedStream = {};
+  const values = [0, 10000, 30000, 40000].map(value => ({
+    timestamp: value,
+    sampleRate: 48000,
+    numberOfFrames: 480,
+    numberOfChannels: 1,
+    copyTo(target) { target.fill(0.25); },
+    close: () => closed.push(value),
+  }));
+  class MediaStreamTrackProcessor {
+    constructor() {
+      this.readable = { getReader: () => ({ read: async () => values.length
+        ? { value: values.shift(), done: false } : { done: true } }) };
+    }
+  }
+  const context = vm.createContext({
+    performance: { timeOrigin: 1000 },
+    timestamp: () => 1050,
+    MediaStreamTrackProcessor,
+    Float32Array,
+    stream: sharedStream,
+    audioReader: null,
+    audioTrack: null,
+    frameClockReady: Promise.resolve(1000),
+    session: { addAudio: value => audio.push({ ...value, samples: value.samples.slice() }) },
+    describe: error => error.message,
+    stopCapture: error => { errors.push(error); context.stream = null; },
+  });
+  vm.runInContext(host.slice(host.indexOf("function audioTimestampOrigin("),
+    host.indexOf("async function startWorkletAudio(")), context);
+  assert.equal(context.startTimestampedAudio(sharedStream, { clone: () => ({ stop() {} }) }), true);
+  await new Promise(resolve => setImmediate(resolve));
+  const ring = createAudioRing({ maxAgeMs: 1000 });
+  for (const block of audio) ring.append(block);
+  assert.deepEqual(audio.map(block => block.startMs), [1000, 1010, 1030, 1040]);
+  assert.equal(ring.select(1000, 1050).partial, true);
+  assert.equal(ring.select(1030, 1050).partial, false);
+  assert.deepEqual(errors, []);
+  assert.equal(context.stream, sharedStream);
+  assert.deepEqual(closed, [0, 10000, 30000, 40000]);
 });
 
 test("a backward raw video clock stops capture instead of silently skipping all subsequent frames", async () => {
@@ -191,17 +249,20 @@ test("an audio processor rejected by a video-capable browser disposes its clone 
   assert.deepEqual(h.errors, []);
 });
 
-test("worklet discontinuity stops its owning host even before resume calibration completes", async () => {
+test("worklet discontinuity keeps its owning host alive even before resume calibration completes", async () => {
   const h = workletContext();
   const starting = h.context.startWorkletAudio(h.sharedStream, {});
   h.contexts[0].moduleReady();
   await new Promise(resolve => setImmediate(resolve));
-  h.nodes[0].message({ data: { error: "The captured audio clock was interrupted." } });
-  assert.match(h.errors[0], /Audio capture stopped.*clock was interrupted/u);
-  assert.equal(h.context.stream, null);
+  h.nodes[0].message({ data: { discontinuity: { expectedFrame: 128, actualFrame: 256 } } });
+  assert.deepEqual(h.errors, []);
+  assert.equal(h.context.stream, h.sharedStream);
+  h.contexts[0].currentTime = 5;
   h.contexts[0].resumed();
   await starting;
-  assert.equal(h.audio.length, 0);
+  h.nodes[0].message({ data: { startFrame: 5 * 48000 + 128, samples: new Float32Array(2048).buffer } });
+  assert.equal(h.audio.length, 1);
+  assert.equal(h.audio[0].startMs, 20000 + 128 * 1000 / 48000);
 });
 
 test("worklet timing starts after resume and retired callbacks cannot write into a replacement capture", async () => {

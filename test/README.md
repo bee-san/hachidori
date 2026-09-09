@@ -706,11 +706,13 @@ requiring audio hardware; it does not bypass autoplay or synthesize completion.
 Without it, this headless macOS host accepts playback but stalls its audio clock
 at 64 ms. Audible hardware output and installed speech voices are not proved.
 
-`node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs`
-runs 28 focused tests for strict source options, defaults versus explicit empty
+`node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs
+test/anki-{audio,offscreen-audio}.test.mjs test/capture-speech.test.mjs`
+runs the focused tests for strict source options, defaults versus explicit empty
 lists, template encoding, candidate order, native callback ownership, cleanup,
 TTS supersession, first-use voice loading, automatic Japanese voice selection,
-and unavailable selected voices, document-scoped cancellation,
+unavailable selected voices, captured-TTS WAV export and silent preflight,
+document-scoped cancellation,
 Test and fallback deadlines, LRU/TTL/byte accounting, leased URL cleanup, exact
 candidate identity, stale controls, chooser focus/failure recovery and autoplay,
 including delayed initial options without repeating a manual play, quiet success
@@ -759,7 +761,7 @@ not; the padded 4 MiB fixtures come from `buildRecommendedZip({ paddingBytes })`
 Eight assertions cover the tab: exactly one startup page at the dictionary
 stage with the Settings palette, Jitendex held in an indeterminate
 **Downloading… 0 KB** row and the seeded first-install options (compact
-summaries on at three, TTS and the dark popup defaults untouched); the Settings
+summaries on at two, TTS and the dark popup defaults untouched); the Settings
 sidebar's **Resume setup** link outside the section navigation; a reload that
 rejoins the same run without a second archive request; the released run, whose
 recorded broadcasts and every rendered row prove waiting → downloading →

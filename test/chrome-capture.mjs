@@ -764,11 +764,13 @@ async function main() {
         audio: "",
         captureAnimation: "",
         captureAudio: "",
+        screenshot: "",
       },
       checkForDuplicates: true,
       duplicateScope: "collection",
       duplicateScopeCheckAllModels: false,
       duplicateBehavior: "prevent",
+      captureScreenshot: true,
       fieldTemplates: {
         Front: { value: "{expression}", overwriteMode: "overwrite" },
         Animation: { value: "{capture-animation}", overwriteMode: "overwrite" },
@@ -1058,7 +1060,8 @@ async function main() {
       capturePin: pin,
     };
     const preflight = await runtimeMessage(world, "hachidori-anki", "hd_anki_preflight", { request });
-    assert.deepEqual(preflight.capture.requirements, { includeAnimation: true, includeAudio: true });
+    assert.deepEqual(preflight.capture.requirements,
+      { includeAnimation: true, includeAudio: true, includeScreenshot: false });
 
     const encodeStartedAt = performance.now();
     const exported = await captureMessage(world, "hd_capture_export", {

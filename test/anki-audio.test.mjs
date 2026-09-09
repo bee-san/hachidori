@@ -50,14 +50,53 @@ test("Anki exports the first decodable pronunciation without playback and reuses
   } finally { f.repository.clear(); }
 });
 
-test("selected TTS warns without inventing audio or substituting a different pronunciation", async () => {
+test("selected TTS records the exact browser voice through active capture without substituting another source", async () => {
+  const f = fixture();
+  const speech = { ...source, id: "tts", type: "text-to-speech-reading", url: "" };
+  const selection = { sourceId: speech.id, sourceKey: JSON.stringify(speech), ...term, index: 0, name: "Automatic Japanese", url: null };
+  const recordings = [];
+  const result = await exportAnkiAudio(f.window, f.repository, { term, sources: [speech, source], selection },
+    new AbortController().signal, { recordSpeechAudio: async (selected, selectedTerm, _signal, options) => {
+      recordings.push({ selected, selectedTerm, options });
+      return { data: new Uint8Array([1, 2, 3, 4]),
+        candidate: { name: "Japanese", text: "ねこ", voice: "", index: 0 } };
+    } });
+  assert.equal(result.sourceId, speech.id);
+  assert.equal(result.candidate.text, "ねこ");
+  assert.equal(Buffer.from(result.data, "base64").toString("hex"), "01020304");
+  assert.match(result.filename, /^hachidori_[0-9a-f]{64}\.wav$/u);
+  assert.deepEqual(recordings, [{ selected: speech, selectedTerm: term, options: { record: true } }]);
+  assert.deepEqual(f.downloads, []);
+  assert.deepEqual(f.probes, []);
+});
+
+test("silent TTS preflight defers exact audio while recording failures fall through to URL sources", async () => {
+  const f = fixture();
+  const speech = { ...source, id: "tts", type: "text-to-speech-reading", url: "" };
+  const deferred = await exportAnkiAudio(f.window, f.repository, { term, sources: [speech, source], recordSpeech: false },
+    new AbortController().signal, { recordSpeechAudio: async (_source, _term, _signal, { record }) => {
+      assert.equal(record, false);
+      return { recordingRequired: true };
+    } });
+  assert.deepEqual(deferred, { recordingRequired: true });
+  assert.deepEqual(f.downloads, [], "preflight must not choose a lower-priority source than submission");
+  const fallback = await exportAnkiAudio(f.window, f.repository, { term, sources: [speech, source] },
+    new AbortController().signal, { recordSpeechAudio: async () => {
+      throw new Error("The active media capture has no shared audio.");
+    } });
+  assert.equal(fallback.sourceId, source.id);
+  assert.equal(fallback.candidate.name, "Tokyo");
+});
+
+test("selected TTS reports active-capture failures instead of substituting a different pronunciation", async () => {
   const f = fixture();
   const speech = { ...source, id: "tts", type: "text-to-speech-reading", url: "" };
   const selection = { sourceId: speech.id, sourceKey: JSON.stringify(speech), ...term, index: 0, name: "Automatic Japanese", url: null };
   await assert.rejects(exportAnkiAudio(f.window, f.repository, { term, sources: [speech, source], selection },
-    new AbortController().signal), /Browser text-to-speech cannot be attached/u);
+    new AbortController().signal, { recordSpeechAudio: async () => {
+      throw new Error("Start media capture with shared audio before attaching browser text-to-speech to Anki.");
+    } }), /Start media capture with shared audio/u);
   assert.deepEqual(f.downloads, []);
-  assert.deepEqual(f.probes, []);
 });
 
 test("cancelling Anki media encoding aborts its reader and releases the playback-independent lease", { timeout: 1000 }, async () => {

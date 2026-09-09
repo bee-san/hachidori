@@ -162,7 +162,7 @@ of that record, not the reason alone, identifies a new installation.
   stage becomes `complete`, and records `continued` when the user leaves the
   dictionary stage with an incomplete set.
 - `options`: the first-install preferences (`showCompactDefinitionSummary: true`,
-  `compactDefinitionSummaryCount: 3`) at revision 1. The `reader-options.js`
+  `compactDefinitionSummaryCount: 2`) at revision 1. The `reader-options.js`
   defaults are unchanged, so an extension update never alters an existing
   user's popup, and a later edit through the ordinary revisioned options write
   is the value that persists.
@@ -1532,9 +1532,15 @@ bind to committed generation paths. First-field audio is resolved before the
 duplicate check without playback or uploads. Confirmed text is followed by
 best-effort media uploads and a field readback before pronunciation updates;
 external edits are preserved. AnkiConnect has no cross-client CAS, so its final
-read/write interval is not atomic. Browser TTS cannot be attached to a note;
-downloadable sources are required for audio fields. Sentence-furigana markers
-use the GSM fallback when its optional native tokenizer is unavailable.
+read/write interval is not atomic. Browser TTS can be attached while an active
+media-capture share supplies audio: the selected voice is spoken only after the
+mining action, read back from the transient PCM ring with short leading/trailing
+padding, encoded as WAV, and uploaded through the same pronunciation path.
+Silent preflight checks only recording availability and defers first-field
+duplicate identity until the authoritative submission. Missing, incomplete or
+effectively silent capture falls through to later URL sources; an explicit TTS
+choice reports the capture failure instead. Sentence-furigana markers use the
+GSM fallback when its optional native tokenizer is unavailable.
 
 Capture markers are prepared through the same Anki queue rather than a second
 gateway. Preflight reports only the outputs referenced by fields that will
@@ -1714,11 +1720,14 @@ video origin and `performance.timeOrigin` by proximity to the block's observed
 arrival time, then keeps that choice for the stream. This is a clock-domain
 comparison, not a browser-version branch or a mapping from preview playback
 `mediaTime`. Delivered sample counts determine subsequent block boundaries,
-tolerating timestamp rounding while rejecting dropped blocks or sample-rate
-changes. The AudioWorklet compatibility path establishes its origin only after
-`AudioContext.resume()` and maps `startFrame` to that origin; interrupted input
-reports an error. Retired stream/context callbacks cannot append to a new
-session.
+tolerating timestamp rounding. Forward jumps remain explicit gaps; a backward
+clock or sample-rate change starts a new monotonic local epoch after a gap, so
+later audio remains usable. The AudioWorklet compatibility path establishes its
+origin only after `AudioContext.resume()` and maps `startFrame` to that origin.
+Interrupted input drops only its partial batch and resumes at the next absolute
+frame. Clips crossing either kind of gap fail continuous-audio validation while
+later clips can export normally. Retired stream/context callbacks cannot append
+to a new session.
 
 At a pin's selected end time, finalization waits up to 250 ms for outstanding
 JPEG and continuous audio delivery, finishing early if both cover the interval.

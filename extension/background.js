@@ -1835,7 +1835,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Only the screenshot needs to know which page asked, and it is given the
     // capture rather than the sender, so nothing else can capture a tab.
     if (message.type === "hd_anki_screenshot") return ankiMining.screenshot(() => captureSenderViewport(sender));
-    return ankiMining[ANKI_METHODS[message.type]](message.type === "hd_anki_browse" ? message.expression : message.request);
+    return ankiMining[ANKI_METHODS[message.type]](message.type === "hd_anki_browse"
+      ? message.request ?? message.expression : message.request);
   }).then(result => sendResponse(workerReply(message, result)), error => sendResponse(failureReply(message, error)));
   return true;
 });

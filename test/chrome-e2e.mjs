@@ -1253,6 +1253,7 @@ async function popupReader(page, depth = 0) {
               state: add.dataset.state, disabled: add.disabled,
               output: control?.querySelector("output")?.textContent ?? "",
               viewDisabled: view?.disabled ?? true,
+              viewHidden: view?.hidden ?? true,
               viewClass: view?.className ?? "",
               rect: add.getBoundingClientRect().toJSON() };
           }) };
@@ -2284,7 +2285,7 @@ async function checkCompactSummaries(settings, tab, popup, browser) {
     await clean(() => write({ maxResults: original.options.maxResults,
       popupImageSource: original.options.popupImageSource ?? null,
       showCompactDefinitionSummary: original.options.showCompactDefinitionSummary ?? false,
-      compactDefinitionSummaryCount: original.options.compactDefinitionSummaryCount ?? 3,
+      compactDefinitionSummaryCount: original.options.compactDefinitionSummaryCount ?? 2,
       compactDefinitionSummaryDictionary: original.options.compactDefinitionSummaryDictionary ?? "" }));
     await clean(() => settings.evaluate(async () => {
       const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
@@ -3728,13 +3729,19 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     let result;
     if (action === "deckNames") result = ["Default"];
     else if (action === "modelNames") result = ["Basic"];
+    else if (action === "modelNamesAndIds") result = { Basic: 1 };
     else if (action === "modelFieldNames") result = ["Front", "Back", "Audio"];
     else if (action === "canAddNotesWithErrorDetail") result = params.notes.map(note => {
       const duplicate = [...notes.values()].some(fields => fields.Front === note.fields.Front);
       return { canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null };
     });
     else if (action === "addNote") { result = notes.size + 1; notes.set(result, params.note.fields); }
-    else if (action === "notesInfo") result = params.notes.map(noteId => ({ noteId,
+    else if (action === "findNotes") {
+      const match = /^"dupe:1,(.*)"$/u.exec(params.query);
+      const text = match?.[1]?.replace(/\\(["\\])/gu, "$1") ?? "";
+      result = [...notes].filter(([, fields]) => fields.Front === text).map(([noteId]) => noteId);
+    }
+    else if (action === "notesInfo") result = params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [],
       fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value]) => [field, { value }])) }));
     else if (action === "updateNoteFields") { notes.set(params.note.id, { ...notes.get(params.note.id), ...params.note.fields }); result = null; }
     else if (action === "storeMediaFile") {
@@ -3744,6 +3751,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
       files.set(params.filename, params.data);
       result = params.filename;
     }
+    else if (action === "deleteMediaFile") { files.delete(params.filename); result = null; }
     else if (action === "guiBrowse") result = [...notes.keys()];
     else throw new Error(`Unexpected Anki action ${action}`);
     return { body: JSON.stringify({ result, error: null }), status: 200, contentType: "application/json" };
@@ -3880,6 +3888,19 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     await settled(state => calls.filter(call => call.action === "guiBrowse").length > browseCount && !state.controls[0].viewDisabled);
     const note = [...notes.values()].at(-1);
     const browse = calls.filter(call => call.action === "guiBrowse").at(-1);
+    await tab.keyboard.press("Escape");
+    await hoverForPopup(tab, popup, "#verb");
+    const duplicate = await settled(state => state?.controls[0]?.state === "view-existing"
+      && !state.controls[0].disabled && state.controls[0].viewHidden);
+    if (process.env.HACHIDORI_ANKI_DUPLICATE_SCREENSHOT) {
+      const { x, y, width, height } = duplicate.rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_ANKI_DUPLICATE_SCREENSHOT,
+        clip: { x, y, width, height } });
+    }
+    const exactBrowseCount = calls.filter(call => call.action === "guiBrowse").length;
+    await popup.click(".gsm-hoshidicts-mine-button");
+    await settled(() => calls.filter(call => call.action === "guiBrowse").length > exactBrowseCount);
+    const exactBrowse = calls.filter(call => call.action === "guiBrowse").at(-1);
     check("Anki reader controls stay absent until configured and preserve raw ruby context through one confirmed Add and View",
       quiet
         && JSON.stringify(ready.order.slice(0, 4)) === JSON.stringify(["add", "audio", "note", "view"])
@@ -3892,8 +3913,12 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && saved.feedback.text.includes(saved.controls[0].output)
         && note.Front === "食べる"
         && note.Back === "食たべる|。|<b>食たべる</b>。"
-        && calls.filter(call => call.action === "addNote").length === addCount + 1 && browse.params.query === '"食べる"',
-      JSON.stringify({ quiet, saved, note, browse }));
+        && calls.filter(call => call.action === "addNote").length === addCount + 1
+        && browse.params.query === '"食べる"'
+        && duplicate.controls[0].icon === "view-note"
+        && duplicate.controls[0].title === "View existing notes in Anki"
+        && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
+      JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse }));
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
   } finally {
     await tab.keyboard.press("Escape");
@@ -4388,7 +4413,7 @@ async function checkStartupFileAccess(settings, browser, startupUrl) {
 // options are restored afterwards so the later Anki checks start as they did.
 async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
   const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
-    "Glossary", "Sentence", "SentenceFurigana", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
+    "Glossary", "Sentence", "SentenceFurigana", "SentenceAudio", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
   const calls = [];
   const route = { requests: 0, respond(request) {
     const { action, params, version } = JSON.parse(request.postData);
@@ -4532,7 +4557,9 @@ async function checkFirstRunAnkiDetection(page, browser, startupUrl) {
         && anki.model === "Kiku v2" && anki.deck === "Mining"
         && detected.options.revision === saved.options.revision + 1
         && Object.keys(templates).length === KIKU_FIELDS.length
-        && templates.Expression?.value === "{expression}" && templates.Picture?.value === "{screenshot}"
+        && templates.Expression?.value === "{expression}"
+        && templates.SentenceAudio?.value === "{capture-audio}"
+        && templates.Picture?.value === "{screenshot}"
         && anki.captureScreenshot === true
         // Only the fixed read-only actions ran, in ranking order, at protocol version 6.
         && JSON.stringify(calls.map(({ action }) => action)) === JSON.stringify(
@@ -6893,7 +6920,7 @@ async function main() {
   const effective = firstInstallStorage.effective ?? {};
   const seededInSettings = await page.waitForFunction(() =>
     document.getElementById("opt-compact-summary")?.checked === true
-      && document.getElementById("opt-summary-count")?.value === "3",
+      && document.getElementById("opt-summary-count")?.value === "2",
   { timeout: 30_000, polling: 100 }).then(() => true).catch(() => false);
   check(
     "Start setup begins automatic dictionary installation with first-install preferences",
@@ -6932,7 +6959,7 @@ async function main() {
       && JSON.stringify(Object.keys(seededOptions).sort()) === JSON.stringify(
         ["compactDefinitionSummaryCount", "revision", "showCompactDefinitionSummary"],
       )
-      && seededOptions.showCompactDefinitionSummary === true && seededOptions.compactDefinitionSummaryCount === 3
+      && seededOptions.showCompactDefinitionSummary === true && seededOptions.compactDefinitionSummaryCount === 2
       && seededOptions.revision === 1
       && effective.popupTheme === "default" && effective.popupOpacityPercent === 85
       && effective.audioAutoplay === false

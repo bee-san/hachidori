@@ -31,23 +31,27 @@ test("worklet permits startup without input and preserves the first active sampl
   assert.deepEqual(new Float32Array(f.messages[0].samples), new Float32Array(2048).fill(0.5));
 });
 
-test("worklet refuses an empty-input quantum instead of collapsing a gap into its partial batch", () => {
+test("worklet drops a partial batch at empty input and resumes after the gap", () => {
   const f = processorFixture();
   const channels = [new Float32Array(128).fill(0.25)];
-  for (let quantum = 0; quantum < 17; quantum += 1) {
+  for (let quantum = 0; quantum < 21; quantum += 1) {
     f.process(quantum * 128, quantum === 4 ? [] : channels);
   }
-  assert.equal(f.messages.length, 1);
-  assert.match(f.messages[0].error, /clock was interrupted/u);
-  assert.equal(f.messages[0].samples, undefined);
+  assert.equal(f.messages.length, 2);
+  assert.equal(f.messages[0].discontinuity.expectedFrame, 512);
+  assert.equal(f.messages[0].discontinuity.actualFrame, null);
+  assert.equal(f.messages[1].startFrame, 640);
+  assert.deepEqual(new Float32Array(f.messages[1].samples), new Float32Array(2048).fill(0.25));
 });
 
-test("worklet reports a jumped sample clock once and never resumes that capture epoch", () => {
+test("worklet reports a jumped sample clock, discards stale samples and starts a new batch", () => {
   const f = processorFixture();
-  const channels = [new Float32Array(128)];
+  const channels = [new Float32Array(128).fill(0.5)];
   f.process(0, channels);
-  f.process(256, channels);
-  for (let frame = 384; frame < 4096; frame += 128) f.process(frame, channels);
-  assert.equal(f.messages.length, 1);
-  assert.match(f.messages[0].error, /clock was interrupted/u);
+  for (let frame = 256; frame <= 2176; frame += 128) f.process(frame, channels);
+  assert.equal(f.messages.length, 2);
+  assert.equal(f.messages[0].discontinuity.expectedFrame, 128);
+  assert.equal(f.messages[0].discontinuity.actualFrame, 256);
+  assert.equal(f.messages[1].startFrame, 256);
+  assert.deepEqual(new Float32Array(f.messages[1].samples), new Float32Array(2048).fill(0.5));
 });

@@ -113,8 +113,11 @@ test("retiring an old speech Test cannot cancel the newer utterance", async () =
   const current = player.play(speech, { ...term, expression: "新しい" });
   try {
     assert.equal((await old).status, "cancelled");
-    assert.equal(env.utterances[1].cancelled, undefined);
-    env.utterances[1].onend();
+    await new Promise(resolve => setImmediate(resolve));
+    const newest = env.utterances.at(-1);
+    assert.equal(newest.text, "新しい");
+    assert.equal(newest.cancelled, undefined);
+    newest.onend();
     assert.equal((await current).status, "success");
   } finally { player.stop(); }
 });
