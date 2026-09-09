@@ -69,6 +69,28 @@ The lookup benchmark intentionally excludes web-page scanning, the configured
 hover delay, and popup rendering. It measures the extension's backend lookup
 path without injecting benchmark code into the engine.
 
+## Clicked-kanji selected dictionary lookup
+
+`kanji-click.mjs` isolates the production `hd_lookup_dictionary` route used
+after clicking a kanji when a term dictionary is selected. It pins Bee's
+Ultimate Kanji Dictionary by byte length and SHA-256, uses three fresh profiles
+by default, measures both immediately after import and after a complete Chrome
+restart, and interleaves ordinary `hd_lookup` controls. Every selected reply
+must be semantically identical to the ordinary reply for the same character.
+
+```bash
+export HACHIDORI_KANJI_ARCHIVE=/absolute/path/to/bees-ultimate-kanji-dictionary.zip
+HACHIDORI_KANJI_QUIET=1 node benchmark/kanji-click.mjs
+```
+
+Override the repeated work with `HACHIDORI_KANJI_SAMPLES` and
+`HACHIDORI_KANJI_PASSES`. Set `HACHIDORI_BENCH_REPO` to benchmark another
+Hachidori checkout with the same harness during an A/B comparison. The result
+includes exact revisions, an extension-tree hash, archive and Chrome identities,
+host details, first-request timings, and steady p50/p95 timings. Like the
+general lookup benchmark, it deliberately excludes hover delay, click dispatch,
+and popup rendering.
+
 ## Tiny deterministic acceptance run
 
 Generate the existing test fixture, then run one fresh-profile sample:

@@ -1132,6 +1132,9 @@ verify exact bytes, MIME types, decoded dimensions and preview source reuse.
 
 Design's clicked-kanji selector chooses a source and capability. An explicit
 term source is restricted before native ranking and result limits.
+A selected term lookup filters the engine's already-loaded query by its exact
+dictionary path instead of reopening term and metadata dictionaries per click.
+Frequency and pitch metadata still come from every loaded metadata dictionary.
 A missing, disabled or empty selected source falls back to native kanji. For an
 enabled native source with no matching entry, the already returned automatic
 entries supply that fallback without another request. A terminal native miss

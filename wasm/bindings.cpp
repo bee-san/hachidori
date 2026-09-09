@@ -174,8 +174,6 @@ struct Engine {
   Lookup lookup{query, deinflector};
   size_t dictionary_count = 0;
   std::vector<std::string> term_paths;
-  std::vector<std::string> frequency_paths;
-  std::vector<std::string> pitch_paths;
 };
 
 std::optional<Engine>& engine_slot() {
@@ -925,14 +923,12 @@ EMSCRIPTEN_KEEPALIVE int hdw_add_dict(const char* path, int kind) {
           set_error("frequency dictionary rejected: " + dict_path);
           return 0;
         }
-        e.frequency_paths.push_back(dict_path);
         break;
       case 2:
         if (!e.query.add_pitch_dict(dict_path)) {
           set_error("pitch dictionary rejected: " + dict_path);
           return 0;
         }
-        e.pitch_paths.push_back(dict_path);
         break;
       default:
         if (!e.query.add_kanji_dict(dict_path)) {
@@ -995,18 +991,9 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_lookup_dictionary(const char* text, const c
     if (!query_text.empty() && max_results > 0 && scan_length > 0 &&
         std::ranges::find(e.term_paths, selected_path) != e.term_paths.end()) {
       require_lookup_text_size(query_text, "lookup text");
-      DictionaryQuery selected_query;
-      selected_query.add_term_dict(selected_path);
-      for (const auto& path : e.frequency_paths) {
-        selected_query.add_freq_dict(path);
-      }
-      for (const auto& path : e.pitch_paths) {
-        selected_query.add_pitch_dict(path);
-      }
-      Lookup selected_lookup{selected_query, e.deinflector};
       const LookupOptions options = parse_options(options_json);
-      const auto results = selected_lookup.lookup(
-          std::string{query_text}, max_results, scan_length, options);
+      const auto results = e.lookup.lookup_dictionary(
+          std::string{query_text}, selected_path, max_results, scan_length, options);
       response.results = convert_results(results, budget);
     }
     out = lookup_json(response, budget);
