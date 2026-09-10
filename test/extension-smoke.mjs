@@ -2821,6 +2821,18 @@ const RECOMMENDED_DICTIONARIES = [
     revision: "Jiten 26-09-02",
     capabilities: ["freq"],
   },
+  {
+    sourceId: "bees-ultimate-grammar-dictionary",
+    name: "Bee's Ultimate Grammar Dictionary",
+    publisherUrl: "https://github.com/bee-san/bees-ultimate-grammar-dictionary",
+    downloadUrl: "https://github.com/bee-san/bees-ultimate-grammar-dictionary/releases/latest/download/bees-ultimate-grammar-dictionary.zip",
+    indexUrl: "https://raw.githubusercontent.com/bee-san/bees-ultimate-grammar-dictionary/main/dist/index.json",
+    githubRepositoryId: "1363159785",
+    requiredCapability: "term",
+    title: "Bee's Ultimate Grammar Dictionary",
+    revision: "2026.09.10",
+    capabilities: ["term"],
+  },
 ];
 
 function checkRecommendedDictionaries() {
@@ -2855,7 +2867,7 @@ function checkRecommendedDictionaries() {
   const actual = RECOMMENDED_CATALOGUE.map(catalogueContract);
   const expected = RECOMMENDED_DICTIONARIES.map(catalogueContract);
   check(
-    "the catalogue names exactly four trusted recommendations and their publishers",
+    "the catalogue names exactly five trusted recommendations and their publishers",
     JSON.stringify(actual) === JSON.stringify(expected),
     JSON.stringify(actual),
   );
@@ -5615,7 +5627,8 @@ async function main() {
         === JSON.stringify(RECOMMENDED_DICTIONARIES.map((entry) => [entry.name, entry.publisherUrl]))
       && recommendedSettings.clean.links.every(({ target, rel }) =>
         target === "_blank" && rel.split(/\s+/u).includes("noopener") && rel.split(/\s+/u).includes("noreferrer"))
-      && JSON.stringify(recommendedSettings.fetches.slice(0, 4).map(({ sourceId }) => sourceId))
+      && JSON.stringify(recommendedSettings.fetches.slice(0, RECOMMENDED_DICTIONARIES.length)
+        .map(({ sourceId }) => sourceId))
         === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
       && recommendedSettings.fetches.every(({ sourceId, state }) =>
         state.includes(`Downloading ${RECOMMENDED_DICTIONARIES.find((entry) => entry.sourceId === sourceId).name}`))
@@ -5625,16 +5638,19 @@ async function main() {
       })
       && recommendedSettings.maxActiveDownloads === 1
       && recommendedSettings.maxActiveImports === 1
-      && recommendedSettings.firstOutcomes.length === 4
+      && recommendedSettings.firstOutcomes.length === RECOMMENDED_DICTIONARIES.length
+      // The scenario injects exactly two failures: jmnedict fails to download and
+      // the kanji dictionary fails to import. The rest succeed.
       && JSON.stringify(recommendedSettings.firstOutcomes.map(({ error }) => error))
-        === JSON.stringify([false, true, true, false])
+        === JSON.stringify([false, true, true, false, false])
       && recommendedSettings.partial.state
-        === "Finished 4 of 4 recommended dictionaries — 2 imported, 2 failed."
+        === `Finished ${RECOMMENDED_DICTIONARIES.length} of ${RECOMMENDED_DICTIONARIES.length}`
+          + " recommended dictionaries — 3 imported, 2 failed."
       && recommendedSettings.starterHiddenAfterFirst === false
       && recommendedSettings.partial.starterHidden === false
       && recommendedSettings.partial.retryHidden === false
       && JSON.stringify(recommendedSettings.partial.sourceIds)
-        === JSON.stringify(["jitendex", "jiten"])
+        === JSON.stringify(["jitendex", "jiten", "bees-ultimate-grammar-dictionary"])
       && JSON.stringify(recommendedSettings.retrySourceIds)
         === JSON.stringify(["jmnedict", "bees-ultimate-kanji-dictionary"])
       && recommendedSettings.completeSourceIds.length === RECOMMENDED_DICTIONARIES.length
@@ -6407,6 +6423,7 @@ async function startupPageStage() {
   const catalogue = (sourceId) => RECOMMENDED_CATALOGUE.find((entry) => entry.sourceId === sourceId);
   let dictionaryState = { schemaVersion: 1, revision: 5, groups: [], dictionaries: [
     { id: "bee", title: "Bee's Ultimate Kanji Dictionary", sourceId: "bees-ultimate-kanji-dictionary", enabled: true },
+    { id: "grammar", title: "Bee's Ultimate Grammar Dictionary", sourceId: "bees-ultimate-grammar-dictionary", enabled: true },
     { id: "names", title: "JMnedict [2026-01-01]", indexUrl: catalogue("jmnedict").indexUrl, enabled: true },
     // A display name is not a trusted identity.
     { id: "lookalike", title: "Jitendex", displayName: "Jitendex", enabled: true },
@@ -6482,7 +6499,8 @@ async function startupPageStage() {
       && status().classList.contains("is-error")
       && JSON.stringify(actions().map(([id]) => id)) === JSON.stringify(["setup-retry", "setup-continue"])
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Not installed"], ["jmnedict", "Already installed"],
-        ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Not installed"]]);
+        ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Not installed"],
+        ["bees-ultimate-grammar-dictionary", "Already installed"]]);
 
     installReply = () => runA(1, [entry("jitendex", "waiting"), entry("jiten", "waiting")]);
     document.getElementById("setup-retry").focus();
@@ -6494,7 +6512,8 @@ async function startupPageStage() {
       && document.activeElement === document.getElementById("setup-heading")
       && currentStep() === "dictionaries" && doneSteps() === 0
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Waiting"], ["jmnedict", "Already installed"],
-        ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Waiting"]])
+        ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Waiting"],
+        ["bees-ultimate-grammar-dictionary", "Already installed"]])
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
       && document.querySelectorAll("#setup-actions button").length === 0
       && status().textContent === "Installing default dictionaries…";
@@ -6525,12 +6544,14 @@ async function startupPageStage() {
     storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
     setupState = { ...setupState, revision: 4, dictionaries: { ...emptyDictionaries, totalSeconds: 5,
       outcomes: { jitendex: { status: "installed", seconds: 3.2, error: null }, jiten: { status: "failed", seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" },
-        jmnedict: { status: "already-installed", seconds: null, error: null }, "bees-ultimate-kanji-dictionary": { status: "already-installed", seconds: null, error: null } } } };
+        jmnedict: { status: "already-installed", seconds: null, error: null }, "bees-ultimate-kanji-dictionary": { status: "already-installed", seconds: null, error: null },
+        "bees-ultimate-grammar-dictionary": { status: "already-installed", seconds: null, error: null } } } };
     storage({ setupState: { newValue: structuredClone(setupState) } });
     event(runA(7, [entry("jitendex", "installed", { seconds: 3.2 }), entry("jiten", "failed", { seconds: 0.4, error: "could not read jiten-frequency.zip: HTTP 503" })], true));
     const failureView = heading() === "Some dictionaries could not be installed"
       && JSON.stringify(rows()) === JSON.stringify([["jitendex", "Installed in 3.2 seconds"], ["jmnedict", "Already installed"],
-        ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Failed: could not read jiten-frequency.zip: HTTP 503"]])
+        ["bees-ultimate-kanji-dictionary", "Already installed"], ["jiten", "Failed: could not read jiten-frequency.zip: HTTP 503"],
+        ["bees-ultimate-grammar-dictionary", "Already installed"]])
       && JSON.stringify(actions()) === JSON.stringify([["setup-retry", "Retry missing dictionaries", "primary-button"], ["setup-continue", "Continue setup", "ghost"]])
       && document.getElementById("setup-countdown-label") === null && installs().length === 2;
 
@@ -6966,11 +6987,13 @@ async function startupReconcileStage() {
       jmnedict: outcome("already-installed"),
       "bees-ultimate-kanji-dictionary": outcome("failed", { error: "could not read bees.zip: HTTP 503" }),
       jiten: outcome("failed", { error: "could not read jiten-frequency.zip: HTTP 503" }),
+      "bees-ultimate-grammar-dictionary": outcome("already-installed"),
     }, totalSeconds: 4, continued: false, selectionsApplied: ["jitendex"], recordedRuns: ["run-a"] } };
   const installed = (sourceId, title) => ({ id: sourceId, title, sourceId, enabled: true });
   // Everything but Jiten is in the library: Bee's arrived from Settings after its failure.
   const dictionaries = [installed("jitendex", "Jitendex.org [2026-08-11]"), installed("jmnedict", "JMnedict [2026-01-01]"),
-    installed("bees-ultimate-kanji-dictionary", "Bee's Ultimate Kanji Dictionary")];
+    installed("bees-ultimate-kanji-dictionary", "Bee's Ultimate Kanji Dictionary"),
+    installed("bees-ultimate-grammar-dictionary", "Bee's Ultimate Grammar Dictionary")];
   const page = startupCase(jsdom, { setup, dictionaries,
     reply: () => ({ runId: "run-b", sequence: 1, finished: false,
       entries: [{ sourceId: "bees-ultimate-kanji-dictionary", phase: "waiting", receivedBytes: 0, totalBytes: null, seconds: null, error: null }] }) });
@@ -8716,8 +8739,12 @@ async function settingsRecommendedImportStage() {
   };
 
   window.document.getElementById("install-recommended")?.click();
+  // Derived from the catalogue, not hardcoded: a stale count never matches, so the
+  // loop would spin to the deadline and every measurement after this point would
+  // be taken mid-flight instead of at the finished state.
+  const allCount = RECOMMENDED_DICTIONARIES.length;
   while (!(window.document.getElementById("import-state")?.textContent ?? "").startsWith(
-    "Finished 4 of 4 recommended dictionaries",
+    `Finished ${allCount} of ${allCount} recommended dictionaries`,
   ) && Date.now() < deadline) {
     await new Promise((done) => window.setTimeout(done, 5));
   }

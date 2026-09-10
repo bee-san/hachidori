@@ -64,5 +64,21 @@ export const RECOMMENDED_DICTIONARIES = Object.freeze(
       requiredCapability: "freq",
       titlePattern: "^Jiten$",
     },
+    {
+      sourceId: "bees-ultimate-grammar-dictionary",
+      name: "Bee's Ultimate Grammar Dictionary",
+      description: "Japanese grammar points, ten sources in one",
+      publisherUrl:
+        "https://github.com/bee-san/bees-ultimate-grammar-dictionary",
+      downloadUrl:
+        "https://github.com/bee-san/bees-ultimate-grammar-dictionary/releases/latest/download/bees-ultimate-grammar-dictionary.zip",
+      indexUrl:
+        "https://raw.githubusercontent.com/bee-san/bees-ultimate-grammar-dictionary/main/dist/index.json",
+      archiveName: "bees-ultimate-grammar-dictionary.zip",
+      githubRepository: "bee-san/bees-ultimate-grammar-dictionary",
+      githubRepositoryId: "1363159785",
+      requiredCapability: "term",
+      titlePattern: "^Bee's Ultimate Grammar Dictionary$",
+    },
   ].map((entry) => Object.freeze(entry)),
 );

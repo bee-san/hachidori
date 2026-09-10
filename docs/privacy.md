@@ -28,7 +28,8 @@ AnkiConnect server you configure.
 ## Downloads and optional connections
 
 **First-run setup.** Choosing **Start Setup** starts downloads of Jitendex,
-JMnedict, Bee's Ultimate Kanji Dictionary and Jiten Frequency Dictionary from
+JMnedict, Bee's Ultimate Kanji Dictionary, Jiten Frequency Dictionary and Bee's
+Ultimate Grammar Dictionary from
 their publishers, who receive your IP address. Setup also reads deck, note-type,
 card and note metadata from your configured AnkiConnect server (local by default)
 to configure an existing mining setup, including a note type, deck and field
