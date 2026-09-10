@@ -10,6 +10,7 @@
   --text: #20232b;
   --text-dim: #5c6370;
   --accent: #2455bd;
+  --accent-fill: var(--accent);
   --accent-soft: #e8efff;
   --accent-contrast: #ffffff;
   --ok: #21704b;
@@ -18,7 +19,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-hoshidicts-theme]) {
     --bg: #15171b;
     --surface: #1d2026;
     --surface-sunken: #242830;
@@ -27,12 +28,97 @@
     --text: #edf0f5;
     --text-dim: #a8b0be;
     --accent: #a8c2ff;
+    --accent-fill: var(--accent);
     --accent-soft: #27354d;
     --accent-contrast: #162449;
     --ok: #8bd3ab;
     --error: #ffaaa7;
     --favorite: #eac887;
   }
+}
+
+:root[data-hoshidicts-theme] {
+  color-scheme: var(--hoshidicts-palette-color-scheme);
+  --bg: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-base-200) 55%,
+    var(--hoshidicts-palette-base-100)
+  );
+  --surface: var(--hoshidicts-palette-base-100);
+  --surface-sunken: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-base-200) 55%,
+    var(--hoshidicts-palette-base-100)
+  );
+  --border: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-base-content) 20%,
+    var(--hoshidicts-palette-base-100)
+  );
+  --border-strong: var(--hoshidicts-palette-base-content);
+  --text: var(--hoshidicts-palette-base-content);
+  --text-dim: var(--hoshidicts-palette-base-content);
+  --accent: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-primary) 6%,
+    var(--hoshidicts-palette-base-content)
+  );
+  --accent-fill: var(--accent);
+  --accent-soft: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-primary) 5%,
+    var(--hoshidicts-palette-base-100)
+  );
+  --accent-contrast: var(--hoshidicts-palette-base-100);
+  --ok: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-success) 5%,
+    var(--hoshidicts-palette-base-content)
+  );
+  --error: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-error) 5%,
+    var(--hoshidicts-palette-base-content)
+  );
+  --favorite: color-mix(
+    in srgb,
+    var(--hoshidicts-palette-warning) 5%,
+    var(--hoshidicts-palette-base-content)
+  );
+}
+
+/*
+ * The branded default keeps the popup palette while lowering Settings' border
+ * glare and separating supporting text from primary content.
+ */
+:root[data-hoshidicts-theme="default"] {
+  --bg: #22232c;
+  --surface: #2b2b36;
+  --surface-sunken: #252630;
+  --border: #454653;
+  --border-strong: #747586;
+  --text: #e8e5eb;
+  --text-dim: #aaa8b2;
+  --accent: #b1a5ee;
+  --accent-fill: #a89ce4;
+  --accent-soft: #353247;
+  --accent-contrast: #211d30;
+  --ok: #8bb79b;
+  --error: #d28a8c;
+  --favorite: #d1aa71;
+}
+
+:root[data-hoshidicts-theme="high-contrast"] {
+  --border: #777777;
+  --border-strong: #ffffff;
+  --text-dim: #f0f0f0;
+  --accent: #ffe000;
+  --accent-fill: #ffe000;
+  --accent-soft: #141414;
+  --accent-contrast: #000000;
+  --ok: #51ff8f;
+  --error: #ff6b6b;
+  --favorite: #ffd400;
 }
 
 * {
@@ -117,6 +203,16 @@ button,
   font-size: 13px;
   font-weight: 600;
 }
+.settings-search { display: grid; gap: 6px; margin: 22px 10px 0; }
+.settings-search input { width: 100%; min-width: 0; }
+.settings-search-results[hidden] { display: none; }
+.settings-search-results h1 { margin-top: 0; }
+.settings-search-results ul { display: grid; gap: 8px; margin: 20px 0 0; padding: 0; list-style: none; }
+.settings-search-results a { display: grid; gap: 3px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; }
+.settings-search-results a:hover { border-color: var(--accent); background: var(--accent-soft); }
+.settings-search-results small { color: var(--text-dim); }
+.settings-search-results strong { color: var(--accent); font-weight: 600; }
+
 .settings-nav {
   display: flex;
   flex-direction: column;
@@ -144,12 +240,6 @@ button,
   color: var(--accent);
   font-weight: 600;
 }
-.nav-label {
-  margin: 22px 10px 5px;
-  color: var(--text-dim);
-  font-size: 11px;
-  font-weight: 600;
-}
 .nav-status {
   display: block;
   padding: 2px 10px 8px;
@@ -170,7 +260,6 @@ button,
 .engine-status.is-ready,
 .nav-status.is-ready,
 .import-state.is-ready,
-.import-result.is-ready,
 .custom-dictionary-status.is-ready,
 .update-state.is-ready,
 .dict-update-status.is-ready {
@@ -180,7 +269,6 @@ button,
 .engine-status.is-error,
 .nav-status.is-error,
 .import-state.is-error,
-.import-result.is-error,
 .custom-dictionary-status.is-error,
 .update-state.is-error,
 .dict-update-status.is-error {
@@ -193,6 +281,33 @@ button,
   padding: 36px 40px 64px;
   border-inline: 1px solid var(--border);
   background: var(--surface);
+}
+.library-navigation {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 28px;
+  padding: 0 0 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.library-navigation a {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: none;
+}
+.library-navigation a:hover {
+  background: var(--border);
+  color: var(--text);
+}
+.library-navigation a[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 650;
 }
 .design-layout {
   display: grid;
@@ -370,7 +485,7 @@ code {
   padding: 9px 15px;
   border: 1px solid transparent;
   border-radius: 4px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: var(--accent-contrast);
   font-weight: 600;
 }
@@ -464,6 +579,31 @@ button.danger:hover:not(:disabled) {
 .import-row {
   gap: 12px;
 }
+.import-drop-zone {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-sunken);
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.import-drop-zone.is-dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.import-drop-zone[aria-disabled="true"] {
+  color: var(--text-dim);
+}
+.import-drop-hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
 .import-state,
 .update-last-checked,
 .update-state,
@@ -489,20 +629,14 @@ button.danger:hover:not(:disabled) {
   overflow: hidden;
   clip-path: inset(50%);
 }
-.import-detail,
 .custom-dictionary-errors {
   margin: 0;
   padding: 12px 16px 12px 34px;
-  border-left: 3px solid var(--border-strong);
+  border-left: 3px solid var(--error);
   background: var(--surface-sunken);
-  color: var(--text-dim);
+  color: var(--error);
   overflow-wrap: anywhere;
 }
-.custom-dictionary-errors {
-  border-color: var(--error);
-  color: var(--error);
-}
-.import-result + .import-result,
 .custom-dictionary-errors li + li {
   margin-top: 6px;
 }
@@ -551,7 +685,7 @@ button.danger:hover:not(:disabled) {
 .track-fill {
   width: 34%;
   height: 100%;
-  background: var(--accent);
+  background: var(--accent-fill);
   animation: slide 1.4s ease-in-out infinite;
 }
 @keyframes slide {
@@ -605,7 +739,7 @@ input[type="checkbox"] {
   width: 16px;
   height: 16px;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
 }
 .lookup-enable {
   display: flex;
@@ -636,7 +770,7 @@ input[type="checkbox"] {
   border-top: 1px solid var(--border);
 }
 .dict-row.is-drop-target {
-  box-shadow: inset 0 3px var(--accent);
+  box-shadow: inset 0 3px var(--accent-fill);
 }
 .dict-row.is-off {
   background: var(--surface-sunken);
@@ -968,9 +1102,6 @@ textarea {
   width: 260px;
   max-width: 100%;
 }
-.custom-dictionary-open {
-  width: fit-content;
-}
 .custom-dictionary-form,
 .custom-dictionary-source-field {
   display: grid;
@@ -1032,16 +1163,24 @@ textarea {
   white-space: pre-line;
   line-height: 1.6;
 }
+#anki { gap: 16px; }
+#anki .field-hint { margin: 0; }
+#anki .lookup-group legend { margin-bottom: 8px; }
+#anki .lookup-group .field,
+#anki .lookup-enable { padding-block: 9px; }
+.anki-connection-summary { display: grid; gap: 4px; }
+#anki-url-error:empty { display: none; }
+#anki .anki-details > .field { margin-top: 10px; }
 .anki-details {
   border-top: 1px solid var(--border);
-  padding: 18px 0;
+  padding: 10px 0;
 }
 .anki-details > summary {
   cursor: pointer;
   font-weight: 550;
 }
 .anki-details[open] > summary {
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 .anki-preset-tools,
 .anki-template-heading,
@@ -1053,6 +1192,7 @@ textarea {
 }
 .anki-preset-tools {
   align-items: end;
+  margin-block: 10px;
 }
 .anki-preset {
   display: flex;
@@ -1062,7 +1202,7 @@ textarea {
 }
 .anki-template-row {
   border-top: 1px solid var(--border);
-  padding: 16px 0;
+  padding: 10px 0;
 }
 .anki-template-heading {
   justify-content: space-between;
@@ -1086,7 +1226,7 @@ textarea {
   overflow-wrap: anywhere;
 }
 .anki-marker-reference {
-  margin: 16px 0;
+  margin: 10px 0;
 }
 .field {
   min-width: 0;

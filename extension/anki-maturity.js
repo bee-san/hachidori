@@ -20,9 +20,13 @@ function expressionFields(config) {
 
 export async function ankiMaturitySource(config) {
   if (!config.model) return null;
+  const url = globalThis.HDReaderOptions.normaliseAnkiConnectUrl(
+    config.url === undefined ? globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki.url : config.url
+  );
+  if (!url) return null;
   const fields = [...new Set(expressionFields(config).map(nameKey))].sort((left, right) => Number(left > right) - Number(left < right));
   if (!fields.length) return null;
-  const source = { model: config.model, fields, apiKey: config.apiKey };
+  const source = { url, model: config.model, fields, apiKey: config.apiKey };
   return { key: await ankiDigest(new TextEncoder().encode(JSON.stringify(source))), ...source };
 }
 
@@ -42,7 +46,7 @@ export async function fetchAnkiMatureWords(gateway, source) {
   // https://docs.ankiweb.net/getting-started.html#card-states
   // https://docs.ankiweb.net/searching.html#card-state
   const query = `"note:${escapeQuery(source.model)}" is:review -is:learn prop:ivl>=21`;
-  const notes = await gateway.invoke("notesInfo", { query }, source.apiKey, 25_000);
+  const notes = await gateway.invoke("notesInfo", { query }, source.apiKey, 25_000, source.url);
   if (!Array.isArray(notes)) throw new Error("AnkiConnect returned invalid mature note details.");
   const words = new Set();
   for (const note of notes) {

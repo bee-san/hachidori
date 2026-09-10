@@ -27,7 +27,10 @@ function fixture(t) {
   function view(expression = "聞く", request = {}) {
     const popup = window.document.createElement("div");
     const button = window.document.createElement("button"), status = window.document.createElement("output");
-    popup.append(button, status);
+    const control = window.document.createElement("div");
+    control.className = "gsm-hoshidicts-audio-control";
+    control.append(button, status);
+    popup.append(control);
     shadow.append(popup);
     const result = { term: { expression, reading: "きく" } };
     const item = { button, status, result };
@@ -52,8 +55,8 @@ test("default-off popup binding is silent; only the newest owned play updates co
   assert.equal(parent.item.button.getAttribute("aria-label"), "Stop pronunciation for 聞く");
   assert.equal(parent.item.button.textContent, "", "playing keeps the speaker button icon-only");
   assert.match(parent.item.button.title, /^Stop pronunciation;/u);
-  parent.item.status = parent.context.popup.querySelector(".gsm-hoshidicts-audio-status");
-  assert.ok(parent.item.status, "play lazily creates its feedback");
+  assert.equal(parent.item.button.dataset.state, "loading");
+  assert.equal(parent.context.popup.querySelector(".gsm-hoshidicts-audio-status"), null, "ordinary playback adds no prose");
   const first = f.sent[0];
   f.controller.retire(child.context.owner);
   assert.equal(f.sent.length, 1, "pruning a child preserves a parent's manual play");
@@ -64,16 +67,18 @@ test("default-off popup binding is silent; only the newest owned play updates co
   const second = f.sent.at(-1);
   assert.equal(f.sent[1].playRequestId, first.requestId);
   f.event({ target: "hachidori-audio-content", type: "hd_audio_playing", requestId: first.requestId, candidate: { name: "old" } });
-  assert.doesNotMatch(parent.item.status.textContent, /old/u);
+  assert.equal(parent.context.popup.querySelector(".gsm-hoshidicts-audio-status"), null);
   f.event({ target: "hachidori-audio-content", type: "hd_audio_playing", requestId: second.requestId, candidate: { name: "new" } });
-  assert.match(child.item.status.textContent, /Playing — new/u);
+  assert.equal(child.item.button.dataset.state, "playing");
+  assert.equal(child.item.status.textContent, "");
   first.resolveReply({ ok: true, status: "success", candidate: { name: "old" } });
   await settle();
-  assert.match(child.item.status.textContent, /Playing — new/u);
+  assert.equal(child.item.button.dataset.state, "playing");
   f.controller.retire(child.context.owner);
   second.resolveReply({ ok: true, status: "success" });
   await settle();
-  assert.equal(child.item.status.textContent, "Stopped.");
+  assert.equal(child.item.status.textContent, "");
+  assert.equal(child.item.button.dataset.state, undefined);
 });
 
 test("candidate choice carries exact identity and closes with focus restoration", async t => {
@@ -120,11 +125,37 @@ test("a failed explicit pronunciation is forgotten so normal Audio can try order
   f.sent.at(-1).resolveReply({ ok: false, error: "Cannot decode" });
   await settle();
   assert.match(v.item.status.textContent, /Cannot decode/u);
+  assert.equal(v.item.status.previousElementSibling, v.item.button, "the error stays beside its button");
+  assert.equal(v.item.button.dataset.state, "error");
   assert.equal(f.controller.selectionFor(v.item.result), null);
   v.item.button.click();
   assert.equal(f.sent.at(-1).selection, undefined);
   f.sent.at(-1).resolveReply({ ok: true, status: "success" });
   await settle();
+  assert.equal(v.item.status.textContent, "", "successful replay clears the error without success prose");
+  assert.equal(v.item.button.dataset.state, undefined);
+});
+
+test("audio controls disappear for no enabled configured source and return on live settings changes", async t => {
+  const f = fixture(t), v = f.view();
+  const defaults = f.window.HDReaderOptions.DEFAULT_OPTIONS;
+  v.bind();
+  for (const audioSources of [[], defaults.audioSources.map(source => ({ ...source, enabled: false })),
+    [{ id: "blank", type: "custom", enabled: true, url: "", voice: "" }]]) {
+    f.controller.update({ ...defaults, audioSources, audioAutoplay: true });
+    assert.equal(v.item.button.hidden, true);
+    assert.equal(v.item.button.parentElement.hidden, true);
+    v.item.button.click();
+    assert.equal(f.sent.length, 0, "hidden audio neither autoplays nor accepts a stale click");
+  }
+  f.controller.update(defaults);
+  assert.equal(v.item.button.hidden, false);
+  assert.equal(v.item.button.parentElement.hidden, false);
+  v.item.button.click();
+  assert.equal(f.sent[0].type, "hd_audio_play");
+  f.sent[0].resolveReply({ ok: true, status: "success", candidate: { name: "Google 日本語" } });
+  await settle();
+  assert.equal(v.item.status.textContent, "");
 });
 
 test("autoplay runs once per logical first result and tab, not expansion, Back or option echoes", async t => {
@@ -146,7 +177,7 @@ test("autoplay runs once per logical first result and tab, not expansion, Back o
   assert.equal(f.sent.at(-1).type, "hd_audio_stop");
   f.sent[1].resolveReply({ ok: true, status: "success" });
   await settle();
-  assert.equal(v.item.status.textContent, "Stopped.");
+  assert.equal(v.item.status.textContent, "");
 });
 
 test("late initial options play the still-current first result without replaying a manual pronunciation", async t => {

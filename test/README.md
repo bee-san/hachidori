@@ -2,6 +2,28 @@
 
 # Hachidori test harness
 
+`node --test test/settings-search.test.mjs test/toolbar.test.mjs` checks global
+settings search, keyboard navigation, disclosure focus and draft preservation,
+plus the toolbar toggle, revision conflicts and recording shortcut. Search uses
+the same external jsdom dependency described below. The toolbar tests do not
+start a capture session.
+
+`node --test test/frequency-presentation.test.mjs` checks compact numeric
+frequency defaults, the neutral primary-result `Freq:` pill, visible kana
+markers, tabs-only lower chrome, concise typed harmonic averages, preserved
+explicit display choices, source details, and live grammar/name controls without
+replacing definitions or Note drafts. It uses the same external jsdom dependency.
+
+`node --test test/note-editor.test.mjs` checks the shared personal-dictionary
+pencil on term, kanji and missing-word views, selected-word prefills and a single
+pending save. The extension smoke suite also verifies that selected missing
+words refresh into their personal definition after the save, including when no
+dictionaries were installed. It uses the same external jsdom dependency.
+
+`node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
+current word/reading/sentence expansion, background-tab clicks, live editing
+without replacing cards or Note drafts, and stale-control navigation rejection.
+
 Thirteen pieces, run in this order. The JavaScript checks use Node built-ins except
 `extension-smoke.mjs` and `audio-content.test.mjs`, which need jsdom. The browser checks need Chrome and
 `puppeteer-core`; those dependencies stay outside the repository.
@@ -300,7 +322,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 460 checks, all of
+full request→reply round trip per contract-C message type. 470 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -335,6 +357,9 @@ What it proves, in order:
    stationary keydown, physical-code release and repeats, transfer/Note ownership,
    interaction-only resource retention, focused-control pointer protection, and
    cancellation of the first pending popup on departure/click/Escape/blur/scroll.
+   A successful hover expands its initial one-glyph placement range to the
+   complete matched word before rendering. Text moved outside the source during
+   a pending lookup retains the original glyph anchor.
    Hidden cleanup skips scroll writes; visible term, kanji and notice renders
    reset scrolling. Master disable cancels scans and
    stale replies without rolling back or refreshing a successful Note append.
@@ -544,12 +569,13 @@ What it proves, in order:
    the current state, rejects invalid stages, missing revisions and any move
    back to an earlier or finished stage, and records `completedAt` and
    `continued`. `hd_setup_record` is answered for the offscreen document only:
-   it stores each outcome, accumulates run durations once per run (a resent
+   it stores each outcome, accumulates installation durations once per run (a resent
    record confirms rather than recounts), and settles the Jitendex
    summary source and Bee's clicked-kanji route once from the committed titles,
    in one write with the setup record, without overwriting an option the user
-   already changed. A fresh jsdom `startup.html` shows its data-use disclosure
-   without any runtime request, keeps it after a failed Start save, and begins
+   already changed. A fresh jsdom `startup.html` shows its short setup invitation,
+   Bee credit and GitHub-star call to action without any runtime request, contains
+   no privacy-policy link, keeps the welcome screen after a failed Start save, and begins
    installation only after that stage write succeeds. Reopening the accepted
    stage resumes installation, while **Set up manually** reaches practice
    without dictionary or Anki requests. An accepted startup page attaches to the installer with the
@@ -559,8 +585,8 @@ What it proves, in order:
    rows, installation, installed and failed phases for its own run identity and
    sequence only, announces settled outcomes but not bytes, shows Retry and
    Continue on failure, requests only the missing source on retry, ignores the
-   superseded run, shows the all-installed result with a countdown for five
-   seconds and then advances with a conflict retry, keeps focus on its controls
+   superseded run, advances the all-installed result immediately with a
+   conflict retry, keeps focus on its controls
    through inventory events, ignores an older setup revision,
    defers rendering while a
    write is in flight, moves focus to the heading on a stage change, adopts a
@@ -680,13 +706,17 @@ requiring audio hardware; it does not bypass autoplay or synthesize completion.
 Without it, this headless macOS host accepts playback but stalls its audio clock
 at 64 ms. Audible hardware output and installed speech voices are not proved.
 
-`node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs`
-runs 25 focused tests for strict source options, defaults versus explicit empty
+`node --test test/audio-{sources,player,offscreen,cache,repository,content}.test.mjs
+test/anki-{audio,offscreen-audio}.test.mjs test/capture-speech.test.mjs`
+runs the focused tests for strict source options, defaults versus explicit empty
 lists, template encoding, candidate order, native callback ownership, cleanup,
-TTS supersession and unavailable selected voices, document-scoped cancellation,
+TTS supersession, first-use voice loading, automatic Japanese voice selection,
+unavailable selected voices, captured-TTS WAV export and silent preflight,
+document-scoped cancellation,
 Test and fallback deadlines, LRU/TTL/byte accounting, leased URL cleanup, exact
 candidate identity, stale controls, chooser focus/failure recovery and autoplay,
-including delayed initial options without repeating a manual play. Extension
+including delayed initial options without repeating a manual play, quiet success
+feedback, and controls hidden when no source is configured. Extension
 checks exercise the actual worker's cancelled startup retries and Settings draft
 conflicts rather than duplicating their storage machinery.
 
@@ -694,7 +724,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 183 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 191 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -705,14 +735,17 @@ It launches Chrome with `--load-extension`, intercepts the four production
 recommendation URLs with deterministic ZIP fixtures, proves failure continuation,
 trusted source metadata, reload/restart hiding, and missing-only retry, then clears those
 fixtures. It next uses the real `#import-file` on `settings.html` for a valid
-archive and a three-file batch containing a term-only kanji dictionary, a
-malformed ZIP, and a same-title reimport. It verifies the ordered per-file
-outcomes and failure continuation, exercises filtered bulk management, a real
+archive and drops a three-file batch containing a term-only kanji dictionary, a
+malformed ZIP, and a same-title reimport. It verifies the drop target feedback,
+the shared startup-style progress rows, elapsed import times, ordered per-file
+outcomes and failure continuation, then exercises filtered bulk management, a real
 pointer drag, keyboard position movement, capability-aware chooser migration,
 and clicked-kanji navigation, and hovers real
 text with a real mouse on a page served over `http://127.0.0.1` (content scripts do not run on
 `chrome-extension://`, `about:blank`, or `file://` without a per-extension
-opt-in), then relaunches against the same profile and hovers again with no
+opt-in). A wrapped cross-inline match proves the popup sits outside the complete
+matched range rather than positioning against only the hovered glyph. The test
+then relaunches against the same profile and hovers again with no
 re-import — which is the only test that proves direct OPFS persistence through a
 full Chrome restart.
 
@@ -728,7 +761,7 @@ not; the padded 4 MiB fixtures come from `buildRecommendedZip({ paddingBytes })`
 Eight assertions cover the tab: exactly one startup page at the dictionary
 stage with the Settings palette, Jitendex held in an indeterminate
 **Downloading… 0 KB** row and the seeded first-install options (compact
-summaries on at three, TTS and the dark popup defaults untouched); the Settings
+summaries on at two, TTS and the dark popup defaults untouched); the Settings
 sidebar's **Resume setup** link outside the section navigation; a reload that
 rejoins the same run without a second archive request; the released run, whose
 recorded broadcasts and every rendered row prove waiting → downloading →
@@ -737,15 +770,16 @@ the 503 failure with its reason beside three installed rows, Retry and
 Continue, durable outcomes and no all-installed claim; Retry fetching only
 jmnedict, the all-installed heading with the accumulated total, and the
 Jitendex summary source and Bee's clicked-kanji route settled once while the
-user's compact-summary edit stands; the result staying at least five seconds
-before **Connect Anki, if you use it** with focus on the new heading; the
-unavailable Anki connection settling by itself into **Anki isn’t connected**
-after exactly one AnkiConnect
+user's compact-summary edit stands; the result advancing immediately to
+**Finding your Anki setup…** with focus on the new heading; the unavailable
+Anki connection settling into **Could not find Anki** for three seconds after
+exactly one AnkiConnect
 attempt, which the harness refuses on the worker target for that stage so a
 real Anki or another suite's mock server on port 8765 cannot decide the
 outcome, and whose recorded outcome carries the gateway's reason and moves
 setup to **You’re ready.** with the outcome sentence
-and its Settings link, where Finish closes the tab and the completed record
+and its Settings link, where the real reader immediately demonstrates the
+answerable word before keyboard and hover checks, Finish closes the tab and the completed record
 hides the link; and, after the in-run service-worker restart and the full
 pass-2 relaunch, no reopened startup tab, no further archive request, the same
 completed record, and the earlier edit still in force. Both Anki headings are
@@ -761,6 +795,10 @@ startup page must detect the busiest of three note types (`Kiku v2` beside
 its distinct notes, save that model, deck and the resolved preset templates
 through the revisioned options write, record the `configured` outcome, and
 issue only the fixed read-only actions in ranking order at protocol version 6.
+The page visibly advances through finding the most popular mining card, finding
+its most popular deck and applying both. Each step holds for two seconds and
+shows its chosen card or deck as that step is reached, then the settled result
+holds for three seconds before practice.
 The mock is detached and the previous setup record and Anki options are
 restored, so the Anki Settings checks below still begin with a lazy, offline
 connection and an unconfigured mapping.
@@ -768,10 +806,12 @@ connection and an unconfigured mapping.
 `HACHIDORI_STARTUP_COMPLETE_SCREENSHOT`/`_DARK_SCREENSHOT` the countdown
 result, `HACHIDORI_STARTUP_READY_SCREENSHOT`/`_DARK_SCREENSHOT` the final step
 after an absent Anki, and
-`HACHIDORI_STARTUP_ANKI_SCREENSHOT`/`_DARK_SCREENSHOT` the final step after an
-automatically configured one, and
+`HACHIDORI_STARTUP_ANKI_SCREENSHOT`/`_DARK_SCREENSHOT` the automatic Anki
+progress with the chosen card complete and the chosen deck current, and
 `HACHIDORI_STARTUP_PRACTICE_SCREENSHOT`/`_DARK_SCREENSHOT` the practice step with
-a real lookup open.
+a real lookup open. `HACHIDORI_SETTINGS_SCREENSHOT` captures the empty import
+drop target and `HACHIDORI_IMPORT_SCREENSHOT` captures its completed shared
+progress rows.
 
 The jsdom stage for that step also requires the appended list to match the
 manifest's own `content_scripts` order, that the exact **辞書** selection is
@@ -849,14 +889,15 @@ and kanji views, including projected prefill, hover/Escape draft protection,
 exact-view refresh, Back restoration, source adoption in the already-open
 Settings page, and retirement of each superseded OPFS generation.
 
-Settings layout checks cover library-first task order, selection-aware bulk
-actions, native keyboard section and skip links, Back/Forward, same-hash focus,
-short-window sidebar scrolling, and mounted source drafts. All seven views are
-checked at 320px and desktop widths in light and dark mode, including palette
-text/control contrast and visible-control overflow. Empty live regions stay
-available for their first announcement. The extension harness pins hidden-view
-save failures, unseen completions, draft retention without extra requests, and
-stable-ID Details expansion/focus across rerenders and filtering.
+Settings layout checks cover the seven-destination primary rail, Library's five
+local views, selection-aware bulk actions, native keyboard section and skip
+links, Back/Forward, same-hash focus, short-window sidebar scrolling, and mounted
+source drafts. All eleven task views are checked at 320px and desktop widths in
+light and dark mode, including palette text/control contrast and visible-control
+overflow. Empty live regions stay available for their first announcement. The
+extension harness pins hidden-view save failures, aggregated Library notices,
+unseen completions, draft retention without extra requests, and stable-ID
+Details expansion/focus across rerenders and filtering.
 Two real Settings pages exercise debounced option patches with one held reply:
 a newer external commit cannot be rolled back, and a stale queued draft surfaces
 a conflict with explicit discard. Revisioned options also survive the full
@@ -924,9 +965,10 @@ focused and reachable, and a still-focused tab survives same-view refresh.
 `HACHIDORI_OPTIONS_SCREENSHOT` also includes the saved child-depth setting.
 
 `dictionaryTabsFixture()` extends that linked source with three unequal glossary
-cards, without changing the generated fixture files. Four Chrome checks project
-every contributing dictionary, aggregate favourites and ordered groups from the
-complete native result; warmed tab changes must issue no lookup, media or style
+cards, without changing the generated fixture files. Four Chrome projections
+cover All, ordered nonempty groups and an ungrouped favourite from the complete
+native result; ordinary contributors and grouped favourites receive no duplicate
+dictionary tabs. Warmed tab changes must issue no lookup, media or style
 requests. Linked-child, clicked-kanji and Back retain their semantic selection.
 Back also restores an expanded, scrolled child with a collapsed dictionary card,
 its prior tab, highlight and toolbar, without another native lookup; its next
@@ -978,8 +1020,11 @@ observe real worker lookup relays while toggling Japanese-only scanning in the
 open tab. Native input, textarea and contenteditable typing stays intact; direct
 and spanning selections exclude visible editing controls, including boxless
 `display:contents` editors, without treating a hidden control as visible.
-Nested open-shadow editors suppress native activation typing and pending scans;
-visibility-restored descendants are treated as visible even inside a hidden editor.
+Nested open-shadow editors suppress printable activation typing and cancel
+pending scans when focused. A local Japanese example link beside an autofocused
+search field supports both hover and stationary Shift lookup while preserving
+the field's focus. Visibility-restored descendants are treated as visible even
+inside a hidden editor.
 The extension suite separately holds replies through selection cancellation,
 retry and storage invalidation; checks exact Note/Back/internal-link descriptors;
 and pins same-candidate pending lookup deduplication.
@@ -1229,7 +1274,10 @@ starts capture through the visible controls, links the reading page, and tests:
   decoding and looping playback, non-silent mono WAV samples, and decoded
   flash/beep alignment within 125 ms;
 - production Anki preflight, one-at-a-time media uploads, note mutation, and
-  readback against a fixture intercepted at the service-worker network boundary;
+  readback against a stock Kiku field fixture intercepted at the service-worker
+  network boundary: its saved templates contain only `{screenshot}` and a blank
+  `SentenceAudio`, a pin routes AVIF/WAV without uploading a JPEG, and an
+  unpinned note still uploads the static page screenshot;
 - settings-change confirmation, stop/clear behavior, no automatic rearming, and
   absence of raw text/media in extension storage;
 - relinking enforcing one current reading document, and linked-page navigation
@@ -1307,11 +1355,13 @@ xvfb-run -a node test/chrome-capture.mjs
 ```
 
 The same external browser variables as `chrome-e2e.mjs` are accepted, plus
-`HACHIDORI_CAPTURE_PROFILE` to retain a dedicated test profile. With no override,
-the temporary profile is removed after the run. Never point this at a personal
-browser profile. `HACHIDORI_CAPTURE_ASSET_DIR` saves `capture.avif`, `capture.wav`,
-the ten-second `full-capture.avif` / `full-capture.wav`, and each period's
-`soak-<index>-<scene>.avif` / `.wav` for independent playback checks.
+`HACHIDORI_FFMPEG` for the synchronization-fixture encoder and
+`HACHIDORI_CAPTURE_PROFILE` to retain a dedicated test profile. With no
+override, the temporary profile is removed after the run. Never point this at
+a personal browser profile. `HACHIDORI_CAPTURE_ASSET_DIR` saves
+`capture.avif`, `capture.wav`, the ten-second `full-capture.avif` /
+`full-capture.wav`, and each period's `soak-<index>-<scene>.avif` / `.wav` for
+independent playback checks.
 
 The HTTP/WebSocket fixture uses an operating-system-assigned local port.
 AnkiConnect requests to port 8765 are intercepted and answered inside this

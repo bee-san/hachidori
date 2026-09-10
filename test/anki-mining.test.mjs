@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 import { createAnkiMiningService } from "../extension/anki-mining.js";
+import { createAnkiGateway } from "../extension/anki.js";
 
 function fixture() {
   let config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
@@ -15,8 +16,10 @@ function fixture() {
     async invoke(action, params) {
       calls.push(action);
       if (action === "canAddNotesWithErrorDetail") return [{ canAdd: !exists, error: exists ? "cannot create note because it is a duplicate" : null }];
+      if (action === "modelNamesAndIds") return { Basic: 1 };
+      if (action === "findNotes") return exists ? [123] : [];
       if (action === "addNote") { exists = true; notes.set(123, params.note.fields); return 123; }
-      if (action === "notesInfo") return params.notes.map(noteId => ({ noteId,
+      if (action === "notesInfo") return params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [],
         fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([field, value]) => [field, { value }])) }));
       throw new Error(`Unexpected ${action}`);
     },
@@ -40,6 +43,62 @@ test("mining readiness shares its short source-backed cache and skips Anki when 
   assert.equal(f.discovers, 1);
 });
 
+test("endpoint changes invalidate mining readiness and bind duplicates, media, writes, enrichment and browsing to one endpoint", async () => {
+  let config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
+    url: "https://first.example/anki", apiKey: "profile-key", model: "Basic",
+    fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+      Back: { value: "{definition}", overwriteMode: "overwrite" } } };
+  const requests = [];
+  let fields;
+  const gateway = createAnkiGateway({ fetch: async (url, options) => {
+    const request = JSON.parse(options.body);
+    requests.push({ url, ...request });
+    let result;
+    switch (request.action) {
+      case "deckNames": result = ["Default"]; break;
+      case "modelNames": result = ["Basic"]; break;
+      case "modelFieldNames": result = ["Front", "Back"]; break;
+      case "canAddNotesWithErrorDetail": result = [{ canAdd: true }]; break;
+      case "storeMediaFile": result = request.params.filename; break;
+      case "addNote": fields = request.params.note.fields; result = 27; break;
+      case "notesInfo": result = [{ noteId: 27, fields: Object.fromEntries(Object.entries(fields)
+        .map(([field, value]) => [field, { value }])) }]; break;
+      case "updateNoteFields": fields = { ...fields, ...request.params.note.fields }; result = null; break;
+      case "guiBrowse": result = []; break;
+      default: throw new Error(`Unexpected action: ${request.action}`);
+    }
+    return { ok: true, json: async () => ({ result, error: null }) };
+  } });
+  const service = createAnkiMiningService({ gateway, readConfig: async () => config,
+    buildFields: async () => ({ fields: { Front: "猫", Back: "cat" } }),
+    beforeWrite: async ({ invoke }) => {
+      await invoke("storeMediaFile", { filename: "capture.wav", data: "YQ==" }, 30_000);
+    },
+    enrich: async ({ invoke, noteId }) => {
+      await invoke("updateNoteFields", { note: { id: noteId, fields: { Back: "cat[sound:capture.wav]" } } });
+      return [];
+    },
+  });
+  const previous = await service.status();
+  assert.ok(requests.every(request => request.url === "https://first.example/anki"));
+  config = { ...config, url: "https://second.example/anki" };
+  const boundary = requests.length;
+  const current = await service.status();
+  assert.notEqual(current.configKey, previous.configKey);
+  await assert.rejects(service.submit({ configKey: previous.configKey }), /configuration changed/u);
+  assert.equal(requests.some(request => request.action === "addNote"), false);
+  const request = { configKey: current.configKey };
+  assert.equal((await service.preflight(request)).canAdd, true);
+  assert.equal((await service.submit(request)).state, "added");
+  await service.browse({ noteIds: [27], expression: "猫" });
+  const currentRequests = requests.slice(boundary);
+  assert.ok(currentRequests.every(value => value.url === config.url && value.key === config.apiKey));
+  for (const action of ["canAddNotesWithErrorDetail", "storeMediaFile", "addNote", "notesInfo", "updateNoteFields", "guiBrowse"]) {
+    assert.ok(currentRequests.some(request => request.action === action), `${action} uses the new endpoint`);
+  }
+  assert.equal(currentRequests.find(request => request.action === "guiBrowse").params.query, "nid:27");
+});
+
 test("submissions recheck inside one queue so stale cross-tab preflight cannot add a second prevented note", async () => {
   const f = fixture();
   const { configKey } = await f.service.status();
@@ -49,6 +108,7 @@ test("submissions recheck inside one queue so stale cross-tab preflight cannot a
   assert.equal(first.state, "added");
   assert.equal(first.noteId, 123);
   assert.equal(second.state, "duplicate");
+  assert.deepEqual(second.noteIds, [123]);
   assert.equal(f.calls.filter(action => action === "addNote").length, 1);
   assert.equal(f.calls.filter(action => action === "canAddNotesWithErrorDetail").length, 3);
   assert.equal(f.discovers, 3, "each mutation refreshes authoritative model fields");

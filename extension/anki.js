@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiTemplateMarkerNames, resolveAnkiTemplates } from "./anki-templates.js";
+import "./reader-options.js";
 
 // GSM PR #549's API-v6 discovery, adapted to the MV3 worker. No engine or
-// storage queue is involved. Runtime messages never select an endpoint/action;
-// the private worker's feature handlers select actions through this gateway.
+// storage queue is involved. The private worker's feature handlers select
+// actions and bind every conversation to its configured endpoint and API key.
 export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 1250 } = {}) {
-  async function invoke(action, params, apiKey, requestTimeoutMs = timeoutMs) {
+  async function invoke(action, params, apiKey, requestTimeoutMs = timeoutMs,
+    endpoint = globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki.url) {
+    const url = globalThis.HDReaderOptions.normaliseAnkiConnectUrl(endpoint);
+    if (url === null) throw new Error("Enter a valid HTTP or HTTPS AnkiConnect URL in Settings, without a username or password.");
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
-    const unavailable = () => new Error(controller.signal.aborted ? "AnkiConnect timed out. Open Anki and retry."
-      : "Open Anki with the AnkiConnect add-on installed, then retry.");
+    const unavailable = () => new Error(controller.signal.aborted ? "AnkiConnect timed out. Check its URL in Settings, open Anki and retry."
+      : "Open Anki with the AnkiConnect add-on installed, check its URL in Settings, then retry.");
     try {
       let response;
       try {
-        response = await fetch("http://127.0.0.1:8765", { method: "POST", credentials: "omit", redirect: "error",
+        response = await fetch(url, { method: "POST", credentials: "omit", redirect: "error",
           headers: { "Content-Type": "application/json" }, signal: controller.signal,
           body: JSON.stringify({ action, version: 6, params, ...(apiKey ? { key: apiKey } : {}) }) });
       } catch {
@@ -37,8 +41,8 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 1250 }
     }
   }
 
-  async function names(action, params, apiKey) {
-    const result = await invoke(action, params, apiKey);
+  async function names(action, params, apiKey, url) {
+    const result = await invoke(action, params, apiKey, undefined, url);
     if (!Array.isArray(result) || result.some(name => typeof name !== "string" || name.trim() === "")) {
       throw new Error(`AnkiConnect returned an invalid ${action} list.`);
     }
@@ -47,12 +51,12 @@ export function createAnkiGateway({ fetch = globalThis.fetch, timeoutMs = 1250 }
     return [...new Set(result)];
   }
 
-  async function discover({ model, apiKey = "" }) {
+  async function discover({ model, apiKey = "", url }) {
     const errors = [];
     let connected = false;
     async function read(action, params = {}) {
       try {
-        const result = await names(action, params, apiKey);
+        const result = await names(action, params, apiKey, url);
         connected = true;
         return result;
       } catch (error) {

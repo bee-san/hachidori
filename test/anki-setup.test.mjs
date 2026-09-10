@@ -4,8 +4,9 @@ import "../extension/reader-options.js";
 import { ankiSetupFamily, detectAnkiSetup } from "../extension/anki-setup.js";
 
 const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
-  "Glossary", "Sentence", "SentenceFurigana", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
-const SENREN_FIELDS = ["word", "reading", "sentence", "definition", "wordAudio", "picture", "glossary", "frequencies", "freqSort", "miscInfo"];
+  "Glossary", "Sentence", "SentenceFurigana", "SentenceAudio", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
+const SENREN_FIELDS = ["word", "reading", "sentence", "sentenceAudio", "definition", "wordAudio", "picture", "glossary",
+  "frequencies", "freqSort", "miscInfo"];
 const baseConfig = () => globalThis.HDReaderOptions.normaliseOptions({}).anki;
 
 // A tiny collection: note IDs per model, cards per note, and each card's deck.
@@ -68,6 +69,7 @@ test("the note type with the unique highest distinct-note count wins and its bus
   assert.equal(result.fieldTemplates.Expression.value, "{expression}");
   // The verified Kiku picture field is the screenshot destination.
   assert.equal(result.fieldTemplates.Picture.value, "{screenshot}");
+  assert.equal(result.fieldTemplates.SentenceAudio.value, "");
   assert.equal(Object.keys(result.fieldTemplates).length, KIKU_FIELDS.length);
   // Senren is named like a family but lacks its fields; Basic and Kikuchi are never consulted for notes.
   assert.deepEqual(calls.filter((call) => call.action === "findNotes").map((call) => call.params.query), ["mid:2", "mid:3"]);
@@ -113,7 +115,8 @@ test("ties, zero usage, missing families and incompatible layouts ask for Settin
     notes: { byModel: { 9: [91] }, cards: { 91: [911] } }, decks: { 911: "Words::Mined" } });
   const configured = await detectAnkiSetup(senren.invoke, baseConfig());
   assert.equal(configured.status, "configured");
-  assert.deepEqual([configured.model, configured.deck, configured.fieldTemplates.word.value, configured.fieldTemplates.picture.value],
-    ["Senren 3", "Words::Mined", "{expression}", "{screenshot}"]);
+  assert.deepEqual([configured.model, configured.deck, configured.fieldTemplates.word.value,
+    configured.fieldTemplates.picture.value, configured.fieldTemplates.sentenceAudio.value],
+    ["Senren 3", "Words::Mined", "{expression}", "{screenshot}", ""]);
   await assert.rejects(detectAnkiSetup(async () => ["Kiku"], baseConfig()), /invalid note type list/u);
 });

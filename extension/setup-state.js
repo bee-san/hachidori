@@ -15,7 +15,7 @@ export const SETUP_ANKI_STATUSES = Object.freeze(["configured", "already-configu
 // reader defaults or overrides a later edit.
 export const FIRST_INSTALL_OPTIONS = Object.freeze({
   showCompactDefinitionSummary: true,
-  compactDefinitionSummaryCount: 3,
+  compactDefinitionSummaryCount: 2,
 });
 
 // Dictionary-dependent initial preferences, applied once from the committed
@@ -161,13 +161,14 @@ export function advanceSetupState(current, stage, now, { continued = false } = {
   };
 }
 
-// The installer reports one outcome per dictionary and one duration per run.
-// Retries accumulate into the stage total; a superseded outcome is replaced.
+// The installer reports one outcome per dictionary and the summed installation
+// duration for each run. Retries accumulate into the stage total; a superseded
+// outcome is replaced.
 // A record is idempotent: the installer resends it until the reply arrives, so
 // a run whose duration already landed is not counted again.
 export function recordSetupDictionaries(current, { runId, outcomes = {}, runSeconds = null, selectionsApplied = [] }) {
   if (typeof runId !== "string" || runId === "") throw new Error("the setup record names no run");
-  if (!validSeconds(runSeconds)) throw new Error("the setup run duration is invalid");
+  if (!validSeconds(runSeconds)) throw new Error("the setup run installation duration is invalid");
   const recorded = Object.fromEntries(Object.entries(outcomes).map(([sourceId, outcome]) =>
     [sourceId, normaliseSetupOutcome(outcome)]));
   if (!selectionsApplied.every((sourceId) => Object.hasOwn(FIRST_INSTALL_SELECTIONS, sourceId))) {

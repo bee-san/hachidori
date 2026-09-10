@@ -98,6 +98,11 @@ const UPDATE_SETTINGS_KEY = "dictionaryUpdates";
 const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
 const DICTIONARY_STATE_SCHEMA_VERSION = 1;
 const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
+const alarms = chrome.alarms ?? {
+  async clear() { return false; },
+  async get() { return undefined; },
+  create() {},
+};
 
 async function readAnkiOptions() {
   return normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
@@ -135,7 +140,7 @@ function getAnkiMaturityCache() {
       }
       return next ?? state;
     }),
-    alarms: chrome.alarms,
+    alarms,
   });
   return ankiMaturityCache;
 }
@@ -177,7 +182,8 @@ function trustedCaptureControl(sender) {
     const url = new URL(sender.url);
     if (url.search) return false;
     url.hash = "";
-    return [chrome.runtime.getURL("settings.html"), chrome.runtime.getURL(CAPTURE_DOCUMENT)].includes(url.href);
+    return ["settings.html", "toolbar.html", CAPTURE_DOCUMENT]
+      .some(document => url.href === chrome.runtime.getURL(document));
   } catch {
     return false;
   }
@@ -333,6 +339,12 @@ async function createOffscreen() {
 // createDocument() rejects when called while another call is in flight, so every
 // caller waits on the same promise.
 async function ensureOffscreen() {
+  if (typeof chrome.runtime.getContexts !== "function"
+      || typeof chrome.offscreen?.createDocument !== "function") {
+    // Some extension hosts keep this page alive themselves instead of exposing
+    // Chrome's offscreen-document lifecycle API.
+    return;
+  }
   if (await offscreenExists()) {
     return;
   }
@@ -672,7 +684,9 @@ const WORKER_HANDLERS = {
       throw new TypeError("Anki discovery requires a note type and API key string");
     }
     ankiGateway ??= createAnkiGateway();
-    return ankiGateway.discover({ model: message.model, apiKey: message.apiKey });
+    const stored = await chrome.storage.local.get(OPTIONS_KEY);
+    const url = message.url === undefined ? normaliseOptions(stored[OPTIONS_KEY]).anki.url : message.url;
+    return ankiGateway.discover({ model: message.model, apiKey: message.apiKey, url });
   },
   async hd_open_external(message, sender) {
     if (sender.id !== chrome.runtime.id) throw new Error("external link request came from another extension");
@@ -937,7 +951,7 @@ function ankiSetupFailure(error) {
 // verifies it, never replaced. Nothing here holds the storage queue.
 async function checkFirstRunAnki(anki) {
   ankiGateway ??= createAnkiGateway();
-  const invoke = (action, params) => ankiGateway.invoke(action, params, anki.apiKey);
+  const invoke = (action, params) => ankiGateway.invoke(action, params, anki.apiKey, undefined, anki.url);
   try {
     const proposal = anki.model === "" ? await detectAnkiSetup(invoke, anki) : await verifyAnkiSetup(invoke, anki);
     return { proposal, outcome: { status: proposal.status, detail: proposal.detail, model: proposal.model, deck: proposal.deck } };
@@ -1280,17 +1294,17 @@ function reconcileUpdateAlarm() {
     const { dictionaries, settings } = await serialiseStorage(readUpdatePlan);
     const now = Date.now();
     const when = nextManagedUpdateCheck(dictionaries, settings.schedule, now);
-    const existing = await chrome.alarms.get(UPDATE_ALARM);
+    const existing = await alarms.get(UPDATE_ALARM);
     if (updateCycleActive) return;
     if (when === null) {
-      if (existing) await chrome.alarms.clear(UPDATE_ALARM);
+      if (existing) await alarms.clear(UPDATE_ALARM);
       return;
     }
     if (existing && existing.periodInMinutes === undefined
         && (existing.scheduledTime === when || (when === now && existing.scheduledTime <= now))) {
       return;
     }
-    await chrome.alarms.create(UPDATE_ALARM, { when });
+    await alarms.create(UPDATE_ALARM, { when });
   });
   alarmTail = run.then(
     () => undefined,
@@ -1821,7 +1835,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Only the screenshot needs to know which page asked, and it is given the
     // capture rather than the sender, so nothing else can capture a tab.
     if (message.type === "hd_anki_screenshot") return ankiMining.screenshot(() => captureSenderViewport(sender));
-    return ankiMining[ANKI_METHODS[message.type]](message.type === "hd_anki_browse" ? message.expression : message.request);
+    return ankiMining[ANKI_METHODS[message.type]](message.type === "hd_anki_browse"
+      ? message.request ?? message.expression : message.request);
   }).then(result => sendResponse(workerReply(message, result)), error => sendResponse(failureReply(message, error)));
   return true;
 });
@@ -2007,7 +2022,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-chrome.alarms.onAlarm.addListener((alarm) => {
+chrome.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === ANKI_MATURITY_ALARM) {
     void getAnkiMaturityCache().reconcile();
     return;
@@ -2020,7 +2035,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   });
 });
 
-chrome.downloads.onChanged.addListener(delta => {
+chrome.downloads?.onChanged?.addListener(delta => {
   if (!delta.state || delta.state.current === "in_progress") return;
   getBackupDownloads().changed(delta.id).catch(error => {
     console.warn("hoshidicts: could not release a finished backup download:", describe(error));

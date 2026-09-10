@@ -41,19 +41,30 @@ test("Automatic and named presets materialize only discovered fields with visibl
   assert.equal(aliases.fieldTemplates.Reading.value, "");
   assert.equal(aliases.fieldTemplates.WordAudio.value, "");
   for (const preset of ["kiku", "lapis"]) {
-    const result = applyAnkiPreset(config(), ["Expression", "ExpressionFurigana", "MainDefinition", "PitchPosition", "FreqSort"], preset);
+    const result = applyAnkiPreset(config(),
+      ["Expression", "ExpressionFurigana", "MainDefinition", "PitchPosition", "FreqSort", "SentenceAudio"], preset);
     assert.equal(result.fieldTemplates.ExpressionFurigana.value, "{furigana-plain}");
     assert.equal(result.fieldTemplates.MainDefinition.value, "{main-definition}");
     assert.equal(result.fieldTemplates.PitchPosition.value, "{pitch-accent-positions}");
     assert.equal(result.fieldTemplates.FreqSort.value, "{frequency-harmonic-rank}");
-    assert.equal(Object.keys(result.fieldTemplates).length, 5);
+    assert.equal(result.fieldTemplates.SentenceAudio.value, "");
+    assert.equal(Object.keys(result.fieldTemplates).length, 6);
   }
-  const senren = applyAnkiPreset(config(), ["word", "definition", "wordAudio", "pitchPositions", "sentenceTranslation"], "senren");
+  const senren = applyAnkiPreset(config(),
+    ["word", "definition", "wordAudio", "pitchPositions", "sentenceAudio", "sentenceTranslation"], "senren");
   assert.equal(senren.fieldTemplates.word.value, "{expression}");
   assert.equal(senren.fieldTemplates.definition.value, "{main-definition}");
   assert.equal(senren.fieldTemplates.wordAudio.value, "{audio}");
   assert.equal(senren.fieldTemplates.pitchPositions.value, "{pitch-accent-positions}");
+  assert.equal(senren.fieldTemplates.sentenceAudio.value, "");
   assert.equal(senren.fieldTemplates.sentenceTranslation.value, "");
+});
+
+test("resolved saved templates never migrate a blank SentenceAudio field", () => {
+  const fields = ["Expression", "ExpressionReading", "Sentence", "Glossary", "SentenceAudio"];
+  const saved = applyAnkiPreset(config(), fields, "kiku");
+  assert.equal(saved.fieldTemplates.SentenceAudio.value, "");
+  assert.equal(resolveAnkiTemplates(saved, fields).templates.SentenceAudio.value, "");
 });
 
 test("marker validation retains unknown tokens as errors and recognizes nonempty dictionary-specific markers", () => {

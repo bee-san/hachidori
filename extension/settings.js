@@ -9,7 +9,13 @@ import { createAudioSettingsController } from "./audio-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
+import { createSettingsSearch } from "./settings-search.js";
+import { createCustomLinkSettings } from "./custom-link-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
+import {
+  createDictionaryProgressList,
+  formatSeconds,
+} from "./dictionary-progress.js";
 import {
   createDictionaryGroupController,
   normaliseDictionaryGroups,
@@ -36,6 +42,7 @@ const UPDATE_TARGET = "hachidori-updates";
 const AUDIO_TARGET = "hachidori-audio";
 const CAPTURE_TARGET = "hachidori-capture";
 const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", media: "Media capture", anki: "Anki" };
+const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
@@ -124,9 +131,13 @@ let requestCounter = 0;
 let audioController;
 let ankiController;
 let backupController;
+let customLinkController;
 let backingUp = false;
 let mediaStatusEpoch = 0;
 let mediaRuntimeState = "unavailable";
+let settingsSearch;
+let importProgress;
+let importDragDepth = 0;
 
 const SECTION_STATUSES = {
   "import-state": { section: "add-dictionaries", label: "Import" },
@@ -154,20 +165,39 @@ function sectionHasPendingWork(id) {
   }
 }
 
-function syncNavigationStatus(id) {
-  const { section, label } = SECTION_STATUSES[id];
-  const source = element(id);
-  const notice = element(`nav-status-${section}`);
-  if (section === activeSection) unseenSectionCompletions.delete(id);
-  const attention = source.classList.contains("is-error") || unseenSectionCompletions.has(id) || sectionHasPendingWork(id);
-  const message = section !== activeSection && attention && source.textContent
-    ? `${label}: ${source.textContent}` : "";
-  if (notice.textContent !== message) notice.textContent = message;
-  notice.classList.toggle("is-error", source.classList.contains("is-error"));
-  notice.classList.toggle("is-ready", source.classList.contains("is-ready"));
+function primaryNavigationSection(section) {
+  return LIBRARY_SECTIONS.has(section) ? "dictionaries" : section;
+}
+
+function renderNavigationStatuses() {
+  const messages = new Map();
+  for (const [id, { section, label }] of Object.entries(SECTION_STATUSES)) {
+    const source = element(id);
+    const attention = source.classList.contains("is-error") || unseenSectionCompletions.has(id) || sectionHasPendingWork(id);
+    if (section === activeSection || !attention || !source.textContent) continue;
+    const navigationSection = primaryNavigationSection(section);
+    const status = messages.get(navigationSection) ?? { messages: [], error: false, ready: true };
+    status.messages.push(`${label}: ${source.textContent}`);
+    status.error ||= source.classList.contains("is-error");
+    status.ready &&= source.classList.contains("is-ready");
+    messages.set(navigationSection, status);
+  }
+  for (const notice of document.querySelectorAll(".nav-status")) {
+    const status = messages.get(notice.id.slice("nav-status-".length));
+    const message = status?.messages.join(" ") ?? "";
+    if (notice.textContent !== message) notice.textContent = message;
+    notice.classList.toggle("is-error", status?.error === true);
+    notice.classList.toggle("is-ready", status?.ready === true && status?.error !== true);
+  }
   const compact = element("settings-navigation-status");
-  const messages = [...document.querySelectorAll(".nav-status")].map(output => output.textContent).filter(Boolean).join(" ");
-  if (compact.textContent !== messages) compact.textContent = messages;
+  const message = [...document.querySelectorAll(".nav-status")].map(output => output.textContent).filter(Boolean).join(" ");
+  if (compact.textContent !== message) compact.textContent = message;
+}
+
+function syncNavigationStatus(id) {
+  const { section } = SECTION_STATUSES[id];
+  if (section === activeSection) unseenSectionCompletions.delete(id);
+  renderNavigationStatuses();
 }
 
 function setSectionStatus(id, message, tone, completed = false) {
@@ -180,6 +210,7 @@ function setSectionStatus(id, message, tone, completed = false) {
 }
 
 function showSettingsSection(focus = false) {
+  settingsSearch?.clear();
   const fragment = window.location.hash.slice(1);
   const requested = fragment === "settings-content" ? activeSection : fragment;
   const sections = [...document.querySelectorAll("main > section")];
@@ -187,23 +218,40 @@ function showSettingsSection(focus = false) {
   pendingManagementFocus = null;
   for (const section of sections) section.hidden = section.id !== activeSection;
   element("settings-section").value = activeSection;
+  const libraryActive = LIBRARY_SECTIONS.has(activeSection);
+  element("library-navigation").hidden = !libraryActive;
+  const primarySection = primaryNavigationSection(activeSection);
   for (const link of document.querySelectorAll(".settings-nav a")) {
-    if (link.hash === `#${activeSection}`) link.setAttribute("aria-current", "page");
+    if (link.hash === `#${primarySection}`) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+  for (const link of document.querySelectorAll("#library-navigation a")) {
+    if (libraryActive && link.hash === `#${activeSection}`) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
   if (Object.hasOwn(OPTION_SECTIONS, activeSection)) {
-    element(`nav-status-${SECTION_STATUSES["options-status"].section}`).textContent = "";
     SECTION_STATUSES["options-status"] = { section: activeSection, label: OPTION_SECTIONS[activeSection] };
     const slot = element(activeSection).querySelector(".options-feedback-slot");
     if (element("options-feedback").parentElement !== slot) slot.append(element("options-feedback"));
   }
-  for (const id of Object.keys(SECTION_STATUSES)) syncNavigationStatus(id);
+  for (const [id, { section }] of Object.entries(SECTION_STATUSES)) {
+    if (section === activeSection) unseenSectionCompletions.delete(id);
+  }
+  renderNavigationStatuses();
   renderThemeChoices();
   updateDesignPreview();
   updateAudioSettings();
   updateMediaSettings();
   updateAnkiSettings();
   updateBackupSettings();
+  if (activeSection === "design") {
+    customLinkController ??= createCustomLinkSettings({ document,
+      readLinks: () => options.customLinks,
+      saveLinks: links => { options.customLinks = links; writeOptions(); },
+    });
+    customLinkController.render();
+  }
+  if (activeSection === "custom-dictionary" && !customEditorLoaded) void loadCustomDictionarySource();
   if (fragment === "settings-content") element("settings-content").focus();
   else if (focus) element(activeSection).querySelector("h1").focus();
 }
@@ -319,7 +367,7 @@ function updateBackupSettings() {
       if (importing || updating || removing || committing || customLoading || customSaving || pendingDictionaryCommits > 0) {
         throw new Error("Wait for the current dictionary operation to finish, then try again.");
       }
-      if (customDictionaryDirty() || savingOptions !== null || optionsEditRevision !== null
+      if (customDictionaryDirty() || customLinkController?.dirty() || savingOptions !== null || optionsEditRevision !== null
           || Object.keys(pendingOptions).length > 0 || savingSchedule !== null || pendingSchedule !== null
           || nameDrafts.hasPendingChanges()) {
         throw new Error("Save or discard your pending changes before working with a backup.");
@@ -373,6 +421,10 @@ function resizeDesignPreview() {
 }
 
 function attachSettingsNavigation() {
+  settingsSearch = createSettingsSearch({ document, navigate(section) {
+    if (section && window.location.hash !== `#${section}`) window.history.pushState(null, "", `#${section}`);
+    showSettingsSection();
+  } });
   element("design-preview-disclosure").open = window.innerWidth > 1100;
   const picker = element("settings-section");
   picker.addEventListener("change", (event) => {
@@ -387,7 +439,7 @@ function attachSettingsNavigation() {
     event.preventDefault();
     element("settings-content").focus();
   });
-  for (const link of document.querySelectorAll(".settings-nav a, .section-action")) {
+  for (const link of document.querySelectorAll(".settings-nav a, #library-navigation a, .section-action")) {
     link.addEventListener("click", (event) => {
       if (link.hash === window.location.hash
           && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
@@ -614,7 +666,6 @@ function setStatus(message, tone) {
 
 function setImportState(message, tone) {
   setSectionStatus("import-state", message, tone, tone === "ready");
-  element("import-progress").hidden = tone !== "busy";
 }
 
 function setUpdateState(message, tone = "") {
@@ -657,21 +708,12 @@ function customDictionaryDraftSource() {
 
 function renderCustomDictionaryControls() {
   const busy = importing || updating || removing || committing || customLoading || customSaving || backingUp;
-  const open = element("custom-dictionary-open");
   const source = element("custom-dictionary-source");
-  open.disabled = busy;
-  source.disabled = busy;
+  source.disabled = busy || !customEditorLoaded;
   element("custom-dictionary-save").disabled = busy
     || !customDictionaryDirty()
     || customDraftStale;
   element("custom-dictionary-reload").disabled = busy;
-}
-
-function showCustomDictionaryEditor(visible) {
-  element("custom-dictionary-form").hidden = !visible;
-  const open = element("custom-dictionary-open");
-  open.setAttribute("aria-expanded", String(visible));
-  open.textContent = visible ? "Close editor" : "Edit source";
 }
 
 function cancelCustomDictionaryValidation() {
@@ -752,7 +794,6 @@ async function loadCustomDictionarySource() {
     }
     customEditorLoaded = true;
     resetCustomDictionaryDraft(customDocument);
-    showCustomDictionaryEditor(true);
     setCustomDictionaryStatus(`Loaded source revision ${customDocument.revision}.`, "ready", true);
   } catch (error) {
     setCustomDictionaryStatus(`Could not load the custom dictionary source: ${describe(error)}`, "error");
@@ -888,18 +929,30 @@ function refreshDictionarySchedules() {
 }
 
 function clearImportResults() {
-  const detail = element("import-detail");
-  detail.textContent = "";
-  detail.hidden = true;
+  importProgressView().clear();
 }
 
-function appendImportResult(fileName, message, tone) {
-  const detail = element("import-detail");
-  const result = document.createElement("li");
-  result.className = `import-result is-${tone}`;
-  result.textContent = `${fileName} — ${message}`;
-  detail.appendChild(result);
-  detail.hidden = false;
+function importProgressView() {
+  if (importProgress) return importProgress;
+  importProgress = createDictionaryProgressList({
+    document,
+    ariaLabel: "Dictionary import progress",
+    idPrefix: "settings-import",
+  });
+  element("import-progress").appendChild(importProgress.element);
+  return importProgress;
+}
+
+function setImportEntries(entries) {
+  importProgressView().setEntries(entries);
+}
+
+function updateImportResult(index, state) {
+  importProgressView().update(String(index), state);
+}
+
+function importDuration(started) {
+  return formatSeconds(Math.max(0, (Date.now() - started) / 1000));
 }
 
 function renderRecommendedCatalogue() {
@@ -933,7 +986,13 @@ function renderRecommendedActions() {
 
 function setControlsDisabled(disabled) {
   const blocked = disabled || removing || updating || customSaving || backingUp;
-  element("import-file").disabled = blocked || committing;
+  const importBlocked = blocked || committing;
+  element("import-file").disabled = importBlocked;
+  element("import-drop-zone").setAttribute("aria-disabled", String(importBlocked));
+  if (importBlocked) {
+    importDragDepth = 0;
+    element("import-drop-zone").classList.remove("is-dragging");
+  }
   element("install-recommended").disabled = blocked || committing;
   element("retry-recommended").disabled = blocked || committing;
   element("empty-install-recommended").disabled = blocked || committing;
@@ -1280,6 +1339,10 @@ function renderThemeChoices() {
   if (theme !== document.activeElement) theme.value = options.popupTheme;
 }
 
+function applySettingsTheme() {
+  document.documentElement.dataset.hoshidictsTheme = options.popupTheme;
+}
+
 function renderCustomCss(force = false) {
   const editor = element("opt-custom-popup-css");
   if ((force || editor !== document.activeElement) && editor.value !== options.customPopupCss) {
@@ -1289,6 +1352,7 @@ function renderCustomCss(force = false) {
 }
 
 function renderOptions() {
+  applySettingsTheme();
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
     if (input !== document.activeElement) {
@@ -1301,6 +1365,7 @@ function renderOptions() {
   element("opt-audio-autoplay").checked = options.audioAutoplay;
   renderThemeChoices();
   renderCustomCss();
+  customLinkController?.render();
   const toolbar = element("opt-popup-toolbar");
   if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
   const mode = element("opt-lookup-mode");
@@ -1310,7 +1375,6 @@ function renderOptions() {
     for (const key of ACTIVATION_KEYS) activation.add(new Option(key, key));
   }
   if (activation !== document.activeElement) activation.value = options.activationKey;
-  activation.disabled = options.lookupMode !== "activation";
   renderFrequencyOrder();
   renderKanjiChoices();
   renderFrequencyChoices();
@@ -2059,10 +2123,12 @@ function summariseReport(report) {
 async function importFile(file, index, total, request = {}, label = file.name, started = Date.now()) {
   const blobUrl = URL.createObjectURL(file);
   const tick = () => {
+    const elapsed = elapsedSince(started);
     setImportState(
-      `Importing ${label} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsedSince(started)} elapsed`,
+      `Importing ${label} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsed} elapsed`,
       "busy",
     );
+    updateImportResult(index, { text: `Importing… ${elapsed} elapsed`, progress: { value: null } });
   };
   tick();
   const ticker = setInterval(tick, 1000);
@@ -2071,13 +2137,22 @@ async function importFile(file, index, total, request = {}, label = file.name, s
     const reply = await send("hd_import", { blobUrl, fileName: file.name, ...request });
     const report = reply.report ?? {};
     if (reply.ok && report.success) {
-      appendImportResult(label, `Imported ${report.title}: ${summariseReport(report)}.`, "ready");
+      updateImportResult(index, {
+        text: `Imported ${report.title} in ${importDuration(started)}: ${summariseReport(report)}.`,
+        tone: "ok",
+      });
       return true;
     }
     const reason = reply.error ?? report.error ?? "The engine gave no reason.";
-    appendImportResult(label, `Could not be imported: ${reason}`, "error");
+    updateImportResult(index, {
+      text: `Failed after ${importDuration(started)}: ${reason}`,
+      tone: "error",
+    });
   } catch (error) {
-    appendImportResult(label, `Could not be imported: ${describe(error)}`, "error");
+    updateImportResult(index, {
+      text: `Failed after ${importDuration(started)}: ${describe(error)}`,
+      tone: "error",
+    });
   } finally {
     clearInterval(ticker);
     // The offscreen document has read the bytes by now; holding the URL any
@@ -2090,10 +2165,12 @@ async function importFile(file, index, total, request = {}, label = file.name, s
 async function importRecommendedDictionary(entry, index, total) {
   const started = Date.now();
   const tick = () => {
+    const elapsed = elapsedSince(started);
     setImportState(
-      `Downloading ${entry.name} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsedSince(started)} elapsed`,
+      `Downloading ${entry.name} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsed} elapsed`,
       "busy",
     );
+    updateImportResult(index, { text: `Downloading… ${elapsed} elapsed`, progress: { value: null } });
   };
   tick();
   const ticker = setInterval(tick, 1000);
@@ -2113,20 +2190,27 @@ async function importRecommendedDictionary(entry, index, total) {
       started,
     );
   } catch (error) {
-    appendImportResult(entry.name, `Could not be downloaded: ${describe(error)}`, "error");
+    updateImportResult(index, {
+      text: `Download failed after ${importDuration(started)}: ${describe(error)}`,
+      tone: "error",
+    });
     return false;
   } finally {
     clearInterval(ticker);
   }
 }
 
-async function runImportBatch(items, importOne, singular, plural) {
+async function runImportBatch(items, importOne, singular, plural, describeItem) {
   if (importing) {
     return;
   }
   importing = true;
   setControlsDisabled(true);
   clearImportResults();
+  setImportEntries(items.map((item, index) => ({
+    id: String(index),
+    ...describeItem(item),
+  })));
 
   let imported = 0;
   try {
@@ -2151,7 +2235,53 @@ async function runImportBatch(items, importOne, singular, plural) {
 }
 
 function runImports(files) {
-  return runImportBatch(files, importFile, "archive", "archives");
+  return runImportBatch(files, importFile, "archive", "archives", (file) => ({
+    name: file.name,
+    purpose: "Yomitan ZIP file",
+  }));
+}
+
+function hasDroppedFiles(event) {
+  const transfer = event.dataTransfer;
+  return (transfer?.files?.length ?? 0) > 0 || Array.from(transfer?.types ?? []).includes("Files");
+}
+
+function clearImportDropState() {
+  importDragDepth = 0;
+  element("import-drop-zone").classList.remove("is-dragging");
+}
+
+function bindImportDropZone(file) {
+  const zone = element("import-drop-zone");
+  zone.setAttribute("aria-disabled", String(file.disabled));
+  zone.addEventListener("dragenter", (event) => {
+    if (!hasDroppedFiles(event)) return;
+    event.preventDefault();
+    if (file.disabled || importing) return;
+    importDragDepth += 1;
+    zone.classList.add("is-dragging");
+  });
+  zone.addEventListener("dragover", (event) => {
+    if (!hasDroppedFiles(event)) return;
+    event.preventDefault();
+    if (file.disabled || importing) return;
+    event.dataTransfer.dropEffect = "copy";
+    zone.classList.add("is-dragging");
+  });
+  zone.addEventListener("dragleave", () => {
+    if (importDragDepth === 0) return;
+    importDragDepth -= 1;
+    if (importDragDepth === 0) zone.classList.remove("is-dragging");
+  });
+  zone.addEventListener("drop", (event) => {
+    if (!hasDroppedFiles(event)) return;
+    event.preventDefault();
+    const dropped = [...(event.dataTransfer?.files ?? [])];
+    clearImportDropState();
+    if (!file.disabled && !importing && dropped.length > 0) {
+      void runImports(dropped);
+    }
+  });
 }
 
 function installMissingRecommendedDictionaries() {
@@ -2162,6 +2292,7 @@ function installMissingRecommendedDictionaries() {
       importRecommendedDictionary,
       "recommended dictionary",
       "recommended dictionaries",
+      (entry) => ({ name: entry.name, purpose: entry.description }),
     );
   }
 }
@@ -2254,13 +2385,6 @@ async function flushUpdateSchedule() {
 }
 
 function attachHandlers() {
-  element("custom-dictionary-open").addEventListener("click", () => {
-    if (!customEditorLoaded) {
-      void loadCustomDictionarySource();
-      return;
-    }
-    showCustomDictionaryEditor(element("custom-dictionary-form").hidden);
-  });
   element("custom-dictionary-form").addEventListener("submit", (event) => {
     void saveCustomDictionarySource(event);
   });
@@ -2295,6 +2419,7 @@ function attachHandlers() {
       void runImports(picked);
     }
   });
+  bindImportDropZone(file);
 
   element("dict-search").addEventListener("input", (event) => {
     dictionarySearch = event.target.value;
@@ -2427,6 +2552,7 @@ function attachHandlers() {
   });
   element("reset-design").addEventListener("click", () => {
     for (const key of DESIGN_OPTION_KEYS) options[key] = DEFAULT_OPTIONS[key];
+    customLinkController?.reset();
     renderCustomCss(true);
     renderOptions();
     writeOptions();
@@ -2478,7 +2604,6 @@ function attachHandlers() {
   });
   element("opt-lookup-mode").addEventListener("change", (event) => {
     options.lookupMode = LOOKUP_MODES.includes(event.target.value) ? event.target.value : "hover";
-    element("opt-activation-key").disabled = options.lookupMode !== "activation";
     writeOptions();
   });
   element("opt-activation-key").addEventListener("change", (event) => {
@@ -2623,7 +2748,7 @@ function attachHandlers() {
   window.addEventListener("beforeunload", (event) => {
     if (!importing && !backingUp && savingOptions === null && optionsEditRevision === null
         && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null
-        && !nameDrafts.hasPendingChanges()) {
+        && !nameDrafts.hasPendingChanges() && !customLinkController?.dirty()) {
       return;
     }
     // Leaving can revoke an import's blob URL or discard a queued settings draft.
@@ -2729,6 +2854,7 @@ function setOptionsStatus(message, completed = false) {
 // Keep only edited fields. A storage event can update the committed snapshot,
 // but cannot replace a local draft or authorize a stale draft's write.
 function writeOptions() {
+  applySettingsTheme();
   updateDesignPreview();
   const previous = { ...savedOptions, ...savingOptions?.patch };
   const changes = Object.fromEntries(Object.entries(options).filter(([key, value]) =>

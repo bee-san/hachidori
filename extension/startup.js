@@ -12,6 +12,11 @@
 
 import "./reader-options.js";
 import "./visual-novel.js";
+import {
+  createDictionaryProgressList,
+  formatBytes,
+  formatSeconds,
+} from "./dictionary-progress.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-state.js";
@@ -21,8 +26,10 @@ const WORKER_TARGET = "hoshidicts-worker";
 const SETUP_TARGET = "hachidori-setup";
 const SETUP_EVENTS_TARGET = "hachidori-setup-events";
 const ENGINE_TARGET = "hoshidicts-offscreen";
-const SUCCESS_DISPLAY_MS = 5000;
+const ANKI_RESULT_DISPLAY_MS = 3000;
 const COUNTDOWN_TICK_MS = 250;
+const ANKI_PROGRESS_STEP_MS = 2000;
+const ANKI_PROGRESS_STEPS = 3;
 // A run reports at every phase change and about ten times a second while a body
 // arrives, so a longer silence means the offscreen document that owned it is gone.
 const RUN_SILENCE_MS = 4000;
@@ -50,6 +57,7 @@ let attaching = null;
 let countdown = null;
 let countdownPaused = false;
 let advanceFailed = false;
+let automaticAdvance = null;
 // A failed install request is shown once with Retry; the page never re-requests on its own.
 let installFailed = false;
 let runSilenceTimer = null;
@@ -62,12 +70,16 @@ let readerLoading = null;
 // stale invitation standing.
 let practiceOutcome = null;
 let practiceProbed = "";
+let practiceLookupShown = false;
 // Anki detection is asked for once per page; a failed request waits for Retry.
 let ankiRequest = null;
 let ankiFailed = false;
-let ankiAdvancing = false;
+// Only a check started by this page may stage a newly configured result.
+let ankiProgressRequested = false;
+let ankiProgressStartedAt = null;
+let ankiProgressTimer = null;
 const announced = new Map();
-let dictionaryList;
+let dictionaryProgress;
 let practice;
 
 function element(id) {
@@ -162,14 +174,6 @@ function button(id, text, onClick, className = "primary-button") {
   return node;
 }
 
-function formatBytes(bytes) {
-  return bytes < 1_048_576 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1_048_576).toFixed(1)} MB`;
-}
-
-function formatSeconds(seconds) {
-  return seconds < 10 ? `${seconds.toFixed(1)} seconds` : `${Math.round(seconds)} seconds`;
-}
-
 function missingEntries() {
   return RECOMMENDED_DICTIONARIES.filter((entry) => !recommendedDictionaryInstalled(entry, dictionaries));
 }
@@ -225,84 +229,29 @@ function rowState(entry) {
   return { text: "Not installed" };
 }
 
-function progressBar(progress, labelId) {
-  const track = document.createElement("div");
-  track.className = `track setup-track${progress.value === null ? "" : " is-determinate"}`;
-  track.setAttribute("role", "progressbar");
-  track.setAttribute("aria-labelledby", labelId);
-  if (progress.value === null) {
-    track.setAttribute("aria-valuetext", "In progress");
-  } else {
-    track.setAttribute("aria-valuemin", "0");
-    track.setAttribute("aria-valuemax", "100");
-    track.setAttribute("aria-valuenow", String(Math.floor(progress.value * 100)));
-    track.style.setProperty("--progress", `${progress.value * 100}%`);
-  }
-  const fill = document.createElement("div");
-  fill.className = "track-fill";
-  track.appendChild(fill);
-  return track;
-}
-
 function dictionaryRows() {
-  if (dictionaryList) {
+  if (dictionaryProgress) {
     updateDictionaryRows();
-    return dictionaryList;
+    return dictionaryProgress.element;
   }
-  const list = document.createElement("ul");
-  dictionaryList = list;
-  list.className = "setup-dictionary-list";
-  list.setAttribute("aria-label", "Default dictionaries");
-  for (const entry of RECOMMENDED_DICTIONARIES) {
-    const row = document.createElement("li");
-    row.className = "setup-dictionary";
-    row.dataset.sourceId = entry.sourceId;
-    const name = document.createElement("span");
-    name.className = "setup-dictionary-name";
-    name.id = `setup-dictionary-${entry.sourceId}`;
-    name.textContent = entry.name;
-    const purpose = document.createElement("span");
-    purpose.className = "setup-dictionary-purpose";
-    purpose.textContent = entry.description;
-    const status = document.createElement("span");
-    status.className = "setup-dictionary-status";
-    status.id = `setup-dictionary-status-${entry.sourceId}`;
-    row.append(name, purpose, status);
-    const track = progressBar({ value: null }, name.id);
-    track.setAttribute("aria-describedby", status.id);
-    row.appendChild(track);
-    list.appendChild(row);
-  }
+  dictionaryProgress = createDictionaryProgressList({
+    document,
+    ariaLabel: "Default dictionaries",
+    idPrefix: "setup-dictionary",
+  });
+  dictionaryProgress.setEntries(RECOMMENDED_DICTIONARIES.map((entry) => ({
+    id: entry.sourceId,
+    labelId: `setup-dictionary-${entry.sourceId}`,
+    name: entry.name,
+    purpose: entry.description,
+  })));
   updateDictionaryRows();
-  return list;
+  return dictionaryProgress.element;
 }
 
 function updateDictionaryRows() {
-  for (const [index, entry] of RECOMMENDED_DICTIONARIES.entries()) {
-    const state = rowState(entry);
-    const row = dictionaryList.children[index];
-    const status = row.querySelector(".setup-dictionary-status");
-    if (status.textContent !== state.text) status.textContent = state.text;
-    status.classList.toggle("is-ok", state.tone === "ok");
-    status.classList.toggle("is-error", state.tone === "error");
-    row.classList.toggle("is-active", Boolean(state.progress));
-    const track = row.querySelector(".setup-track");
-    track.hidden = !state.progress;
-    const value = state.progress?.value;
-    const determinate = typeof value === "number";
-    track.classList.toggle("is-determinate", determinate);
-    if (determinate) {
-      track.removeAttribute("aria-valuetext");
-      track.setAttribute("aria-valuemin", "0");
-      track.setAttribute("aria-valuemax", "100");
-      track.setAttribute("aria-valuenow", String(Math.floor(value * 100)));
-      track.style.setProperty("--progress", `${value * 100}%`);
-    } else {
-      track.removeAttribute("aria-valuenow");
-      track.removeAttribute("aria-valuemin");
-      track.removeAttribute("aria-valuemax");
-      track.setAttribute("aria-valuetext", state.text);
-    }
+  for (const entry of RECOMMENDED_DICTIONARIES) {
+    dictionaryProgress.update(entry.sourceId, rowState(entry));
   }
 }
 
@@ -327,8 +276,8 @@ function cancelCountdown() {
 }
 
 function countdownLabel() {
-  const remaining = Math.max(0, Math.ceil((SUCCESS_DISPLAY_MS - (Date.now() - countdown.startedAt)) / 1000));
-  return `Continuing to Anki in ${remaining} ${remaining === 1 ? "second" : "seconds"}`;
+  const remaining = Math.max(0, Math.ceil((countdown.durationMs - (Date.now() - countdown.startedAt)) / 1000));
+  return `Continuing to ${countdown.destination} in ${remaining} ${remaining === 1 ? "second" : "seconds"}`;
 }
 
 function updateCountdown() {
@@ -336,38 +285,69 @@ function updateCountdown() {
   const label = element("setup-countdown-label");
   const track = element("setup-countdown-track");
   if (!label || !track) return;
-  const elapsed = Math.min(1, (Date.now() - countdown.startedAt) / SUCCESS_DISPLAY_MS);
+  const elapsed = Math.min(1, (Date.now() - countdown.startedAt) / countdown.durationMs);
   label.textContent = countdownLabel();
   track.setAttribute("aria-valuenow", String(Math.floor(elapsed * 100)));
   track.style.setProperty("--progress", `${elapsed * 100}%`);
 }
 
-async function finishCountdown() {
-  cancelCountdown();
-  if (setupState?.stage !== "dictionaries" || missingEntries().length > 0) return;
+async function advanceSettledStage(stage, nextStage) {
+  if (!stage || !nextStage || setupState?.stage !== stage
+      || (stage === "dictionaries" && missingEntries().length > 0)) return;
   // The installer may have recorded its run total between our read and this
   // write; the second attempt carries the revision that reply delivered.
-  let advanced = await advance("anki");
-  if (!advanced && setupState?.stage === "dictionaries" && missingEntries().length === 0) advanced = await advance("anki");
-  if (!advanced && setupState?.stage === "dictionaries") {
+  let advanced = await advance(nextStage);
+  if (!advanced && setupState?.stage === stage
+      && (stage !== "dictionaries" || missingEntries().length === 0)) {
+    advanced = await advance(nextStage);
+  }
+  if (!advanced && setupState?.stage === stage) {
     // Leave the result readable with an explicit control instead of retrying on a timer.
     advanceFailed = true;
     render();
   }
 }
 
-// The all-installed result stays readable for five seconds, then setup moves
-// on by itself. The countdown label is not a live region: ticks are not news.
-function startCountdown() {
-  if (countdown !== null) return;
+async function finishCountdown(stage = countdown?.stage, nextStage = countdown?.nextStage) {
+  const finishing = countdown ?? { stage, nextStage };
+  cancelCountdown();
+  countdownPaused = false;
+  await advanceSettledStage(finishing.stage, finishing.nextStage);
+}
+
+// Dictionary success moves on without a display delay. One task owns the
+// automatic write across any renders it causes, including its conflict retry.
+function startImmediateAdvance(stage, nextStage) {
+  if (automaticAdvance?.stage === stage) return;
+  const task = { stage, nextStage };
+  automaticAdvance = task;
+  queueMicrotask(() => {
+    void advanceSettledStage(stage, nextStage).finally(() => {
+      if (automaticAdvance === task) automaticAdvance = null;
+    });
+  });
+}
+
+// A settled Anki result stays readable briefly, then setup moves on by itself.
+// The countdown label is not a live region: ticks are not news.
+function startCountdown(stage, nextStage, destination, durationMs) {
+  if (countdown?.stage === stage) return;
+  cancelCountdown();
   countdown = {
+    stage,
+    nextStage,
+    destination,
+    durationMs,
     startedAt: Date.now(),
     ticker: setInterval(updateCountdown, COUNTDOWN_TICK_MS),
-    timer: setTimeout(() => { void finishCountdown(); }, SUCCESS_DISPLAY_MS),
+    timer: setTimeout(() => { void finishCountdown(); }, durationMs),
   };
 }
 
 function countdownView() {
+  // Keep the same animated fill through installer/storage updates. Replacing
+  // it would visibly restart the countdown even though its deadline is unchanged.
+  if (countdown.node) return countdown.node;
   const wrapper = document.createElement("div");
   wrapper.className = "setup-countdown";
   const label = document.createElement("span");
@@ -383,8 +363,11 @@ function countdownView() {
   track.setAttribute("aria-valuemax", "100");
   track.setAttribute("aria-valuenow", "0");
   track.style.setProperty("--progress", "0%");
+  track.style.setProperty("--countdown-duration", `${countdown.durationMs}ms`);
+  track.style.setProperty("--countdown-delay", `${countdown.startedAt - Date.now()}ms`);
   track.appendChild(document.createElement("div")).className = "track-fill";
   wrapper.append(label, track);
+  countdown.node = wrapper;
   return wrapper;
 }
 
@@ -444,23 +427,18 @@ function requestInstall(sourceIds) {
 
 // A complete inventory is announced with this setup's own install time only
 // when it installed something; a profile that already carried every source
-// reads as already installed. The result holds for five seconds.
+// reads as already installed and setup moves straight on.
 function installedView(rows, importNote) {
   const total = setupState.dictionaries.totalSeconds;
   const installedHere = Object.values(setupState.dictionaries.outcomes).some((outcome) => outcome.status === "installed");
-  // A failed advance is an action-required state: the countdown a render during
-  // those attempts restarted is cancelled rather than left to retry silently.
-  if (advanceFailed || countdownPaused) cancelCountdown();
-  else startCountdown();
+  cancelCountdown();
+  if (!advanceFailed) startImmediateAdvance("dictionaries", "anki");
   return {
     heading: installedHere && total !== null ? `All dictionaries installed in ${formatSeconds(total)}` : "All dictionaries are already installed",
-    body: [paragraph("Your recommended dictionaries are installed. You can add your own whenever you like."), rows, importNote,
-      ...(advanceFailed ? [] : [countdownPaused ? paragraph("Automatic continuation is paused. Continue when you’re ready.") : countdownView()])],
-    actions: [button("setup-continue", "Continue now", () => { void finishCountdown(); }),
-      ...(advanceFailed ? [] : [button("setup-pause", countdownPaused ? "Resume countdown" : "Pause countdown", () => {
-        countdownPaused = !countdownPaused;
-        render();
-      }, "ghost")])],
+    body: [paragraph("Your recommended dictionaries are installed. You can add your own whenever you like."), rows, importNote],
+    actions: advanceFailed
+      ? [button("setup-continue", "Continue now", () => { void advanceSettledStage("dictionaries", "anki"); })]
+      : [],
   };
 }
 
@@ -507,22 +485,124 @@ function dictionariesView() {
   return incompleteView(rows, importNote, missing);
 }
 
+function stopAnkiProgress() {
+  if (ankiProgressTimer !== null) clearTimeout(ankiProgressTimer);
+  ankiProgressTimer = null;
+  ankiProgressStartedAt = null;
+}
+
+function startAnkiProgress() {
+  stopAnkiProgress();
+  ankiProgressStartedAt = Date.now();
+}
+
+function ankiProgressStep() {
+  if (ankiProgressStartedAt === null) return 0;
+  return Math.min(ANKI_PROGRESS_STEPS - 1,
+    Math.floor((Date.now() - ankiProgressStartedAt) / ANKI_PROGRESS_STEP_MS));
+}
+
+function scheduleAnkiProgressRender() {
+  if (ankiProgressStartedAt === null || ankiProgressTimer !== null) return;
+  const elapsed = Date.now() - ankiProgressStartedAt;
+  const total = ANKI_PROGRESS_STEPS * ANKI_PROGRESS_STEP_MS;
+  if (elapsed >= total) return;
+  const nextBoundary = Math.min(total,
+    (Math.floor(elapsed / ANKI_PROGRESS_STEP_MS) + 1) * ANKI_PROGRESS_STEP_MS);
+  ankiProgressTimer = setTimeout(() => {
+    ankiProgressTimer = null;
+    render();
+  }, Math.max(0, nextBoundary - elapsed));
+}
+
+function ankiProgressView(anki = null, complete = false) {
+  const steps = [
+    "Looking for the most popular mining card",
+    "Looking for the most popular deck",
+    "Setting Hachidori to use them",
+  ];
+  const selected = anki?.status === "configured";
+  const current = complete ? ANKI_PROGRESS_STEPS : ankiProgressStep();
+  const details = selected
+    ? [`Selected ${anki.model}`, `Selected ${anki.deck}`, "Ready for future mining"]
+    : [];
+  const list = document.createElement("ol");
+  list.className = "setup-anki-progress";
+  list.setAttribute("aria-label", "Automatic Anki setup");
+  for (const [index, title] of steps.entries()) {
+    const row = document.createElement("li");
+    const done = index < current;
+    const active = !complete && index === current;
+    row.className = "setup-anki-progress-step";
+    row.classList.toggle("is-done", done);
+    row.classList.toggle("is-current", active);
+    row.dataset.step = String(index + 1);
+    if (active) row.setAttribute("aria-current", "step");
+    const marker = document.createElement("span");
+    marker.className = "setup-anki-progress-marker";
+    marker.setAttribute("aria-hidden", "true");
+    marker.textContent = done ? "✓" : String(index + 1);
+    const copy = document.createElement("span");
+    copy.className = "setup-anki-progress-copy";
+    const label = document.createElement("strong");
+    label.textContent = title;
+    const detail = document.createElement("small");
+    let detailText = "Waiting";
+    if (done || (active && selected)) detailText = details[index];
+    else if (active) detailText = "Checking Anki…";
+    detail.textContent = detailText;
+    copy.append(label, detail);
+    row.append(marker, copy);
+    list.appendChild(row);
+  }
+  return list;
+}
+
+function automaticAnkiView(anki = null) {
+  scheduleAnkiProgressRender();
+  return {
+    heading: "Finding your Anki setup…",
+    body: [
+      paragraph("Hachidori is checking the cards and decks you already use, then choosing the setup you use most."),
+      ankiProgressView(anki),
+      paragraph("You can continue while the check finishes in the background."),
+    ],
+    actions: [button("setup-continue", "Continue now", () => { void advance("practice"); })],
+  };
+}
+
+function ankiOutcomeRecorded() {
+  return setupState !== null && setupState.anki !== null;
+}
+
 function requestAnkiSetup() {
   if (ankiRequest !== null) return ankiRequest;
+  const showPending = ankiFailed;
   ankiFailed = false;
-  ankiRequest = send("hd_setup_anki", {}).then((reply) => {
+  ankiProgressRequested = setupState?.anki === null;
+  stopAnkiProgress();
+  const request = send("hd_setup_anki", {}).then((reply) => {
     if (!reply.ok) throw new Error(reply.error || "Anki could not be checked");
     adoptSetupState(reply.state);
     // The reply promises a recorded outcome; without one the check is reported, not repeated.
     if (setupState?.anki === null) throw new Error("no Anki outcome was recorded");
+    if (setupState.anki.status !== "configured") ankiProgressRequested = false;
   }).catch((error) => {
+    // The worker may have committed the outcome before its reply was lost.
+    if (ankiOutcomeRecorded()) return;
     ankiFailed = true;
+    stopAnkiProgress();
     setStatus(`Could not check Anki: ${describe(error)}`, "error");
   }).finally(() => {
     ankiRequest = null;
     render();
   });
-  return ankiRequest;
+  ankiRequest = request;
+  if (showPending) {
+    setStatus("Finding your Anki setup…");
+    render();
+  }
+  return request;
 }
 
 // The settled Anki outcome, with its Settings link, as one readable sentence.
@@ -540,7 +620,12 @@ function ankiOutcomeNote(anki) {
   } else if (anki.status === "already-configured") {
     node.append(`Anki is already set up with ${anki.model} for deck ‘${anki.deck}’. Change in `, link, ".");
   } else if (anki.status === "unavailable") {
-    node.append("Anki isn’t connected. It’s optional — you can set it up later in ", link, ".");
+    link.href = "https://apps.ankiweb.net/";
+    link.dataset.focusKey = "link:anki-download";
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Anki";
+    node.append("Could not find Anki. If you want to make flashcards out of words, I suggest ", link, "!");
   } else {
     node.append(`Anki needs attention: ${anki.detail} Set up in `, link, ".");
   }
@@ -551,51 +636,73 @@ function ankiHeading(anki) {
   switch (anki.status) {
     case "configured": return "Anki is set up";
     case "already-configured": return "Anki is already set up";
-    case "unavailable": return "Anki isn’t connected";
+    case "unavailable": return "Could not find Anki";
     default: return "Anki needs attention";
   }
 }
 
-// Detection runs once per installation; its recorded outcome moves setup on by
-// itself and stays readable on the final screen.
-function ankiView() {
-  const anki = setupState.anki;
-  if (anki === null) {
-    if (ankiFailed) {
-      return {
-        heading: "Anki could not be checked",
-        body: [settingsNote("Anki is optional. You can set it up later in ", "settings.html#anki")],
-        actions: [
-          button("setup-retry", "Retry", () => { void requestAnkiSetup(); }),
-          button("setup-continue", "Continue setup", () => { void advance("practice"); }, "ghost"),
-        ],
-      };
-    }
-    void requestAnkiSetup();
+function pendingAnkiView() {
+  if (ankiFailed) {
     return {
-      heading: "Connect Anki, if you use it",
-      body: [paragraph("Anki is optional. Hachidori can look up words without it."),
-        paragraph("Checking for an existing Senren, Lapis or Kiku setup to use for flashcards…"),
-        paragraph("You can continue while the check finishes in the background.")],
-      actions: [button("setup-continue", "Continue now", () => { void advance("practice"); })],
+      heading: "Anki could not be checked",
+      body: [settingsNote("Anki is optional. You can set it up later in ", "settings.html#anki")],
+      actions: [
+        button("setup-retry", "Retry", () => { void requestAnkiSetup(); }),
+        button("setup-continue", "Continue setup", () => { void advance("practice"); }, "ghost"),
+      ],
     };
   }
-  if (advanceFailed) {
-    return { heading: ankiHeading(anki), body: [ankiOutcomeNote(anki)],
-      actions: [button("setup-continue", "Continue setup", () => { void advance("practice"); })] };
-  }
-  if (!ankiAdvancing) void advanceAfterAnki();
-  return { heading: ankiHeading(anki), body: [ankiOutcomeNote(anki)], actions: [] };
+  void requestAnkiSetup();
+  return automaticAnkiView();
 }
 
-async function advanceAfterAnki() {
-  ankiAdvancing = true;
-  try {
-    if (!await advance("practice") && setupState?.stage === "anki") advanceFailed = true;
-  } finally {
-    ankiAdvancing = false;
+function stagedConfiguredAnkiView(anki) {
+  if (anki.status !== "configured") {
+    ankiProgressRequested = false;
+    stopAnkiProgress();
+    return null;
   }
-  if (advanceFailed) render();
+  if (!ankiProgressRequested) return null;
+  if (ankiProgressStartedAt === null) startAnkiProgress();
+  if (Date.now() - ankiProgressStartedAt < ANKI_PROGRESS_STEPS * ANKI_PROGRESS_STEP_MS) {
+    return automaticAnkiView(anki);
+  }
+  ankiProgressRequested = false;
+  stopAnkiProgress();
+  return null;
+}
+
+// Detection runs once per installation; its recorded outcome stays readable
+// for three seconds before setup moves on by itself.
+function ankiView() {
+  const anki = setupState.anki;
+  if (anki === null) return pendingAnkiView();
+  // A fast local AnkiConnect response can finish before the browser paints.
+  // Keep each real detection step visible once before revealing a successful
+  // automatic choice; the worker's existing detection and saved result remain
+  // the source of truth.
+  const staged = stagedConfiguredAnkiView(anki);
+  if (staged !== null) return staged;
+  if (advanceFailed) {
+    cancelCountdown();
+    return { heading: ankiHeading(anki),
+      body: [...(anki.status === "configured" ? [ankiProgressView(anki, true)] : []), ankiOutcomeNote(anki)],
+      actions: [button("setup-continue", "Continue setup", () => { void advance("practice"); })] };
+  }
+  if (countdownPaused) cancelCountdown();
+  else startCountdown("anki", "practice", "practice", ANKI_RESULT_DISPLAY_MS);
+  return {
+    heading: ankiHeading(anki),
+    body: [...(anki.status === "configured" ? [ankiProgressView(anki, true)] : []), ankiOutcomeNote(anki),
+      countdownPaused ? paragraph("Automatic continuation is paused. Continue when you’re ready.") : countdownView()],
+    actions: [
+      button("setup-continue", "Continue now", () => { void finishCountdown("anki", "practice"); }),
+      button("setup-pause", countdownPaused ? "Resume countdown" : "Pause countdown", () => {
+        countdownPaused = !countdownPaused;
+        render();
+      }, "ghost"),
+    ],
+  };
 }
 
 // The reader itself, in the one authoritative order: the manifest's own
@@ -746,6 +853,12 @@ function practiceView() {
     probePractice();
   }
   const readiness = practice.update(options, dictionaries, practiceOutcome);
+  if (!practiceLookupShown && practiceOutcome === "ready") {
+    // The first render mounts the practice node while the reader loads. As soon
+    // as its real lookup control becomes enabled, select before the ready render
+    // returns so the final page cannot paint ahead of its demonstration.
+    practiceLookupShown = practice.lookup();
+  }
   return {
     heading: readiness.heading,
     body: [practice.node, ...(setupState.anki === null ? [] : [ankiOutcomeNote(setupState.anki)])],
@@ -756,13 +869,9 @@ function practiceView() {
 function welcomeView() {
   return {
     heading: "Welcome to Hachidori",
-    body: [
-      paragraph("Japanese page text is looked up on this computer. Words, readings, counts and lookup times are saved locally. You can pause recording in Reading settings without erasing your history."),
-      paragraph("Start setup downloads four starter dictionaries from their publishers, who receive your IP address. It also reads deck, note-type, card and note metadata from local AnkiConnect to configure an existing mining setup. No Anki notes are changed."),
-      paragraph("Optional pronunciation sends words and readings to your audio provider or browser voice service. Mining sends selected study content and configured page screenshots to local Anki. Continuous recording stays off until you start it and choose a source in Chrome."),
-    ],
+    body: [paragraph("Click Start Setup to automatically set up Hachidori")],
     actions: [
-      button("setup-start", "Start setup", () => { void advance("dictionaries"); }),
+      button("setup-start", "Start Setup", () => { void advance("dictionaries"); }),
       button("setup-manual", "Set up manually", () => { void advance("practice"); }, "ghost"),
     ],
   };
@@ -812,7 +921,11 @@ function renderSteps(stage) {
 function currentView() {
   if (setupError !== null) return failedView();
   if (setupState === null) return inactiveView();
-  if (setupState.stage !== "dictionaries") cancelCountdown();
+  if (setupState.stage !== "anki") {
+    ankiProgressRequested = false;
+    if (ankiProgressStartedAt !== null) stopAnkiProgress();
+  }
+  if (countdown !== null && countdown.stage !== setupState.stage) cancelCountdown();
   return VIEWS[setupState.stage]();
 }
 
@@ -829,13 +942,26 @@ function renderBody(children) {
   }
 }
 
+function recoverRecordedAnkiOutcome(view) {
+  if (!ankiFailed || !ankiOutcomeRecorded()) return;
+  ankiFailed = false;
+  const status = element("setup-status");
+  if (status.classList.contains("is-error") && status.textContent.startsWith("Could not check Anki:")) {
+    setStatus(view.heading);
+  }
+}
+
 function render() {
   const stage = setupError === null ? setupState?.stage ?? null : null;
   // A stage of its own starts without the previous stage's failed-advance state.
-  if (stage !== renderedStage) advanceFailed = false;
+  if (stage !== renderedStage) {
+    advanceFailed = false;
+    countdownPaused = false;
+  }
   const card = element("setup-card");
   const focusKey = card.contains(document.activeElement) ? document.activeElement.dataset.focusKey ?? "" : "";
   const view = currentView();
+  recoverRecordedAnkiOutcome(view);
   renderSteps(stage);
   const heading = element("setup-heading");
   if (heading.textContent !== view.heading) heading.textContent = view.heading;

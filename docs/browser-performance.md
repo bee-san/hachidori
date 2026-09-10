@@ -45,6 +45,52 @@ Aggregate Chrome RSS sums descendant-process RSS and can count shared pages more
 
 The benchmark checks exact import counts, hits, misses, deinflection, result signatures, and every persistent OPFS file's path, length, and SHA-256 before and after a complete Chrome restart. Raw evidence remains under the ignored local `benchmark/results/` directory; the benchmark source itself is versioned.
 
+## Clicked-kanji selected dictionary lookup
+
+On 2026-09-09, a focused Chrome probe measured the production
+`hd_lookup_dictionary` route used when a clicked kanji is configured to use a
+term dictionary. The previous binding created a temporary native query for every
+request, reopening the selected term dictionary plus every frequency and pitch
+dictionary even though the engine had already loaded them.
+
+The comparison used:
+
+- Hachidori baseline `b0a0fa6` with Hoshidicts `6859c32`;
+- baseline extension tree SHA-256
+  `99cb4ae3b7d07d148c2b7fbb9a20bc39e75674da7810b8be77cc80498dd08826`
+  and optimized extension tree SHA-256
+  `1f0aeecf405ac82583921b6c58b9bc30f8c99fb01ca9face12d978b7f5636d98`;
+- Bee's Ultimate Kanji Dictionary revision `2026.08.19.1`, 11,782,705 bytes,
+  SHA-256 `f96fbead89f86a584298f710d71f49eccec623b54f1c73a00501a87567e93f09`;
+- Chrome 152.0.7977.75 on a 16-vCPU Intel Xeon Platinum 8488C host;
+- three fresh profiles, each importing through Settings, measuring after ready,
+  then closing Chrome completely and measuring again from the retained OPFS
+  profile;
+- twelve common kanji over three measured passes per profile, giving 108
+  selected-dictionary requests per phase. Ordinary `hd_lookup` requests were
+  interleaved as a loaded-query control.
+
+The reproducible command was:
+
+```bash
+HACHIDORI_KANJI_ARCHIVE=/absolute/path/to/bees-ultimate-kanji-dictionary.zip \
+HACHIDORI_KANJI_QUIET=1 node benchmark/kanji-click.mjs
+```
+
+| Phase | Metric | Reopen per request | Reuse loaded query | Reduction |
+| --- | --- | ---: | ---: | ---: |
+| Post-import | First selected request, median `[min–max]` | 178.570 `[169.730–187.800]` ms | 9.060 `[8.705–9.745]` ms | 94.9% |
+| Post-import | Steady selected request, p50 / p95 | 140.560 / 160.810 ms | 2.030 / 2.695 ms | 98.6% / 98.3% |
+| Post-restart | First selected request, median `[min–max]` | 181.650 `[178.445–182.420]` ms | 8.690 `[8.615–8.915]` ms | 95.2% |
+| Post-restart | Steady selected request, p50 / p95 | 139.690 / 162.695 ms | 2.200 / 2.715 ms | 98.4% / 98.3% |
+
+The optimized selected lookup is within about half a millisecond of the
+interleaved ordinary lookup median. The clock covers
+`chrome.runtime → service worker → offscreen document → engine worker → WASM`
+and response serialization. It deliberately excludes hover delay, DOM click
+dispatch, and popup rendering, so these are targeted backend timings rather
+than complete pointer-to-paint latency.
+
 ## Implemented architecture
 
 1. Compile Hoshidicts and the bindings with pthread support.

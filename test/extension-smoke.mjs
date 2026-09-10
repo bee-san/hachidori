@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { ankiSetupFamily } from "../extension/anki-setup.js";
 import { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache } from "../extension/anki-maturity-cache.js";
 import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
 import { assertBackupSnapshot, backupRevisions } from "../extension/backup-state.js";
@@ -789,6 +790,53 @@ function loadBackgroundScript(sandbox) {
   return context;
 }
 
+async function hostedExtensionBackgroundStage() {
+  const bus = makeBus(), storage = makeStorage();
+  const chrome = makeChrome("hosted-worker", bus, storage);
+  delete chrome.alarms;
+  delete chrome.downloads;
+  delete chrome.offscreen;
+  delete chrome.runtime.getContexts;
+  Object.assign(offscreenState, { created: 0, exists: false, concurrent: 0, peakConcurrent: 0 });
+
+  const relayed = [];
+  bus.addListener("hosted-engine", (message, sender, sendResponse) => {
+    if (message?.target !== "hoshidicts-offscreen" || message.relayed !== true) return false;
+    relayed.push(structuredClone(message));
+    sendResponse({
+      type: `${message.type}_result`,
+      requestId: message.requestId,
+      ok: true,
+      hosted: true,
+    });
+    return true;
+  });
+
+  let loadError = null;
+  try {
+    loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error });
+  } catch (error) {
+    loadError = error;
+  }
+  const reply = loadError === null
+    ? await bus.sendMessage("hosted-page", {
+        target: "hoshidicts-offscreen",
+        type: "hd_status",
+        requestId: "hosted-status",
+      })
+    : null;
+  check(
+    "a host-owned engine works without offscreen, alarm or download APIs",
+    loadError === null
+      && reply?.ok === true
+      && reply.hosted === true
+      && reply.requestId === "hosted-status"
+      && relayed.length === 1
+      && offscreenState.created === 0,
+    JSON.stringify({ loadError: loadError?.message, reply, relayed, offscreenState }),
+  );
+}
+
 async function lookupStatsStage() {
   const bus = makeBus(), storage = makeStorage();
   const chrome = makeChrome("lookup-stats-worker", bus, storage);
@@ -1053,7 +1101,7 @@ async function firstRunBackgroundStage() {
       dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] },
       anki: null,
     }) && validIso(seeded.setup?.startedAt)
-    && JSON.stringify(seeded.options) === JSON.stringify({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 3, revision: 1 })
+    && JSON.stringify(seeded.options) === JSON.stringify({ showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1 })
     && JSON.stringify(storage.sets) === JSON.stringify([["options", "setupState"]]);
 
   // The user edits a seeded preference; updates, browser starts, a restarted
@@ -1209,7 +1257,7 @@ async function firstRunBackgroundStage() {
 // revisioned options write for a recognised setup, one durable outcome.
 async function firstRunAnkiStage() {
   const KIKU_FIELDS = ["Expression", "ExpressionFurigana", "ExpressionReading", "ExpressionAudio", "SelectionText", "MainDefinition",
-    "Glossary", "Sentence", "SentenceFurigana", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
+    "Glossary", "Sentence", "SentenceFurigana", "SentenceAudio", "PitchPosition", "PitchCategories", "Frequency", "FreqSort", "MiscInfo", "Picture"];
   const setupRecord = (patch = {}) => ({ schemaVersion: 1, revision: 4, startedAt: "2026-09-07T10:00:00.000Z", stage: "anki", completedAt: null,
     dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }, anki: null, ...patch });
   const defaultAnki = () => globalThis.HDReaderOptions.normaliseOptions({}).anki;
@@ -1322,7 +1370,9 @@ async function firstRunAnkiStage() {
       && found.requests.find((request) => request.action === "findNotes").params.query === "mid:2"
       && found.requests.find((request) => request.action === "findCards").params.query === "mid:2 -deck:filtered"
       && savedOptions.revision === 3 && savedOptions.anki.model === "Kiku v2" && savedOptions.anki.deck === "Mining" && savedOptions.anki.apiKey === "local-key"
-      && savedOptions.anki.fieldTemplates.Expression.value === "{expression}" && savedOptions.anki.fieldTemplates.Picture.value === "{screenshot}"
+      && savedOptions.anki.fieldTemplates.Expression.value === "{expression}"
+      && savedOptions.anki.fieldTemplates.SentenceAudio.value === ""
+      && savedOptions.anki.fieldTemplates.Picture.value === "{screenshot}"
       && Object.keys(savedOptions.anki.fieldTemplates).length === KIKU_FIELDS.length
       && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([["options", "setupState"]])
       && first.state.revision === 5,
@@ -2263,6 +2313,12 @@ async function customEngineStage() {
 }
 
 function loadSettingsScript(window) {
+  window.ankiSetupFamily = ankiSetupFamily;
+  const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
+  const customLinkSettings = readFileSync(resolve(EXTENSION, "custom-link-settings.js"), "utf8")
+    .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
+  const searchSettings = readFileSync(resolve(EXTENSION, "settings-search.js"), "utf8").replace(/^export\s+/gmu, "");
+  window.eval(`{ ${searchSettings}; window.createSettingsSearch = createSettingsSearch; }`);
   window.chrome.extension ??= { isAllowedFileSchemeAccess: async () => false };
   const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8").replace(/^export\s+/gmu, "");
   const backupSettings = readFileSync(resolve(EXTENSION, "backup-settings.js"), "utf8").replace(/^export\s+/gmu, "");
@@ -2289,12 +2345,17 @@ function loadSettingsScript(window) {
     .replace(/^export\s+/gmu, "");
   const nameDrafts = readFileSync(resolve(EXTENSION, "dictionary-name-drafts.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const dictionaryProgress = readFileSync(resolve(EXTENSION, "dictionary-progress.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/import \{ createCustomLinkSettings \} from "\.\/custom-link-settings\.js";\s*/u, "")
+    .replace(/import \{ createSettingsSearch \} from "\.\/settings-search\.js";\s*/u, "")
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
     .replace(/import \{ createAnkiSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{ createAudioSettingsController \}\s*from\s*"\.\/audio-settings\.js";\s*/u, "")
@@ -2305,7 +2366,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
   window.TextEncoder ??= TextEncoder;
   window.eval(
-    `${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${localFileAccess}\n${settings}`,
+    `${externalLinks}\n${customLinkSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${backupSettings}\n${localFileAccess}\n${settings}`,
   );
 }
 
@@ -2391,10 +2452,35 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
           && reader.validateOptionsPatch({ popupTheme: theme.id }).popupTheme === theme.id)
         && reader.normaliseOptions({ popupTheme: "unknown" }).popupTheme === "default",
       JSON.stringify({ themes, cssThemes: [...cssThemes] }));
+    const readerCss = readFileSync(resolve(EXTENSION, "render/reader.css"), "utf8");
+    const frameRule = readerCss.match(/^\.gsm-hoshidicts-popup \{([^}]+)\}/mu)?.[1];
+    const scrollRule = readerCss.match(/^\.gsm-hoshidicts-content-scroll \{([^}]+)\}/mu)?.[1];
+    const toolbarRule = readerCss.match(/^\.gsm-hoshidicts-result-chrome \{([^}]+)\}/mu)?.[1];
+    const noteRule = [...readerCss.matchAll(/^\.gsm-hoshidicts-note-form \{([^}]+)\}/gmu)]
+      .map(match => match[1]).join("\n");
+    check("transparent popup backgrounds keep their opacity while the frame clips independently scrolling content and controls",
+      /display: flex;/u.test(frameRule) && /overflow: hidden;/u.test(frameRule)
+        && /background: var\(--hoshidicts-popup-background\);/u.test(frameRule)
+        && /--hoshidicts-background-opacity: var\(\s*--gsm-hoshidicts-popup-opacity,\s*85%\s*\)/u.test(frameRule)
+        && /--hoshidicts-chrome-background: color-mix\([^;]+var\(--hoshidicts-background-opacity\)[^;]+transparent\s*\)/u.test(frameRule)
+        && [scrollRule, toolbarRule, noteRule].every(rule => /min-height: 0;/u.test(rule) && /overflow-y: auto;/u.test(rule))
+        && /flex: 1 1 0;/u.test(scrollRule) && /max-height: 50%;/u.test(toolbarRule)
+        && /flex: 0 0 auto;/u.test(noteRule) && /max-height: 80%;/u.test(noteRule)
+        && !/position: sticky;/u.test(toolbarRule));
+    const tagRule = readerCss.match(/^\.gsm-hoshidicts-tag \{([^}]+)\}/mu)?.[1];
+    const definitionTagRule = readerCss.match(/^\.gsm-hoshidicts-tag-definition \{([^}]+)\}/mu)?.[1];
+    const metadataValueRules = ["frequency", "pitch"].map(kind => readerCss
+      .match(new RegExp(`^\\.gsm-hoshidicts-tag-${kind} \\{([^}]+)\\}`, "mu"))?.[1]);
+    check("pronunciation and frequency values use the theme foreground while filled definition badges retain their paired foreground",
+      /color: var\(--text-color\);/u.test(tagRule)
+        && metadataValueRules.every(rule => /color: var\(--text-color\);/u.test(rule))
+        && /color: var\(--hoshidicts-tag-text\);/u.test(definitionTagRule)
+        && /--text-color: var\(--hoshidicts-text\);/u.test(readerCss)
+        && /--hoshidicts-text: var\(--hoshidicts-palette-base-content\);/u.test(readerCss));
     const metadataDefaults = {
-      averageFrequency: false, showFrequencyDictionaryNames: true,
+      averageFrequency: false, showFrequencyDictionaryNames: false,
       showPitchAccentFurigana: true, pitchAccentFuriganaDictionary: "",
-      showPitchAccentBadge: true, hidePopupGrammarTags: false,
+      showPitchAccentBadge: true, hidePopupGrammarTags: true,
     };
     const metadataAccepted = [];
     const metadataRejected = [];
@@ -2750,6 +2836,13 @@ function checkRecommendedDictionaries() {
     manifest.permissions?.includes("alarms") === true,
     JSON.stringify(manifest.permissions),
   );
+  const webResources = new Set(manifest.web_accessible_resources?.flatMap(({ resources }) => resources) ?? []);
+  check(
+    "the popup exposes the copied GSM toolbar icons to content-script shadow roots",
+    ["big-circle", "add-duplicate-big-circle", "overwrite-big-circle", "view-note"]
+      .every((name) => webResources.has(`render/icons/${name}.svg`)),
+    JSON.stringify([...webResources]),
+  );
   const catalogueContract = (entry) => ({
     sourceId: entry.sourceId,
     name: entry.name,
@@ -2833,6 +2926,7 @@ async function main() {
   checkOptionRanges();
 
   section("external dictionary links");
+  await hostedExtensionBackgroundStage();
   await externalLinksBackgroundStage();
   await firstRunBackgroundStage();
   await firstRunAnkiStage();
@@ -2939,6 +3033,15 @@ async function main() {
     "offscreen.js uses no chrome API beyond chrome.runtime",
     offscreenApis.every((api) => api === "runtime"),
     [...new Set(offscreenApis)].join(", "),
+  );
+  check(
+    "dictionary storage relies on unlimitedStorage without a redundant persistence request",
+    EXTENSION_MANIFEST.permissions?.includes("unlimitedStorage") === true
+      && !offscreenSource.includes("navigator.storage.persist"),
+    JSON.stringify({
+      permissions: EXTENSION_MANIFEST.permissions,
+      requestsPersistentStorage: offscreenSource.includes("navigator.storage.persist"),
+    }),
   );
   check(
     "runtime selection depends on capabilities rather than stored dictionaries",
@@ -5194,14 +5297,15 @@ async function main() {
   );
   check(
     "settings lazily loads the newest custom source across event and reply ordering",
-    settingsCustom?.startup?.customReadCount === 0
-      && settingsCustom.startup.formHidden === true
+    settingsCustom?.startup?.customReadCount === 1
+      && settingsCustom.startup.formHidden === false
+      && settingsCustom.startup.openControlAbsent === true
       && settingsCustom.startup.sourceFetchedDirectly === false
       && settingsCustom.startup.sourceHasMaximumLength === false
       && settingsCustom.startup.sourceDescribedBy
         === "custom-dictionary-status custom-dictionary-errors"
       && settingsCustom.eventBeforeReadReply?.value === "newer event, にゅー, wins\n"
-      && settingsCustom.eventBeforeReadReply.expanded === "true"
+      && settingsCustom.eventBeforeReadReply.formHidden === false
       && settingsCustom.eventBeforeReadReply.readCount === 1
       && settingsCustom.eventBeforeReadReply.saveDisabled === true
       && settingsCustom.eventBeforeReadReply.unseenCompletion === true
@@ -5315,9 +5419,11 @@ async function main() {
   );
   const settingsBatch = await settingsBatchImportStage();
   check(
-    "settings import every selected archive sequentially and retain each outcome",
+    "settings imports dropped archives sequentially through the shared progress rows and retains each timed outcome",
     settingsBatch?.multiple === true
       && settingsBatch.pickerValue === ""
+      && Object.values(settingsBatch.drop ?? {}).every(Boolean)
+      && settingsBatch.sharedRows === true
       && JSON.stringify(settingsBatch.importRequests?.map(({ fileName }) => fileName))
         === JSON.stringify(["first.zip", "broken.zip", "replacement.zip"])
       && settingsBatch.importRequests?.every(({ state, completed }, index) =>
@@ -5328,11 +5434,12 @@ async function main() {
       && JSON.stringify(settingsBatch.revokedUrls) === JSON.stringify(settingsBatch.createdUrls)
       && JSON.stringify(settingsBatch.outcomes?.map(({ error }) => error))
         === JSON.stringify([false, true, false])
-      && settingsBatch.outcomes?.[0]?.text.includes("first.zip")
+      && JSON.stringify(settingsBatch.outcomes?.map(({ name }) => name))
+        === JSON.stringify(["first.zip", "broken.zip", "replacement.zip"])
+      && settingsBatch.outcomes.every(({ text, trackHidden }) =>
+        /\d+(?:\.\d)? seconds/u.test(text) && trackHidden)
       && settingsBatch.outcomes[0].text.includes("Imported First")
-      && settingsBatch.outcomes?.[1]?.text.includes("broken.zip")
       && settingsBatch.outcomes[1].text.includes("broken archive")
-      && settingsBatch.outcomes?.[2]?.text.includes("replacement.zip")
       && settingsBatch.outcomes[2].text.includes("Imported First")
       && settingsBatch.finalState === "Finished 3 of 3 archives — 2 imported, 1 failed."
       && settingsBatch.controlsRestored === true
@@ -5341,7 +5448,7 @@ async function main() {
     JSON.stringify(settingsBatch),
   );
   const navigationSettings = await settingsNavigationStage();
-  check("Settings navigation preserves mounted views and pending reader drafts without extra requests",
+  check("Settings navigation loads personal source on first visit and preserves mounted drafts",
     navigationSettings?.navigation === true && navigationSettings.draft === true,
     JSON.stringify(navigationSettings));
   check("dictionary details retain their stable identity and focus across rerenders and filtering",
@@ -5351,10 +5458,10 @@ async function main() {
   check("Settings shows Resume setup only while the first-run setup record is incomplete",
     navigationSettings?.resume === true, JSON.stringify(navigationSettings));
   const welcome = await startupWelcomeStage();
-  check("first-run setup discloses data use before any request, waits for a saved Start, resumes it and permits manual setup",
+  check("first-run setup waits for a saved Start, resumes it and permits manual setup",
     welcome !== null && Object.values(welcome).every((value) => value === true), JSON.stringify(welcome));
   const startup = await startupPageStage();
-  check("the startup page mirrors its own installer run, keeps focus, retries only missing dictionaries and advances after the five-second result",
+  check("the startup page mirrors its own installer run, keeps focus, retries only missing dictionaries and advances immediately",
     startup !== null && Object.values(startup).every((value) => value === true), JSON.stringify(startup));
   const runRecovery = await startupRunRecoveryStage();
   check("a startup page whose run went silent observes the installer again and restarts the unrecorded sources",
@@ -5363,7 +5470,7 @@ async function main() {
   check("a failed source the user installed from Settings is reconciled once while a missing failure waits for Retry",
     reconcile !== null && Object.values(reconcile).every((value) => value === true), JSON.stringify(reconcile));
   const advanceFailure = await startupAdvanceFailureStage();
-  check("a refused automatic advance leaves an explicit Continue and cancels the countdown instead of saving again on a timer",
+  check("a refused immediate advance leaves an explicit Continue without saving again",
     advanceFailure !== null && Object.values(advanceFailure).every((value) => value === true), JSON.stringify(advanceFailure));
   const practice = await startupPracticeStage();
   check("the practice step invites a lookup only when a dictionary can answer one and loads the reader once with that step",
@@ -5404,6 +5511,8 @@ async function main() {
     sourceHighlight?.restored === true, JSON.stringify(sourceHighlight));
   check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
     frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
+  check("Settings applies the selected popup theme live across local edits and storage events",
+    frequencySettings?.settingsTheme === true, JSON.stringify(frequencySettings));
   check("Design resets only its shared appearance and content keys through one sparse options write",
     frequencySettings?.designReset === true, JSON.stringify(frequencySettings));
   check("Settings derives frequency direction only on dictionary selection or explicit Auto",
@@ -5601,6 +5710,11 @@ async function main() {
   );
 
   const noteContent = await contentNoteStage();
+  check(
+    "the root popup publishes one shown/hidden event for each visibility transition",
+    noteContent?.popupVisibility === true,
+    JSON.stringify(noteContent?.popupVisibility),
+  );
   for (const [name, passed] of Object.entries(noteContent?.lookupStatistics ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -6062,6 +6176,8 @@ async function settingsNavigationStage() {
       requests.push(structuredClone(message));
       if (message.type === "hd_state_read") return { ok: true, state: structuredClone(state) };
       if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 2 };
+      if (message.type === "hd_custom_read") return { ok: true, document: { schemaVersion: 1, revision: 0,
+        semanticRevision: "a".repeat(64), text: "" } };
       if (message.type === "hd_options_write") return new Promise((resolveReply) => { pendingSave = resolveReply; });
       throw new Error(`Unexpected navigation request ${message.type}`);
     } },
@@ -6089,14 +6205,32 @@ async function settingsNavigationStage() {
     }
     const initial = active()[0].id === "lookup";
     const reading = document.getElementById("lookup");
+    const libraryNavigation = document.getElementById("library-navigation");
+    const initialLibraryContext = libraryNavigation?.hidden === true;
     const source = document.getElementById("custom-dictionary-source");
     const beforeNavigation = requests.length;
     await navigate("custom-dictionary");
+    await until(() => !source.disabled);
+    const personalLibraryContext = libraryNavigation?.hidden === false
+      && document.querySelector('.settings-nav [aria-current="page"]')?.hash === "#dictionaries"
+      && libraryNavigation.querySelector('[aria-current="page"]')?.hash === "#custom-dictionary";
+    const emptyEditor = !document.getElementById("custom-dictionary-form").hidden
+      && source.value === "" && source.placeholder.split("\n").length === 3
+      && parseCustomDictionary(source.value).entries.length === 0
+      && document.getElementById("custom-dictionary-save").disabled;
+    document.getElementById("custom-dictionary-form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+    source.value = "蜂";
+    source.dispatchEvent(new window.Event("input", { bubbles: true }));
+    const typedOnly = source.value === "蜂";
+    source.value = "";
+    source.dispatchEvent(new window.Event("input", { bubbles: true }));
     await navigate("lookup");
     const navigation = initial && active().length === 1 && active()[0] === reading
+      && initialLibraryContext && personalLibraryContext && libraryNavigation.hidden
       && source === document.getElementById("custom-dictionary-source")
       && document.querySelector('.settings-nav [aria-current="page"]').hash === "#lookup"
-      && requests.length === beforeNavigation;
+      && requests.length === beforeNavigation + 1
+      && requests.at(-1).type === "hd_custom_read" && emptyEditor && typedOnly;
 
     const input = document.getElementById("opt-max-results");
     input.value = "64";
@@ -6236,16 +6370,19 @@ function loadStartupScript(window) {
   const practice = readFileSync(resolve(EXTENSION, "startup-practice.js"), "utf8")
     .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/local-file-access\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
+  const dictionaryProgress = readFileSync(resolve(EXTENSION, "dictionary-progress.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/visual-novel\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
     .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/startup-practice\.js";\s*/u, "");
   // startup.js is a module with a top-level await; an async wrapper keeps that
   // legal in a classic-script eval and surfaces a load failure through its promise.
-  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${setupState}\n${localFileAccess}\n${practice}\n${startup}\n})()`);
+  return window.eval(`(async () => {\n${readerOptions}\n${recommended}\n${managedSource}\n${dictionaryProgress}\n${setupState}\n${localFileAccess}\n${practice}\n${startup}\n})()`);
 }
 
 // The startup page renders the worker-owned setup state, mirrors the offscreen
@@ -6425,34 +6562,20 @@ async function startupPageStage() {
       outcomes: { ...setupState.dictionaries.outcomes, jiten: { status: "installed", seconds: 2.5, error: null } } } };
     storage({ setupState: { newValue: structuredClone(setupState) } });
     event({ runId: "run-b", sequence: 3, finished: true, entries: [entry("jiten", "installed", { seconds: 2.5 })] });
-    let successStarted = Date.now();
-    let success = heading() === "All dictionaries installed in 7.5 seconds"
-      && document.getElementById("setup-countdown-label")?.textContent === "Continuing to Anki in 5 seconds"
-      && document.getElementById("setup-countdown-track")?.getAttribute("role") === "progressbar"
+    const successStarted = Date.now();
+    const success = heading() === "All dictionaries installed in 7.5 seconds"
+      && document.getElementById("setup-countdown-label") === null
       && document.querySelector('#setup-body a[href="settings.html#add-dictionaries"]') !== null
-      && JSON.stringify(actions().map(([id]) => id)) === JSON.stringify(["setup-continue", "setup-pause"])
+      && actions().length === 0
       && status().textContent === "All dictionaries installed in 7.5 seconds";
-    document.getElementById("setup-pause").focus();
-    document.getElementById("setup-pause").click();
-    await new Promise((done) => setTimeout(done, 5100));
-    dictionaryState = { ...dictionaryState, revision: dictionaryState.revision + 1 };
-    storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
-    success &&= pendingReply === null && document.getElementById("setup-countdown-label") === null
-      && document.getElementById("setup-pause")?.textContent === "Resume countdown"
-      && document.activeElement?.id === "setup-pause";
-    document.getElementById("setup-pause").click();
-    successStarted = Date.now();
-    // The result stays for five seconds; a conflicting write (the run total landed) is retried with the newer revision.
-    await new Promise((done) => setTimeout(done, 3000));
-    // The label ticks every 250 ms, so three seconds in it reads two or three.
-    const heldAtThree = heading() === "All dictionaries installed in 7.5 seconds" && pendingReply === null
-      && /Continuing to Anki in [123] seconds?/u.test(document.getElementById("setup-countdown-label")?.textContent ?? "");
-    await until(() => pendingReply !== null, "the countdown write");
+    // The successful result queues its write immediately; a conflict (the run
+    // total landed) is retried with the newer revision.
+    await until(() => pendingReply !== null, "the immediate dictionary advance");
     const elapsed = Date.now() - successStarted;
     const firstAdvance = requests.at(-1);
     setupState = { ...setupState, revision: 6 };
     reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
-    await until(() => pendingReply !== null, "the retried countdown write");
+    await until(() => pendingReply !== null, "the retried dictionary advance");
     const secondAdvance = requests.at(-1);
     setupState = { ...setupState, revision: 7, stage: "anki" };
     reply({ state: structuredClone(setupState) });
@@ -6460,7 +6583,7 @@ async function startupPageStage() {
     const ankiRequests = () => requests.filter((message) => message.type === "hd_setup_anki").length;
     // The first check is not answered: shown once with Retry and Continue, never re-asked on its own.
     storage({ dictionaryState: { newValue: structuredClone(dictionaryState) } });
-    const advanced = elapsed >= 4900 && firstAdvance.stage === "anki" && firstAdvance.baseRevision === 5 && firstAdvance.continued === undefined
+    const advanced = elapsed < 1000 && firstAdvance.stage === "anki" && firstAdvance.baseRevision === 5 && firstAdvance.continued === undefined
       && secondAdvance.stage === "anki" && secondAdvance.baseRevision === 6 && currentStep() === "anki" && doneSteps() === 1
       && document.activeElement === document.getElementById("setup-heading")
       && status().textContent === "Could not check Anki: the extension's service worker did not reply" && ankiRequests() === 1
@@ -6474,22 +6597,86 @@ async function startupPageStage() {
     document.getElementById("setup-retry").click();
     await until(() => ankiRequests() === 2 && status().textContent.includes("no Anki outcome was recorded"), "the empty Anki reply");
     const emptyReplyShown = heading() === "Anki could not be checked" && document.getElementById("setup-retry") !== null;
-    ankiReply = (message) => {
-      setupState = { ...setupState, revision: 8, anki: { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" } };
-      return { type: "hd_setup_anki_result", requestId: message.requestId, ok: true, error: null, state: structuredClone(setupState) };
-    };
+    const readAnkiProgress = () => [...document.querySelectorAll(".setup-anki-progress-step")].map((row) => ({
+      title: row.querySelector("strong")?.textContent,
+      detail: row.querySelector("small")?.textContent,
+      done: row.classList.contains("is-done"),
+      current: row.getAttribute("aria-current") === "step",
+    }));
+    let releaseConfiguredAnki;
+    ankiReply = (message) => new Promise((resolveReply) => {
+      releaseConfiguredAnki = () => {
+        setupState = { ...setupState, revision: 8, anki: { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" } };
+        resolveReply({ type: "hd_setup_anki_result", requestId: message.requestId, ok: true, error: null, state: structuredClone(setupState) });
+      };
+    });
     document.getElementById("setup-retry").click();
-    await until(() => pendingReply !== null, "the practice write");
-    const practiceRequest = requests.at(-1);
+    await until(() => typeof releaseConfiguredAnki === "function", "the held configured Anki reply");
+    await new Promise((done) => setTimeout(done, 2100));
+    const pendingProgress = readAnkiProgress();
+    const pendingStayed = heading() === "Finding your Anki setup…"
+      && status().textContent === "Finding your Anki setup…" && !status().classList.contains("is-error")
+      && JSON.stringify(pendingProgress) === JSON.stringify([
+        { title: "Looking for the most popular mining card", detail: "Checking Anki…", done: false, current: true },
+        { title: "Looking for the most popular deck", detail: "Waiting", done: false, current: false },
+        { title: "Setting Hachidori to use them", detail: "Waiting", done: false, current: false },
+      ]);
+    releaseConfiguredAnki();
+    await until(() => readAnkiProgress()[0]?.detail === "Selected Kiku v2"
+      && readAnkiProgress()[0]?.current, "the selected mining-card step");
+    const cardShownAt = Date.now();
+    const cardProgress = readAnkiProgress();
+    await until(() => readAnkiProgress()[1]?.detail === "Selected Mining::Words"
+      && readAnkiProgress()[1]?.current, "the selected deck step");
+    const deckShownAt = Date.now();
+    const deckProgress = readAnkiProgress();
+    await until(() => readAnkiProgress()[2]?.detail === "Ready for future mining"
+      && readAnkiProgress()[2]?.current, "the saved Anki step");
+    const readyShownAt = Date.now();
+    const readyProgress = readAnkiProgress();
+    await until(() => heading() === "Anki is set up"
+      && document.getElementById("setup-countdown-label")?.textContent === "Continuing to practice in 3 seconds",
+    "the configured Anki result");
+    const configuredAt = Date.now();
     const checkedHeading = heading();
+    const automaticProgress = readAnkiProgress();
+    await new Promise((done) => setTimeout(done, 1500));
+    const ankiHeld = heading() === "Anki is set up" && pendingReply === null
+      && /Continuing to practice in [12] seconds?/u.test(document.getElementById("setup-countdown-label")?.textContent ?? "");
+    await until(() => pendingReply !== null, "the practice write");
+    const progressDwell = [deckShownAt - cardShownAt, readyShownAt - deckShownAt, configuredAt - readyShownAt];
+    const ankiElapsed = Date.now() - configuredAt;
+    const practiceRequest = requests.at(-1);
     // A second startup tab made the same move first: the conflict it leaves is
     // the move this page asked for, so the final step is not an error screen.
     setupState = { ...setupState, revision: 9, stage: "practice" };
     reply({ ok: false, conflict: true, error: "Setup changed in another tab.", state: structuredClone(setupState) });
     await until(() => document.getElementById("setup-practice-instruction")?.textContent.startsWith("Try looking up a word below."), "the practice stage");
     const outcomeNote = document.querySelector(".setup-anki-outcome");
-    const practice = emptyReplyShown && ankiRequests() === 3 && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
-      && checkedHeading === "Anki is set up"
+    const practice = emptyReplyShown && pendingStayed && ankiRequests() === 3
+      && practiceRequest.stage === "practice" && practiceRequest.baseRevision === 8
+      && checkedHeading === "Anki is set up" && ankiHeld
+      && progressDwell.every((duration) => duration >= 1900) && ankiElapsed >= 2900
+      && JSON.stringify(cardProgress) === JSON.stringify([
+        { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: false, current: true },
+        { title: "Looking for the most popular deck", detail: "Waiting", done: false, current: false },
+        { title: "Setting Hachidori to use them", detail: "Waiting", done: false, current: false },
+      ])
+      && JSON.stringify(deckProgress) === JSON.stringify([
+        { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: true, current: false },
+        { title: "Looking for the most popular deck", detail: "Selected Mining::Words", done: false, current: true },
+        { title: "Setting Hachidori to use them", detail: "Waiting", done: false, current: false },
+      ])
+      && JSON.stringify(readyProgress) === JSON.stringify([
+        { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: true, current: false },
+        { title: "Looking for the most popular deck", detail: "Selected Mining::Words", done: true, current: false },
+        { title: "Setting Hachidori to use them", detail: "Ready for future mining", done: false, current: true },
+      ])
+      && JSON.stringify(automaticProgress) === JSON.stringify([
+        { title: "Looking for the most popular mining card", detail: "Selected Kiku v2", done: true, current: false },
+        { title: "Looking for the most popular deck", detail: "Selected Mining::Words", done: true, current: false },
+        { title: "Setting Hachidori to use them", detail: "Ready for future mining", done: true, current: false },
+      ])
       && outcomeNote?.dataset.status === "configured"
       && outcomeNote.textContent === "Automatically set up Kiku v2 for deck ‘Mining::Words’. Change in Settings."
       && outcomeNote.querySelector('a[href="settings.html#anki"]') !== null
@@ -6511,8 +6698,10 @@ async function startupPageStage() {
     const finished = finishRequest.baseRevision === 9 && finishRequest.stage === "complete" && closedTabs[0] === 44
       && heading() === "Setup is complete." && currentStep() === null && doneSteps() === 3
       && document.getElementById("setup-actions").childElementCount === 0;
+    const configuredResume = await startupConfiguredAnkiResume(jsdom);
+    const lostAnkiReply = await startupAnkiLostReplyStage(jsdom);
     return { requestFailed, attached, determinate, ordered, indeterminate, installing, installed, failedRow, failureView, focusKept, continued,
-      retried, oldRunIgnored, success, heldAtThree, advanced, practice, practicePreserved, finished };
+      retried, oldRunIgnored, success, advanced, practice, practicePreserved, finished, configuredResume, lostAnkiReply };
   } finally {
     window.close();
   }
@@ -6608,6 +6797,69 @@ const SETUP_AT_DICTIONARIES = Object.freeze({ schemaVersion: 1, revision: 2, sta
   stage: "dictionaries", completedAt: null,
   dictionaries: Object.freeze({ outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }) });
 
+// A persisted configured outcome is already settled. Reloading or resuming the
+// page must start its three-second continuation instead of replaying a check
+// that this page never made.
+async function startupConfiguredAnkiResume(jsdom) {
+  const setup = { ...structuredClone(SETUP_AT_DICTIONARIES), revision: 8, stage: "anki",
+    anki: { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" } };
+  const page = startupCase(jsdom, { setup,
+    reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }) });
+  try {
+    await page.load();
+    const progress = [...page.document.querySelectorAll(".setup-anki-progress-step")];
+    return page.heading() === "Anki is set up"
+      && page.document.getElementById("setup-countdown-label")?.textContent === "Continuing to practice in 3 seconds"
+      && progress.length === 3 && progress.every((row) => row.classList.contains("is-done"))
+      && progress.every((row) => !row.hasAttribute("aria-current"))
+      && !page.requestTypes().includes("hd_setup_anki");
+  } finally {
+    page.window.close();
+  }
+}
+
+// The setup record is authoritative even when the request carrying the same
+// outcome loses its reply. Either event order must retire only the stale Anki
+// request error and leave the settled result readable.
+async function startupAnkiLostReplyStage(jsdom) {
+  const initial = { ...structuredClone(SETUP_AT_DICTIONARIES), revision: 7, stage: "anki", anki: null };
+  async function run(recordFirst) {
+    const recorded = { ...initial, revision: 8, anki: recordFirst
+      ? { status: "unavailable", detail: "AnkiConnect timed out", model: null, deck: null }
+      : { status: "configured", detail: null, model: "Kiku v2", deck: "Mining::Words" } };
+    let rejectReply;
+    const page = startupCase(jsdom, { setup: initial,
+      reply: () => ({ runId: null, sequence: 0, finished: true, entries: [] }),
+      anki: () => new Promise((_resolve, reject) => { rejectReply = reject; }) });
+    try {
+      await page.load();
+      await page.until(() => typeof rejectReply === "function", "the pending Anki request");
+      if (recordFirst) page.record(recorded);
+      rejectReply(new Error("the extension's service worker did not reply"));
+      await new Promise(setImmediate);
+      if (!recordFirst) {
+        await page.until(() => page.heading() === "Anki could not be checked", "the lost Anki reply");
+        page.record(recorded);
+        await new Promise(setImmediate);
+      }
+      const expectedHeading = recordFirst ? "Could not find Anki" : "Finding your Anki setup…";
+      await page.until(() => page.heading() === expectedHeading, "the recorded Anki outcome");
+      const status = page.document.getElementById("setup-status");
+      const stagedChoice = page.document.querySelector('.setup-anki-progress-step[aria-current="step"] small')?.textContent;
+      const settled = page.document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
+        && page.document.getElementById("setup-countdown-label") !== null;
+      const staged = stagedChoice === "Selected Kiku v2"
+        && page.document.getElementById("setup-countdown-label") === null;
+      return status.textContent === expectedHeading && !status.classList.contains("is-error")
+        && page.document.getElementById("setup-retry") === null
+        && (recordFirst ? settled : staged);
+    } finally {
+      page.window.close();
+    }
+  }
+  return await run(true) && await run(false);
+}
+
 async function startupWelcomeStage() {
   const jsdom = await loadJsdom();
   if (jsdom === null) return null;
@@ -6620,14 +6872,15 @@ async function startupWelcomeStage() {
   let manual;
   try {
     await page.load();
-    const disclosure = page.document.getElementById("setup-body").textContent;
+    const introduction = page.document.getElementById("setup-body").textContent;
     const quiet = page.heading() === "Welcome to Hachidori" && page.requestTypes().length === 0
       && page.document.getElementById("setup-steps").hidden
-      && readerScripts(page.document).length === 0 && /page text/iu.test(disclosure)
-      && /counts/iu.test(disclosure) && /IP address/u.test(disclosure) && /card and note metadata/u.test(disclosure)
-      && /configured page screenshots/u.test(disclosure) && /Continuous recording stays off/u.test(disclosure)
-      && page.document.querySelector('a[href="https://github.com/bee-san/hachidori/blob/main/docs/privacy.md"]') !== null;
-    // A failed save leaves the disclosure and no network work; a later click
+      && readerScripts(page.document).length === 0
+      && introduction === "Click Start Setup to automatically set up Hachidori"
+      && page.document.querySelector('.startup-star-link[href="https://github.com/bee-san/hachidori"]')
+        ?.textContent.replace(/\s+/gu, " ").trim() === "★ Star Hachidori on GitHub"
+      && page.document.querySelector('a[href*="privacy"]') === null;
+    // A failed save leaves the introduction and no network work; a later click
     // still must wait until the accepted stage is committed.
     page.document.getElementById("setup-start").click();
     await page.until(() => saveReply !== undefined, "the Start setup write");
@@ -6743,9 +6996,8 @@ async function startupReconcileStage() {
   }
 }
 
-// Both automatic advances failing is an action-required state: the countdown a
-// render during those attempts restarted is cancelled, so nothing saves again
-// on a timer behind the explicit Continue setup.
+// Both immediate advances failing is an action-required state: nothing saves
+// again behind the explicit Continue setup.
 async function startupAdvanceFailureStage() {
   const jsdom = await loadJsdom();
   if (jsdom === null) return null;
@@ -6761,24 +7013,23 @@ async function startupAdvanceFailureStage() {
   try {
     await page.load();
     await page.until(() => page.heading() === "All dictionaries installed in 4.0 seconds", "the complete result");
-    const counting = label() !== null && page.saves().length === 0;
-    // The five-second countdown elapses; both automatic writes are refused.
+    const immediate = label() === null;
     await page.until(() => page.saves().length === 2 && label() === null, "the failed advance");
-    const failed = counting && page.saves().length === 2 && label() === null
+    const failed = immediate && page.saves().length === 2 && label() === null
       && page.heading() === "All dictionaries installed in 4.0 seconds";
-    // Another display period passes without a further write of its own.
-    await new Promise((done) => setTimeout(done, 6000));
+    await new Promise((done) => setTimeout(done, 100));
     const quiet = page.saves().length === 2 && label() === null && page.actionIds().includes("setup-continue");
     const continuedNow = await startupContinueNowStage(jsdom, setup, dictionaries);
     const completedWhileChecking = await startupContinueNowStage(jsdom, setup, dictionaries, true);
-    return { counting, failed, quiet, continuedNow, completedWhileChecking };
+    return { immediate, failed, quiet, continuedNow, completedWhileChecking };
   } finally {
     page.window.close();
   }
 }
 
-// Continue now advances the installed result and the optional pending Anki
-// check. Its late reply preserves the stage the user already reached.
+// The immediate dictionary advance starts the optional Anki check. Continue
+// now can leave that check pending, and its late reply preserves the stage the
+// user already reached.
 async function startupContinueNowStage(jsdom, initialSetup, dictionaries, finishBeforeReply = false) {
   let setup = structuredClone(initialSetup);
   let settleAnki;
@@ -6792,11 +7043,14 @@ async function startupContinueNowStage(jsdom, initialSetup, dictionaries, finish
     anki: () => new Promise(resolve => { settleAnki = resolve; }) });
   try {
     await page.load();
-    await page.until(() => page.document.getElementById("setup-countdown-label") !== null, "the installed result");
-    page.document.getElementById("setup-continue").click();
     await page.until(() => typeof settleAnki === "function", "the optional Anki check");
-    const checking = page.heading() === "Connect Anki, if you use it"
+    const progress = [...page.document.querySelectorAll(".setup-anki-progress-step")];
+    const checking = page.heading() === "Finding your Anki setup…"
       && page.document.querySelector('[data-stage="anki"]')?.textContent.includes("Optional")
+      && progress.length === 3
+      && progress.map((row) => row.querySelector("strong")?.textContent).join("|")
+        === "Looking for the most popular mining card|Looking for the most popular deck|Setting Hachidori to use them"
+      && progress[0].classList.contains("is-current")
       && page.document.getElementById("setup-continue")?.disabled === false
       && page.document.getElementById("setup-countdown-label") === null
       && page.saves().length === 1;
@@ -6816,7 +7070,8 @@ async function startupContinueNowStage(jsdom, initialSetup, dictionaries, finish
     }
     await page.until(() => page.document.querySelector(".setup-anki-outcome") !== null, "the late Anki outcome");
     return checking && page.saves().length === 2 && setup.stage === "practice"
-      && page.document.querySelector(".setup-anki-outcome").textContent.includes("Anki isn’t connected")
+      && page.document.querySelector(".setup-anki-outcome").textContent === "Could not find Anki. If you want to make flashcards out of words, I suggest Anki!"
+      && page.document.querySelector('.setup-anki-outcome a[href="https://apps.ankiweb.net/"]')?.textContent === "Anki"
       && page.document.getElementById("setup-finish")?.disabled === false;
   } finally {
     page.window.close();
@@ -7298,19 +7553,19 @@ async function visualNovelStage() {
       window.HDVisualNovel.initialize(scene);
       const next = scene.querySelector(".vn-next");
       const filename = index => `assets/preview-background${index === 0 ? "" : `-${index + 1}`}.png`;
-      result.randomStart &&= scene.style.backgroundImage.includes(filename(first));
+      result.randomStart &&= scene.style.getPropertyValue("--vn-background").includes(filename(first));
       result.cycle &&= next?.tagName === "BUTTON" && next.type === "button" && next.getAttribute("aria-label") === "Next background";
       const visited = new Set();
       for (let step = 0; step < 6; step += 1) {
         const index = (first + step) % 6;
-        visited.add(scene.style.backgroundImage);
-        result.cycle &&= scene.style.backgroundImage.includes(filename(index))
+        visited.add(scene.style.getPropertyValue("--vn-background"));
+        result.cycle &&= scene.style.getPropertyValue("--vn-background").includes(filename(index))
           && scene.classList.contains("vn-dark-dialogue") === [3, 5].includes(index);
         result.startupSurface &&= window.getComputedStyle(dialogue).backgroundColor ===
-          ([3, 5].includes(index) ? "rgba(28, 20, 35, 0.94)" : "rgba(250, 247, 252, 0.94)");
+          ([3, 5].includes(index) ? "rgba(28, 20, 35, 0.88)" : "rgba(250, 247, 252, 0.88)");
         next?.click();
       }
-      result.cycle &&= visited.size === 6 && scene.style.backgroundImage.includes(filename(first)) && randomCalls === 1;
+      result.cycle &&= visited.size === 6 && scene.style.getPropertyValue("--vn-background").includes(filename(first)) && randomCalls === 1;
       result.retained &&= scene.querySelector("#preview-source") === source && source.firstChild === text
         && source.textContent === "朝ごはんを食べる。" && scene.querySelector(".vn-dialogue") === dialogue;
     } finally { window.close(); }
@@ -7374,8 +7629,14 @@ async function designPreviewStage() {
     const popup = window.document.getElementById("preview-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
     const query = selector => popup.querySelector(selector);
     const card = query(".gsm-hoshidicts-glossary-card");
-    const sample = popup.textContent.includes("食べる") && popup.textContent.includes("Sample ranks")
-      && query(".gloss-image-link")?.dataset.imageLoadState === "loaded" && !!query(".gsm-hoshidicts-tag-pitch");
+    const sample = popup.textContent.includes("食べる")
+      && query('.gsm-hoshidicts-tag-frequency[data-dictionary="Sample ranks"]')?.textContent === "120 · 240"
+      && !query(".gsm-hoshidicts-frequency-source")
+      && query(".gloss-image-link")?.dataset.imageLoadState === "loaded"
+      && query(".gsm-hoshidicts-tag-pitch")?.textContent === "たべる [2] LHL"
+      && query(".gsm-hoshidicts-tag-ipa")?.textContent === "ta̠be̞ɾɯ̟ᵝ"
+      && !popup.textContent.includes("Sample pitch")
+      && query(".gsm-hoshidicts-tag-pitch")?.title.includes("Sample pitch");
     query(".gsm-hoshidicts-note-button").click();
     const form = query("form");
     form.elements.definition.value = "A preview draft";
@@ -7396,6 +7657,14 @@ async function designPreviewStage() {
     let incremental = query(".gsm-hoshidicts-glossary-card") === card && query("form") === form
       && form.elements.definition.value === "A preview draft" && !query(".gsm-hoshidicts-tag-pitch")
       && !!query(".gsm-hoshidicts-compact-definition-summary");
+    const audioControl = query(".gsm-hoshidicts-audio-control");
+    options = { ...options, audioSources: [] };
+    update();
+    incremental &&= audioControl.hidden && query(".gsm-hoshidicts-glossary-card") === card && query("form") === form;
+    options = { ...options, audioSources: window.HDReaderOptions.DEFAULT_OPTIONS.audioSources };
+    update();
+    await settle();
+    incremental &&= !audioControl.hidden && query(".gsm-hoshidicts-audio-control") === audioControl;
     let mutations = 0;
     const observer = new window.MutationObserver(records => { mutations += records.length; });
     observer.observe(popup, { subtree: true, childList: true, attributes: true, characterData: true });
@@ -7465,8 +7734,8 @@ async function designPreviewStage() {
     const note = popup.textContent.includes("This is a preview. Notes are not saved.")
       && form.elements.definition.value === "A preview draft";
     state = { revision: 1, dictionaries: [
-      { id: "first", title: "First", termCount: 1, pitchCount: 1, enabled: true },
-      { id: "second", title: "Second", termCount: 1, kanjiCount: 1, pitchCount: 1, enabled: true },
+      { id: "first", title: "First", termCount: 1, pitchCount: 1, enabled: true, favorite: true },
+      { id: "second", title: "Second", termCount: 1, kanjiCount: 1, pitchCount: 1, enabled: true, favorite: true },
     ], groups: [] };
     options = { ...options, pitchAccentFuriganaDictionary: "Second", compactDefinitionSummaryDictionary: "Second" };
     update();
@@ -7761,11 +8030,11 @@ async function settingsFrequencyStage() {
     }
     const metadataFields = [
       ["opt-lookup-counts", "showLookupCounts", true],
-      ["opt-frequency-names", "showFrequencyDictionaryNames", true],
+      ["opt-frequency-names", "showFrequencyDictionaryNames", false],
       ["opt-average-frequency", "averageFrequency", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
       ["opt-pitch-furigana", "showPitchAccentFurigana", true],
-      ["opt-grammar-tags", "hidePopupGrammarTags", true],
+      ["opt-grammar-tags", "hidePopupGrammarTags", false],
     ];
     const pitch = window.document.getElementById("opt-pitch-dictionary");
     let metadata = Boolean(pitch) && metadataFields.every(([id, , checked]) =>
@@ -7896,6 +8165,7 @@ async function settingsFrequencyStage() {
     const theme = window.document.getElementById("opt-popup-theme");
     window.location.hash = "#design";
     await until(() => theme.options.length === 42);
+    let settingsTheme = window.document.documentElement.dataset.hoshidictsTheme === "default";
     const toolbarSelect = window.document.getElementById("opt-popup-toolbar");
     await editControl(toolbarSelect, "bottom");
     let toolbar = JSON.stringify(writes.at(-1).options) === JSON.stringify({ popupToolbarPosition: "bottom" });
@@ -7920,6 +8190,7 @@ async function settingsFrequencyStage() {
       sourceHighlightEnabled: false, popupColumns: 4, scanLength: 24, frequencyOrder: "disabled",
       kanjiClickDictionary: { title: "Rank", kind: "term" } });
     const focusedThemeKept = theme.value === previousTheme;
+    settingsTheme &&= window.document.documentElement.dataset.hoshidictsTheme === "miku";
     theme.blur();
     const themeRefreshed = focusedThemeKept && theme.value === "miku";
     const beforeReset = { ...storedOptions };
@@ -7932,6 +8203,7 @@ async function settingsFrequencyStage() {
       && Object.keys(beforeReset).filter(key => key !== "revision" && !DESIGN_OPTION_KEYS.includes(key))
         .every(key => JSON.stringify(storedOptions[key]) === JSON.stringify(beforeReset[key]))
       && Object.keys(writes.at(-1).options).every(key => DESIGN_OPTION_KEYS.includes(key));
+    settingsTheme &&= window.document.documentElement.dataset.hoshidictsTheme === "default";
     toolbar &&= toolbarSelect.value === "auto";
     let css = false;
     const editor = window.document.getElementById("opt-custom-popup-css");
@@ -7948,6 +8220,7 @@ async function settingsFrequencyStage() {
       emitOptions({ popupTheme: "light" });
       css = editor.value === text && editor.selectionStart === 4 && editor.selectionEnd === 7
         && window.document.getElementById("custom-css-count").textContent === `${text.length} characters`;
+      settingsTheme &&= window.document.documentElement.dataset.hoshidictsTheme === "light";
       await until(() => status().includes("Could not save"));
       css &&= writes.at(-1).baseRevision === revision && writes.at(-1).options.customPopupCss === text;
       editor.blur();
@@ -8006,7 +8279,9 @@ async function settingsFrequencyStage() {
     emitOptions({ popupTheme: "light" });
     audio &&= storedOptions.audioSources.length === 0 && audioRows().length === 0
       && !window.document.getElementById("audio-source-empty").hidden;
-    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails, designReset, toolbar, css, audio,
+    settingsTheme &&= window.document.documentElement.dataset.hoshidictsTheme === "light";
+    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails,
+      designReset, settingsTheme, toolbar, css, audio,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
   } finally {
@@ -8205,7 +8480,9 @@ async function settingsBatchImportStage() {
           importRequests.push({
             fileName: message.fileName,
             state: window.document.getElementById("import-state")?.textContent ?? "",
-            completed: window.document.querySelectorAll("#import-detail .import-result").length,
+            completed: window.document.querySelectorAll(
+              "#import-progress .setup-dictionary-status.is-ok, #import-progress .setup-dictionary-status.is-error",
+            ).length,
           });
           await new Promise((done) => window.setTimeout(done, 0));
           activeImports -= 1;
@@ -8239,20 +8516,36 @@ async function settingsBatchImportStage() {
     new window.File(["broken"], "broken.zip", { type: "application/zip" }),
     new window.File(["replacement"], "replacement.zip", { type: "application/zip" }),
   ];
-  Object.defineProperty(input, "files", { configurable: true, value: files });
-  input.dispatchEvent(new window.Event("change", { bubbles: true }));
+  const zone = window.document.getElementById("import-drop-zone");
+  const transfer = { files, types: ["Files"], dropEffect: "none" };
+  const dispatch = (type) => {
+    const event = new window.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: transfer });
+    zone.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  const dragEnterPrevented = dispatch("dragenter");
+  const dragOverPrevented = dispatch("dragover");
+  const highlighted = zone.classList.contains("is-dragging") && transfer.dropEffect === "copy";
+  const dropPrevented = dispatch("drop");
+  const cleared = !zone.classList.contains("is-dragging");
 
   const batchDeadline = Date.now() + 2000;
   while ((importRequests.length < files.length || input.disabled) && Date.now() < batchDeadline) {
     await new Promise((done) => window.setTimeout(done, 5));
   }
-  const outcomes = [...window.document.querySelectorAll("#import-detail .import-result")].map((item) => ({
-    text: item.textContent,
-    error: item.classList.contains("is-error"),
+  const outcomes = [...window.document.querySelectorAll("#import-progress .setup-dictionary")].map((item) => ({
+    name: item.querySelector(".setup-dictionary-name")?.textContent ?? "",
+    text: item.querySelector(".setup-dictionary-status")?.textContent ?? "",
+    error: item.querySelector(".setup-dictionary-status")?.classList.contains("is-error") === true,
+    trackHidden: item.querySelector(".setup-track")?.hidden === true,
   }));
   const result = {
     multiple: input.multiple,
     pickerValue: input.value,
+    drop: { dragEnterPrevented, dragOverPrevented, highlighted, dropPrevented, cleared },
+    sharedRows: window.document.querySelector("#import-progress .setup-dictionary-list")
+      ?.getAttribute("aria-label") === "Dictionary import progress",
     importRequests,
     maxActiveImports,
     createdUrls,
@@ -8428,9 +8721,9 @@ async function settingsRecommendedImportStage() {
   ) && Date.now() < deadline) {
     await new Promise((done) => window.setTimeout(done, 5));
   }
-  const firstOutcomes = [...window.document.querySelectorAll("#import-detail .import-result")].map((item) => ({
-    text: item.textContent,
-    error: item.classList.contains("is-error"),
+  const firstOutcomes = [...window.document.querySelectorAll("#import-progress .setup-dictionary")].map((item) => ({
+    text: item.querySelector(".setup-dictionary-status")?.textContent ?? "",
+    error: item.querySelector(".setup-dictionary-status")?.classList.contains("is-error") === true,
   }));
   const partial = {
     state: window.document.getElementById("import-state")?.textContent ?? "",
@@ -8736,7 +9029,7 @@ async function settingsManagedUpdatesStage() {
 
   const beforeCoalescing = scheduleRequests().length;
   for (const value of ["off", "hourly", "daily"]) chooseSchedule(value);
-  result.queuedNotice = window.document.getElementById("nav-status-updates").textContent.includes("Unsaved schedule");
+  result.queuedNotice = window.document.getElementById("nav-status-dictionaries").textContent.includes("Updates: Unsaved schedule");
   await pause(250);
   result.coalesced = scheduleRequests().length === beforeCoalescing + 1 && updateSettings.schedule === "daily";
 
@@ -8923,12 +9216,11 @@ async function settingsCustomDictionaryStage() {
     }
   };
   await waitFor(() => window.document.getElementById("engine-status")?.textContent?.startsWith("Ready"));
-  const open = window.document.getElementById("custom-dictionary-open");
   const form = window.document.getElementById("custom-dictionary-form");
   const source = window.document.getElementById("custom-dictionary-source");
   const save = window.document.getElementById("custom-dictionary-save");
   const reload = window.document.getElementById("custom-dictionary-reload");
-  if (!open || !form || !source || !save || !reload) {
+  if (!form || !source || !save || !reload) {
     dom.window.close();
     return {
       error: "the custom dictionary editor controls did not render",
@@ -8941,6 +9233,7 @@ async function settingsCustomDictionaryStage() {
     startup: {
       customReadCount: customReadRequests.length,
       formHidden: form.hidden,
+      openControlAbsent: window.document.getElementById("custom-dictionary-open") === null,
       sourceFetchedDirectly: storageGetKeys.some((keys) =>
         Array.isArray(keys) && keys.includes("customDictionarySource")),
       sourceHasMaximumLength: source.hasAttribute("maxlength"),
@@ -8948,7 +9241,6 @@ async function settingsCustomDictionaryStage() {
     },
   };
 
-  open.click();
   await waitFor(() => pendingRead !== null);
   await navigateSettingsSection(window, "dictionaries");
   customDocument = {
@@ -8962,16 +9254,16 @@ async function settingsCustomDictionaryStage() {
   await waitFor(() => form.hidden === false && source.value === "newer event, にゅー, wins\n");
   result.eventBeforeReadReply = {
     value: source.value,
-    expanded: open.getAttribute("aria-expanded"),
+    formHidden: form.hidden,
     readCount: customReadRequests.length,
     saveDisabled: save.disabled,
-    unseenCompletion: window.document.getElementById("nav-status-custom-dictionary").textContent
+    unseenCompletion: window.document.getElementById("nav-status-dictionaries").textContent
       === "Personal dictionary: Loaded source revision 6.",
   };
   await navigateSettingsSection(window, "custom-dictionary");
   await navigateSettingsSection(window, "dictionaries");
   result.eventBeforeReadReply.completionClearedAfterVisit =
-    window.document.getElementById("nav-status-custom-dictionary").textContent === "";
+    window.document.getElementById("nav-status-dictionaries").textContent === "";
 
   const customRow = () => window.document.querySelector(`[data-dictionary-id="${CUSTOM_DICTIONARY_ID}"]`);
   const ordinaryRow = () => window.document.querySelector('[data-dictionary-id="ordinary-id"]');
@@ -9850,6 +10142,7 @@ async function staleKanjiResponseStage(invalidation) {
     },
     popup,
     {
+      scrollElement: window.document.createElement("div"),
       clear() {},
       hideImagePreview() {},
       updateDictionaryPresentation() {},
@@ -9922,6 +10215,9 @@ async function contentNoteStage() {
       },
     );
     const { window } = dom;
+    const popupEvents = [];
+    window.addEventListener("hachidori-popup-shown", () => popupEvents.push("shown"));
+    window.addEventListener("hachidori-popup-hidden", () => popupEvents.push("hidden"));
     let storageListener = null;
     let deferredInitialStorage = null;
     const popupRecords = new Map();
@@ -9951,6 +10247,7 @@ async function contentNoteStage() {
         renders.push(render);
       }
       const view = {
+        scrollElement: window.document.createElement("div"),
         captureTermView: () => record.viewport,
         updateDictionaryPresentation(context) { record.presentations.push(context); },
         flushDictionaryPresentation() { record.presentationFlushes += 1; },
@@ -10104,8 +10401,14 @@ async function contentNoteStage() {
     hideTimerPending() { return hideTimer !== null; },
     viewRequest(depth = 0) { return levels[depth]?.currentViewRequest; },
     resolveCandidate,
+    resolveDefinitionCandidate(clientX, clientY, depth = 0) {
+      return resolveDefinitionCandidate(clientX, clientY, levels[depth]);
+    },
     setScanCandidate(candidate) { resolveCandidate = () => candidate; },
     onMouseMove,
+    onPopupMouseMove(event, depth = 0) {
+      return onPopupMouseMove(event, levels[depth]);
+    },
     onMouseDown,
     onMouseOut,
     onWindowBlur,
@@ -10113,6 +10416,8 @@ async function contentNoteStage() {
     onInternalLink,
     pointInsidePopup,
     onKeyDown,
+    show,
+    hide,
     runLookup,
     scanPointer,
     scheduleHide,
@@ -10147,16 +10452,20 @@ async function contentNoteStage() {
     const popup = driver.install();
     const popupRecord = (depth = 0) => popupRecords.get(driver.popupAt(depth));
     const anchor = window.document.getElementById("anchor");
+    const anchorRange = window.document.createRange();
+    anchorRange.setStart(anchor.firstChild, 0);
+    anchorRange.setEnd(anchor.firstChild, 1);
     const candidate = {
       anchor,
+      anchorRange,
       matchOffset: 0,
       query: "\u98df\u3079\u305f",
-      scanEntries: [{
+      scanEntries: Array.from("\u98df\u3079\u305f", (text, offset) => ({
         node: anchor.firstChild,
-        offset: 0,
-        sourceLength: 3,
-        text: "\u98df\u3079\u305f",
-      }],
+        offset,
+        sourceLength: text.length,
+        text,
+      })),
       sentence: "\u98df\u3079\u305f",
       sourceElements: [anchor],
       vertical: false,
@@ -10280,6 +10589,7 @@ async function contentNoteStage() {
       },
       pending,
       popup,
+      popupEvents,
       render: (depth = 0) => popupRecord(depth)?.renders.at(-1),
       setTermViewport(value) { popupRecord().viewport = value; },
       presentations: (depth = 0) => popupRecord(depth)?.presentations,
@@ -10336,6 +10646,21 @@ async function contentNoteStage() {
   const newestOnlyOptions = (await probe.initialLookup()).request.maxResults === 50;
   probe.close();
   if (!callbacksWired) return { callbacksWired };
+
+  async function popupVisibilityCase() {
+    const harness = await createHarness();
+    try {
+      harness.driver.show(harness.candidate);
+      harness.driver.show(harness.candidate);
+      harness.driver.hide();
+      harness.driver.hide();
+      harness.driver.show(harness.candidate);
+      harness.driver.teardown("popup-visibility-test");
+      return JSON.stringify(harness.popupEvents) === JSON.stringify(["shown", "hidden", "shown", "hidden"]);
+    } finally {
+      harness.close();
+    }
+  }
 
   async function lookupStatisticsCase() {
     const outcomes = {
@@ -12512,12 +12837,54 @@ async function contentNoteStage() {
     if (longRequest) harness.reply(longRequest, { dictionaryCount: 1, results: [harness.term(long.slice(0, 64))] });
     await harness.settle();
     const exactBound = rawRequest?.request.text === raw && longRequest?.request.text === long
-      && longRequest.request.scanLength === 64 && harness.driver.snapshot().popupHidden;
+      && longRequest.request.scanLength === 64 && !harness.driver.snapshot().popupHidden
+      && harness.render()?.kind === "notice" && harness.render().candidate.query === long;
     harness.close();
     return {
       "exact reverse inline selections bypass activation and preserve raw context while rejecting prefix results": exactResult,
       "explicit selections preserve whitespace and full queries beyond the engine scan window": exactBound,
     };
+  }
+
+  async function selectedWordEditorCase() {
+    const outcomes = [];
+    for (const [dictionaryCount, eventFirst] of [[0, true], [1, false]]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      const query = harness.candidate.query;
+      window.getSelection().selectAllChildren(harness.anchor);
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+      const lookup = harness.take("hd_lookup");
+      if (lookup) harness.reply(lookup, { dictionaryCount, results: [] });
+      await harness.settle();
+      const original = harness.driver.viewRequest();
+      const editableMiss = !harness.driver.snapshot().popupHidden
+        && harness.render()?.kind === "notice" && harness.render().candidate.query === query;
+      harness.edit(true);
+      window.getSelection().removeAllRanges();
+      const entry = { term: query, reading: "たべた", definition: "My own meaning" };
+      const append = harness.callbacks().onAddCustomEntry(entry);
+      const mutation = harness.take("hd_custom_append");
+      const state = harness.state(2, "New personal definition");
+      if (eventFirst) harness.emitState(state);
+      if (mutation) harness.reply(mutation, { generation: 3, document: { revision: 1 }, state });
+      await harness.settle();
+      const refresh = harness.take("hd_lookup");
+      if (refresh) harness.reply(refresh, { generation: 3, dictionaryCount: 1,
+        results: [harness.term(query, CUSTOM_DICTIONARY_TITLE)] });
+      await append;
+      await harness.settle();
+      if (!eventFirst) harness.emitState(state);
+      outcomes.push(editableMiss && original?.exactSelection === true
+        && mutation?.request.entry.term === query && refresh?.request.text === query
+        && harness.driver.viewRequest() === original && harness.render()?.kind === "terms"
+        && harness.render().results[0].term.glossaries[0].dictionary === CUSTOM_DICTIONARY_TITLE
+        && harness.sent.filter(({ type }) => type === "hd_custom_append").length === 1
+        && !harness.driver.snapshot().popupHidden && harness.take("hd_lookup") === null);
+      harness.close();
+    }
+    return { "selected missing words remain editable and refresh after one personal save with zero or existing dictionaries":
+      outcomes.every(Boolean) || outcomes };
   }
 
   async function releasedSelectionDragCase() {
@@ -12605,6 +12972,85 @@ async function contentNoteStage() {
       "editing controls and contenteditable text stop both direct and forward pointer scanning":
         controls.every(Boolean) || controls,
     };
+  }
+
+  async function autofocusedSearchCase() {
+    const outcomes = [];
+    for (const lookupMode of ["hover", "activation"]) {
+      const harness = await createHarness();
+      const window = harness.popup.ownerDocument.defaultView;
+      const document = window.document;
+      const search = document.createElement("input");
+      search.autofocus = true;
+      const example = document.createElement("p");
+      example.style.display = "block";
+      example.innerHTML = 'Text reading assistance: <a style="display:inline" href="/search/example">'
+        + '昨日すき焼きを<span style="display:inline">食べました</span></a>';
+      document.body.append(search, example);
+      const link = example.querySelector("a");
+      const range = document.createRange();
+      range.setStart(link.firstChild, 0);
+      range.collapse(true);
+      document.caretRangeFromPoint = () => range;
+      harness.emitOptions({ lookupMode, activationKey: "Shift", hoverDelayMs: 0, scanLength: 32 });
+      search.focus();
+      harness.driver.onMouseMove({ target: link, clientX: 200, clientY: 200 });
+      await harness.settle();
+      let request = harness.take("hd_lookup");
+      let gated = true;
+      const key = new window.KeyboardEvent("keydown", {
+        key: "Shift", code: "ShiftLeft", shiftKey: true, bubbles: true, cancelable: true,
+      });
+      if (lookupMode === "activation") {
+        gated = request === null;
+        search.dispatchEvent(key);
+        await harness.settle();
+        request = harness.take("hd_lookup");
+      }
+      outcomes.push(gated && request?.request.text === "昨日すき焼きを食べました"
+        && document.activeElement === search && !key.defaultPrevented);
+      harness.close();
+    }
+    return { "autofocused search fields allow hover and stationary modifier lookup of inline Japanese links":
+      outcomes.every(Boolean) || outcomes };
+  }
+
+  async function matchedAnchorCase() {
+    const harness = await createHarness();
+    try {
+      const initial = harness.candidate.anchorRange.toString();
+      await harness.initialLookup();
+      return {
+        "term lookup expands popup placement from the hovered glyph to the complete matched word":
+          initial === "\u98df" && harness.candidate.anchorRange.toString() === "\u98df\u3079\u305f",
+      };
+    } finally {
+      harness.close();
+    }
+  }
+
+  async function movedMatchEndpointCase() {
+    const harness = await createHarness();
+    try {
+      const first = harness.anchor.firstChild;
+      const last = first.splitText(1);
+      harness.candidate.scanEntries = [
+        { node: first, offset: 0, sourceLength: 1, text: first.nodeValue },
+        { node: last, offset: 0, sourceLength: 2, text: last.nodeValue },
+      ];
+      const originalRange = harness.candidate.anchorRange;
+      const operation = harness.driver.runLookup(harness.candidate);
+      const request = harness.take("hd_lookup");
+      harness.anchor.ownerDocument.body.append(last);
+      harness.reply(request, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
+      await operation;
+      return {
+        "text moved outside the source during lookup keeps the original popup anchor":
+          harness.candidate.anchorRange === originalRange && originalRange.toString() === "\u98df",
+      };
+    } finally {
+      harness.close();
+    }
   }
 
   async function focusedEditingCase() {
@@ -12725,6 +13171,227 @@ async function contentNoteStage() {
       && !harness.driver.snapshot().popupHidden;
     harness.close();
     return { "pending pointer candidates deduplicate by node and query without losing retries or newer ownership": passed };
+  }
+
+  async function definitionTextLookupCase() {
+    function appendGlossary(harness, text, depth = 0) {
+      const document = harness.popup.ownerDocument;
+      const glossary = document.createElement("div");
+      glossary.className = "gsm-hoshidicts-glossary-content";
+      glossary.append(document.createTextNode("説明："));
+      const term = document.createElement("span");
+      term.textContent = text;
+      glossary.append(term, document.createTextNode("です。"));
+      harness.driver.popupAt(depth).querySelector(".gsm-hoshidicts-definitions").append(glossary);
+      return { glossary, term, textNode: term.firstChild };
+    }
+
+    const hover = await createHarness();
+    try {
+      await hover.initialLookup();
+      const parent = hover.driver.viewRequest();
+      const first = appendGlossary(hover, "食用語");
+      const caretCalls = [];
+      hover.popup.ownerDocument.caretPositionFromPoint = (_x, _y, options) => {
+        caretCalls.push(options);
+        return { offsetNode: first.textNode, offset: 0 };
+      };
+      const pointer = { clientX: 120, clientY: 80, target: first.term };
+      hover.driver.onPopupMouseMove(pointer);
+      await hover.settle();
+      const request = hover.take("hd_lookup");
+      if (request) hover.reply(request, { dictionaryCount: 1, results: [hover.term("食用語")] });
+      await hover.settle();
+      const childRequest = hover.driver.viewRequest(1);
+      const nativeCaret = request?.request.text.startsWith("食用語")
+        && request.request.scanLength === 9
+        && caretCalls[0]?.shadowRoots?.[0] === first.glossary.getRootNode();
+      const childContext = childRequest?.candidate;
+      const context = childContext?.sourceDepth === 0
+        && childContext.sentence === "説明：食用語です。"
+        && childContext.matchOffset === 3
+        && childContext.sourceElements?.[0] === first.glossary;
+      const parentRetained = hover.driver.viewRequest() === parent
+        && !hover.driver.snapshot().popupHidden
+        && !hover.driver.snapshot(1).popupHidden;
+
+      hover.driver.onPopupMouseMove(pointer);
+      await hover.settle();
+      const deduplicated = hover.take("hd_lookup") === null;
+
+      const missing = appendGlossary(hover, "未登録語");
+      hover.popup.ownerDocument.caretPositionFromPoint = () => ({
+        offsetNode: missing.textNode,
+        offset: 0,
+      });
+      hover.driver.onPopupMouseMove({ ...pointer, target: missing.term });
+      await hover.settle();
+      const miss = hover.take("hd_lookup");
+      if (miss) hover.reply(miss, { dictionaryCount: 1, results: [] });
+      await hover.settle();
+      const missPreservedParent = miss?.request.text.startsWith("未登録語")
+        && hover.driver.viewRequest() === parent
+        && !hover.driver.snapshot().popupHidden
+        && hover.driver.snapshot(1).popupHidden;
+
+      hover.emitOptions({ popupNestingMaxDepth: 0 });
+      hover.driver.onPopupMouseMove(pointer);
+      await hover.settle();
+      const depthLimited = hover.take("hd_lookup") === null && !hover.driver.popupAt(1);
+
+      hover.emitOptions({ popupNestingMaxDepth: 1 });
+      const chrome = hover.popup.ownerDocument.createElement("button");
+      chrome.textContent = "食用語";
+      hover.driver.popupAt(0).append(chrome);
+      hover.popup.ownerDocument.caretPositionFromPoint = () => ({
+        offsetNode: chrome.firstChild,
+        offset: 0,
+      });
+      hover.driver.onPopupMouseMove({ ...pointer, target: chrome });
+      await hover.settle();
+      const glossaryOnly = hover.take("hd_lookup") === null;
+
+      const internal = hover.popup.ownerDocument.createElement("a");
+      internal.dataset.hoshidictsQuery = "食用語";
+      internal.textContent = "食用語";
+      first.glossary.append(internal);
+      const linked = hover.render().context.onInternalLink({
+        anchor: internal,
+        query: "食用語",
+      });
+      const linkedRequest = hover.take("hd_lookup");
+      if (linkedRequest) hover.reply(linkedRequest, {
+        dictionaryCount: 1,
+        results: [hover.term("食用語")],
+      });
+      await linked;
+      hover.popup.ownerDocument.caretPositionFromPoint = () => ({
+        offsetNode: internal.firstChild,
+        offset: 0,
+      });
+      hover.driver.popupAt(0).dispatchEvent(
+        new hover.popup.ownerDocument.defaultView.MouseEvent("mouseenter"),
+      );
+      hover.driver.onPopupMouseMove({ ...pointer, target: internal });
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const explicitLink = hover.driver.resolveDefinitionCandidate(120, 80) === null
+        && hover.take("hd_lookup") === null
+        && !hover.driver.snapshot(1).popupHidden;
+
+      const boundaryGlossary = hover.popup.ownerDocument.createElement("div");
+      boundaryGlossary.className = "gsm-hoshidicts-glossary-content";
+      const boundaryText = hover.popup.ownerDocument.createTextNode("食");
+      const boundaryLink = hover.popup.ownerDocument.createElement("a");
+      boundaryLink.dataset.hoshidictsQuery = "用語";
+      boundaryLink.textContent = "用語";
+      boundaryGlossary.append(boundaryText, boundaryLink);
+      hover.driver.popupAt(0).querySelector(".gsm-hoshidicts-definitions")
+        .append(boundaryGlossary);
+      hover.popup.ownerDocument.caretPositionFromPoint = () => ({
+        offsetNode: boundaryText,
+        offset: 0,
+      });
+      const linkBoundary = hover.driver.resolveDefinitionCandidate(120, 80)?.query === "食";
+
+      async function latinLookup(onlyScanJapaneseText) {
+        const language = await createHarness(
+          { title: "Generic", kind: "term" },
+          { options: { onlyScanJapaneseText } },
+        );
+        try {
+          await language.initialLookup();
+          const latin = appendGlossary(language, "hello");
+          language.popup.ownerDocument.caretPositionFromPoint = () => ({
+            offsetNode: latin.textNode,
+            offset: 0,
+          });
+          language.driver.onPopupMouseMove({
+            clientX: 120,
+            clientY: 80,
+            target: latin.term,
+          });
+          await language.settle();
+          const lookup = language.take("hd_lookup");
+          if (lookup) language.reply(lookup, { dictionaryCount: 1, results: [] });
+          await language.settle();
+          return lookup?.request.text ?? null;
+        } finally {
+          language.close();
+        }
+      }
+      const japaneseOnly = await latinLookup(true) === null;
+      const unrestrictedText = await latinLookup(false);
+      const firstDetails = {
+        context,
+        deduplicated,
+        depthLimited,
+        explicitLink,
+        glossaryOnly,
+        japaneseOnly,
+        linkBoundary,
+        missPreservedParent,
+        nativeCaret,
+        parentRetained,
+        unrestricted: unrestrictedText?.startsWith("hello") === true,
+      };
+      const firstResult = Object.values(firstDetails).every((value) => value === true);
+
+      const activation = await createHarness();
+      try {
+        activation.emitOptions({
+          activationKey: "Shift",
+          hoverDelayMs: 0,
+          lookupMode: "activation",
+          popupNestingMaxDepth: 1,
+        });
+        const selection = activation.popup.ownerDocument.defaultView.getSelection();
+        selection.selectAllChildren(activation.anchor);
+        activation.popup.ownerDocument.dispatchEvent(
+          new activation.popup.ownerDocument.defaultView.Event("selectionchange"),
+        );
+        const root = activation.take("hd_lookup");
+        if (root) activation.reply(root, {
+          dictionaryCount: 1,
+          results: [activation.term(activation.candidate.query)],
+        });
+        await activation.settle();
+        const definition = appendGlossary(activation, "食用語");
+        activation.popup.ownerDocument.caretPositionFromPoint = () => ({
+          offsetNode: definition.textNode,
+          offset: 0,
+        });
+        const definitionPointer = {
+          clientX: 120,
+          clientY: 80,
+          target: definition.term,
+        };
+        activation.driver.onPopupMouseMove(definitionPointer);
+        await activation.settle();
+        const gated = activation.take("hd_lookup") === null;
+        activation.popup.ownerDocument.dispatchEvent(
+          new activation.popup.ownerDocument.defaultView.KeyboardEvent("keydown", {
+            bubbles: true,
+            code: "ShiftLeft",
+            key: "Shift",
+            shiftKey: true,
+          }),
+        );
+        await activation.settle();
+        const stationary = activation.take("hd_lookup");
+        if (stationary) activation.reply(stationary, { dictionaryCount: 1, results: [] });
+        await activation.settle();
+        return {
+          "definition text uses native closed-shadow caret scanning and preserves its parent popup":
+            firstResult || firstDetails,
+          "definition text inherits Japanese gating, depth limits and stationary activation":
+            gated && stationary?.request.text.startsWith("食用語"),
+        };
+      } finally {
+        activation.close();
+      }
+    } finally {
+      hover.close();
+    }
   }
 
   async function activationCase() {
@@ -13487,12 +14154,12 @@ async function contentNoteStage() {
     try {
       await harness.initialLookup();
       harness.edit(true);
-      const open = harness.render().context.onExternalLink;
-      if (typeof open !== "function") return false;
+      const openLinks = [harness.render().context.onExternalLink, harness.callbacks().onCustomLinkClick];
+      if (openLinks.some(open => typeof open !== "function")) return false;
       const before = JSON.stringify({ snapshot: harness.driver.snapshot(), stats: harness.stats() });
       const descriptor = harness.driver.viewRequest();
       const sentBefore = harness.sent.length;
-      for (const kind of ["success", "failure", "lost-reply"]) {
+      for (const open of openLinks) for (const kind of ["success", "failure", "lost-reply"]) {
         open({ url: "https://example.test/reference", active: false });
         const item = harness.take("hd_open_external");
         if (item?.request.target !== "hoshidicts-worker" || item.request.active !== false
@@ -13501,20 +14168,25 @@ async function contentNoteStage() {
         else harness.reply(item, kind === "success" ? { opened: true } : { error: "tab creation failed" }, kind === "success");
         await harness.settle();
       }
-      return harness.sent.length === sentBefore + 3 && harness.pending.length === 0
+      const preserved = harness.sent.length === sentBefore + 6 && harness.pending.length === 0
         && harness.driver.viewRequest() === descriptor
         && JSON.stringify({ snapshot: harness.driver.snapshot(), stats: harness.stats() }) === before;
+      harness.driver.teardown();
+      openLinks[1]({ url: "https://example.test/stale", active: true });
+      return preserved && harness.sent.length === sentBefore + 6;
     } finally { harness.close(); }
   }
 
   return {
     callbacksWired,
+    popupVisibility: await popupVisibilityCase(),
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await scanExtractionCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
-      ...await exactSelectionCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
+    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await movedMatchEndpointCase(),
+      ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
+      ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
       ...await selectedTextCase(), ...await selectionDescriptorCase(), ...await selectionInvalidationCase(),
       ...await selectionEditingCase(), ...await popupSelectionCase() },
@@ -13778,6 +14450,8 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     JSON.stringify(aggregateTags.map(tag => Number(tag.querySelector("[data-frequency]")?.dataset.frequency)))
       === JSON.stringify([1645, 1000, 7])
       && JSON.stringify(aggregateTags.map(tag => tag.querySelector(".gsm-hoshidicts-frequency-source")?.textContent))
+        === JSON.stringify(["Avg rank", "Avg count", "Avg frequency"])
+      && JSON.stringify(aggregateTags.map(tag => tag.title))
         === JSON.stringify(["Rank average", "Occurrence average", "Frequency average (unspecified)"])
       && JSON.stringify(aggregateResult) === aggregateInput,
     aggregateTags.map(tag => tag.outerHTML).join("\n"));
@@ -13928,28 +14602,24 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       { title: "Missing", favorite: true },
     ],
     dictionaryTabGroups: [
-      { id: "bc", name: "Favourite B", dictionaries: ["Dictionary B", "Dictionary C"] },
-      { id: "a", name: "Favourites", dictionaries: ["Dictionary A"] },
+      { id: "c", name: "Favourite B", dictionaries: ["Dictionary C"] },
+      { id: "a", name: "All", dictionaries: ["Dictionary A"] },
       { id: "empty", name: "Empty", dictionaries: ["Missing"] },
     ],
     onDictionaryTabSelected(selection) { tabSelections.push(selection); },
   };
   view.renderResults(tabResults, candidate, tabContext);
   const allTabs = [...popup.querySelectorAll('[role="tab"]')];
-  check("dictionary tabs include every contributor, aggregate favourites and ordered nonempty groups",
+  check("dictionary tabs include ordered nonempty groups and only ungrouped favourites",
     JSON.stringify(allTabs.map((tab) => [tab.textContent, { ...tab.dataset }])) === JSON.stringify([
       ["All", {}],
-      ["All (dictionary)", { dictionary: "Dictionary A" }],
-      ["Dictionary C", { dictionary: "Dictionary C" }],
-      ["Favourite B", { dictionary: "Dictionary B" }],
-      ["Favourites", { favourites: "true" }],
-      ["Favourite B (group)", { groupId: "bc" }],
-      ["Favourites (group)", { groupId: "a" }],
+      ["Favourite B", { groupId: "c" }],
+      ["All (group)", { groupId: "a" }],
+      ["Favourite B (dictionary)", { dictionary: "Dictionary B" }],
     ]), JSON.stringify(allTabs.map((tab) => [tab.textContent, { ...tab.dataset }])));
   const tabProjections = [];
   for (const selector of [
-    '[data-dictionary="Dictionary B"]', '[data-favourites="true"]',
-    '[data-group-id="bc"]', '[data-group-id="a"]',
+    '[data-dictionary="Dictionary B"]', '[data-group-id="c"]', '[data-group-id="a"]',
   ]) {
     const tab = popup.querySelector(`[role="tab"]${selector}`);
     tab?.click();
@@ -13960,13 +14630,12 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   const sameTabPanel = popup.querySelector(".gsm-hoshidicts-tab-panel").firstElementChild;
   const beforeSameTab = positioned;
   popup.querySelector('[role="tab"][data-group-id="a"]')?.click();
-  check("dictionary, favourites and group tabs project locally in native order without mutating results",
+  check("favourite and group tabs project locally in native order without mutating results",
     JSON.stringify(tabProjections) === JSON.stringify([
-      ["Dictionary B"], ["Dictionary A", "Dictionary B"],
-      ["Dictionary C", "Dictionary B"], ["Dictionary A"],
+      ["Dictionary B"], ["Dictionary C"], ["Dictionary A"],
     ])
       && JSON.stringify(tabSelections) === JSON.stringify([
-        null, { dictionary: "Dictionary B" }, { favourites: true }, { groupId: "bc" }, { groupId: "a" },
+        null, { dictionary: "Dictionary B" }, { groupId: "c" }, { groupId: "a" },
       ])
       && JSON.stringify(tabResults) === originalTabResults
       && sameTabPanel === popup.querySelector(".gsm-hoshidicts-tab-panel").firstElementChild
@@ -13974,7 +14643,8 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     JSON.stringify({ tabProjections, tabSelections, positioned, beforeSameTab }));
   const inheritedProjections = [];
   for (const selection of [
-    { dictionary: "Dictionary C" }, { groupId: "bc" }, { favourites: true }, { groupId: "empty" },
+    { dictionary: "Dictionary B" }, { groupId: "c" }, { dictionary: "Dictionary C" },
+    { favourites: true }, { groupId: "empty" },
   ]) {
     let selected;
     const context = { ...tabContext, selectedDictionaryTab: selection, expandAll: true,
@@ -13988,11 +14658,12 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     inheritedProjections.push([selected,
       [...popup.querySelectorAll(".gsm-hoshidicts-kanji-entry")].map((item) => item.dataset.dictionary)]);
   }
-  check("term and native-kanji destinations adopt contributing tab context or explicitly fall back to All",
+  check("term and native-kanji destinations adopt favourite or group context and otherwise fall back to All",
     JSON.stringify(inheritedProjections) === JSON.stringify([
-      [{ dictionary: "Dictionary C" }, ["Dictionary C"]], [{ dictionary: "Dictionary C" }, ["Dictionary C"]],
-      [{ groupId: "bc" }, ["Dictionary C", "Dictionary B"]], [{ groupId: "bc" }, ["Dictionary C", "Dictionary B"]],
-      [{ favourites: true }, ["Dictionary A", "Dictionary B"]], [{ favourites: true }, ["Dictionary A", "Dictionary B"]],
+      [{ dictionary: "Dictionary B" }, ["Dictionary B"]], [{ dictionary: "Dictionary B" }, ["Dictionary B"]],
+      [{ groupId: "c" }, ["Dictionary C"]], [{ groupId: "c" }, ["Dictionary C"]],
+      [null, ["Dictionary A", "Dictionary C", "Dictionary B"]], [null, ["Dictionary A", "Dictionary C", "Dictionary B"]],
+      [null, ["Dictionary A", "Dictionary C", "Dictionary B"]], [null, ["Dictionary A", "Dictionary C", "Dictionary B"]],
       [null, ["Dictionary A", "Dictionary C", "Dictionary B"]], [null, ["Dictionary A", "Dictionary C", "Dictionary B"]],
     ]), JSON.stringify(inheritedProjections));
   const selectedTabs = [];
@@ -14007,30 +14678,37 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   const termFormWasLazy = popup.querySelector(".gsm-hoshidicts-note-form") === null
     && view.closeNoteForm() === false;
   const resultToolbar = popup.querySelector(".gsm-hoshidicts-result-chrome");
-  Object.defineProperty(popup, "scrollHeight", { configurable: true, value: 480 });
   view.setToolbarPosition("bottom");
-  popup.scrollTop = 0;
+  view.scrollElement.scrollTop = 120;
   let scrollAtNoteFocus;
-  popup.addEventListener("focus", () => { scrollAtNoteFocus = popup.scrollTop; }, { capture: true, once: true });
+  popup.addEventListener("focus", () => { scrollAtNoteFocus = view.scrollElement.scrollTop; }, { capture: true, once: true });
   termNoteButton?.click();
   const bottomNoteForm = popup.querySelector(".gsm-hoshidicts-note-form");
+  const miningFeedback = popup.querySelector(".gsm-hoshidicts-mining-feedback");
   const bottomChildren = [...popup.children];
-  const openedAtBottom = popup.scrollTop;
+  const openedAtBottom = view.scrollElement.scrollTop;
   view.setToolbarPosition("top");
   check(
-    "the bottom Note form stays beside its toolbar and opens at the active edge",
+    "the bottom Note form stays outside scrolling definitions and opens without moving their viewport",
     termFormWasLazy
-      && bottomChildren.at(-2) === bottomNoteForm
+      && bottomChildren.at(-3) === bottomNoteForm
+      && bottomChildren.at(-2) === miningFeedback
       && bottomChildren.at(-1) === resultToolbar
-      && openedAtBottom === popup.scrollHeight
-      && scrollAtNoteFocus === popup.scrollHeight
+      && openedAtBottom === 120
+      && scrollAtNoteFocus === 120
+      && bottomNoteForm.scrollTop === 0
+      && view.scrollElement.parentNode === popup
+      && view.scrollElement.contains(popup.querySelector(".gsm-hoshidicts-tab-panel"))
+      && !view.scrollElement.contains(bottomNoteForm) && !view.scrollElement.contains(miningFeedback)
+      && !view.scrollElement.contains(resultToolbar)
       && popup.children[0] === resultToolbar
-      && popup.children[1] === bottomNoteForm,
+      && popup.children[1] === miningFeedback
+      && popup.children[2] === bottomNoteForm,
     JSON.stringify({
       bottomOrder: bottomChildren.map(({ className }) => className),
       openedAtBottom,
       scrollAtNoteFocus,
-      scrollHeight: popup.scrollHeight,
+      formScrollTop: bottomNoteForm.scrollTop,
       topOrder: [...popup.children].map(({ className }) => className),
     }),
   );
@@ -14212,28 +14890,31 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   check("renderNotice replaces the view", popup.textContent.includes("nothing found"), JSON.stringify(popup.textContent));
   const scrollProperty = Object.getOwnPropertyDescriptor(window.Element.prototype, "scrollTop");
   let scrollWrites = 0;
-  Object.defineProperty(popup, "scrollTop", {
+  Object.defineProperty(view.scrollElement, "scrollTop", {
     configurable: true,
     get() { return scrollProperty.get.call(this); },
     set(value) { scrollWrites += 1; scrollProperty.set.call(this, value); },
   });
   popup.hidden = true;
   view.clear();
-  const hiddenCleared = popup.childElementCount === 0 && scrollWrites === 0;
+  const hiddenCleared = popup.childElementCount === 1 && popup.firstElementChild === view.scrollElement
+    && view.scrollElement.childElementCount === 0 && scrollWrites === 0;
   popup.hidden = false;
   const visibleResets = [
     () => view.renderNotice("nothing found", candidate),
     () => view.renderKanji(kanji, candidate),
     () => view.renderResults(lookup.results, candidate),
   ].map((render) => {
-    popup.scrollTop = 120;
+    view.scrollElement.scrollTop = 120;
     scrollWrites = 0;
     render();
-    return scrollWrites > 0 && popup.scrollTop === 0;
+    return scrollWrites > 0 && view.scrollElement.scrollTop === 0
+      && view.scrollElement.parentNode === popup
+      && popup.querySelector(".gsm-hoshidicts-result-chrome")?.parentNode === popup;
   });
   check("clear empties hidden popups without scrolling and every visible view resets scroll",
     hiddenCleared && visibleResets.every(Boolean), JSON.stringify({ hiddenCleared, visibleResets }));
-  delete popup.scrollTop;
+  delete view.scrollElement.scrollTop;
   view.clear();
   await imagePreviewStage({ view, popup, shadow, document, window, candidate,
     calculatePopupPosition: HDPopup.calculatePopupPosition,
@@ -14267,39 +14948,47 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
     positionPopup() {},
   });
   const results = [result, result];
+  const dictionaryPresentation = [{
+    title: result.term.glossaries[0].dictionary,
+    favorite: true,
+  }];
+  const render = (values, options = {}) => view.renderResults(values, candidate, {
+    dictionaryPresentation,
+    ...options,
+  });
   const tab = () => popup.querySelectorAll('[role="tab"]')[1].click();
   try {
-    view.renderResults(results, candidate, { expandAll: true });
+    render(results, { expandAll: true });
     tab();
     const collapsed = view.captureTermView().expandAll === false;
     popup.querySelector(".gsm-hoshidicts-show-more").click();
-    popup.scrollTop = 80;
+    view.scrollElement.scrollTop = 80;
     const snapshot = view.captureTermView();
     check("Back captures the current projected tab's expansion and scroll, not the initial panel",
       collapsed && snapshot.expandAll && snapshot.restoreScrollTop === 80);
-    view.renderResults(results, candidate, snapshot);
+    render(results, snapshot);
     layout();
-    const beforeFill = popup.scrollTop === 0;
+    const beforeFill = view.scrollElement.scrollTop === 0;
     await settle();
     layout();
-    const restored = popup.scrollTop === 80 && !popup.querySelector(".gsm-hoshidicts-show-more");
+    const restored = view.scrollElement.scrollTop === 80 && !popup.querySelector(".gsm-hoshidicts-show-more");
     tab();
     popup.querySelector(".gsm-hoshidicts-show-more").click();
     await settle();
     layout();
     check("Back restores scroll after deferred bodies and masonry only once",
-      beforeFill && restored && popup.scrollTop === 0);
-    view.renderResults(results, candidate, snapshot);
+      beforeFill && restored && view.scrollElement.scrollTop === 0);
+    render(results, snapshot);
     tab();
     await settle();
     layout();
-    const newerTab = popup.scrollTop === 0;
-    view.renderResults(results, candidate, snapshot);
+    const newerTab = view.scrollElement.scrollTop === 0;
+    render(results, snapshot);
     await settle();
-    popup.scrollTop = 23;
+    view.scrollElement.scrollTop = 23;
     layout();
     check("a newer tab or deliberate scroll cancels deferred Back viewport restoration",
-      newerTab && popup.scrollTop === 23);
+      newerTab && view.scrollElement.scrollTop === 23);
     const disclosureResult = { ...result, term: { ...result.term,
       pitches: Array.from({ length: 13 }, (_, index) => ({ ...result.term.pitches[0], dictionary: `IPA ${index}` })),
       glossaries: [{ ...result.term.glossaries[0], glossary: JSON.stringify([{ type: "structured-content", content: {
@@ -14307,14 +14996,14 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
       } }]) }],
     } };
     const disclosureResults = [disclosureResult, disclosureResult];
-    view.renderResults(disclosureResults, candidate, { expandAll: true });
+    render(disclosureResults, { expandAll: true });
     await settle();
     for (const details of popup.querySelectorAll("details")) details.open = !details.classList.contains("gsm-hoshidicts-glossary-card");
     await settle();
     const states = () => [...popup.querySelectorAll("details")].map(details => [details.className, details.open]);
     const beforeDetails = states();
     const prior = view.captureTermView();
-    view.renderResults(disclosureResults, candidate, prior);
+    render(disclosureResults, prior);
     await settle();
     layout();
     check("Back restores collapsed cards, open structured details and complete lazy IPA before layout",
@@ -14323,7 +15012,7 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
     const changed = disclosureResults.map(value => ({ ...value, term: { ...value.term,
       glossaries: [{ ...value.term.glossaries[0], glossary: '["Changed definition"]' }],
     } }));
-    view.renderResults(changed, candidate, prior);
+    render(changed, prior);
     await settle();
     layout();
     check("Back does not apply saved disclosures to changed dictionary content",
@@ -14331,18 +15020,18 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
         && !popup.querySelector(".gsm-hoshidicts-ipa-overflow").open);
     let scrollReads = 0;
     let retainedScroll = 85;
-    Object.defineProperty(popup, "scrollTop", { configurable: true,
+    Object.defineProperty(view.scrollElement, "scrollTop", { configurable: true,
       get() { scrollReads++; return retainedScroll; },
       set(value) { retainedScroll = value; },
     });
-    view.renderResults(results, candidate, snapshot);
+    render(results, snapshot);
     const backAvoidsEarlyLayout = scrollReads === 0 && retainedScroll === 0;
     retainedScroll = 85;
     scrollReads = 0;
-    view.renderResults(results, candidate, { preserveViewControls: true });
+    render(results, { preserveViewControls: true });
     check("Back and ordinary retained renders do not force scroll layout while their replacement panel is empty",
       backAvoidsEarlyLayout && scrollReads === 0 && retainedScroll === 85);
-    delete popup.scrollTop;
+    delete view.scrollElement.scrollTop;
   } finally { view.destroy(); popup.remove(); }
 }
 
@@ -14604,7 +15293,8 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
     await tick();
     check("clearing the projection retires all image refresh handles and their pending completions",
       retired.length === 2 && retired.every(({ query }) => !query.isCurrent())
-        && !popup.hasChildNodes() && images.every(image => !image.isConnected));
+        && !view.scrollElement.hasChildNodes() && popup.childElementCount === 1
+        && images.every(image => !image.isConnected));
 
     sources = null;
     const group = { id: "reading", name: "Reading", dictionaries: ["Illustrated", "Plain"] };
@@ -14629,7 +15319,7 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
       showPitchAccentBadge: false, showPitchAccentFurigana: false, hidePopupGrammarTags: true,
       showFrequencyDictionaryNames: false });
     const beforeTab = requests.length;
-    popup.querySelector('[role="tab"][data-dictionary="Illustrated"]').click();
+    popup.querySelector('[role="tab"]').click();
     settle(requests.slice(beforeTab));
     await tick();
     const projectedLabels = [...popup.querySelectorAll(".gloss-image-source")];
@@ -14715,7 +15405,10 @@ function lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candid
   });
   const line = () => popup.querySelector(".gsm-hoshidicts-lookup-stats");
   try {
-    view.renderResults(results, candidate, {});
+    const dictionary = results[0].term.glossaries[0].dictionary;
+    view.renderResults(results, candidate, {
+      dictionaryPresentation: [{ title: dictionary, favorite: true }],
+    });
     const slotHidden = line() !== null && line().hidden;
     showCounts = true;
     if (line()) view.setLookupStats(line(), { lookupCount: 3 });
@@ -14771,7 +15464,8 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
     const independent = !popup.querySelector(".gsm-hoshidicts-tag-pitch")
       && !popup.querySelector(".gsm-hoshidicts-primary-grammar")
       && !popup.querySelector(".gsm-hoshidicts-frequency-source")
-      && popup.querySelector('.gsm-hoshidicts-tag-ipa[data-dictionary="IPA only"]')?.textContent.includes("Phonetics")
+      && popup.querySelector('.gsm-hoshidicts-tag-ipa[data-dictionary="IPA only"]')?.title.includes("Phonetics (IPA only)")
+      && !popup.querySelector(".gsm-hoshidicts-ipa-source, .gsm-hoshidicts-pitch-source")
       && popup.textContent.includes("ipa-only · second transcription")
       && definitionTag.isConnected;
     const preserved = popup.querySelector("form") === form && document.activeElement === form.elements.definition
@@ -14818,7 +15512,9 @@ async function metadataRenderStage({ HDGlossary, HDPopup, document, window, cand
     await new Promise(resolve => setTimeout(resolve, 0));
     check("IPA overflow is lazy and reveals every ordered transcription with current aliases only once",
       lazy && tags.length === 13 && tags.every((tag, index) => tag.textContent.includes(`transcription ${index} · second ${index}`))
-        && tags[12].textContent.startsWith("Latest alias")
+        && tags[12].textContent === "transcription 12 · second 12"
+        && tags[12].title === "Latest alias (Phonetic 12): transcription 12 · second 12"
+        && tags[12].getAttribute("aria-label") === tags[12].title
         && afterClose > beforeClose && layouts > afterClose
         && tags.every((tag, index) => popup.querySelectorAll(".gsm-hoshidicts-tag-ipa")[index] === tag));
   } finally { view.destroy(); popup.remove(); }
@@ -15027,7 +15723,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
       panelLabel: writes.panelLabel.length,
       observerDisconnects: observerDisconnects - beforeInitialDisconnects,
     };
-    live.push(initialTabs.length === 6 && tabStateCounts.tabs.every(row => row.selected === 1 && row.tabIndex === 1)
+    live.push(initialTabs.length === 3 && tabStateCounts.tabs.every(row => row.selected === 1 && row.tabIndex === 1)
       && tabStateCounts.observerDisconnects === 1
       && tabStateCounts.panelLabel === 1 && writes.panelLabel[0] === initialPanel
       && initialTabs.every(button => button.getAttribute("aria-controls") === initialPanel.id
@@ -15109,7 +15805,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
       pitches: [{ dictionary: "Pitch", transcriptions: [], pitches: [{ position: 1, pattern: "LH" }] }],
     } }));
     const metadataBefore = JSON.stringify(metadataResults);
-    view.renderResults(metadataResults, candidate, { ...context, showPitchAccentBadge: true });
+    view.renderResults(metadataResults, candidate, { ...context, showFrequencyDictionaryNames: true, showPitchAccentBadge: true });
     const frequencyValue = popup.querySelector(".gsm-hoshidicts-frequency-value");
     const pitchBody = popup.querySelector(".gsm-hoshidicts-pitch-body");
     view.updateDictionaryPresentation({ dictionaryPresentation: [
@@ -15119,12 +15815,12 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     live.push(popup.querySelector(".gsm-hoshidicts-frequency-value") === frequencyValue && frequencyValue.textContent === "42"
       && popup.querySelector(".gsm-hoshidicts-pitch-body") === pitchBody
       && popup.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
-      && popup.querySelector(".gsm-hoshidicts-pitch-source").textContent === "Pitch alias");
+      && popup.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1] LH");
     popup.querySelector(".gsm-hoshidicts-show-more").click();
     const secondary = popup.querySelectorAll("article")[1];
     live.push(secondary.querySelector(".gsm-hoshidicts-glossary-card > summary").textContent === "Second alias"
       && secondary.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
-      && secondary.querySelector(".gsm-hoshidicts-pitch-source").textContent === "Pitch alias"
+      && secondary.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1] LH"
       && JSON.stringify(metadataResults) === metadataBefore);
     const expandedGroup = { ...presentation, dictionaryTabGroups: [{ id: "expanded", name: "Expanded", dictionaries: ["First", "Second"] }] };
     view.renderResults(metadataResults, candidate, { ...context, ...expandedGroup, expandAll: true, selectedDictionaryTab: { groupId: "expanded" } });
@@ -15427,7 +16123,7 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
   const preview = () => shadow.querySelector(".gsm-hoshidicts-image-hover-preview");
   const originalRect = window.Element.prototype.getBoundingClientRect;
   window.Element.prototype.getBoundingClientRect = function () {
-    if (this === popup) return { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight,
+    if (this === popup || this === view.scrollElement) return { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight,
       width: window.innerWidth, height: window.innerHeight };
     return this.classList.contains("gsm-hoshidicts-image-hover-preview")
       ? { left: 0, top: 0, right: 320, bottom: 240, width: 320, height: 240 }
@@ -15508,7 +16204,7 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
       return position.left >= 8 && position.top >= 8
         && position.left + fractionalSize.width <= 312 && position.top + fractionalSize.height <= 232;
     }));
-    event(popup, "scroll");
+    event(view.scrollElement, "scroll");
     const focusedScrollKept = Boolean(second) && preview() === second;
     links[1].blur();
     const blurred = !preview();
@@ -15519,7 +16215,7 @@ async function imagePreviewStage({ view, popup, shadow, document, window, candid
     event(window, "resize");
     const resized = !preview();
     event(links[0], "mouseenter");
-    event(popup, "scroll");
+    event(view.scrollElement, "scroll");
     const scrolled = !preview();
     event(links[0], "mouseenter");
     event(links[0].querySelector("img"), "error");
@@ -15763,17 +16459,17 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
   try {
     view.renderResults([healthy, invalid], candidate, context);
     const escaped = drain();
-    const deferredHandled = errors === 1 && escaped === 0 && popup.childElementCount === 0;
+    const deferredHandled = errors === 1 && escaped === 0 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
     view.renderResults([healthy, invalid], candidate, context);
     popup.querySelector('[data-dictionary="Invalid"][role="tab"]')?.click();
-    const tabHandled = errors === 2 && popup.childElementCount === 0;
+    const tabHandled = errors === 2 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1;
     drain();
     view.renderResults([healthy, healthy, invalid], candidate, context);
     drain();
     popup.querySelector(".gsm-hoshidicts-show-more")?.click();
     const moreEscaped = drain();
     check("deferred, tab and expanded render failures reach their owner without escaping",
-      deferredHandled && tabHandled && errors === 3 && moreEscaped === 0 && popup.childElementCount === 0,
+      deferredHandled && tabHandled && errors === 3 && moreEscaped === 0 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
       JSON.stringify({ deferredHandled, tabHandled, errors, escaped, moreEscaped }));
 
     const projectionContext = { ...context, selectedDictionaryTab: { groupId: "live" },
@@ -15788,7 +16484,7 @@ function structuredRenderStage({ HDGlossary, HDPopup, document, window, candidat
       });
     } catch { presentationEscaped = true; }
     check("storage-driven projection failures use the current render error boundary",
-      !presentationEscaped && errors === beforePresentationError + 1 && popup.childElementCount === 0,
+      !presentationEscaped && errors === beforePresentationError + 1 && view.scrollElement.childElementCount === 0 && popup.childElementCount === 1,
       JSON.stringify({ presentationEscaped, errors, beforePresentationError }));
 
     const replacements = [

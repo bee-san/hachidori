@@ -18,6 +18,8 @@
   const HIGHLIGHT_NAME = "gsm-hoshidicts-match";
   const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
+  const POPUP_SHOWN_EVENT = "hachidori-popup-shown";
+  const POPUP_HIDDEN_EVENT = "hachidori-popup-hidden";
 
   const {
     DEFAULT_OPTIONS,
@@ -133,7 +135,7 @@
       activeCandidate: null, activeSignature: null, activeHighlightText: "",
       activeTermRender: null, currentViewRequest: null, noteEditing: false,
       pendingCustomAppends: 0, deferredDictionaryInvalidationRevision: -1,
-      deferredRefresh: null, lookupToken: 0, pendingLink: null,
+      deferredRefresh: null, lookupToken: 0, pendingHover: null, pendingLink: null,
       retainedView: false,
       pendingViewReplay: null,
       blurTimer: null,
@@ -184,6 +186,10 @@
     } catch {
       return false;
     }
+  }
+
+  function publishPopupVisibility(visible) {
+    window.dispatchEvent(new CustomEvent(visible ? POPUP_SHOWN_EVENT : POPUP_HIDDEN_EVENT));
   }
 
   function nonnegativeCount(value) {
@@ -357,24 +363,47 @@
     return range;
   }
 
-  function caretRangeAt(clientX, clientY) {
+  function rangeFromCaretPosition(position, clientX, clientY) {
+    if (!position) {
+      return null;
+    }
+    const range = document.createRange();
+    try {
+      range.setStart(position.offsetNode, position.offset);
+      range.setEnd(position.offsetNode, position.offset);
+    } catch {
+      return null;
+    }
+    return alignToCharacter(range, clientX, clientY);
+  }
+
+  function caretRangeAt(clientX, clientY, shadowRoot = null) {
+    if (shadowRoot) {
+      if (typeof document.caretPositionFromPoint !== "function") {
+        return null;
+      }
+      try {
+        return rangeFromCaretPosition(
+          document.caretPositionFromPoint(clientX, clientY, {
+            shadowRoots: [shadowRoot],
+          }),
+          clientX,
+          clientY
+        );
+      } catch {
+        return null;
+      }
+    }
     if (typeof document.caretRangeFromPoint === "function") {
       const range = document.caretRangeFromPoint(clientX, clientY);
       return range === null ? null : alignToCharacter(range, clientX, clientY);
     }
     if (typeof document.caretPositionFromPoint === "function") {
-      const position = document.caretPositionFromPoint(clientX, clientY);
-      if (!position) {
-        return null;
-      }
-      const range = document.createRange();
-      try {
-        range.setStart(position.offsetNode, position.offset);
-        range.setEnd(position.offsetNode, position.offset);
-      } catch {
-        return null;
-      }
-      return alignToCharacter(range, clientX, clientY);
+      return rangeFromCaretPosition(
+        document.caretPositionFromPoint(clientX, clientY),
+        clientX,
+        clientY
+      );
     }
     return null;
   }
@@ -640,6 +669,108 @@
     };
   }
 
+  function resolveDefinitionCandidate(clientX, clientY, level) {
+    if (
+      !shadow ||
+      !level ||
+      level.retired ||
+      levels[level.depth] !== level ||
+      !level.popup ||
+      level.popup.hidden
+    ) {
+      return null;
+    }
+    const styleCache = new Map();
+    const caretRange = caretRangeAt(clientX, clientY, shadow);
+    if (!caretRange) {
+      return null;
+    }
+    const startNode = caretRange.startContainer;
+    if (startNode.nodeType !== Node.TEXT_NODE) {
+      return null;
+    }
+    const glossary = startNode.parentElement?.closest(
+      ".gsm-hoshidicts-glossary-content"
+    );
+    if (
+      !glossary ||
+      !level.popup.contains(glossary) ||
+      !glossary.contains(startNode)
+    ) {
+      return null;
+    }
+    for (
+      let current = startNode.parentElement;
+      current;
+      current = current.parentElement
+    ) {
+      if (
+        isHiddenElement(current, styleCache) ||
+        isEditingElement(current) ||
+        current.localName === "a" ||
+        OPAQUE_TAGS.has(current.localName) ||
+        computedStyleFor(current, styleCache).display === "none"
+      ) {
+        return null;
+      }
+      if (current === glossary) {
+        break;
+      }
+      if (current === level.popup) {
+        return null;
+      }
+    }
+    let entries = collectScanEntries(
+      startNode,
+      Math.min(caretRange.startOffset, (startNode.nodeValue || "").length),
+      glossary,
+      options.scanLength,
+      styleCache
+    );
+    const linkBoundary = entries.findIndex((entry) =>
+      entry.node.parentElement?.closest("a")
+    );
+    if (linkBoundary >= 0) {
+      entries = entries.slice(0, linkBoundary);
+    }
+    if (entries.length === 0) {
+      return null;
+    }
+    const query = entries.map((entry) => entry.text).join("");
+    if (options.onlyScanJapaneseText && !isJapaneseToken(query)) {
+      return null;
+    }
+    const first = entries[0];
+    let matchOffset;
+    let anchorRange;
+    try {
+      matchOffset = rangeOffsetWithin(glossary, first.node, first.offset);
+      anchorRange = document.createRange();
+      anchorRange.setStart(first.node, first.offset);
+      anchorRange.setEnd(
+        first.node,
+        Math.min(
+          (first.node.nodeValue || "").length,
+          first.offset + first.sourceLength
+        )
+      );
+    } catch {
+      return null;
+    }
+    return {
+      anchor: glossary,
+      anchorRange,
+      matchOffset,
+      query,
+      scanEntries: entries,
+      sentence: glossary.textContent || "",
+      sourceDepth: level.depth,
+      sourceElements: [glossary],
+      vertical: computedStyleFor(glossary, styleCache)
+        .writingMode.startsWith("vertical"),
+    };
+  }
+
   function selectionBoundaryElement(node) {
     return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
   }
@@ -708,6 +839,47 @@
       candidateStart(other).node === candidateStart(candidate).node;
   }
 
+  /** Returns the last scanned source character covered by the engine match. */
+  function matchedScanEnd(candidate, matched) {
+    const wanted = typeof matched === "string" ? matched.length : 0;
+    if (wanted <= 0 || !Array.isArray(candidate.scanEntries)) return null;
+    let consumed = 0;
+    let last = null;
+    for (const entry of candidate.scanEntries) {
+      if (consumed >= wanted) {
+        break;
+      }
+      consumed += entry.text.length;
+      last = entry;
+    }
+    return last;
+  }
+
+  function expandCandidateAnchor(candidate, matched) {
+    if (candidate.linkAnchor || candidate.exactSelection === true || !candidate.anchorRange) return;
+    const first = candidate.scanEntries?.[0];
+    const last = matchedScanEnd(candidate, matched);
+    if (!first || !last) return;
+    // A page can move scanned text while the lookup is pending.
+    if (!candidate.anchor.contains(first.node) || !candidate.anchor.contains(last.node)) return;
+    try {
+      // Scanning starts with a one-glyph range. Once lookup identifies the
+      // complete match, place the popup against that word like Yomitan/PR 549.
+      const range = document.createRange();
+      range.setStart(first.node, first.offset);
+      range.setEnd(
+        last.node,
+        Math.min(
+          (last.node.nodeValue || "").length,
+          last.offset + last.sourceLength
+        )
+      );
+      if (!range.collapsed) candidate.anchorRange = range;
+    } catch {
+      // Keep the original hovered-glyph range if the page changed meanwhile.
+    }
+  }
+
   /**
    * Translates a matched length in scan coordinates into the raw substring of
    * `candidate.sentence` that covers it. createSourceHighlighter measures the
@@ -719,19 +891,7 @@
   function rawMatchedText(candidate, matched) {
     if (candidate.linkAnchor) return candidate.sentence;
     if (candidate.exactSelection === true) return candidate.rawSelectionText;
-    const wanted = typeof matched === "string" ? matched.length : 0;
-    if (wanted <= 0) {
-      return "";
-    }
-    let consumed = 0;
-    let last = null;
-    for (const entry of candidate.scanEntries) {
-      if (consumed >= wanted) {
-        break;
-      }
-      consumed += entry.text.length;
-      last = entry;
-    }
+    const last = matchedScanEnd(candidate, matched);
     if (!last) {
       return "";
     }
@@ -778,6 +938,7 @@
     if (disposed) {
       return;
     }
+    const popupWasVisible = rootLevel.popup && !rootLevel.popup.hidden;
     releaseRootCapture();
     audio?.dispose();
     mining?.retire();
@@ -825,12 +986,14 @@
     rootLevel.activeTermRender = null;
     rootLevel.currentViewRequest = null;
     rootLevel.noteEditing = false;
+    if (popupWasVisible) publishPopupVisibility(false);
     if (reason) {
       console.debug(`hachidori: content script stopped (${reason})`);
     }
   }
 
   function discardUi() {
+    const popupWasVisible = rootLevel.popup && !rootLevel.popup.hidden;
     releaseRootCapture();
     audio?.retire();
     mining?.retire();
@@ -853,6 +1016,7 @@
     rootLevel.activeTermRender = null;
     rootLevel.currentViewRequest = null;
     rootLevel.noteEditing = false;
+    if (popupWasVisible) publishPopupVisibility(false);
   }
 
   function clearDictionaryResources() {
@@ -1386,12 +1550,19 @@
       clearHideTimer();
     });
     popup.addEventListener("focusout", onPopupFocusOut);
+    // Scroll events do not bubble from the definition pane or its inner cards.
+    // Keep linked popups aligned with anchors moving inside those scrollers.
     popup.addEventListener("scroll", () => {
       if (level.retired) return;
       const child = levels[level.depth + 1];
       if (child) positionPopup(child);
-    }, { passive: true });
+    }, { capture: true, passive: true });
     popup.addEventListener("mouseenter", () => onPopupEnter(level));
+    popup.addEventListener(
+      "mousemove",
+      (event) => onPopupMouseMove(event, level),
+      { capture: true, passive: true }
+    );
     popup.addEventListener("mouseover", (event) => {
       const request = level.currentViewRequest;
       if (request?.blur && request.blur.state !== "revealed" && event.target instanceof Element
@@ -1408,9 +1579,15 @@
       appendStructuredImage: window.HDGlossary.appendStructuredImage,
       document,
       getPopupColumns: () => options.popupColumns,
+      customLinks: options.customLinks,
       highlightName: HIGHLIGHT_NAME,
       idPrefix: level === rootLevel ? "hoshidicts" : `hoshidicts-${nextLevelId += 1}`,
       onAddCustomEntry: (entry) => appendCustomEntry(entry, level),
+      onCustomLinkClick(link) {
+        if (!level.currentViewRequest || level.retainedView
+            || !requestCanRender(level.lookupToken, level.activeCandidate, level)) return;
+        openExternalLink(link);
+      },
       onKanjiClick: (character, result, candidate, link) => showKanji(character, result, candidate, link, level),
       onNoteEditingChange: (editing) => onNoteEditingChange(editing, level),
       onResultsRendered: rendered => bindResultActions(rendered, level),
@@ -1728,6 +1905,7 @@
   }
 
   function show(candidate, level = rootLevel) {
+    const popupWasHidden = level === rootLevel && level.popup.hidden;
     level.activeCandidate = candidate;
     level.activeSignature = candidateSignature(candidate);
     if (!host.isConnected && document.body) {
@@ -1735,7 +1913,8 @@
       document.body.appendChild(host);
     }
     level.popup.hidden = false;
-    level.popup.scrollTop = 0;
+    level.view.scrollElement.scrollTop = 0;
+    if (popupWasHidden) publishPopupVisibility(true);
   }
 
   function pruneLevels(depth, restoreFocus = true) {
@@ -1776,6 +1955,7 @@
       }
       return;
     }
+    const popupWasVisible = rootLevel.popup && !rootLevel.popup.hidden;
     cancelPopupLayout();
     clearScanTimer();
     selectionDragActive = false;
@@ -1802,6 +1982,7 @@
     rootLevel.popup.hidden = true;
     rootLevel.view.clear();
     highlighter.clearAll();
+    if (popupWasVisible) publishPopupVisibility(false);
   }
 
   function clearHideTimer() {
@@ -1840,6 +2021,10 @@
     pointerInPopup = true;
     clearTransferTimer();
     clearHideTimer();
+    scheduleDescendantPrune(level);
+  }
+
+  function scheduleDescendantPrune(level) {
     clearDescendantTimer();
     const depth = level.depth + 1;
     if (depth >= levels.length) return;
@@ -1900,18 +2085,20 @@
       compactDefinitionSummaryDictionary: options.compactDefinitionSummaryDictionary };
   }
 
+  function openExternalLink({ url, active }) {
+    // A lost reply may follow a successful open, so never retry navigation.
+    void sendRequest("hd_open_external", { url, active }, "hoshidicts-worker").catch((error) => {
+      console.debug("hachidori: external link could not be opened", error);
+    });
+  }
+
   function renderContextFor(level = rootLevel) {
     return {
       definitionBlurState: level.currentViewRequest?.blur?.state ?? "revealed",
       dictionaryPresentation: dictionaryPresentation(),
       dictionaryTabGroups: dictionaryTabGroups(),
       generation: currentGeneration,
-      onExternalLink({ url, active }) {
-        // A lost reply may follow a successful open, so never retry navigation.
-        void sendRequest("hd_open_external", { url, active }, "hoshidicts-worker").catch((error) => {
-          console.debug("hachidori: external link could not be opened", error);
-        });
-      },
+      onExternalLink: openExternalLink,
       onInternalLink: (link) => onInternalLink(link, level),
       ...imageSourceContext(),
       ...compactSummaryOptions(),
@@ -2062,25 +2249,25 @@
 
   function handleTermMiss(request, dictionaryCount, token, level, replayOptions) {
     if (retainProtectedReplay(request, token, level, replayOptions)) return false;
-    if (dictionaryCount === 0) {
+    if (dictionaryCount === 0 || request.exactSelection) {
       show(request.candidate, level);
       level.activeHighlightText = "";
       level.activeTermRender = null;
       clearDefinitionBlurTimer(level);
-      level.currentViewRequest = null;
+      // Keep the exact request so saving a new word can refresh this notice
+      // into its personal definition, even after the form collapses selection.
+      level.currentViewRequest = request;
       level.view.renderNotice(
-        "No dictionaries loaded. Import a Yomitan .zip from the Hachidori options page.",
-        request.candidate
+        dictionaryCount === 0
+          ? "No dictionaries loaded. Import a Yomitan .zip in Settings, or add your own definition with the pencil."
+          : "No definition found. Add your own with the pencil.",
+        request.candidate,
+        { isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken },
       );
       positionPopup(level);
       return false;
     }
     hide(level);
-    // Retain an exact miss so subsequent pointer motion cannot turn it into
-    // a prefix lookup. Explicit dismissal or another selection resets it.
-    if (request.exactSelection && selectionIsUnchanged(request.candidate)) {
-      activeSelectionCandidate = request.candidate;
-    }
     return false;
   }
 
@@ -2120,8 +2307,9 @@
     if (results.length === 0) {
       return handleTermMiss(request, reply.dictionaryCount, token, level, replayOptions);
     }
-    if (!replayOptions?.preserveViewControls) show(request.candidate, level);
     const matched = results[0].matched || results[0].term.expression;
+    expandCandidateAnchor(request.candidate, matched);
+    if (!replayOptions?.preserveViewControls) show(request.candidate, level);
     if (request.highlightText === undefined) {
       request.highlightText = rawMatchedText(request.candidate, matched);
     }
@@ -2163,25 +2351,52 @@
     }, level);
   }
 
-  function onInternalLink({ anchor, focusChild = false, primaryReading = "", query }, level = rootLevel) {
-    if (level.retired || !level.activeCandidate || !anchor?.isConnected
-        || !level.popup.contains(anchor) || !query || level.depth >= options.popupNestingMaxDepth
-        || window.innerWidth <= POPUP_PADDING_PX * 2 || window.innerHeight <= POPUP_PADDING_PX * 2) {
+  function sameChildLookup(existing, candidate, primaryReading) {
+    return Boolean(existing?.activeCandidate) &&
+      existing.primaryReading === primaryReading &&
+      existing.activeSignature === candidateSignature(candidate) &&
+      sameAnchorNode(candidate, existing.activeCandidate);
+  }
+
+  function openChildLookup(candidate, level, {
+    focusChild = false,
+    primaryReading = "",
+    source = "hover",
+  } = {}) {
+    if (
+      level.retired ||
+      !level.activeCandidate ||
+      !anchorConnected(candidate) ||
+      !level.popup.contains(candidate.anchor) ||
+      level.depth >= options.popupNestingMaxDepth ||
+      window.innerWidth <= POPUP_PADDING_PX * 2 ||
+      window.innerHeight <= POPUP_PADDING_PX * 2
+    ) {
       return;
     }
     clearHideTimer();
     clearTransferTimer();
     clearDescendantTimer();
     const existing = levels[level.depth + 1];
-    if (existing?.activeCandidate?.anchor === anchor && existing.activeCandidate.query === query
-        && existing.primaryReading === primaryReading
-        && (existing.pendingLink?.token === existing.lookupToken || (existing.currentViewRequest?.kind === "term"
-          && existing.activeTermRender?.token === existing.lookupToken))) {
+    const pendingKey = source === "link" ? "pendingLink" : "pendingHover";
+    const pending = existing?.[pendingKey];
+    if (
+      sameChildLookup(existing, candidate, primaryReading) &&
+      (
+        pending?.token === existing.lookupToken ||
+        (
+          existing.currentViewRequest?.kind === "term" &&
+          existing.activeTermRender?.token === existing.lookupToken
+        )
+      )
+    ) {
       if (focusChild) {
         existing.focusLinkedBack = true;
-        if (!existing.popup.hidden) focusPopupControl(".gsm-hoshidicts-kanji-back", existing);
+        if (!existing.popup.hidden) {
+          focusPopupControl(".gsm-hoshidicts-kanji-back", existing);
+        }
       }
-      return existing.pendingLink?.promise;
+      return pending?.promise;
     }
     pruneLevels(level.depth + 1, false);
     const child = createLevelState(level.depth + 1);
@@ -2189,19 +2404,37 @@
     buildLevelUi(child);
     child.primaryReading = primaryReading;
     child.focusLinkedBack = focusChild;
+    child.activeCandidate = candidate;
+    child.activeSignature = candidateSignature(candidate);
+    const promise = runLookup(candidate, {
+      primaryReading,
+      selectedDictionaryTab: level.currentViewRequest?.selectedDictionaryTab,
+    }, child);
+    const record = { promise, token: child.lookupToken };
+    child[pendingKey] = record;
+    void promise.finally(() => {
+      if (child[pendingKey] === record) {
+        child[pendingKey] = null;
+      }
+    });
+    return promise;
+  }
+
+  function onInternalLink({ anchor, focusChild = false, primaryReading = "", query }, level = rootLevel) {
+    if (!anchor?.isConnected || !query) {
+      return;
+    }
     // Link text is an anchor/highlight, never the query's page-scan offsets.
-    child.activeCandidate = {
+    const candidate = {
       anchor, linkAnchor: true, query, matchOffset: 0,
       sentence: anchor.textContent || "", sourceElements: [anchor], sourceDepth: level.depth,
       vertical: false,
     };
-    const promise = runLookup(child.activeCandidate, {
+    return openChildLookup(candidate, level, {
+      focusChild,
       primaryReading,
-      selectedDictionaryTab: level.currentViewRequest?.selectedDictionaryTab,
-    }, child);
-    child.pendingLink = { promise, token: child.lookupToken };
-    void promise.finally(() => { child.pendingLink = null; });
-    return promise;
+      source: "link",
+    });
   }
 
   async function executeKanjiRequest(request, level = rootLevel, replayOptions = null) {
@@ -2413,6 +2646,18 @@
     discardPendingCandidate();
   }
 
+  function cancelPendingHover(level) {
+    const child = levels[level.depth + 1];
+    if (
+      !child ||
+      child.pendingHover?.token !== child.lookupToken ||
+      !child.popup?.hidden
+    ) {
+      return;
+    }
+    pruneLevels(child.depth, false);
+  }
+
   function lookupCandidate(candidate, signature = candidateSignature(candidate)) {
     rootLevel.capturePin = null;
     rootLevel.capturePinPromise = Promise.resolve(window.HDCapture?.rootLookup(candidate) ?? null);
@@ -2453,6 +2698,54 @@
     return false;
   }
 
+  function activePointerLevel(pointer) {
+    const level = pointer?.level;
+    return level &&
+      !level.retired &&
+      levels[level.depth] === level &&
+      level.popup?.contains(pointer.target)
+      ? level
+      : null;
+  }
+
+  function popupLinkAt(target, level) {
+    const element = target?.nodeType === Node.ELEMENT_NODE
+      ? target
+      : target?.parentElement;
+    const link = element?.closest?.("a");
+    return link && level.popup.contains(link) ? link : null;
+  }
+
+  function scanDefinitionPointer(pointer, level) {
+    pointerInPopup = true;
+    pointerLevel = level;
+    clearHideTimer();
+    const link = popupLinkAt(pointer.target, level);
+    if (link) {
+      cancelPendingHover(level);
+      if (link.hasAttribute("data-hoshidicts-query")) clearDescendantTimer();
+      else scheduleDescendantPrune(level);
+      return;
+    }
+    if (!activationAllowed() || level.depth >= options.popupNestingMaxDepth) {
+      cancelPendingHover(level);
+      scheduleDescendantPrune(level);
+      return;
+    }
+    const candidate = resolveDefinitionCandidate(
+      pointer.clientX,
+      pointer.clientY,
+      level
+    );
+    if (!candidate) {
+      cancelPendingHover(level);
+      scheduleDescendantPrune(level);
+      return;
+    }
+    clearDescendantTimer();
+    openChildLookup(candidate, level);
+  }
+
   function scanPointer(pointer) {
     if (disposed || !extensionAlive()) {
       teardown("context-invalidated");
@@ -2460,9 +2753,15 @@
     }
     if (!options.hoverEnabled) return;
     if (transferTimer !== null) return;
-    if (hasProtectedNote() || popupHasFocus() || pageEditorFocused()) {
+    const popupLevel = activePointerLevel(pointer);
+    if (hasProtectedNote() || popupHasFocus()) {
       cancelCandidateScan();
+      if (popupLevel) cancelPendingHover(popupLevel);
       clearHideTimer();
+      return;
+    }
+    if (popupLevel) {
+      scanDefinitionPointer(pointer, popupLevel);
       return;
     }
     if (selectionDragActive || retainSelectedLookup()) return;
@@ -2516,6 +2815,42 @@
     lookupCandidate(candidate, signature);
   }
 
+  function onPopupMouseMove(event, level) {
+    if (disposed || !options.hoverEnabled || level.retired) {
+      return;
+    }
+    lastPointer = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      level,
+      target: event.target,
+    };
+    updateModifierState(event);
+    pointerInPopup = true;
+    pointerLevel = level;
+    clearTransferTimer();
+    clearHideTimer();
+    const link = popupLinkAt(event.target, level);
+    if (link) {
+      cancelPendingHover(level);
+      clearScanTimer();
+      if (link.hasAttribute("data-hoshidicts-query")) clearDescendantTimer();
+      else scheduleDescendantPrune(level);
+      return;
+    }
+    if (hasProtectedNote() || popupHasFocus()) {
+      cancelPendingHover(level);
+      clearScanTimer();
+      return;
+    }
+    if (selectionDragActive || !activationAllowed()) {
+      cancelPendingHover(level);
+      clearScanTimer();
+      return;
+    }
+    scheduleScan();
+  }
+
   function onMouseMove(event) {
     if (disposed || !options.hoverEnabled) {
       return;
@@ -2545,7 +2880,7 @@
     pointerInPopup = false;
     pointerLevel = null;
     if (leavingChain) scheduleTransferCheck();
-    if (hasProtectedNote() || popupHasFocus() || pageEditorFocused()) {
+    if (hasProtectedNote() || popupHasFocus()) {
       cancelCandidateScan();
       return;
     }
@@ -2632,7 +2967,11 @@
   }
 
   function onPageFocusIn() {
-    if (!disposed && pageEditorFocused()) cancelCandidateScan();
+    if (!disposed && pageEditorFocused()) {
+      cancelCandidateScan();
+      activationPressed = false;
+      activationCode = null;
+    }
   }
 
   function onKeyDown(event) {
@@ -2661,7 +3000,11 @@
       hide();
       if (dismissedCandidate || options.activationKey !== "Escape") return;
     }
-    if (!options.hoverEnabled || pageEditorFocused()) return;
+    if (!options.hoverEnabled) return;
+    // Autofocused search fields (such as Jisho's) must not disable lookups on
+    // the rest of the page. Modifier activation leaves native typing intact;
+    // printable/editor keys stay reserved for the focused field.
+    if (pageEditorFocused() && !MODIFIER_PROPERTIES.has(options.activationKey)) return;
     // Pressing the gate key while the pointer is stationary should reveal the
     // word under it without asking the reader to jiggle the mouse.
     const wasPressed = activationPressed;
@@ -2670,9 +3013,12 @@
       activationPressed = true;
       activationCode = event.code;
     }
+    const popupLevel = activePointerLevel(lastPointer);
     if (!wasPressed && activationPressed && options.lookupMode === "activation"
-        && lastPointer && !hasProtectedNote() && !popupHasFocus() && !pointerInPopup
-        && !selectionDragActive && !retainSelectedLookup()) {
+        && lastPointer && !hasProtectedNote() && !popupHasFocus()
+        && (!pointerInPopup || popupLevel)
+        && !selectionDragActive
+        && (popupLevel || !retainSelectedLookup())) {
       scheduleScan();
     }
   }
@@ -2871,6 +3217,7 @@
     // A simultaneous dictionary replacement must invalidate the old view first.
     const countsChanged = next.showLookupCounts !== options.showLookupCounts;
     const ankiChanged = JSON.stringify(next.anki) !== JSON.stringify(options.anki);
+    const customLinksChanged = JSON.stringify(next.customLinks) !== JSON.stringify(options.customLinks);
     if (ankiChanged || next.definitionBlurAnkiMature !== options.definitionBlurAnkiMature) ankiMaturityEpoch++;
     const blurChanged = ankiChanged || next.showLookupCounts !== options.showLookupCounts || DEFINITION_BLUR_KEYS
       .some(key => next[key] !== options[key]);
@@ -2883,6 +3230,9 @@
     }
     optionsStorageRevision = revision;
     options = next;
+    if (customLinksChanged) {
+      for (const level of levels) level.view?.setCustomLinks(options.customLinks);
+    }
     if (countsChanged) {
       for (const level of levels) {
         const request = level.currentViewRequest;
@@ -2955,8 +3305,12 @@
       }
       cancelCandidateScan();
       clearHideTimer();
-      if (!hasProtectedNote() && !popupHasFocus() && !pointerInPopup) {
-        if (!activationAllowed()) scheduleHide();
+      const popupLevel = activePointerLevel(lastPointer);
+      if (!hasProtectedNote() && !popupHasFocus() && (!pointerInPopup || popupLevel)) {
+        if (!activationAllowed()) {
+          if (popupLevel) cancelPendingHover(popupLevel);
+          else scheduleHide();
+        }
         else if (lastPointer) scheduleScan();
       }
     } else if (hideDelayChanged) {

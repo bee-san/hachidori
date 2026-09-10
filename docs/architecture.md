@@ -162,13 +162,13 @@ of that record, not the reason alone, identifies a new installation.
   stage becomes `complete`, and records `continued` when the user leaves the
   dictionary stage with an incomplete set.
 - `options`: the first-install preferences (`showCompactDefinitionSummary: true`,
-  `compactDefinitionSummaryCount: 3`) at revision 1. The `reader-options.js`
+  `compactDefinitionSummaryCount: 2`) at revision 1. The `reader-options.js`
   defaults are unchanged, so an extension update never alters an existing
   user's popup, and a later edit through the ordinary revisioned options write
   is the value that persists.
 
 New installations begin at `welcome`, which discloses local page processing,
-lookup statistics, publisher downloads, local Anki metadata discovery, optional
+lookup statistics, publisher downloads, configured Anki metadata discovery, optional
 pronunciation sharing, mining and explicitly started capture. **Start setup**
 uses the ordinary revisioned stage write to enter `dictionaries`; automatic
 downloads and the later Anki check wait for that successful write. The worker
@@ -252,16 +252,18 @@ an empty request, which starts nothing. A live run answers with its own
 snapshot and keeps the progress the page already applied; a replacement
 installer answers with an empty, finished one, and the sources without a
 recorded outcome are requested once more instead of leaving a screen that can
-never change. The installer records every outcome and each run's
-duration through `hd_setup_record`, which the worker accepts from the offscreen
+never change. The installer records every outcome and each run's summed
+installation duration through `hd_setup_record`, which the worker accepts from
+the offscreen
 document only, and a row settles only after that record is acknowledged: a lost
 reply or a restarting worker makes the installer resend the same record with
 backoff, and records are idempotent per run (`recordedRuns`), so a duration
 whose reply was lost is confirmed rather than counted twice. The last row's
-record carries the run's duration with that outcome, so a document terminated
+record carries that installation duration with the outcome, so a document terminated
 between the two can never leave every outcome settled with the run accounting
 missing, which nothing could reconstruct. Outcomes replace
-earlier ones, durations accumulate into `totalSeconds`, and a
+earlier ones, installation durations begin at the engine's `installing` phase
+and accumulate into `totalSeconds`, and a
 committed Jitendex or Bee's entry settles its first-install selection once
 (`compactDefinitionSummaryDictionary` and the term-route
 `kanjiClickDictionary`) while that option is still Automatic, through the
@@ -271,24 +273,16 @@ imported by hand or carried in from another profile settles its selection from
 its own committed title. **All dictionaries installed in X seconds** is
 rendered only when the current inventory holds every catalogue source and this
 setup installed at least one of them; a profile that already carried them all
-reads **All dictionaries are already installed**. Either result
-stays for five seconds with a labelled countdown that is not a live region,
-then the page advances to Anki. **Continue now** advances immediately;
-**Pause countdown** leaves the result available until Continue or
-**Resume countdown**, which starts a fresh five seconds. The page explains
+reads **All dictionaries are already installed**. Either result advances to
+Anki immediately. If both automatic writes are refused, the result keeps an
+explicit **Continue now** instead of saving again by itself. The page explains
 that installation continues after closing the tab and can be resumed from
-Settings. If both automatic writes are refused, the
-countdown is cancelled and the result keeps an explicit **Continue now**
-instead of saving again on a timer. **Continue setup** with missing sources
+Settings. **Continue setup** with missing sources
 records `continued: true`. Only settled outcomes are announced, never bytes.
 
 ![Automatic installation with a held download, light palette](assets/startup-installing.png)
 
 ![Automatic installation with a held download, dark palette](assets/startup-installing-dark.png)
-
-![All dictionaries installed with the five-second countdown, light palette](assets/startup-complete.png)
-
-![All dictionaries installed with the five-second countdown, dark palette](assets/startup-complete-dark.png)
 
 ### Anki stage
 
@@ -337,10 +331,18 @@ own reason. The page renders the settled outcome as one sentence with a link to
 the Anki section of Settings, and that outcome moves setup to the last stage by
 itself and stays readable there. A request the worker does not answer is
 reported once with **Retry** beside **Continue setup**; the page never re-asks
-on its own. Anki is explicitly optional. **Continue now** is available during
-the check; its eventual reply adopts the latest recorded stage without moving
-the user back. A failed connection says **Anki isn’t connected**, rather than
-claiming Anki is absent.
+on its own. If the worker's saved outcome still arrives around a lost reply,
+that authoritative outcome retires only the stale request error. Anki is
+explicitly optional. **Continue now** is available during the check; its
+eventual reply adopts the latest recorded stage without moving the user back.
+A failed connection says **Anki isn’t connected**, rather than claiming Anki
+is absent. A successful automatic configuration keeps each of
+its three progress steps visible for two seconds. The chosen model appears on
+the first step and the chosen deck on the second as that staged result is
+displayed. Every settled outcome remains for three seconds before setup
+continues to practice.
+
+![Configured card followed by the selected deck during automatic setup](assets/startup-auto-anki.png)
 
 ![The final step after an absent Anki, light palette](assets/startup-ready.png)
 
@@ -368,7 +370,9 @@ a second static list. `content.css` comes with the page; no reader scripts load
 during the dictionary or Anki stages. Hover instructions follow
 the active mode and activation key. The **Look up 辞書** button focuses the
 sentence and selects that word through the reader’s existing exact-selection
-route, so it also works from the keyboard. It appears only when that exact
+route, so it also works from the keyboard. When the final step first becomes
+answerable and the reader is ready, the page makes that same selection once to
+demonstrate the lookup immediately. The button appears only when that exact
 selection can be answered. All exercise lookups use ordinary
 runtime messages, the installed dictionaries, WASM, popup renderer and styles.
 No sample result is substituted. Among extension pages the reader permits only
@@ -376,6 +380,8 @@ this extension’s `startup.html`, with either no fragment or the native skip
 link's `#setup-heading`. Query variants, unknown fragments, Settings and the
 static design preview remain excluded. The skip handler focuses the heading
 directly; a fragment created before it attaches still works after reload.
+
+![The final step immediately showing its real dictionary lookup](assets/startup-auto-lookup.png)
 
 The shared `visual-novel.js` picks one of six local images at random when each
 scene is created. A small **Next background** arrow cycles through them and
@@ -501,8 +507,10 @@ full browser restart without reloading the engine.
 ## Page scanning and exact selections
 
 Automatic scanning crosses ordinary inline elements and stops at editing
-controls or contenteditable text. A focused page editor suppresses pointer and
-activation-key lookup without capturing typing. The live `onlyScanJapaneseText`
+controls or contenteditable text. A focused page editor keeps printable
+activation keys available for typing. Pointer lookups and modifier activation
+still work over separate page text, including example links beside an
+autofocused search field. The live `onlyScanJapaneseText`
 option defaults to true; disabling it permits other scripts in automatic scans.
 Repeated pointer events for one pending candidate share its lookup, while a
 changed anchor/query or failed request can start fresh work.
@@ -523,6 +531,10 @@ selected string without trimming or truncation and accepts only results whose
 scan length within the existing engine scan window; a prefix-only result is not
 an exact match. A miss retains selection ownership until the selection changes
 or is dismissed, so pointer movement cannot silently replace it with a prefix.
+Its notice exposes the same personal-dictionary pencil as term and kanji results,
+prefilled with the selected word even when no dictionaries are installed. Saving
+uses the managed Note append transaction and replays that exact request to show
+the new definition; publisher dictionaries remain unchanged.
 
 The visible query and raw DOM highlight span are stored separately: hidden text
 and block separators can make `Selection.toString()` differ from `Range.toString()`.
@@ -572,9 +584,21 @@ before the change event completes.
 ## Popup metadata controls
 
 Design has independent controls for frequency source names and averages, pitch
-contour and its preferred dictionary, pitch badges, and grammar tags. Existing
-defaults keep source names, contour, badges and grammar visible; averages remain
-off. IPA transcriptions and definition tags remain visible independently.
+contour and its preferred dictionary, pitch badges, and grammar tags. Frequency
+metadata defaults to one neutral `Freq:` pill with compact numbers and no
+dictionary names. Kana-derived values retain the visible Yomitan/Jiten `㋕`
+marker, while source and numeric detail remain available on hover and to screen
+readers. The pill sits inside the primary result, before its pronunciation
+metadata and definition cards, instead of occupying the popup-wide headword
+header or claiming a separate chrome row. The lower chrome row is reserved for
+dictionary tabs and is omitted when no tabs exist. Grammar tags default to
+hidden; opting in places them in the same result metadata group. Explicit saved
+display choices are preserved.
+Contour and pitch badges remain on, and averages remain off. IPA transcriptions
+and definition tags remain visible independently. Pitch and IPA show pronunciation
+data without source-name labels; tooltips and accessibility labels retain source
+attribution and follow dictionary aliases. Unfilled tags and lightly tinted pitch
+and frequency values use the theme's normal foreground, including light themes.
 When IPA sources exceed the existing metadata display budget, a collapsed
 disclosure builds their tags on first expansion. Every ordered transcription
 remains available; this is lazy presentation, not a source or data limit.
@@ -583,8 +607,10 @@ Averages retain GSM PR #549's floored harmonic mean, with two corrections for
 the standalone contract: arithmetic uses the native positive numeric value, not
 its display label, and rank, occurrence and unspecified dictionaries aggregate
 separately. Each dictionary contributes its first usable value once. Type labels
-remain visible even with source names hidden; these display controls do not
-change native frequency sorting or lookup results.
+remain visible as concise `Avg rank`, `Avg count`, or `Avg frequency` text even
+with source names hidden; individual dictionary names are not shown for an
+aggregate. These display controls do not change native frequency sorting or
+lookup results.
 
 The preferred pitch source is a soft canonical-title preference: unavailable or
 disabled sources fall back to another usable pitch source. A committed rename
@@ -598,7 +624,7 @@ A focused kanji button defers ruby replacement until blur. The shared visual
 context carries current preferences through deferred group changes, local tabs
 and Show more; an unchanged delivery performs no metadata rebuild.
 
-![Independent pitch contour and IPA with typed frequency averages](assets/metadata-popup.png)
+![Default frequency pill inside the primary result](assets/metadata-popup.png)
 
 ## Lookup statistics and definition blur
 
@@ -738,26 +764,35 @@ Safe hrefs and `noopener noreferrer` remain for Copy link and native browser
 context-menu commands; those browser-owned commands do not emit routed clicks.
 No dictionary frame, fetch, new permission or configurable action is introduced.
 
-### Linked definition popup chains
+### Definition popup chains
 
-Activating a structured internal link opens a child beside its parent, using the
-link's exact query and primary reading, not its displayed label or page-scan
-offsets. This is linked-query navigation, not automatic scanning of glossary
-text. The revisioned `popupNestingMaxDepth` option defaults to 10 children; zero
-disables child navigation, and a nonnegative safe integer is accepted without a
-second product cap. At the configured depth or without drawable viewport space,
-activation retains the existing chain without allocating a pane or sending a
-lookup. Lowering the depth prunes existing excess descendants immediately.
+Hovering ordinary text inside a rendered glossary opens a child beside its
+parent. The closed shadow root is resolved with the native shadow-aware caret
+API, then the ordinary page scanner's inline, ruby, whitespace, Japanese-only
+and scan-length rules build the child query. The complete glossary remains the
+sentence and offset coordinate space for mining. Headwords, metadata, compact
+summaries, toolbars and controls are not scanned.
+
+Activating a structured internal link uses the same child lifecycle, but keeps
+the link's exact query and primary reading rather than its displayed label or
+scan offsets. The revisioned `popupNestingMaxDepth` option defaults to 10
+children; zero disables child navigation, and a nonnegative safe integer is
+accepted without a second product cap. At the configured depth or without
+drawable viewport space, activation retains the existing chain without
+allocating a pane or sending a lookup. Lowering the depth prunes existing excess
+descendants immediately.
 
 One closed shadow host and stylesheet serve the chain. Each lazily constructed
 level has a stable object identity, renderer, scoped source highlight, request
 token, exact current request, kanji Back snapshot, and Note state. Pruned objects
 are retired before clearing their hidden DOM or destroying renderer callbacks;
 a late reply cannot acquire a replacement object at the same numeric depth.
-The same pending/current linked query reuses its child. Another link or a parent
-tab redraw prunes only that parent's descendants. A child miss or failure does
-not dismiss its ancestors. Kanji Back first restores that child's term request;
-its next Back closes the child and returns focus to its connected source link.
+The same pending/current source query reuses its child. Leaving definition text
+cancels an unfinished hover child; clicked links continue independently.
+Another source or a parent tab redraw prunes only that parent's descendants. A
+child miss or failure does not dismiss its ancestors. Kanji Back first restores
+that child's term request; its next Back closes the child and returns focus to a
+connected source link when one initiated the lookup.
 
 Keyboard link activation focuses the child's Back control; mouse activation
 does not invent keyboard focus that would block pointer-return pruning. Returning
@@ -788,12 +823,14 @@ Local projection disconnects the superseded panel's
 observations before registering its replacements; Show more retains current
 observations while adding the newly displayed entries.
 
-Term views offer All, each contributing dictionary in native result order, one
-aggregate Favourites tab, then nonempty saved groups in their stored order.
-Favourites still contribute when they also belong to a group. Tabs project the
-already-returned results without changing their order or sending a lookup;
-aliases label tabs while canonical dictionary titles and stable group IDs own
-their selections. Colliding labels are qualified without changing membership.
+Term views offer All, nonempty saved groups in their stored order, then
+favourite dictionaries that do not already belong to a group. Other
+contributing dictionaries remain available through All without receiving their
+own tab, and grouped favourites do not receive duplicate dictionary tabs. Tabs
+project the already-returned results without changing their order or sending a
+lookup; aliases label tabs while canonical dictionary titles and stable group
+IDs own their selections. Colliding labels are qualified without changing
+membership.
 Linked and clicked-kanji requests copy that selection from their source view.
 The destination retains it only when it contributes results, otherwise adopting
 All; a child's fallback or later selection never rewrites its parent or Back
@@ -802,7 +839,9 @@ Content resolves saved group member IDs through the enabled package inventory
 using the shared D7 normalizer, including while a lookup reply is pending.
 
 Newer group, alias and favourite changes update the displayed view without
-invalidating its lookup token, media or styles. Keyed tab buttons keep their DOM
+invalidating its lookup token, media or styles. A view that started without a
+tab row does not create one when its first favourite or nonempty group is saved;
+that row appears on the next lookup. Existing keyed tab buttons keep their DOM
 identity and deliberate focus across renames and reordering. When the selected
 membership is unchanged, only labels change: glossary cards, expanded Details,
 metadata values, source highlights and Note controls remain mounted. Frequency
@@ -939,10 +978,10 @@ backend rule names and descriptions remain untouched. Additional result headers
 are still created only by Show more. Tab projection creates a fresh closed
 disclosure, and queued toggle positioning uses the existing render-revision,
 panel, and request owner, including primary headers outside the result panel.
-While the primary explanation is expanded, its toolbar scrolls with the popup
-instead of sticking over the glossary; Note and Back stay beside the headword.
-Note opening positions the popup before focusing the term input, so native focus
-scrolling can keep the form visible beyond a long explanation.
+An expanded primary explanation scrolls inside the toolbar's bounded area;
+definitions have a separate scrollport and never pass behind the toolbar.
+Note and Back stay beside the headword. The Note form has its own bounded area,
+so opening it keeps the focused field reachable even with a long explanation.
 
 ## Media response boundary
 
@@ -1102,6 +1141,9 @@ verify exact bytes, MIME types, decoded dimensions and preview source reuse.
 
 Design's clicked-kanji selector chooses a source and capability. An explicit
 term source is restricted before native ranking and result limits.
+A selected term lookup filters the engine's already-loaded query by its exact
+dictionary path instead of reopening term and metadata dictionaries per click.
+Frequency and pitch metadata still come from every loaded metadata dictionary.
 A missing, disabled or empty selected source falls back to native kanji. For an
 enabled native source with no matching entry, the already returned automatic
 entries supply that fallback without another request. A terminal native miss
@@ -1120,7 +1162,8 @@ Scroll restoration runs once after deferred glossary bodies and masonry, only
 for the current projection and while the reader has not deliberately scrolled.
 Later tabs do not inherit it. Ordinary retained renders do not read scroll while
 their replacement panel is empty: that layout flush can clamp a bottom Note's
-scroll before its content is rebuilt. The existing highlight, toolbar positioning,
+scroll before its content is rebuilt. The content scrollport owns the saved
+reading position. The existing highlight, toolbar positioning,
 exact clicked-kanji focus target and previous Back chain remain intact.
 Moving the toolbar to the other edge after a viewport resize preserves deliberate
 tab or Note focus, including the existing draft selection.
@@ -1162,15 +1205,33 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 ## Settings interface
 
 Settings is one document with native hash links and one visible task section.
+The primary rail exposes seven destinations. Library owns five local,
+hash-addressable task views: Dictionaries, Add, Updates, Groups, and Personal
+dictionary. Backup and restore remains a global destination. The compact picker
+keeps all eleven task views available and groups those five Library choices.
+Global search matches settings across every section, includes the Library
+hierarchy in matching and result breadcrumbs, opens a result's enclosing
+disclosures and focuses its control without changing values or discarding drafts.
+The activation-key selector remains editable in either lookup mode.
 All sections stay mounted, so navigation and browser history preserve reader
-drafts and the lazy custom editor without storage writes or engine requests.
-The rail becomes a compact section chooser in narrow windows; light and dark palettes
-follow the system preference. Inactive sections mirror pending work, errors, and
-unseen operation completions next to their links. Visiting a section clears its
-completion notice, not its source output or draft. The compact navigation mirrors
-inactive notices, and shared options feedback stays near the section heading.
-Status setters own these
+and personal-dictionary drafts. Personal source loads on first entering its section.
+The rail becomes a compact section chooser in narrow windows. Settings applies
+the saved lookup theme to its document and updates it immediately after local or
+external option changes; startup pages retain their independent system light/dark
+fallback. Inactive sections mirror pending work, errors, and unseen operation
+completions next to their links. Visiting a section clears its completion notice,
+not its source output or draft. The compact navigation mirrors inactive notices,
+and shared options feedback stays near the section heading. Notices from Library
+children are labelled and aggregated on the primary Library destination while
+the local navigation identifies the active child. Status setters own these
 notices; there are no observers or additional polling loops.
+
+The toolbar action opens a compact popup with a global lookup switch, recording
+shortcut and Settings. The switch uses the worker's existing revisioned option
+writes. The recording shortcut opens the existing capture controls, enabling
+captured-media mining if necessary; recording still requires Start capture and
+Chrome's source picker. The toolbar is a trusted capture-control sender and only
+polls capture status while open and captured-media mining is enabled.
 
 Dictionary Details expansion is kept by stable package ID across focus-aware
 rerenders and search filtering. Direct enabled/order controls remain visible;
@@ -1220,13 +1281,18 @@ imports the player; audio never acquires the dictionary mutation lock.
 The offscreen document declares DOM_SCRAPING and AUDIO_PLAYBACK together. Chrome
 keeps it while its dictionary-engine purpose remains active, including after
 audio's 30-second idle window. URL playback fetches without credentials.
-Candidate fallback includes actual decoding/playback failures. Speech uses the
-chosen native voice and expression or reading; unavailable browser voices are a
-visible error. Only natural completion reports success; the Settings Test has
+Candidate fallback includes actual decoding/playback failures. Speech waits for
+Chrome's asynchronously loaded voice list within the existing playback deadline.
+Automatic Japanese uses an available Google Japanese voice, then a Japanese
+default or the first Japanese voice; explicit choices remain unchanged. The
+picker lists the browser's actual voices with Japanese first. Missing voices are
+a visible error. Only natural completion reports success; the Settings Test has
 the reference's 15-second deadline. Leaving Audio, editing its tested source, or
 closing Settings stops its owned Test.
 
-Each term result has a fixed Audio control. Shift-click, right-click or Down opens
+Each term result shows Audio when an enabled speech or nonempty URL source is
+configured. Loading and playback use the button's icon state; only errors appear
+beside it, with no persistent success text. Shift-click, right-click or Down opens
 the source/name chooser; Escape closes it before dismissing the popup. A choice
 pins the source descriptor, term, candidate index, name and URL. The offscreen
 owner revalidates it against current discovery, including provider reordering
@@ -1296,11 +1362,15 @@ Reading preferences, dictionaries, groups, and update policy are untouched.
 The source-audited bounds are width 280–1,200 px, height 200–900 px, and opacity
 0–100%. Viewport clamping never changes the saved dimensions.
 
-The shared popup appearance helper sets theme and size/opacity variables only
-on the extension host. All palette and theme-specific popup rules match that
-shadow host; page html is never themed. A tiny owned constructed stylesheet
-colours page ranges from the host's computed primary colour, reading it only
-on theme changes (and after the preview's async palette load). It preserves
+The palette catalogue can select either the Settings document or the
+extension-owned popup host. Settings loads that same catalogue and derives its
+semantic UI colours from the selected palette. The branded Hachidori default
+uses tuned blue-charcoal surfaces and quieter borders, supporting text and
+lavender controls; the other catalogue themes use the shared derivation.
+Popup appearance still sets theme and size/opacity variables only on the shadow
+host; content-page html is never themed. A tiny owned constructed stylesheet
+colours page ranges from the host's computed primary colour, reading it only on
+theme changes (and after the preview's async palette load). It preserves
 unrelated adopted sheets and removes only its own sheet on teardown.
 Colour/opacity changes do not project results or schedule masonry. Size changes
 apply inline geometry before scheduling masonry so cards measure the new width
@@ -1349,7 +1419,7 @@ The CSS Highlight API is preferred. If unavailable, text-node Range fragments
 supply exact paint rectangles inside the existing extension shadow host, never
 classes on page elements or wrappers around page text. Paint is clipped to the
 viewport and ancestor scrollports, excludes hidden/transparent text, and avoids
-covering later popup panes or the source pane's sticky toolbar. One shared
+covering later popup panes or the source pane's toolbar. One shared
 fallback animation frame reads geometry before writing paint; scroll, resize,
 source layout changes, and existing popup placement callbacks refresh it.
 The fallback also subtracts page fixed/sticky headers, dialogs and popovers in
@@ -1416,6 +1486,14 @@ existing options CAS. Settings and the production preview apply it immediately;
 committed changes also update every live reader level without reprojecting
 results, scheduling masonry, or contacting the engine.
 
+The popup is a fixed flex frame with a clipped, independently scrolling content
+area beside the toolbar. Toolbar and Note controls occupy their own rows instead
+of overlapping definitions. At reduced Background opacity, the page backdrop
+remains visible through those rows without dictionary text bleeding underneath;
+text opacity and the user's background setting are unchanged. Oversized toolbar
+content and the Note form scroll within their own bounds. Nested popup anchors
+and Back restoration follow the content scrollport.
+
 The shared `resolveToolbarPosition` follows the pinned GSM PR #549 rule:
 Automatic places a horizontal root toolbar at the bottom of an above-word popup,
 or the top of a below-word popup. Vertical roots and side-by-side child panes
@@ -1440,6 +1518,13 @@ after live tab/group projection, and creates no Anki controls or requests while
 unconfigured. Mining uses the selected projected result, current frequency
 units and audio choice, and the raw source span for sentence/cloze boundaries.
 
+Anki settings expose the AnkiConnect URL, defaulting to `http://127.0.0.1:8765`.
+The worker validates the configured HTTP(S) endpoint and uses it consistently
+for discovery, setup, duplicate checks, media, mining and maturity queries.
+Endpoint changes invalidate connection and maturity identities. Selecting a
+recognised note-type family applies its preset after that model's fields load;
+stale replies and subsequent manual mapping edits cannot apply the old preset.
+
 Fixed background handlers own a separate Anki mutation queue. Submission freshly
 validates configuration, fields, dictionary generation and duplicate identity;
 it never holds the dictionary storage queue. Native Anki duplicate search selects
@@ -1459,13 +1544,32 @@ bind to committed generation paths. First-field audio is resolved before the
 duplicate check without playback or uploads. Confirmed text is followed by
 best-effort media uploads and a field readback before pronunciation updates;
 external edits are preserved. AnkiConnect has no cross-client CAS, so its final
-read/write interval is not atomic. Browser TTS cannot be attached to a note;
-downloadable sources are required for audio fields. Sentence-furigana markers
-use the GSM fallback when its optional native tokenizer is unavailable.
+read/write interval is not atomic. Browser TTS can be attached while an active
+media-capture share supplies audio: the selected voice is spoken only after the
+mining action, read back from the transient PCM ring with short leading/trailing
+padding, encoded as WAV, and uploaded through the same pronunciation path.
+Silent preflight checks only recording availability and defers first-field
+duplicate identity until the authoritative submission. Missing, incomplete or
+effectively silent capture falls through to later URL sources; an explicit TTS
+choice reports the capture failure instead. Sentence-furigana markers use the
+GSM fallback when its optional native tokenizer is unavailable.
 
 Capture markers are prepared through the same Anki queue rather than a second
-gateway. Preflight reports only the outputs referenced by fields that will
-actually be applied. Submission waits for the capture job, refreshes
+gateway. Before rendering either preflight or the authoritative submission,
+the existing Senren/Lapis/Kiku family recogniser selects the stock media fields
+and the worker clones every resolved template for that request. With a valid
+pin and media capture enabled, an enabled animation output replaces only
+`{screenshot}` inside Kiku/Lapis `Picture` or Senren `picture`, preserving the
+rest of the value and its overwrite mode. Enabled captured audio maps only a
+blank Kiku/Lapis `SentenceAudio` or Senren `sentenceAudio`; an explicit
+nonblank template is preserved. No pin or disabled capture leaves the static
+screenshot mapping intact. Custom model mappings, saved options and the cached
+resolved templates are never changed.
+
+This routing happens before duplicate and overwrite filtering. Preflight
+therefore reports only the outputs referenced by fields that will actually be
+applied, and a skipped, retained or unchanged field causes no encoding or
+upload. Submission waits for the capture job, refreshes
 configuration, generation, duplicate and overwrite decisions, uploads final
 assets one at a time, revalidates capture ownership immediately before the note
 mutation, then performs and verifies the existing write. Stop during the final
@@ -1483,16 +1587,19 @@ taken at the moment the user adds it. It is the same media path as any other Ank
 image, not a second one: nothing is captured during hover, preflight, first-run
 discovery or background reading.
 
-The reader takes it. Preflight reports `screenshot: true` when the configured
-mapping contains `{screenshot}` and the Settings switch is on — the whole mapping,
-not the subset that preflight would apply, because the authoritative decision is
-made again inside the write and may apply a field this one would have kept —
-and the content script then hides Hachidori's own overlays: the popup, its image
-preview and the fallback highlight paint all live in one host element, and the
-document-registered source highlight is suspended beside it — the highlighter
-stops publishing for the whole interval, so a lookup that settles while the
-picture is being taken cannot paint into it either, and releasing repaints the
-exact ranges. It waits two frames
+The reader takes it. Preflight reports `screenshot: true` when the effective
+request mapping contains `{screenshot}` and the Settings switch is on — the
+whole mapping, not the subset that preflight would apply, because the
+authoritative decision is made again inside the write and may apply a field
+this one would have kept. A pinned recognised preset with animation enabled has
+already replaced that marker in its request copy, so the reader takes no JPEG;
+an encoder failure does not trigger a second screenshot. When a screenshot is
+required, the content script hides Hachidori's own overlays: the popup, its
+image preview and the fallback highlight paint all live in one host element,
+and the document-registered source highlight is suspended beside it — the
+highlighter stops publishing for the whole interval, so a lookup that settles
+while the picture is being taken cannot paint into it either, and releasing
+repaints the exact ranges. It waits two frames
 so the change has painted, asks the worker for the picture, and restores
 everything whatever the outcome. The host uses `opacity: 0 !important` so even
 masonry cards with explicit `visibility: visible` remain concealed; its previous
@@ -1542,9 +1649,10 @@ later pronunciation enrichment cannot restore its image reference in a mixed
 A capture or upload that fails is a warning carried with the note's own outcome:
 the marker renders empty — a refused upload also empties the fields that
 referenced the picture, so no note points at an image Anki does not have — the
-note is still added or updated, and nothing invites a duplicate retry. The Kiku and Lapis presets map their verified `Picture` field
-and Senren its `picture` field to this marker, and a first installation has the
-switch on, so a recognised mining setup gets screenshots without further
+note is still added or updated, and nothing invites a duplicate retry. The Kiku
+and Lapis presets map their verified `Picture` field and Senren its `picture`
+field to this marker, and a first installation has the switch on, so an
+unpinned recognised mining setup gets screenshots without further
 configuration. A note type without a picture field maps nothing and captures
 nothing, and `{screenshot}` is refused in the first Anki field for the same
 reason as the other captured media: a note's identity cannot be a fresh picture
@@ -1641,11 +1749,14 @@ video origin and `performance.timeOrigin` by proximity to the block's observed
 arrival time, then keeps that choice for the stream. This is a clock-domain
 comparison, not a browser-version branch or a mapping from preview playback
 `mediaTime`. Delivered sample counts determine subsequent block boundaries,
-tolerating timestamp rounding while rejecting dropped blocks or sample-rate
-changes. The AudioWorklet compatibility path establishes its origin only after
-`AudioContext.resume()` and maps `startFrame` to that origin; interrupted input
-reports an error. Retired stream/context callbacks cannot append to a new
-session.
+tolerating timestamp rounding. Forward jumps remain explicit gaps; a backward
+clock or sample-rate change starts a new monotonic local epoch after a gap, so
+later audio remains usable. The AudioWorklet compatibility path establishes its
+origin only after `AudioContext.resume()` and maps `startFrame` to that origin.
+Interrupted input drops only its partial batch and resumes at the next absolute
+frame. Clips crossing either kind of gap fail continuous-audio validation while
+later clips can export normally. Retired stream/context callbacks cannot append
+to a new session.
 
 At a pin's selected end time, finalization waits up to 250 ms for outstanding
 JPEG and continuous audio delivery, finishing early if both cover the interval.
@@ -1695,7 +1806,9 @@ term-bank chunks. The normal Hoshidicts importer consumes that production ZIP;
 there is no separate test-only or in-memory dictionary backend.
 
 The source document is stored separately with a monotonic document revision and
-an ordered-entry semantic hash. Settings loads it only when the editor opens. A
+an ordered-entry semantic hash. Settings loads it on first entering Personal
+dictionary; its editor stays visible, and three example lines are placeholders
+only, never saved entries. A
 typing burst defers full-source validation until 150 ms of inactivity; dirty
 state updates immediately, and Save cancels the preview and validates the exact
 submitted source. Unchanged diagnostics retain their DOM nodes. A stale editor
@@ -1713,9 +1826,9 @@ and first position. Presentation-only conflicts are retried against current
 state without merging a stale source revision. A lost reply is accepted only
 after an exact source/state-pair readback.
 
-The term and kanji popup views share one fixed Note form, constructed only when
-opened so ordinary lookups do not build hidden editor controls. Its prefill comes from
-the currently projected primary result, and a successful append refreshes only
+The term, kanji and selected-word miss views share one fixed Note form, opened
+with the pencil and constructed only when opened. Its prefill comes from the
+currently projected primary result or the selected text, and a successful append refreshes only
 the exact still-current request descriptor and page anchor. Dictionary storage
 events adopt only newer revisions; editing defers popup invalidation until close
 or until that exact refresh consumes it. Saving is the transactional boundary,

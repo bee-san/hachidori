@@ -228,7 +228,7 @@ async function showSection(page, id) {
     if (picker.checkVisibility()) {
       picker.value = section;
       picker.dispatchEvent(new Event("change", { bubbles: true }));
-    } else document.querySelector(`.settings-nav a[href="#${section}"]`).click();
+    } else document.querySelector(`.settings-nav a[href="#${section}"], #library-navigation a[href="#${section}"]`).click();
   }, id);
   await page.waitForFunction(section => {
     const visible = [...document.querySelectorAll("main > section")].filter(node => !node.hidden);
@@ -238,8 +238,7 @@ async function showSection(page, id) {
 
 async function saveCustomDictionary(page) {
   await showSection(page, "custom-dictionary");
-  await page.waitForSelector("#custom-dictionary-open", { visible: true });
-  await page.click("#custom-dictionary-open");
+  await page.waitForSelector("#custom-dictionary-source", { visible: true });
   await page.waitForFunction(() => {
     const form = document.getElementById("custom-dictionary-form");
     const status = document.getElementById("custom-dictionary-status")?.textContent ?? "";

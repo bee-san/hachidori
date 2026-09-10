@@ -1127,6 +1127,8 @@ M.FS.writeFile('/work/selected.zip', buildTitledZip(SELECTED_TITLE));
 const selectedReport = hdwImport('/work/selected.zip', '/dicts');
 reset();
 eq(addDict(DICT_DIR, 0), 1, `add primary dictionary: ${lastError()}`);
+eq(addDict(DICT_DIR, 1), 1, `add frequency dictionary: ${lastError()}`);
+eq(addDict(DICT_DIR, 2), 1, `add pitch dictionary: ${lastError()}`);
 
 check('a dictionary-scoped lookup rejects a path that is not loaded', () => {
   const response = lookupDictionary('食べる', SELECTED_DIR);
@@ -1138,7 +1140,7 @@ eq(addDict(SELECTED_DIR, 0), 1, `add selected dictionary: ${lastError()}`);
 const selectedLookup = lookupDictionary('食べる', SELECTED_DIR, 1);
 check('a dictionary-scoped lookup conforms to the lookup contract', () => {
   conforms(selectedLookup, LOOKUP_RESPONSE, 'dictionary-scoped lookup');
-  eq(selectedLookup.dictionaryCount, 2, 'overall loaded capability count');
+  eq(selectedLookup.dictionaryCount, 4, 'overall loaded capability count');
 });
 check('a dictionary-scoped lookup returns only the requested term dictionary', () => {
   ok(selectedReport.success, `selected fixture import failed: ${selectedReport.error}`);
@@ -1147,6 +1149,10 @@ check('a dictionary-scoped lookup returns only the requested term dictionary', (
     selectedLookup.results[0].term.glossaries.every(({ dictionary }) => dictionary === SELECTED_TITLE),
     JSON.stringify(selectedLookup.results[0].term.glossaries),
   );
+});
+check('a dictionary-scoped lookup retains shared frequency and pitch metadata', () => {
+  eq(selectedLookup.results[0].term.frequencies[0]?.dictionary, TITLE, 'frequency dictionary');
+  eq(selectedLookup.results[0].term.pitches[0]?.dictionary, TITLE, 'pitch dictionary');
 });
 
 G('production custom dictionary ZIP');

@@ -20,26 +20,35 @@ test("a mature snapshot uses one read-only note query across all decks with its 
   assert.deepEqual(words, ["猫", "犬"]);
   assert.deepEqual(calls, [["notesInfo", {
     query: '"note:Japanese" is:review -is:learn prop:ivl>=21',
-  }, "fixture-key", 25_000]]);
+  }, "fixture-key", 25_000, source.url]]);
   assert.deepEqual(await fetchAnkiMatureWords({ invoke: async () => [] }, source), []);
 });
 
-test("source identity includes only the note type, eligible expression fields and API key", async () => {
+test("source identity includes the endpoint, note type, eligible expression fields and API key", async () => {
   const source = await ankiMaturitySource(config());
   assert.match(source.key, /^[a-f0-9]{64}$/u);
-  assert.deepEqual({ ...source, key: undefined }, { key: undefined, model: "Japanese", fields: ["expression"], apiKey: "fixture-key" });
+  assert.deepEqual({ ...source, key: undefined }, { key: undefined,
+    url: globalThis.HDReaderOptions.normaliseAnkiConnectUrl(globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki.url),
+    model: "Japanese", fields: ["expression"], apiKey: "fixture-key" });
   for (const change of [{ deck: "Other" }, { tags: "new" }, { duplicateScope: "deck" },
     { fields: { expression: "EXPRESSION", sentence: "Sentence" } },
     { fieldTemplates: { Expression: template("{ExPrEsSiOn}"), Other: template("{sentence}") } }]) {
     assert.equal((await ankiMaturitySource(config(change))).key, source.key);
   }
-  for (const change of [{ model: "Other" }, { apiKey: "new-key" }, { fields: { expression: "Word" } },
+  for (const change of [{ url: "http://127.0.0.1:9876" }, { model: "Other" }, { apiKey: "new-key" }, { fields: { expression: "Word" } },
     { fieldTemplates: { Expression: template("{expression}"), Word: template("{expression}") } }]) {
     assert.notEqual((await ankiMaturitySource(config(change))).key, source.key);
   }
   const first = await ankiMaturitySource(config({ fieldTemplates: { Word: template("{expression}"), Expression: template("{expression}") } }));
   const second = await ankiMaturitySource(config({ fieldTemplates: { expression: template("{expression}"), WORD: template("{expression}") } }));
   assert.equal(first.key, second.key);
+  const configured = config();
+  const legacy = { ...configured };
+  delete legacy.url;
+  assert.equal((await ankiMaturitySource(legacy)).key, source.key, "missing legacy endpoint retains the default identity");
+  for (const url of ["", null, "javascript:alert(1)"]) {
+    assert.equal(await ankiMaturitySource({ ...configured, url }), null, "invalid endpoint never falls back to the default");
+  }
 });
 
 test("plain expression templates resolve case-insensitively across presets and multiple fields", async () => {

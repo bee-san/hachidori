@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { ankiNoteOptions, ankiBrowseQuery, overwriteAnkiFields, checkAnkiDuplicate,
-  findAnkiOverwriteTarget } from "../extension/anki-duplicates.js";
+import { ankiNoteOptions, ankiBrowseQuery, ankiNoteIdsQuery, overwriteAnkiFields, checkAnkiDuplicate,
+  findAnkiDuplicateNotes, findAnkiOverwriteTarget } from "../extension/anki-duplicates.js";
 
 const config = patch => ({ ...globalThis.HDReaderOptions.normaliseOptions({}).anki,
   model: "Basic", deck: "Japanese::Words", ...patch });
@@ -24,6 +24,8 @@ test("duplicate options distinguish exact deck, root descendants, all models and
 
 test("browse searches encode literal HTML and neutralize Anki query syntax", () => {
   assert.equal(ankiBrowseQuery('猫<&"*_:\\'), '"猫&lt;&amp;\\"\\*\\_\\:\\\\"');
+  assert.equal(ankiNoteIdsQuery([7, 3, 7]), "nid:7,3");
+  assert.throws(() => ankiNoteIdsQuery([]), /note IDs/u);
 });
 
 test("all overwrite modes preserve empty values and defer audio-only fields until enrichment", () => {
@@ -93,6 +95,33 @@ test("overwrite target retains Anki order but requires the same model and author
   assert.equal(calls[1].params.query, '"dupe:123,猫"');
   assert.equal((await findAnkiOverwriteTarget(invoke, note(), "Front", config({ duplicateScope: "deck-root" }))).noteId, 7);
   assert.equal((await findAnkiOverwriteTarget(invoke, note(), "Front", config())).noteId, 8);
+});
+
+test("duplicate discovery returns every exact scoped note across configured models", async () => {
+  const calls = [];
+  const invoke = async (action, params) => {
+    calls.push({ action, params });
+    if (action === "modelNamesAndIds") return { Basic: 123, Other: 456 };
+    if (action === "findNotes") return params.query.includes("123") ? [9, 8] : [7, 6];
+    if (action === "notesInfo") return [
+      { noteId: 6, modelName: "Other", fields: { Front: { value: "猫" } }, cards: [60] },
+      { noteId: 7, modelName: "Other", fields: { Front: { value: "猫" } }, cards: [70] },
+      { noteId: 8, modelName: "Basic", fields: { Front: { value: "猫" } }, cards: [80] },
+      { noteId: 9, modelName: "Basic", fields: { Front: { value: "猫" } }, cards: [90] },
+    ];
+    if (action === "cardsInfo") return [
+      { note: 6, deckName: "Outside" },
+      { note: 7, deckName: "Japanese::Words::Child" },
+      { note: 8, deckName: "Japanese::Words" },
+      { note: 9, deckName: "Japanese" },
+    ];
+    throw new Error(`Unexpected ${action}`);
+  };
+  const found = await findAnkiDuplicateNotes(invoke, note(), "Front",
+    config({ duplicateScope: "deck-root", duplicateScopeCheckAllModels: true }));
+  assert.deepEqual(found.map(value => [value.noteId, value.modelName]), [[9, "Basic"], [8, "Basic"], [7, "Other"]]);
+  assert.deepEqual(calls.filter(call => call.action === "findNotes").map(call => call.params.query),
+    ['"dupe:123,猫"', '"dupe:456,猫"']);
 });
 
 test("overwrite queries use Anki's exact stripped-HTML duplicate identity, not case-insensitive field search", async () => {

@@ -2,18 +2,100 @@
 (function () {
   "use strict";
   const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
+  const extensionAsset = path => globalThis.chrome?.runtime?.getURL?.(path) || path;
+  const FEEDBACK_PRIORITY = { info: 0, success: 1, warning: 2, error: 3 };
+  function syncFeedbackSurface(feedback) {
+    const visible = [...feedback.querySelectorAll(".gsm-hoshidicts-anki-control")]
+      .filter(control => !control.hidden);
+    feedback.hidden = visible.length === 0;
+    if (visible.length === 0) {
+      delete feedback.dataset.kind;
+      return;
+    }
+    feedback.dataset.kind = visible.reduce((kind, control) => {
+      const next = control.dataset.kind || "info";
+      return FEEDBACK_PRIORITY[next] > FEEDBACK_PRIORITY[kind] ? next : kind;
+    }, "info");
+  }
+  function syncFeedback(record) {
+    if (!record.control) return;
+    record.control.hidden = record.hidden || (record.badge.hidden && record.output.textContent === "");
+    syncFeedbackSurface(record.feedback);
+  }
+  function setStatus(record, value, kind = "info") {
+    text(record.output, value);
+    record.control.dataset.kind = kind;
+    syncFeedback(record);
+  }
+  function setMiningButtonState(record, state, message = "") {
+    const button = record.add;
+    button.dataset.state = state;
+    const title = message || {
+      checking: "Checking Anki availability",
+      ready: "Mine to Anki",
+      "add-duplicate": "Add duplicate to Anki",
+      overwrite: "Overwrite note in Anki",
+      "view-existing": "View existing notes in Anki",
+      mining: "Adding note",
+      success: "Note added",
+      error: "Could not add note",
+      duplicate: "Note already exists",
+      unavailable: "Anki mining is unavailable",
+    }[state] || "Mine to Anki";
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    const iconName = {
+      ready: "big-circle",
+      "add-duplicate": "add-duplicate-big-circle",
+      overwrite: "overwrite-big-circle",
+      "view-existing": "view-note",
+    }[state];
+    const icon = button.ownerDocument.createElement(iconName ? "img" : "span");
+    icon.className = "gsm-hoshidicts-mine-icon";
+    icon.setAttribute("aria-hidden", "true");
+    if (iconName) {
+      icon.dataset.icon = iconName;
+      icon.src = extensionAsset(`render/icons/${iconName}.svg`);
+      icon.alt = "";
+      icon.draggable = false;
+    }
+    else icon.textContent = {
+      checking: "…",
+      mining: "⟳",
+      success: "✓",
+      error: "!",
+      unavailable: "-",
+    }[state] || "-";
+    button.replaceChildren(icon);
+  }
+  function viewsExisting(record) {
+    return record.decision?.state === "duplicate" && record.decision.canAdd === false;
+  }
   function disabled(record) {
     if (!record.add) return;
-    record.add.disabled = record.busy || record.terminal || record.group.checking || !record.decision?.canAdd;
+    record.add.disabled = record.busy || record.terminal || record.group.checking
+      || (!record.decision?.canAdd && !viewsExisting(record));
   }
   function payload(record) {
     return { ...record.group.getRequest(record.result), configKey: record.group.configKey };
   }
-  function decisionLabel(value) {
-    if (value.action === "overwrite" && value.canAdd) return "Overwrite";
-    if (value.state === "duplicate" && !value.canAdd) return "In Anki";
-    if (value.state === "invalid" || value.state === "error") return "Cannot add";
-    return "Add to Anki";
+  function decisionState(value) {
+    if (value.action === "overwrite" && value.canAdd) return "overwrite";
+    if (value.state === "duplicate") return value.canAdd ? "add-duplicate" : "view-existing";
+    if (value.state === "invalid" || value.state === "error") return "error";
+    return "ready";
+  }
+  function showControls(record, value) {
+    record.hidden = !value;
+    if (record.add) record.add.hidden = !value;
+    if (record.view) record.view.hidden = !value || viewsExisting(record);
+    syncFeedback(record);
+  }
+  function removeControls(record) {
+    record?.add?.remove();
+    record?.view?.remove();
+    record?.control?.remove();
+    if (record?.feedback) syncFeedbackSurface(record.feedback);
   }
   function captureBadge(record, state = "") {
     if (!record.badge) return;
@@ -21,26 +103,28 @@
     record.badge.hidden = !capture;
     if (!capture) {
       text(record.badge, "");
+      syncFeedback(record);
       return;
     }
     const labels = [capture.sourceLabel, capture.partial ? "Partial" : "", state].filter(Boolean);
     text(record.badge, labels.join(" · "));
+    syncFeedback(record);
   }
   function decision(record, value) {
     record.decision = value;
     if (!record.terminal && !record.busy) {
-      record.add.dataset.state = value.state;
-      text(record.add, decisionLabel(value));
-      text(record.output, value.error || "");
+      const state = decisionState(value);
+      setMiningButtonState(record, state, state === "view-existing" ? "" : value.error || "");
+      setStatus(record, value.error || "", value.error ? "error" : "info");
     }
+    if (record.view) record.view.hidden = record.hidden || viewsExisting(record);
     captureBadge(record);
     disabled(record);
   }
   function uncertain(record, error) {
     record.terminal = true;
-    record.add.dataset.state = "uncertain";
-    text(record.add, "Check Anki");
-    text(record.output, error);
+    setMiningButtonState(record, "error", "Check Anki before trying again");
+    setStatus(record, error, "error");
   }
   function readyCaptureRequest(record, request, requirements, assets) {
     captureBadge(record);
@@ -52,11 +136,11 @@
   function captureProgress(record, status) {
     if (status.state === "finishing") {
       captureBadge(record, "Finishing clip");
-      text(record.output, "Finishing clip…");
+      setStatus(record, "Finishing clip…");
     } else {
       captureBadge(record);
       const progress = status.total > 0 ? ` ${status.progress}/${status.total}` : "";
-      text(record.output, `Encoding captured media${progress}…`);
+      setStatus(record, `Encoding captured media${progress}…`);
     }
   }
   function createAnkiController({
@@ -77,7 +161,7 @@
     function available(group, value) {
       for (const record of group.records) {
         if (value && record.actions.isConnected) controls(record);
-        if (record.control) record.control.hidden = !value;
+        if (record.control) showControls(record, value);
         if (!value) record.needsCheck = false;
       }
     }
@@ -121,7 +205,10 @@
       if (all) for (const record of group.records) record.needsCheck = !record.terminal;
       if (!live(group) || group.queued || !group.records.some(needsCheck)) return;
       group.queued = group.checking = true;
-      group.records.forEach(disabled);
+      group.records.forEach(record => {
+        if (needsCheck(record) && record.add) setMiningButtonState(record, "checking");
+        disabled(record);
+      });
       const operation = () => checkGroup(group);
       checks = checks.then(operation, operation);
     }
@@ -146,7 +233,7 @@
       record.screenshotWarning = "";
       record.screenshot = null;
       if (record.decision?.screenshot !== true) return request;
-      if (owns()) text(record.output, "Taking the screenshot…");
+      if (owns()) setStatus(record, "Taking the screenshot…");
       try {
         const taken = await conceal(() => send("hd_anki_screenshot", {}));
         if (typeof taken?.filename !== "string" || !taken.filename) throw new Error("no screenshot was taken");
@@ -163,11 +250,11 @@
       // A configuration epoch can change while Anki commits. The submitted
       // record still owns its outcome; never turn a known write into a retry.
       record.terminal = true;
-      record.add.dataset.state = "success";
       const label = result.state === "added" ? "Added" : "Updated";
-      text(record.add, label);
-      text(record.output, `${label} note ${result.noteId}. ${[record.screenshotWarning, ...result.warnings]
-        .filter(Boolean).join(" ")}`.trim());
+      const warnings = [record.screenshotWarning, ...(result.warnings ?? [])].filter(Boolean);
+      setMiningButtonState(record, "success", `${label} note`);
+      setStatus(record, `${label} note ${result.noteId}. ${warnings.join(" ")}`.trim(),
+        warnings.length > 0 ? "warning" : "success");
       refreshAll(); // Best-effort checks cannot turn a confirmed write into a retry.
       return true;
     }
@@ -203,12 +290,13 @@
       const request = (fromPointer && record.pointerRequest) || payload(record);
       record.pointerRequest = null;
       record.busy = true;
+      setMiningButtonState(record, "mining");
       disabled(record);
-      text(record.output, "Saving to Anki…");
+      setStatus(record, "Saving to Anki…");
       let writeSent = false;
       try {
         const prepared = await prepareCapture(record, await prepareScreenshot(record, request, owns), owns);
-        if (owns()) text(record.output, "Saving to Anki…");
+        if (owns()) setStatus(record, "Saving to Anki…");
         writeSent = true;
         const result = await send("hd_anki_submit", { request: prepared });
         // These replies confirm that no note was written. Release the export
@@ -219,43 +307,82 @@
         // Nothing was sent, so the picture this submission took is nobody's.
         if (!writeSent) await discardScreenshot(record);
         if (writeSent && !error.responseReceived) uncertain(record, `The write could not be confirmed. Use View in Anki before trying again. ${error.message}`);
-        else if (owns()) text(record.output, `Could not add: ${error.message}`);
+        else if (owns()) {
+          setMiningButtonState(record, decisionState(record.decision));
+          setStatus(record, `Could not add: ${error.message}`, "error");
+        }
       } finally {
         record.busy = false;
         if (current(record)) { disabled(record); onChange(record.group.owner); refresh(record.group); }
       }
     }
-    async function browse(record) {
-      if (!current(record) || record.view.disabled) return;
-      record.view.disabled = true;
-      try { await send("hd_anki_browse", { expression: record.result.term.expression }); }
-      catch (error) { if (current(record)) text(record.output, `Could not open Anki: ${error.message}`); }
-      finally { if (current(record)) { record.view.disabled = false; onChange(record.group.owner); } }
+    async function browse(record, exact = false) {
+      const button = exact ? record.add : record.view;
+      if (!current(record) || button.disabled) return;
+      button.disabled = true;
+      try {
+        await send("hd_anki_browse", { request: {
+          noteIds: exact && Array.isArray(record.decision?.noteIds) ? record.decision.noteIds : [],
+          expression: record.result.term.expression,
+        } });
+      }
+      catch (error) { if (current(record)) setStatus(record, `Could not open Anki: ${error.message}`, "error"); }
+      finally {
+        if (current(record)) {
+          if (exact) disabled(record);
+          else record.view.disabled = false;
+          onChange(record.group.owner);
+        }
+      }
     }
     function controls(record) {
       if (record.control) return;
       const document = record.actions.ownerDocument;
+      const feedback = record.feedback || document.createElement("div");
+      if (!record.feedback) {
+        feedback.className = "gsm-hoshidicts-mining-feedback";
+        feedback.setAttribute("role", "status");
+        feedback.setAttribute("aria-live", "polite");
+        feedback.hidden = true;
+        record.actions.after(feedback);
+      }
       const control = document.createElement("div");
       control.className = "gsm-hoshidicts-anki-control";
       const add = document.createElement("button"), view = document.createElement("button");
       add.type = view.type = "button";
       add.className = "gsm-hoshidicts-mine-button";
-      view.className = "gsm-hoshidicts-anki-view";
-      add.textContent = "Add to Anki";
-      view.textContent = "View";
-      add.setAttribute("aria-label", `Add ${record.result.term.expression} to Anki`);
-      view.setAttribute("aria-label", `View ${record.result.term.expression} in Anki`);
+      view.className = "gsm-hoshidicts-anki-view gsm-hoshidicts-view-in-anki-button gsm-hoshidicts-text-action-button";
+      view.title = "Open note in Anki";
+      view.setAttribute("aria-label", view.title);
+      const viewIcon = document.createElement("img");
+      viewIcon.className = "gsm-hoshidicts-view-in-anki-icon";
+      viewIcon.src = extensionAsset("render/icons/view-note.svg");
+      viewIcon.alt = "";
+      viewIcon.draggable = false;
+      view.appendChild(viewIcon);
       const badge = document.createElement("span");
       badge.className = "gsm-hoshidicts-capture-badge";
       badge.hidden = true;
       const output = document.createElement("output");
       output.className = "gsm-hoshidicts-anki-status";
       output.setAttribute("aria-live", "polite");
-      control.append(badge, add, view, output);
-      record.actions.prepend(control);
-      Object.assign(record, { control, add, view, badge, output });
-      add.addEventListener("mousedown", event => { if (event.button === 0 && current(record)) record.pointerRequest = payload(record); });
-      add.addEventListener("click", event => { void submit(record, event.detail > 0); });
+      control.append(badge, output);
+      control.hidden = true;
+      feedback.append(control);
+      record.actions.prepend(add);
+      const actionAnchor = record.actions.querySelector(".gsm-hoshidicts-note-button")
+        || record.actions.querySelector(".gsm-hoshidicts-audio-control")
+        || add;
+      actionAnchor.after(view);
+      Object.assign(record, { feedback, control, add, view, badge, output, hidden: false });
+      setMiningButtonState(record, "checking");
+      add.addEventListener("mousedown", event => {
+        if (event.button === 0 && current(record) && !viewsExisting(record)) record.pointerRequest = payload(record);
+      });
+      add.addEventListener("click", event => {
+        if (viewsExisting(record)) void browse(record, true);
+        else void submit(record, event.detail > 0);
+      });
       view.addEventListener("click", () => { void browse(record); });
       disabled(record);
     }
@@ -268,7 +395,7 @@
       for (const item of items) {
         let record = bound.get(item.actions);
         if (record?.group === group && record.result === item.result) continue;
-        record?.control?.remove();
+        removeControls(record);
         record = { ...item, group, busy: false, terminal: false, decision: null, needsCheck: true,
           captureJobId: null };
         bound.set(item.actions, record);
@@ -282,7 +409,7 @@
       for (const [key, group] of owners) {
         if (owner !== undefined && owner !== key) continue;
         owners.delete(key);
-        for (const record of group.records) if (record.control) record.control.hidden = true;
+        for (const record of group.records) if (record.control) showControls(record, false);
       }
     }
     return { bind, retire,
@@ -294,7 +421,7 @@
         enabled = ready && Boolean(options.anki.model);
         for (const group of owners.values()) {
           group.epoch++;
-          for (const record of group.records) if (record.control) record.control.hidden = true;
+          for (const record of group.records) if (record.control) showControls(record, false);
           refresh(group, true);
         }
       },

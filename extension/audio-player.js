@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createAudioRepository } from "./audio-repository.js";
+import { resolveSpeech } from "./speech.js";
 
 // One pronunciation owner; playback leases and native speech callbacks belong
 // to that operation. The shared offscreen repository owns warm media, not WASM.
@@ -42,22 +43,17 @@ export function createAudioPlayer({ window, fetch, repository = createAudioRepos
   }
 
   async function playSpeech(source, term, signal, onPlaying) {
-    const speech = window.speechSynthesis;
-    const voices = speech.getVoices();
-    if (voices.length === 0) throw new Error("No speech voices are available in this browser.");
-    const text = source.type === "text-to-speech-reading" ? term.reading || term.expression : term.expression;
-    const utterance = new window.SpeechSynthesisUtterance(text);
-    utterance.lang = "ja-JP";
-    const voice = voices.find(voice => voice.voiceURI === source.voice || voice.name === source.voice);
-    if (source.voice && !voice) throw new Error("The selected speech voice is no longer available. Choose another voice in Audio Settings.");
-    if (voice) utterance.voice = voice;
-    const candidate = { name: voice?.name || "System default", text, voice: source.voice, index: 0 };
+    const { speech, utterance, candidate } = await resolveSpeech(window, source, term, signal);
+    signal.throwIfAborted();
     let abort;
     try {
       await new Promise((resolve, reject) => {
         utterance.onend = resolve;
         utterance.onstart = () => { if (!signal.aborted) onPlaying?.(candidate); };
-        utterance.onerror = () => reject(new Error("Text-to-speech could not be played."));
+        utterance.onerror = event => {
+          const detail = event.error ? ` (${event.error})` : "";
+          reject(new Error(`Text-to-speech could not be played${detail}.`));
+        };
         abort = () => {
           // Cancel synchronously, before a newer operation can speak. A late
           // finally calling global speech.cancel() would stop that new voice.

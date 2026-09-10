@@ -85,7 +85,7 @@ export function createPracticeView({ document, onDismiss, loadReader, onReaderSe
   let currentDictionaries;
   let currentOutcome;
 
-  lookup.addEventListener("click", () => {
+  function selectLookupWord() {
     // Selection is the reader's existing keyboard/precise-lookup route. No
     // synthetic lookup result or separate renderer is involved.
     text.focus({ preventScroll: true });
@@ -94,7 +94,9 @@ export function createPracticeView({ document, onDismiss, loadReader, onReaderSe
     const selection = document.defaultView.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
-  });
+  }
+
+  lookup.addEventListener("click", selectLookupWord);
   createLocalFileAccessController({ document, container: find("setup-file-access"), onDismiss });
 
   function startReader() {
@@ -141,5 +143,13 @@ export function createPracticeView({ document, onDismiss, loadReader, onReaderSe
     }
     return readiness;
   }
-  return { node, update };
+  return {
+    node,
+    update,
+    lookup() {
+      if (lookup.disabled || lookup.hidden || !node.isConnected) return false;
+      selectLookupWord();
+      return true;
+    },
+  };
 }

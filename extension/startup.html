@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Set up Hachidori</title>
     <link rel="stylesheet" href="settings.css" />
+    <link rel="stylesheet" href="dictionary-progress.css" />
     <link rel="stylesheet" href="visual-novel.css" />
     <link rel="stylesheet" href="startup.css" />
     <!-- The practice step loads the reader itself; its page styles come with the page. -->
@@ -19,7 +20,7 @@
           <img src="icons/hachidori-128.png" width="48" height="48" alt="" />
           <div>
             <h1>Hachidori</h1>
-            <p class="startup-tagline">Private Japanese lookups, entirely in Chrome.</p>
+            <p class="startup-tagline">Blazing fast, feature rich Japanese dictionary by Bee</p>
           </div>
         </div>
         <a class="startup-settings-link" href="settings.html">Open Settings</a>
@@ -41,7 +42,19 @@
         <div class="setup-actions" id="setup-actions"></div>
         <output class="setup-status" id="setup-status" aria-live="polite"></output>
       </section>
-      <a class="startup-settings-link" href="https://github.com/bee-san/hachidori/blob/main/docs/privacy.md" target="_blank" rel="noopener noreferrer">Privacy policy</a>
+      <footer class="startup-footer">
+        <p>
+          Made by Bee
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/bee-san" target="_blank" rel="noopener noreferrer">bee-san on GitHub</a>
+          <span aria-hidden="true">·</span>
+          <a href="https://skerritt.blog" target="_blank" rel="noopener noreferrer">skerritt.blog</a>
+        </p>
+        <a class="startup-star-link" href="https://github.com/bee-san/hachidori" target="_blank" rel="noopener noreferrer">
+          <span aria-hidden="true">★</span>
+          Star Hachidori on GitHub
+        </a>
+      </footer>
     </main>
     <script type="module" src="startup.js"></script>
   </body>

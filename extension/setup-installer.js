@@ -100,12 +100,15 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
 
   // The row settles only once its outcome is durable, so a reconnecting page
   // never sees a finished row whose record is still in flight. The last row's
-  // record also carries the run's duration: a terminated document must not be
-  // able to leave every outcome settled with the run accounting missing, which
-  // nothing could later reconstruct.
+  // record also carries the run's installation duration: a terminated document
+  // must not be able to leave every outcome settled with the run accounting
+  // missing, which nothing could later reconstruct.
   async function settle(entry, outcome, last = false) {
+    if (outcome.seconds !== null && outcome.seconds !== undefined) {
+      run.installSeconds += outcome.seconds;
+    }
     await record(last
-      ? { outcomes: { [entry.sourceId]: outcome }, runSeconds: (now() - run.startedAt) / 1000 }
+      ? { outcomes: { [entry.sourceId]: outcome }, runSeconds: run.installSeconds }
       : { outcomes: { [entry.sourceId]: outcome } });
     entry.phase = outcome.status;
     entry.seconds = outcome.seconds ?? null;
@@ -115,7 +118,6 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
 
   async function importEntry(entry, source, last) {
     entry.phase = "downloading";
-    entry.startedAt = now();
     emit();
     let reply;
     do {
@@ -135,9 +137,9 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
         fileName: source.archiveName,
       });
     } while (reply?.ok !== true && reply?.error === ENGINE_BUSY);
-    const seconds = (now() - entry.startedAt) / 1000;
+    const seconds = entry.installStartedAt === null ? null : (now() - entry.installStartedAt) / 1000;
     if (reply?.ok === true && reply.report?.success === true) {
-      await settle(entry, { status: "installed", seconds }, last);
+      await settle(entry, { status: "installed", seconds: seconds ?? 0 }, last);
     } else {
       await settle(entry, { status: "failed", seconds, error: reply?.error || reply?.report?.error || "the import did not complete" }, last);
     }
@@ -156,7 +158,8 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
         }
         await importEntry(entry, source, last);
       } catch (error) {
-        await settle(entry, { status: "failed", seconds: entry.startedAt === null ? null : (now() - entry.startedAt) / 1000, error: describe(error) }, last);
+        const seconds = entry.installStartedAt === null ? null : (now() - entry.installStartedAt) / 1000;
+        await settle(entry, { status: "failed", seconds, error: describe(error) }, last);
       }
     }
     run.finished = true;
@@ -176,10 +179,10 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
           runId: randomId(),
           sequence: 0,
           finished: false,
-          startedAt: now(),
+          installSeconds: 0,
           entries: sources.map((source) => ({
             sourceId: source.sourceId, phase: "waiting", receivedBytes: 0, totalBytes: null,
-            seconds: null, error: null, startedAt: null,
+            seconds: null, error: null, installStartedAt: null,
           })),
         };
         execute().catch((error) => {
@@ -198,6 +201,7 @@ export function createSetupInstaller({ dispatch, ask, notify, broadcast, now = (
       if (entry === undefined || entry.phase !== "downloading" && entry.phase !== "installing") return;
       if (event.phase === "installing") {
         entry.phase = "installing";
+        entry.installStartedAt ??= now();
       } else if (event.phase === "downloading") {
         entry.receivedBytes = Number(event.receivedBytes) || 0;
         entry.totalBytes = Number.isSafeInteger(event.totalBytes) && event.totalBytes > 0 ? event.totalBytes : null;
