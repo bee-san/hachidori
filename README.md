@@ -59,7 +59,7 @@ It is even 3.5 times faster at looking up words.
 
 Hachidori can record your screen and capture sentence audio + a gif. Not just in Chrome but in all windows on your desktop.
 
-This feature is **experimental** and may not work very well.
+This feature is **experimental** and may not work very well. I may remove it or reduce it also.
 
 See [Media mining setup, limits, and verification](docs/media-capture.md).
 
