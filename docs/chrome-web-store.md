@@ -108,7 +108,7 @@ The policy covers the paths below; use this mapping when completing the dashboar
 | --- | --- | --- |
 | Page text and lookup activity | Pointer/selection text and surrounding context support lookup and mining. Local statistics retain term, reading, count and first/last lookup timestamps. Turning off lookup counts pauses recording and preserves past rows, which do not store page URLs. | [Reader](../extension/content.js), [statistics](../extension/lookup-stats.js) |
 | Dictionaries and personal settings | Imported/generated dictionaries and custom entries remain in extension storage. Preferences include custom URLs, CSS, templates and an optional AnkiConnect API key. | [Storage ownership](architecture.md#storage-ownership) |
-| Dictionary downloads | After Start setup, the installer downloads Jitendex, JMnedict, Bee's Ultimate Kanji Dictionary and Jiten Frequency Dictionary. Their GitHub/GitHub asset hosts, jitendex.org and api.jiten.moe receive ordinary requests/IP metadata. Managed updates contact installed source URLs when checked or scheduled. These requests are not a remote term-lookup service. | [Catalogue](../extension/recommended-dictionaries.js), [updates](update-schedules.md) |
+| Dictionary downloads | After Start setup, the installer downloads Jitendex, JMnedict, Bee's Ultimate Kanji Dictionary, Jiten Frequency Dictionary and Bee's Ultimate Grammar Dictionary. Their GitHub/GitHub asset hosts, jitendex.org and api.jiten.moe receive ordinary requests/IP metadata. Managed updates contact installed source URLs when checked or scheduled. These requests are not a remote term-lookup service. | [Catalogue](../extension/recommended-dictionaries.js), [updates](update-schedules.md) |
 | Pronunciation | Configured custom audio providers receive the expression/reading substituted into their URLs. Built-in speech uses the browser/OS voice; the code does not require a `localService` voice, so do not promise every voice works offline. | [Sources](../extension/audio-sources.js), [player](../extension/audio-player.js) |
 | Anki | Requests go to `http://127.0.0.1:8765`. After Start setup, Anki discovery reads deck/model/card/note metadata; enabled mature-word blur retrieves mature expressions from the configured note type for a local cache every 30 minutes. The cache retains expressions, refresh times and a configuration identifier when disabled. Explicit mining can send selected text, definitions, page title, audio, images and captured media according to field mappings. Anki controls any subsequent sync. | [Gateway](../extension/anki.js), [setup](../extension/anki-setup.js), [maturity](../extension/anki-maturity.js), [mining](../extension/anki-mining.js) |
 | Lookup counts / texthooker | Lookup counts stay in this browser and never contact an external service. Optional capture texthooker receives timing/text over a loopback WebSocket. | [Statistics](lookup-statistics.md), [capture](media-capture.md) |
@@ -258,7 +258,7 @@ See [publishing](https://developer.chrome.com/docs/webstore/publish) and
 Provide reviewer instructions specific to Hachidori:
 
 1. Install in a fresh profile. Read the short welcome and click **Start setup**.
-   Setup sequentially downloads the four starter dictionaries; failures offer
+   Setup sequentially downloads the five starter dictionaries; failures offer
    retry. Anki discovery is read-only and
    absence of Anki does not prevent dictionary lookup.
 2. At **Try it**, hover the Japanese sample to see a real dictionary result.

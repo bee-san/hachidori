@@ -87,7 +87,7 @@ archives for the error and path-safety checks. The ZIP container is written by
 hand with `node:zlib` — the engine's reader only needs local file headers, a
 central directory and raw deflate streams, and that is about 80 lines.
 The exported `buildRecommendedZip()` helper builds the small in-memory archives
-used when tests intercept the four recommendation URLs; it does not contact the
+used when tests intercept the five recommendation URLs; it does not contact the
 publishers.
 
 The `.zip` is checked against `third_party/hoshidicts/src/json/yomitan_parser.cpp`

@@ -463,7 +463,7 @@ function dictionariesView() {
   const importNote = settingsNote("Import your own dictionary ZIPs in ", "settings.html#add-dictionaries");
   const installingView = () => ({
     heading: "Installing default dictionaries…",
-    body: [paragraph("These four dictionaries get you started. Installation continues if you close this tab; use Resume setup in Settings to return."), rows, importNote],
+    body: [paragraph("These five dictionaries get you started. Installation continues if you close this tab; use Resume setup in Settings to return."), rows, importNote],
     actions: [],
   });
   if (attaching !== null && !attaching.installing && !runActive()) {

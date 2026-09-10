@@ -183,6 +183,11 @@ const RECOMMENDED_FIXTURE_METADATA = {
     capabilities: ["term", "freq", "media"],
   },
   jiten: { title: "Jiten", revision: "Jiten 26-09-02", capabilities: ["freq"] },
+  "bees-ultimate-grammar-dictionary": {
+    title: "Bee's Ultimate Grammar Dictionary",
+    revision: "2026.09.10",
+    capabilities: ["term"],
+  },
 };
 const RECOMMENDED_DICTIONARIES = RECOMMENDED_CATALOGUE.map((entry) => ({
   ...entry,
@@ -289,7 +294,7 @@ const PLANNED = [
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
   "dictionary CSS cannot paint or intercept input outside its glossary card",
-  "settings page renders exactly four safe recommended dictionary links",
+  "settings page renders exactly five safe recommended dictionary links",
   "recommended dictionaries form a readable list on desktop",
   "recommended dictionaries stack without overflow on narrow screens",
   "a clean profile shows one recommended install action beside local import",
@@ -7077,6 +7082,7 @@ async function main() {
         ["jmnedict", "Waiting", null, null],
         ["bees-ultimate-kanji-dictionary", "Waiting", null, null],
         ["jiten", "Waiting", null, null],
+        ["bees-ultimate-grammar-dictionary", "Waiting", null, null],
       ])
       && startupShell.importLink && startupShell.settingsLink && startupShell.actions.length === 0
       && startupShell.status === "Installing default dictionaries."
@@ -7216,6 +7222,7 @@ async function main() {
         ["jmnedict", "Failed: could not read JMnedict.zip: HTTP 503"],
         ["bees-ultimate-kanji-dictionary", "Installed in N seconds"],
         ["jiten", "Installed in N seconds"],
+        ["bees-ultimate-grammar-dictionary", "Installed in N seconds"],
       ])
       && JSON.stringify(runOutcome.actions) === JSON.stringify([["setup-retry", "Retry missing dictionaries"], ["setup-continue", "Continue setup"]])
       && runOutcome.countdown === null && runOutcome.importLink
@@ -7234,7 +7241,7 @@ async function main() {
       && !seenPhase("bees-ultimate-kanji-dictionary", (row) => row[2] === true)
       && seenPhase("bees-ultimate-kanji-dictionary", (row) => /^Downloading… [\d.]+ (KB|MB)$/u.test(row[1]) && row[3] === row[1])
       && JSON.stringify(setupArchives.requests) === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
-      && ["jitendex", "bees-ultimate-kanji-dictionary", "jiten"].every((sourceId) => runOutcomes[sourceId]?.status === "installed" && runOutcomes[sourceId].seconds > 0)
+      && ["jitendex", "bees-ultimate-kanji-dictionary", "jiten", "bees-ultimate-grammar-dictionary"].every((sourceId) => runOutcomes[sourceId]?.status === "installed" && runOutcomes[sourceId].seconds > 0)
       && runOutcomes.jmnedict?.status === "failed" && runOutcomes.jmnedict.error === "could not read JMnedict.zip: HTTP 503"
       && afterRun.setupState.dictionaries.totalSeconds > 0 && afterRun.setupState.dictionaries.continued === false
       && afterRun.setupState.stage === "dictionaries"
@@ -7242,7 +7249,7 @@ async function main() {
         .map(({ sourceId, title }) => [sourceId, title]).sort())
       && startupTabs() === 1,
     JSON.stringify({ runOutcome, rowLog, phases: phases.map(({ rows, status }) => [rows, status]), afterRun, requests: setupArchives.requests,
-      phaseOrders: ["jitendex", "jmnedict", "bees-ultimate-kanji-dictionary", "jiten"].map(phaseOrder), events: setupEvents.length }),
+      phaseOrders: RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId).map(phaseOrder), events: setupEvents.length }),
   );
 
   // Settings keeps the catalogue and the missing-only retry available during partial setup.
@@ -7315,7 +7322,10 @@ async function main() {
   check(
     "Retry installs only the missing dictionary and the committed entries settle their selections once",
     settingsAfterRun.starterHidden === false && settingsAfterRun.retryHidden === false
-      && JSON.stringify(setupArchives.requests.slice(4)) === JSON.stringify(["jmnedict"])
+      // Everything after the first pass over the whole catalogue: only the source
+      // that failed is requested again.
+      && JSON.stringify(setupArchives.requests.slice(RECOMMENDED_DICTIONARIES.length))
+        === JSON.stringify(["jmnedict"])
       && retried?.heading === `All dictionaries installed in ${afterRetry.setupState.dictionaries.totalSeconds < 10
         ? afterRetry.setupState.dictionaries.totalSeconds.toFixed(1) : Math.round(afterRetry.setupState.dictionaries.totalSeconds)} seconds`
       && retried.rows.every((row) => /^Installed in \d+(\.\d+)? seconds$/u.test(row[1]))
@@ -7600,7 +7610,7 @@ async function main() {
   });
   const desktopLinks = desktopRecommendations.links.map(([name, url]) => [name, url]);
   check(
-    "settings page renders exactly four safe recommended dictionary links",
+    "settings page renders exactly five safe recommended dictionary links",
     JSON.stringify(desktopLinks) === JSON.stringify(RECOMMENDED_LINKS)
       && desktopRecommendations.links.every(([, , target, rel]) =>
         target === "_blank" && rel.split(/\s+/u).includes("noopener") && rel.split(/\s+/u).includes("noreferrer")),
@@ -7721,10 +7731,14 @@ async function main() {
   page.on("request", recommendedRequestHandler);
 
   await page.click("#install-recommended");
-  const recommendedFirstState = await page.waitForFunction(() => {
+  // The count is derived from the catalogue and passed IN: this predicate runs in
+  // the page, where the Node-side catalogue does not exist, and a hardcoded count
+  // would silently stop settling the moment a source is added.
+  const recommendedFirstState = await page.waitForFunction((total) => {
     const text = document.getElementById("import-state")?.textContent?.trim() ?? "";
-    return text.startsWith("Finished 4 of 4 recommended dictionaries") ? text : false;
-  }, { timeout: 120_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => "(never settled)");
+    return text.startsWith(`Finished ${total} of ${total} recommended dictionaries`) ? text : false;
+  }, { timeout: 120_000, polling: 100 }, RECOMMENDED_DICTIONARIES.length)
+    .then((handle) => handle.jsonValue()).catch(() => "(never settled)");
   const recommendedFirst = await page.evaluate(() => ({
     state: document.getElementById("import-state")?.textContent?.trim() ?? "",
     sharedRows: document.querySelector("#import-progress .setup-dictionary-list")
@@ -7741,7 +7755,9 @@ async function main() {
   const firstRecommendedPackages = recommendedFirstStorage.dictionaryState?.dictionaries ?? [];
   check(
     "the recommended installer continues after a mocked download failure",
-    recommendedFirstState === "Finished 4 of 4 recommended dictionaries — 3 imported, 1 failed."
+    recommendedFirstState === `Finished ${RECOMMENDED_DICTIONARIES.length} of `
+      + `${RECOMMENDED_DICTIONARIES.length} recommended dictionaries`
+      + ` — ${RECOMMENDED_DICTIONARIES.length - 1} imported, 1 failed.`
       && JSON.stringify(recommendedRequests) === JSON.stringify(
         RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId),
       )
@@ -7749,11 +7765,12 @@ async function main() {
       && recommendedFirst.starterHidden === false
       && recommendedFirst.retryHidden === false
       && recommendedFirst.localInputVisible === true
-      && recommendedFirst.outcomes.length === 4
+      && recommendedFirst.outcomes.length === RECOMMENDED_DICTIONARIES.length
+      // Only jmnedict's download is mocked to fail; every other source imports.
       && JSON.stringify(recommendedFirst.outcomes.map(({ error }) => error))
-        === JSON.stringify([false, true, false, false])
+        === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId === "jmnedict"))
       && recommendedFirst.outcomes.every(({ text }) => /\d+(?:\.\d)? seconds/u.test(text))
-      && firstRecommendedPackages.length === 3
+      && firstRecommendedPackages.length === RECOMMENDED_DICTIONARIES.length - 1
       && firstRecommendedPackages.every((dictionary) => {
         const entry = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === dictionary.sourceId);
         return entry
@@ -7768,18 +7785,21 @@ async function main() {
   );
 
   await page.reload({ waitUntil: "domcontentloaded" });
-  const reloadedRecommended = await page.waitForFunction(() => {
+  // Everything but the source whose download was mocked to fail is in the library.
+  const installedAfterFailure = RECOMMENDED_DICTIONARIES.length - 1;
+  const reloadedRecommended = await page.waitForFunction((expected) => {
     const rows = document.querySelectorAll("#dict-list .dict-row").length;
-    return rows === 3 ? {
+    return rows === expected ? {
       rows,
       starterHidden: document.getElementById("recommended-starter")?.hidden,
       retryHidden: document.getElementById("recommended-retry")?.hidden,
       localInputVisible: document.getElementById("import-file")?.closest(".file-button")?.hidden !== true,
     } : false;
-  }, { timeout: 90_000, polling: 100 }).then((handle) => handle.jsonValue()).catch(() => null);
+  }, { timeout: 90_000, polling: 100 }, installedAfterFailure)
+    .then((handle) => handle.jsonValue()).catch(() => null);
   check(
     "missing recommended dictionaries stay available after a settings reload",
-    reloadedRecommended?.rows === 3
+    reloadedRecommended?.rows === installedAfterFailure
       && reloadedRecommended.starterHidden === false
       && reloadedRecommended.retryHidden === false
       && reloadedRecommended.localInputVisible === true,
