@@ -14,10 +14,11 @@ are **24-bit RGB PNGs without alpha**, at the exact sizes below.
 | Marquee promo tile | [marquee-promo-1400x560.png](marquee-promo-1400x560.png) | 1400 × 560 |
 
 The five screenshots reuse the README's setup/lookup, import benchmark, lookup
-benchmark, custom-dictionary and lookup-blur artwork. GIFs are exported as a
-single static frame. Images are resized proportionally with matching edge-color
-padding; their content is neither cropped nor stretched. The two promo tiles
-reuse the existing high-resolution hummingbird logo with plain typography.
+benchmark, custom-dictionary and lookup-blur artwork. GIFs are exported as
+visually checked static frames: the custom entry is visible and the blur popup
+is fully inside the recorded viewport. Images are resized proportionally with
+matching edge-color padding; their content is neither cropped nor stretched.
+The two promo tiles reuse the existing hummingbird logo with plain typography.
 
 The original artwork and extension runtime are unchanged. These files are
 outside `extension/` and are not part of the Chrome extension upload package.

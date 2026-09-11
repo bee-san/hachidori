@@ -47,9 +47,9 @@
     "bits_per_pixel": 24,
     "source": "docs/assets/custom-dictionary.gif",
     "source_sha256": "d59824392d4efef08400dde3d28970c9def1d98482d15761095aa02f9f945c9f",
-    "frame": 133,
-    "bytes": 286846,
-    "sha256": "c43e7a10144aba222e50be06aeddc4189a1e378a7fb15cb48919905335c0cd70"
+    "frame": 102,
+    "bytes": 475915,
+    "sha256": "c646ebb9a2501325299a1bde84ae031fcdd6314d344cdea892862516c1920f68"
   },
   {
     "file": "05-lookup-blur-1280x800.png",
@@ -60,9 +60,9 @@
     "bits_per_pixel": 24,
     "source": "docs/assets/lookup-blur.gif",
     "source_sha256": "934d0f5f51a6ea4534f24f8e931276da85d52968fa8d3a4a8aa8881e24b4f9db",
-    "frame": 30,
-    "bytes": 411095,
-    "sha256": "4f222f50ddeeab9a217a13d876bfef53441c138cf851a233735978866ff42f16"
+    "frame": 60,
+    "bytes": 466507,
+    "sha256": "1e7ef70ec4483cd2295ab172bcb495b7c6fd66b7e56786f97d191e8f54d42826"
   },
   {
     "file": "small-promo-440x280.png",
