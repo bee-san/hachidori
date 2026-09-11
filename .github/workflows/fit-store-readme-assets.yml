@@ -1,52 +1,28 @@
-name: Fit README store artwork
+name: Validate store artwork
 
 on:
-  push:
-    branches: [codex/chrome-store-readme-canvases-20260911]
+  pull_request:
     paths:
       - scripts/fit-store-readme-assets.py
+      - docs/store/readme/**
       - .github/workflows/fit-store-readme-assets.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   artwork:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Install image tooling
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Install image validator
+        run: python3 -m pip install Pillow==11.3.0
+      - name: Validate committed artwork and diff
         run: |
-          python3 -m pip install Pillow==11.3.0
-          test -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
-      - name: Fit and verify store canvases
-        run: |
-          python3 scripts/fit-store-readme-assets.py
+          python3 -m py_compile scripts/fit-store-readme-assets.py
           python3 scripts/fit-store-readme-assets.py --check-only
-          git diff --check
-      - name: Commit generated PNGs
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/store/readme/
-          if ! git diff --cached --quiet; then
-            git commit -m 'Add seven fitted Chrome Web Store PNG assets'
-            git push origin HEAD:codex/chrome-store-readme-canvases-20260911
-          fi
-      - name: Upload artwork for review
-        uses: actions/upload-artifact@v4
-        with:
-          name: hachidori-chrome-store-artwork
-          path: docs/store/readme/
-          if-no-files-found: error
-          retention-days: 7
-      - name: Upload source animations for frame inspection
-        uses: actions/upload-artifact@v4
-        with:
-          name: source-animations-for-review
-          path: |
-            docs/assets/custom-dictionary.gif
-            docs/assets/lookup-blur.gif
-          if-no-files-found: error
-          retention-days: 1
+          git diff --check HEAD^1 HEAD
