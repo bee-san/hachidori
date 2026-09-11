@@ -48,10 +48,6 @@ Hachidori is 83 times faster than the worlds most popular Japanese dictionary ap
 
 <img width="1672" height="941" alt="ChatGPT Image Sep 9, 2026, 09_18_59 AM" src="https://github.com/user-attachments/assets/c507c940-f61e-4063-8d2c-9e43184cd7d3" />
 
-It is even 3.5 times faster at looking up words.
-
-<img width="1774" height="887" alt="ChatGPT Image Sep 9, 2026, 09_19_05 AM" src="https://github.com/user-attachments/assets/1236ca54-394e-403e-84d8-9441b31b4786" />
-
 
 # Media mining
 
