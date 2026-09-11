@@ -54,10 +54,11 @@ The extension only ever displays the top **1672 × 672** of each frame, so that
 crop is what Hachidori packages, encoded as WebP at quality 82: 970,930 bytes for
 all six, where the PNGs cost 13,413,193.
 
-The supplied files stay retrievable from this repository's history at commit
-`b41c6a2`. The PNGs the WebP files replace were those same images after ImgBot's
-lossless re-compression in `c0a96aa` and `23f138c`, which is why their bytes and
-checksums differ from the supplied ones recorded above while every pixel matches.
+All six supplied files stay retrievable from this repository's history at commit
+`4abbcd3`, where their sizes and checksums are the ones recorded above. The PNGs
+the WebP files replace were those same images after ImgBot's lossless
+re-compression in `23f138c`, which is why the replaced bytes and checksums differ
+from the supplied ones while every pixel still matched.
 
 | Packaged file | Bytes |
 | --- | ---: |
