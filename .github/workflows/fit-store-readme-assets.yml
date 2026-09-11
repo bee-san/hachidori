@@ -1,0 +1,43 @@
+name: Fit README store artwork
+
+on:
+  push:
+    branches: [codex/chrome-store-readme-canvases-20260911]
+    paths:
+      - scripts/fit-store-readme-assets.py
+      - .github/workflows/fit-store-readme-assets.yml
+
+permissions:
+  contents: write
+
+jobs:
+  artwork:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install image tooling
+        run: |
+          python3 -m pip install Pillow==11.3.0
+          test -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+      - name: Fit and verify store canvases
+        run: |
+          python3 scripts/fit-store-readme-assets.py
+          python3 scripts/fit-store-readme-assets.py --check-only
+          git diff --check
+      - name: Commit generated PNGs
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/store/readme/
+          if ! git diff --cached --quiet; then
+            git commit -m 'Add seven fitted Chrome Web Store PNG assets'
+            git push origin HEAD:codex/chrome-store-readme-canvases-20260911
+          fi
+      - name: Upload artwork for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: hachidori-chrome-store-artwork
+          path: docs/store/readme/
+          if-no-files-found: error
+          retention-days: 7
