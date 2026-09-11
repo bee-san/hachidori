@@ -41,3 +41,12 @@ jobs:
           path: docs/store/readme/
           if-no-files-found: error
           retention-days: 7
+      - name: Upload source animations for frame inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-animations-for-review
+          path: |
+            docs/assets/custom-dictionary.gif
+            docs/assets/lookup-blur.gif
+          if-no-files-found: error
+          retention-days: 1
