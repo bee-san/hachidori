@@ -22,17 +22,19 @@ BACKGROUND = '#faf8ff'
 INK = '#332449'
 MUTED = '#685c7a'
 # Preserve the README artwork, including its wording. No new benchmark is run.
+# GIF frame numbers were visually checked: show the actual feature, not an
+# empty end frame or a popup clipped by the original recording's viewport.
 SCREENSHOTS = [
     ('01-japanese-lookup-1280x800.png', 'Japanese lookup',
-     'docs/assets/install-in-60-seconds.gif', 1.0),
+     'docs/assets/install-in-60-seconds.gif', 196),
     ('02-dictionary-import-1280x800.png', 'Dictionary import benchmark',
      'https://github.com/user-attachments/assets/c507c940-f61e-4063-8d2c-9e43184cd7d3', None),
     ('03-word-lookup-1280x800.png', 'Word lookup benchmark',
      'https://github.com/user-attachments/assets/1236ca54-394e-403e-84d8-9441b31b4786', None),
     ('04-custom-dictionary-1280x800.png', 'Custom dictionary',
-     'docs/assets/custom-dictionary.gif', 1.0),
+     'docs/assets/custom-dictionary.gif', 102),
     ('05-lookup-blur-1280x800.png', 'Lookup blur',
-     'docs/assets/lookup-blur.gif', 0.35),
+     'docs/assets/lookup-blur.gif', 60),
 ]
 
 
@@ -118,12 +120,10 @@ def build() -> None:
                         'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
         print(f'{name}: {image.width} x {image.height}, RGB, {path.stat().st_size:,} bytes', flush=True)
 
-    for name, title, source, position in SCREENSHOTS:
+    for name, title, source, frame in SCREENSHOTS:
         data = read_source(source)
         with Image.open(io.BytesIO(data)) as image:
-            frame = None
-            if position is not None:
-                frame = round((image.n_frames - 1) * position)
+            if frame is not None:
                 image.seek(frame)
             print(f'Source {source}: {image.size}, frame={frame}', flush=True)
             save(fit(image, (1280, 800)), name, title, source, data, frame)
@@ -151,10 +151,11 @@ are **24-bit RGB PNGs without alpha**, at the exact sizes below.
 ''' + '\n'.join(rows) + '''
 
 The five screenshots reuse the README's setup/lookup, import benchmark, lookup
-benchmark, custom-dictionary and lookup-blur artwork. GIFs are exported as a
-single static frame. Images are resized proportionally with matching edge-color
-padding; their content is neither cropped nor stretched. The two promo tiles
-reuse the existing high-resolution hummingbird logo with plain typography.
+benchmark, custom-dictionary and lookup-blur artwork. GIFs are exported as
+visually checked static frames: the custom entry is visible and the blur popup
+is fully inside the recorded viewport. Images are resized proportionally with
+matching edge-color padding; their content is neither cropped nor stretched.
+The two promo tiles reuse the existing hummingbird logo with plain typography.
 
 The original artwork and extension runtime are unchanged. These files are
 outside `extension/` and are not part of the Chrome extension upload package.
