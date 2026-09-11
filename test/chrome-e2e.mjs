@@ -340,6 +340,7 @@ const PLANNED = [
   "the content script attached its closed-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
+  "collapsed dictionary cards show a solid full-contrast marker that opens with the mouse and the keyboard",
   "internal links open a positioned popup chain with level-local Note and Back and live depth limits",
   "Popup tabs project ordered groups and ungrouped favourites without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
@@ -353,7 +354,7 @@ const PLANNED = [
   "a grouped favourite uses only its group tab",
   "selected term dictionary wins even when maximum results is one",
   "Back preserves the complete clicked-kanji drill-down history",
-  "Back restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
+  "Back recollapses cards and restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
   "Back restores the term results after a generic kanji lookup",
   "clicked-kanji navigation moves and restores keyboard focus",
   "Back restores focus to the exact clicked duplicate kanji",
@@ -562,10 +563,31 @@ const PAGE_HTML = `<!doctype html>
 // root attached with mode "closed". CDP's DOM domain can -- DOM.getDocument with
 // pierce:true reports the closed root and its subtree -- so every read of the
 // popup goes through a session instead of a selector.
-async function popupReader(page, depth = 0) {
+// Dictionary cards render collapsed, so every read would otherwise measure, focus,
+// hover or select a card body that has no layout. Opening them first is what a
+// reader does to see a definition at all; the collapsed render itself is asserted
+// through a reader created with `autoExpandCards: false`.
+async function popupReader(page, depth = 0, { autoExpandCards = true } = {}) {
   const cdp = await page.createCDPSession();
   await cdp.send("DOM.enable");
   await cdp.send("Runtime.enable");
+
+  async function openRenderedCards(object) {
+    await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true, awaitPromise: true,
+      functionDeclaration: `async function () {
+        let opened = false;
+        for (const card of this.querySelectorAll(".gsm-hoshidicts-glossary-card")) {
+          if (!card.open) { card.open = true; opened = true; }
+        }
+        // Let the renderer's own toggle work land before anything is measured.
+        if (opened) {
+          const view = this.ownerDocument.defaultView;
+          await new Promise(resolve => view.requestAnimationFrame(() => view.requestAnimationFrame(resolve)));
+        }
+      }`,
+    });
+  }
 
   async function resolvePopupObject() {
     // nodeIds live only until the next getDocument, so each operation re-walks.
@@ -585,6 +607,7 @@ async function popupReader(page, depth = 0) {
     walk(root);
     if (nodeId === null) return null;
     const { object } = await cdp.send("DOM.resolveNode", { nodeId });
+    if (autoExpandCards) await openRenderedCards(object);
     return object;
   }
 
@@ -867,6 +890,58 @@ async function popupReader(page, depth = 0) {
     return result.value ?? null;
   }
 
+  // The disclosure marker is a ::before pseudo-element on the card's own
+  // <summary>, so it can only be read as computed style inside the closed root.
+  async function glossaryCard(action = "read", index = 0) {
+    const object = await resolvePopupObject();
+    if (object === null) return null;
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true, awaitPromise: true,
+      arguments: [{ value: action }, { value: index }],
+      functionDeclaration: `async function (action, index) {
+        const cards = [...this.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+        const card = cards[index];
+        if (!card) return null;
+        const summary = card.querySelector(":scope > summary");
+        if (action === "focus") summary.focus();
+        else if (action === "blur") summary.blur();
+        const view = this.ownerDocument.defaultView;
+        await new Promise(resolve => view.requestAnimationFrame(() => view.requestAnimationFrame(resolve)));
+        const root = this.getRootNode();
+        const marker = view.getComputedStyle(summary, "::before");
+        const rect = summary.getBoundingClientRect();
+        return {
+          count: cards.length,
+          open: card.open,
+          openStates: cards.map(other => other.open),
+          focused: root.activeElement === summary,
+          label: summary.textContent,
+          dictionary: summary.title,
+          // Chrome renders closed <details> content behind ::details-content and
+          // keeps a skipped descendant's stale rect, so measure the card itself:
+          // it is only tall enough to hold a body while the body is revealed.
+          cardHeight: card.getBoundingClientRect().height,
+          summaryDisplay: view.getComputedStyle(summary).display,
+          nativeMarker: view.getComputedStyle(summary).listStyleType,
+          marker: {
+            content: marker.content,
+            width: marker.width,
+            fontSize: marker.fontSize,
+            opacity: marker.opacity,
+            color: marker.color,
+            display: marker.display,
+          },
+          titleColor: view.getComputedStyle(summary).color,
+          popupColor: view.getComputedStyle(this).color,
+          // Real activation target: the marker sits inside the summary box, so a
+          // mouse click there has to reach the native control, not a decoration.
+          markerPoint: { x: rect.x + 6, y: rect.y + rect.height / 2 },
+        };
+      }`,
+    });
+    return result.value ?? null;
+  }
+
   async function deinflection(action = "read") {
     const object = await resolvePopupObject();
     if (object === null) return null;
@@ -1085,7 +1160,6 @@ async function popupReader(page, depth = 0) {
         const panel = this.querySelector(".gsm-hoshidicts-tab-panel");
         const selected = tabs.find(button => button.getAttribute("aria-selected") === "true");
         const cards = [...this.querySelectorAll(".gsm-hoshidicts-glossary-card")];
-        if (action === "collapse-card") cards[key].open = false;
         if (action === "remember") this.__dictionaryTabs = {
           panel, selected, tabs: new Map(tabs.map(button => [tabKey(button), button])), cards,
           link: this.querySelector("a[data-hoshidicts-query]"),
@@ -1374,7 +1448,7 @@ async function popupReader(page, depth = 0) {
   }
 
   return {
-    anki, audio, click, compactSummaries, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, imagePreview,
+    anki, audio, click, compactSummaries, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, glossaryCard, imagePreview,
     lookupStatistics, nested, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
     waitForVisible, waitForHidden, writeNote,
   };
@@ -1514,6 +1588,62 @@ async function checkDeinflectionDisclosure(settings, tab, popup) {
     JSON.stringify({ expected, closed, focused, expanded, collapsed, lastStep, glossary, note }));
 }
 
+// The point of the change is that a collapsed card looks expandable, so the
+// marker is read as computed style in a real browser rather than as a class
+// name, and both native activation paths are driven for real.
+async function checkGlossaryCardDisclosure(tab, popup) {
+  // Read through a reader that opens nothing: every other read in this suite
+  // deliberately expands the cards it finds.
+  const collapsed = await popupReader(tab, 0, { autoExpandCards: false });
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  const rendered = await hoverForPopup(tab, collapsed, "#verb");
+  const closed = rendered === null ? null : await collapsed.glossaryCard();
+  let opened;
+  let reclosed;
+  let focused;
+  let keyboardOpened;
+  let keyboardClosed;
+  if (closed) {
+    // Captured before anything is activated, so the image is the render itself.
+    if (process.env.HACHIDORI_COLLAPSED_CARD_SCREENSHOT) {
+      const { x, y, width, height } = await collapsed.rect();
+      mkdirSync(dirname(process.env.HACHIDORI_COLLAPSED_CARD_SCREENSHOT), { recursive: true });
+      await tab.screenshot({ path: process.env.HACHIDORI_COLLAPSED_CARD_SCREENSHOT,
+        clip: { x, y, width, height } });
+    }
+    await tab.mouse.click(closed.markerPoint.x, closed.markerPoint.y);
+    opened = await collapsed.glossaryCard();
+    await tab.mouse.click(closed.markerPoint.x, closed.markerPoint.y);
+    reclosed = await collapsed.glossaryCard();
+    focused = await collapsed.glossaryCard("focus");
+    await tab.keyboard.press("Enter");
+    keyboardOpened = await collapsed.glossaryCard();
+    await tab.keyboard.press(" ");
+    keyboardClosed = await collapsed.glossaryCard();
+    await collapsed.glossaryCard("blur");
+  }
+  const marker = (state, content) => state?.marker.content === content
+    && state.marker.display === "inline-block"
+    && state.marker.width === "20px" && state.marker.fontSize === "16px"
+    && state.marker.opacity === "1"
+    && state.marker.color === state.popupColor
+    && state.marker.color !== state.titleColor;
+  check("collapsed dictionary cards show a solid full-contrast marker that opens with the mouse and the keyboard",
+    rendered !== null && closed?.count >= 1 && closed.openStates.every(open => open === false)
+      && closed.open === false && closed.label.length > 0 && closed.dictionary.length > 0
+      && closed.summaryDisplay === "list-item" && closed.nativeMarker === "none"
+      && marker(closed, '"▶"')
+      && opened?.open === true && opened.cardHeight > closed.cardHeight && marker(opened, '"▼"')
+      && reclosed?.open === false && reclosed.cardHeight === closed.cardHeight && marker(reclosed, '"▶"')
+      && focused?.focused === true && focused.open === false
+      && keyboardOpened?.open === true && keyboardOpened.focused === true
+      && keyboardOpened.cardHeight === opened.cardHeight && marker(keyboardOpened, '"▼"')
+      && keyboardClosed?.open === false && keyboardClosed.focused === true
+      && keyboardClosed.cardHeight === closed.cardHeight && marker(keyboardClosed, '"▶"'),
+    JSON.stringify({ closed, opened, reclosed, focused, keyboardOpened, keyboardClosed }));
+}
+
 async function checkExternalLinks(browser, settings, tab, popup) {
   const sourceUrl = tab.url();
   const destinationUrl = new URL("external-reference?query=%E5%8F%82%E7%85%A7#meaning", sourceUrl).href;
@@ -1633,6 +1763,8 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
   const originalVerb = await tab.$eval("#verb", element => ({ html: element.innerHTML, style: element.getAttribute("style") }));
   const viewport = tab.viewport(), settingsViewport = settings.viewport();
   const child = await popupReader(tab, 1);
+  // Back has to be read without the harness reopening anything.
+  const collapsedChild = await popupReader(tab, 1, { autoExpandCards: false });
   const evidence = { projections: [], columns: [] };
   let worker, failure;
   const require = (condition, message) => { if (!condition) throw new Error(message); };
@@ -1777,9 +1909,15 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     const studyResultCount = childExpected.filter(entry => entry.dictionaries.some(title => [links, usage, GENERIC_KANJI_TITLE].includes(title))).length;
     await until(childState, value => value?.entries.length === studyResultCount
       && value.entries.at(-1).cards.some(card => card.text.includes(GENERIC_KANJI_GLOSSARY)), "E13 complete deferred bodies");
-    await child.dictionaryTabs("collapse-card", 0);
     const beforeBack = await child.dictionaryTabs("scroll", 80);
     require(beforeBack.scrollTop > 0, "E13 nonzero prior scroll");
+    // Reading through `child` opened these cards, as a reader would.
+    require(beforeBack.entries.flatMap(entry => entry.cards).some(card => card.open),
+      "E13 an expanded card before the drill-down");
+    // Back returns to the collapsed view every fresh lookup starts from. Every
+    // other piece of the previous view still has to come back exactly.
+    const recollapsed = beforeBack.entries.map(entry => ({ ...entry,
+      cards: entry.cards.map(card => ({ ...card, open: false })) }));
     const highlights = () => tab.evaluate(name => Array.from(CSS.highlights.get(name) ?? [], range => range.toString()), HIGHLIGHT_NAME);
     const previousHighlights = await highlights();
     require(await child.click(".gsm-hoshidicts-kanji-link"), "E8 clicked-kanji control");
@@ -1791,14 +1929,20 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await until(childState, value => value.customOutline === "rgb(12, 34, 56)", "E18 live child CSS");
     evidence.cssChild = (await rootState()).customOutline === "rgb(12, 34, 56)";
     require(await child.click(".gsm-hoshidicts-kanji-back"), "E8 term Back");
-    const back = await until(childState, value => selectedReady(studyKey)(value)
+    const back = await until(() => collapsedChild.dictionaryTabs(), value => selectedReady(studyKey)(value)
       && value.entries.length === beforeBack.entries.length && !value.showMore
       && Math.abs(value.scrollTop - beforeBack.scrollTop) < 1, "E13 expanded linked Back viewport");
     evidence.back = back.toolbar === beforeBack.toolbar
-      && await child.dictionaryTabs("matches", beforeBack.entries)
+      && await collapsedChild.dictionaryTabs("matches", recollapsed)
       && equal(await highlights(), previousHighlights)
       && (await requests()).length === beforeBackRequests;
     require(evidence.back, "E13 exact Back state and no native lookup");
+    // Captured here, while only the non-expanding reader has touched the restored
+    // view, so the documented image is the collapsed state Back actually leaves.
+    if (process.env.HACHIDORI_KANJI_BACK_SCREENSHOT) {
+      const { x, y, width, height } = back.rect;
+      await tab.screenshot({ path: process.env.HACHIDORI_KANJI_BACK_SCREENSHOT, clip: { x, y, width, height } });
+    }
     await optionsWrite({ popupWidthPx: 640, popupHeightPx: 480 });
     const resizedChild = await until(childState, value => value.rect.width === Math.min(640, value.viewport.width - 12)
       && value.rect.height === Math.min(480, value.viewport.height - 12),
@@ -1814,10 +1958,6 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     await optionsWrite({ popupWidthPx: 560, popupHeightPx: 420 });
     await until(childState, value => value.rect.width === Math.min(560, value.viewport.width - 12)
       && value.rect.height === Math.min(420, value.viewport.height - 12), "E15 restore child dimensions");
-    if (process.env.HACHIDORI_KANJI_BACK_SCREENSHOT) {
-      const { x, y, width, height } = back.rect;
-      await tab.screenshot({ path: process.env.HACHIDORI_KANJI_BACK_SCREENSHOT, clip: { x, y, width, height } });
-    }
     require(await child.click(".gsm-hoshidicts-kanji-back") && await child.waitForHidden(), "E8 close child Back");
     await tab.setViewport({ width: 1880, height: 960 });
     evidence.inheritance = { inherited: inherited.selected, kanji: kanji.selected, back: back.selected,
@@ -2012,6 +2152,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     const clean = async operation => { try { await operation(); } catch (error) { errors.push(error); } };
     if (worker) await clean(() => restoreMediaReplyProbe(worker));
     await clean(() => child.dictionaryTabs("cleanup"));
+    await clean(() => collapsedChild.dictionaryTabs("cleanup"));
     await clean(() => popup.dictionaryTabs("cleanup"));
     await clean(() => optionsWrite({ popupColumns: original.options.popupColumns ?? 1,
       popupTheme: original.options.popupTheme ?? "default", popupOpacityPercent: original.options.popupOpacityPercent ?? 85,
@@ -2040,7 +2181,7 @@ async function checkDictionaryTabsColumns(settings, tab, popup, browser) {
     if (errors.length) failure = new AggregateError(failure ? [failure, ...errors] : errors, "E8 scenario/cleanup failure");
   }
   if (failure) throw failure;
-  check("Back restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
+  check("Back recollapses cards and restores expanded linked results, exact tab, scroll, highlight and toolbar without lookup",
     evidence.back === true, JSON.stringify(evidence.inheritance));
   check("Popup tabs project ordered groups and ungrouped favourites without another lookup",
     evidence.passed && evidence.projections.length === 4, JSON.stringify({ projections: evidence.projections, inheritance: evidence.inheritance }));
@@ -9057,6 +9198,7 @@ async function main() {
   await checkDefinitionBlur({ settings: page, tab, popup });
   await checkAnkiMatureDefinitionBlur({ browser, settings: page, tab, popup, watchedServiceWorkers });
   await checkDeinflectionDisclosure(page, tab, popup);
+  await checkGlossaryCardDisclosure(tab, popup);
   await checkExternalLinks(browser, page, tab, popup);
   await checkNestedLinks(page, tab, popup, browser);
   await checkDictionaryTabsColumns(page, tab, popup, browser);
