@@ -1,0 +1,110 @@
+name: Package Chrome Web Store upload
+
+on:
+  push:
+    branches:
+      - build/chrome-web-store-a019051-20260911
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the exact main release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: a01905131d89452d0640affc183d98cbd4c9dd44
+          submodules: recursive
+          persist-credentials: false
+      - name: Package extension and matching dependency sources
+        run: python3 scripts/package-store.py --output-dir "$RUNNER_TEMP/hachidori-store"
+      - name: Validate the actual upload ZIP
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import re
+          import struct
+          import zipfile
+
+          output = Path(os.environ['RUNNER_TEMP']) / 'hachidori-store'
+          archives = list(output.glob('*-chrome.zip'))
+          assert len(archives) == 1, 'Expected exactly one Chrome upload ZIP'
+          archive_path = archives[0]
+          with zipfile.ZipFile(archive_path) as archive:
+              assert archive.testzip() is None, 'ZIP integrity check failed'
+              names = archive.namelist()
+              assert len(names) == len(set(names)), 'Duplicate archive paths'
+              assert 'manifest.json' in names, 'Manifest must be at ZIP root'
+              assert all(not PurePosixPath(name).is_absolute() and '..' not in PurePosixPath(name).parts for name in names)
+              manifest = json.loads(archive.read('manifest.json'))
+              assert manifest['manifest_version'] == 3
+              assert manifest['name'] == 'Hachidori'
+              version = manifest['version']
+              assert re.fullmatch(r'(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*)){0,3}', version)
+              assert all(int(part) <= 65535 for part in version.split('.'))
+              assert any(int(part) for part in version.split('.'))
+              assert len(manifest['description']) <= 132
+              required = set(manifest['icons'].values())
+              required.update([manifest['options_page'], manifest['background']['service_worker'], manifest['action']['default_popup']])
+              for script in manifest.get('content_scripts', []):
+                  required.update(script.get('js', []))
+                  required.update(script.get('css', []))
+              for group in manifest.get('web_accessible_resources', []):
+                  required.update(path for path in group['resources'] if '*' not in path)
+              assert required.issubset(set(names)), f'Missing manifest resources: {required - set(names)}'
+              for size, name in manifest['icons'].items():
+                  data = archive.read(name)
+                  assert data.startswith(b'\x89PNG\r\n\x1a\n'), f'Icon is not PNG: {name}'
+                  assert struct.unpack('>II', data[16:24]) == (int(size), int(size)), f'Wrong icon size: {name}'
+              runtime_count = 0
+              for path in Path('extension').rglob('*'):
+                  if path.is_file():
+                      name = path.relative_to('extension').as_posix()
+                      assert archive.read(name) == path.read_bytes(), f'Runtime file changed: {name}'
+                      runtime_count += 1
+              wasm_files = [name for name in names if name.endswith('.wasm')]
+              assert wasm_files, 'Missing bundled WebAssembly'
+              for name in wasm_files:
+                  assert archive.read(name)[:8] == b'\x00asm\x01\x00\x00\x00', f'Invalid WASM header: {name}'
+              for name in ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'privacy.md', 'SOURCE.json', 'SOURCE.txt']:
+                  assert name in names, f'Missing distribution notice: {name}'
+              source = json.loads(archive.read('SOURCE.json'))
+              assert source['revision'] == 'a01905131d89452d0640affc183d98cbd4c9dd44'
+              source_path = output / source['sourceArchive']
+              assert hashlib.sha256(source_path.read_bytes()).hexdigest() == source['sourceSha256']
+              with zipfile.ZipFile(source_path) as source_archive:
+                  assert source_archive.testzip() is None, 'Source ZIP integrity check failed'
+              report = {
+                  'name': manifest['name'],
+                  'version': version,
+                  'revision': source['revision'],
+                  'uploadFile': archive_path.name,
+                  'uploadBytes': archive_path.stat().st_size,
+                  'uploadSha256': hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+                  'archiveFileCount': len(names),
+                  'runtimeFilesVerifiedAgainstCheckout': runtime_count,
+                  'bundledWasmFiles': wasm_files,
+                  'sourceArchive': source['sourceArchive'],
+                  'sourceSha256': source['sourceSha256'],
+                  'packageValidation': 'passed',
+                  'fullBrowserTestsRun': False,
+              }
+          (output / 'package-validation.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report, indent=2))
+          PY
+      - name: Save upload ZIP, matching source, checksums and validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: hachidori-chrome-web-store-a019051
+          path: ${{ runner.temp }}/hachidori-store/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
