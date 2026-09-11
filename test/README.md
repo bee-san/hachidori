@@ -322,7 +322,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 470 checks, all of
+full request→reply round trip per contract-C message type. 477 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -724,7 +724,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 191 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 193 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,
@@ -954,6 +954,21 @@ covering them; opening Note keeps its focused input visible. The viewport and
 focus are restored before the remaining hover tests.
 `HACHIDORI_DEINFLECTION_SCREENSHOT` captures the expanded desktop popup.
 
+One assertion covers the outer dictionary cards on a popup no other check has
+touched. It reads the computed `::before` marker inside the closed shadow root:
+a solid `▶` closed and `▼` open, `inline-block` at 20px wide, 16px, opacity 1,
+in the popup's own foreground colour rather than the muted summary colour. Every
+card of that render must start closed with no laid-out body, keep
+`display: list-item` and no native marker, and open and close again through a
+real mouse click on the marker and through Enter and Space on the focused
+summary. Because a collapsed card is the default, every `popupReader` read opens
+the cards it finds — a reader reaching a definition has to — so the geometry,
+focus, hover and selection assertions elsewhere measure them expanded. This check
+and the Back check read through `popupReader(..., { autoExpandCards: false })`
+instead, which is the only way the collapsed render can be observed at all.
+`HACHIDORI_COLLAPSED_CARD_SCREENSHOT` captures that untouched popup and
+`HACHIDORI_KANJI_BACK_SCREENSHOT` the recollapsed view Back restores.
+
 The exported `nestedLinksFixture()` supplies three linked term rows and one
 shared deterministic PNG without changing the ordinary fixture counts. The
 real-WASM Chrome chain assertion exercises mouse return versus keyboard focus,
@@ -970,9 +985,9 @@ cover All, ordered nonempty groups and an ungrouped favourite from the complete
 native result; ordinary contributors and grouped favourites receive no duplicate
 dictionary tabs. Warmed tab changes must issue no lookup, media or style
 requests. Linked-child, clicked-kanji and Back retain their semantic selection.
-Back also restores an expanded, scrolled child with a collapsed dictionary card,
-its prior tab, highlight and toolbar, without another native lookup; its next
-Back still closes the child. Extension checks cover native-source fallback and
+Back recollapses an expanded dictionary card while restoring the expanded,
+scrolled child's prior tab, highlight and toolbar, without another native lookup;
+its next Back still closes the child. Extension checks cover native-source fallback and
 terminal misses, cached versus changed-generation restoration, lazy IPA and
 structured disclosures, and cancellation by newer projections or deliberate
 scroll. A focused scroll-read assertion prevents forcing layout while a retained
@@ -1099,7 +1114,7 @@ directory rather than an `rmSync` of whatever the reader pointed the variable at
 
 ### the denominator is fixed
 
-`PLANNED` at the top of the file names all 183 assertions, and the summary line
+`PLANNED` at the top of the file names all 193 assertions, and the summary line
 divides by `PLANNED.length`, not by the number of checks that happened to run.
 Anything in `PLANNED` that no `check()` reached is reported as
 `FAIL … check never ran`, and `check()` refuses a name that is not in the list or

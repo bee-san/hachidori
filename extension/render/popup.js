@@ -2891,7 +2891,14 @@
           const details = [...popup.querySelectorAll("details")];
           if (details.length === restoreDisclosures.length
               && details.every((node, index) => node.className === restoreDisclosures[index].className)) {
-            details.forEach((node, index) => { node.open = restoreDisclosures[index].open; });
+            // Outer dictionary cards are deliberately not restored: Back returns
+            // to the collapsed view every fresh lookup starts from. Everything
+            // the dictionary authored inside a card keeps its saved state.
+            details.forEach((node, index) => {
+              node.open = node.classList.contains("gsm-hoshidicts-glossary-card")
+                ? false
+                : restoreDisclosures[index].open;
+            });
             // Native toggle delivery is deferred. Populate restored lazy IPA
             // now so the first restored layout includes all its text.
             for (const { metadata } of entryMetadata) metadata.fillOpenIpa();
@@ -3008,7 +3015,8 @@
         for (const [dictionary, glossaries] of groupedGlossaries) {
           const details = documentRef.createElement("details");
           details.className = "gsm-hoshidicts-glossary-card";
-          details.open = true;
+          // Collapsed on purpose. A dictionary card only reads as expandable
+          // when it starts closed behind its own visible disclosure marker.
           details.addEventListener("toggle", scheduleMasonry);
           const summary = documentRef.createElement("summary");
           summary.textContent = dictionaryDisplayNames?.get(dictionary) || dictionary;

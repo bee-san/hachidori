@@ -14636,6 +14636,12 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     onDictionaryTabSelected(selection) { tabSelections.push(selection); },
   };
   view.renderResults(tabResults, candidate, tabContext);
+  // A card only reads as expandable when it starts closed, so the disclosure
+  // state of a fresh lookup and of each tab projection is part of the contract.
+  const cardDisclosures = () => [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")]
+    .map((card) => ({ open: card.open, control: card.firstElementChild.tagName,
+      label: card.firstElementChild.textContent, dictionary: card.firstElementChild.title }));
+  const freshCards = cardDisclosures();
   const allTabs = [...popup.querySelectorAll('[role="tab"]')];
   check("dictionary tabs include ordered nonempty groups and only ungrouped favourites",
     JSON.stringify(allTabs.map((tab) => [tab.textContent, { ...tab.dataset }])) === JSON.stringify([
@@ -14645,6 +14651,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       ["Favourite B (dictionary)", { dictionary: "Dictionary B" }],
     ]), JSON.stringify(allTabs.map((tab) => [tab.textContent, { ...tab.dataset }])));
   const tabProjections = [];
+  const projectedCards = [];
   for (const selector of [
     '[data-dictionary="Dictionary B"]', '[data-group-id="c"]', '[data-group-id="a"]',
   ]) {
@@ -14653,7 +14660,19 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     popup.querySelector(".gsm-hoshidicts-show-more")?.click();
     tabProjections.push([...popup.querySelectorAll(".gsm-hoshidicts-glossary-card > summary")]
       .map((summary) => summary.title));
+    projectedCards.push(cardDisclosures());
   }
+  check("a new lookup and every tab projection start each dictionary card collapsed behind its own summary",
+    JSON.stringify(freshCards) === JSON.stringify([
+      { open: false, control: "SUMMARY", label: "All", dictionary: "Dictionary A" },
+      { open: false, control: "SUMMARY", label: "Dictionary C", dictionary: "Dictionary C" },
+    ])
+      && JSON.stringify(projectedCards) === JSON.stringify([
+        [{ open: false, control: "SUMMARY", label: "Favourite B", dictionary: "Dictionary B" }],
+        [{ open: false, control: "SUMMARY", label: "Dictionary C", dictionary: "Dictionary C" }],
+        [{ open: false, control: "SUMMARY", label: "All", dictionary: "Dictionary A" }],
+      ]),
+    JSON.stringify({ freshCards, projectedCards }));
   const sameTabPanel = popup.querySelector(".gsm-hoshidicts-tab-panel").firstElementChild;
   const beforeSameTab = positioned;
   popup.querySelector('[role="tab"][data-group-id="a"]')?.click();
@@ -15025,17 +15044,27 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
     const disclosureResults = [disclosureResult, disclosureResult];
     render(disclosureResults, { expandAll: true });
     await settle();
-    for (const details of popup.querySelectorAll("details")) details.open = !details.classList.contains("gsm-hoshidicts-glossary-card");
+    const isCard = details => details.classList.contains("gsm-hoshidicts-glossary-card");
+    const initiallyCollapsed = [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")].every(card => !card.open);
+    for (const details of popup.querySelectorAll("details")) details.open = true;
     await settle();
     const states = () => [...popup.querySelectorAll("details")].map(details => [details.className, details.open]);
     const beforeDetails = states();
+    // Every outer card comes back closed; everything the dictionary authored
+    // inside one keeps the state it was left in.
+    const expectedDetails = [...popup.querySelectorAll("details")]
+      .map(details => [details.className, isCard(details) ? false : details.open]);
     const prior = view.captureTermView();
     render(disclosureResults, prior);
     await settle();
     layout();
-    check("Back restores collapsed cards, open structured details and complete lazy IPA before layout",
-      JSON.stringify(states()) === JSON.stringify(beforeDetails)
-        && popup.querySelectorAll(".gsm-hoshidicts-tag-ipa").length === 26);
+    check("Back recollapses dictionary cards while restoring open structured details and complete lazy IPA before layout",
+      initiallyCollapsed
+        && JSON.stringify(beforeDetails) !== JSON.stringify(expectedDetails)
+        && JSON.stringify(states()) === JSON.stringify(expectedDetails)
+        && popup.querySelectorAll(".gsm-hoshidicts-tag-ipa").length === 26,
+      JSON.stringify({ initiallyCollapsed, expectedDetails, states: states(),
+        ipa: popup.querySelectorAll(".gsm-hoshidicts-tag-ipa").length }));
     const changed = disclosureResults.map(value => ({ ...value, term: { ...value.term,
       glossaries: [{ ...value.term.glossaries[0], glossary: '["Changed definition"]' }],
     } }));
@@ -15043,7 +15072,7 @@ async function backViewportRenderStage({ HDGlossary, HDPopup, document, window, 
     await settle();
     layout();
     check("Back does not apply saved disclosures to changed dictionary content",
-      [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")].every(card => card.open)
+      [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")].every(card => !card.open)
         && !popup.querySelector(".gsm-hoshidicts-ipa-overflow").open);
     let scrollReads = 0;
     let retainedScroll = 85;
