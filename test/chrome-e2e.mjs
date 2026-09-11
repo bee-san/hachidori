@@ -5699,8 +5699,8 @@ async function readVisualNovelScene(page, sourceSelector) {
     const nextRect = next?.getBoundingClientRect();
     return {
       backgroundLoaded: Array.from({ length: 6 }, (_, index) =>
-        new URL(`assets/preview-background${index === 0 ? "" : `-${index + 1}`}.png`, location.href).href).includes(imageUrl)
-        && image.naturalWidth === 1672 && image.naturalHeight === 941,
+        new URL(`assets/preview-background${index === 0 ? "" : `-${index + 1}`}.webp`, location.href).href).includes(imageUrl)
+        && image.naturalWidth === 1672 && image.naturalHeight === 672,
       nextVisible: next?.tagName === "BUTTON" && next.type === "button" && next.tabIndex >= 0
         && next.getAttribute("aria-label") === "Next background" && nextRect.width > 0 && nextRect.height > 0
         && next.contains(document.elementFromPoint(nextRect.x + nextRect.width / 2, nextRect.y + nextRect.height / 2)),

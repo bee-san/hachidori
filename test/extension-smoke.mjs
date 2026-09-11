@@ -7575,7 +7575,7 @@ async function visualNovelStage() {
       dialogue.classList.add("setup-practice-dialogue");
       window.HDVisualNovel.initialize(scene);
       const next = scene.querySelector(".vn-next");
-      const filename = index => `assets/preview-background${index === 0 ? "" : `-${index + 1}`}.png`;
+      const filename = index => `assets/preview-background${index === 0 ? "" : `-${index + 1}`}.webp`;
       result.randomStart &&= scene.style.getPropertyValue("--vn-background").includes(filename(first));
       result.cycle &&= next?.tagName === "BUTTON" && next.type === "button" && next.getAttribute("aria-label") === "Next background";
       const visited = new Set();
