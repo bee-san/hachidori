@@ -1,0 +1,93 @@
+[
+  {
+    "file": "01-japanese-lookup-1280x800.png",
+    "title": "Japanese lookup",
+    "width": 1280,
+    "height": 800,
+    "mode": "RGB",
+    "bits_per_pixel": 24,
+    "source": "docs/assets/install-in-60-seconds.gif",
+    "source_sha256": "496445b2eb73fb93b0bd74619285c791787ddd21033563cff4a55ed220dcf5f4",
+    "frame": 196,
+    "bytes": 912968,
+    "sha256": "b50c43945cbcc8fb2572dd167c89eb5b2740386c89f98d3d5ed2f38ccf6a72d3"
+  },
+  {
+    "file": "02-dictionary-import-1280x800.png",
+    "title": "Dictionary import benchmark",
+    "width": 1280,
+    "height": 800,
+    "mode": "RGB",
+    "bits_per_pixel": 24,
+    "source": "https://github.com/user-attachments/assets/c507c940-f61e-4063-8d2c-9e43184cd7d3",
+    "source_sha256": "efbbad8d28ccf3c42213d61a218408cdefc57458ed6557dcf1aa3634209afcec",
+    "frame": null,
+    "bytes": 674618,
+    "sha256": "d09e7f893af8f0ffef63826166456a7fecf1bac6bf4acb762fd9ba6028cb20d6"
+  },
+  {
+    "file": "03-word-lookup-1280x800.png",
+    "title": "Word lookup benchmark",
+    "width": 1280,
+    "height": 800,
+    "mode": "RGB",
+    "bits_per_pixel": 24,
+    "source": "https://github.com/user-attachments/assets/1236ca54-394e-403e-84d8-9441b31b4786",
+    "source_sha256": "a6d9d985d21b54b5481aefbbb8908a3f93f50792ab7d9f7544ad6c0ef6afcbec",
+    "frame": null,
+    "bytes": 590589,
+    "sha256": "63fc10d7cc5616f04cba4024a49425f0051819a9317414f35e081e35a0257318"
+  },
+  {
+    "file": "04-custom-dictionary-1280x800.png",
+    "title": "Custom dictionary",
+    "width": 1280,
+    "height": 800,
+    "mode": "RGB",
+    "bits_per_pixel": 24,
+    "source": "docs/assets/custom-dictionary.gif",
+    "source_sha256": "d59824392d4efef08400dde3d28970c9def1d98482d15761095aa02f9f945c9f",
+    "frame": 133,
+    "bytes": 286846,
+    "sha256": "c43e7a10144aba222e50be06aeddc4189a1e378a7fb15cb48919905335c0cd70"
+  },
+  {
+    "file": "05-lookup-blur-1280x800.png",
+    "title": "Lookup blur",
+    "width": 1280,
+    "height": 800,
+    "mode": "RGB",
+    "bits_per_pixel": 24,
+    "source": "docs/assets/lookup-blur.gif",
+    "source_sha256": "934d0f5f51a6ea4534f24f8e931276da85d52968fa8d3a4a8aa8881e24b4f9db",
+    "frame": 30,
+    "bytes": 411095,
+    "sha256": "4f222f50ddeeab9a217a13d876bfef53441c138cf851a233735978866ff42f16"
+  },
+  {
+    "file": "small-promo-440x280.png",
+    "title": "Small promo tile",
+    "width": 440,
+    "height": 280,
+    "mode": "RGB",
+    "bits_per_pixel": 24,
+    "source": "docs/assets/hachidori.png",
+    "source_sha256": "a1e8873ed12417a08dd1b117180fca5ffa154a99360d9f3ebcf83a78af4b6355",
+    "frame": null,
+    "bytes": 14856,
+    "sha256": "30d00c18f172c4317b99232eae41b2f74b75f2377100eebbabaa3955de4c6b18"
+  },
+  {
+    "file": "marquee-promo-1400x560.png",
+    "title": "Marquee promo tile",
+    "width": 1400,
+    "height": 560,
+    "mode": "RGB",
+    "bits_per_pixel": 24,
+    "source": "docs/assets/hachidori.png",
+    "source_sha256": "a1e8873ed12417a08dd1b117180fca5ffa154a99360d9f3ebcf83a78af4b6355",
+    "frame": null,
+    "bytes": 49075,
+    "sha256": "19dd6ae9b9b21ffe0a173c4346c3ea3b5b93ab8bd11ec14b2d562197fe87145f"
+  }
+]
