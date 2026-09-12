@@ -25,7 +25,12 @@ supported actions, keybind normalisation and strict option patches, key
 combination capture, action/argument/scope editing, Clear, Reset, Remove, Add and
 Reset to defaults. It uses the same external jsdom dependency. The extension smoke
 suite drives the content script's keybind dispatch and the real popup view's entry
-navigation. `audio-content.test.mjs` covers keybind audio playback.
+navigation. `audio-content.test.mjs` covers keybind audio playback. It also lists
+Chrome's browser shortcuts and refreshes them when the window regains focus.
+`node --test test/browser-commands.test.mjs` runs the worker's command listener
+against the manifest: the toggle makes one queued revisioned `hoverEnabled`
+write, and the settings command opens Settings. The Chrome suite checks that
+Chrome registers Alt+Delete and that Keybinds lists it.
 
 `node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
 current word/reading/sentence expansion, background-tab clicks, live editing

@@ -1506,6 +1506,20 @@ textarea {
 .keybind-scope[hidden] { display: none; }
 .keybind-row :is(input[type="text"], input[type="number"], select) { width: 100%; }
 .keybind-list-actions { justify-content: flex-start; }
+.browser-shortcut-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.browser-shortcut-list li {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.browser-shortcut-list kbd { font: inherit; font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
   .track-fill {

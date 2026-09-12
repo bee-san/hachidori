@@ -2086,6 +2086,26 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 chrome.runtime.onStartup.addListener(warmUp);
 
+// Yomitan's native browser shortcuts for the features Hachidori has. The toggle
+// makes the toolbar switch's revisioned write inside the storage queue.
+async function toggleLookupsFromCommand() {
+  const { options } = await readDictionaryStorage();
+  await WORKER_HANDLERS.hd_options_write({ type: "hd_options_write", requestId: null,
+    baseRevision: optionsRevision(options), options: { hoverEnabled: !normaliseOptions(options).hoverEnabled } });
+}
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command === "openSettingsPage") {
+    chrome.runtime.openOptionsPage().catch((error) => {
+      console.error("hachidori: could not open settings:", describe(error));
+    });
+  } else if (command === "toggleTextScanning") {
+    serialiseStorage(toggleLookupsFromCommand).catch((error) => {
+      console.error("hachidori: could not toggle lookups:", describe(error));
+    });
+  }
+});
+
 // Alarms may be cleared across browser restarts. Module evaluation is the one
 // startup path every MV3 worker takes, including starts not caused by either
 // lifecycle event above.

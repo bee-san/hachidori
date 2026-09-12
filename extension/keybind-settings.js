@@ -34,7 +34,8 @@ function labelControl(control, label) {
   if (control.getAttribute("aria-label") !== label) control.setAttribute("aria-label", label);
 }
 
-export function createKeybindSettingsController({ document, readKeybinds, editKeybinds, readAudioSources }) {
+export function createKeybindSettingsController({ document, readKeybinds, editKeybinds, readAudioSources,
+  getBrowserCommands, openBrowserShortcuts }) {
   const window = document.defaultView;
   const { KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_MODIFIERS, KEYBIND_MODIFIER_CODES, KEYBIND_SCOPES,
     KEYBIND_TOGGLE_OPTIONS, AUDIO_SOURCE_LABELS, DEFAULT_OPTIONS } = window.HDReaderOptions;
@@ -192,5 +193,23 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
     editKeybinds(DEFAULT_OPTIONS.keybinds.map(copy));
     render();
   });
-  return { render };
+
+  // Chrome owns its extension commands; Settings lists them and links there.
+  async function renderBrowserCommands() {
+    const commands = await getBrowserCommands();
+    document.getElementById("browser-shortcut-list").replaceChildren(...commands.map(({ name, description, shortcut }) => {
+      const item = document.createElement("li");
+      const label = document.createElement("span");
+      label.textContent = description || (name === "_execute_action" ? "Open the Hachidori toolbar" : name);
+      const keys = document.createElement("kbd");
+      keys.textContent = shortcut || "Not set";
+      item.append(label, keys);
+      return item;
+    }));
+  }
+  document.getElementById("browser-shortcuts-open").addEventListener("click", () => { void openBrowserShortcuts(); });
+  // Returning from Chrome's shortcut page shows the shortcuts it saved.
+  window.addEventListener("focus", () => { void renderBrowserCommands(); });
+  void renderBrowserCommands();
+  return { render, renderBrowserCommands };
 }

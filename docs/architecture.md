@@ -550,6 +550,19 @@ replaces the modifiers, a non-modifier key replaces the key, and plain Tab still
 moves focus. Each row has Clear, Reset (the action's first default binding) and
 Remove. The section also has Add and Reset keybinds to defaults.
 
+Yomitan's native browser shortcuts are manifest `commands` for the features
+Hachidori has:
+
+- Turn Japanese lookups on or off, suggested as Alt+Delete like Yomitan's
+  Toggle text scanning.
+- Open Hachidori settings, unassigned.
+
+The worker toggles `hoverEnabled` inside its storage queue with the same
+revisioned options write as the toolbar switch. Chrome alone can change these
+shortcuts, as with Yomitan on Chrome. The Keybinds section lists
+`chrome.commands.getAll()`, refreshes the list when its window regains focus,
+and opens `chrome://extensions/shortcuts`.
+
 ![Keybinds in Settings with Yomitan's default bindings](assets/settings-keybinds.png)
 
 ## Page scanning and exact selections

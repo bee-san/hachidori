@@ -279,6 +279,8 @@ function updateKeybindSettings() {
     readKeybinds: () => options.keybinds,
     editKeybinds: keybinds => { options.keybinds = keybinds; writeOptions(); },
     readAudioSources: () => options.audioSources,
+    getBrowserCommands: () => chrome.commands.getAll(),
+    openBrowserShortcuts: () => chrome.tabs.create({ url: "chrome://extensions/shortcuts" }),
   });
   keybindController.render();
 }

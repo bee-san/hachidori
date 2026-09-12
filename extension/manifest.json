@@ -22,6 +22,17 @@
     "<all_urls>"
   ],
   "options_page": "settings.html",
+  "commands": {
+    "toggleTextScanning": {
+      "suggested_key": {
+        "default": "Alt+Delete"
+      },
+      "description": "Turn Japanese lookups on or off"
+    },
+    "openSettingsPage": {
+      "description": "Open Hachidori settings"
+    }
+  },
   "action": {
     "default_title": "Hachidori",
     "default_popup": "toolbar.html"
