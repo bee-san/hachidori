@@ -6984,9 +6984,10 @@ async function main() {
   });
   check(
     "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
-    browserShortcuts.commands.some(({ name, shortcut }) => name === "toggleTextScanning" && shortcut === "Alt+Delete")
+    // Chrome registers the manifest's suggested Alt+Delete and reports it as Alt+Del.
+    browserShortcuts.commands.some(({ name, shortcut }) => name === "toggleTextScanning" && shortcut === "Alt+Del")
       && browserShortcuts.commands.some(({ name }) => name === "openSettingsPage")
-      && browserShortcuts.listed.includes("Turn Japanese lookups on or offAlt+Delete"),
+      && browserShortcuts.listed.includes("Turn Japanese lookups on or offAlt+Del"),
     JSON.stringify(browserShortcuts),
   );
   // ---------------------------------------------------------- first-run setup

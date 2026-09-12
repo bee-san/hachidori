@@ -2094,7 +2094,7 @@ async function toggleLookupsFromCommand() {
     baseRevision: optionsRevision(options), options: { hoverEnabled: !normaliseOptions(options).hoverEnabled } });
 }
 
-chrome.commands.onCommand.addListener((command) => {
+chrome.commands?.onCommand?.addListener((command) => {
   if (command === "openSettingsPage") {
     chrome.runtime.openOptionsPage().catch((error) => {
       console.error("hachidori: could not open settings:", describe(error));
