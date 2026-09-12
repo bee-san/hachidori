@@ -5748,6 +5748,9 @@ async function main() {
   for (const [name, passed] of Object.entries(noteContent?.activation ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
+  for (const [name, passed] of Object.entries(noteContent?.keybinds ?? {})) {
+    check(name, passed === true, JSON.stringify(passed));
+  }
   for (const [name, passed] of Object.entries(noteContent?.mediaOwnership ?? {})) {
     check(name, passed === true, JSON.stringify(passed));
   }
@@ -7764,7 +7767,7 @@ async function designPreviewStage() {
     update();
     await settle();
     incremental &&= query("form") === form && form.elements.definition.value === "A preview draft";
-    form.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    form.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
     const tab = popup.querySelectorAll('[role="tab"]')[1];
     tab.click();
     query(".gsm-hoshidicts-kanji-link").click();
@@ -7801,7 +7804,7 @@ async function designPreviewStage() {
     await settle();
     blur &&= (popup.dataset.definitionBlurState ?? "revealed") === "revealed"
       && query(".gsm-hoshidicts-kanji-glyph")?.textContent === "食";
-    kanjiNote.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    kanjiNote.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
     query(".gsm-hoshidicts-kanji-back").click();
     await settle();
     blur &&= popup.dataset.definitionBlurState === "blurred";
@@ -10257,7 +10260,7 @@ async function contentNoteStage() {
       callbacks.popup.dataset.toolbarPosition = callbacks.toolbarPosition;
       const record = {
         callbacks, editing: false, closeNext: false, closeCalls: 0,
-        clearCount: 0, previewDismissals: 0, layoutSchedules: 0, renders: [],
+        clearCount: 0, previewDismissals: 0, layoutSchedules: 0, renders: [], entryFocus: [],
         presentations: [], presentationFlushes: 0,
       };
       function stopEditing() {
@@ -10276,6 +10279,11 @@ async function contentNoteStage() {
         updateDictionaryPresentation(context) { record.presentations.push(context); },
         flushDictionaryPresentation() { record.presentationFlushes += 1; },
         hideImagePreview() { record.previewDismissals += 1; },
+        currentEntryIndex: () => 0,
+        focusEntry(target) {
+          record.entryFocus.push(target);
+          return true;
+        },
         clear() {
           record.clearCount += 1;
           const wasEditing = record.editing;
@@ -10587,6 +10595,7 @@ async function contentNoteStage() {
       },
       emitOptions,
       emitState,
+      entryFocus: (depth = 0) => popupRecord(depth).entryFocus,
       emitLookupStats(descriptor, row) { storageListener?.({ lookupStats: { newValue: descriptor },
         ...(row ? { [lookupStatsKey(descriptor, row)]: { newValue: row } } : {}),
       }, "local"); },
@@ -11740,9 +11749,9 @@ async function contentNoteStage() {
       soleView.destroy();
       const liveDestroyCancelsFrame = frames.size === 0;
       views[0].scheduleMasonry();
-      harness.driver.onKeyDown({ key: "Escape", repeat: false, stopPropagation() {} });
+      harness.driver.onKeyDown({ key: "Escape", code: "Escape", repeat: false, stopPropagation() {} });
       // First Escape closes the unfocused child; the next dismisses the root.
-      harness.driver.onKeyDown({ key: "Escape", repeat: false, stopPropagation() {} });
+      harness.driver.onKeyDown({ key: "Escape", code: "Escape", repeat: false, stopPropagation() {} });
       const hiddenCancelled = frames.size === 0;
       await harness.initialLookup();
       const next = harness.internalLink({ query: "teardown" });
@@ -12487,13 +12496,13 @@ async function contentNoteStage() {
     harness.setCloseNext(true);
     harness.popup.ownerDocument.dispatchEvent(new harness.popup.ownerDocument.defaultView.KeyboardEvent(
       "keydown",
-      { bubbles: true, cancelable: true, key: "Escape" },
+      { bubbles: true, cancelable: true, key: "Escape", code: "Escape" },
     ));
     const firstEscapeHidden = harness.driver.snapshot().popupHidden;
     const firstEscapeClears = harness.stats().clearCount;
     harness.popup.ownerDocument.dispatchEvent(new harness.popup.ownerDocument.defaultView.KeyboardEvent(
       "keydown",
-      { bubbles: true, cancelable: true, key: "Escape" },
+      { bubbles: true, cancelable: true, key: "Escape", code: "Escape" },
     ));
     const result = {
       caretCalls,
@@ -12696,7 +12705,7 @@ async function contentNoteStage() {
       const first = harness.take("hd_lookup");
       if (first) harness.reply(first, { dictionaryCount: 1, results: [harness.term(harness.candidate.query)] });
       await harness.settle();
-      if (reason === "Escape") harness.driver.onKeyDown({ key: "Escape", stopPropagation() {} });
+      if (reason === "Escape") harness.driver.onKeyDown({ key: "Escape", code: "Escape", stopPropagation() {} });
       else if (reason === "disable") {
         harness.emitOptions({ hoverEnabled: false });
         harness.emitOptions({ hoverEnabled: true });
@@ -12779,7 +12788,7 @@ async function contentNoteStage() {
       changed();
       const first = harness.take("hd_lookup");
       let replacement = null;
-      if (reason === "Escape") harness.driver.onKeyDown({ key: "Escape" });
+      if (reason === "Escape") harness.driver.onKeyDown({ key: "Escape", code: "Escape" });
       else if (reason === "scroll") harness.driver.onScroll();
       else if (reason === "window-exit") harness.driver.onMouseOut({ relatedTarget: null });
       else if (reason === "disable") harness.emitOptions({ hoverEnabled: false });
@@ -13756,7 +13765,7 @@ async function contentNoteStage() {
     await hidden.initialLookup();
     const hiddenFetch = load(hidden);
     hidden.popup.ownerDocument.dispatchEvent(new hidden.popup.ownerDocument.defaultView.KeyboardEvent(
-      "keydown", { bubbles: true, cancelable: true, key: "Escape" },
+      "keydown", { bubbles: true, cancelable: true, key: "Escape", code: "Escape" },
     ));
     finish(hidden);
     await hiddenFetch;
@@ -14201,8 +14210,101 @@ async function contentNoteStage() {
     } finally { harness.close(); }
   }
 
+  async function keybindCase() {
+    const result = {};
+    const press = (harness, code, key, init = {}) => {
+      const window = harness.popup.ownerDocument.defaultView;
+      const event = new window.KeyboardEvent("keydown", { key, code, bubbles: true, cancelable: true, ...init });
+      window.document.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    const defaults = await createHarness();
+    try {
+      const window = defaults.popup.ownerDocument.defaultView;
+      await defaults.initialLookup();
+      const moved = [["ArrowDown", "ArrowDown"], ["PageUp", "PageUp"], ["Home", "Home"], ["End", "End"]]
+        .map(([code, key]) => press(defaults, code, key, { altKey: true }));
+      const unmodified = press(defaults, "ArrowDown", "ArrowDown");
+      const actions = window.document.createElement("div");
+      const mine = window.document.createElement("button"), view = window.document.createElement("button");
+      mine.className = "gsm-hoshidicts-mine-button";
+      view.className = "gsm-hoshidicts-anki-view";
+      view.hidden = true;
+      actions.append(mine, view);
+      defaults.popup.append(actions);
+      let mined = 0;
+      mine.addEventListener("click", () => { mined += 1; });
+      const audioButton = defaults.popup.querySelector(".gsm-hoshidicts-audio-button");
+      defaults.callbacks().onResultsRendered({ audioButtons: [{ button: audioButton, result: defaults.render().results[0] }],
+        miningActions: [{ actions, feedback: null, result: defaults.render().results[0] }] });
+      const added = press(defaults, "KeyE", "e", { altKey: true });
+      const hiddenView = press(defaults, "KeyV", "v", { altKey: true });
+      const played = press(defaults, "KeyP", "p", { altKey: true }) && defaults.take("hd_audio_play") !== null;
+      const escaped = press(defaults, "Escape", "Escape") === false && defaults.driver.snapshot().popupHidden;
+      result["default keybinds navigate entries, mine, play and close through Yomitan's keys"] =
+        (JSON.stringify(defaults.entryFocus()) === JSON.stringify([{ offset: 1 }, { offset: -3 }, "first", "last"])
+          && moved.every(Boolean) && !unmodified && added && mined === 1 && !hiddenView && played && escaped)
+        || { focus: defaults.entryFocus(), moved, unmodified, added, mined, hiddenView, played, escaped };
+    } finally {
+      defaults.close();
+    }
+
+    const bind = (action, key, modifiers, scopes = ["popup"], extra = {}) =>
+      ({ action, argument: "", key, modifiers, scopes, enabled: true, ...extra });
+    const custom = await createHarness(undefined, { options: { keybinds: [
+      bind("close", "KeyQ", ["alt"]),
+      bind("firstEntry", "KeyJ", []),
+      bind("lastEntry", "KeyK", [], ["popup"], { enabled: false }),
+      bind("toggleOption", "KeyT", ["alt", "shift"], ["web"], { argument: "showLookupCounts" }),
+      bind("scanSelectedText", "KeyS", ["alt"], ["web"]),
+      bind("scanTextAtSelection", "KeyD", ["alt"], ["web"]),
+    ] } });
+    try {
+      const window = custom.popup.ownerDocument.defaultView;
+      await custom.initialLookup();
+      const escapeUnbound = !press(custom, "Escape", "Escape") && !custom.driver.snapshot().popupHidden;
+      const input = window.document.createElement("input");
+      window.document.body.append(input);
+      input.focus();
+      const typed = !press(custom, "KeyJ", "j") && custom.entryFocus().length === 0;
+      input.blur();
+      const bare = press(custom, "KeyJ", "j") && custom.entryFocus().length === 1;
+      const disabled = !press(custom, "KeyK", "k") && custom.entryFocus().length === 1;
+      const toggled = press(custom, "KeyT", "T", { altKey: true, shiftKey: true });
+      const write = custom.take("hd_options_write");
+      press(custom, "KeyQ", "q", { altKey: true });
+      const closed = custom.driver.snapshot().popupHidden;
+      const popupScoped = !press(custom, "KeyJ", "j") && custom.entryFocus().length === 1;
+      const selection = window.getSelection();
+      selection.selectAllChildren(custom.anchor);
+      const scanned = press(custom, "KeyS", "s", { altKey: true });
+      const exact = custom.take("hd_lookup");
+      if (exact) custom.reply(exact, { dictionaryCount: 1, results: [custom.term("食べた")] });
+      await custom.settle();
+      selection.setBaseAndExtent(custom.anchor.firstChild, 1, custom.anchor.firstChild, 2);
+      const scannedAt = press(custom, "KeyD", "d", { altKey: true });
+      const expanded = custom.take("hd_lookup");
+      if (expanded) custom.reply(expanded, { dictionaryCount: 1, results: [custom.term("べた")] });
+      await custom.settle();
+      custom.driver.onMouseMove({ target: custom.anchor, clientX: 20, clientY: 20 });
+      await custom.settle();
+      const retained = custom.take("hd_lookup") === null && !custom.driver.snapshot().popupHidden;
+      result["custom keybinds follow scope, enablement, text fields, option writes and selection scans"] =
+        (escapeUnbound && typed && bare && disabled && toggled && write?.request.target === "hoshidicts-worker"
+          && write.request.options.showLookupCounts === false && Number.isInteger(write.request.baseRevision)
+          && closed && popupScoped && scanned && exact?.request.text === "食べた"
+          && scannedAt && expanded?.request.text === "べた" && retained)
+        || { escapeUnbound, typed, bare, disabled, toggled, write: write?.request, closed, popupScoped, scanned,
+          exact: exact?.request.text, scannedAt, expanded: expanded?.request.text, retained };
+    } finally {
+      custom.close();
+    }
+    return result;
+  }
+
   return {
     callbacksWired,
+    keybinds: await keybindCase(),
     popupVisibility: await popupVisibilityCase(),
     lookupStatistics: { ...await lookupStatisticsCase(), ...await lookupStatisticsRaceCase() },
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase() },

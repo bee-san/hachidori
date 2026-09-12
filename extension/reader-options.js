@@ -30,9 +30,10 @@
     page: { nativeCues: true, domText: true, autoLearnArea: true },
   };
   // yomitan-gsm hotkey actions that map onto existing Hachidori behaviour, in
-  // Yomitan's menu order and with its labels. `argument` names the editor kind.
+  // Yomitan's menu order and with its labels. `argument` names the editor kind;
+  // `scopes` are where Settings offers the action, as in Yomitan's controller.
   const KEYBIND_ACTIONS = [
-    { id: "", label: "None" },
+    { id: "", label: "None", scopes: [] },
     { id: "close", label: "Close" },
     { id: "nextEntry", label: "Go to next entry", argument: "count" },
     { id: "previousEntry", label: "Go to previous entry", argument: "count" },
@@ -45,13 +46,15 @@
     { id: "viewNotes", label: "View notes" },
     { id: "playAudio", label: "Play audio" },
     { id: "playAudioFromSource", label: "Play audio from source", argument: "audioSource" },
-    { id: "scanSelectedText", label: "Scan selected text" },
-    { id: "scanTextAtSelection", label: "Scan text at selection" },
-    { id: "toggleOption", label: "Toggle option", argument: "option" },
-  ];
+    { id: "scanSelectedText", label: "Scan selected text", scopes: ["web"] },
+    { id: "scanTextAtSelection", label: "Scan text at selection", scopes: ["web"] },
+    // Yomitan offers this only inside its popup. Hachidori's popup cannot
+    // exist while lookups are off, so the page scope can turn them back on.
+    { id: "toggleOption", label: "Toggle option", argument: "option", scopes: ["popup", "web"] },
+  ].map(action => ({ scopes: ["popup"], ...action }));
   const KEYBIND_ARGUMENT_DEFAULTS = { count: "1", audioSource: "", option: "" };
   // Yomitan's popup scope, adapted: Hachidori's hover popup never takes focus,
-  // so it means "while a popup is visible". Web is anywhere on the page.
+  // so it means "while a popup is open or opening". Web is anywhere on the page.
   const KEYBIND_SCOPES = ["popup", "web"];
   const KEYBIND_MODIFIERS = ["meta", "ctrl", "alt", "shift"];
   // Yomitan's default hotkeys without the actions Hachidori has no feature for.
