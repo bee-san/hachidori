@@ -504,6 +504,52 @@ full browser restart without reloading the engine.
 
 ![Hover controls in Settings](assets/reader-activation-settings.png)
 
+### Keybinds
+
+`options.keybinds` copies yomitan-gsm's hotkey entries exactly: `action`,
+`argument`, `key` (a `KeyboardEvent.code`, or `null` for modifiers only),
+`modifiers`, `scopes` and `enabled`. Only actions that map onto an existing
+Hachidori control are offered. Close, entry and dictionary navigation, Back, Add
+note, View notes, Play audio, Play audio from source, Scan selected text, Scan
+text at selection and Toggle option are available. The defaults are Yomitan's
+keys for those actions: Escape, Alt+PageUp/PageDown (three entries),
+Alt+ArrowUp/ArrowDown, Alt+Home/End, Alt+B, Alt+E, Alt+P and Alt+V.
+
+Several Yomitan actions are omitted because Hachidori has no matching feature:
+
+- forward history
+- profiles
+- the search page and its box
+- card-format arguments
+- copying the host selection, which the in-page popup never needs
+- caret scanning inside editors
+
+The content script matches a fresh keydown's physical code and exact modifier
+set as Yomitan's `HotkeyHandler` does. The first enabled binding in scope that
+handles the key prevents its default. Unmodified or Shift-only character keys
+stay with a focused text field, and auto-repeat remains ignored.
+
+Yomitan's popup scope means a popup that has focus. Hachidori's hover popup never
+takes focus, so here the popup scope means a popup is open or its lookup is
+pending. The page scope applies anywhere. Settings offers the scopes Yomitan's
+controller offers for each action. Toggle option adds the page scope, because no
+popup exists while lookups are off.
+
+Close keeps the reader's Escape order and event handling. Popup actions target the
+deepest visible popup. As in Yomitan, the current entry starts at the first entry
+and changes only through navigation or a click on an entry. Navigation reveals
+later entries through the existing Show more control. Dictionary navigation moves
+from the most visible glossary card to the nearest card from another dictionary.
+Add note, View notes and Back click the current entry's existing buttons, so
+duplicate, disabled and capture behaviour is unchanged. Audio replays without
+the click toggle, or plays the first choice from the selected source. Toggle
+option writes one boolean through the revisioned options CAS.
+
+The Keybinds section edits the list like Yomitan's key field: a key press
+replaces the modifiers, a non-modifier key replaces the key, and plain Tab still
+moves focus. Each row has Clear, Reset (the action's first default binding) and
+Remove. The section also has Add and Reset keybinds to defaults.
+
 ## Page scanning and exact selections
 
 Automatic scanning crosses ordinary inline elements and stops at editing
@@ -1219,10 +1265,10 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 ## Settings interface
 
 Settings is one document with native hash links and one visible task section.
-The primary rail exposes seven destinations. Library owns five local,
+The primary rail exposes eight destinations. Library owns five local,
 hash-addressable task views: Dictionaries, Add, Updates, Groups, and Personal
 dictionary. Backup and restore remains a global destination. The compact picker
-keeps all eleven task views available and groups those five Library choices.
+keeps all twelve task views available and groups those five Library choices.
 Global search matches settings across every section, includes the Library
 hierarchy in matching and result breadcrumbs, opens a result's enclosing
 disclosures and focuses its control without changing values or discarding drafts.
