@@ -550,6 +550,8 @@ replaces the modifiers, a non-modifier key replaces the key, and plain Tab still
 moves focus. Each row has Clear, Reset (the action's first default binding) and
 Remove. The section also has Add and Reset keybinds to defaults.
 
+![Keybinds in Settings with Yomitan's default bindings](assets/settings-keybinds.png)
+
 ## Page scanning and exact selections
 
 Automatic scanning crosses ordinary inline elements and stops at editing
