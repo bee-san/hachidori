@@ -954,20 +954,11 @@ covering them; opening Note keeps its focused input visible. The viewport and
 focus are restored before the remaining hover tests.
 `HACHIDORI_DEINFLECTION_SCREENSHOT` captures the expanded desktop popup.
 
-One assertion covers the outer dictionary cards on a popup no other check has
-touched. It reads the computed `::before` marker inside the closed shadow root:
-a solid `▶` closed and `▼` open, `inline-block` at 20px wide, 16px, opacity 1,
-in the popup's own foreground colour rather than the muted summary colour. Every
-card of that render must start closed with no laid-out body, keep
-`display: list-item` and no native marker, and open and close again through a
-real mouse click on the marker and through Enter and Space on the focused
-summary. Because a collapsed card is the default, every `popupReader` read opens
-the cards it finds — a reader reaching a definition has to — so the geometry,
-focus, hover and selection assertions elsewhere measure them expanded. This check
-and the Back check read through `popupReader(..., { autoExpandCards: false })`
-instead, which is the only way the collapsed render can be observed at all.
-`HACHIDORI_COLLAPSED_CARD_SCREENSHOT` captures that untouched popup and
-`HACHIDORI_KANJI_BACK_SCREENSHOT` the recollapsed view Back restores.
+One assertion covers the dictionary cards on a popup rendered from a fresh hover.
+Every card must be a plain `div` outside any `details`, with a non-interactive
+title (no pointer cursor, no `::before` marker) carrying the display name and
+dictionary, a laid-out definition body, and the same geometry after a real mouse
+click on the title.
 
 The exported `nestedLinksFixture()` supplies three linked term rows and one
 shared deterministic PNG without changing the ordinary fixture counts. The
@@ -985,8 +976,8 @@ cover All, ordered nonempty groups and an ungrouped favourite from the complete
 native result; ordinary contributors and grouped favourites receive no duplicate
 dictionary tabs. Warmed tab changes must issue no lookup, media or style
 requests. Linked-child, clicked-kanji and Back retain their semantic selection.
-Back recollapses an expanded dictionary card while restoring the expanded,
-scrolled child's prior tab, highlight and toolbar, without another native lookup;
+Back restores an expanded, scrolled child with its prior tab, highlight and
+toolbar and identical dictionary cards, without another native lookup;
 its next Back still closes the child. Extension checks cover native-source fallback and
 terminal misses, cached versus changed-generation restoration, lazy IPA and
 structured disclosures, and cancellation by newer projections or deliberate
