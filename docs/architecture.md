@@ -962,24 +962,19 @@ once against the new state. Startup uses the same ordering.
 
 ![Compact summary with its complete source definitions](assets/compact-definition-summary.png)
 
-### Dictionary card disclosure
+### Dictionary cards
 
-Every outer dictionary card is a native `details` that renders closed. Its
-`summary` carries the dictionary's display name and a `::before` marker: a solid
-`▶` closed and `▼` open, 16px in a 20px slot, at full opacity in the theme
-foreground rather than the muted title colour, so a collapsed card reads as
-expandable instead of as a heading. The native marker stays suppressed and the
-element keeps `display: list-item`, so mouse, Enter and Space activation, focus
-and accessibility come from `details`/`summary` itself; the renderer adds no
-keyboard handling, animation or extra header decoration.
+Dictionary cards follow Yomitan: each is a plain box whose title shows the
+dictionary's display name, and its definitions are always shown. The card is not
+a disclosure and has no marker, so there is nothing to open before a definition
+can be read.
 
-Every fresh lookup and every dictionary-tab projection starts collapsed. This is
-not a stored preference: there is no state to write, and Back deliberately
-returns to the same collapsed view rather than reopening what was expanded.
-Disclosures a dictionary authored inside a card body are untouched by all of
-this and keep their own state.
-
-![A collapsed dictionary card behind its solid disclosure marker](assets/collapsed-dictionary-card.png)
+Collapsing belongs to the dictionary. A structured-content `details`/`summary`
+renders natively, closed unless the entry sets `open: true`, and is styled as in
+Yomitan: the `details` is indented 1.4em and the `summary` keeps the browser's
+own marker with `list-style-position: outside`, so the thin triangle hangs in the
+gutter. A dictionary's own scoped `styles.css` can restyle it; Bee's Ultimate
+Grammar Dictionary draws its own chevron on its per-source blocks this way.
 
 ### Deinflection explanation
 
@@ -1173,9 +1168,7 @@ Back stores the exact term request and its current tab, expanded-results flag,
 scroll position and disclosure states as data, not detached DOM or renderer
 closures. The renderer-owned capture accessor follows local tab changes and is
 cleared when the view is retired. Matching content and tab membership restore
-open deinflection, structured and IPA disclosures, while the outer glossary cards
-are deliberately reset to closed: Back returns to the collapsed view a fresh
-lookup starts from.
+open deinflection, structured and IPA disclosures.
 Lazy IPA is populated before the restored layout. Changed content cannot inherit
 unrelated disclosure states; a changed generation replays the exact request.
 
@@ -1193,7 +1186,7 @@ This intentionally extends the pinned GSM PR #549 restoration: its saved term
 view does not retain expansion/scroll, and uses the current kanji tab. Issue #9
 requires the prior term view's exact state instead.
 
-![Back restores an expanded Study view with its dictionary cards collapsed](assets/kanji-back.png)
+![Back restores an expanded Study view](assets/kanji-back.png)
 
 ## Dictionary presentation boundary
 

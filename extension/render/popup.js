@@ -2891,14 +2891,7 @@
           const details = [...popup.querySelectorAll("details")];
           if (details.length === restoreDisclosures.length
               && details.every((node, index) => node.className === restoreDisclosures[index].className)) {
-            // Outer dictionary cards are deliberately not restored: Back returns
-            // to the collapsed view every fresh lookup starts from. Everything
-            // the dictionary authored inside a card keeps its saved state.
-            details.forEach((node, index) => {
-              node.open = node.classList.contains("gsm-hoshidicts-glossary-card")
-                ? false
-                : restoreDisclosures[index].open;
-            });
+            details.forEach((node, index) => { node.open = restoreDisclosures[index].open; });
             // Native toggle delivery is deferred. Populate restored lazy IPA
             // now so the first restored layout includes all its text.
             for (const { metadata } of entryMetadata) metadata.fillOpenIpa();
@@ -3013,16 +3006,15 @@
         const glossaryGrid = documentRef.createElement("div");
         glossaryGrid.className = "gsm-hoshidicts-glossary-grid";
         for (const [dictionary, glossaries] of groupedGlossaries) {
-          const details = documentRef.createElement("details");
-          details.className = "gsm-hoshidicts-glossary-card";
-          // Collapsed on purpose. A dictionary card only reads as expandable
-          // when it starts closed behind its own visible disclosure marker.
-          details.addEventListener("toggle", scheduleMasonry);
-          const summary = documentRef.createElement("summary");
-          summary.textContent = dictionaryDisplayNames?.get(dictionary) || dictionary;
-          summary.title = dictionary;
-          summary.setAttribute("aria-label", dictionary);
-          details.appendChild(summary);
+          // Always open, as in Yomitan: only disclosures a dictionary authors
+          // inside its own content collapse.
+          const card = documentRef.createElement("div");
+          card.className = "gsm-hoshidicts-glossary-card";
+          const title = documentRef.createElement("div");
+          title.className = "gsm-hoshidicts-glossary-card-title";
+          title.textContent = dictionaryDisplayNames?.get(dictionary) || dictionary;
+          title.title = dictionary;
+          card.appendChild(title);
           const definitions = documentRef.createElement("ol");
           definitions.className = "gsm-hoshidicts-definitions";
           if (glossaries.length === 1) {
@@ -3075,8 +3067,8 @@
             definition.appendChild(content);
             definitions.appendChild(definition);
           }
-          details.appendChild(definitions);
-          glossaryGrid.appendChild(details);
+          card.appendChild(definitions);
+          glossaryGrid.appendChild(card);
         }
         entry.appendChild(glossaryGrid);
         // Fixed-width masonry cards cannot signal a change to their container.
@@ -3228,8 +3220,8 @@
                 results[index], renderContext, summaryMedia) || changed;
             }
             if (labelsChanged) {
-              for (const summary of entry.querySelectorAll(":scope > .gsm-hoshidicts-glossary-grid > details > summary")) {
-                changed = updateLabel(summary, names.get(summary.title) || summary.title) || changed;
+              for (const title of entry.querySelectorAll(":scope > .gsm-hoshidicts-glossary-grid > .gsm-hoshidicts-glossary-card > .gsm-hoshidicts-glossary-card-title")) {
+                changed = updateLabel(title, names.get(title.title) || title.title) || changed;
               }
             }
           });

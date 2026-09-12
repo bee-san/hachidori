@@ -2324,28 +2324,10 @@ html[data-hoshidicts-theme="girlypop"],
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
 }
 
-.gsm-hoshidicts-glossary-card > summary {
+.gsm-hoshidicts-glossary-card-title {
   color: var(--text-color-light1);
   font-size: 13px;
-  cursor: pointer;
-  list-style: none;
   user-select: none;
-}
-
-.gsm-hoshidicts-glossary-card > summary::-webkit-details-marker {
-  display: none;
-}
-
-.gsm-hoshidicts-glossary-card > summary::before {
-  content: "▶";
-  display: inline-block;
-  width: 20px;
-  color: var(--text-color);
-  font-size: 16px;
-}
-
-.gsm-hoshidicts-glossary-card[open] > summary::before {
-  content: "▼";
 }
 
 .gsm-hoshidicts-definitions {
@@ -2392,12 +2374,16 @@ html[data-hoshidicts-theme="girlypop"],
   padding-left: 20px;
 }
 
+/* Dictionary-authored disclosures, styled as Yomitan does: the native marker
+ * hangs in the left gutter. A dictionary's own scoped styles still win. */
 .gsm-hoshidicts-glossary-content details {
   margin: 3px 0;
+  padding-left: 1.4em;
 }
 
 .gsm-hoshidicts-glossary-content summary {
   cursor: pointer;
+  list-style-position: outside;
 }
 
 .gsm-hoshidicts-structured-link {
