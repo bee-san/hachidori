@@ -267,7 +267,8 @@ and accumulate into `totalSeconds`, and a
 committed Jitendex or Bee's entry settles its first-install selection once
 (`compactDefinitionSummaryDictionary` and the term-route
 `kanjiClickDictionary`) while that option is still Automatic, through the
-revisioned options write. That entry is located by the same catalogue identity
+revisioned options write. Each catalogue entry's `firstInstallOption` declares
+that option; `setup-state.js` owns only how its value is built from the title. That entry is located by the same catalogue identity
 the installer uses — stored source ID or exact update index — so a package
 imported by hand or carried in from another profile settles its selection from
 its own committed title. **All dictionaries installed in X seconds** is
