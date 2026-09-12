@@ -563,6 +563,8 @@ shortcuts, as with Yomitan on Chrome. The Keybinds section lists
 `chrome.commands.getAll()`, refreshes the list when its window regains focus,
 and opens `chrome://extensions/shortcuts`.
 
+![Browser shortcuts listed in Keybinds](assets/settings-browser-shortcuts.png)
+
 ![Keybinds in Settings with Yomitan's default bindings](assets/settings-keybinds.png)
 
 ## Page scanning and exact selections
