@@ -14695,6 +14695,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
 
   await metadataRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
   lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candidate, results: lookup.results });
+  keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candidate, result: lookup.results[0] });
 
   const glossary = lookup.results[0].term.glossaries[0];
   const noteResults = [
@@ -15577,6 +15578,63 @@ function lookupCountsRenderStage({ HDGlossary, HDPopup, document, window, candid
     check("the lookup count slot renders hidden on All only and its owner paints it without rerendering",
       slotHidden && painted && projected && restored,
       JSON.stringify({ slotHidden, painted, projected, restored, renders }));
+  } finally { view.destroy(); popup.remove(); }
+}
+
+// jsdom has no layout: entries and cards sit at fixed content offsets and move
+// with the stubbed scroller, which starts 100px down the page and is 200px tall.
+function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candidate, result }) {
+  const popup = document.createElement("div");
+  document.body.appendChild(popup);
+  const expanded = [];
+  const view = HDPopup.createPopupView({ document, window, popup,
+    appendExpressionRuby: HDGlossary.appendExpressionRuby,
+    appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
+    parseTagList: HDGlossary.parseTagList, positionPopup() {}, onKanjiClick() {}, onAddCustomEntry() {},
+    onResultsExpanded: ({ audioButtons }) => {
+      expanded.push(audioButtons.length);
+      layout();
+    },
+  });
+  const scroller = view.scrollElement;
+  let scrollTop = 0;
+  const scrolls = [];
+  Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => scrollTop, set: value => { scrollTop = value; } });
+  scroller.scrollTo = ({ top, behavior }) => { scrolls.push({ top, behavior }); scrollTop = top; };
+  const place = (node, offset, height) => Object.defineProperty(node, "getBoundingClientRect", { configurable: true,
+    value: () => ({ top: 100 + offset - scrollTop, bottom: 100 + offset + height - scrollTop }) });
+  scroller.getBoundingClientRect = () => ({ top: 100, bottom: 300 });
+  const glossary = result.term.glossaries[0];
+  const entry = (expression, dictionaries) => ({ ...result, matched: expression,
+    term: { ...result.term, expression, glossaries: dictionaries.map(dictionary => ({ ...glossary, dictionary })) } });
+  const layout = () => [...scroller.querySelectorAll(".gsm-hoshidicts-entry")].forEach((node, index) => {
+    place(node, index * 300, 280);
+    [...node.querySelectorAll(".gsm-hoshidicts-glossary-card")].forEach((card, cardIndex) => place(card, index * 300 + 20 + cardIndex * 90, 80));
+  });
+  try {
+    view.renderResults([entry("一", ["Alpha", "Beta"]), entry("二", ["Beta"]), entry("三", ["Alpha"])], candidate, {});
+    layout();
+    const initial = view.currentEntryIndex() === 0 && scroller.querySelectorAll(".gsm-hoshidicts-entry").length === 1;
+    const moved = view.focusEntry({ offset: 1 });
+    layout();
+    const expandedToNext = moved && expanded.length === 1 && view.currentEntryIndex() === 1 && scrolls.at(-1).top === 300
+      && scrolls.at(-1).behavior === "smooth";
+    const clamped = view.focusEntry({ offset: 5 }) && view.currentEntryIndex() === 2 && scrolls.at(-1).top === 600;
+    const first = view.focusEntry("first") && view.currentEntryIndex() === 0 && scrolls.at(-1).top === 0;
+    scrollTop = 30; // Beta is now the most visible card of the first entry.
+    const nextDictionary = view.focusEntry({ dictionary: 1 }) && view.currentEntryIndex() === 2 && scrolls.at(-1).top === 620;
+    const previousDictionary = view.focusEntry({ dictionary: -1 }) && view.currentEntryIndex() === 1 && scrolls.at(-1).top === 320;
+    scroller.querySelector(".gsm-hoshidicts-entry .gsm-hoshidicts-glossary-card").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    const clicked = view.currentEntryIndex() === 0;
+    const last = view.focusEntry("last") && view.currentEntryIndex() === 2;
+    view.renderResults([entry("四", ["Alpha"])], candidate, {});
+    const reset = view.currentEntryIndex() === 0 && view.focusEntry({ dictionary: 1 }) === false;
+    view.renderNotice("No results", candidate);
+    const empty = view.focusEntry("last") === false;
+    check("keybind entry navigation expands Show more, clamps, follows clicks and moves between dictionary cards",
+      initial && expandedToNext && clamped && first && nextDictionary && previousDictionary && clicked && last && reset && empty,
+      JSON.stringify({ initial, expandedToNext, clamped, first, nextDictionary, previousDictionary, clicked, last, reset, empty,
+        expanded, scrolls, current: view.currentEntryIndex() }));
   } finally { view.destroy(); popup.remove(); }
 }
 

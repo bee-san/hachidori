@@ -1982,14 +1982,21 @@
       return true;
     }
 
+    // Yomitan renders every entry; later entries here wait behind Show more.
+    function expandEntries() {
+      const showMore = contentScroll.querySelector(":scope > .gsm-hoshidicts-tab-panel > .gsm-hoshidicts-show-more");
+      showMore?.click();
+      return Boolean(showMore);
+    }
+
     // Yomitan starts from the current entry's most visible definition and moves
     // to the nearest definition from another dictionary; here each dictionary
     // is one glossary card. Kanji views have no such definitions.
     function focusEntryWithDifferentDictionary(nodes, index, sign) {
-      const cardsOf = node => [...node.querySelectorAll(".gsm-hoshidicts-glossary-grid > .gsm-hoshidicts-glossary-card")];
+      const cardsOf = node => node.classList.contains("gsm-hoshidicts-entry")
+        ? [...node.querySelectorAll(".gsm-hoshidicts-glossary-grid > .gsm-hoshidicts-glossary-card")] : [];
       const dictionaryOf = card => card.querySelector(":scope > .gsm-hoshidicts-glossary-card-title")?.title ?? "";
-      const cards = nodes[index].classList.contains("gsm-hoshidicts-entry") ? cardsOf(nodes[index]) : [];
-      if (cards.length === 0) return false;
+      const cards = cardsOf(nodes[index]);
       const view = contentScroll.getBoundingClientRect();
       let visible = null, coverage = 0;
       for (const card of sign > 0 ? cards : [...cards].reverse()) {
@@ -1999,22 +2006,25 @@
       }
       if (!visible) return false;
       const dictionary = dictionaryOf(visible);
-      for (let i = index; i >= 0 && i < nodes.length; i += sign) {
-        const candidates = i === index ? cards : cardsOf(nodes[i]);
-        const ordered = sign > 0 ? candidates : [...candidates].reverse();
-        const start = i === index ? ordered.indexOf(visible) + 1 : 0;
-        const target = ordered.slice(start).find(card => dictionaryOf(card) !== dictionary);
-        if (target) return scrollToEntry(nodes, i, target);
-      }
-      return false;
+      const search = entries => {
+        for (let i = index; i >= 0 && i < entries.length; i += sign) {
+          const ordered = sign > 0 ? cardsOf(entries[i]) : cardsOf(entries[i]).reverse();
+          const start = i === index ? ordered.indexOf(visible) + 1 : 0;
+          const target = ordered.slice(start).find(card => dictionaryOf(card) !== dictionary);
+          if (target) return scrollToEntry(entries, i, target);
+        }
+        return false;
+      };
+      return search(nodes) || (sign > 0 && expandEntries() && search(entryNodes()));
     }
 
     function focusEntry(target) {
-      const nodes = entryNodes();
+      let nodes = entryNodes();
       if (nodes.length === 0) return false;
       const index = currentEntryIndex(nodes);
       if (target.dictionary) return focusEntryWithDifferentDictionary(nodes, index, Math.sign(target.dictionary));
-      const next = target === "first" ? 0 : target === "last" ? nodes.length - 1 : index + target.offset;
+      const next = target === "first" ? 0 : target === "last" ? Infinity : index + target.offset;
+      if (next >= nodes.length && expandEntries()) nodes = entryNodes();
       return scrollToEntry(nodes, Math.max(0, Math.min(nodes.length - 1, next)));
     }
 
