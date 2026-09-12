@@ -27,7 +27,7 @@ import {
   normaliseUpdateSettings,
   recommendedDictionaryInstalled,
 } from "./managed-dictionary-source.js";
-import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
+import { RECOMMENDED_DICTIONARIES, describeRecommendedCatalogue } from "./recommended-dictionaries.js";
 import {
   CUSTOM_DICTIONARY_ID,
   CUSTOM_DICTIONARY_SOURCE_KEY,
@@ -956,6 +956,9 @@ function importDuration(started) {
 }
 
 function renderRecommendedCatalogue() {
+  const { count, topics } = describeRecommendedCatalogue();
+  element("recommended-dictionaries-hint").textContent =
+    `${count[0].toUpperCase()}${count.slice(1)} trusted sources for ${topics}. Already installed sources are skipped.`;
   const list = element("recommended-dictionary-list");
   for (const entry of RECOMMENDED_DICTIONARIES) {
     const item = document.createElement("li");
