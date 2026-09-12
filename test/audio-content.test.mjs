@@ -203,3 +203,34 @@ test("late initial options play the still-current first result without replaying
     await settle();
   }
 });
+
+test("keybind playback restarts the entry's pronunciation and can play one source's first choice", async t => {
+  const f = fixture(t);
+  const v = f.view();
+  v.bind();
+  const plays = () => f.sent.filter(message => message.type === "hd_audio_play");
+  assert.equal(f.controller.playButton(f.window.document.createElement("button")), false, "an unbound button has nothing to play");
+  assert.equal(f.controller.playButton(v.item.button), true);
+  assert.equal(f.controller.playButton(v.item.button), true);
+  assert.equal(plays().length, 2, "a repeated keybind replays where a second click would stop");
+  assert.equal(plays()[1].selection, undefined);
+
+  assert.equal(f.controller.playButton(v.item.button, "second"), true);
+  const candidates = f.sent.at(-1);
+  assert.equal(candidates.type, "hd_audio_candidates");
+  candidates.resolveReply({ ok: true, groups: [
+    { sourceId: "first", sourceKey: "first-key", type: "custom", candidates: [{ url: "https://first.test/a.mp3", name: "" }] },
+    { sourceId: "second", sourceKey: "second-key", type: "custom-json",
+      candidates: [{ url: "https://second.test/a.mp3", name: "Speaker A" }, { url: "https://second.test/b.mp3", name: "Speaker B" }] },
+  ] });
+  await settle();
+  assert.equal(plays().length, 3);
+  assert.deepEqual({ ...plays()[2].selection }, { sourceId: "second", sourceKey: "second-key", expression: "聞く", reading: "きく",
+    index: 0, url: "https://second.test/a.mp3", name: "Speaker A" });
+
+  assert.equal(f.controller.playButton(v.item.button, "removed"), true);
+  f.sent.at(-1).resolveReply({ ok: true, groups: [{ sourceId: "first", sourceKey: "first-key", type: "custom", candidates: [] }] });
+  await settle();
+  assert.equal(plays().length, 3, "a source without choices plays nothing");
+  assert.equal(v.item.status.textContent, "No pronunciation was returned. Check Audio Settings.");
+});

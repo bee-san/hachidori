@@ -1959,6 +1959,65 @@
     };
     popup.addEventListener("scroll", onPopupScroll, true);
 
+    // Keybind navigation after Yomitan's Display: the current entry changes
+    // only when a keybind focuses an entry or the reader clicks one.
+    let currentEntry = null;
+    const entryNodes = () => [...contentScroll.querySelectorAll(
+      ":scope > .gsm-hoshidicts-tab-panel > .gsm-hoshidicts-entry, :scope > .gsm-hoshidicts-kanji-entry")];
+    contentScroll.addEventListener("click", event => {
+      const entry = event.button === 0 && event.target instanceof windowRef.Element
+        ? event.target.closest(".gsm-hoshidicts-entry, .gsm-hoshidicts-kanji-entry") : null;
+      if (entry && entryNodes().includes(entry)) currentEntry = entry;
+    });
+
+    function currentEntryIndex(nodes = entryNodes()) {
+      return Math.max(0, nodes.indexOf(currentEntry));
+    }
+
+    function scrollToEntry(nodes, index, target = nodes[index]) {
+      currentEntry = nodes[index];
+      const top = index === 0 && target === currentEntry ? 0
+        : target.getBoundingClientRect().top - contentScroll.getBoundingClientRect().top + contentScroll.scrollTop;
+      contentScroll.scrollTo({ top, behavior: "smooth" });
+      return true;
+    }
+
+    // Yomitan starts from the current entry's most visible definition and moves
+    // to the nearest definition from another dictionary; here each dictionary
+    // is one glossary card. Kanji views have no such definitions.
+    function focusEntryWithDifferentDictionary(nodes, index, sign) {
+      const cardsOf = node => [...node.querySelectorAll(".gsm-hoshidicts-glossary-grid > .gsm-hoshidicts-glossary-card")];
+      const dictionaryOf = card => card.querySelector(":scope > .gsm-hoshidicts-glossary-card-title")?.title ?? "";
+      const cards = nodes[index].classList.contains("gsm-hoshidicts-entry") ? cardsOf(nodes[index]) : [];
+      if (cards.length === 0) return false;
+      const view = contentScroll.getBoundingClientRect();
+      let visible = null, coverage = 0;
+      for (const card of sign > 0 ? cards : [...cards].reverse()) {
+        const { top, bottom } = card.getBoundingClientRect();
+        const shown = Math.min(bottom, view.bottom) - Math.max(top, view.top);
+        if (shown > coverage) { visible = card; coverage = shown; }
+      }
+      if (!visible) return false;
+      const dictionary = dictionaryOf(visible);
+      for (let i = index; i >= 0 && i < nodes.length; i += sign) {
+        const candidates = i === index ? cards : cardsOf(nodes[i]);
+        const ordered = sign > 0 ? candidates : [...candidates].reverse();
+        const start = i === index ? ordered.indexOf(visible) + 1 : 0;
+        const target = ordered.slice(start).find(card => dictionaryOf(card) !== dictionary);
+        if (target) return scrollToEntry(nodes, i, target);
+      }
+      return false;
+    }
+
+    function focusEntry(target) {
+      const nodes = entryNodes();
+      if (nodes.length === 0) return false;
+      const index = currentEntryIndex(nodes);
+      if (target.dictionary) return focusEntryWithDifferentDictionary(nodes, index, Math.sign(target.dictionary));
+      const next = target === "first" ? 0 : target === "last" ? nodes.length - 1 : index + target.offset;
+      return scrollToEntry(nodes, Math.max(0, Math.min(nodes.length - 1, next)));
+    }
+
     function resetMasonry(grid) {
       grid.classList.remove("gsm-hoshidicts-glossary-grid-masonry");
       grid.style.height = "";
@@ -2097,6 +2156,7 @@
       currentResultPanel = null;
       captureTermView = null;
       pendingScrollRestoration = null;
+      currentEntry = null;
       if (!preserveViewControls) {
         currentNoteControls?.close(false);
         currentNoteControls = null;
@@ -3713,6 +3773,8 @@
       renderResults,
       renderKanji,
       captureTermView: () => captureTermView?.(),
+      currentEntryIndex: () => currentEntryIndex(),
+      focusEntry,
       setDefinitionBlurState,
       setLookupStats,
       setSourceHighlightEnabled,
