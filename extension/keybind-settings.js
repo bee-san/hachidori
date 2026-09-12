@@ -34,6 +34,15 @@ function labelControl(control, label) {
   if (control.getAttribute("aria-label") !== label) control.setAttribute("aria-label", label);
 }
 
+function renderScopes(row, action, bind) {
+  for (const [scope, { label, input }] of Object.entries(row.scopes)) {
+    if (input.checked !== bind.scopes.includes(scope)) input.checked = bind.scopes.includes(scope);
+    const offered = action.scopes.includes(scope);
+    if (input.disabled === offered) input.disabled = !offered;
+    if (label.hidden === offered) label.hidden = !offered;
+  }
+}
+
 export function createKeybindSettingsController({ document, readKeybinds, editKeybinds, readAudioSources }) {
   const window = document.defaultView;
   const { KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_MODIFIERS, KEYBIND_MODIFIER_CODES, KEYBIND_SCOPES,
@@ -153,15 +162,6 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
     if (action.argument === "count") setValue(row.count, bind.argument);
     if (action.argument === "audioSource") renderSources(row, bind);
     if (action.argument === "option") setValue(row.option, bind.argument);
-  }
-
-  function renderScopes(row, action, bind) {
-    for (const [scope, { label, input }] of Object.entries(row.scopes)) {
-      if (input.checked !== bind.scopes.includes(scope)) input.checked = bind.scopes.includes(scope);
-      const offered = action.scopes.includes(scope);
-      if (input.disabled === offered) input.disabled = !offered;
-      if (label.hidden === offered) label.hidden = !offered;
-    }
   }
 
   function renderRow(row, bind, index) {
