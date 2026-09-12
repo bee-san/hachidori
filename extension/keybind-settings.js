@@ -141,43 +141,53 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
     row.sourceKey = key;
   }
 
+  // Settings never overwrites the control a reader is editing.
+  function setValue(control, value) {
+    if (control !== document.activeElement && control.value !== value) control.value = value;
+  }
+
+  function renderArgument(row, action, bind) {
+    for (const [kind, field] of Object.entries(row.fields)) {
+      if (field.hidden !== (action.argument !== kind)) field.hidden = action.argument !== kind;
+    }
+    if (action.argument === "count") setValue(row.count, bind.argument);
+    if (action.argument === "audioSource") renderSources(row, bind);
+    if (action.argument === "option") setValue(row.option, bind.argument);
+  }
+
+  function renderScopes(row, action, bind) {
+    for (const [scope, { label, input }] of Object.entries(row.scopes)) {
+      if (input.checked !== bind.scopes.includes(scope)) input.checked = bind.scopes.includes(scope);
+      const offered = action.scopes.includes(scope);
+      if (input.disabled === offered) input.disabled = !offered;
+      if (label.hidden === offered) label.hidden = !offered;
+    }
+  }
+
+  function renderRow(row, bind, index) {
+    const action = actions.get(bind.action);
+    const number = `keybind ${index + 1}`;
+    row.index = index;
+    if (row.enabled.checked !== bind.enabled) row.enabled.checked = bind.enabled;
+    setText(row.number, `Keybind ${index + 1}`);
+    const display = formatKeybind(bind.key, bind.modifiers);
+    if (row.input.value !== display) row.input.value = display;
+    setValue(row.action, bind.action);
+    renderArgument(row, action, bind);
+    renderScopes(row, action, bind);
+    row.reset.disabled = !defaultFor(bind.action);
+    labelControl(row.enabled, `Enable ${number}`);
+    labelControl(row.input, `Keys for ${number}: press a key combination`);
+    for (const [key, label] of [["clear", "Clear keys"], ["reset", "Reset"], ["remove", "Remove"]]) {
+      labelControl(row[key], `${label}: ${number}`);
+    }
+  }
+
   function render() {
     const keybinds = readKeybinds();
     while (rows.length > keybinds.length) rows.pop().element.remove();
     while (rows.length < keybinds.length) rows.push(createRow());
-    keybinds.forEach((bind, index) => {
-      const row = rows[index];
-      const action = actions.get(bind.action);
-      const number = `Keybind ${index + 1}`;
-      row.index = index;
-      if (row.enabled.checked !== bind.enabled) row.enabled.checked = bind.enabled;
-      setText(row.number, number);
-      const display = formatKeybind(bind.key, bind.modifiers);
-      if (row.input.value !== display) row.input.value = display;
-      if (row.action !== document.activeElement && row.action.value !== bind.action) row.action.value = bind.action;
-      for (const [kind, field] of Object.entries(row.fields)) {
-        if (field.hidden !== (action.argument !== kind)) field.hidden = action.argument !== kind;
-      }
-      if (action.argument === "count" && row.count !== document.activeElement && row.count.value !== bind.argument) {
-        row.count.value = bind.argument;
-      }
-      if (action.argument === "audioSource") renderSources(row, bind);
-      if (action.argument === "option" && row.option !== document.activeElement && row.option.value !== bind.argument) {
-        row.option.value = bind.argument;
-      }
-      for (const [scope, { label, input }] of Object.entries(row.scopes)) {
-        if (input.checked !== bind.scopes.includes(scope)) input.checked = bind.scopes.includes(scope);
-        const offered = action.scopes.includes(scope);
-        if (input.disabled === offered) input.disabled = !offered;
-        if (label.hidden === offered) label.hidden = !offered;
-      }
-      row.reset.disabled = !defaultFor(bind.action);
-      labelControl(row.enabled, `Enable ${number.toLowerCase()}`);
-      labelControl(row.input, `Keys for ${number.toLowerCase()}: press a key combination`);
-      for (const [key, label] of [["clear", "Clear keys"], ["reset", "Reset"], ["remove", "Remove"]]) {
-        labelControl(row[key], `${label}: ${number.toLowerCase()}`);
-      }
-    });
+    keybinds.forEach((bind, index) => renderRow(rows[index], bind, index));
     reorderSettingsRows(list, rows.map(row => row.element));
     const empty = document.getElementById("keybind-empty");
     if (empty.hidden !== (keybinds.length > 0)) empty.hidden = keybinds.length > 0;
