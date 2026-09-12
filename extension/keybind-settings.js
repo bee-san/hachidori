@@ -18,8 +18,6 @@ export const KEYBIND_OPTION_LABELS = {
   hidePopupGrammarTags: "Hide grammar tags",
 };
 const MODIFIER_NAMES = { meta: "Meta", ctrl: "Ctrl", alt: "Alt", shift: "Shift" };
-const MODIFIER_CODES = new Set(["AltLeft", "AltRight", "ControlLeft", "ControlRight",
-  "MetaLeft", "MetaRight", "ShiftLeft", "ShiftRight", "OSLeft", "OSRight"]);
 const SCOPE_LABELS = { popup: "While a popup is open", web: "Anywhere on the page" };
 
 // Yomitan's HotkeyUtil display: modifiers first, a letter key without "Key".
@@ -38,8 +36,8 @@ function labelControl(control, label) {
 
 export function createKeybindSettingsController({ document, readKeybinds, editKeybinds, readAudioSources }) {
   const window = document.defaultView;
-  const { KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_MODIFIERS, KEYBIND_SCOPES, KEYBIND_TOGGLE_OPTIONS,
-    AUDIO_SOURCE_LABELS, DEFAULT_OPTIONS } = window.HDReaderOptions;
+  const { KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_MODIFIERS, KEYBIND_MODIFIER_CODES, KEYBIND_SCOPES,
+    KEYBIND_TOGGLE_OPTIONS, AUDIO_SOURCE_LABELS, DEFAULT_OPTIONS } = window.HDReaderOptions;
   const actions = new Map(KEYBIND_ACTIONS.map(action => [action.id, action]));
   const list = document.getElementById("keybind-list");
   const rows = [];
@@ -59,7 +57,7 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
     event.preventDefault();
     const bind = readKeybinds()[row.index];
     const modifiers = KEYBIND_MODIFIERS.filter(modifier => event[`${modifier}Key`] === true);
-    const code = event.code && event.code !== "Unidentified" && !MODIFIER_CODES.has(event.code) ? event.code : bind.key;
+    const code = event.code && event.code !== "Unidentified" && !KEYBIND_MODIFIER_CODES.has(event.code) ? event.code : bind.key;
     if (code === bind.key && modifiers.join() === bind.modifiers.join()) return;
     change(row, { key: code, modifiers });
   }

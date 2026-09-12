@@ -24,6 +24,8 @@
 
   const {
     DEFAULT_OPTIONS,
+    KEYBIND_MODIFIERS,
+    KEYBIND_MODIFIER_CODES,
     clampOption,
     definitionBlurQualifies,
     normaliseActivationKey,
@@ -38,10 +40,6 @@
     ["Alt", "altKey"],
     ["Meta", "metaKey"],
   ]);
-  // Yomitan's modifier order; a keybind with only modifiers has a null key.
-  const KEYBIND_MODIFIER_PROPERTIES = [["meta", "metaKey"], ["ctrl", "ctrlKey"], ["alt", "altKey"], ["shift", "shiftKey"]];
-  const KEYBIND_MODIFIER_CODES = new Set(["AltLeft", "AltRight", "ControlLeft", "ControlRight",
-    "MetaLeft", "MetaRight", "ShiftLeft", "ShiftRight", "OSLeft", "OSRight"]);
 
   const POPUP_GAP_PX = 4;
   const POPUP_PADDING_PX = 6;
@@ -1642,11 +1640,11 @@
 
   function bindResultActions(rendered, level) {
     const token = level.lookupToken, request = level.currentViewRequest;
-    // Show more passes the same growing arrays, indexed like the view's entries.
+    // Keybinds index these like the view's entries; Show more grows the same
+    // arrays and rebinds only the newly revealed controls. The count element
+    // belongs to the initial render and stays until the next one.
     level.entryAudio = rendered.audioButtons;
     level.entryMining = rendered.miningActions;
-    // Show more rebinds only the newly revealed controls; the count element
-    // belongs to the initial render and stays until the next one.
     if ("lookupStats" in rendered) {
       level.lookupStatsElement = rendered.lookupStats;
       paintLookupStatistics(request, level);
@@ -3092,7 +3090,7 @@
   // select enabled keybinds whose scope applies; the first handled one wins.
   function runKeybinds(event) {
     const key = KEYBIND_MODIFIER_CODES.has(event.code) ? null : event.code;
-    const modifiers = KEYBIND_MODIFIER_PROPERTIES.filter(([, property]) => event[property] === true).map(([name]) => name);
+    const modifiers = KEYBIND_MODIFIERS.filter(modifier => event[`${modifier}Key`] === true);
     // A pending lookup counts as its popup: Escape has always cancelled one.
     const popupScope = Boolean(rootLevel.popup && !rootLevel.popup.hidden)
       || pendingCandidateLookup !== null || activeSelectionCandidate !== null;

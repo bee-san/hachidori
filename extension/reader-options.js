@@ -57,6 +57,9 @@
   // so it means "while a popup is open or opening". Web is anywhere on the page.
   const KEYBIND_SCOPES = ["popup", "web"];
   const KEYBIND_MODIFIERS = ["meta", "ctrl", "alt", "shift"];
+  // Pressing only these codes records or matches a keybind with a null key.
+  const KEYBIND_MODIFIER_CODES = new Set(["AltLeft", "AltRight", "ControlLeft", "ControlRight",
+    "MetaLeft", "MetaRight", "ShiftLeft", "ShiftRight", "OSLeft", "OSRight"]);
   // Yomitan's default hotkeys without the actions Hachidori has no feature for.
   const DEFAULT_KEYBINDS = [
     ["close", "", "Escape", []],
@@ -526,7 +529,7 @@
     ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS, ANKI_OVERWRITE_MODES,
     DEFAULT_OPTIONS, DEFAULT_MEDIA_CAPTURE, NUMBER_RANGES, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
     POPUP_THEME_GROUPS, DESIGN_OPTION_KEYS,
-    KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_SCOPES, KEYBIND_MODIFIERS, KEYBIND_TOGGLE_OPTIONS,
+    KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_SCOPES, KEYBIND_MODIFIERS, KEYBIND_MODIFIER_CODES, KEYBIND_TOGGLE_OPTIONS,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,
     MEDIA_TIMING_MODES, MEDIA_HISTORY_SECONDS, MEDIA_CLIP_SECONDS, MEDIA_VIDEO_PRESETS, MEDIA_TEXTHOOKER_FORMATS,
     clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
