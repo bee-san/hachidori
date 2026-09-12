@@ -15,6 +15,7 @@
   "use strict";
 
   const TARGET = "hoshidicts-offscreen";
+  const WORKER_TARGET = "hoshidicts-worker";
   const HIGHLIGHT_NAME = "gsm-hoshidicts-match";
   const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
@@ -23,6 +24,8 @@
 
   const {
     DEFAULT_OPTIONS,
+    KEYBIND_MODIFIERS,
+    KEYBIND_MODIFIER_CODES,
     clampOption,
     definitionBlurQualifies,
     normaliseActivationKey,
@@ -610,12 +613,15 @@
    * is nothing Japanese to look up there.
    */
   function resolveCandidate(clientX, clientY) {
-    const styleCache = new Map();
     const caretRange = caretRangeAt(clientX, clientY);
     if (!caretRange) {
       return null;
     }
-    const startNode = caretRange.startContainer;
+    return resolveCandidateAt(caretRange.startContainer, caretRange.startOffset);
+  }
+
+  function resolveCandidateAt(startNode, startOffset) {
+    const styleCache = new Map();
     if (!isScannableTextNode(startNode, styleCache)) {
       return null;
     }
@@ -625,7 +631,7 @@
     }
     const entries = collectScanEntries(
       startNode,
-      Math.min(caretRange.startOffset, (startNode.nodeValue || "").length),
+      Math.min(startOffset, (startNode.nodeValue || "").length),
       container,
       options.scanLength,
       styleCache
@@ -819,6 +825,21 @@
       sourceElements: [anchor],
       vertical: computedStyleFor(anchor, styleCache).writingMode.startsWith("vertical"),
     };
+  }
+
+  // Yomitan's Scan text at selection: an ordinary scan from the selection's
+  // first text. The live selection, not the scanned word, keeps it retained.
+  function resolveSelectionScanCandidate(selection = window.getSelection()) {
+    if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return null;
+    const range = selection.getRangeAt(0);
+    let node = range.startContainer, offset = range.startOffset;
+    if (node.nodeType !== Node.TEXT_NODE) {
+      const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+      do node = walker.nextNode(); while (node && !range.intersectsNode(node));
+      offset = 0;
+    }
+    const candidate = node ? resolveCandidateAt(node, offset) : null;
+    return candidate && { ...candidate, selectionRange: range.cloneRange(), selectionText: selection.toString() };
   }
 
   function candidateStart(candidate) {
@@ -1619,8 +1640,11 @@
 
   function bindResultActions(rendered, level) {
     const token = level.lookupToken, request = level.currentViewRequest;
-    // Show more rebinds only the newly revealed controls; the count element
+    // Keybinds index these like the view's entries; Show more grows the same
+    // arrays and rebinds only the newly revealed controls. The count element
     // belongs to the initial render and stays until the next one.
+    level.entryAudio = rendered.audioButtons;
+    level.entryMining = rendered.miningActions;
     if ("lookupStats" in rendered) {
       level.lookupStatsElement = rendered.lookupStats;
       paintLookupStatistics(request, level);
@@ -2928,10 +2952,10 @@
     const selection = window.getSelection();
     if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return false;
     const range = selection.getRangeAt(0);
-    const previous = candidate.anchorRange;
+    const previous = candidate.selectionRange ?? candidate.anchorRange;
     return range.startContainer === previous.startContainer && range.startOffset === previous.startOffset
       && range.endContainer === previous.endContainer && range.endOffset === previous.endOffset
-      && selection.toString() === candidate.query;
+      && selection.toString() === (candidate.selectionText ?? candidate.query);
   }
 
   function startSelectionLookup(candidate) {
@@ -2974,31 +2998,119 @@
     }
   }
 
-  function onKeyDown(event) {
-    if (disposed || event.repeat) {
-      return;
+  // Close keeps the reader's Escape order: an audio menu, then a Note form,
+  // then the focused or deepest popup, then a pending lookup. Nothing closed
+  // leaves the key to activation.
+  function closeFromKeybind(event) {
+    if (audio?.closeMenu()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
     }
-    if (event.key === "Escape") {
-      if (audio?.closeMenu()) {
+    if (rootLevel.popup && !rootLevel.popup.hidden) {
+      const focused = levels.find((level) => level.popup.contains(shadow.activeElement));
+      const editing = focused?.noteEditing ? focused : levels.findLast((level) => level.noteEditing);
+      if ((editing || focused || levels.at(-1)).view?.closeNoteForm?.() === true) {
         event.preventDefault();
         event.stopPropagation();
-        return;
+        return true;
       }
-      if (rootLevel.popup && !rootLevel.popup.hidden) {
-        const focused = levels.find((level) => level.popup.contains(shadow.activeElement));
-        const editing = focused?.noteEditing ? focused : levels.findLast((level) => level.noteEditing);
-        if ((editing || focused || levels.at(-1)).view?.closeNoteForm?.() === true) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-        event.stopPropagation();
-        hide(focused || levels.at(-1));
-        return;
+      event.stopPropagation();
+      hide(focused || levels.at(-1));
+      return true;
+    }
+    const dismissedCandidate = pendingCandidateLookup !== null || activeSelectionCandidate !== null;
+    hide();
+    return dismissedCandidate;
+  }
+
+  // Yomitan leaves unmodified character keys to a focused text field.
+  function textFieldFocused() {
+    let focused = document.activeElement;
+    while (focused) {
+      if (focused.isContentEditable || ["input", "select", "textarea"].includes(focused.localName)) return true;
+      focused = focused === host ? shadow.activeElement : focused.shadowRoot?.activeElement;
+    }
+    return false;
+  }
+
+  function clickKeybindControl(control) {
+    if (!control?.isConnected || control.hidden || control.disabled) return false;
+    control.click();
+    return true;
+  }
+
+  function runKeybindAction({ action, argument }, event) {
+    if (action === "close") return closeFromKeybind(event);
+    if (action === "scanSelectedText" || action === "scanTextAtSelection") {
+      if (!options.hoverEnabled) return false;
+      const candidate = action === "scanSelectedText" ? resolveSelectedLookupCandidate() : resolveSelectionScanCandidate();
+      if (!candidate) return false;
+      startSelectionLookup(candidate);
+      return true;
+    }
+    if (action === "toggleOption") {
+      if (!argument || optionsStorageRevision < 0) return false;
+      // A conflicting write changes nothing; the storage event carries the result.
+      void sendRequest("hd_options_write", { baseRevision: optionsStorageRevision,
+        options: { [argument]: !options[argument] } }, WORKER_TARGET).catch(() => {});
+      return true;
+    }
+    const level = levels.findLast((item) => item.popup && !item.popup.hidden);
+    if (!level?.view) return false;
+    const entry = level.view.currentEntryIndex();
+    switch (action) {
+      case "nextEntry":
+      case "previousEntry":
+        return level.view.focusEntry({ offset: (action === "nextEntry" ? 1 : -1) * Number(argument) });
+      case "firstEntry":
+      case "lastEntry":
+        return level.view.focusEntry(action === "firstEntry" ? "first" : "last");
+      case "nextEntryDifferentDictionary":
+      case "previousEntryDifferentDictionary":
+        return level.view.focusEntry({ dictionary: action === "nextEntryDifferentDictionary" ? 1 : -1 });
+      case "historyBackward":
+        return clickKeybindControl(level.popup.querySelector(".gsm-hoshidicts-kanji-back"));
+      case "addNote":
+      case "viewNotes":
+        return clickKeybindControl(level.entryMining?.[entry]?.actions.querySelector(action === "addNote"
+          ? ".gsm-hoshidicts-mine-button" : ".gsm-hoshidicts-anki-view"));
+      case "playAudio":
+      case "playAudioFromSource": {
+        const button = level.entryAudio?.[entry]?.button;
+        if (!button || (action === "playAudioFromSource" && !argument)) return false;
+        return audio.playButton(button, action === "playAudioFromSource" ? argument : "");
       }
-      const dismissedCandidate = pendingCandidateLookup !== null || activeSelectionCandidate !== null;
-      hide();
-      if (dismissedCandidate || options.activationKey !== "Escape") return;
+      default:
+        return false;
+    }
+  }
+
+  // After Yomitan's HotkeyHandler: the physical key and the exact modifier set
+  // select enabled keybinds whose scope applies; the first handled one wins.
+  function runKeybinds(event) {
+    const key = KEYBIND_MODIFIER_CODES.has(event.code) ? null : event.code;
+    const modifiers = KEYBIND_MODIFIERS.filter(modifier => event[`${modifier}Key`] === true);
+    // A pending lookup counts as its popup: Escape has always cancelled one.
+    const popupScope = Boolean(rootLevel.popup && !rootLevel.popup.hidden)
+      || pendingCandidateLookup !== null || activeSelectionCandidate !== null;
+    const characterInput = (modifiers.length === 0 || modifiers.join() === "shift")
+      && (event.key?.length === 1 || event.key === "Process");
+    for (const bind of options.keybinds) {
+      if (!bind.enabled || bind.action === "" || (bind.key === null && bind.modifiers.length === 0)
+          || bind.key !== key || bind.modifiers.join() !== modifiers.join()
+          || !(bind.scopes.includes("web") || (popupScope && bind.scopes.includes("popup")))
+          || (characterInput && textFieldFocused())) continue;
+      if (runKeybindAction(bind, event) === false) continue;
+      if (bind.action !== "close") event.preventDefault();
+      return true;
+    }
+    return false;
+  }
+
+  function onKeyDown(event) {
+    if (disposed || event.repeat || runKeybinds(event)) {
+      return;
     }
     if (!options.hoverEnabled) return;
     // Autofocused search fields (such as Jisho's) must not disable lookups on

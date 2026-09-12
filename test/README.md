@@ -20,6 +20,13 @@ pending save. The extension smoke suite also verifies that selected missing
 words refresh into their personal definition after the save, including when no
 dictionaries were installed. It uses the same external jsdom dependency.
 
+`node --test test/keybind-settings.test.mjs` checks Yomitan's default keybinds for
+supported actions, keybind normalisation and strict option patches, key
+combination capture, action/argument/scope editing, Clear, Reset, Remove, Add and
+Reset to defaults. It uses the same external jsdom dependency. The extension smoke
+suite drives the content script's keybind dispatch and the real popup view's entry
+navigation. `audio-content.test.mjs` covers keybind audio playback.
+
 `node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
 current word/reading/sentence expansion, background-tab clicks, live editing
 without replacing cards or Note drafts, and stale-control navigation rejection.
@@ -889,10 +896,10 @@ and kanji views, including projected prefill, hover/Escape draft protection,
 exact-view refresh, Back restoration, source adoption in the already-open
 Settings page, and retirement of each superseded OPFS generation.
 
-Settings layout checks cover the seven-destination primary rail, Library's five
+Settings layout checks cover the eight-destination primary rail, Library's five
 local views, selection-aware bulk actions, native keyboard section and skip
 links, Back/Forward, same-hash focus, short-window sidebar scrolling, and mounted
-source drafts. All eleven task views are checked at 320px and desktop widths in
+source drafts. All twelve task views are checked at 320px and desktop widths in
 light and dark mode, including palette text/control contrast and visible-control
 overflow. Empty live regions stay available for their first announcement. The
 extension harness pins hidden-view save failures, aggregated Library notices,

@@ -1467,6 +1467,46 @@ textarea {
 #audio > p { margin: 0; }
 #audio-source-add { align-self: flex-start; }
 
+.keybind-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.keybind-row {
+  display: grid;
+  gap: 12px;
+  padding: 16px 0;
+  border-block: 1px solid var(--border);
+}
+.keybind-row + .keybind-row { border-top: 0; }
+.keybind-heading,
+.keybind-enabled,
+.keybind-buttons,
+.keybind-scopes,
+.keybind-scope,
+.keybind-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.keybind-heading,
+.keybind-scopes,
+.keybind-list-actions { justify-content: space-between; flex-wrap: wrap; }
+.keybind-scopes { justify-content: flex-start; }
+.keybind-enabled { font-weight: 600; }
+.keybind-buttons { gap: 6px; }
+.keybind-scope { gap: 6px; }
+.keybind-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+}
+.keybind-row .field { display: grid; gap: 6px; }
+.keybind-row .field[hidden],
+.keybind-scope[hidden] { display: none; }
+.keybind-row :is(input[type="text"], input[type="number"], select) { width: 100%; }
+.keybind-list-actions { justify-content: flex-start; }
+
 @media (prefers-reduced-motion: reduce) {
   .track-fill {
     width: 100%;

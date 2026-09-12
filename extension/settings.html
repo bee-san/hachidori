@@ -37,6 +37,7 @@
             <option value="audio">Audio</option>
             <option value="media">Media capture</option>
             <option value="anki">Anki</option>
+            <option value="keybinds">Keybinds</option>
             <option value="backup">Backup &amp; restore</option>
           </select>
         </label>
@@ -65,6 +66,10 @@
           <div class="nav-item">
             <a href="#anki" aria-describedby="nav-status-anki">Anki</a>
             <output class="nav-status" id="nav-status-anki" aria-live="polite"></output>
+          </div>
+          <div class="nav-item">
+            <a href="#keybinds" aria-describedby="nav-status-keybinds">Keybinds</a>
+            <output class="nav-status" id="nav-status-keybinds" aria-live="polite"></output>
           </div>
           <div class="nav-item">
             <a href="#backup" aria-describedby="nav-status-backup">Backup &amp; restore</a>
@@ -954,6 +959,20 @@
             <output id="anki-url-error" class="field-hint is-error" aria-live="polite"></output>
             <label class="field"><span class="field-label">API key</span><input id="opt-anki-api-key" type="password" autocomplete="off"><span class="field-hint">Leave blank unless you configured an API key in AnkiConnect. Stored locally in this browser.</span></label>
           </details>
+        </section>
+        <section class="card" id="keybinds" aria-labelledby="keybinds-heading" hidden>
+          <div class="card-head">
+            <h1 id="keybinds-heading" tabindex="-1" data-search-keywords="keyboard shortcuts hotkeys keys Yomitan">Keybinds</h1>
+            <p class="hint">Keyboard shortcuts for the lookup popup and page. Changes save automatically.</p>
+          </div>
+          <div class="options-feedback-slot"></div>
+          <p class="section-note">Select a Keys field and press the combination to use. Popup keybinds act on the current entry: the first one, or the last one you moved to or clicked.</p>
+          <ol id="keybind-list" class="keybind-list"></ol>
+          <p id="keybind-empty" class="hint" hidden>No keybinds. Add one or reset to the defaults.</p>
+          <div class="keybind-list-actions">
+            <button id="keybind-add" type="button" class="ghost">Add keybind</button>
+            <button id="keybind-reset-all" type="button" class="ghost">Reset keybinds to defaults</button>
+          </div>
         </section>
         <section class="card" id="backup" aria-labelledby="backup-heading" hidden>
           <div class="card-head">

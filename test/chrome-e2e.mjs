@@ -8195,7 +8195,7 @@ async function main() {
     const libraryLinks = [...document.querySelectorAll("#library-navigation a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 7
+      && links.length === 8
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION")
       && JSON.stringify(libraryLinks.map(link => link.hash)) === JSON.stringify([
         "#dictionaries", "#add-dictionaries", "#updates", "#dictionary-groups", "#custom-dictionary",
@@ -8291,14 +8291,14 @@ async function main() {
     await page.setViewport({ width, height: 900 });
     for (const theme of ["light", "default"]) {
       await setSettingsTheme(theme);
-      for (const section of ["dictionaries", "lookup", "design", "audio", "media", "anki", "custom-dictionary",
+      for (const section of ["dictionaries", "lookup", "design", "audio", "media", "anki", "keybinds", "custom-dictionary",
         "add-dictionaries", "updates", "dictionary-groups", "backup"]) {
         await showSettingsSection(page, section);
         themeLayouts.push(await page.evaluate(({ theme, section }) => {
           const panel = document.getElementById(section);
           const primary = {
             dictionaries: "dict-search", lookup: "opt-hover-enabled", design: "opt-popup-columns",
-            audio: "audio-source-add", media: "media-open-capture", anki: "anki-refresh",
+            audio: "audio-source-add", media: "media-open-capture", anki: "anki-refresh", keybinds: "keybind-add",
             "custom-dictionary": "custom-dictionary-source",
             "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new", backup: "backup-export",
           };
