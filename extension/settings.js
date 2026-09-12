@@ -6,6 +6,7 @@
 
 import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
+import { createKeybindSettingsController } from "./keybind-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
@@ -41,7 +42,7 @@ const WORKER_TARGET = "hoshidicts-worker";
 const UPDATE_TARGET = "hachidori-updates";
 const AUDIO_TARGET = "hachidori-audio";
 const CAPTURE_TARGET = "hachidori-capture";
-const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", media: "Media capture", anki: "Anki" };
+const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", media: "Media capture", anki: "Anki", keybinds: "Keybinds" };
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
   DEFAULT_OPTIONS, LOOKUP_MODES, ACTIVATION_KEYS, FREQUENCY_ORDERS,
@@ -129,6 +130,7 @@ let statusTimer = null;
 let lastEngineStatus = null;
 let requestCounter = 0;
 let audioController;
+let keybindController;
 let ankiController;
 let backupController;
 let customLinkController;
@@ -243,6 +245,7 @@ function showSettingsSection(focus = false) {
   updateAudioSettings();
   updateMediaSettings();
   updateAnkiSettings();
+  updateKeybindSettings();
   updateBackupSettings();
   if (activeSection === "design") {
     customLinkController ??= createCustomLinkSettings({ document,
@@ -268,6 +271,16 @@ function updateAudioSettings() {
     send: (type, fields) => send(type, fields, AUDIO_TARGET),
   });
   audioController.render();
+}
+
+function updateKeybindSettings() {
+  if (activeSection !== "keybinds" || optionsRevision < 0) return;
+  keybindController ??= createKeybindSettingsController({ document,
+    readKeybinds: () => options.keybinds,
+    editKeybinds: keybinds => { options.keybinds = keybinds; writeOptions(); },
+    readAudioSources: () => options.audioSources,
+  });
+  keybindController.render();
 }
 
 function updateAnkiSettings() {
@@ -1385,6 +1398,7 @@ function renderOptions() {
   updateAudioSettings();
   updateMediaSettings();
   updateAnkiSettings();
+  updateKeybindSettings();
 }
 
 function addCountBadge(container, label, count) {
