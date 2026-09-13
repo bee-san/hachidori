@@ -86,7 +86,7 @@ It can even use anki.
 
 I read in Chrome and I play games with the GameSentenceMiner overlay, and I did not want two Hachidoris with two sets of dictionaries, two personal dictionaries and two sets of settings that drift apart.
 
-Hachidori in Chrome shares itself through GameSentenceMiner, and the overlay's Hachidori links to it: same dictionaries, same personal entries, same lookup counts, same settings, edited from either side. Nothing to install and nothing to copy.
+Hachidori in Chrome shares itself through GameSentenceMiner, and the overlay's Hachidori links to it: same dictionaries, same personal entries, same lookup counts, same settings, edited from either side. Nothing to install and nothing to copy. Without GameSentenceMiner, a small Anki add-on relays instead for as long as Anki is open.
 
 See [Sharing](docs/sharing.md).
 

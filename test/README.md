@@ -39,11 +39,13 @@ them.
 
 `node --test test/sharing-protocol.test.mjs test/sharing-relay.test.mjs` checks
 the sharing wire contract (loopback addresses, the forwarding table, frame
-validation) and drives `test/sharing-relay-server.mjs`, a plain Node WebSocket
-server around `extension/sharing-relay.js` that stands in for GameSentenceMiner,
-over raw loopback sockets: the `Origin` rule, clients refused without a host, a
-second host turned away, a 1.5 MB frame relayed whole in both directions,
-broadcast, pings, closes and host loss. `node --test test/sharing-settings.test.mjs`
+validation) and drives both relays over raw loopback sockets:
+`test/sharing-relay-server.mjs`, a plain Node WebSocket server around
+`extension/sharing-relay.js` that stands in for GameSentenceMiner, and the Anki
+add-on's `anki-relay/server.py` as a `python3` process. Each answers the
+`Origin` rule, clients refused without a host, a second host turned away, a
+1.5 MB frame relayed whole in both directions, broadcast, pings, closes and
+host loss. `node --test test/sharing-settings.test.mjs`
 checks the Settings → Sharing card with jsdom: status polling, the waiting and
 refused states, the copied address, finding and linking to a host with a reload,
 the linked state and unlinking. The extension smoke suite's sharing-host and
@@ -51,7 +53,8 @@ sharing-client stages cover the service worker's side, including a linked
 install's kept state.
 
 `node test/chrome-sharing.mjs` launches two real Chromes and the test relay on
-a test-only port (`HACHIDORI_SHARING_PORT`, default 18771): the host imports the
+a test-only port (`HACHIDORI_SHARING_PORT`, default 18771; with
+`HACHIDORI_SHARING_RELAY=anki` it runs the Anki add-on's relay instead): the host imports the
 fixture and moves its sharing to that port, the second browser probes and links
 to it, looks a word up through the link, writes an option and a personal entry
 that the host commits and pushes back, loses the host when it closes and
@@ -1456,6 +1459,25 @@ It accepts `HACHIDORI_CHROME` and `HACHIDORI_PUPPETEER`, defaults to
 `/usr/bin/chromium`, and retains `results.json` and temporary profiles under the
 printed evidence directory. A passing X11 minimize/restore check does not prove
 physical sleep/wake behavior or audio availability on other operating systems.
+
+### Installed Anki Desktop relay
+
+`anki-relay-desktop.py` is an optional check that the Hachidori Relay add-on
+starts inside the installed Anki. Run it with the Python interpreter that can
+import the installed `anki` and `aqt` packages:
+
+```sh
+python3 test/anki-relay-desktop.py
+```
+
+Each run creates a fresh temporary Anki base with only `anki-relay/` installed,
+configured through the add-on's `meta.json` to a test-only port (18772, or
+`--port`), starts a separate Anki instance on it, and connects to the relay
+over a raw loopback WebSocket: a `/host` handshake with an extension `Origin`
+must answer 101 and the `listening` frame naming `Anki` and the port, and a
+web `Origin` must be refused with 403. The live Anki profile, its add-ons and
+AnkiConnect are never opened. It prints a JSON summary and exits non-zero on
+failure.
 
 ### Installed Anki Desktop playback
 

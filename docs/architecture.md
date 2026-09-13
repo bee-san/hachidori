@@ -1936,11 +1936,13 @@ retryable.
 ## Sharing between browsers
 
 Sharing makes one install the host for every other Hachidori on the same
-computer. Extensions cannot listen for connections, so GameSentenceMiner's
-overlay process runs the relay: one loopback WebSocket listener
-(`127.0.0.1:8771` by default) with a `/host` role and a `/link` role, and both
-Hachidoris connect out to it. Chrome keeps the host's service worker alive
-while its socket carries traffic; the relay pings both sides every 20 s.
+computer. Extensions cannot listen for connections, so a relay does: one
+loopback WebSocket listener (`127.0.0.1:8771` by default) with a `/host` role
+and a `/link` role, and both Hachidoris connect out to it. GameSentenceMiner's
+overlay process runs the relay; without GameSentenceMiner, the Anki add-on in
+`anki-relay/` runs the same relay inside Anki. Chrome keeps the host's service
+worker alive while its socket carries traffic; the relay pings both sides
+every 20 s.
 
 `extension/sharing-protocol.js` is imported by the service worker and by the
 relay: the default port, the `/host` and `/link` paths, address rules, the
@@ -1948,8 +1950,12 @@ table of forwardable requests and the frame validators. `extension/sharing-relay
 is the relay's logic without sockets: `connectHost` tells a second host
 `listen-failed` and returns `null`, `connectClient` returns `null` while no host
 is connected so the caller can refuse the browser (which retries), and the
-relay envelopes are `listening`, `client-open`, `client-close` and `client-text`
-towards the host and `send`, `broadcast` and `close` from it. A linked browser
+relay envelopes are `listening` (the port and the relay's name,
+`GameSentenceMiner` or `Anki`, which the host reports as `relay` in its
+status), `client-open`, `client-close` and `client-text` towards the host and
+`send`, `broadcast` and `close` from it. `anki-relay/server.py` is the same
+logic in Python behind one lock with its own loopback WebSocket server, and
+`test/sharing-relay.test.mjs` runs one contract against both. A linked browser
 speaks JSON text frames: `hello` (answered with the host version, dictionary
 count and a snapshot of the five shared keys), `request` carrying an ordinary
 runtime message, and `pong` to the relay's `ping`. The relay's only rule is
@@ -1958,7 +1964,7 @@ that a handshake's `Origin` starts with `chrome-extension://`; there is no token
 `extension/sharing-host.js` owns the host socket, retries with the capture
 host's backoff while the worker lives, and keeps a one-minute
 `hachidori-sharing-host` alarm only while enabled and disconnected so a worker
-Chrome has put to sleep still notices GameSentenceMiner starting. A forwarded
+Chrome has put to sleep still notices a relay starting. A forwarded
 request is dispatched by its target through `relayEngineRequest`,
 `handleWorkerRequest`, `handleUpdatesRequest` or `handleAnkiRequest` with a
 synthetic sender, exactly as a page's message would be; the reply goes back
@@ -2065,7 +2071,7 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
 | `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |
-| `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state, or start and stop the native messaging bridge that serves other browsers on this computer |
+| `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state, including which relay carries it, or start and stop this install's connection to the relay that serves other browsers on this computer |
 | `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address, link this install to it (keeping its own state aside and mirroring the host's), or unlink and restore |
 | `hd_capture_open`, `hd_capture_tabs`, `hd_capture_link`, `hd_capture_unlink` | Open the explicit capture surface, enumerate candidate reading tabs, and bind or release one trusted page/document |
 | `hd_capture_video_select`, `hd_capture_track_area`, `hd_capture_clear_area` | Control the linked page's session-only cue and DOM collectors |

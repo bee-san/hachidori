@@ -73,6 +73,7 @@ When implementing the dictionary-only scope from issue #9:
 ## Repository map
 
 - `extension/` contains the Chrome MV3 runtime, settings UI, content script, and popup renderer.
+- `anki-relay/` is the Hachidori Relay add-on for Anki: the sharing relay in Python for people without GameSentenceMiner, shipped as a `.ankiaddon` built from that folder alone.
 - `wasm/bindings.cpp` is the JavaScript-facing boundary around the hoshidicts engine.
 - `third_party/hoshidicts` is a submodule and should move only as an intentional part of the change.
 - `extension/vendor/hoshidicts.{mjs,wasm}` is committed build output. Update it with its source change; otherwise leave it alone.
@@ -85,6 +86,7 @@ Run the narrowest existing checks that exercise the change:
 - Documentation-only changes: inspect the rendered Markdown, links, and final diff; code tests are not required.
 - Fixture, C ABI, or WebAssembly changes: rebuild when needed, then run `node test/make-fixture.mjs` and `node test/node-smoke.mjs`.
 - Extension runtime or renderer changes: run `node test/make-fixture.mjs` and `node test/extension-smoke.mjs`.
+- Sharing relay changes (`extension/sharing-relay.js` or `anki-relay/`): run `node --test test/sharing-relay.test.mjs`, which needs `python3`; with Anki installed, also `python3 test/anki-relay-desktop.py`.
 - Sharing protocol, relay, host, client or Settings changes: also run `node --test test/sharing-protocol.test.mjs test/sharing-relay.test.mjs test/sharing-settings.test.mjs` and `node test/chrome-sharing.mjs`.
 - Manifest, service worker, offscreen lifecycle, IndexedDB persistence, content-script, or visible popup changes: also run `node test/chrome-e2e.mjs`.
 
