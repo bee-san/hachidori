@@ -261,7 +261,8 @@ Provide reviewer instructions specific to Hachidori:
    Setup sequentially downloads the five starter dictionaries; failures offer
    retry. Anki discovery is read-only and
    absence of Anki does not prevent dictionary lookup.
-2. At **Try it**, hover the Japanese sample to see a real dictionary result.
+2. At **Try it**, hold Shift and hover over a word in the Japanese sample to see a
+   real dictionary result. The popup stays open after Shift is released.
    Also test an ordinary Japanese webpage; Chrome internal pages and the store
    itself are restricted surfaces.
 3. Reach Settings from setup or `chrome://extensions` → Hachidori details →
