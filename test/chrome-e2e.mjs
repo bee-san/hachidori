@@ -7013,14 +7013,13 @@ async function main() {
       && sharing.reply.sharing?.enabled === true
       && sharing.reply.sharing.connected === false
       && sharing.reply.sharing.error === null
-      && sharing.reply.sharing.relay === null
       && sharing.reply.sharing.address === "ws://127.0.0.1:8771/link"
       && sharing.reply.sharing.client?.linked === false
       && sharing.visible
       && sharing.toggleDisabled === false
       && sharing.toggleChecked === true
       && sharing.address === "ws://127.0.0.1:8771/link"
-      && sharing.status === "Sharing is on. Waiting for GameSentenceMiner or the Anki add-on to start.",
+      && sharing.status === "Waiting for Anki. Sharing starts when Anki is open with the Hachidori Relay add-on.",
     JSON.stringify(sharing),
   );
   // Sharing keeps waiting for a relay with a watchdog alarm; off for the rest of

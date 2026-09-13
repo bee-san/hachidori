@@ -1,12 +1,11 @@
-// Drives both relays over raw sockets: extension/sharing-relay.js on the plain
-// Node WebSocket server that stands in for GameSentenceMiner, and the Anki
-// add-on's anki-relay/server.py run as a process.
+// Drives the Anki add-on's relay, extension/anki-relay/server.py run as a
+// process, over raw sockets.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { connect } from "node:net";
 import test from "node:test";
-import { startAnkiRelayServer, startSharingRelayServer } from "./sharing-relay-server.mjs";
+import { startAnkiRelayServer } from "./anki-relay-server.mjs";
 
 const EXTENSION_ORIGIN = "chrome-extension://hachidorirelaytestextensionid";
 
@@ -130,78 +129,72 @@ async function untilKind(client, kind) {
   return frame;
 }
 
-const RELAYS = [
-  ["GameSentenceMiner", startSharingRelayServer],
-  ["Anki", startAnkiRelayServer],
-];
-
-for (const [name, start] of RELAYS) {
-  const server = async (t) => {
-    const started = await start({ pingMs: 50 });
-    t.after(() => started.close());
-    return started;
-  };
-  const listening = (port) => ({ kind: "listening", port, relay: name });
-
-  test(`${name}: clients are refused until a host connects, and a second host is turned away`, async (t) => {
-    const { port } = await server(t);
-    assert.equal((await connectClient(t, port, "/link")).status, 503);
-    assert.equal((await connectClient(t, port, "/host", "https://example.com")).status, 403);
-    assert.equal((await connectClient(t, port, "/host", null)).status, 403);
-    assert.equal((await connectClient(t, port, "/elsewhere")).status, 404);
-    const host = await connectClient(t, port, "/host");
-    assert.equal(host.status, 101);
-    assert.deepEqual(await host.json(), listening(port));
-    const second = await connectClient(t, port, "/host");
-    assert.equal(second.status, 101);
-    assert.deepEqual(await second.json(), { kind: "listen-failed", error: `Another Hachidori is already sharing through ${name}.` });
-    await second.closeFrame();
-    const client = await connectClient(t, port, "/link");
-    assert.equal(client.status, 101);
-    const opened = await untilKind(host, "client-open");
-    assert.equal(opened.origin, EXTENSION_ORIGIN);
-  });
-
-  test(`${name}: text crosses the relay whole in both directions, with pings on both sides`, async (t) => {
-    const { port } = await server(t);
-    const host = await connectClient(t, port, "/host");
-    await host.json();
-    const first = await connectClient(t, port, "/link");
-    const { clientId } = await untilKind(host, "client-open");
-    const large = "大きな".repeat(Math.ceil(1.5 * 1024 * 1024 / 3));
-    first.send(large);
-    const relayed = await untilKind(host, "client-text");
-    assert.equal(relayed.clientId, clientId);
-    assert.equal(relayed.text, large);
-    host.send(JSON.stringify({ kind: "send", clientId, text: JSON.stringify({ kind: "reply", id: "r1", response: { ok: true, text: "reply ✓" } }) }));
-    assert.deepEqual(await untilKind(first, "reply"), { kind: "reply", id: "r1", response: { ok: true, text: "reply ✓" } });
-    const second = await connectClient(t, port, "/link");
-    const secondOpen = await untilKind(host, "client-open");
-    host.send(JSON.stringify({ kind: "broadcast", text: JSON.stringify({ kind: "storage", changes: { options: null } }) }));
-    const [one, two] = await Promise.all([untilKind(first, "storage"), untilKind(second, "storage")]);
-    assert.deepEqual([one, two], [{ kind: "storage", changes: { options: null } }, { kind: "storage", changes: { options: null } }]);
-    assert.deepEqual(await untilKind(host, "ping"), { kind: "ping" });
-    assert.deepEqual(await untilKind(second, "ping"), { kind: "ping" });
-    host.send(JSON.stringify({ kind: "close", clientId: secondOpen.clientId }));
-    await second.closeFrame();
-    await second.closed;
-    const closedFrame = await untilKind(host, "client-close");
-    assert.equal(closedFrame.clientId, secondOpen.clientId);
-    first.close();
-    assert.equal((await untilKind(host, "client-close")).clientId, clientId);
-  });
-
-  test(`${name}: losing the host closes its clients, and the next host is accepted`, async (t) => {
-    const { port } = await server(t);
-    const host = await connectClient(t, port, "/host");
-    await host.json();
-    const client = await connectClient(t, port, "/link");
-    await untilKind(host, "client-open");
-    host.destroy();
-    await client.closeFrame();
-    await client.closed;
-    assert.equal((await connectClient(t, port, "/link")).status, 503, "the lost host is forgotten");
-    const next = await connectClient(t, port, "/host");
-    assert.deepEqual(await next.json(), listening(port));
-  });
+async function server(t) {
+  const started = await startAnkiRelayServer({ pingMs: 50 });
+  t.after(() => started.close());
+  return started;
 }
+
+const listening = (port) => ({ kind: "listening", port });
+
+test("clients are refused until a host connects, and a second host is turned away", async (t) => {
+  const { port } = await server(t);
+  assert.equal((await connectClient(t, port, "/link")).status, 503);
+  assert.equal((await connectClient(t, port, "/host", "https://example.com")).status, 403);
+  assert.equal((await connectClient(t, port, "/host", null)).status, 403);
+  assert.equal((await connectClient(t, port, "/elsewhere")).status, 404);
+  const host = await connectClient(t, port, "/host");
+  assert.equal(host.status, 101);
+  assert.deepEqual(await host.json(), listening(port));
+  const second = await connectClient(t, port, "/host");
+  assert.equal(second.status, 101);
+  assert.deepEqual(await second.json(), { kind: "listen-failed", error: "Another browser on this computer is already sharing through Anki." });
+  await second.closeFrame();
+  const client = await connectClient(t, port, "/link");
+  assert.equal(client.status, 101);
+  const opened = await untilKind(host, "client-open");
+  assert.equal(opened.origin, EXTENSION_ORIGIN);
+});
+
+test("text crosses the relay whole in both directions, with pings on both sides", async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  await host.json();
+  const first = await connectClient(t, port, "/link");
+  const { clientId } = await untilKind(host, "client-open");
+  const large = "大きな".repeat(Math.ceil(1.5 * 1024 * 1024 / 3));
+  first.send(large);
+  const relayed = await untilKind(host, "client-text");
+  assert.equal(relayed.clientId, clientId);
+  assert.equal(relayed.text, large);
+  host.send(JSON.stringify({ kind: "send", clientId, text: JSON.stringify({ kind: "reply", id: "r1", response: { ok: true, text: "reply ✓" } }) }));
+  assert.deepEqual(await untilKind(first, "reply"), { kind: "reply", id: "r1", response: { ok: true, text: "reply ✓" } });
+  const second = await connectClient(t, port, "/link");
+  const secondOpen = await untilKind(host, "client-open");
+  host.send(JSON.stringify({ kind: "broadcast", text: JSON.stringify({ kind: "storage", changes: { options: null } }) }));
+  const [one, two] = await Promise.all([untilKind(first, "storage"), untilKind(second, "storage")]);
+  assert.deepEqual([one, two], [{ kind: "storage", changes: { options: null } }, { kind: "storage", changes: { options: null } }]);
+  assert.deepEqual(await untilKind(host, "ping"), { kind: "ping" });
+  assert.deepEqual(await untilKind(second, "ping"), { kind: "ping" });
+  host.send(JSON.stringify({ kind: "close", clientId: secondOpen.clientId }));
+  await second.closeFrame();
+  await second.closed;
+  const closedFrame = await untilKind(host, "client-close");
+  assert.equal(closedFrame.clientId, secondOpen.clientId);
+  first.close();
+  assert.equal((await untilKind(host, "client-close")).clientId, clientId);
+});
+
+test("losing the host closes its clients, and the next host is accepted", async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  await host.json();
+  const client = await connectClient(t, port, "/link");
+  await untilKind(host, "client-open");
+  host.destroy();
+  await client.closeFrame();
+  await client.closed;
+  assert.equal((await connectClient(t, port, "/link")).status, 503, "the lost host is forgotten");
+  const next = await connectClient(t, port, "/host");
+  assert.deepEqual(await next.json(), listening(port));
+});

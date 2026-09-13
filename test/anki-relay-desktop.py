@@ -27,7 +27,7 @@ args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 base = Path(tempfile.mkdtemp(prefix='hachidori-anki-relay-'))
 addon = base / 'addons21' / 'hachidori-relay'
-shutil.copytree(root / 'anki-relay', addon, ignore=shutil.ignore_patterns('__pycache__'))
+shutil.copytree(root / 'extension' / 'anki-relay', addon, ignore=shutil.ignore_patterns('__pycache__'))
 # Anki keeps a user's settings next to the add-on; this is what Tools → Add-ons → Config writes.
 (addon / 'meta.json').write_text(json.dumps({'config': {'port': args.port}}))
 os.environ.update(
@@ -114,7 +114,7 @@ finally:
 result['success'] = (
     not result['errors']
     and result.get('hostStatus') == 101
-    and result.get('listening') == {'kind': 'listening', 'port': args.port, 'relay': 'Anki'}
+    and result.get('listening') == {'kind': 'listening', 'port': args.port}
     and result.get('pageStatus') == 403
 )
 print(json.dumps(result, indent=2), flush=True)

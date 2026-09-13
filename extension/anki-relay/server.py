@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The sharing relay as an Anki add-on.
+"""The sharing relay, run inside Anki by the Hachidori Relay add-on.
 
 A Chrome extension cannot listen for connections, so a sharing Hachidori (the
-host) and the browsers linked to it all connect out to a relay on this
-computer. GameSentenceMiner's overlay process runs one; this module runs the
-same relay inside Anki for people without GameSentenceMiner. The host connects
-to /host, linked browsers connect to /link, and the relay forwards text frames
-between them without reading them. SharingRelay is a port of
-extension/sharing-relay.js; the rest is the socket server around it.
+host) and the browsers linked to it all connect out to this relay. The host
+connects to /host, linked browsers connect to /link, and the relay forwards
+text frames between them without reading them. SharingRelay is that logic;
+the rest is the WebSocket server around it, on the standard library alone.
 
-Run it without Anki: python3 anki-relay/server.py --port 8771
+Run it without Anki: python3 extension/anki-relay/server.py --port 8771
 """
 from __future__ import annotations
 
@@ -26,7 +24,6 @@ import time
 from collections import namedtuple
 from contextlib import suppress
 
-NAME = "Anki"
 DEFAULT_PORT = 8771
 HOST_PATH = "/host"
 LINK_PATH = "/link"
@@ -43,7 +40,7 @@ def encode(frame):
 
 
 class SharingRelay:
-    """extension/sharing-relay.js behind one lock, because every socket runs on its own thread."""
+    """The host, its linked browsers and the frames between them, behind one lock because every socket runs on its own thread."""
 
     def __init__(self, port):
         self.port = port
@@ -64,10 +61,10 @@ class SharingRelay:
         """The handlers for a new host socket, or None after telling it that another Hachidori already shares here."""
         with self._lock:
             if self._host is not None:
-                sock.send(encode({"kind": "listen-failed", "error": f"Another Hachidori is already sharing through {NAME}."}))
+                sock.send(encode({"kind": "listen-failed", "error": "Another browser on this computer is already sharing through Anki."}))
                 return None
             self._host = sock
-            sock.send(encode({"kind": "listening", "port": self.port, "relay": NAME}))
+            sock.send(encode({"kind": "listening", "port": self.port}))
 
         def message(text):
             try:
@@ -316,8 +313,7 @@ def serve(port, ping_seconds=PING_SECONDS, announce=None):
     """Relays on 127.0.0.1:port until the process ends. Raises OSError when the port is taken."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         if sys.platform != "win32":
-            # Frees the port straight after a restart. Windows would instead let two listeners
-            # share it, which would hide GameSentenceMiner's relay.
+            # Frees the port straight after a restart; Windows would instead let two listeners share it.
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind(("127.0.0.1", port))
         listener.listen()

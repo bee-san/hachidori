@@ -1,5 +1,5 @@
 /*
- * Host side of sharing: one outbound WebSocket to the relay GameSentenceMiner
+ * Host side of sharing: one outbound WebSocket to the relay the Anki add-on
  * runs, the browsers linked through it, and the storage batches pushed to
  * them. Requests arrive as ordinary runtime messages and are answered by the
  * service worker's own handlers.
@@ -28,7 +28,6 @@ export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, s
   let configuredPort = DEFAULT_SHARING_PORT;
   let socket = null;
   let listeningPort = null;
-  let relayName = null;
   let error = null;
   let attempt = 0;
   let retryTimer = null;
@@ -38,8 +37,6 @@ export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, s
     return {
       enabled,
       connected,
-      // Which relay carries the link: "GameSentenceMiner" or "Anki".
-      relay: connected ? relayName : null,
       port: listeningPort ?? configuredPort,
       address: formatLinkAddress({ port: listeningPort ?? configuredPort }),
       clients: [...clients.values()],
@@ -93,7 +90,6 @@ export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, s
     switch (message?.kind) {
       case "listening":
         listeningPort = Number(message.port) || configuredPort;
-        relayName = message.relay;
         error = null;
         attempt = 0;
         alarms.clear(SHARING_HOST_ALARM);

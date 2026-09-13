@@ -14,7 +14,7 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
 const idle = () => new Promise(resolveIdle => setTimeout(resolveIdle, 0));
 
 function status(overrides = {}) {
-  return { enabled: false, connected: false, relay: null, port: 8771, address: "ws://127.0.0.1:8771/link", clients: [], error: null,
+  return { enabled: false, connected: false, port: 8771, address: "ws://127.0.0.1:8771/link", clients: [], error: null,
     client: { linked: false, address: null, connected: false, host: null, error: null }, ...overrides };
 }
 
@@ -75,7 +75,7 @@ test("turning sharing on sends the port and shows linked browsers", async t => {
   f.controller.start();
   await idle();
   f.el("sharing-host-port").value = "9000";
-  f.replies.hd_sharing_host_enable = fields => ({ ok: true, sharing: status({ enabled: true, connected: true, relay: "Anki", port: fields.port,
+  f.replies.hd_sharing_host_enable = fields => ({ ok: true, sharing: status({ enabled: true, connected: true, port: fields.port,
     address: `ws://127.0.0.1:${fields.port}/link`, clients: [{ id: "c1", name: "GSM" }, { id: "c2", name: "" }] }) });
   f.toggle(true);
   await idle();
@@ -84,7 +84,7 @@ test("turning sharing on sends the port and shows linked browsers", async t => {
   assert.equal(f.el("sharing-host-port").disabled, true, "the port is fixed while sharing");
   assert.equal(f.el("sharing-host-address").value, "ws://127.0.0.1:9000/link");
   assert.equal(f.el("sharing-host-clients").textContent, "Linked: GSM, another browser.");
-  assert.deepEqual(f.lastStatus(), ["Sharing through Anki on port 9000.", "ready"]);
+  assert.deepEqual(f.lastStatus(), ["Sharing through Anki.", "ready"]);
 
   f.replies.hd_sharing_host_disable = () => ({ ok: true, sharing: status() });
   f.toggle(false);
@@ -102,13 +102,13 @@ test("waiting for a relay and a relay refusal are told apart, and a failed actio
   await idle();
   assert.equal(f.el("sharing-host-enabled").checked, true);
   assert.equal(f.el("sharing-host-port").disabled, true);
-  assert.deepEqual(f.lastStatus(), ["Sharing is on. Waiting for GameSentenceMiner or the Anki add-on to start.", undefined]);
+  assert.deepEqual(f.lastStatus(), ["Waiting for Anki. Sharing starts when Anki is open with the Hachidori Relay add-on.", undefined]);
 
-  f.replies.hd_sharing_status = () => ({ ok: true, sharing: status({ enabled: true, error: "Another Hachidori is already sharing through GameSentenceMiner." }) });
+  f.replies.hd_sharing_status = () => ({ ok: true, sharing: status({ enabled: true, error: "Another browser on this computer is already sharing through Anki." }) });
   f.controller.stop();
   f.controller.start();
   await idle();
-  assert.deepEqual(f.lastStatus(), ["Sharing is on, but Another Hachidori is already sharing through GameSentenceMiner.", "error"]);
+  assert.deepEqual(f.lastStatus(), ["Sharing is on, but another browser on this computer is already sharing through Anki.", "error"]);
 
   f.replies.hd_sharing_host_disable = () => ({ ok: false, error: "the worker did not answer" });
   f.toggle(false);
@@ -179,7 +179,7 @@ test("a linked browser shows its host, cannot share itself, and unlinks with a r
 
 test("a sharing host cannot also link to another Hachidori", async t => {
   const f = fixture(t);
-  f.replies.hd_sharing_status = () => ({ ok: true, sharing: status({ enabled: true, connected: true, relay: "GameSentenceMiner" }) });
+  f.replies.hd_sharing_status = () => ({ ok: true, sharing: status({ enabled: true, connected: true }) });
   f.controller.start();
   await idle();
   assert.equal(f.el("sharing-client").disabled, true);

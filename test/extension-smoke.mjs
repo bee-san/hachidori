@@ -1145,7 +1145,7 @@ async function overlayModeBackgroundStage() {
     JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
 }
 
-// The host side of sharing: a fake WebSocket stands in for GameSentenceMiner's
+// The host side of sharing: a fake WebSocket stands in for the Anki add-on's
 // relay, and a fake offscreen engine answers the relayed lookup.
 async function sharingHostStage() {
   FakeSharingSocket.instances.length = 0;
@@ -1178,7 +1178,7 @@ async function sharingHostStage() {
   await settle(() => hostSockets().length >= 2 && storage.raw.get("sharing")?.host?.enabled === true);
   const socket = hostSockets()[1];
   socket.open();
-  socket.receive({ kind: "listening", port: 4321, relay: "GameSentenceMiner" });
+  socket.receive({ kind: "listening", port: 4321 });
   socket.receive({ kind: "client-open", clientId: "client-1", origin: "chrome-extension://linkedbrowser" });
   clientText(socket, JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM" }));
   await settle(() => sent(socket).length >= 1);
@@ -1190,7 +1190,6 @@ async function sharingHostStage() {
       && enabled.ok === true && enabled.sharing.enabled === true && socket.url === "ws://127.0.0.1:4321/host"
       && storage.raw.get("sharing")?.host?.port === 4321
       && listening.sharing.connected === true && listening.sharing.address === "ws://127.0.0.1:4321/link"
-      && listening.sharing.relay === "GameSentenceMiner"
       && listening.sharing.clients.length === 1 && listening.sharing.clients[0].name === "GSM"
       && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.dictionaryCount === 0
       && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options"])
@@ -1237,7 +1236,7 @@ async function sharingHostStage() {
   }
   const retried = hostSockets()[2];
   retried.open();
-  retried.receive({ kind: "listen-failed", error: "Another Hachidori is already sharing through GameSentenceMiner." });
+  retried.receive({ kind: "listen-failed", error: "Another browser on this computer is already sharing through Anki." });
   await settle();
   const refusedHost = await send("hd_sharing_status");
   const restartBus = makeBus();
@@ -1250,9 +1249,9 @@ async function sharingHostStage() {
   await settle(() => storage.raw.get("sharing")?.host === null);
   const off = await restartBus.sendMessage("sharing-page", { target: "hachidori-sharing", type: "hd_sharing_host_disable", requestId: "restart-off" });
   check("a relay that goes away is waited for and retried by alarm, a refusal is reported, a restarted worker reconnects to the stored port, and turning sharing off closes the socket",
-    dropped.sharing.enabled === true && dropped.sharing.connected === false && dropped.sharing.error === null && dropped.sharing.relay === null
+    dropped.sharing.enabled === true && dropped.sharing.connected === false && dropped.sharing.error === null
       && dropped.sharing.clients.length === 0 && retrying
-      && refusedHost.sharing.error === "Another Hachidori is already sharing through GameSentenceMiner."
+      && refusedHost.sharing.error === "Another browser on this computer is already sharing through Anki."
       && restarted?.url === "ws://127.0.0.1:4321/host"
       && disabled.ok === true && disabled.sharing.enabled === false && disabled.sharing.error === null
       && !alarms.values.has("hachidori-sharing-host") && storage.raw.get("sharing")?.host === null

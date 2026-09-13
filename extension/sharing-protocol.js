@@ -1,12 +1,11 @@
-// Wire contract shared by the service worker, extension/sharing-relay.js and
-// the relay GameSentenceMiner runs.
+// Wire contract shared by the service worker and the relay the Anki add-on
+// runs (extension/anki-relay/server.py).
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 export const PROTOCOL_VERSION = 1;
 export const DEFAULT_SHARING_PORT = 8771;
 export const HOST_PATH = "/host";
 export const LINK_PATH = "/link";
-export const EXTENSION_ORIGIN_PREFIX = "chrome-extension://";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 

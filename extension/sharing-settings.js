@@ -9,6 +9,10 @@ function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);
 }
 
+function lowerFirst(text) {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
 export function createSharingSettingsController({
   document, send, setStatus, reload = () => document.defaultView.location.reload(),
 }) {
@@ -43,9 +47,9 @@ export function createSharingSettingsController({
       return;
     }
     if (!sharing.enabled) setStatus("Not sharing.", undefined);
-    else if (sharing.error !== null) setStatus(`Sharing is on, but ${sharing.error}`, "error");
-    else if (!sharing.connected) setStatus("Sharing is on. Waiting for GameSentenceMiner or the Anki add-on to start.", undefined);
-    else setStatus(`Sharing through ${sharing.relay} on port ${sharing.port}.`, "ready");
+    else if (sharing.error !== null) setStatus(`Sharing is on, but ${lowerFirst(sharing.error)}`, "error");
+    else if (!sharing.connected) setStatus("Waiting for Anki. Sharing starts when Anki is open with the Hachidori Relay add-on.", undefined);
+    else setStatus("Sharing through Anki.", "ready");
   }
 
   function renderHost() {
