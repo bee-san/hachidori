@@ -1,9 +1,12 @@
-// A plain Node WebSocket server around extension/sharing-relay.js, standing in
-// for the relay GameSentenceMiner runs. Used by the relay unit test and the
-// two-browser sharing suite; not shipped.
+// The relays the tests start: a plain Node WebSocket server around
+// extension/sharing-relay.js, standing in for the relay GameSentenceMiner runs,
+// and the Anki add-on's anki-relay/server.py as a process. Used by the relay
+// unit test and the two-browser sharing suite; not shipped.
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
+import { fileURLToPath } from "node:url";
 import { EXTENSION_ORIGIN_PREFIX, HOST_PATH, LINK_PATH } from "../extension/sharing-protocol.js";
 import { createSharingRelay } from "../extension/sharing-relay.js";
 
@@ -133,7 +136,7 @@ export async function startSharingRelayServer({ port = 0, pingMs = 20_000 } = {}
     server.once("error", rejectListen);
     server.listen(port, "127.0.0.1", resolveListen);
   });
-  relay = createSharingRelay({ port: server.address().port });
+  relay = createSharingRelay({ port: server.address().port, name: "GameSentenceMiner" });
   const pinger = setInterval(() => relay.ping(), pingMs);
   return {
     port: server.address().port,
@@ -142,6 +145,26 @@ export async function startSharingRelayServer({ port = 0, pingMs = 20_000 } = {}
       clearInterval(pinger);
       for (const socket of sockets) socket.destroy();
       return new Promise((resolveClose) => server.close(() => resolveClose()));
+    },
+  };
+}
+
+// The Anki add-on's relay as a plain process. Resolves with `{ port, close() }`;
+// the process prints the port it bound, which is how port 0 is learned.
+export async function startAnkiRelayServer({ port = 0, pingMs = 20_000 } = {}) {
+  const server = fileURLToPath(new URL("../anki-relay/server.py", import.meta.url));
+  const child = spawn("python3", [server, "--port", String(port), "--ping-seconds", String(pingMs / 1000)], { stdio: ["ignore", "pipe", "inherit"] });
+  const boundPort = await new Promise((resolvePort, rejectPort) => {
+    child.once("error", rejectPort);
+    child.once("exit", (code) => rejectPort(new Error(`the Anki relay exited with ${code}`)));
+    child.stdout.once("data", (chunk) => resolvePort(Number(String(chunk).trim().split(" ")[1])));
+  });
+  return {
+    port: boundPort,
+    close() {
+      const exited = new Promise((resolveExit) => child.once("exit", resolveExit));
+      child.kill();
+      return exited;
     },
   };
 }

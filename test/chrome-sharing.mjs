@@ -11,13 +11,15 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CUSTOM_DICTIONARY_ID, CUSTOM_DICTIONARY_SOURCE_KEY, CUSTOM_DICTIONARY_TITLE } from "../extension/custom-dictionary.js";
-import { startSharingRelayServer } from "./sharing-relay-server.mjs";
+import { startAnkiRelayServer, startSharingRelayServer } from "./sharing-relay-server.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const EXTENSION = resolve(ROOT, "extension");
 const FIXTURE = resolve(ROOT, "test/fixtures/hachidori-fixture.zip");
 // A test-only port keeps a developer's own GameSentenceMiner on the default port out of the way.
 const PORT = Number(process.env.HACHIDORI_SHARING_PORT) || 18771;
+// HACHIDORI_SHARING_RELAY=anki runs the Anki add-on's relay instead of the Node one.
+const RELAY_NAME = process.env.HACHIDORI_SHARING_RELAY === "anki" ? "Anki" : "GameSentenceMiner";
 const ADDRESS = `ws://127.0.0.1:${PORT}/link`;
 const CUSTOM_SOURCE = "共有語, きょうゆうご, saved through the link\n";
 const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
@@ -187,8 +189,8 @@ async function enableSharing(page) {
     return current?.sharing?.connected ? current.sharing : null;
   }, "the host to connect to the relay", 30_000);
   await showSection(page, "sharing");
-  await page.waitForFunction((port) => document.getElementById("sharing-status")?.textContent === `Sharing through GameSentenceMiner on port ${port}.`,
-    { timeout: 15_000, polling: 100 }, PORT);
+  await page.waitForFunction((text) => document.getElementById("sharing-status")?.textContent === text,
+    { timeout: 15_000, polling: 100 }, `Sharing through ${RELAY_NAME} on port ${PORT}.`);
   return connected;
 }
 
@@ -232,7 +234,7 @@ function report(hostBrowser, clientBrowser) {
 if (!existsSync(CHROME)) fatal(`Chrome not found; set HACHIDORI_CHROME (tried ${CHROME || "nothing"})`);
 if (!existsSync(FIXTURE)) fatal(`missing ${FIXTURE}; run node test/make-fixture.mjs first`);
 for (const path of [HOST_PROFILE, CLIENT_PROFILE]) rmSync(path, { recursive: true, force: true });
-const relay = await startSharingRelayServer({ port: PORT });
+const relay = await (RELAY_NAME === "Anki" ? startAnkiRelayServer : startSharingRelayServer)({ port: PORT });
 console.log(`     relay listening on 127.0.0.1:${relay.port}`);
 
 let hostBrowser = null;
@@ -247,7 +249,7 @@ try {
   const hostState = await stored(hostPage, ["dictionaryState", "options"]);
   check("the host imports the fixture and shares through the relay on the chosen port",
     hostSharing.enabled === true && hostSharing.connected === true && hostSharing.port === PORT && hostSharing.address === ADDRESS
-      && hostSharing.error === null && relay.relay.hasHost
+      && hostSharing.error === null && hostSharing.relay === RELAY_NAME
       && hostState.dictionaryState?.dictionaries?.some((dictionary) => dictionary.title === "hachidori-fixture") === true,
     JSON.stringify({ hostSharing, dictionaries: hostState.dictionaryState?.dictionaries?.map((entry) => entry.title) }));
 
@@ -326,7 +328,7 @@ try {
 
   await hostBrowser.close();
   hostBrowser = null;
-  await until(async () => (relay.relay.hasHost ? null : true), "the relay to drop the closed host", 15_000);
+  // The relay closes the linked browser's socket once it notices the host is gone.
   const unreachable = await until(async () => {
     const reply = await lookup(clientPage);
     return reply?.ok === false ? reply : null;

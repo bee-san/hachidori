@@ -1,15 +1,17 @@
 /*
  * The relay that stands between a sharing Hachidori (the host) and the
- * browsers linked to it. GameSentenceMiner runs it inside its overlay process;
- * the test suite runs it on a plain Node WebSocket server. It knows the
+ * browsers linked to it. GameSentenceMiner runs it inside its overlay process,
+ * the test suite runs it on a plain Node WebSocket server, and
+ * anki-relay/server.py is the same relay in Python for Anki. It knows the
  * envelope kinds and nothing about their contents.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-// `port` is reported to the host so its Settings can show the link address.
-// Every socket is represented by `{ send(text), close() }`.
-export function createSharingRelay({ port }) {
+// `port` and `name` ("GameSentenceMiner" or "Anki") are reported to the host so
+// its Settings can show the link address and which relay carries it. Every
+// socket is represented by `{ send(text), close() }`.
+export function createSharingRelay({ port, name }) {
   const clients = new Map();
   let host = null;
   let nextClientId = 0;
@@ -29,11 +31,11 @@ export function createSharingRelay({ port }) {
     // socket that another Hachidori already shares here.
     connectHost(socket) {
       if (host !== null) {
-        socket.send(JSON.stringify({ kind: "listen-failed", error: "Another Hachidori is already sharing through GameSentenceMiner." }));
+        socket.send(JSON.stringify({ kind: "listen-failed", error: `Another Hachidori is already sharing through ${name}.` }));
         return null;
       }
       host = socket;
-      socket.send(JSON.stringify({ kind: "listening", port }));
+      socket.send(JSON.stringify({ kind: "listening", port, relay: name }));
       return {
         message(text) {
           let frame;

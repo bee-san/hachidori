@@ -987,16 +987,16 @@
         </section>
         <section class="card" id="sharing" aria-labelledby="sharing-heading" hidden>
           <div class="card-head">
-            <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link other browser GSM GameSentenceMiner overlay relay port address">Sharing</h1>
+            <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link other browser GSM GameSentenceMiner overlay relay Anki add-on addon port address">Sharing</h1>
             <p class="hint">Use one Hachidori from every browser on this computer.</p>
           </div>
           <output id="sharing-status" class="anki-status" aria-live="polite"></output>
           <fieldset class="lookup-group" id="sharing-host">
             <legend>Share this Hachidori</legend>
-            <p class="field-hint">The GameSentenceMiner overlay, and any other Hachidori on this computer, then uses this Hachidori’s dictionaries, personal entries, lookup counts and settings instead of its own. GameSentenceMiner relays the connection, so there is nothing to install; sharing simply waits while GameSentenceMiner is closed.</p>
+            <p class="field-hint">The GameSentenceMiner overlay, and any other Hachidori on this computer, then uses this Hachidori’s dictionaries, personal entries, lookup counts and settings instead of its own. GameSentenceMiner relays the connection, so there is nothing to install; without GameSentenceMiner, the Hachidori Relay add-on for Anki does the same. Sharing simply waits while neither is running.</p>
             <label class="lookup-enable"><span>Share this Hachidori</span><input id="sharing-host-enabled" type="checkbox" disabled></label>
             <div class="fields">
-              <label class="field"><span class="field-label">Port</span><input id="sharing-host-port" type="number" min="1" max="65535" step="1" value="8771"><span class="field-hint">GameSentenceMiner relays on this port. Change it only if you changed it there too.</span></label>
+              <label class="field"><span class="field-label">Port</span><input id="sharing-host-port" type="number" min="1" max="65535" step="1" value="8771"><span class="field-hint">GameSentenceMiner and the Anki add-on relay on this port. Change it only if you changed it there too.</span></label>
               <label class="field"><span class="field-label">Address</span><input id="sharing-host-address" type="text" readonly spellcheck="false"><span class="field-hint">Other browsers find this Hachidori on the default port by themselves; enter the address there when the port differs.</span></label>
             </div>
             <div class="sharing-actions">

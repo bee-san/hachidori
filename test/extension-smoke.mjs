@@ -1178,7 +1178,7 @@ async function sharingHostStage() {
   await settle(() => hostSockets().length >= 2 && storage.raw.get("sharing")?.host?.enabled === true);
   const socket = hostSockets()[1];
   socket.open();
-  socket.receive({ kind: "listening", port: 4321 });
+  socket.receive({ kind: "listening", port: 4321, relay: "GameSentenceMiner" });
   socket.receive({ kind: "client-open", clientId: "client-1", origin: "chrome-extension://linkedbrowser" });
   clientText(socket, JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM" }));
   await settle(() => sent(socket).length >= 1);
@@ -1190,6 +1190,7 @@ async function sharingHostStage() {
       && enabled.ok === true && enabled.sharing.enabled === true && socket.url === "ws://127.0.0.1:4321/host"
       && storage.raw.get("sharing")?.host?.port === 4321
       && listening.sharing.connected === true && listening.sharing.address === "ws://127.0.0.1:4321/link"
+      && listening.sharing.relay === "GameSentenceMiner"
       && listening.sharing.clients.length === 1 && listening.sharing.clients[0].name === "GSM"
       && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.dictionaryCount === 0
       && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options"])
@@ -1249,7 +1250,7 @@ async function sharingHostStage() {
   await settle(() => storage.raw.get("sharing")?.host === null);
   const off = await restartBus.sendMessage("sharing-page", { target: "hachidori-sharing", type: "hd_sharing_host_disable", requestId: "restart-off" });
   check("a relay that goes away is waited for and retried by alarm, a refusal is reported, a restarted worker reconnects to the stored port, and turning sharing off closes the socket",
-    dropped.sharing.enabled === true && dropped.sharing.connected === false && dropped.sharing.error === null
+    dropped.sharing.enabled === true && dropped.sharing.connected === false && dropped.sharing.error === null && dropped.sharing.relay === null
       && dropped.sharing.clients.length === 0 && retrying
       && refusedHost.sharing.error === "Another Hachidori is already sharing through GameSentenceMiner."
       && restarted?.url === "ws://127.0.0.1:4321/host"

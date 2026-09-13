@@ -211,7 +211,7 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
-  "a fresh profile shares by default and waits for GameSentenceMiner",
+  "a fresh profile shares by default and waits for a relay",
   "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
   "a fresh install waits for Start setup before dictionary downloads or Anki discovery",
   "Start setup begins automatic dictionary installation with first-install preferences",
@@ -7006,20 +7006,21 @@ async function main() {
     };
   });
   check(
-    "a fresh profile shares by default and waits for GameSentenceMiner",
+    "a fresh profile shares by default and waits for a relay",
     sharing.optional === null
       && !sharing.permissions.includes("nativeMessaging")
       && sharing.reply?.ok === true
       && sharing.reply.sharing?.enabled === true
       && sharing.reply.sharing.connected === false
       && sharing.reply.sharing.error === null
+      && sharing.reply.sharing.relay === null
       && sharing.reply.sharing.address === "ws://127.0.0.1:8771/link"
       && sharing.reply.sharing.client?.linked === false
       && sharing.visible
       && sharing.toggleDisabled === false
       && sharing.toggleChecked === true
       && sharing.address === "ws://127.0.0.1:8771/link"
-      && sharing.status === "Sharing is on. Waiting for GameSentenceMiner to start.",
+      && sharing.status === "Sharing is on. Waiting for GameSentenceMiner or the Anki add-on to start.",
     JSON.stringify(sharing),
   );
   // Sharing keeps waiting for a relay with a watchdog alarm; off for the rest of
