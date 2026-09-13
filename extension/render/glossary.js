@@ -390,36 +390,56 @@
       ? buildPitchAccentMorae(pitchReading, selectedPitch.pitch.position)
       : null;
     if (pitchedMorae) {
-      const ruby = documentRef.createElement("ruby");
-      ruby.className = "gsm-hoshidicts-pitch-ruby";
-      appendText(ruby, expression);
-
-      const rt = documentRef.createElement("rt");
-      rt.className = "gsm-hoshidicts-pitch-reading";
-      rt.dataset.pitchPosition = String(selectedPitch.pitch.position);
-      if (selectedPitch.dictionary) {
-        rt.dataset.pitchDictionary = selectedPitch.dictionary;
+      // One column per furigana segment, so each reading sits over the text it
+      // reads. Kana segments get a column too, keeping the contour unbroken.
+      let segments = segmentFurigana(expression, reading).map((segment) => ({
+        text: segment.text,
+        moraCount: splitPitchAccentMorae(segment.reading || segment.text).length,
+      }));
+      if (
+        segments.reduce((total, segment) => total + segment.moraCount, 0) !==
+        pitchedMorae.length
+      ) {
+        segments = [{ text: expression, moraCount: pitchedMorae.length }];
       }
-      rt.title = [
+      const title = [
         selectedPitch.dictionary,
         `Pitch accent ${selectedPitch.pitch.position}`,
       ].filter(Boolean).join(" · ");
+      let moraIndex = 0;
+      for (const segment of segments) {
+        const ruby = documentRef.createElement("ruby");
+        ruby.className = "gsm-hoshidicts-pitch-ruby";
+        const base = documentRef.createElement("span");
+        base.className = "gsm-hoshidicts-pitch-base";
+        appendText(base, segment.text);
+        ruby.appendChild(base);
 
-      const contour = documentRef.createElement("span");
-      contour.className = "gsm-hoshidicts-pitch-contour";
-      for (const mora of pitchedMorae) {
-        const span = documentRef.createElement("span");
-        span.className = "gsm-hoshidicts-pitch-mora";
-        span.dataset.pitchLevel = mora.level;
-        if (mora.transition) {
-          span.dataset.pitchTransition = mora.transition;
+        const rt = documentRef.createElement("rt");
+        rt.className = "gsm-hoshidicts-pitch-reading";
+        rt.dataset.pitchPosition = String(selectedPitch.pitch.position);
+        if (selectedPitch.dictionary) {
+          rt.dataset.pitchDictionary = selectedPitch.dictionary;
         }
-        span.textContent = mora.text;
-        contour.appendChild(span);
+        rt.title = title;
+
+        const contour = documentRef.createElement("span");
+        contour.className = "gsm-hoshidicts-pitch-contour";
+        for (const mora of pitchedMorae.slice(moraIndex, moraIndex + segment.moraCount)) {
+          const span = documentRef.createElement("span");
+          span.className = "gsm-hoshidicts-pitch-mora";
+          span.dataset.pitchLevel = mora.level;
+          if (mora.transition) {
+            span.dataset.pitchTransition = mora.transition;
+          }
+          span.textContent = mora.text;
+          contour.appendChild(span);
+        }
+        moraIndex += segment.moraCount;
+        rt.appendChild(contour);
+        ruby.appendChild(rt);
+        parent.appendChild(ruby);
       }
-      rt.appendChild(contour);
-      ruby.appendChild(rt);
-      parent.appendChild(ruby);
       return;
     }
 

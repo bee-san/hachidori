@@ -1615,7 +1615,7 @@ html[data-hoshidicts-theme="girlypop"],
   overflow-wrap: anywhere;
   font-size: 32px;
   line-height: 1.22;
-  ruby-align: start;
+  ruby-align: center;
   ruby-position: over;
 }
 
@@ -1673,13 +1673,25 @@ html[data-hoshidicts-theme="girlypop"],
   user-select: none;
 }
 
+.gsm-hoshidicts-pitch-ruby {
+  display: inline-flex;
+  flex-direction: column-reverse;
+  align-items: stretch;
+  vertical-align: bottom;
+}
+
+.gsm-hoshidicts-pitch-base {
+  text-align: center;
+}
+
 .gsm-hoshidicts-pitch-reading {
+  display: block;
   overflow: visible;
   padding: 1px 0 2px;
 }
 
 .gsm-hoshidicts-pitch-contour {
-  display: inline-flex;
+  display: flex;
   align-items: stretch;
   color: var(--text-color-light1);
   white-space: nowrap;
@@ -1687,9 +1699,10 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-pitch-mora {
   position: relative;
-  display: inline-block;
+  flex: 1 1 auto;
   margin-right: -1px;
   padding: 2px 1px;
+  text-align: center;
   border-top: 2px solid transparent;
   border-bottom: 2px solid transparent;
   line-height: 1;
