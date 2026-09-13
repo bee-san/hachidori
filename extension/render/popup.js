@@ -1438,6 +1438,7 @@
     const marker = getCompactDefinitionMarker(value);
     return marker && marker !== "glossary" && (
       marker.startsWith("part-of-speech") ||
+      marker === "redirect-glossary" ||
       marker === "source" || marker.startsWith("source-") ||
       marker === "attribution" || marker.startsWith("attribution-") ||
       marker === "example" || marker === "examples" ||

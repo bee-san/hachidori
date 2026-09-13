@@ -15136,6 +15136,14 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
       && renderedDispatch.every(items => JSON.stringify(items) === JSON.stringify(["visible"]))
       && imageAfterBreak?.image?.path === "leading.png",
     JSON.stringify({ compact, fallback, lateImage, bulletSummary, nonImageLeads, summaryWork, streamedText, mixedSenses, brokenLines, ruby, renderedDispatch, imageAfterBreak }));
+  // Jitendex redirect entries are just "⟶ <link>"; the summary skips to the next glossary.
+  const redirect = HDPopup.extractCompactDefinitionSummary([
+    { dictionary: "Jitendex", glossary: JSON.stringify([{ type: "structured-content", content: { tag: "div",
+      data: { content: "redirect-glossary" }, content: ["⟶", { tag: "a", href: "?query=悪どい", content: "悪どい" }] } }]) },
+    { dictionary: "Jitendex", glossary: JSON.stringify(["vicious"]) },
+  ]);
+  check("compact summaries skip Jitendex ⟶ redirects", JSON.stringify(redirect?.items) === JSON.stringify(["vicious"]),
+    JSON.stringify(redirect));
 
   const aggregateResult = { term: { frequencies: [
     { dictionary: "Rank A", frequencies: [{ value: 1234, displayValue: "1,234" }, { value: 1 }] },
