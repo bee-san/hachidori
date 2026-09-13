@@ -1628,7 +1628,10 @@ interaction and draft selection. Only existing popup actions are shown.
 
 ![Confirmed Anki submission in the reader](assets/anki-reader.png)
 
-Add and View appear only with a valid configured Anki note type. The content
+The Anki button appears only with a valid configured Anki note type. It is
+one button: it adds, and once there is a note to show it opens Anki instead,
+at the duplicates that block adding, the note it just wrote, or a search for
+the expression after a write it could not confirm. The content
 controller preflights rendered candidates sequentially, retires detached actions
 after live tab/group projection, and creates no Anki controls or requests while
 unconfigured. Mining uses the selected projected result, current frequency
