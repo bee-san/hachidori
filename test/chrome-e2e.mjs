@@ -7022,6 +7022,10 @@ async function main() {
       && sharing.status === "Sharing is on. Waiting for GameSentenceMiner to start.",
     JSON.stringify(sharing),
   );
+  // Sharing keeps waiting for a relay with a watchdog alarm; off for the rest of
+  // this profile so the update-alarm checks below see only their own alarms.
+  const sharingOff = await page.evaluate(() => chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_host_disable", requestId: "e2e-sharing-off" }));
+  if (sharingOff?.ok !== true) throw new Error(`sharing could not be turned off: ${sharingOff?.error}`);
   await showSettingsSection(page, "keybinds");
   const browserShortcuts = await page.evaluate(async () => {
     const commands = await chrome.commands.getAll();
