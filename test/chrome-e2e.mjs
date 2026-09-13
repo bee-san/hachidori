@@ -211,7 +211,7 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
-  "a fresh profile shares by default and waits for a relay",
+  "a fresh profile shares by default and waits for dictionaries before it takes the host slot",
   "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
   "a fresh install waits for Start setup before dictionary downloads or Anki discovery",
   "Start setup begins automatic dictionary installation with first-install preferences",
@@ -7001,29 +7001,36 @@ async function main() {
       visible: !document.getElementById("sharing").hidden,
       toggleDisabled: toggle.disabled,
       toggleChecked: toggle.checked,
-      address: document.getElementById("sharing-host-address").value,
+      networkDisabled: document.getElementById("sharing-host-network").disabled,
+      addonOffered: !document.getElementById("sharing-addon").hidden,
+      alarms: (await chrome.alarms.getAll()).map(alarm => alarm.name),
       status: document.getElementById("sharing-status").textContent,
     };
   });
   check(
-    "a fresh profile shares by default and waits for a relay",
+    "a fresh profile shares by default and waits for dictionaries before it takes the host slot",
     sharing.optional === null
       && !sharing.permissions.includes("nativeMessaging")
       && sharing.reply?.ok === true
       && sharing.reply.sharing?.enabled === true
       && sharing.reply.sharing.connected === false
+      && sharing.reply.sharing.dictionaries === 0
       && sharing.reply.sharing.error === null
-      && sharing.reply.sharing.address === "ws://127.0.0.1:8771/link"
+      && sharing.reply.sharing.port === 8771
+      && sharing.reply.sharing.network?.enabled === false
       && sharing.reply.sharing.client?.linked === false
       && sharing.visible
       && sharing.toggleDisabled === false
       && sharing.toggleChecked === true
-      && sharing.address === "ws://127.0.0.1:8771/link"
-      && sharing.status === "Waiting for Anki. Sharing starts when Anki is open with the Hachidori Relay add-on.",
+      && sharing.networkDisabled === false
+      && sharing.addonOffered
+      && !sharing.alarms.includes("hachidori-sharing-host")
+      && sharing.status === "Sharing starts once this Hachidori has dictionaries.",
     JSON.stringify(sharing),
   );
-  // Sharing keeps waiting for a relay with a watchdog alarm; off for the rest of
-  // this profile so the update-alarm checks below see only their own alarms.
+  // Sharing connects, with a watchdog alarm while the relay is away, as soon as
+  // this profile has dictionaries; off for the rest of this profile so the
+  // update-alarm checks below see only their own alarms.
   const sharingOff = await page.evaluate(() => chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_host_disable", requestId: "e2e-sharing-off" }));
   if (sharingOff?.ok !== true) throw new Error(`sharing could not be turned off: ${sharingOff?.error}`);
   await showSettingsSection(page, "keybinds");

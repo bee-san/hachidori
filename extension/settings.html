@@ -987,39 +987,49 @@
         </section>
         <section class="card" id="sharing" aria-labelledby="sharing-heading" hidden>
           <div class="card-head">
-            <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link other browser relay Anki add-on addon port address">Sharing</h1>
-            <p class="hint">Use one Hachidori from every browser on this computer.</p>
+            <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link other browser computer Tailscale network relay Anki add-on addon port address">Sharing</h1>
+            <p class="hint">Use one Hachidori from all your browsers, on this computer and on your other computers. Anki carries the connection.</p>
           </div>
           <output id="sharing-status" class="anki-status" aria-live="polite"></output>
           <fieldset class="lookup-group" id="sharing-host">
             <legend>Share this Hachidori</legend>
-            <p class="field-hint">Any other Hachidori on this computer then uses this Hachidori’s dictionaries, personal entries, lookup counts and settings instead of its own. The Hachidori Relay add-on for Anki carries the connection, so sharing simply waits while Anki is closed.</p>
-            <label class="lookup-enable"><span>Share this Hachidori</span><input id="sharing-host-enabled" type="checkbox" disabled></label>
-            <div class="fields">
-              <label class="field"><span class="field-label">Port</span><input id="sharing-host-port" type="number" min="1" max="65535" step="1" value="8771"><span class="field-hint">The Anki add-on relays on this port. Change it only if you changed it there too.</span></label>
-              <label class="field"><span class="field-label">Address</span><input id="sharing-host-address" type="text" readonly spellcheck="false"><span class="field-hint">Other browsers find this Hachidori on the default port by themselves; enter the address there when the port differs.</span></label>
+            <p class="field-hint">Your other browsers then use this Hachidori’s dictionaries, personal entries, lookup counts and settings instead of their own. Anki carries the connection: install the Hachidori Relay add-on once and keep Anki open.</p>
+            <div class="sharing-actions" id="sharing-addon">
+              <button id="sharing-addon-download" type="button" class="ghost">Download the Anki add-on</button>
+              <span class="field-hint">Then double-click the file to install it and restart Anki.</span>
             </div>
-            <div class="sharing-actions">
-              <button id="sharing-host-copy" type="button" class="ghost">Copy address</button>
+            <label class="lookup-enable"><span>Share this Hachidori</span><input id="sharing-host-enabled" type="checkbox" disabled></label>
+            <label class="lookup-enable"><span>Also with my other computers</span><input id="sharing-host-network" type="checkbox" disabled></label>
+            <p class="field-hint">Over Tailscale or your home network. Anyone on that network could reach it, so leave it off on public Wi-Fi.</p>
+            <div id="sharing-host-addresses" hidden>
+              <p class="field-hint" id="sharing-host-addresses-note"></p>
+              <ul id="sharing-host-address-list" class="sharing-addresses"></ul>
             </div>
             <output id="sharing-host-clients" class="field-hint" aria-live="polite"></output>
+            <details class="settings-disclosure">
+              <summary>Advanced</summary>
+              <div class="fields">
+                <label class="field"><span class="field-label">Port</span><input id="sharing-host-port" type="number" min="1" max="65535" step="1" value="8771"><span class="field-hint">Change it only if you changed the add-on’s port in Anki (Tools → Add-ons → Hachidori Relay → Config).</span></label>
+              </div>
+            </details>
           </fieldset>
           <fieldset class="lookup-group" id="sharing-client">
             <legend>Use another Hachidori</legend>
-            <p class="field-hint">This browser then looks words up in a Hachidori that shares itself on this computer and mirrors its settings, personal entries and lookup counts. Nothing is copied, and unlinking brings this browser’s own state back.</p>
-            <div class="sharing-actions">
-              <button id="sharing-client-find" type="button" class="ghost">Find on this computer</button>
-              <button id="sharing-client-use" type="button" class="primary-button" hidden>Use it</button>
+            <p class="field-hint">This browser then uses that Hachidori’s dictionaries, personal entries, lookup counts and settings. Nothing is copied, and unlinking brings this browser’s own state back.</p>
+            <div id="sharing-client-nearby">
+              <output id="sharing-client-found" class="field-hint" aria-live="polite"></output>
+              <div class="sharing-actions">
+                <button id="sharing-client-use" type="button" class="primary-button" hidden>Use it</button>
+                <button id="sharing-client-find" type="button" class="ghost">Look again</button>
+              </div>
             </div>
-            <output id="sharing-client-found" class="field-hint" aria-live="polite"></output>
-            <div class="fields">
-              <label class="field"><span class="field-label">Address</span><input id="sharing-client-address" type="text" spellcheck="false" autocomplete="off" placeholder="ws://127.0.0.1:8771/link"><span class="field-hint">Needed only when the shared Hachidori uses another port.</span></label>
+            <div class="fields" id="sharing-client-remote">
+              <label class="field"><span class="field-label">On another computer</span><input id="sharing-client-address" type="text" spellcheck="false" autocomplete="off" placeholder="100.101.102.103"><span class="field-hint">The address shown under Sharing on that computer.</span></label>
             </div>
             <div class="sharing-actions">
               <button id="sharing-client-link" type="button" class="ghost">Link</button>
               <button id="sharing-client-unlink" type="button" class="ghost" hidden>Unlink</button>
             </div>
-            <output id="sharing-client-status" class="field-hint" aria-live="polite"></output>
           </fieldset>
         </section>
         <section class="card" id="backup" aria-labelledby="backup-heading" hidden>

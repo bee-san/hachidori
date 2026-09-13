@@ -10,6 +10,7 @@ import { createKeybindSettingsController } from "./keybind-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
+import { ANKI_ADDON_FILE_NAME, buildAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
 import { createCustomLinkSettings } from "./custom-link-settings.js";
@@ -311,11 +312,28 @@ function renderSharingLink(value) {
   for (const node of document.querySelectorAll("#backup > .backup-action, #backup > .section-note")) node.hidden = linked;
 }
 
+// The add-on is built from the files shipped with this extension and saved
+// like any other download, so Anki installs the version that matches.
+async function downloadAnkiAddon() {
+  const archive = await buildAnkiAddon(async (name) => {
+    const response = await fetch(chrome.runtime.getURL(`anki-relay/${name}`));
+    if (!response.ok) throw new Error(`could not read ${name}`);
+    return response.text();
+  }, { version: chrome.runtime.getManifest().version });
+  const url = URL.createObjectURL(archive);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = ANKI_ADDON_FILE_NAME;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 function updateSharingSettings() {
   if (activeSection !== "sharing") { sharingController?.stop(); return; }
   sharingController ??= createSharingSettingsController({ document,
     send: (type, fields) => send(type, fields, SHARING_TARGET),
     setStatus: (message, tone) => setSectionStatus("sharing-status", message, tone),
+    downloadAddon: downloadAnkiAddon,
   });
   sharingController.start();
 }

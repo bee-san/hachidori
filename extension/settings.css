@@ -1539,5 +1539,26 @@ textarea {
 .sharing-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 8px 12px;
+}
+#sharing-host-addresses { display: grid; gap: 8px; }
+.sharing-addresses {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sharing-addresses li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.sharing-addresses code {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  font-size: 1.05em;
 }
