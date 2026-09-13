@@ -29,14 +29,7 @@ Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature
 
 ## Install in 15 seconds
 
-```sh
-git clone https://github.com/bee-san/hachidori.git
-```
-
-1. Open `chrome://extensions`.
-2. Enable **Developer mode**.
-3. Choose **Load unpacked** and select the cloned `hachidori/extension` directory.
-4. Hachidori opens a short welcome on its first install. Choose **Start setup**
+https://chromewebstore.google.com/detail/hachidori/mikpaebfdmidjnopgffchicnmoahhcbe
 
 <p align="center">
   <img src="docs/assets/install-in-60-seconds.gif" alt="Animated walkthrough of Hachidori's first-run setup, dictionary installation, Anki detection, and Japanese lookup" width="720">
