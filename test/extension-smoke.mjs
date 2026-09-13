@@ -1171,30 +1171,46 @@ async function sharingHostStage() {
   const broadcasts = socket => socket.sent.filter(frame => frame.kind === "broadcast").map(frame => JSON.parse(frame.text));
   const clientText = (socket, text) => socket.receive({ kind: "client-text", clientId: "client-1", text });
 
+  // Sharing is on from install but waits for something to share.
+  await settle();
+  const empty = await send("hd_sharing_status");
+  const noSocketWhileEmpty = hostSockets().length === 0;
+  const dictionary = { id: "host-dict", title: "Host", displayName: null, path: "/dicts/Host", enabled: true, favorite: false, revision: "1",
+    isUpdatable: false, indexUrl: null, downloadUrl: null, language: "ja", frequencyMode: null, termCount: 3, frequencyCount: 0,
+    pitchCount: 0, kanjiCount: 0, mediaCount: 0, installedAt: "2026-09-01T00:00:00.000Z", lastUpdateCheck: null };
+  await storage.api().local.set({ dictionaryState: { schemaVersion: 1, revision: 1, dictionaries: [dictionary], groups: [] } });
   await settle(() => hostSockets().length >= 1);
   const initial = hostSockets()[0];
   const before = await send("hd_sharing_status");
-  const enabled = await send("hd_sharing_host_enable", { port: 4321 });
+  const enabled = await send("hd_sharing_host_enable", { port: 4321, network: true });
   await settle(() => hostSockets().length >= 2 && storage.raw.get("sharing")?.host?.enabled === true);
   const socket = hostSockets()[1];
   socket.open();
   socket.receive({ kind: "listening", port: 4321 });
-  socket.receive({ kind: "client-open", clientId: "client-1", origin: "chrome-extension://linkedbrowser" });
+  await settle(() => socket.sent.some(frame => frame.kind === "network"));
+  const askedForNetwork = socket.sent.find(frame => frame.kind === "network");
+  socket.receive({ kind: "network", enabled: true, addresses: [{ address: "100.75.152.75", kind: "tailscale" }, { address: "192.168.1.123", kind: "local" }] });
+  socket.receive({ kind: "client-open", clientId: "client-1", origin: "chrome-extension://linkedbrowser", address: "127.0.0.1" });
   clientText(socket, JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM" }));
   await settle(() => sent(socket).length >= 1);
   const hello = sent(socket)[0];
   const listening = await send("hd_sharing_status");
-  check("a browser install shares by default, connects to the relay on the chosen port and answers a linked browser's hello with the shared snapshot",
-    before.sharing?.enabled === true && before.sharing.connected === false && before.sharing.error === null
+  check("a browser install shares by default once it has dictionaries, connects to the relay on the chosen port, asks for the network it was set to, and answers a linked browser's hello with the shared snapshot",
+    empty.sharing?.enabled === true && empty.sharing.connected === false && empty.sharing.dictionaries === 0 && noSocketWhileEmpty
+      && before.sharing?.enabled === true && before.sharing.connected === false && before.sharing.error === null && before.sharing.dictionaries === 1
       && initial.url === "ws://127.0.0.1:8771/host" && initial.readyState === 3
       && enabled.ok === true && enabled.sharing.enabled === true && socket.url === "ws://127.0.0.1:4321/host"
-      && storage.raw.get("sharing")?.host?.port === 4321
-      && listening.sharing.connected === true && listening.sharing.address === "ws://127.0.0.1:4321/link"
+      && storage.raw.get("sharing")?.host?.port === 4321 && storage.raw.get("sharing")?.host?.network === true
+      && JSON.stringify(askedForNetwork) === JSON.stringify({ kind: "network", enabled: true })
+      && listening.sharing.connected === true && listening.sharing.port === 4321
+      && listening.sharing.network.enabled === true && listening.sharing.network.active === true
+      && JSON.stringify(listening.sharing.network.addresses) === JSON.stringify([{ address: "100.75.152.75", kind: "tailscale" }, { address: "192.168.1.123", kind: "local" }])
       && listening.sharing.clients.length === 1 && listening.sharing.clients[0].name === "GSM"
-      && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.dictionaryCount === 0
+      && listening.sharing.clients[0].address === "127.0.0.1" && listening.sharing.clients[0].local === true
+      && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.name === "another browser" && hello.dictionaryCount === 1
       && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options"])
       && hello.snapshot.options === null,
-    JSON.stringify({ before, enabled, listening, hello, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
+    JSON.stringify({ empty, noSocketWhileEmpty, before, enabled, askedForNetwork, listening, hello, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
 
   clientText(socket, JSON.stringify({ kind: "request", id: "r1",
     message: { target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "lookup-9", text: "猫" } }));
@@ -1250,7 +1266,7 @@ async function sharingHostStage() {
   const off = await restartBus.sendMessage("sharing-page", { target: "hachidori-sharing", type: "hd_sharing_host_disable", requestId: "restart-off" });
   check("a relay that goes away is waited for and retried by alarm, a refusal is reported, a restarted worker reconnects to the stored port, and turning sharing off closes the socket",
     dropped.sharing.enabled === true && dropped.sharing.connected === false && dropped.sharing.error === null
-      && dropped.sharing.clients.length === 0 && retrying
+      && dropped.sharing.clients.length === 0 && dropped.sharing.network.active === false && dropped.sharing.network.addresses.length === 0 && retrying
       && refusedHost.sharing.error === "Another browser on this computer is already sharing through Anki."
       && restarted?.url === "ws://127.0.0.1:4321/host"
       && disabled.ok === true && disabled.sharing.enabled === false && disabled.sharing.error === null
@@ -1317,29 +1333,49 @@ async function sharingClientStage() {
     dictionaryUpdates: { revision: 0, schedule: "off", lastCheckedAt: null },
     lookupStats: { generation: "host-gen", revision: 40 },
   };
-  const hello = { kind: "hello", protocol: 1, version: "9.9.9", dictionaryCount: 1, snapshot: hostSnapshot };
+  const hello = { kind: "hello", protocol: 1, version: "9.9.9", name: "Chrome", dictionaryCount: 1, snapshot: hostSnapshot };
 
-  // Linking probes first, then keeps one connection. The worker's own host
-  // socket (sharing is on by default) is not part of this.
+  // Linking stops this install's own hosting first (sharing is on by default,
+  // and this install has a dictionary), then probes, then keeps one connection.
+  const hostSockets = () => FakeSharingSocket.instances.filter(entry => entry.url.endsWith("/host"));
   const linkSockets = () => FakeSharingSocket.instances.filter(entry => entry.url.endsWith("/link"));
-  const linking = send("hd_sharing_client_link", { address: "127.0.0.1:9100" });
+  await settle(() => hostSockets().length >= 1);
+  const ownHost = hostSockets()[0];
+  const failing = send("hd_sharing_client_link", { address: "127.0.0.1:9999" });
   await settle(() => linkSockets().length >= 1);
-  const probe = linkSockets()[0];
+  const hostClosedForProbe = ownHost.readyState === 3;
+  linkSockets()[0].drop();
+  const refusedLink = await failing;
+  await settle(() => hostSockets().length >= 2);
+  const hostBack = hostSockets()[1];
+  check("a link that finds nothing puts this install's own sharing back",
+    hostClosedForProbe && refusedLink.ok === false && refusedLink.error === "No shared Hachidori answered at ws://127.0.0.1:9999/link."
+      && hostBack?.url === "ws://127.0.0.1:8771/host" && hostBack.readyState !== 3
+      && storage.raw.get("sharing") === undefined && !storage.raw.has("sharingLocalState"),
+    JSON.stringify({ hostClosedForProbe, refusedLink, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
+
+  const linking = send("hd_sharing_client_link", { address: "127.0.0.1:9100" });
+  await settle(() => linkSockets().length >= 2);
+  const probe = linkSockets()[1];
   probe.open();
   await settle(() => probe.sent.length >= 1);
   probe.receive(hello);
-  await settle(() => linkSockets().length >= 2);
-  const socket = linkSockets()[1];
+  await settle(() => linkSockets().length >= 3);
+  const socket = linkSockets()[2];
   socket.open();
   await settle(() => socket.sent.length >= 1);
   socket.receive(hello);
   const linkedReply = await linking;
   await settle(() => linkedReply && storage.raw.get("options")?.revision === 1);
+  const linkedStatus = await send("hd_sharing_status");
   const mirrorSet = storage.sets.find(keys => keys.includes("dictionaryState") && keys.includes("options") && keys.includes("lookupStats"));
   check("linking keeps this install's shared state aside and mirrors the host's snapshot in one write",
     probe.url === "ws://127.0.0.1:9100/link" && probe.sent[0]?.kind === "hello" && probe.readyState === 3
       && socket.sent[0]?.kind === "hello" && socket.sent[0].protocol === 1
       && linkedReply.ok === true && linkedReply.sharing.client.linked === true && linkedReply.sharing.client.address === "ws://127.0.0.1:9100/link"
+      && linkedReply.sharing.client.display === "this computer"
+      && linkedStatus.sharing.client.connected === true && linkedStatus.sharing.client.host?.name === "Chrome"
+      && linkedReply.sharing.enabled === false && hostBack.readyState === 3 && storage.raw.get("sharing")?.host?.enabled === false
       && JSON.stringify(storage.raw.get("sharingLocalState")) === JSON.stringify({ dictionaryState: localState, options: { hoverEnabled: true, revision: 3 },
         customDictionarySource: null, dictionaryUpdates: null, lookupStats: localStats })
       && JSON.stringify(storage.raw.get("dictionaryState")) === JSON.stringify(hostSnapshot.dictionaryState)
@@ -1347,7 +1383,7 @@ async function sharingClientStage() {
       && JSON.stringify(storage.raw.get("lookupStats")) === JSON.stringify(hostSnapshot.lookupStats)
       && !storage.raw.has("customDictionarySource") && mirrorSet !== undefined
       && storage.raw.get("sharing")?.client?.address === "ws://127.0.0.1:9100/link",
-    JSON.stringify({ linkedReply, sets: storage.sets, local: storage.raw.get("sharingLocalState"), sockets: FakeSharingSocket.instances.map(s => s.url) }));
+    JSON.stringify({ linkedReply, linkedStatus, sets: storage.sets, local: storage.raw.get("sharingLocalState"), sockets: FakeSharingSocket.instances.map(s => s.url) }));
 
   // Page requests forward and take the host's reply verbatim; the mirror only
   // moves when the host pushes its storage batch.

@@ -1,7 +1,8 @@
 /*
- * Client side of sharing: this install uses another Hachidori on the same
- * computer. Requests travel over one loopback WebSocket to that host's bridge;
- * the host's storage batches come back and the caller mirrors them locally.
+ * Client side of sharing: this install uses another Hachidori, on this
+ * computer or another one. Requests travel over one WebSocket to the relay
+ * that host is connected to; the host's storage batches come back and the
+ * caller mirrors them locally.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -71,7 +72,7 @@ export function createSharingClient({ WebSocket, applyBatch, version, name }) {
     }
     switch (frame.kind) {
       case "hello":
-        host = { version: frame.version, dictionaryCount: frame.dictionaryCount };
+        host = { version: frame.version, name: frame.name, dictionaryCount: frame.dictionaryCount };
         await applyBatch(frame.snapshot);
         if (socket !== current) return;
         ready = true;
@@ -187,7 +188,7 @@ export function createSharingClient({ WebSocket, applyBatch, version, name }) {
         try {
           const frame = parseHostFrame(String(event.data));
           if (frame.kind === "hello") {
-            finish(() => resolve({ version: frame.version, dictionaryCount: frame.dictionaryCount, snapshot: frame.snapshot }));
+            finish(() => resolve({ version: frame.version, name: frame.name, dictionaryCount: frame.dictionaryCount, snapshot: frame.snapshot }));
           } else if (frame.kind === "bye") {
             finish(() => reject(new Error(frame.reason || "The shared Hachidori refused the connection.")));
           }

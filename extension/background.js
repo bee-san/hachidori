@@ -7,7 +7,7 @@ import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
 import { SHARING_HOST_ALARM, SHARING_KEY, createSharingHost } from "./sharing-host.js";
 import { SHARING_LOCAL_STATE_KEY, createSharingClient } from "./sharing-client.js";
-import { FORWARDED_REQUESTS, forwardableRequest, parseLinkAddress } from "./sharing-protocol.js";
+import { FORWARDED_REQUESTS, browserName, forwardableRequest, parseLinkAddress } from "./sharing-protocol.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm } from "./lookup-stats.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
@@ -112,7 +112,13 @@ const alarms = chrome.alarms ?? {
 // The user data a linked browser mirrors: the same five keys a backup carries,
 // plus the lookup-count rows.
 const SHARED_STATE_KEYS = [DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_SOURCE_KEY, UPDATE_SETTINGS_KEY, LOOKUP_STATS_KEY];
+// What this install is called by the ones it shares with or links to.
+const SHARING_NAME = OVERLAY_MODE ? "GameSentenceMiner overlay" : browserName(globalThis.navigator);
 let sharingHost;
+
+function dictionaryCount(state) {
+  return Array.isArray(state?.dictionaries) ? state.dictionaries.length : 0;
+}
 
 async function readSharedState() {
   const stored = await chrome.storage.local.get(SHARED_STATE_KEYS);
@@ -127,6 +133,7 @@ function getSharingHost() {
     readSnapshot: readSharedState,
     sharedKey: key => SHARED_STATE_KEYS.includes(key) || key.startsWith(LOOKUP_STATS_ROW_PREFIX),
     version: chrome.runtime.getManifest().version,
+    name: SHARING_NAME,
   });
   return sharingHost;
 }
@@ -180,13 +187,14 @@ function getSharingClient() {
     WebSocket: globalThis.WebSocket,
     applyBatch: changes => serialiseStorage(() => applyMirror(changes)),
     version: chrome.runtime.getManifest().version,
-    name: OVERLAY_MODE ? "GameSentenceMiner overlay" : "another browser",
+    name: SHARING_NAME,
   });
   return sharingClient;
 }
 
 function sharingStatus() {
-  return { ...getSharingHost().status(), client: getSharingClient().status() };
+  const client = getSharingClient().status();
+  return { ...getSharingHost().status(), client: { ...client, display: client.address === null ? null : parseLinkAddress(client.address).display } };
 }
 
 function forwardToHost(message) {
@@ -1421,6 +1429,11 @@ function updateTiming(dictionaries = []) {
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes[DICTIONARY_STATE_KEY]) return;
+  sharingHost?.setDictionaries(dictionaryCount(changes[DICTIONARY_STATE_KEY].newValue));
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || updateCycleActive) return;
   const state = changes[DICTIONARY_STATE_KEY];
   // Update-settings writers reconcile explicitly after releasing the storage queue.
@@ -2191,20 +2204,32 @@ const SHARING_HANDLERS = {
     return { sharing: sharingStatus() };
   },
   async hd_sharing_client_probe(message) {
-    const { address } = parseLinkAddress(message.address);
+    const { address, display } = parseLinkAddress(message.address);
     const hello = await getSharingClient().probe(address);
-    return { address, host: { version: hello.version, dictionaryCount: hello.dictionaryCount } };
+    return { address, display, host: { version: hello.version, name: hello.name, dictionaryCount: hello.dictionaryCount } };
   },
-  // The install's own shared values are kept aside for unlinking, then the
-  // host's snapshot takes their place under the live keys.
+  // A linked install has nothing of its own to share, and the relay holds one
+  // host, so this install stops hosting before it looks for the other one;
+  // linking to its own address then finds nothing. The install's own shared
+  // values are kept aside for unlinking, then the host's snapshot takes their
+  // place under the live keys.
   async hd_sharing_client_link(message) {
     const { address } = parseLinkAddress(message.address);
-    const hello = await getSharingClient().probe(address);
+    const host = getSharingHost();
+    const hosting = host.status();
+    if (hosting.enabled) host.disable();
+    let hello;
+    try {
+      hello = await getSharingClient().probe(address);
+    } catch (error) {
+      if (hosting.enabled) host.enable({ port: hosting.port, network: hosting.network.enabled });
+      throw error;
+    }
     await serialiseStorage(async () => {
       const stored = await chrome.storage.local.get([...SHARED_STATE_KEYS, SHARING_KEY]);
       await chrome.storage.local.set({
         [SHARING_LOCAL_STATE_KEY]: Object.fromEntries(SHARED_STATE_KEYS.map(key => [key, stored[key] ?? null])),
-        [SHARING_KEY]: { ...(stored[SHARING_KEY] ?? {}), client: { address } },
+        [SHARING_KEY]: { host: { ...(stored[SHARING_KEY]?.host ?? {}), enabled: false }, client: { address } },
       });
       await applyMirror(hello.snapshot);
     });
@@ -2244,8 +2269,8 @@ const SHARING_HANDLERS = {
   },
   async hd_sharing_host_enable(message) {
     const host = getSharingHost();
-    host.enable({ port: message.port });
-    await writeSharingConfig({ host: { enabled: true, port: host.status().port } });
+    host.enable({ port: message.port, network: message.network === true });
+    await writeSharingConfig({ host: { enabled: true, port: host.status().port, network: message.network === true } });
     return { sharing: sharingStatus() };
   },
   async hd_sharing_host_disable() {
@@ -2270,11 +2295,13 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 // A browser install shares by default; the overlay copy is a client, so it
-// does not. Turning sharing off stores `host: null`.
+// does not. Turning sharing off stores `host: null`; linking stores it off.
 async function initialiseSharing() {
-  const stored = await chrome.storage.local.get(SHARING_KEY);
+  const stored = await chrome.storage.local.get([SHARING_KEY, DICTIONARY_STATE_KEY]);
   const host = stored[SHARING_KEY]?.host;
-  if (host?.enabled === true || (host === undefined && !OVERLAY_MODE)) getSharingHost().enable(host ?? {});
+  if (host?.enabled === true || (host === undefined && !OVERLAY_MODE)) {
+    getSharingHost().enable({ port: host?.port, network: host?.network === true, dictionaries: dictionaryCount(stored[DICTIONARY_STATE_KEY]) });
+  }
   const address = stored[SHARING_KEY]?.client?.address;
   if (typeof address === "string" && address !== "") {
     sharingLinked = true;

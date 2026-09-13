@@ -7,25 +7,35 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import {
-  DEFAULT_SHARING_PORT, PROTOCOL_VERSION, formatHostAddress, formatLinkAddress, parseClientFrame,
-} from "./sharing-protocol.js";
+import { DEFAULT_SHARING_PORT, PROTOCOL_VERSION, formatHostAddress, parseClientFrame } from "./sharing-protocol.js";
 
 export const SHARING_KEY = "sharing";
 export const SHARING_HOST_ALARM = "hachidori-sharing-host";
+
+const LOOPBACK_PEERS = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);
 }
 
+function relayAddresses(entries) {
+  if (!Array.isArray(entries)) return [];
+  return entries.map(entry => ({ address: String(entry?.address ?? ""), kind: entry?.kind === "tailscale" ? "tailscale" : "local" }))
+    .filter(entry => entry.address !== "");
+}
+
 // `dispatch(message, clientId)` answers a forwarded request with the same
 // reply object a runtime sender would receive. `readSnapshot()` returns the
 // shared storage keys as stored. `sharedKey(key)` says whether a storage
-// change belongs to the mirror.
-export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, sharedKey, version }) {
+// change belongs to the mirror. `name` is what linked browsers call this one.
+export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, sharedKey, version, name }) {
   const clients = new Map();
   let enabled = false;
   let configuredPort = DEFAULT_SHARING_PORT;
+  // The preference, and what the relay last confirmed.
+  let network = false;
+  let networkState = { active: false, addresses: [], error: null };
+  let dictionaries = 0;
   let socket = null;
   let listeningPort = null;
   let error = null;
@@ -38,9 +48,10 @@ export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, s
       enabled,
       connected,
       port: listeningPort ?? configuredPort,
-      address: formatLinkAddress({ port: listeningPort ?? configuredPort }),
-      clients: [...clients.values()],
+      dictionaries,
       error,
+      network: { enabled: network, active: connected && networkState.active, addresses: connected ? networkState.addresses : [], error: networkState.error },
+      clients: [...clients.values()],
     };
   }
 
@@ -71,7 +82,7 @@ export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, s
       if (client) Object.assign(client, { name: frame.name, version: frame.version });
       const snapshot = await readSnapshot();
       const dictionaryCount = Array.isArray(snapshot.dictionaryState?.dictionaries) ? snapshot.dictionaryState.dictionaries.length : 0;
-      send(clientId, { kind: "hello", protocol: PROTOCOL_VERSION, version, dictionaryCount, snapshot });
+      send(clientId, { kind: "hello", protocol: PROTOCOL_VERSION, version, name, dictionaryCount, snapshot });
       return;
     }
     if (frame.kind === "request") {
@@ -93,13 +104,21 @@ export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, s
         error = null;
         attempt = 0;
         alarms.clear(SHARING_HOST_ALARM);
+        if (network) post({ kind: "network", enabled: true });
         return;
       case "listen-failed":
         error = String(message.error ?? "The relay refused this Hachidori.");
         return;
-      case "client-open":
-        clients.set(message.clientId, { id: message.clientId, origin: String(message.origin ?? ""), name: "", version: "", connectedAt: Date.now() });
+      case "network":
+        networkState = { active: message.enabled === true, addresses: relayAddresses(message.addresses),
+          error: typeof message.error === "string" ? message.error : null };
         return;
+      case "client-open": {
+        const address = String(message.address ?? "");
+        clients.set(message.clientId, { id: message.clientId, origin: String(message.origin ?? ""), address, local: LOOPBACK_PEERS.has(address),
+          name: "", version: "", connectedAt: Date.now() });
+        return;
+      }
       case "client-close":
         clients.delete(message.clientId);
         return;
@@ -126,8 +145,10 @@ export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, s
     alarms.create(SHARING_HOST_ALARM, { delayInMinutes: 1 });
   }
 
+  // Sharing waits for something to share: an empty install must not take the
+  // host slot ahead of the browser that has the dictionaries.
   function connect() {
-    if (!enabled || socket !== null) return;
+    if (!enabled || socket !== null || dictionaries === 0) return;
     let next;
     try {
       next = new WebSocket(formatHostAddress({ port: configuredPort }));
@@ -143,6 +164,7 @@ export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, s
       if (socket !== next) return;
       socket = null;
       listeningPort = null;
+      networkState = { active: false, addresses: [], error: null };
       clients.clear();
       if (enabled) scheduleRetry();
     };
@@ -152,19 +174,34 @@ export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, s
     const previous = socket;
     socket = null;
     listeningPort = null;
+    networkState = { active: false, addresses: [], error: null };
     clients.clear();
     previous?.close();
   }
 
   return {
     status,
-    enable({ port: requestedPort = DEFAULT_SHARING_PORT } = {}) {
+    // A changed port reconnects; a changed network preference alone is told to
+    // the relay over the open socket.
+    enable({ port = DEFAULT_SHARING_PORT, network: wantNetwork = false, dictionaries: count = dictionaries } = {}) {
+      const nextPort = Number(port) || DEFAULT_SHARING_PORT;
+      const reconnect = !enabled || socket === null || nextPort !== configuredPort;
       enabled = true;
-      configuredPort = Number(requestedPort) || DEFAULT_SHARING_PORT;
-      error = null;
-      attempt = 0;
-      dropSocket();
-      connect();
+      configuredPort = nextPort;
+      dictionaries = Number(count) || 0;
+      network = wantNetwork === true;
+      if (reconnect) {
+        error = null;
+        attempt = 0;
+        dropSocket();
+        connect();
+      } else if (listeningPort !== null) {
+        post({ kind: "network", enabled: network });
+      }
+    },
+    setDictionaries(count) {
+      dictionaries = Number(count) || 0;
+      if (enabled && socket === null && retryTimer === null) connect();
     },
     disable() {
       enabled = false;
