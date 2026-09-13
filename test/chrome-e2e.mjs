@@ -1351,6 +1351,7 @@ async function popupReader(page, depth = 0) {
               output: control?.querySelector("output")?.textContent ?? "",
               viewDisabled: view?.disabled ?? true,
               viewHidden: view?.hidden ?? true,
+              viewShown: view?.checkVisibility() ?? false,
               viewClass: view?.className ?? "",
               rect: add.getBoundingClientRect().toJSON() };
           }) };
@@ -4164,6 +4165,7 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && browse.params.query === '"食べる"'
         && duplicate.controls[0].icon === "view-note"
         && duplicate.controls[0].title === "View existing notes in Anki"
+        && ready.controls[0].viewShown && !duplicate.controls[0].viewShown
         && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
       JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse }));
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });

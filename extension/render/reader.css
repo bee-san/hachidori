@@ -1980,6 +1980,8 @@ html[data-hoshidicts-theme="girlypop"],
   padding: 0;
 }
 
+.gsm-hoshidicts-view-in-anki-button[hidden] { display: none; }
+
 .gsm-hoshidicts-view-in-anki-icon {
   display: block;
   width: 16px;
