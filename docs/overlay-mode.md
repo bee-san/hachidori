@@ -42,7 +42,10 @@ normal first-install preferences plus:
 - **Setup:** `onInstalled` does not create a setup record or open `startup.html`,
   so Settings shows no "Resume setup" link.
 
-Everything else behaves exactly as in Chrome.
+Everything else behaves exactly as in Chrome. In particular, the page scan is
+layout-unaware like Yomitan's default: an overlay may box every glyph in its own
+absolutely positioned span and Hachidori still reads the word across the boxes,
+taking the sentence from the neighbouring text nodes up to a `"\n"` separator.
 
 ## Installing dictionaries without setup
 

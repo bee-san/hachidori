@@ -583,8 +583,15 @@ and opens `chrome://extensions/shortcuts`.
 
 ## Page scanning and exact selections
 
-Automatic scanning crosses ordinary inline elements and stops at editing
-controls or contenteditable text. A focused page editor keeps printable
+Automatic scanning reads page text in DOM order regardless of layout, as
+Yomitan's default layout-unaware scan does: it crosses inline and block elements
+alike, including glyphs boxed one per absolutely positioned span by an overlay,
+and stops only at `<br>`, editing controls or contenteditable text. The sentence
+is the run of neighbouring text nodes around the hovered glyph, up to 200
+characters each way, cut at a whitespace-only text node containing a line break
+(the separator between blocks in page source and in overlays). Those text nodes
+are the candidate's sources, so the highlight and the Anki sentence use the same
+text. A focused page editor keeps printable
 activation keys available for typing. Pointer lookups and modifier activation
 still work over separate page text, including example links beside an
 autofocused search field. The live `onlyScanJapaneseText`
