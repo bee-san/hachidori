@@ -1479,7 +1479,8 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 .gsm-hoshidicts-audio-control { display: flex; align-items: flex-start; justify-content: end; gap: 6px; }
-.gsm-hoshidicts-audio-control[hidden] { display: none; }
+.gsm-hoshidicts-audio-control[hidden],
+:host([data-hoshidicts-audio-button="hidden"]) .gsm-hoshidicts-audio-control { display: none; }
 .gsm-hoshidicts-audio-control > button { flex-shrink: 0; }
 .gsm-hoshidicts-audio-status { max-width: 160px; padding-top: 4px; color: var(--text-color-light1); font-size: 11px; overflow-wrap: anywhere; }
 .gsm-hoshidicts-audio-status:empty { display: none; }

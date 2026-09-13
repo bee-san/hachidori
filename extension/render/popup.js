@@ -82,6 +82,9 @@
       update(options) {
         const themeChanged = current.popupTheme !== options.popupTheme;
         if (themeChanged) host.dataset.hoshidictsTheme = options.popupTheme;
+        // Only CSS hides the button: it stays bound, so autoplay and keybinds still play.
+        if (options.showPopupAudioButton === false) host.dataset.hoshidictsAudioButton = "hidden";
+        else delete host.dataset.hoshidictsAudioButton;
         for (const [key, variable, unit] of [
           ["popupOpacityPercent", "opacity", "%"], ["popupWidthPx", "width", "px"], ["popupHeightPx", "height", "px"],
         ]) {
