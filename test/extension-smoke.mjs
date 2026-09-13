@@ -3369,6 +3369,7 @@ async function main() {
   equal("hd_status replies with the contract-C envelope", Object.keys(status).sort(), [
     "dictionaryCount",
     "error",
+    "failedDictionaries",
     "generation",
     "loading",
     "ok",
@@ -4856,14 +4857,24 @@ async function main() {
   const authoritativeInvalidState = invalidStateWrite.state;
   const invalidReload = await request("hd_reload");
   const stateAfterInvalidReload = await storedDictionaryState();
+  const invalidStatus = await request("hd_status");
+  const lookupBesideInvalid = await request("hd_lookup", { text: "食べる" });
   check(
-    "reload rejects an authoritative invalid package without pruning its state",
+    "reload skips and reports an unloadable committed package while the others keep working",
     invalidStateWrite.ok === true
       && authoritativeInvalidState.dictionaries.length === stateBeforeInvalidLoad.dictionaries.length + 1
-      && invalidReload.ok === false
-      && invalidReload.error?.includes("could not load")
-      && JSON.stringify(stateAfterInvalidReload) === JSON.stringify(authoritativeInvalidState),
-    JSON.stringify({ invalidStateWrite, invalidReload, stateAfterInvalidReload }),
+      && invalidReload.ok === true
+      && invalidReload.dictionaryCount === 4
+      && invalidStatus.ok === true
+      && invalidStatus.failedDictionaries.length === 1
+      && invalidStatus.failedDictionaries[0].title === invalidLoadTitle
+      && invalidStatus.failedDictionaries[0].id === invalidPackage.id
+      && invalidStatus.failedDictionaries[0].error.includes("could not load")
+      && lookupBesideInvalid.ok === true
+      && lookupBesideInvalid.results.some((result) => result.term.expression === "食べる")
+      && JSON.stringify(stateAfterInvalidReload.dictionaries.map(({ id, path }) => [id, path]))
+        === JSON.stringify(authoritativeInvalidState.dictionaries.map(({ id, path }) => [id, path])),
+    JSON.stringify({ invalidStateWrite, invalidReload, invalidStatus, lookupBesideInvalid, stateAfterInvalidReload }),
   );
   const repairedStateWrite = await pageChrome.runtime.sendMessage({
     target: "hoshidicts-worker",
@@ -4879,16 +4890,18 @@ async function main() {
   observedEngine.FS.rmdir(invalidGenerationRoot);
   const repairedReload = await request("hd_reload");
   const stateAfterRepair = await storedDictionaryState();
+  const repairedStatus = await request("hd_status");
   check(
-    "reload recovers after the invalid package is explicitly removed",
+    "reload stops reporting the invalid package once it is explicitly removed",
     repairedStateWrite.ok === true
       && !repairedStateWrite.state.dictionaries.some(
         (dictionary) => dictionary.title === invalidLoadTitle,
       )
       && repairedReload.ok === true
       && repairedReload.dictionaryCount === 4
+      && repairedStatus.failedDictionaries.length === 0
       && JSON.stringify(stateAfterRepair) === JSON.stringify(repairedStateWrite.state),
-    JSON.stringify({ repairedStateWrite, repairedReload, stateAfterRepair }),
+    JSON.stringify({ repairedStateWrite, repairedReload, repairedStatus, stateAfterRepair }),
   );
 
   const frequencyFixture = frequencyRankingFixture();
