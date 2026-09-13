@@ -730,7 +730,7 @@ function loadClassicScript(file, sandbox) {
   return context;
 }
 
-function loadBackgroundScript(sandbox) {
+function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads });
   sandbox.createAnkiWorkerService = createAnkiWorkerService;
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
@@ -751,6 +751,9 @@ function loadBackgroundScript(sandbox) {
     .replace(/^export\s+/gmu, "");
   const responseLimits = readFileSync(resolve(EXTENSION, "response-limits.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const overlayModeSource = readFileSync(resolve(EXTENSION, "overlay-mode.js"), "utf8")
+    .replace(/^export\s+/gmu, "")
+    .replace("OVERLAY_MODE = false;", `OVERLAY_MODE = ${overlayMode};`);
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
@@ -770,7 +773,8 @@ function loadBackgroundScript(sandbox) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
+    .replace(/import \{ OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;
@@ -783,7 +787,7 @@ function loadBackgroundScript(sandbox) {
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${setupState}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1074,6 +1078,54 @@ async function externalLinksBackgroundStage() {
     independent && failureAttempts === 1 && failed?.ok === false && validReply(failed) && failed.error.includes("tab creation failed")
       && !bus.log.some(message => message.relayed),
     JSON.stringify({ independent, failed, log: bus.log }));
+}
+
+// A host that embeds Hachidori in an overlay has no tab for setup and wants
+// hover lookups without a page highlight from the first launch.
+async function overlayModeBackgroundStage() {
+  const storage = makeStorage();
+  const tabs = [];
+  const tabsApi = { async create(properties) { tabs.push(structuredClone(properties)); return { id: tabs.length }; } };
+  const start = (name, store) => {
+    const chrome = makeChrome(name, makeBus(), store);
+    chrome.tabs = tabsApi;
+    loadBackgroundScript({ chrome, console, URL, setTimeout, clearTimeout, Promise, Error }, { overlayMode: true });
+    return chrome;
+  };
+  const settle = async (predicate = () => false) => {
+    for (let attempt = 0; attempt < 50 && !predicate(); attempt += 1) {
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+    }
+  };
+
+  const chrome = start("overlay-worker", storage);
+  chrome.__events.onInstalled.fire({ reason: "install" });
+  await settle(() => storage.raw.has("options"));
+  await settle();
+  const seeded = storage.raw.get("options");
+  const seededOnce = tabs.length === 0 && !storage.raw.has("setupState")
+    && JSON.stringify(seeded) === JSON.stringify({
+      lookupMode: "hover", sourceHighlightEnabled: false,
+      showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1,
+    });
+
+  // The seeded values are defaults, not locks: a later edit survives a restarted worker.
+  const edited = { ...seeded, lookupMode: "activation", sourceHighlightEnabled: true, revision: 2 };
+  await storage.api().local.set({ options: edited });
+  start("overlay-worker-restart", storage).__events.onInstalled.fire({ reason: "install" });
+  await settle();
+  const preserved = tabs.length === 0 && !storage.raw.has("setupState")
+    && JSON.stringify(storage.raw.get("options")) === JSON.stringify(edited);
+
+  const carried = makeStorage();
+  await carried.api().local.set({ options: { scanLength: 20, revision: 4 } });
+  start("overlay-worker-carried", carried);
+  await settle();
+  const carriedKept = JSON.stringify(carried.raw.get("options")) === JSON.stringify({ scanLength: 20, revision: 4 });
+
+  check("overlay mode seeds hover lookups without a highlight once and never opens setup",
+    seededOnce && preserved && carriedKept,
+    JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
 }
 
 async function firstRunBackgroundStage() {
@@ -2943,6 +2995,7 @@ async function main() {
   await hostedExtensionBackgroundStage();
   await externalLinksBackgroundStage();
   await firstRunBackgroundStage();
+  await overlayModeBackgroundStage();
   await firstRunAnkiStage();
   await backupRelayStage();
   await managedScheduleStage();

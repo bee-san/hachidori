@@ -20,6 +20,12 @@ export const FIRST_INSTALL_OPTIONS = Object.freeze({
   compactDefinitionSummaryCount: 2,
 });
 
+// Initial preferences an overlay host seeds on top of the first-install ones.
+export const OVERLAY_MODE_OPTIONS = Object.freeze({
+  lookupMode: "hover",
+  sourceHighlightEnabled: false,
+});
+
 // How each first-install option's value is built from a committed title.
 const FIRST_INSTALL_SELECTORS = Object.freeze({
   compactDefinitionSummaryDictionary: (title) => title,

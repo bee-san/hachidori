@@ -38,8 +38,9 @@ import { sameJsonValue } from "./json-value.js";
 import {
   boundResponseFailure, responseFits, responseLimitError, validResponseRequestId,
 } from "./response-limits.js";
+import { OVERLAY_MODE } from "./overlay-mode.js";
 import {
-  FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
+  FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, OVERLAY_MODE_OPTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
   advanceSetupState, initialSetupState, normaliseSetupState, recordSetupAnki, recordSetupDictionaries,
 } from "./setup-state.js";
 
@@ -2074,12 +2075,24 @@ async function beginFirstRunSetup() {
   if (created) await chrome.tabs.create({ url: chrome.runtime.getURL(STARTUP_PAGE) });
 }
 
+// An overlay host has no tab to show setup in, so its first launch only seeds
+// the initial preferences. It runs on worker start because a host may never
+// report onInstalled.
+async function seedOverlayModeOptions() {
+  await serialiseStorage(async () => {
+    const stored = await chrome.storage.local.get(OPTIONS_KEY);
+    if (stored[OPTIONS_KEY] !== undefined) return;
+    const options = validateOptionsPatch({ ...FIRST_INSTALL_OPTIONS, ...OVERLAY_MODE_OPTIONS });
+    await writeLocalState({ [OPTIONS_KEY]: { ...options, revision: 1 } });
+  });
+}
+
 // Load the dictionaries before the first hover asks for them. Extension updates,
 // browser starts and service-worker restarts never reach the first-run path, so
 // they cannot reopen setup or reset preferences.
 chrome.runtime.onInstalled.addListener((details) => {
   warmUp();
-  if (details.reason !== "install") return;
+  if (details.reason !== "install" || OVERLAY_MODE) return;
   beginFirstRunSetup().catch((error) => {
     console.error("hoshidicts: could not start first-run setup:", describe(error));
   });
@@ -2130,4 +2143,10 @@ async function initialiseUpdateAlarm() {
 }
 
 void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
+
+if (OVERLAY_MODE) {
+  seedOverlayModeOptions().catch((error) => {
+    console.error("hoshidicts: could not seed overlay mode options:", describe(error));
+  });
+}
 void getAnkiMaturityCache().reconcile(); // NOSONAR -- initialize without delaying worker activation.
