@@ -1110,10 +1110,11 @@
         return null;
       }
 
+      // Sources are elements or, for a pointer scan, the sentence's own text nodes.
       const sourceElements = candidate.sourceElements;
       if (
         sourceElements.some(
-          (element) => !(element instanceof windowRef.Element) || !element.isConnected
+          (element) => !(element instanceof windowRef.Node) || !element.isConnected
         ) ||
         sourceElements.map((element) => element.textContent || "").join("") !==
           candidate.sentence
@@ -1130,11 +1131,15 @@
           continue;
         }
         const textNodes = [];
-        const walker = documentRef.createTreeWalker(element, showText);
-        let node = walker.nextNode();
-        while (node) {
-          textNodes.push(node);
-          node = walker.nextNode();
+        if (element.nodeType === 3) {
+          textNodes.push(element);
+        } else {
+          const walker = documentRef.createTreeWalker(element, showText);
+          let node = walker.nextNode();
+          while (node) {
+            textNodes.push(node);
+            node = walker.nextNode();
+          }
         }
 
         function findBoundary(offset, preferFollowingNode) {
