@@ -294,6 +294,7 @@ const PLANNED = [
   "autofocused search fields allow hover and stationary Shift lookup of Japanese example links",
   "Japanese-only preferences change automatic scanning in an already-open tab",
   "dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
+  "dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron",
   "dictionary CSS cannot load remote resources or inherit resource-valued variables",
   "dictionary CSS cannot paint or intercept input outside its glossary card",
   "settings page renders exactly five safe recommended dictionary links",
@@ -3255,6 +3256,9 @@ async function checkDictionaryStyles(page) {
         "z-index:2147483647!important",
       ].join(";");
       host.style.setProperty("--external", 'url("https://dictionary-style.invalid/inherited.png")');
+      host.style.setProperty("--local-inherited", 'url("https://dictionary-style.invalid/local-inherited.png")');
+      host.style.setProperty("--bugd-well", "rgb(200, 0, 0)");
+      host.style.setProperty("--light-border-color", "rgb(200, 0, 0)");
       for (const suffix of [" evil", ")evil", ",evil"]) {
         host.style.setProperty(`--fg${suffix}`, 'url("https://dictionary-style.invalid/escaped-var.png")');
       }
@@ -3264,7 +3268,7 @@ async function checkDictionaryStyles(page) {
       readerStyles.replaceSync(await (await fetch(chrome.runtime.getURL("render/reader.css"))).text());
       shadow.adoptedStyleSheets = [readerStyles];
       const pageFont = document.createElement("style");
-      pageFont.textContent = '@font-face { font-family:page-resource-test; src:url("https://dictionary-style.invalid/page-font.woff2"); } @function --external-image() { result:url("https://dictionary-style.invalid/function.png"); } @property --text-color { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/registered.png"); } @property --font-size-no-units { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/registered-number.png"); }';
+      pageFont.textContent = '@font-face { font-family:page-resource-test; src:url("https://dictionary-style.invalid/page-font.woff2"); } @function --external-image() { result:url("https://dictionary-style.invalid/function.png"); } @property --text-color { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/registered.png"); } @property --font-size-no-units { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/registered-number.png"); } @property --local-registered { syntax:"<image>"; inherits:true; initial-value:url("https://dictionary-style.invalid/local-registered.png"); }';
       const popup = document.createElement("div");
       popup.className = "gsm-hoshidicts-popup";
       popup.style.cssText = "left:20px;top:20px;width:400px;height:300px";
@@ -3286,10 +3290,20 @@ async function checkDictionaryStyles(page) {
       inside.innerHTML = '<span class="inside">Definition <b class="nested">nested</b></span>';
       const escaped = addGlossary(escapedTitle);
       escaped.textContent = "Escaped title";
+      const variables = addGlossary("variable-test");
+      variables.innerHTML = '<div data-sc-grammar-card><details><summary>Source</summary><div>Body</div></details><div class="row">Row</div></div>';
       const apply = (generation, entries) => HDGlossary.applyDictionaryStyles(document, shadow, generation, entries);
       const styles = apply(1, [
         { dictionary: "scope-test", styles: '.inside { color:rgb(1, 2, 3); background:radial-gradient(var(--text-color, var(--fg, #333)), transparent); font-size:calc(var(--font-size-no-units) * 1px); & .nested { font-weight:900; } } } .outside { color:rgb(200, 0, 0) !important; } :host { --escaped:yes; } @scope (.unused) {' },
         { dictionary: escapedTitle, styles: ':scope { color:rgb(4, 5, 6); }' },
+        // The shape Bee's Ultimate Grammar Dictionary draws its disclosures with.
+        { dictionary: "variable-test", styles: [
+          "[data-sc-grammar-card] { --bugd-gap:7px; --bugd-well:rgb(1, 2, 3); --bugd-edge:var(--light-border-color, rgb(4, 5, 6)); }",
+          "[data-sc-grammar-card] .row { margin-top:var(--bugd-gap); background:var(--bugd-well); border-top:1px solid var(--bugd-edge); }",
+          "[data-sc-grammar-card] summary { display:flex; align-items:center; list-style:none; }",
+          "[data-sc-grammar-card] summary::marker { content:''; }",
+          "[data-sc-grammar-card] summary::before { content:''; width:0.62em; height:0.62em; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(-45deg); }",
+        ].join("\n") },
         { dictionary: "scope-test", styles: '.inside { color:red; }' },
       ]);
       const scope = {
@@ -3301,6 +3315,13 @@ async function checkDictionaryStyles(page) {
         escapedTitle: getComputedStyle(escaped).color,
         outside: getComputedStyle(popup.querySelector(".outside")).color,
         escapedHost: getComputedStyle(host).getPropertyValue("--escaped"),
+        rowGap: getComputedStyle(variables.querySelector(".row")).marginTop,
+        rowWell: getComputedStyle(variables.querySelector(".row")).backgroundColor,
+        rowEdge: getComputedStyle(variables.querySelector(".row")).borderTopColor,
+        summaryDisplay: getComputedStyle(variables.querySelector("summary")).display,
+        summaryListStyle: getComputedStyle(variables.querySelector("summary")).listStyleType,
+        chevronDisplay: getComputedStyle(variables.querySelector("summary"), "::before").display,
+        chevronTransform: getComputedStyle(variables.querySelector("summary"), "::before").transform,
       };
       document.head.appendChild(pageFont);
       host.style.setProperty("--hoshidicts-palette-base-content", 'url("https://dictionary-style.invalid/palette.png")', "important");
@@ -3323,6 +3344,10 @@ async function checkDictionaryStyles(page) {
         'background-image:v\\61\r\nr(--external)',
         'background-image:--external-image()',
         'background-image:\\2d\\2d external-image()',
+        'background-image:var(--local-inherited)',
+        '--local-registered:4px;background:var(--local-registered)',
+        '--local-url:url("https://dictionary-style.invalid/local-url.png");background-image:var(--local-url)',
+        '--local-font:page-resource-test;font-family:var(--local-font)',
       ];
       network.innerHTML = resourceCases.map((_, index) => `<div class="resource-${index}">Resource test</div>`).join("");
       apply(2, [{ dictionary: "network-test", styles: [
@@ -3344,6 +3369,7 @@ async function checkDictionaryStyles(page) {
       await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
       network.remove();
       escaped.remove();
+      variables.remove();
       inside.innerHTML = '<div class="overlay">Dictionary overlay</div>';
       apply(3, [{ dictionary: "scope-test", styles: '.overlay { position:fixed; inset:0; z-index:2147483647; background:red; box-shadow:0 0 0 10000px red; }' }]);
       const overlay = inside.querySelector(".overlay");
@@ -3369,11 +3395,16 @@ async function checkDictionaryStyles(page) {
     page.off("request", intercept);
   }
   check("dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules",
-    evidence.scope.count === 2 && evidence.scope.inside === "rgb(1, 2, 3)"
+    evidence.scope.count === 3 && evidence.scope.inside === "rgb(1, 2, 3)"
       && evidence.scope.nested === "900" && evidence.scope.escapedTitle === "rgb(4, 5, 6)"
       && evidence.scope.gradient.startsWith("radial-gradient(") && evidence.scope.fontSize === "14px"
       && evidence.scope.outside === "rgb(9, 9, 9)" && evidence.scope.escapedHost === ""
       && evidence.replacement, JSON.stringify(evidence));
+  check("dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron",
+    evidence.scope.rowGap === "7px" && evidence.scope.rowWell === "rgb(1, 2, 3)"
+      && evidence.scope.rowEdge === "rgb(4, 5, 6)" && evidence.scope.summaryDisplay === "flex"
+      && evidence.scope.summaryListStyle === "none" && evidence.scope.chevronDisplay === "block"
+      && evidence.scope.chevronTransform !== "none", JSON.stringify(evidence.scope));
   check("dictionary CSS cannot load remote resources or inherit resource-valued variables",
     requests.length === 0 && evidence.resources.every((value) => value === "none")
       && evidence.fonts.every((value) => !value.includes("page-resource-test"))

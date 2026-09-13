@@ -1218,12 +1218,8 @@
     // than reinterpret CSS tokens. Do not strip comment-like text in strings.
     if (declarations.includes("\\")
       || /\b(?:url|src|image-set|paint|attr)\s*\(/iu.test(declarations)
-      || /--[^(),]*\(/u.test(declarations)) return false;
-    for (const match of declarations.matchAll(/\bvar\(\s*([^,)]+)[,)]/giu)) {
-      if (!DICTIONARY_STYLE_VARIABLES.has(match[1].trim())) return false;
-    }
+      || /(?<![\w\P{ASCII}-])--[\w\P{ASCII}-]+\(/u.test(declarations)) return false;
     for (const property of style) {
-      if (property.startsWith("--")) return false;
       // Named fonts can activate an outer page's @font-face without a URL here.
       // CSSOM expands non-variable font shorthands into font-family as well.
       if (property === "font-family" && !style.getPropertyValue(property).split(",")
@@ -1232,15 +1228,22 @@
     return true;
   }
 
-  function typeDictionaryStyleVariables(style) {
+  function typeDictionaryStyleVariables(style, prefix) {
     const declarations = style.cssText;
-    if (!/\bvar\(/iu.test(declarations)) return;
+    if (!declarations.includes("--")) return;
     const suffixes = [];
     // CSSOM has already balanced the declaration block, and residual escapes
     // were rejected. Keep strings/comments opaque while pairing parentheses.
+    // Aliases are typed at each var(); the dictionary's own names are renamed
+    // wherever they appear, in declarations and references alike.
     style.cssText = declarations.replace(
-      /"[^"]*"|'[^']*'|\/\*[\s\S]*?\*\/|\bvar\(\s*(--[\w-]+)|[()]/giu,
+      /"[^"]*"|'[^']*'|\/\*[\s\S]*?\*\/|\bvar\(\s*(--[\w\P{ASCII}-]+)|(?<![\w\P{ASCII}-])--[\w\P{ASCII}-]+|[()]/giu,
       (token, variable) => {
+        const name = variable ?? (token.startsWith("--") ? token : null);
+        if (name && !DICTIONARY_STYLE_VARIABLES.has(name)) {
+          if (variable) suffixes.push("");
+          return token.replace(name, prefix + name.slice(2));
+        }
         if (variable) {
           const numeric = variable === "--font-size-no-units";
           suffixes.push(numeric ? " * 1)" : " 100%, transparent)");
@@ -1252,7 +1255,7 @@
     );
   }
 
-  function filterDictionaryStyleRules(parent) {
+  function filterDictionaryStyleRules(parent, prefix) {
     for (let index = parent.cssRules.length - 1; index >= 0; index -= 1) {
       const rule = parent.cssRules[index];
       const kind = rule.constructor.name;
@@ -1261,14 +1264,14 @@
           parent.deleteRule(index);
           continue;
         }
-        typeDictionaryStyleVariables(rule.style);
+        typeDictionaryStyleVariables(rule.style, prefix);
       } else if (!DICTIONARY_STYLE_GROUPS.has(kind)) {
         // Global definitions (@font-face, @property, keyframes, imports, etc.)
         // are not glossary-local even when written inside an @scope block.
         parent.deleteRule(index);
         continue;
       }
-      if (rule.cssRules) filterDictionaryStyleRules(rule);
+      if (rule.cssRules) filterDictionaryStyleRules(rule, prefix);
     }
   }
 
@@ -1284,6 +1287,13 @@
     const applied = [];
     const dictionaries = new Set();
     let totalBytes = 0;
+    // Other custom properties belong to the dictionary. They are renamed under
+    // a prefix the page cannot read through the closed shadow root, so neither
+    // an inherited page value nor an @property registration can reach them.
+    const prefix = `--hd${Array.from(
+      documentRef.defaultView.crypto.getRandomValues(new Uint8Array(16)),
+      (byte) => byte.toString(16).padStart(2, "0"),
+    ).join("")}-`;
     for (const entry of Array.isArray(entries) ? entries : []) {
       if (!isRecord(entry)) {
         continue;
@@ -1308,7 +1318,7 @@
       // enter the controlled scope; raw closing braces must never reach it.
       const sheet = new documentRef.defaultView.CSSStyleSheet();
       sheet.replaceSync(entryStyles);
-      filterDictionaryStyleRules(sheet);
+      filterDictionaryStyleRules(sheet, prefix);
       const style = documentRef.createElement("style");
       style.dataset.hoshidictsDictionaryStyle = dictionary;
       style.dataset.hoshidictsGeneration = String(generation);

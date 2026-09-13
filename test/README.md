@@ -1200,7 +1200,7 @@ and wait for both package state and the global completed-check timestamp; the
 
 ### what the assertions are pinned to
 
-Dictionary stylesheet installation moved from jsdom to three real-Chrome checks:
+Dictionary stylesheet installation moved from jsdom to four real-Chrome checks:
 jsdom cannot exercise constructed stylesheets, CSS nesting, or `@scope`. The
 production `applyDictionaryStyles` runs inside a shadow root with the production
 reader stylesheet. Tests verify escaped canonical titles, malformed-brace
@@ -1209,7 +1209,10 @@ Resource probes intercept and abort a reserved `.invalid` origin; direct and
 escaped URLs, image-set strings, shorthand and escaped variables, comment-like
 strings, and page-defined fonts/functions/registered properties must neither
 apply a resource nor request it. Benign nested gradients and numeric variables
-still render through the typed wrappers.
+still render through the typed wrappers. A dictionary's own custom properties
+drive lengths, colors and fallbacks, and a grammar-card disclosure keeps its
+flex summary and block chevron; page-inherited and page-registered values under
+the same names reach none of them.
 The existing glossary card must contain fixed-position descendants and oversized
 shadows without intercepting the reader control above it. The engine's exact
 `hd_styles` response remains independently covered by the extension smoke suite.
