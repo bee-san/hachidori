@@ -80,18 +80,18 @@ class Listener:
         self.port = port
         self.network = False
         self._sock = None
-        self._generation = 0
         self._error = None
 
     def open(self, network):
         """Binds afresh. The old socket goes first: Linux refuses a wildcard bind beside a loopback listener."""
+        # The accept loop may wake on the old socket at any point from here on and
+        # sees that it is no longer the listener.
         previous, self._sock = self._sock, None
         if previous is not None:
             # Shutdown wakes the accept loop and frees the port on Linux; close alone leaves both to a timeout.
             with suppress(OSError):
                 previous.shutdown(socket.SHUT_RDWR)
             previous.close()
-        self._generation += 1
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if sys.platform != "win32":
             # Frees the port straight after a restart; Windows would instead let two listeners share it.
@@ -116,7 +116,7 @@ class Listener:
 
     def accept(self):
         """The next connection, or None when nothing arrived before the socket was replaced or timed out."""
-        sock, generation = self._sock, self._generation
+        sock = self._sock
         if sock is None:
             if self._error is not None:
                 raise self._error
@@ -127,7 +127,7 @@ class Listener:
         except TimeoutError:
             return None
         except OSError:
-            if generation != self._generation:
+            if sock is not self._sock:
                 return None
             raise
         conn.setblocking(True)

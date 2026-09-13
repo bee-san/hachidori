@@ -9,15 +9,21 @@ import { fileURLToPath } from "node:url";
 export async function startAnkiRelayServer({ port = 0, pingMs = 20_000 } = {}) {
   const server = fileURLToPath(new URL("../extension/anki-relay/server.py", import.meta.url));
   const child = spawn("python3", [server, "--port", String(port), "--ping-seconds", String(pingMs / 1000)], { stdio: ["ignore", "pipe", "inherit"] });
+  let exitCode = null;
+  const exited = new Promise((resolveExit) => child.once("exit", (code, signal) => {
+    exitCode = code ?? signal;
+    resolveExit();
+  }));
   const boundPort = await new Promise((resolvePort, rejectPort) => {
     child.once("error", rejectPort);
-    child.once("exit", (code) => rejectPort(new Error(`the Anki relay exited with ${code}`)));
+    exited.then(() => rejectPort(new Error(`the Anki relay exited with ${exitCode}`)));
     child.stdout.once("data", (chunk) => resolvePort(Number(String(chunk).trim().split(" ")[1])));
   });
   return {
     port: boundPort,
+    // Set once the process is gone; a relay that died mid-run is a failure.
+    get exitCode() { return exitCode; },
     close() {
-      const exited = new Promise((resolveExit) => child.once("exit", resolveExit));
       child.kill();
       return exited;
     },

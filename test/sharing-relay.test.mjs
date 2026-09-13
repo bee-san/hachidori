@@ -236,6 +236,7 @@ test("the host opens the relay to the network and closes it again", async (t) =>
   await assert.rejects(connectClient(t, port, "/link", EXTENSION_ORIGIN, address), /ECONNREFUSED/u, "the network listener is gone");
   local.send("still here");
   assert.equal((await untilKind(host, "client-text")).text, "still here", "the linked browser on this computer stays");
+  assert.equal((await connectClient(t, port, "/link")).status, 101, "the relay still accepts on this computer");
 });
 
 test("losing the host returns the relay to this computer", async (t) => {
