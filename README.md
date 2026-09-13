@@ -78,9 +78,7 @@ It can even use anki.
 
 # Sharing
 
-Set up Hachidori once and use that setup from every other Hachidori, in GameSentenceMiner, another browser or another computer: same dictionaries, same notes, same settings.
-
-See [Sharing](docs/sharing.md).
+Set up Hachidori once and use that setup from every other Hachidori, in GameSentenceMiner, another browser or another computer. Same dictionaries and settings used across multiple Hachidoris.
 
 # Optionated
 
