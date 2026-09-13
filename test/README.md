@@ -615,6 +615,10 @@ What it proves, in order:
    installation phase under the request ID, and refuses a non-catalogue archive
    URL, a URL-only request without a source, and an unexpected final URL;
    `declaredResponseLength` ignores encoded, zero, and header-less responses.
+   With `OVERLAY_MODE` on, a worker instead seeds hover lookups without a page
+   highlight on top of the first-install options when it starts. It creates no
+   setup record or tab, and leaves later edits and carried options alone (see
+   [overlay mode](../docs/overlay-mode.md)).
 
 ### Definition blur and Anki maturity
 

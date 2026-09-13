@@ -145,6 +145,8 @@ values that are still absent in one write, then opens one `startup.html` tab
 only when it created the setup record. Chrome reports `install` again on every
 launch for an unpacked extension loaded from the command line, so the absence
 of that record, not the reason alone, identifies a new installation.
+[Overlay mode](overlay-mode.md) skips this path and only seeds the initial
+options on worker start.
 
 - `setupState`: `{ schemaVersion: 1, revision, startedAt, stage, completedAt,
   dictionaries, anki }`, where `stage` is `welcome`, `dictionaries`, `anki`, `practice` or
