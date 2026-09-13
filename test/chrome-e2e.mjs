@@ -337,6 +337,7 @@ const PLANNED = [
   "the selected kanji dictionary is saved",
   "custom Settings lazily saves a source through the real WASM importer",
   "the popup opens below the complete wrapped match instead of the hovered glyph",
+  "browser zoom keeps the popup at its configured on-screen size inside the viewport",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "hovering an inflected verb shows a popup",
   "the content script attached its closed-shadow host to the page",
@@ -9100,6 +9101,40 @@ async function main() {
     if (original.style === null) element.removeAttribute("style");
     else element.setAttribute("style", original.style);
   }, originalVerb);
+  // Page zoom scales the page's CSS pixels; the popup cancels it.
+  const setPageZoom = zoomFactor => page.evaluate(async (url, factor) => {
+    const [target] = await chrome.tabs.query({ url });
+    await chrome.tabs.setZoom(target.id, factor);
+  }, pageUrl, zoomFactor);
+  await setPageZoom(2);
+  await tab.waitForFunction(() => window.devicePixelRatio === 2, { timeout: 5000 });
+  // Selecting the word avoids depending on how synthetic pointer input maps
+  // coordinates under browser zoom.
+  await tab.evaluate(() => getSelection().selectAllChildren(document.getElementById("verb")));
+  const zoomedPopup = await popup.waitForVisible();
+  let zoomed = null;
+  if (zoomedPopup !== null) {
+    const widthPx = await page.evaluate(async () => (await chrome.storage.local.get("options")).options?.popupWidthPx ?? 560);
+    // The zoom factor arrives from the service worker alongside the lookup.
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      zoomed = { widthPx, rect: (await popup.dictionaryTabs()).rect,
+        viewport: await tab.evaluate(() => ({ width: innerWidth, height: innerHeight })) };
+      if (Math.abs(zoomed.rect.width * 2 - widthPx) <= 2) break;
+      await new Promise(done => setTimeout(done, 100));
+    }
+  }
+  await tab.evaluate(() => getSelection().removeAllRanges());
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await setPageZoom(1);
+  await tab.waitForFunction(() => window.devicePixelRatio === 1, { timeout: 5000 });
+  check(
+    "browser zoom keeps the popup at its configured on-screen size inside the viewport",
+    zoomed !== null && Math.abs(zoomed.rect.width * 2 - zoomed.widthPx) <= 2
+      && zoomed.rect.left >= 0 && zoomed.rect.top >= 0
+      && zoomed.rect.right <= zoomed.viewport.width && zoomed.rect.bottom <= zoomed.viewport.height,
+    JSON.stringify(zoomed),
+  );
 
   // Readers such as ttu turn pages from body wheel listeners; the popup's own
   // scrolling, including past its end, must reach neither them nor the page.

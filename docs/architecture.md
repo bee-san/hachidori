@@ -887,6 +887,13 @@ or adding a separate placement frame. A single pane also lays out and positions
 in one frame. Direct Note, image and navigation positioning remains synchronous;
 renderer destruction, retirement and teardown cancel their queued work.
 
+Popups and the image preview ignore browser page zoom. The content script asks
+the service worker for `chrome.tabs.getZoom` at start and again whenever
+`devicePixelRatio` changes on resize. It sets the inverse as CSS `zoom` on
+those elements, so their lengths stay in unzoomed pixels. Placement multiplies
+page client rectangles and the viewport by the zoom factor before clamping.
+Pointer hit tests and source highlights stay in page coordinates.
+
 The live **Definition columns** preference defaults to one and supports integers
 one through four. Each glossary grid packs cards into its shortest column while
 retaining their DOM reading order. Changing columns schedules the existing
