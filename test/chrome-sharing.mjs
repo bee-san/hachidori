@@ -118,12 +118,14 @@ async function openSettings(browser, id, label, section) {
   page.on("console", (message) => diagnostics.push(`[${label}] ${message.type()}: ${message.text()}`));
   page.on("pageerror", (error) => diagnostics.push(`[${label}] pageerror: ${error.message}`));
   await page.goto(`chrome-extension://${id}/settings.html#${section}`, { waitUntil: "domcontentloaded" });
+  // A fresh install opens its startup page too; clicks only reach the active tab.
+  await page.bringToFront();
   return page;
 }
 
 async function showSection(page, section) {
   await page.evaluate((hash) => { window.location.hash = hash; }, section);
-  await page.waitForFunction((id) => document.getElementById(id)?.hidden === false, { timeout: 10_000 }, section);
+  await page.waitForFunction((id) => document.getElementById(id)?.hidden === false, { timeout: 10_000, polling: 100 }, section);
 }
 
 // Runtime messages sent from an extension page reach that browser's own service
@@ -166,10 +168,13 @@ async function importFixture(page) {
     return status?.ok && status.ready && !status.loading ? status : null;
   }, "the host engine to become idle", 60_000);
   await (await page.$("#import-file")).uploadFile(FIXTURE);
-  await page.waitForFunction(
-    () => (document.querySelector("#import-state")?.textContent || "").trim() === "Finished 1 of 1 archive — 1 imported, 0 failed.",
-    { timeout: 120_000 },
-  );
+  const deadline = Date.now() + 120_000;
+  let importState = "";
+  while (importState !== "Finished 1 of 1 archive — 1 imported, 0 failed.") {
+    if (Date.now() > deadline) throw new Error(`the fixture import did not finish: ${JSON.stringify(importState)}`);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+    importState = await page.evaluate(() => (document.querySelector("#import-state")?.textContent || "").trim());
+  }
 }
 
 // Sharing is on by default on the standard port; the suite moves it to the
@@ -183,7 +188,7 @@ async function enableSharing(page) {
   }, "the host to connect to the relay", 30_000);
   await showSection(page, "sharing");
   await page.waitForFunction((port) => document.getElementById("sharing-status")?.textContent === `Sharing through GameSentenceMiner on port ${port}.`,
-    { timeout: 15_000 }, PORT);
+    { timeout: 15_000, polling: 100 }, PORT);
   return connected;
 }
 
@@ -250,10 +255,16 @@ try {
   const clientId = await extensionId(clientBrowser);
   console.log(`     client extension id: ${clientId}`);
   let clientPage = await openSettings(clientBrowser, clientId, "client", "sharing");
-  await clientPage.waitForFunction(() => !document.getElementById("sharing-host-enabled").disabled, { timeout: 15_000 });
+  await clientPage.waitForFunction(() => !document.getElementById("sharing-host-enabled").disabled, { timeout: 15_000, polling: 100 });
+  // A fresh browser install shares by default, and a host cannot also link; the
+  // client turns its own sharing off first, as a person would.
+  const clientOff = await message(clientPage, "hachidori-sharing", "hd_sharing_host_disable");
+  if (clientOff?.ok !== true) throw new Error(`client sharing could not be turned off: ${clientOff?.error}`);
+  await clientPage.waitForFunction(() => !document.getElementById("sharing-client").disabled, { timeout: 15_000, polling: 100 });
   const probe = await message(clientPage, "hachidori-sharing", "hd_sharing_client_probe", { address: ADDRESS });
   const before = await stored(clientPage, ["dictionaryState"]);
   await clientPage.$eval("#sharing-client-address", (input, address) => { input.value = address; }, ADDRESS);
+  await clientPage.bringToFront();
   await Promise.all([
     clientPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30_000 }),
     clientPage.click("#sharing-client-link"),
@@ -270,14 +281,16 @@ try {
   await screenshot(clientPage, "sharing-linked.png");
   check("the linked browser finds the host, mirrors its dictionary state and looks a word up through it",
     probe?.ok === true && probe.address === ADDRESS && probe.host?.dictionaryCount === hostState.dictionaryState.dictionaries.length
-      && before.dictionaryState === undefined
       && linked.address === ADDRESS && linked.host?.dictionaryCount === hostState.dictionaryState.dictionaries.length
       && JSON.stringify(mirror.dictionaryState) === JSON.stringify(hostAfterLink.dictionaryState)
       && JSON.stringify(mirror.options) === JSON.stringify(hostAfterLink.options)
-      && mirror.sharingLocalState?.dictionaryState === null && mirror.sharing?.client?.address === ADDRESS
+      // A fresh profile's Settings page commits an empty library of its own; that is what is kept aside.
+      && JSON.stringify(mirror.sharingLocalState?.dictionaryState ?? null) === JSON.stringify(before.dictionaryState ?? null)
+      && mirror.sharing?.client?.address === ADDRESS
       && linkedLookup?.ok === true && linkedLookup.results?.[0]?.deinflected === "食べる"
       && hostClients.length === 1,
     JSON.stringify({ probe, linked, linkedLookup: { ok: linkedLookup?.ok, error: linkedLookup?.error, first: linkedLookup?.results?.[0]?.deinflected },
+      own: before.dictionaryState ?? null, kept: mirror.sharingLocalState?.dictionaryState ?? null,
       mirrorRevision: mirror.dictionaryState?.revision, hostRevision: hostAfterLink.dictionaryState?.revision, hostClients }));
 
   const baseRevision = mirror.options?.revision ?? 0;
@@ -332,7 +345,8 @@ try {
     JSON.stringify({ unreachable: { ok: unreachable?.ok, error: unreachable?.error }, reconnected, recovered: { ok: recovered?.ok, error: recovered?.error } }));
 
   await showSection(clientPage, "sharing");
-  await clientPage.waitForFunction(() => document.getElementById("sharing-client-unlink")?.hidden === false, { timeout: 15_000 });
+  await clientPage.waitForFunction(() => document.getElementById("sharing-client-unlink")?.hidden === false, { timeout: 15_000, polling: 100 });
+  await clientPage.bringToFront();
   await Promise.all([
     clientPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30_000 }),
     clientPage.click("#sharing-client-unlink"),
@@ -344,7 +358,9 @@ try {
   const ownState = await stored(clientPage, ["dictionaryState", "options", "sharingLocalState", "sharing", CUSTOM_DICTIONARY_SOURCE_KEY]);
   const ownLookup = await lookup(clientPage);
   check("unlinking restores the linked browser's own empty state",
-    afterUnlink.linked === false && ownState.dictionaryState === undefined && ownState.sharingLocalState === undefined
+    afterUnlink.linked === false
+      && JSON.stringify(ownState.dictionaryState?.dictionaries ?? null) === JSON.stringify(before.dictionaryState?.dictionaries ?? null)
+      && ownState.sharingLocalState === undefined
       && ownState[CUSTOM_DICTIONARY_SOURCE_KEY] === undefined && ownState.sharing?.client === null
       && ownState.options?.revision > (mirroredOptions.revision ?? 0)
       && ownLookup?.ok === true && (ownLookup.results?.length ?? 0) === 0,
