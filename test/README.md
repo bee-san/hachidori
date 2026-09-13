@@ -37,6 +37,28 @@ dispatch. The Chrome suite checks that Chrome registers the suggested Alt+Delete
 (reported as `Alt+Del`) and the popup-action commands, and that Keybinds lists
 them.
 
+`node --test test/sharing-protocol.test.mjs test/sharing-relay.test.mjs` checks
+the sharing wire contract (loopback addresses, the forwarding table, frame
+validation) and drives `test/sharing-relay-server.mjs`, a plain Node WebSocket
+server around `extension/sharing-relay.js` that stands in for GameSentenceMiner,
+over raw loopback sockets: the `Origin` rule, clients refused without a host, a
+second host turned away, a 1.5 MB frame relayed whole in both directions,
+broadcast, pings, closes and host loss. `node --test test/sharing-settings.test.mjs`
+checks the Settings → Sharing card with jsdom: status polling, the waiting and
+refused states, the copied address, finding and linking to a host with a reload,
+the linked state and unlinking. The extension smoke suite's sharing-host and
+sharing-client stages cover the service worker's side, including a linked
+install's kept state.
+
+`node test/chrome-sharing.mjs` launches two real Chromes and the test relay on
+a test-only port (`HACHIDORI_SHARING_PORT`, default 18771): the host imports the
+fixture and moves its sharing to that port, the second browser probes and links
+to it, looks a word up through the link, writes an option and a personal entry
+that the host commits and pushes back, loses the host when it closes and
+reconnects when it relaunches, then unlinks back to its own empty state. Six
+predeclared checks; profiles are kept on failure. `HACHIDORI_SHARING_SCREENSHOTS=<dir>`
+saves the documentation screenshots from that real run.
+
 `node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
 current word/reading/sentence expansion, background-tab clicks, live editing
 without replacing cards or Note drafts, and stale-control navigation rejection.
@@ -339,7 +361,7 @@ by `extension-smoke.mjs` and `chrome-fallback.mjs`.
 
 The layer above the ABI. Loads the real `background.js`, `offscreen.js` and
 `render/*.js` against the real `extension/vendor/hoshidicts.wasm` and drives one
-full request→reply round trip per contract-C message type. 490 checks, all of
+full request→reply round trip per contract-C message type. 477 checks, all of
 which have to run: the renderer stage needs jsdom and **failing to load jsdom is
 a failure, not a skip** (see below). Exits 0 on success, 1 on assertion failure,
 2 when the wasm module or the fixtures are missing.
@@ -745,7 +767,7 @@ conflicts rather than duplicating their storage machinery.
 node test/chrome-e2e.mjs
 ```
 
-The primary-path test runs 198 predeclared checks in a browser. Chrome and `puppeteer-core`
+The primary-path test runs 193 predeclared checks in a browser. Chrome and `puppeteer-core`
 live outside the repo so a checkout does not carry a browser. The setup command
 above installs Chrome for Testing in the default cache; the harness also checks
 `CHROME_BIN` and common system locations. Override with `HACHIDORI_CHROME`,

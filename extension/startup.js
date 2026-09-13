@@ -869,7 +869,10 @@ function practiceView() {
 function welcomeView() {
   return {
     heading: "Welcome to Hachidori",
-    body: [paragraph("Click Start Setup to automatically set up Hachidori")],
+    body: [
+      paragraph("Click Start Setup to automatically set up Hachidori"),
+      settingsNote("Already using Hachidori in another browser on this computer? Link to it from ", "settings.html#sharing", " instead of setting up again."),
+    ],
     actions: [
       button("setup-start", "Start Setup", () => { void advance("dictionaries"); }),
       button("setup-manual", "Set up manually", () => { void advance("practice"); }, "ghost"),

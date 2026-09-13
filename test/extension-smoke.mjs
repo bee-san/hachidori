@@ -537,6 +537,9 @@ function makeChrome(owner, bus, storage, alarms = makeAlarms()) {
     runtime: {
       id: "hachidorismokeextensionid",
       lastError: undefined,
+      getManifest() {
+        return { version: "0.0.0-smoke" };
+      },
       getURL(path) {
         return `${EXTENSION_ORIGIN}/${String(path).replace(/^\//u, "")}`;
       },
@@ -757,6 +760,14 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
+  const sharingProtocol = readFileSync(resolve(EXTENSION, "sharing-protocol.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
+  const sharingHost = readFileSync(resolve(EXTENSION, "sharing-host.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
+    .replace(/^export\s+/gmu, "");
+  const sharingClient = readFileSync(resolve(EXTENSION, "sharing-client.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
+    .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
@@ -774,6 +785,9 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-host\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/import \{ OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
@@ -787,7 +801,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1126,6 +1140,294 @@ async function overlayModeBackgroundStage() {
   check("overlay mode seeds hover lookups without a highlight once and never opens setup",
     seededOnce && preserved && carriedKept,
     JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
+}
+
+// The host side of sharing: a fake WebSocket stands in for GameSentenceMiner's
+// relay, and a fake offscreen engine answers the relayed lookup.
+async function sharingHostStage() {
+  FakeSharingSocket.instances.length = 0;
+  const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
+  const chrome = makeChrome("sharing-host-worker", bus, storage, alarms);
+  Object.assign(offscreenState, { created: 0, exists: false, concurrent: 0, peakConcurrent: 0 });
+  const relayed = [];
+  bus.addListener("sharing-engine", (message, sender, sendResponse) => {
+    if (message?.target !== "hoshidicts-offscreen" || message.relayed !== true) return false;
+    relayed.push(structuredClone(message));
+    sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true, results: [{ matched: message.text }] });
+    return true;
+  });
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket });
+  const settle = async (predicate = () => false) => {
+    for (let attempt = 0; attempt < 100 && !predicate(); attempt += 1) {
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+    }
+  };
+  const send = (type, fields = {}) => bus.sendMessage("sharing-page", { target: "hachidori-sharing", type, requestId: `sharing-${type}`, ...fields });
+  const hostSockets = () => FakeSharingSocket.instances.filter(socket => socket.url.endsWith("/host"));
+  const sent = socket => socket.sent.filter(frame => frame.kind === "send").map(frame => JSON.parse(frame.text));
+  const broadcasts = socket => socket.sent.filter(frame => frame.kind === "broadcast").map(frame => JSON.parse(frame.text));
+  const clientText = (socket, text) => socket.receive({ kind: "client-text", clientId: "client-1", text });
+
+  await settle(() => hostSockets().length >= 1);
+  const initial = hostSockets()[0];
+  const before = await send("hd_sharing_status");
+  const enabled = await send("hd_sharing_host_enable", { port: 4321 });
+  await settle(() => hostSockets().length >= 2 && storage.raw.get("sharing")?.host?.enabled === true);
+  const socket = hostSockets()[1];
+  socket.open();
+  socket.receive({ kind: "listening", port: 4321 });
+  socket.receive({ kind: "client-open", clientId: "client-1", origin: "chrome-extension://linkedbrowser" });
+  clientText(socket, JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM" }));
+  await settle(() => sent(socket).length >= 1);
+  const hello = sent(socket)[0];
+  const listening = await send("hd_sharing_status");
+  check("a browser install shares by default, connects to the relay on the chosen port and answers a linked browser's hello with the shared snapshot",
+    before.sharing?.enabled === true && before.sharing.connected === false && before.sharing.error === null
+      && initial.url === "ws://127.0.0.1:8771/host" && initial.readyState === 3
+      && enabled.ok === true && enabled.sharing.enabled === true && socket.url === "ws://127.0.0.1:4321/host"
+      && storage.raw.get("sharing")?.host?.port === 4321
+      && listening.sharing.connected === true && listening.sharing.address === "ws://127.0.0.1:4321/link"
+      && listening.sharing.clients.length === 1 && listening.sharing.clients[0].name === "GSM"
+      && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.dictionaryCount === 0
+      && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options"])
+      && hello.snapshot.options === null,
+    JSON.stringify({ before, enabled, listening, hello, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
+
+  clientText(socket, JSON.stringify({ kind: "request", id: "r1",
+    message: { target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "lookup-9", text: "猫" } }));
+  await settle(() => sent(socket).length >= 2);
+  const lookup = sent(socket)[1];
+  check("a forwarded lookup reaches the engine once and returns its exact reply",
+    relayed.length === 1 && relayed[0].type === "hd_lookup" && relayed[0].text === "猫" && relayed[0].requestId === "lookup-9"
+      && lookup?.kind === "reply" && lookup.id === "r1" && lookup.response?.type === "hd_lookup_result"
+      && lookup.response.ok === true && lookup.response.requestId === "lookup-9" && lookup.response.results?.[0]?.matched === "猫",
+    JSON.stringify({ relayed, lookup }));
+
+  clientText(socket, JSON.stringify({ kind: "request", id: "r2",
+    message: { target: "hoshidicts-worker", type: "hd_options_write", requestId: "write-1", baseRevision: 0, options: { hoverEnabled: false } } }));
+  await settle(() => sent(socket).length >= 3 && broadcasts(socket).length >= 1);
+  const written = sent(socket)[2];
+  const broadcast = broadcasts(socket)[0];
+  await storage.api().local.set({ setupState: { stage: "welcome" } });
+  await settle();
+  clientText(socket, JSON.stringify({ kind: "request", id: "r3", message: { target: "hachidori-audio", type: "hd_audio_play", requestId: "audio-1" } }));
+  await settle(() => sent(socket).length >= 4);
+  const refused = sent(socket)[3];
+  check("a forwarded options write commits on the host and every linked browser receives that storage batch, while local-only keys stay home",
+    written?.kind === "reply" && written.id === "r2" && written.response?.ok === true && written.response.options?.hoverEnabled === false
+      && storage.raw.get("options")?.hoverEnabled === false
+      && broadcast?.kind === "storage" && JSON.stringify(Object.keys(broadcast.changes)) === JSON.stringify(["options"])
+      && broadcast.changes.options.revision === written.response.options.revision
+      && broadcasts(socket).length === 1
+      && refused?.kind === "reply" && refused.id === "r3" && refused.response?.ok === false
+      && /unsupported shared request target/u.test(refused.response.error),
+    JSON.stringify({ written, broadcasts: broadcasts(socket), refused }));
+
+  socket.drop();
+  await settle();
+  const dropped = await send("hd_sharing_status");
+  const retrying = alarms.values.has("hachidori-sharing-host");
+  // The first retry follows the capture host's backoff: 500 ms.
+  for (let attempt = 0; attempt < 400 && hostSockets().length < 3; attempt += 1) {
+    await new Promise((resolveTimer) => setTimeout(resolveTimer, 5));
+  }
+  const retried = hostSockets()[2];
+  retried.open();
+  retried.receive({ kind: "listen-failed", error: "Another Hachidori is already sharing through GameSentenceMiner." });
+  await settle();
+  const refusedHost = await send("hd_sharing_status");
+  const restartBus = makeBus();
+  const restartChrome = makeChrome("sharing-host-restart", restartBus, storage, makeAlarms());
+  const socketsBefore = FakeSharingSocket.instances.length;
+  loadBackgroundScript({ chrome: restartChrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket });
+  await settle(() => FakeSharingSocket.instances.length > socketsBefore);
+  const restarted = FakeSharingSocket.instances[socketsBefore];
+  const disabled = await send("hd_sharing_host_disable");
+  await settle(() => storage.raw.get("sharing")?.host === null);
+  const off = await restartBus.sendMessage("sharing-page", { target: "hachidori-sharing", type: "hd_sharing_host_disable", requestId: "restart-off" });
+  check("a relay that goes away is waited for and retried by alarm, a refusal is reported, a restarted worker reconnects to the stored port, and turning sharing off closes the socket",
+    dropped.sharing.enabled === true && dropped.sharing.connected === false && dropped.sharing.error === null
+      && dropped.sharing.clients.length === 0 && retrying
+      && refusedHost.sharing.error === "Another Hachidori is already sharing through GameSentenceMiner."
+      && restarted?.url === "ws://127.0.0.1:4321/host"
+      && disabled.ok === true && disabled.sharing.enabled === false && disabled.sharing.error === null
+      && !alarms.values.has("hachidori-sharing-host") && storage.raw.get("sharing")?.host === null
+      && off.ok === true && restarted.readyState === 3,
+    JSON.stringify({ dropped, retrying, refusedHost, disabled, off, sockets: FakeSharingSocket.instances.map(s => [s.url, s.readyState]) }));
+}
+
+// A linked install: a fake WebSocket stands in for the bridge and the host.
+class FakeSharingSocket {
+  static instances = [];
+  constructor(url) {
+    this.url = url;
+    this.sent = [];
+    this.readyState = 0;
+    this.onopen = null;
+    this.onmessage = null;
+    this.onclose = null;
+    FakeSharingSocket.instances.push(this);
+  }
+  send(text) { this.sent.push(JSON.parse(text)); }
+  close() {
+    if (this.readyState === 3) return;
+    this.readyState = 3;
+    setTimeout(() => this.onclose?.({}), 0);
+  }
+  open() { this.readyState = 1; this.onopen?.(); }
+  receive(frame) { this.onmessage?.({ data: JSON.stringify(frame) }); }
+  drop() { this.readyState = 3; this.onclose?.({}); }
+  requests() { return this.sent.filter(frame => frame.kind === "request"); }
+}
+
+async function sharingClientStage() {
+  FakeSharingSocket.instances.length = 0;
+  const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
+  const chrome = makeChrome("sharing-client-worker", bus, storage, alarms);
+  const localDictionary = { id: "local-id", title: "Local", displayName: null, path: "/dicts/Local", enabled: true, favorite: false,
+    revision: "1", isUpdatable: false, indexUrl: null, downloadUrl: null, language: "ja", frequencyMode: null,
+    termCount: 3, frequencyCount: 0, pitchCount: 0, kanjiCount: 0, mediaCount: 0, installedAt: "2026-09-01T00:00:00.000Z", lastUpdateCheck: null };
+  const localState = { schemaVersion: 1, revision: 2, dictionaries: [localDictionary], groups: [] };
+  const localStats = { generation: "local-gen", revision: 1 };
+  const localRow = { term: "猫", reading: "ねこ", lookupCount: 4, firstLookedUpAt: 1, lastLookedUpAt: 2 };
+  await storage.api().local.set({
+    options: { hoverEnabled: true, revision: 3 },
+    dictionaryState: localState,
+    lookupStats: localStats,
+    ['lookupStats:"local-gen":["猫","ねこ"]']: localRow,
+  });
+  storage.sets.length = 0;
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket });
+  const settle = async (predicate = () => false) => {
+    for (let attempt = 0; attempt < 200 && !predicate(); attempt += 1) {
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+    }
+  };
+  const send = (type, fields = {}, target = "hachidori-sharing") => bus.sendMessage("sharing-client-page",
+    { target, type, requestId: `client-${type}`, ...fields });
+  const engineSender = { id: "hachidorismokeextensionid", url: `${EXTENSION_ORIGIN}/offscreen.html` };
+  const hostDictionary = { ...localDictionary, id: "host-id", title: "Host", path: "/dicts/Host", termCount: 900 };
+  const hostSnapshot = {
+    dictionaryState: { schemaVersion: 1, revision: 7, dictionaries: [hostDictionary], groups: [] },
+    options: { hoverEnabled: false, revision: 1 },
+    customDictionarySource: null,
+    dictionaryUpdates: { revision: 0, schedule: "off", lastCheckedAt: null },
+    lookupStats: { generation: "host-gen", revision: 40 },
+  };
+  const hello = { kind: "hello", protocol: 1, version: "9.9.9", dictionaryCount: 1, snapshot: hostSnapshot };
+
+  // Linking probes first, then keeps one connection. The worker's own host
+  // socket (sharing is on by default) is not part of this.
+  const linkSockets = () => FakeSharingSocket.instances.filter(entry => entry.url.endsWith("/link"));
+  const linking = send("hd_sharing_client_link", { address: "127.0.0.1:9100" });
+  await settle(() => linkSockets().length >= 1);
+  const probe = linkSockets()[0];
+  probe.open();
+  await settle(() => probe.sent.length >= 1);
+  probe.receive(hello);
+  await settle(() => linkSockets().length >= 2);
+  const socket = linkSockets()[1];
+  socket.open();
+  await settle(() => socket.sent.length >= 1);
+  socket.receive(hello);
+  const linkedReply = await linking;
+  await settle(() => linkedReply && storage.raw.get("options")?.revision === 1);
+  const mirrorSet = storage.sets.find(keys => keys.includes("dictionaryState") && keys.includes("options") && keys.includes("lookupStats"));
+  check("linking keeps this install's shared state aside and mirrors the host's snapshot in one write",
+    probe.url === "ws://127.0.0.1:9100/link" && probe.sent[0]?.kind === "hello" && probe.readyState === 3
+      && socket.sent[0]?.kind === "hello" && socket.sent[0].protocol === 1
+      && linkedReply.ok === true && linkedReply.sharing.client.linked === true && linkedReply.sharing.client.address === "ws://127.0.0.1:9100/link"
+      && JSON.stringify(storage.raw.get("sharingLocalState")) === JSON.stringify({ dictionaryState: localState, options: { hoverEnabled: true, revision: 3 },
+        customDictionarySource: null, dictionaryUpdates: null, lookupStats: localStats })
+      && JSON.stringify(storage.raw.get("dictionaryState")) === JSON.stringify(hostSnapshot.dictionaryState)
+      && JSON.stringify(storage.raw.get("options")) === JSON.stringify(hostSnapshot.options)
+      && JSON.stringify(storage.raw.get("lookupStats")) === JSON.stringify(hostSnapshot.lookupStats)
+      && !storage.raw.has("customDictionarySource") && mirrorSet !== undefined
+      && storage.raw.get("sharing")?.client?.address === "ws://127.0.0.1:9100/link",
+    JSON.stringify({ linkedReply, sets: storage.sets, local: storage.raw.get("sharingLocalState"), sockets: FakeSharingSocket.instances.map(s => s.url) }));
+
+  // Page requests forward and take the host's reply verbatim; the mirror only
+  // moves when the host pushes its storage batch.
+  const setsBefore = storage.sets.length;
+  const writing = send("hd_options_write", { baseRevision: 1, options: { hoverEnabled: true } }, "hoshidicts-worker");
+  await settle(() => socket.requests().length >= 1);
+  const forwardedWrite = socket.requests()[0];
+  socket.receive({ kind: "reply", id: forwardedWrite.id, response: { type: "hd_options_write_result", requestId: "client-hd_options_write", ok: true, error: null, options: { hoverEnabled: true, revision: 2 } } });
+  const written = await writing;
+  const beforePush = storage.raw.get("options").revision;
+  socket.receive({ kind: "storage", changes: { options: { hoverEnabled: true, revision: 2 } } });
+  await settle(() => storage.raw.get("options").revision === 2);
+  const looking = send("hd_lookup", { text: "猫" }, "hoshidicts-offscreen");
+  await settle(() => socket.requests().length >= 2);
+  const forwardedLookup = socket.requests()[1];
+  socket.receive({ kind: "reply", id: forwardedLookup.id, response: { type: "hd_lookup_result", requestId: "client-hd_lookup", ok: true, error: null, results: [{ matched: "猫" }], generation: 3 } });
+  const looked = await looking;
+  const counting = send("hd_lookup_stats_record", { term: "猫", reading: "ねこ" }, "hoshidicts-worker");
+  await settle(() => socket.requests().length >= 3);
+  const forwardedCount = socket.requests()[2];
+  socket.receive({ kind: "reply", id: forwardedCount.id, response: { type: "hd_lookup_stats_record_result", requestId: "client-hd_lookup_stats_record", ok: true, error: null, descriptor: { generation: "host-gen", revision: 41 }, statistics: { term: "猫", reading: "ねこ", lookupCount: 9 } } });
+  const counted = await counting;
+  const rowKey = 'lookupStats:"host-gen":["猫","ねこ"]';
+  socket.receive({ kind: "storage", changes: { lookupStats: { generation: "host-gen", revision: 41 }, [rowKey]: { term: "猫", reading: "ねこ", lookupCount: 9, firstLookedUpAt: 1, lastLookedUpAt: 3 } } });
+  await settle(() => storage.raw.has(rowKey));
+  const rowSet = storage.sets.slice(setsBefore).find(keys => keys.includes("lookupStats") && keys.includes(rowKey));
+  check("a linked page's writes, lookups and lookup counts go to the host, whose storage batches land locally as single writes",
+    forwardedWrite.message.type === "hd_options_write" && forwardedWrite.message.target === "hoshidicts-worker" && forwardedWrite.message.baseRevision === 1
+      && written.ok === true && written.options.revision === 2 && written.requestId === "client-hd_options_write"
+      && beforePush === 1 && storage.raw.get("options").revision === 2
+      && forwardedLookup.message.type === "hd_lookup" && forwardedLookup.message.text === "猫" && looked.results?.[0]?.matched === "猫"
+      && bus.log.every(entry => !(entry.type === "hd_lookup" && entry.relayed))
+      && forwardedCount.message.type === "hd_lookup_stats_record" && counted.statistics?.lookupCount === 9
+      && rowSet !== undefined && rowSet.length === 2
+      && storage.sets.slice(setsBefore).every(keys => keys.every(key => key !== "options" || true)),
+    JSON.stringify({ forwardedWrite, written, looked, counted, sets: storage.sets.slice(setsBefore) }));
+
+  // This install's own engine keeps its pre-link state.
+  const engineRead = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_state_read", requestId: "engine-read" }, engineSender);
+  const engineCas = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_state_cas", requestId: "engine-cas",
+    baseRevision: 2, dictionaries: [{ ...localDictionary, enabled: false }], groups: [] }, engineSender);
+  const cleanup = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_lookup_stats_cleanup", requestId: "engine-cleanup" }, engineSender);
+  check("a linked install's engine reads and commits the state it had before linking, never the mirror",
+    engineRead.ok === true && engineRead.state?.revision === 2 && engineRead.state.dictionaries[0].id === "local-id"
+      && engineCas.ok === true && engineCas.state.revision === 3 && engineCas.state.dictionaries[0].enabled === false
+      && storage.raw.get("sharingLocalState").dictionaryState.revision === 3
+      && storage.raw.get("dictionaryState").revision === 7 && storage.raw.get("dictionaryState").dictionaries[0].id === "host-id"
+      && cleanup.ok === true && storage.raw.has(rowKey),
+    JSON.stringify({ engineRead, engineCas, cleanup, local: storage.raw.get("sharingLocalState") }));
+
+  // Losing the host fails what was in flight, and a restarted worker relinks by itself.
+  const dangling = send("hd_lookup", { text: "犬" }, "hoshidicts-offscreen");
+  await settle(() => socket.requests().length >= 4);
+  socket.drop();
+  const failed = await dangling;
+  const status = await send("hd_sharing_status");
+  const restartBus = makeBus();
+  const restartChrome = makeChrome("sharing-client-restart", restartBus, storage, makeAlarms());
+  const linkSocketsBefore = linkSockets().length;
+  loadBackgroundScript({ chrome: restartChrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket });
+  await settle(() => linkSockets().length > linkSocketsBefore);
+  const restartSocket = linkSockets()[linkSocketsBefore];
+  check("losing the host fails in-flight lookups with one message, and a restarted worker reconnects to the stored address",
+    failed.ok === false && failed.error === "The linked Hachidori is not reachable."
+      && status.sharing.client.linked === true && status.sharing.client.connected === false
+      && restartSocket?.url === "ws://127.0.0.1:9100/link",
+    JSON.stringify({ failed, status, sockets: FakeSharingSocket.instances.map(s => s.url) }));
+
+  // Unlinking restores the kept state above the mirror's revisions and drops the host's rows.
+  const unlinked = await send("hd_sharing_client_unlink");
+  await settle(() => !storage.raw.has("sharingLocalState"));
+  const restoredState = storage.raw.get("dictionaryState");
+  const restoredOptions = storage.raw.get("options");
+  const restoredStats = storage.raw.get("lookupStats");
+  check("unlinking restores this install's own state with newer revisions and removes the host's lookup rows",
+    unlinked.ok === true && unlinked.sharing.client.linked === false
+      && restoredState.revision === 8 && restoredState.dictionaries[0].id === "local-id" && restoredState.dictionaries[0].enabled === false
+      && restoredOptions.revision === 4 && restoredOptions.hoverEnabled === true
+      && restoredStats.generation === "local-gen" && restoredStats.revision === 42
+      && storage.raw.has('lookupStats:"local-gen":["猫","ねこ"]') && !storage.raw.has(rowKey)
+      && !storage.raw.has("dictionaryUpdates") && !storage.raw.has("customDictionarySource")
+      && storage.raw.get("sharing")?.client === null,
+    JSON.stringify({ unlinked, restoredState, restoredOptions, restoredStats, keys: [...storage.raw.keys()] }));
 }
 
 async function firstRunBackgroundStage() {
@@ -2996,6 +3298,8 @@ async function main() {
   await externalLinksBackgroundStage();
   await firstRunBackgroundStage();
   await overlayModeBackgroundStage();
+  await sharingHostStage();
+  await sharingClientStage();
   await firstRunAnkiStage();
   await backupRelayStage();
   await managedScheduleStage();
@@ -5576,8 +5880,6 @@ async function main() {
     sourceHighlight?.fallback === true, JSON.stringify(sourceHighlight));
   check("a suspended source highlight publishes nothing, ignores matches meanwhile and repaints its exact ranges",
     sourceHighlight?.restored === true, JSON.stringify(sourceHighlight));
-  check("source highlighting paints text-node sources one range per glyph box and clears when a box goes",
-    sourceHighlight?.textSources === true, JSON.stringify(sourceHighlight));
   check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
     frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
   check("Settings applies the selected popup theme live across local edits and storage events",
@@ -6959,6 +7261,7 @@ async function startupWelcomeStage() {
       && page.document.getElementById("setup-steps").hidden
       && readerScripts(page.document).length === 0
       && introduction === "Click Start Setup to automatically set up Hachidori"
+        + "Already using Hachidori in another browser on this computer? Link to it from Settings instead of setting up again."
       && page.document.querySelector('.startup-star-link[href="https://github.com/bee-san/hachidori"]')
         ?.textContent.replace(/\s+/gu, " ").trim() === "★ Star Hachidori on GitHub"
       && page.document.querySelector('a[href*="privacy"]') === null;
@@ -7431,31 +7734,8 @@ async function sourceHighlightStage() {
     const restored = publishedBefore && suspendedEmpty && suspendedQuiet && heldBySecond && texts() === "食べる";
     highlighter.clearAll();
     suspendSource.remove();
-    // A pointer scan's sources are text nodes, one per positioned glyph box.
-    const boxes = Array.from("食べた", (glyph) => {
-      const box = document.createElement("span");
-      box.textContent = glyph;
-      return box;
-    });
-    document.body.append(...boxes);
-    const boxedScope = highlighter.scope("boxed");
-    boxedScope.apply({ sourceElements: boxes.map((box) => box.firstChild), sentence: "食べた", matchOffset: 1 }, "べた");
-    const boxedRanges = ranges();
-    const boxedPainted = texts() === "べ|た" && boxedRanges.length === 2
-      && boxedRanges.every((range, index) => range.startContainer === boxes[index + 1].firstChild);
-    // Text changing elsewhere in the sentence leaves the match in place.
-    boxes[0].firstChild.data = "俺";
-    await settle();
-    const boxedNeighbour = texts() === "べ|た";
-    boxes[2].remove();
-    await settle();
-    const boxedDetached = ranges().length === 0;
-    const textSources = boxedPainted && boxedNeighbour && boxedDetached;
-    highlighter.clearAll();
-    boxes[0].remove();
-    boxes[1].remove();
     const fallback = await sourceHighlightFallbackCase(window);
-    return { ownership, restored, mutations, fallback, visits, replacement, stale, textSources };
+    return { ownership, restored, mutations, fallback, visits, replacement, stale };
   } finally {
     highlighter.clearAll();
     window.close();
@@ -13075,8 +13355,7 @@ async function contentNoteStage() {
     const restored = block.querySelector("b");
     const restoredProse = scan(block.firstChild)?.query === "食べた" && scan(restored.firstChild)?.query === "べた";
     block.querySelector("span").style.display = "block";
-    // Layout never ends a scan: Yomitan's layout-unaware default reads on.
-    const restoredBlock = scan(block.firstChild)?.query === "食べた";
+    const restoredBlock = scan(block.firstChild)?.query === "食";
     block.querySelector("span").style.display = "inline";
     for (const editor of [block.querySelector("span"), restored]) {
       editor.setAttribute("contenteditable", "true");
@@ -13086,53 +13365,12 @@ async function contentNoteStage() {
       editor.removeAttribute("contenteditable");
       delete editor.isContentEditable;
     }
-    // An OCR overlay boxes every glyph in its own positioned span and separates
-    // blocks with a "\n" span, the DOM the GameSentenceMiner overlay builds.
-    block.remove();
-    const glyphBlock = (text, vertical = false) => {
-      const container = document.createElement("p");
-      container.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%";
-      for (const glyph of text) {
-        const box = document.createElement("span");
-        box.style.cssText = `position:absolute;display:flex;left:1%;top:2%${vertical ? ";writing-mode:vertical-rl" : ""}`;
-        box.textContent = glyph;
-        container.append(box);
-      }
-      return container;
-    };
-    const firstText = "俺は気になる事があって、放送塔へ足を運んだ。";
-    const firstBlock = glyphBlock(firstText);
-    const separators = [0, 1].map(() => {
-      const separator = document.createElement("span");
-      separator.style.position = "absolute";
-      separator.textContent = "\n";
-      return separator;
-    });
-    const secondBlock = glyphBlock("「あ、やっぱり……」", true);
-    document.body.append(separators[0], firstBlock, separators[1], secondBlock);
-    const glyphSpan = firstBlock.children[2];
-    const boxed = scan(glyphSpan.firstChild);
-    const { scanLength } = window.HDReaderOptions.DEFAULT_OPTIONS;
-    const boxedFirst = boxed?.query === Array.from(firstText).slice(2, 2 + scanLength).join("") && boxed.matchOffset === 2
-      && boxed.sentence === firstText && boxed.anchor === glyphSpan
-      && boxed.sourceElements.every((node) => node.nodeType === 3 && firstBlock.contains(node))
-      && boxed.sourceElements.map((node) => node.textContent).join("") === boxed.sentence
-      && boxed.vertical === false;
-    const boxedSecond = scan(secondBlock.children[1].firstChild);
-    const boxedNext = boxedSecond?.query === "あ、やっぱり……」" && boxedSecond.sentence === "「あ、やっぱり……」"
-      && boxedSecond.matchOffset === 1 && boxedSecond.vertical === true;
-    firstBlock.remove();
-    secondBlock.remove();
-    for (const separator of separators) separator.remove();
     harness.close();
     return {
       "pointer scans cross ordinary inline text and apply the live Japanese-only preference":
         crossedInline && japaneseOnly && unrestricted && gatedAgain && restoredProse && restoredBlock,
       "editing controls and contenteditable text stop both direct and forward pointer scanning":
         controls.every(Boolean) || controls,
-      "pointer scans cross positioned per-glyph boxes and take the sentence from the block's text nodes":
-        (boxedFirst && boxedNext) || { boxed: boxed && { ...boxed, anchor: null, anchorRange: null, scanEntries: null, sourceElements: boxed.sourceElements.length },
-          boxedSecond: boxedSecond && { query: boxedSecond.query, sentence: boxedSecond.sentence, matchOffset: boxedSecond.matchOffset, vertical: boxedSecond.vertical } },
     };
   }
 

@@ -1,6 +1,6 @@
 # Hachidori privacy policy
 
-Last updated: 8 September 2026.
+Last updated: 13 September 2026.
 
 Hachidori helps you read Japanese with local dictionaries and save selected
 study material to Anki. It is maintained by Autumn (Bee). For privacy questions
@@ -74,6 +74,21 @@ Any later Anki synchronization is controlled by Anki and your Anki configuration
 **Texthookers.** Optional media-capture texthookers receive text and timing from
 a WebSocket service on the same computer. Lookup counts use only local browser
 storage and never contact an external service.
+
+**Sharing between browsers.** A browser install of Hachidori shares itself by
+default with other Hachidoris on the same computer through GameSentenceMiner:
+while GameSentenceMiner runs, Hachidori connects to its local relay
+(`127.0.0.1`, port 8771 by default) and answers lookups and settings edits from
+browsers linked through it. Only browser extensions can connect to that relay.
+A linked browser receives dictionary results, personal entries, lookup counts
+and settings, including custom URLs and the AnkiConnect API key, and its edits
+are stored here. Nothing is sent to other computers, and nothing is sent at all
+while GameSentenceMiner is closed. Another program or extension on your computer
+could connect to the relay while it runs, as with AnkiConnect. **Share this
+Hachidori** in Settings turns it off. A browser linked to a shared Hachidori
+sends the text it looks up and its settings, presentation and personal-dictionary
+edits to that Hachidori on the same computer, and keeps a mirror of its
+settings, personal entries and lookup counts until it unlinks.
 
 **Links and styling.** Activating a link in a dictionary opens the URL supplied
 by that dictionary. Custom toolbar links open the URL template you configured,

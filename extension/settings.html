@@ -38,6 +38,7 @@
             <option value="media">Media capture</option>
             <option value="anki">Anki</option>
             <option value="keybinds">Keybinds</option>
+            <option value="sharing">Sharing</option>
             <option value="backup">Backup &amp; restore</option>
           </select>
         </label>
@@ -70,6 +71,10 @@
           <div class="nav-item">
             <a href="#keybinds" aria-describedby="nav-status-keybinds">Keybinds</a>
             <output class="nav-status" id="nav-status-keybinds" aria-live="polite"></output>
+          </div>
+          <div class="nav-item">
+            <a href="#sharing" aria-describedby="nav-status-sharing">Sharing</a>
+            <output class="nav-status" id="nav-status-sharing" aria-live="polite"></output>
           </div>
           <div class="nav-item">
             <a href="#backup" aria-describedby="nav-status-backup">Backup &amp; restore</a>
@@ -184,6 +189,7 @@
             <h1 id="import-heading" tabindex="-1">Import dictionaries</h1>
             <p class="hint">Yomitan ZIP files, stored on this device.</p>
           </div>
+          <p class="field-hint sharing-linked-notice" id="sharing-import-notice" hidden>Dictionaries live on the linked Hachidori: import ZIP files there. Recommended dictionaries can still be installed from here, and <a href="#sharing">Sharing</a> lets you unlink to use this browser’s own dictionaries again.</p>
           <div
             class="import-drop-zone"
             id="import-drop-zone"
@@ -979,11 +985,49 @@
             <button id="browser-shortcuts-open" type="button" class="ghost">Change in Chrome</button>
           </fieldset>
         </section>
+        <section class="card" id="sharing" aria-labelledby="sharing-heading" hidden>
+          <div class="card-head">
+            <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link other browser GSM GameSentenceMiner overlay relay port address">Sharing</h1>
+            <p class="hint">Use one Hachidori from every browser on this computer.</p>
+          </div>
+          <output id="sharing-status" class="anki-status" aria-live="polite"></output>
+          <fieldset class="lookup-group" id="sharing-host">
+            <legend>Share this Hachidori</legend>
+            <p class="field-hint">The GameSentenceMiner overlay, and any other Hachidori on this computer, then uses this Hachidori’s dictionaries, personal entries, lookup counts and settings instead of its own. GameSentenceMiner relays the connection, so there is nothing to install; sharing simply waits while GameSentenceMiner is closed.</p>
+            <label class="lookup-enable"><span>Share this Hachidori</span><input id="sharing-host-enabled" type="checkbox" disabled></label>
+            <div class="fields">
+              <label class="field"><span class="field-label">Port</span><input id="sharing-host-port" type="number" min="1" max="65535" step="1" value="8771"><span class="field-hint">GameSentenceMiner relays on this port. Change it only if you changed it there too.</span></label>
+              <label class="field"><span class="field-label">Address</span><input id="sharing-host-address" type="text" readonly spellcheck="false"><span class="field-hint">Other browsers find this Hachidori on the default port by themselves; enter the address there when the port differs.</span></label>
+            </div>
+            <div class="sharing-actions">
+              <button id="sharing-host-copy" type="button" class="ghost">Copy address</button>
+            </div>
+            <output id="sharing-host-clients" class="field-hint" aria-live="polite"></output>
+          </fieldset>
+          <fieldset class="lookup-group" id="sharing-client">
+            <legend>Use another Hachidori</legend>
+            <p class="field-hint">This browser then looks words up in a Hachidori that shares itself on this computer and mirrors its settings, personal entries and lookup counts. Nothing is copied, and unlinking brings this browser’s own state back.</p>
+            <div class="sharing-actions">
+              <button id="sharing-client-find" type="button" class="ghost">Find on this computer</button>
+              <button id="sharing-client-use" type="button" class="primary-button" hidden>Use it</button>
+            </div>
+            <output id="sharing-client-found" class="field-hint" aria-live="polite"></output>
+            <div class="fields">
+              <label class="field"><span class="field-label">Address</span><input id="sharing-client-address" type="text" spellcheck="false" autocomplete="off" placeholder="ws://127.0.0.1:8771/link"><span class="field-hint">Needed only when the shared Hachidori uses another port.</span></label>
+            </div>
+            <div class="sharing-actions">
+              <button id="sharing-client-link" type="button" class="ghost">Link</button>
+              <button id="sharing-client-unlink" type="button" class="ghost" hidden>Unlink</button>
+            </div>
+            <output id="sharing-client-status" class="field-hint" aria-live="polite"></output>
+          </fieldset>
+        </section>
         <section class="card" id="backup" aria-labelledby="backup-heading" hidden>
           <div class="card-head">
             <h1 id="backup-heading" tabindex="-1">Backup &amp; restore</h1>
             <p class="hint">A complete copy of this browser’s Hachidori data.</p>
           </div>
+          <p class="field-hint sharing-linked-notice" id="sharing-backup-notice" hidden>Backups are made and restored on the linked Hachidori. Open <a href="#sharing">Sharing</a> to unlink and use this browser’s own data again.</p>
           <div class="backup-action">
             <div>
               <h2>Save a backup</h2>

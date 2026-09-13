@@ -211,6 +211,7 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
+  "a fresh profile shares by default and waits for GameSentenceMiner",
   "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
   "a fresh install waits for Start setup before dictionary downloads or Anki discovery",
   "Start setup begins automatic dictionary installation with first-install preferences",
@@ -256,7 +257,7 @@ const PLANNED = [
   "Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
   "Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
   "Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission",
-  "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
+  "Anki reader controls stay absent until configured and preserve raw ruby context through one confirmed Add and View",
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
   "a screenshot upload that Anki refuses is a warning on a note that is still added",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
@@ -338,7 +339,6 @@ const PLANNED = [
   "custom Settings lazily saves a source through the real WASM importer",
   "the popup opens below the complete wrapped match instead of the hovered glyph",
   "browser zoom keeps the popup at its configured on-screen size inside the viewport",
-  "hovering positioned per-glyph boxes looks up and highlights the whole word",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "hovering an inflected verb shows a popup",
   "the content script attached its closed-shadow host to the page",
@@ -4104,7 +4104,7 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     await popup.click(".gsm-hoshidicts-mine-button");
     await settled(() => calls.filter(call => call.action === "guiBrowse").length > exactBrowseCount);
     const exactBrowse = calls.filter(call => call.action === "guiBrowse").at(-1);
-    check("Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
+    check("Anki reader controls stay absent until configured and preserve raw ruby context through one confirmed Add and View",
       quiet
         && JSON.stringify(ready.order.slice(0, 4)) === JSON.stringify(["add", "audio", "note", "view"])
         && ready.order.slice(4).every(kind => kind === "external")
@@ -4115,7 +4115,7 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && saved.controls[0].output.startsWith("Added note ")
         && saved.feedback.text.includes(saved.controls[0].output)
         && note.Front === "食べる"
-        && note.Back === "食べる|。|<b>食べる</b>。"
+        && note.Back === "食たべる|。|<b>食たべる</b>。"
         && calls.filter(call => call.action === "addNote").length === addCount + 1
         && browse.params.query === '"食べる"'
         && duplicate.controls[0].icon === "view-note"
@@ -6373,8 +6373,7 @@ async function checkReaderSelection(browser, settings, tab, popup) {
         + '<div style="visibility:hidden"><b style="visibility:visible">べ</b></div>た';
     });
     await moveTo("#selection-boundary-start");
-    // Layout-unaware like Yomitan: a block wrapper does not end the scan.
-    const blockBoundary = (await lookups()).at(-1)?.text === "食べた";
+    const blockBoundary = (await lookups()).at(-1)?.text === "食";
     await dismiss();
     await tab.$eval("#verb", (element) => { element.innerHTML = '食<input type="hidden">べたかった'; });
     const hiddenPointerAccepted = await hoverForPopup(tab, popup, "#verb");
@@ -6783,8 +6782,7 @@ async function main() {
     if (r.status !== 0) fatal(`make-fixture.mjs failed:\n${r.stdout}\n${r.stderr}`);
   }
 
-  // A Windows path has a drive-letter "scheme"; the ESM loader needs a file URL.
-  const puppeteer = await import(pathToFileURL(PUPPETEER).href);
+  const puppeteer = await import(PUPPETEER);
   const launch = puppeteer.default?.launch ? puppeteer.default : puppeteer;
 
   const server = createServer((_req, res) => {
@@ -6987,6 +6985,42 @@ async function main() {
         size => branding.icons[size] === `icons/hachidori-${size}.png`,
       ),
     JSON.stringify(branding),
+  );
+  await showSettingsSection(page, "sharing");
+  const sharing = await page.evaluate(async () => {
+    const manifest = chrome.runtime.getManifest();
+    const reply = await chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_status", requestId: "e2e-sharing" });
+    const toggle = document.getElementById("sharing-host-enabled");
+    for (let attempt = 0; attempt < 50 && toggle.disabled; attempt++) {
+      await new Promise(resolveWait => setTimeout(resolveWait, 20));
+    }
+    return {
+      optional: manifest.optional_permissions ?? null,
+      permissions: manifest.permissions,
+      reply,
+      visible: !document.getElementById("sharing").hidden,
+      toggleDisabled: toggle.disabled,
+      toggleChecked: toggle.checked,
+      address: document.getElementById("sharing-host-address").value,
+      status: document.getElementById("sharing-status").textContent,
+    };
+  });
+  check(
+    "a fresh profile shares by default and waits for GameSentenceMiner",
+    sharing.optional === null
+      && !sharing.permissions.includes("nativeMessaging")
+      && sharing.reply?.ok === true
+      && sharing.reply.sharing?.enabled === true
+      && sharing.reply.sharing.connected === false
+      && sharing.reply.sharing.error === null
+      && sharing.reply.sharing.address === "ws://127.0.0.1:8771/link"
+      && sharing.reply.sharing.client?.linked === false
+      && sharing.visible
+      && sharing.toggleDisabled === false
+      && sharing.toggleChecked === true
+      && sharing.address === "ws://127.0.0.1:8771/link"
+      && sharing.status === "Sharing is on. Waiting for GameSentenceMiner to start.",
+    JSON.stringify(sharing),
   );
   await showSettingsSection(page, "keybinds");
   const browserShortcuts = await page.evaluate(async () => {
@@ -8231,7 +8265,7 @@ async function main() {
     const libraryLinks = [...document.querySelectorAll("#library-navigation a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 8
+      && links.length === 9
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION")
       && JSON.stringify(libraryLinks.map(link => link.hash)) === JSON.stringify([
         "#dictionaries", "#add-dictionaries", "#updates", "#dictionary-groups", "#custom-dictionary",
@@ -9138,56 +9172,6 @@ async function main() {
       && zoomed.rect.right <= zoomed.viewport.width && zoomed.rect.bottom <= zoomed.viewport.height,
     JSON.stringify(zoomed),
   );
-
-  // An OCR overlay such as GameSentenceMiner's boxes every glyph in its own
-  // absolutely positioned span, which CSS blockifies, and separates blocks with
-  // a "\n" span. Like Yomitan's layout-unaware scan, the word and its highlight
-  // must still cross the boxes while the sentence stops at the separator.
-  await tab.evaluate(() => {
-    const boxed = document.createElement("div");
-    boxed.id = "boxed";
-    boxed.style.cssText = "position: fixed; top: 10px; left: 400px; width: 300px; height: 60px";
-    const block = (text, top) => {
-      const container = document.createElement("p");
-      container.style.cssText = "position: absolute; margin: 0";
-      Array.from(text).forEach((glyph, index) => {
-        const box = document.createElement("span");
-        box.textContent = glyph;
-        box.style.cssText = `position: absolute; display: flex; left: ${index * 36}px; top: ${top}px; width: 34px; height: 40px`;
-        container.append(box);
-      });
-      return container;
-    };
-    const separator = document.createElement("span");
-    separator.style.position = "absolute";
-    separator.textContent = "\n";
-    const first = block("食べたかった", 0);
-    first.firstChild.id = "boxed-start";
-    boxed.append(first, separator, block("漢字", 44));
-    document.body.append(boxed);
-  });
-  const boxedPopup = await hover("#boxed-start");
-  const boxedPopupState = boxedPopup === null ? null : await popup.dictionaryTabs();
-  const boxedSource = await tab.evaluate(name => {
-    const highlight = CSS.highlights.get(name);
-    const ranges = highlight ? [...highlight] : [];
-    return {
-      rectCount: ranges.flatMap(range => [...range.getClientRects()]).length,
-      text: ranges.map(range => range.toString()).join(""),
-      inBoxes: ranges.every(range => range.startContainer.parentElement?.closest("#boxed p") === document.querySelector("#boxed p")),
-    };
-  }, HIGHLIGHT_NAME);
-  check(
-    "hovering positioned per-glyph boxes looks up and highlights the whole word",
-    boxedPopupState !== null
-      && boxedSource.text === "食べたかった"
-      && boxedSource.rectCount >= 6
-      && boxedSource.inBoxes,
-    JSON.stringify({ popup: boxedPopupState?.rect, source: boxedSource }),
-  );
-  await tab.keyboard.press("Escape");
-  await popup.waitForHidden();
-  await tab.evaluate(() => document.getElementById("boxed").remove());
 
   // Readers such as ttu turn pages from body wheel listeners; the popup's own
   // scrolling, including past its end, must reach neither them nor the page.

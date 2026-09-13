@@ -583,15 +583,8 @@ and opens `chrome://extensions/shortcuts`.
 
 ## Page scanning and exact selections
 
-Automatic scanning reads page text in DOM order regardless of layout, as
-Yomitan's default layout-unaware scan does: it crosses inline and block elements
-alike, including glyphs boxed one per absolutely positioned span by an overlay,
-and stops only at `<br>`, editing controls or contenteditable text. The sentence
-is the run of neighbouring text nodes around the hovered glyph, up to 200
-characters each way, cut at a whitespace-only text node containing a line break
-(the separator between blocks in page source and in overlays). Those text nodes
-are the candidate's sources, so the highlight and the Anki sentence use the same
-text. A focused page editor keeps printable
+Automatic scanning crosses ordinary inline elements and stops at editing
+controls or contenteditable text. A focused page editor keeps printable
 activation keys available for typing. Pointer lookups and modifier activation
 still work over separate page text, including example links beside an
 autofocused search field. The live `onlyScanJapaneseText`
@@ -1310,10 +1303,10 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 ## Settings interface
 
 Settings is one document with native hash links and one visible task section.
-The primary rail exposes eight destinations. Library owns five local,
+The primary rail exposes nine destinations. Library owns five local,
 hash-addressable task views: Dictionaries, Add, Updates, Groups, and Personal
 dictionary. Backup and restore remains a global destination. The compact picker
-keeps all twelve task views available and groups those five Library choices.
+keeps all thirteen task views available and groups those five Library choices.
 Global search matches settings across every section, includes the Library
 hierarchy in matching and result breadcrumbs, opens a result's enclosing
 disclosures and focuses its control without changing values or discarding drafts.
@@ -1940,6 +1933,58 @@ or until that exact refresh consumes it. Saving is the transactional boundary,
 so a later best-effort lookup failure cannot make the already-appended row
 retryable.
 
+## Sharing between browsers
+
+Sharing makes one install the host for every other Hachidori on the same
+computer. Extensions cannot listen for connections, so GameSentenceMiner's
+overlay process runs the relay: one loopback WebSocket listener
+(`127.0.0.1:8771` by default) with a `/host` role and a `/link` role, and both
+Hachidoris connect out to it. Chrome keeps the host's service worker alive
+while its socket carries traffic; the relay pings both sides every 20 s.
+
+`extension/sharing-protocol.js` is imported by the service worker and by the
+relay: the default port, the `/host` and `/link` paths, address rules, the
+table of forwardable requests and the frame validators. `extension/sharing-relay.js`
+is the relay's logic without sockets: `connectHost` tells a second host
+`listen-failed` and returns `null`, `connectClient` returns `null` while no host
+is connected so the caller can refuse the browser (which retries), and the
+relay envelopes are `listening`, `client-open`, `client-close` and `client-text`
+towards the host and `send`, `broadcast` and `close` from it. A linked browser
+speaks JSON text frames: `hello` (answered with the host version, dictionary
+count and a snapshot of the five shared keys), `request` carrying an ordinary
+runtime message, and `pong` to the relay's `ping`. The relay's only rule is
+that a handshake's `Origin` starts with `chrome-extension://`; there is no token.
+
+`extension/sharing-host.js` owns the host socket, retries with the capture
+host's backoff while the worker lives, and keeps a one-minute
+`hachidori-sharing-host` alarm only while enabled and disconnected so a worker
+Chrome has put to sleep still notices GameSentenceMiner starting. A forwarded
+request is dispatched by its target through `relayEngineRequest`,
+`handleWorkerRequest`, `handleUpdatesRequest` or `handleAnkiRequest` with a
+synthetic sender, exactly as a page's message would be; the reply goes back
+verbatim, including its `requestId`. Every `chrome.storage.onChanged` batch
+touching `dictionaryState`, `options`, `customDictionarySource`,
+`dictionaryUpdates`, `lookupStats` or a `lookupStats:` row is broadcast whole,
+so a linked browser can replay it as one write. A browser install shares by
+default; the overlay copy (`OVERLAY_MODE`) does not.
+
+A linked install runs `extension/sharing-client.js`: one WebSocket to the
+relay's `/link`, `hello` on open, requests matched to replies by id, and the
+same backoff on close. `relayEngineRequest`, `handleWorkerRequest`,
+`handleUpdatesRequest` and `handleAnkiRequest` forward every message in the
+`FORWARDED_REQUESTS` table while linked and return the host's reply verbatim;
+the storage batches the host pushes are written with one `chrome.storage.local`
+`set()` outside `writeLocalState()`, the only other writer of shared keys. At
+link time the install's own five shared values are kept in `sharingLocalState`,
+the host's snapshot takes their place under the live keys, and the engine's
+`hd_state_read` / `hd_state_cas` / `hd_custom_read` / `hd_custom_cas` are served
+from that kept record, so no local generation is judged against the mirror.
+Update-alarm and maturity-cache reconciliation clear their alarms while linked.
+Unlinking restores the kept values with `max(kept, mirrored) + 1` revisions and
+removes the host's `lookupStats:` rows. The local-only `sharing` key holds
+`{ host: { enabled, port } | null, client: { address } | null }` and neither it
+nor `sharingLocalState` is part of backups. See [sharing](sharing.md) for use.
+
 ## Storage ownership
 
 | Data | Owner | Storage |
@@ -1948,6 +1993,8 @@ retryable.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
+| Sharing configuration: whether this install shares and on which port, or which host it is linked to | service worker | `chrome.storage.local` key `sharing` |
+| A linked install's own shared values, kept while the live keys mirror the host | service worker; the local engine reads and commits it through the worker | `chrome.storage.local` key `sharingLocalState` |
 | Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
 | Media streams, compressed-frame/PCM history, occurrence timeline, pins, export jobs, and received texthooker text | offscreen capture host; dedicated workers own frame canvases and encoding allocations | transient memory only |
 | Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
@@ -2018,6 +2065,8 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
 | `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |
+| `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state, or start and stop the native messaging bridge that serves other browsers on this computer |
+| `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address, link this install to it (keeping its own state aside and mirroring the host's), or unlink and restore |
 | `hd_capture_open`, `hd_capture_tabs`, `hd_capture_link`, `hd_capture_unlink` | Open the explicit capture surface, enumerate candidate reading tabs, and bind or release one trusted page/document |
 | `hd_capture_video_select`, `hd_capture_track_area`, `hd_capture_clear_area` | Control the linked page's session-only cue and DOM collectors |
 | `hd_capture_text_begin`, `hd_capture_text_close`, `hd_capture_text_source_close` | Forward bounded occurrence lifecycle records from the linked content script to the registered capture session |

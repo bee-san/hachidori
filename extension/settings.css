@@ -1528,3 +1528,15 @@ textarea {
     opacity: 0.5;
   }
 }
+
+#sharing { gap: 16px; }
+#sharing .field-hint { margin: 0; }
+#sharing .lookup-group legend { margin-bottom: 8px; }
+#sharing .lookup-group .field,
+#sharing .lookup-enable { padding-block: 9px; }
+#sharing-status:empty { display: none; }
+.sharing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
