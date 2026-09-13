@@ -5936,6 +5936,8 @@ async function main() {
     sourceHighlight?.fallback === true, JSON.stringify(sourceHighlight));
   check("a suspended source highlight publishes nothing, ignores matches meanwhile and repaints its exact ranges",
     sourceHighlight?.restored === true, JSON.stringify(sourceHighlight));
+  check("source highlighting paints text-node sources one range per glyph box and clears when a box goes",
+    sourceHighlight?.textSources === true, JSON.stringify(sourceHighlight));
   check("Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset",
     frequencySettings?.toolbar === true, JSON.stringify(frequencySettings));
   check("Settings applies the selected popup theme live across local edits and storage events",
@@ -7819,8 +7821,31 @@ async function sourceHighlightStage() {
     const restored = publishedBefore && suspendedEmpty && suspendedQuiet && heldBySecond && texts() === "食べる";
     highlighter.clearAll();
     suspendSource.remove();
+    // A pointer scan's sources are text nodes, one per positioned glyph box.
+    const boxes = Array.from("食べた", (glyph) => {
+      const box = document.createElement("span");
+      box.textContent = glyph;
+      return box;
+    });
+    document.body.append(...boxes);
+    const boxedScope = highlighter.scope("boxed");
+    boxedScope.apply({ sourceElements: boxes.map((box) => box.firstChild), sentence: "食べた", matchOffset: 1 }, "べた");
+    const boxedRanges = ranges();
+    const boxedPainted = texts() === "べ|た" && boxedRanges.length === 2
+      && boxedRanges.every((range, index) => range.startContainer === boxes[index + 1].firstChild);
+    // Text changing elsewhere in the sentence leaves the match in place.
+    boxes[0].firstChild.data = "俺";
+    await settle();
+    const boxedNeighbour = texts() === "べ|た";
+    boxes[2].remove();
+    await settle();
+    const boxedDetached = ranges().length === 0;
+    const textSources = boxedPainted && boxedNeighbour && boxedDetached;
+    highlighter.clearAll();
+    boxes[0].remove();
+    boxes[1].remove();
     const fallback = await sourceHighlightFallbackCase(window);
-    return { ownership, restored, mutations, fallback, visits, replacement, stale };
+    return { ownership, restored, mutations, fallback, visits, replacement, stale, textSources };
   } finally {
     highlighter.clearAll();
     window.close();
@@ -13440,7 +13465,8 @@ async function contentNoteStage() {
     const restored = block.querySelector("b");
     const restoredProse = scan(block.firstChild)?.query === "食べた" && scan(restored.firstChild)?.query === "べた";
     block.querySelector("span").style.display = "block";
-    const restoredBlock = scan(block.firstChild)?.query === "食";
+    // Layout never ends a scan: Yomitan's layout-unaware default reads on.
+    const restoredBlock = scan(block.firstChild)?.query === "食べた";
     block.querySelector("span").style.display = "inline";
     for (const editor of [block.querySelector("span"), restored]) {
       editor.setAttribute("contenteditable", "true");
@@ -13450,12 +13476,53 @@ async function contentNoteStage() {
       editor.removeAttribute("contenteditable");
       delete editor.isContentEditable;
     }
+    // An OCR overlay boxes every glyph in its own positioned span and separates
+    // blocks with a "\n" span, the DOM the GameSentenceMiner overlay builds.
+    block.remove();
+    const glyphBlock = (text, vertical = false) => {
+      const container = document.createElement("p");
+      container.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%";
+      for (const glyph of text) {
+        const box = document.createElement("span");
+        box.style.cssText = `position:absolute;display:flex;left:1%;top:2%${vertical ? ";writing-mode:vertical-rl" : ""}`;
+        box.textContent = glyph;
+        container.append(box);
+      }
+      return container;
+    };
+    const firstText = "俺は気になる事があって、放送塔へ足を運んだ。";
+    const firstBlock = glyphBlock(firstText);
+    const separators = [0, 1].map(() => {
+      const separator = document.createElement("span");
+      separator.style.position = "absolute";
+      separator.textContent = "\n";
+      return separator;
+    });
+    const secondBlock = glyphBlock("「あ、やっぱり……」", true);
+    document.body.append(separators[0], firstBlock, separators[1], secondBlock);
+    const glyphSpan = firstBlock.children[2];
+    const boxed = scan(glyphSpan.firstChild);
+    const { scanLength } = window.HDReaderOptions.DEFAULT_OPTIONS;
+    const boxedFirst = boxed?.query === Array.from(firstText).slice(2, 2 + scanLength).join("") && boxed.matchOffset === 2
+      && boxed.sentence === firstText && boxed.anchor === glyphSpan
+      && boxed.sourceElements.every((node) => node.nodeType === 3 && firstBlock.contains(node))
+      && boxed.sourceElements.map((node) => node.textContent).join("") === boxed.sentence
+      && boxed.vertical === false;
+    const boxedSecond = scan(secondBlock.children[1].firstChild);
+    const boxedNext = boxedSecond?.query === "あ、やっぱり……」" && boxedSecond.sentence === "「あ、やっぱり……」"
+      && boxedSecond.matchOffset === 1 && boxedSecond.vertical === true;
+    firstBlock.remove();
+    secondBlock.remove();
+    for (const separator of separators) separator.remove();
     harness.close();
     return {
       "pointer scans cross ordinary inline text and apply the live Japanese-only preference":
         crossedInline && japaneseOnly && unrestricted && gatedAgain && restoredProse && restoredBlock,
       "editing controls and contenteditable text stop both direct and forward pointer scanning":
         controls.every(Boolean) || controls,
+      "pointer scans cross positioned per-glyph boxes and take the sentence from the block's text nodes":
+        (boxedFirst && boxedNext) || { boxed: boxed && { ...boxed, anchor: null, anchorRange: null, scanEntries: null, sourceElements: boxed.sourceElements.length },
+          boxedSecond: boxedSecond && { query: boxedSecond.query, sentence: boxedSecond.sentence, matchOffset: boxedSecond.matchOffset, vertical: boxedSecond.vertical } },
     };
   }
 
