@@ -211,6 +211,7 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
+  "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
   "a fresh install waits for Start setup before dictionary downloads or Anki discovery",
   "Start setup begins automatic dictionary installation with first-install preferences",
   "Settings shows Resume setup while first-run setup is incomplete",
@@ -337,6 +338,7 @@ const PLANNED = [
   "custom Settings lazily saves a source through the real WASM importer",
   "the popup opens below the complete wrapped match instead of the hovered glyph",
   "browser zoom keeps the popup at its configured on-screen size inside the viewport",
+  "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "hovering an inflected verb shows a popup",
   "the content script attached its closed-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
@@ -4322,6 +4324,17 @@ async function hoverPracticeCharacter(startup, index) {
   await startup.mouse.move(point.x, point.y);
 }
 
+// A fresh install looks up while Shift is held, and the popup outlives its release.
+async function holdShiftOverPracticeCharacter(startup, index, popup) {
+  await startup.keyboard.down("Shift");
+  try {
+    await hoverPracticeCharacter(startup, index);
+    return await popup.waitForVisible();
+  } finally {
+    await startup.keyboard.up("Shift");
+  }
+}
+
 async function checkStartupPractice(startup, browser, startupUrl) {
   // Native skip navigation can precede startup.js's click handler. Reload that
   // exact URL so a fresh reader must accept the fragment, not an earlier reader
@@ -4393,8 +4406,7 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   await startup.evaluate(() => getSelection().removeAllRanges());
   // The two-character word may wrap; its aggregate span box includes other
   // text between the end of one line and the beginning of the next.
-  await hoverPracticeCharacter(startup, 0);
-  const hovered = await popup.waitForVisible();
+  const hovered = await holdShiftOverPracticeCharacter(startup, 0, popup);
   const genuine = state => state?.plain.includes("辞書")
     && state.text.includes(`${RECOMMENDED_DICTIONARIES[0].title} term fixture`);
   check("startup practice immediately demonstrates the installed dictionaries and retains keyboard and hover lookup",
@@ -6973,6 +6985,25 @@ async function main() {
       ),
     JSON.stringify(branding),
   );
+  await showSettingsSection(page, "keybinds");
+  const browserShortcuts = await page.evaluate(async () => {
+    const commands = await chrome.commands.getAll();
+    const listed = () => [...document.querySelectorAll("#browser-shortcut-list li")].map(item => item.textContent);
+    for (let attempt = 0; attempt < 50 && listed().length < commands.length; attempt++) {
+      await new Promise(resolveWait => setTimeout(resolveWait, 20));
+    }
+    return { commands: commands.map(({ name, shortcut }) => ({ name, shortcut })), listed: listed() };
+  });
+  check(
+    "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
+    // Chrome registers the manifest's suggested Alt+Delete and reports it as Alt+Del.
+    browserShortcuts.commands.some(({ name, shortcut }) => name === "toggleTextScanning" && shortcut === "Alt+Del")
+      && browserShortcuts.commands.some(({ name }) => name === "openSettingsPage")
+      && ["addNote", "nextEntry"].every(action => browserShortcuts.commands.some(({ name }) => name === action))
+      && browserShortcuts.listed.includes("Turn Japanese lookups on or offAlt+Del")
+      && browserShortcuts.listed.includes("Add the current popup entry to AnkiNot set"),
+    JSON.stringify(browserShortcuts),
+  );
   // ---------------------------------------------------------- first-run setup
   // chrome.runtime.onInstalled fired with reason "install" for this clean
   // profile, so the extension itself opened startup.html. Downloads and Anki
@@ -7442,12 +7473,13 @@ async function main() {
   if (startup) await checkStartupPractice(startup, browser, startupUrl);
 
   // The dictionary-dependent selections were applied once; the user now returns
-  // both to Automatic so the remaining assertions keep their historical options.
+  // both to Automatic, and lookups to plain hover, so the remaining assertions
+  // keep their historical options.
   await page.evaluate(async () => {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
       requestId: "first-run-reset", baseRevision: options.revision,
-      options: { compactDefinitionSummaryDictionary: "", kanjiClickDictionary: "" } });
+      options: { compactDefinitionSummaryDictionary: "", kanjiClickDictionary: "", lookupMode: "hover" } });
     if (!reply.ok) throw new Error(reply.error);
   });
 
@@ -9103,6 +9135,35 @@ async function main() {
       && zoomed.rect.right <= zoomed.viewport.width && zoomed.rect.bottom <= zoomed.viewport.height,
     JSON.stringify(zoomed),
   );
+
+  // Readers such as ttu turn pages from body wheel listeners; the popup's own
+  // scrolling, including past its end, must reach neither them nor the page.
+  await tab.evaluate(() => {
+    document.body.style.minHeight = "400vh";
+    window.__pageWheels = 0;
+    document.body.addEventListener("wheel", window.__countPageWheel = () => { window.__pageWheels += 1; });
+  });
+  const wheelPopup = await hover("#verb");
+  const wheelRect = wheelPopup === null ? null : (await popup.dictionaryTabs()).rect;
+  let wheeled = null;
+  if (wheelRect) {
+    const before = await tab.evaluate(() => window.scrollY);
+    await tab.mouse.move(wheelRect.left + wheelRect.width / 2, wheelRect.top + wheelRect.height / 2);
+    for (let step = 0; step < 12; step += 1) await tab.mouse.wheel({ deltaY: 400 });
+    await new Promise(done => setTimeout(done, 300));
+    wheeled = { before, ...await tab.evaluate(() => ({ after: window.scrollY, pageWheels: window.__pageWheels })),
+      visible: await popup.waitForVisible(1000) !== null };
+  }
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await tab.evaluate(() => {
+    document.body.removeEventListener("wheel", window.__countPageWheel);
+    document.body.style.minHeight = "";
+    window.scrollTo(0, 0);
+  });
+  check("wheel over the popup scrolls neither the page nor its body wheel listeners",
+    wheeled !== null && wheeled.visible && wheeled.pageWheels === 0 && wheeled.after === wheeled.before,
+    JSON.stringify({ wheelRect, wheeled }));
 
   const verb = await hover("#verb");
   check("hovering an inflected verb shows a popup", verb !== null,

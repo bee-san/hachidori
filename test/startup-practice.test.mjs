@@ -75,7 +75,7 @@ test("a passage-only result keeps the reader available without advertising an un
     "Try looking up a word below. Hover over Japanese text.");
   f.update({ ...OPTIONS, lookupMode: "activation", activationKey: "Control" }, DICTIONARIES, "passage");
   assert.equal(f.el("setup-practice-instruction").textContent,
-    "Try looking up a word below. Hold Control and hover over Japanese text.");
+    "Try looking up a word below. Hold Control and hover over a word.");
   f.update();
   f.el("setup-practice-lookup").focus();
   f.update(OPTIONS, DICTIONARIES, "passage");

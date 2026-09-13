@@ -17,6 +17,7 @@
   const TARGET = "hoshidicts-offscreen";
   const PAGE_ZOOM_TARGET = "hachidori-page-zoom";
   const WORKER_TARGET = "hoshidicts-worker";
+  const READER_TARGET = "hachidori-reader";
   const HIGHLIGHT_NAME = "gsm-hoshidicts-match";
   const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
@@ -991,6 +992,7 @@
     window.removeEventListener("resize", refreshPageZoom);
     try {
       chrome.storage.onChanged.removeListener(onStorageChanged);
+      chrome.runtime.onMessage?.removeListener(onReaderCommand);
     } catch {
       // The context is already gone; the listener died with it.
     }
@@ -1614,6 +1616,7 @@
       const child = levels[level.depth + 1];
       if (child) positionPopup(child);
     }, { capture: true, passive: true });
+    popup.addEventListener("wheel", onPopupWheel, { passive: false });
     popup.addEventListener("mouseenter", () => onPopupEnter(level));
     popup.addEventListener(
       "mousemove",
@@ -2111,6 +2114,29 @@
       if (levels[index].noteEditing || levels[index].pendingCustomAppends > 0) return true;
     }
     return false;
+  }
+
+  // The popup's wheel belongs to the popup. Readers such as ttu turn pages from
+  // wheel events on their body, and a pane that cannot scroll further (or has
+  // nothing to scroll) would otherwise chain the gesture into the page.
+  function onPopupWheel(event) {
+    event.stopPropagation();
+    if (event.defaultPrevented || event.ctrlKey) return;
+    const popup = event.currentTarget;
+    for (let node = event.target; node instanceof Element; node = node === popup ? null : node.parentElement) {
+      if (canScrollBy(node, event.deltaX, event.deltaY)) return;
+    }
+    event.preventDefault();
+  }
+
+  function canScrollBy(element, deltaX, deltaY) {
+    const room = (delta, offset, size, viewport) => delta > 0 ? offset + viewport < size - 1 : delta < 0 && offset > 0;
+    const vertical = room(deltaY, element.scrollTop, element.scrollHeight, element.clientHeight);
+    const horizontal = room(deltaX, element.scrollLeft, element.scrollWidth, element.clientWidth);
+    if (!vertical && !horizontal) return false;
+    const style = window.getComputedStyle(element);
+    const scrolls = overflow => overflow === "auto" || overflow === "scroll";
+    return (vertical && scrolls(style.overflowY)) || (horizontal && scrolls(style.overflowX));
   }
 
   function onPopupFocusOut(event) {
@@ -2734,6 +2760,12 @@
     return options.lookupMode === "hover" || activationPressed;
   }
 
+  // Yomitan's default: once shown, the popup outlives the activation key and
+  // the pointer's wanderings; only an explicit dismissal or a new lookup ends it.
+  function schedulePointerHide() {
+    if (options.lookupMode !== "activationSticky") scheduleHide();
+  }
+
   function updateModifierState(event) {
     const property = MODIFIER_PROPERTIES.get(options.activationKey);
     if (property) activationPressed = event[property] === true;
@@ -2845,13 +2877,13 @@
     }
     if (!activationAllowed()) {
       cancelCandidateScan();
-      scheduleHide();
+      schedulePointerHide();
       return;
     }
     const candidate = resolveCandidate(pointer.clientX, pointer.clientY);
     if (!candidate) {
       cancelCandidateScan();
-      scheduleHide();
+      schedulePointerHide();
       return;
     }
     const signature = candidateSignature(candidate);
@@ -2953,7 +2985,7 @@
     }
     if (!activationAllowed() && window.getSelection()?.isCollapsed !== false) {
       cancelCandidateScan();
-      scheduleHide();
+      schedulePointerHide();
       return;
     }
     scheduleScan();
@@ -3123,6 +3155,14 @@
     }
   }
 
+  // A browser shortcut runs its keybind action here; entry moves go one entry.
+  function onReaderCommand(message) {
+    if (disposed || message?.target !== READER_TARGET || message.type !== "hd_reader_command") return false;
+    runKeybindAction({ action: message.action, argument: ["nextEntry", "previousEntry"].includes(message.action) ? "1" : "" },
+      { preventDefault() {}, stopPropagation() {} });
+    return false;
+  }
+
   // After Yomitan's HotkeyHandler: the physical key and the exact modifier set
   // select enabled keybinds whose scope applies; the first handled one wins.
   function runKeybinds(event) {
@@ -3163,7 +3203,7 @@
       activationCode = event.code;
     }
     const popupLevel = activePointerLevel(lastPointer);
-    if (!wasPressed && activationPressed && options.lookupMode === "activation"
+    if (!wasPressed && activationPressed && options.lookupMode !== "hover"
         && lastPointer && !hasProtectedNote() && !popupHasFocus()
         && (!pointerInPopup || popupLevel)
         && !selectionDragActive
@@ -3195,7 +3235,7 @@
       lastPointer = null;
       pointerInPopup = false;
       cancelCandidateScan();
-      scheduleHide();
+      schedulePointerHide();
     }
   }
 
@@ -3458,7 +3498,7 @@
       if (!hasProtectedNote() && !popupHasFocus() && (!pointerInPopup || popupLevel)) {
         if (!activationAllowed()) {
           if (popupLevel) cancelPendingHover(popupLevel);
-          else scheduleHide();
+          else schedulePointerHide();
         }
         else if (lastPointer) scheduleScan();
       }
@@ -3472,6 +3512,8 @@
   function start() {
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);
+      // Optional like the worker's commands API: reader smoke hosts have no runtime messages.
+      chrome.runtime.onMessage?.addListener(onReaderCommand);
       chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS, lookupStats: null }, (stored) => {
         if (disposed || chrome.runtime.lastError) {
           return;

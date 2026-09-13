@@ -145,6 +145,8 @@ values that are still absent in one write, then opens one `startup.html` tab
 only when it created the setup record. Chrome reports `install` again on every
 launch for an unpacked extension loaded from the command line, so the absence
 of that record, not the reason alone, identifies a new installation.
+[Overlay mode](overlay-mode.md) skips this path and only seeds the initial
+options on worker start.
 
 - `setupState`: `{ schemaVersion: 1, revision, startedAt, stage, completedAt,
   dictionaries, anki }`, where `stage` is `welcome`, `dictionaries`, `anki`, `practice` or
@@ -466,9 +468,11 @@ the real dictionary lookup checks.
 
 ## Hover activation and popup ownership
 
-The reader has one live `hoverEnabled` switch and `lookupMode` (`hover` or
-`activation`). Existing plain-hover behavior remains the default; the configured
-activation key defaults to Shift. `reader-options.js` translates legacy
+The reader has one live `hoverEnabled` switch and `lookupMode` (`hover`,
+`activation` or `activationSticky`). The default follows Yomitan: hold the
+activation key, Shift by default, and hover; the popup then stays open after the
+key is released. `activation` instead closes the popup on release, and `hover`
+scans without a key. `reader-options.js` translates legacy
 `modifier` values into the canonical mode/key on read and accepts old Settings
 patches through the same revision CAS. Explicit modern fields win, and selecting
 Hover does not erase the remembered key. Canonical writes contain no competing
@@ -489,7 +493,10 @@ then a separate press closes the popup. No page key is captured for activation.
 
 Key release, target/window departure, outside click, Escape, blur and scroll
 cancel delayed or unfinished pointer work immediately; the hide delay only
-retains an already-rendered popup for transfer. Same-candidate hover, popup entry,
+retains an already-rendered popup for transfer. In `activationSticky` a rendered
+popup ignores key release, pointer movement without the key, an empty scan and
+window departure; outside click, Escape, blur, scrolling its source away, a
+failed lookup or a new lookup still close it. Same-candidate hover, popup entry,
 keyboard focus and Note editing preserve the current view. Dispatching a different
 valid pointer candidate retires the previous popup, matching the pinned reader's
 `queueLookup` prune-before-send behavior: an obsolete view cannot accept a Note
@@ -503,7 +510,7 @@ dispatched Note append finishes its transaction without reopening or refreshing
 the disabled reader. Settings changes reach existing tabs and persist through a
 full browser restart without reloading the engine.
 
-![Hover controls in Settings](assets/reader-activation-settings.png)
+![Lookup mode and activation key in Settings](assets/reader-activation-settings.png)
 
 ### Keybinds
 
@@ -550,6 +557,27 @@ The Keybinds section edits the list like Yomitan's key field: a key press
 replaces the modifiers, a non-modifier key replaces the key, and plain Tab still
 moves focus. Each row has Clear, Reset (the action's first default binding) and
 Remove. The section also has Add and Reset keybinds to defaults.
+
+Yomitan's native browser shortcuts are manifest `commands` for the features
+Hachidori has:
+
+- Turn Japanese lookups on or off, suggested as Alt+Delete like Yomitan's
+  Toggle text scanning.
+- Open Hachidori settings, unassigned.
+- One unassigned command for each popup keybind action that needs no chosen
+  argument: Close, Add to Anki, View in Anki, Play audio, the entry and
+  dictionary moves, Back, and the two selection scans.
+
+The worker toggles `hoverEnabled` inside its storage queue with the same
+revisioned options write as the toolbar switch. A popup-action command goes to
+the active tab as `hd_reader_command`. Every frame's reader runs the matching
+keybind action, with a count of one for entry moves. Only a frame with an open
+popup, or a selection for the scans, acts on it. Chrome alone can change these
+shortcuts, as with Yomitan on Chrome. The Keybinds section lists
+`chrome.commands.getAll()`, refreshes the list when its window regains focus,
+and opens `chrome://extensions/shortcuts`.
+
+![Browser shortcuts listed in Keybinds](assets/settings-browser-shortcuts.png)
 
 ![Keybinds in Settings with Yomitan's default bindings](assets/settings-keybinds.png)
 

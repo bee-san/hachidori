@@ -412,15 +412,16 @@
               <label class="field">
                 <span class="field-label">Lookup mode</span>
                 <select id="opt-lookup-mode">
+                  <option value="activationSticky">Activation key + hover, popup stays open</option>
+                  <option value="activation">Activation key + hover, popup closes on release</option>
                   <option value="hover">Hover</option>
-                  <option value="activation">Activation key + hover</option>
                 </select>
-                <span class="field-hint">Automatically, or while holding a key.</span>
+                <span class="field-hint">Hold a key to look up a word, or look up automatically on hover.</span>
               </label>
               <label class="field">
                 <span class="field-label">Activation key</span>
                 <select id="opt-activation-key"></select>
-                <span class="field-hint">Used in Activation key + hover mode. Some keys are reserved by your browser or operating system.</span>
+                <span class="field-hint">Used by the activation key modes. Some keys are reserved by your browser or operating system.</span>
               </label>
             </div>
           </fieldset>
@@ -971,6 +972,12 @@
             <button id="keybind-add" type="button" class="ghost">Add keybind</button>
             <button id="keybind-reset-all" type="button" class="ghost">Reset keybinds to defaults</button>
           </div>
+          <fieldset class="lookup-group" id="browser-shortcuts">
+            <legend>Browser shortcuts</legend>
+            <p class="field-hint">Chrome runs these on any page. Popup actions need an open popup. Change them in Chrome's extension shortcuts.</p>
+            <ul id="browser-shortcut-list" class="browser-shortcut-list"></ul>
+            <button id="browser-shortcuts-open" type="button" class="ghost">Change in Chrome</button>
+          </fieldset>
         </section>
         <section class="card" id="backup" aria-labelledby="backup-heading" hidden>
           <div class="card-head">

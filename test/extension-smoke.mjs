@@ -730,7 +730,7 @@ function loadClassicScript(file, sandbox) {
   return context;
 }
 
-function loadBackgroundScript(sandbox) {
+function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads });
   sandbox.createAnkiWorkerService = createAnkiWorkerService;
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
@@ -751,6 +751,9 @@ function loadBackgroundScript(sandbox) {
     .replace(/^export\s+/gmu, "");
   const responseLimits = readFileSync(resolve(EXTENSION, "response-limits.js"), "utf8")
     .replace(/^export\s+/gmu, "");
+  const overlayModeSource = readFileSync(resolve(EXTENSION, "overlay-mode.js"), "utf8")
+    .replace(/^export\s+/gmu, "")
+    .replace("OVERLAY_MODE = false;", `OVERLAY_MODE = ${overlayMode};`);
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
@@ -770,7 +773,8 @@ function loadBackgroundScript(sandbox) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "");
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
+    .replace(/import \{ OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;
@@ -783,7 +787,7 @@ function loadBackgroundScript(sandbox) {
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${setupState}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1074,6 +1078,54 @@ async function externalLinksBackgroundStage() {
     independent && failureAttempts === 1 && failed?.ok === false && validReply(failed) && failed.error.includes("tab creation failed")
       && !bus.log.some(message => message.relayed),
     JSON.stringify({ independent, failed, log: bus.log }));
+}
+
+// A host that embeds Hachidori in an overlay has no tab for setup and wants
+// hover lookups without a page highlight from the first launch.
+async function overlayModeBackgroundStage() {
+  const storage = makeStorage();
+  const tabs = [];
+  const tabsApi = { async create(properties) { tabs.push(structuredClone(properties)); return { id: tabs.length }; } };
+  const start = (name, store) => {
+    const chrome = makeChrome(name, makeBus(), store);
+    chrome.tabs = tabsApi;
+    loadBackgroundScript({ chrome, console, URL, setTimeout, clearTimeout, Promise, Error }, { overlayMode: true });
+    return chrome;
+  };
+  const settle = async (predicate = () => false) => {
+    for (let attempt = 0; attempt < 50 && !predicate(); attempt += 1) {
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+    }
+  };
+
+  const chrome = start("overlay-worker", storage);
+  chrome.__events.onInstalled.fire({ reason: "install" });
+  await settle(() => storage.raw.has("options"));
+  await settle();
+  const seeded = storage.raw.get("options");
+  const seededOnce = tabs.length === 0 && !storage.raw.has("setupState")
+    && JSON.stringify(seeded) === JSON.stringify({
+      lookupMode: "hover", sourceHighlightEnabled: false,
+      showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1,
+    });
+
+  // The seeded values are defaults, not locks: a later edit survives a restarted worker.
+  const edited = { ...seeded, lookupMode: "activation", sourceHighlightEnabled: true, revision: 2 };
+  await storage.api().local.set({ options: edited });
+  start("overlay-worker-restart", storage).__events.onInstalled.fire({ reason: "install" });
+  await settle();
+  const preserved = tabs.length === 0 && !storage.raw.has("setupState")
+    && JSON.stringify(storage.raw.get("options")) === JSON.stringify(edited);
+
+  const carried = makeStorage();
+  await carried.api().local.set({ options: { scanLength: 20, revision: 4 } });
+  start("overlay-worker-carried", carried);
+  await settle();
+  const carriedKept = JSON.stringify(carried.raw.get("options")) === JSON.stringify({ scanLength: 20, revision: 4 });
+
+  check("overlay mode seeds hover lookups without a highlight once and never opens setup",
+    seededOnce && preserved && carriedKept,
+    JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
 }
 
 async function firstRunBackgroundStage() {
@@ -2943,6 +2995,7 @@ async function main() {
   await hostedExtensionBackgroundStage();
   await externalLinksBackgroundStage();
   await firstRunBackgroundStage();
+  await overlayModeBackgroundStage();
   await firstRunAnkiStage();
   await backupRelayStage();
   await managedScheduleStage();
@@ -7161,7 +7214,7 @@ async function startupPracticeStage() {
     const expected = ["辞書", "辞書"];
     const probed = JSON.stringify(page.lookups()) === JSON.stringify(expected);
     const invited = withoutDictionary && probed && sample()?.textContent === PRACTICE_SENTENCE_TEXT && sample().lang === "ja"
-      && document.getElementById("setup-body").textContent.includes("Hover over Japanese text, or use the lookup button.")
+      && document.getElementById("setup-body").textContent.includes("Hold Shift and hover over a word, or use the lookup button.")
       && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
       && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"])
       // jsdom does not run appended scripts, so the chain stops at the first one.
@@ -7220,7 +7273,7 @@ async function startupPracticePartial(jsdom, setup) {
     const partial = page.heading() === "You’re ready."
       && lookup.hidden && lookup.disabled && !document.getElementById("setup-practice-tools").hidden
       && document.getElementById("setup-practice-recovery").hidden
-      && document.getElementById("setup-practice-instruction").textContent === "Try looking up a word below. Hover over Japanese text."
+      && document.getElementById("setup-practice-instruction").textContent === "Try looking up a word below. Hold Shift and hover over a word."
       && readerScripts(document).length === 1
       && JSON.stringify(requests.map(({ text, scanLength, maxResults }) => [text, scanLength, maxResults]))
         === JSON.stringify([["辞書", 2, 7], [PRACTICE_SENTENCE_TEXT, 1, 1]]);
@@ -10367,10 +10420,11 @@ async function contentNoteStage() {
         kanjiCount: kanjiClickDictionary?.kind === "kanji" ? 1 : 0,
       })],
     };
+    const runtimeListeners = new Set();
     window.chrome = {
       runtime: {
         id: "hachidoricontnotesmoke",
-        onMessage: { addListener() {}, removeListener() {} },
+        onMessage: { addListener(fn) { runtimeListeners.add(fn); }, removeListener(fn) { runtimeListeners.delete(fn); } },
         lastError: null,
         getURL: (path) => `chrome-extension://hachidoricontnotesmoke/${path}`,
         sendMessage(request, callback) {
@@ -10602,6 +10656,7 @@ async function contentNoteStage() {
       },
       emitOptions,
       emitState,
+      runtimeMessage(message) { for (const listener of runtimeListeners) listener(message, {}, () => {}); },
       entryFocus: (depth = 0) => popupRecord(depth).entryFocus,
       emitLookupStats(descriptor, row) { storageListener?.({ lookupStats: { newValue: descriptor },
         ...(row ? { [lookupStatsKey(descriptor, row)]: { newValue: row } } : {}),
@@ -13069,6 +13124,33 @@ async function contentNoteStage() {
     }
   }
 
+  async function popupWheelCase() {
+    const harness = await createHarness();
+    try {
+      await harness.initialLookup();
+      const window = harness.popup.ownerDocument.defaultView;
+      let pageWheels = 0;
+      window.document.body.addEventListener("wheel", () => { pageWheels += 1; });
+      const wheel = () => {
+        const event = new window.WheelEvent("wheel", { deltaY: 40, bubbles: true, cancelable: true, composed: true });
+        harness.popup.dispatchEvent(event);
+        return event.defaultPrevented;
+      };
+      const unscrollableHeld = wheel();
+      Object.defineProperties(harness.popup, { scrollHeight: { value: 500 }, clientHeight: { value: 100 } });
+      harness.popup.style.overflowY = "auto";
+      const scrollableNative = !wheel();
+      Object.defineProperty(harness.popup, "scrollTop", { value: 400 });
+      const edgeHeld = wheel();
+      return {
+        "popup wheel never reaches the page and cannot chain past a pane with no room left":
+          pageWheels === 0 && unscrollableHeld && scrollableNative && edgeHeld,
+      };
+    } finally {
+      harness.close();
+    }
+  }
+
   async function movedMatchEndpointCase() {
     const harness = await createHarness();
     try {
@@ -13110,11 +13192,11 @@ async function contentNoteStage() {
     if (whileEditing) harness.reply(whileEditing, {}, false);
     await harness.settle();
     input.blur();
-    harness.emitOptions({ onlyScanJapaneseText: false });
+    harness.emitOptions({ lookupMode: "hover", onlyScanJapaneseText: false });
     harness.driver.setScanCandidate({ ...harness.candidate, query: "hello" });
     harness.driver.scanPointer(pointer);
     const beforeGate = harness.take("hd_lookup");
-    harness.emitOptions({ onlyScanJapaneseText: true });
+    harness.emitOptions({ lookupMode: "hover", onlyScanJapaneseText: true });
     if (beforeGate) harness.reply(beforeGate, { dictionaryCount: 1, results: [harness.term("hello")] });
     await harness.settle();
     const obsoleteRejected = harness.driver.snapshot().popupHidden;
@@ -13477,6 +13559,28 @@ async function contentNoteStage() {
     await harness.settle();
     result["activation release cancels delayed scans and a first pending reply without pointer motion"] =
       gated && delayed && cancelledTimer && pending !== null && harness.driver.snapshot().popupHidden;
+
+    harness.emitOptions({ ...settings, lookupMode: "activationSticky" });
+    key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
+    fire(75);
+    const sticky = harness.take("hd_lookup");
+    key("keyup", "Shift", "ShiftLeft");
+    if (sticky) harness.reply(sticky, { dictionaryCount: 1, results: [harness.term("sticky")] });
+    await harness.settle();
+    harness.driver.setScanCandidate(null);
+    move();
+    fire(75);
+    key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
+    fire(75);
+    key("keyup", "Shift", "ShiftLeft");
+    harness.driver.onMouseOut({ relatedTarget: null });
+    const stayed = sticky !== null && !harness.driver.hideTimerPending() && !harness.driver.snapshot().popupHidden;
+    harness.driver.onMouseDown({ target: window.document.body, clientX: 200, clientY: 200 });
+    result["sticky activation keeps the popup through key release and pointer departure until a click"] =
+      stayed && harness.driver.snapshot().popupHidden;
+    harness.driver.onWindowBlur();
+    harness.driver.setScanCandidate(harness.candidate);
+    move();
 
     harness.emitOptions({ ...settings, activationKey: "/" });
     key("keydown", "/", "Slash");
@@ -14247,10 +14351,20 @@ async function contentNoteStage() {
       const added = press(defaults, "KeyE", "e", { altKey: true });
       const hiddenView = press(defaults, "KeyV", "v", { altKey: true });
       const played = press(defaults, "KeyP", "p", { altKey: true }) && defaults.take("hd_audio_play") !== null;
+      const command = action => defaults.runtimeMessage({ target: "hachidori-reader", type: "hd_reader_command", action });
+      command("nextEntry");
+      command("addNote");
+      command("addNote");
+      const commandFocus = JSON.stringify(defaults.entryFocus().slice(4)) === JSON.stringify([{ offset: 1 }]);
+      command("close");
+      const commandClosed = defaults.driver.snapshot().popupHidden;
+      result["browser shortcut commands run popup keybind actions"] =
+        (commandFocus && mined === 3 && commandClosed) || { focus: defaults.entryFocus(), mined, commandClosed };
+      await defaults.initialLookup();
       const escaped = press(defaults, "Escape", "Escape") === false && defaults.driver.snapshot().popupHidden;
       result["default keybinds navigate entries, mine, play and close through Yomitan's keys"] =
-        (JSON.stringify(defaults.entryFocus()) === JSON.stringify([{ offset: 1 }, { offset: -3 }, "first", "last"])
-          && moved.every(Boolean) && !unmodified && added && mined === 1 && !hiddenView && played && escaped)
+        (JSON.stringify(defaults.entryFocus().slice(0, 4)) === JSON.stringify([{ offset: 1 }, { offset: -3 }, "first", "last"])
+          && moved.every(Boolean) && !unmodified && added && mined >= 1 && !hiddenView && played && escaped)
         || { focus: defaults.entryFocus(), moved, unmodified, added, mined, hiddenView, played, escaped };
     } finally {
       defaults.close();
@@ -14317,7 +14431,7 @@ async function contentNoteStage() {
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await movedMatchEndpointCase(),
+    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
