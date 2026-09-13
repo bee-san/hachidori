@@ -211,6 +211,7 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
+  "a fresh profile declares the optional native messaging permission and reports sharing off",
   "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
   "a fresh install waits for Start setup before dictionary downloads or Anki discovery",
   "Start setup begins automatic dictionary installation with first-install preferences",
@@ -6985,6 +6986,43 @@ async function main() {
       ),
     JSON.stringify(branding),
   );
+  await showSettingsSection(page, "sharing");
+  const sharing = await page.evaluate(async () => {
+    const manifest = chrome.runtime.getManifest();
+    const granted = await chrome.permissions.contains({ permissions: ["nativeMessaging"] });
+    const reply = await chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_status", requestId: "e2e-sharing" });
+    const toggle = document.getElementById("sharing-host-enabled");
+    for (let attempt = 0; attempt < 50 && toggle.disabled; attempt++) {
+      await new Promise(resolveWait => setTimeout(resolveWait, 20));
+    }
+    return {
+      optional: manifest.optional_permissions ?? [],
+      granted,
+      reply,
+      visible: !document.getElementById("sharing").hidden,
+      toggleDisabled: toggle.disabled,
+      toggleChecked: toggle.checked,
+      address: document.getElementById("sharing-host-address").value,
+      command: document.getElementById("sharing-install-command").textContent,
+      status: document.getElementById("sharing-status").textContent,
+    };
+  });
+  check(
+    "a fresh profile declares the optional native messaging permission and reports sharing off",
+    sharing.optional.includes("nativeMessaging")
+      && sharing.granted === false
+      && sharing.reply?.ok === true
+      && sharing.reply.sharing?.enabled === false
+      && sharing.reply.sharing.connected === false
+      && sharing.reply.sharing.address === "ws://127.0.0.1:8771/link"
+      && sharing.visible
+      && sharing.toggleDisabled === false
+      && sharing.toggleChecked === false
+      && sharing.address === "ws://127.0.0.1:8771/link"
+      && sharing.command === `node bridge/install.mjs --extension-id ${extensionId}`
+      && sharing.status === "Not sharing.",
+    JSON.stringify(sharing),
+  );
   await showSettingsSection(page, "keybinds");
   const browserShortcuts = await page.evaluate(async () => {
     const commands = await chrome.commands.getAll();
@@ -8228,7 +8266,7 @@ async function main() {
     const libraryLinks = [...document.querySelectorAll("#library-navigation a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 8
+      && links.length === 9
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION")
       && JSON.stringify(libraryLinks.map(link => link.hash)) === JSON.stringify([
         "#dictionaries", "#add-dictionaries", "#updates", "#dictionary-groups", "#custom-dictionary",

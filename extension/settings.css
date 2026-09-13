@@ -1528,3 +1528,28 @@ textarea {
     opacity: 0.5;
   }
 }
+
+#sharing { gap: 16px; }
+#sharing .field-hint { margin: 0; }
+#sharing .lookup-group legend { margin-bottom: 8px; }
+#sharing .lookup-group .field,
+#sharing .lookup-enable { padding-block: 9px; }
+#sharing-status:empty { display: none; }
+.sharing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sharing-command {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  font:
+    0.95em ui-monospace,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+#sharing-host-port { width: 10ch; }

@@ -37,6 +37,16 @@ dispatch. The Chrome suite checks that Chrome registers the suggested Alt+Delete
 (reported as `Alt+Del`) and the popup-action commands, and that Keybinds lists
 them.
 
+`node --test test/sharing-protocol.test.mjs test/bridge.test.mjs` checks the
+sharing wire contract (loopback addresses, the forwarding table, splitting a
+frame into native messages) and drives the real `bridge/hachidori-bridge.mjs`
+process over its stdio port and raw loopback WebSockets: listening, the
+`Origin` rule, relaying and reassembling a 1.5 MB frame, broadcast, pings,
+closes and exit. `node --test test/sharing-settings.test.mjs` checks the
+Settings → Sharing host card with jsdom: status polling, the permission request
+before enabling, the copied address and Chrome's bridge failure reasons. The
+extension smoke suite's sharing-host stage covers the service worker's side.
+
 `node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
 current word/reading/sentence expansion, background-tab clicks, live editing
 without replacing cards or Note drafts, and stale-control navigation rejection.

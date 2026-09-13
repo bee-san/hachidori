@@ -78,6 +78,7 @@ Google requires [a justification for each permission](https://developer.chrome.c
 | `downloads` | Save an explicitly requested local backup ZIP and monitor that export's completion. [The implementation](../extension/backup-downloads.js) tracks its own export IDs. |
 | `<all_urls>` host access | Fetch dictionaries and updates from configured HTTPS sources, pronunciation from configured sources, communicate with local Anki, and capture the visible reading page for mapped mining screenshots. Explain arbitrary source support and why a fixed allowlist does not cover the shipped feature. |
 | `<all_urls>` content-script matching | Read Japanese text near the pointer/selection and display dictionary results on the user's reading pages. A fixed website list cannot cover where users read. User-enabled local-file access can support local reading pages. |
+| `nativeMessaging` (optional) | Requested only when the user turns on Settings → Sharing. Starts the local bridge helper that lets other browsers on the same computer use this Hachidori. [The implementation](../extension/sharing-host.js) connects to one named host and nothing else. |
 | `tabs` | Removed. Host permissions supply reading-page titles/URLs. `chrome.runtime.getContexts()` locates the extension’s own capture controls. |
 
 The permission reduction follows Google's [Tabs API permission explanation](https://developer.chrome.com/docs/extensions/reference/api/tabs#permissions).
