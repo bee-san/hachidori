@@ -158,7 +158,7 @@ test("an ambiguous mutation failure is not retried or reported as a confirmed fa
   const { configKey } = await f.service.status();
   const result = await f.service.submit({ expression: "猫", configKey });
   assert.equal(result.state, "uncertain");
-  assert.match(result.error, /View in Anki/u);
+  assert.match(result.error, /Check Anki/u);
   assert.equal(writes, 1);
 });
 

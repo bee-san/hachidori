@@ -14809,11 +14809,10 @@ async function contentNoteStage() {
         .map(([code, key]) => press(defaults, code, key, { altKey: true }));
       const unmodified = press(defaults, "ArrowDown", "ArrowDown");
       const actions = window.document.createElement("div");
-      const mine = window.document.createElement("button"), view = window.document.createElement("button");
+      const mine = window.document.createElement("button");
       mine.className = "gsm-hoshidicts-mine-button";
-      view.className = "gsm-hoshidicts-anki-view";
-      view.hidden = true;
-      actions.append(mine, view);
+      mine.dataset.action = "add";
+      actions.append(mine);
       defaults.popup.append(actions);
       let mined = 0;
       mine.addEventListener("click", () => { mined += 1; });
@@ -14821,7 +14820,8 @@ async function contentNoteStage() {
       defaults.callbacks().onResultsRendered({ audioButtons: [{ button: audioButton, result: defaults.render().results[0] }],
         miningActions: [{ actions, feedback: null, result: defaults.render().results[0] }] });
       const added = press(defaults, "KeyE", "e", { altKey: true });
-      const hiddenView = press(defaults, "KeyV", "v", { altKey: true });
+      // View notes only presses the Anki button while it opens Anki, never while it adds.
+      const viewedAdd = press(defaults, "KeyV", "v", { altKey: true });
       const played = press(defaults, "KeyP", "p", { altKey: true }) && defaults.take("hd_audio_play") !== null;
       const command = action => defaults.runtimeMessage({ target: "hachidori-reader", type: "hd_reader_command", action });
       command("nextEntry");
@@ -14836,8 +14836,8 @@ async function contentNoteStage() {
       const escaped = press(defaults, "Escape", "Escape") === false && defaults.driver.snapshot().popupHidden;
       result["default keybinds navigate entries, mine, play and close through Yomitan's keys"] =
         (JSON.stringify(defaults.entryFocus().slice(0, 4)) === JSON.stringify([{ offset: 1 }, { offset: -3 }, "first", "last"])
-          && moved.every(Boolean) && !unmodified && added && mined >= 1 && !hiddenView && played && escaped)
-        || { focus: defaults.entryFocus(), moved, unmodified, added, mined, hiddenView, played, escaped };
+          && moved.every(Boolean) && !unmodified && added && mined >= 1 && !viewedAdd && played && escaped)
+        || { focus: defaults.entryFocus(), moved, unmodified, added, mined, viewedAdd, played, escaped };
     } finally {
       defaults.close();
     }

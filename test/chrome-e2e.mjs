@@ -1328,13 +1328,11 @@ async function popupReader(page, depth = 0) {
         const feedback = this.querySelector(".gsm-hoshidicts-mining-feedback");
         const controls = [...this.querySelectorAll(".gsm-hoshidicts-anki-control")];
         const adds = [...this.querySelectorAll(".gsm-hoshidicts-mine-button")];
-        const views = [...this.querySelectorAll(".gsm-hoshidicts-anki-view")];
         const primaryActions = this.querySelector(".gsm-hoshidicts-primary-header .gsm-hoshidicts-entry-actions");
         const actionKind = node => {
           if (node.classList.contains("gsm-hoshidicts-mine-button")) return "add";
           if (node.classList.contains("gsm-hoshidicts-audio-control")) return "audio";
           if (node.classList.contains("gsm-hoshidicts-note-button")) return "note";
-          if (node.classList.contains("gsm-hoshidicts-anki-view")) return "view";
           if (node.classList.contains("gsm-hoshidicts-external-link-button")) return "external";
           return node.className;
         };
@@ -1343,15 +1341,12 @@ async function popupReader(page, depth = 0) {
           feedback: feedback ? { hidden: feedback.hidden, text: feedback.textContent, kind: feedback.dataset.kind ?? null } : null,
           controls: adds.map((add, index) => {
             const control = controls[index];
-            const view = views[index];
             const icon = add.querySelector(".gsm-hoshidicts-mine-icon");
             return { hidden: add.hidden, text: add.textContent,
               title: add.title, icon: icon?.dataset.icon ?? icon?.textContent ?? "",
               state: add.dataset.state, disabled: add.disabled,
               output: control?.querySelector("output")?.textContent ?? "",
-              viewDisabled: view?.disabled ?? true,
-              viewHidden: view?.hidden ?? true,
-              viewClass: view?.className ?? "",
+              action: add.dataset.action,
               rect: add.getBoundingClientRect().toJSON() };
           }) };
       }.toString(),
@@ -4129,16 +4124,15 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     const rect = ready.controls[0].rect;
     await tab.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2, { clickCount: 2 });
     const saved = await settled(state => state?.controls.some(control => control.state === "success"));
-    await popup.click(".gsm-hoshidicts-mine-button");
     const browseCount = calls.filter(call => call.action === "guiBrowse").length;
-    await popup.click(".gsm-hoshidicts-anki-view");
-    await settled(state => calls.filter(call => call.action === "guiBrowse").length > browseCount && !state.controls[0].viewDisabled);
+    await popup.click(".gsm-hoshidicts-mine-button");
+    await settled(state => calls.filter(call => call.action === "guiBrowse").length > browseCount && !state.controls[0].disabled);
     const note = [...notes.values()].at(-1);
     const browse = calls.filter(call => call.action === "guiBrowse").at(-1);
     await tab.keyboard.press("Escape");
     await hoverForPopup(tab, popup, "#verb");
     const duplicate = await settled(state => state?.controls[0]?.state === "view-existing"
-      && !state.controls[0].disabled && state.controls[0].viewHidden);
+      && !state.controls[0].disabled && state.controls[0].action === "view");
     if (process.env.HACHIDORI_ANKI_DUPLICATE_SCREENSHOT) {
       const { x, y, width, height } = duplicate.rect;
       await tab.screenshot({ path: process.env.HACHIDORI_ANKI_DUPLICATE_SCREENSHOT,
@@ -4150,18 +4144,17 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     const exactBrowse = calls.filter(call => call.action === "guiBrowse").at(-1);
     check("Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
       quiet
-        && JSON.stringify(ready.order.slice(0, 4)) === JSON.stringify(["add", "audio", "note", "view"])
-        && ready.order.slice(4).every(kind => kind === "external")
-        && ready.controls[0].icon === "big-circle"
-        && ready.controls[0].viewClass.includes("gsm-hoshidicts-view-in-anki-button")
-        && saved.controls[0].disabled && saved.controls[0].icon === "✓"
+        && JSON.stringify(ready.order.slice(0, 3)) === JSON.stringify(["add", "audio", "note"])
+        && ready.order.slice(3).every(kind => kind === "external")
+        && ready.controls[0].icon === "big-circle" && ready.controls[0].action === "add"
+        && saved.controls[0].action === "view" && saved.controls[0].icon === "✓"
         && saved.feedback?.hidden === false && saved.feedback.kind === "success"
         && saved.controls[0].output.startsWith("Added note ")
         && saved.feedback.text.includes(saved.controls[0].output)
         && note.Front === "食べる"
         && note.Back === "食べる|。|<b>食べる</b>。"
         && calls.filter(call => call.action === "addNote").length === addCount + 1
-        && browse.params.query === '"食べる"'
+        && browse.params.query === `nid:${[...notes.keys()].at(-1)}`
         && duplicate.controls[0].icon === "view-note"
         && duplicate.controls[0].title === "View existing notes in Anki"
         && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
@@ -4258,7 +4251,7 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
   }, { data: files.get(filename), rect: popupRect });
   check(
     "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
-    saved.controls[0].disabled === true
+    saved.controls[0].action === "view"
       && calls.filter(call => call.action === "storeMediaFile").length === uploadsBefore + 1
       && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(upload?.params.filename ?? "")
       && filename === upload.params.filename && files.get(filename) === upload.params.data
