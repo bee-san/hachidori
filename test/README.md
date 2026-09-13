@@ -30,9 +30,12 @@ settings suite also lists Chrome's browser shortcuts and refreshes them when the
 window regains focus.
 `node --test test/browser-commands.test.mjs` runs the worker's command listener
 against the manifest: the toggle makes one queued revisioned `hoverEnabled`
-write, and the settings command opens Settings. The Chrome suite checks that
-Chrome registers the suggested Alt+Delete (reported as `Alt+Del`) and that
-Keybinds lists it.
+write, and the settings command opens Settings. Each argument-free keybind
+action has a manifest command that the worker forwards to the active tab. The
+extension smoke suite runs forwarded commands through the reader's keybind
+dispatch. The Chrome suite checks that Chrome registers the suggested Alt+Delete
+(reported as `Alt+Del`) and the popup-action commands, and that Keybinds lists
+them.
 
 `node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
 current word/reading/sentence expansion, background-tab clicks, live editing

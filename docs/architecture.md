@@ -557,9 +557,15 @@ Hachidori has:
 - Turn Japanese lookups on or off, suggested as Alt+Delete like Yomitan's
   Toggle text scanning.
 - Open Hachidori settings, unassigned.
+- One unassigned command for each popup keybind action that needs no chosen
+  argument: Close, Add to Anki, View in Anki, Play audio, the entry and
+  dictionary moves, Back, and the two selection scans.
 
 The worker toggles `hoverEnabled` inside its storage queue with the same
-revisioned options write as the toolbar switch. Chrome alone can change these
+revisioned options write as the toolbar switch. A popup-action command goes to
+the active tab as `hd_reader_command`. Every frame's reader runs the matching
+keybind action, with a count of one for entry moves. Only a frame with an open
+popup, or a selection for the scans, acts on it. Chrome alone can change these
 shortcuts, as with Yomitan on Chrome. The Keybinds section lists
 `chrome.commands.getAll()`, refreshes the list when its window regains focus,
 and opens `chrome://extensions/shortcuts`.
