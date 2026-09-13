@@ -1287,16 +1287,23 @@ content. Raw archive CSS is never concatenated around a scope boundary. Normal
 style rules, CSS nesting, and media/supports/container groups are retained;
 global definitions such as imports, fonts, properties, and keyframes are removed.
 
-A rule containing resource functions, custom functions/properties, untrusted
-variable references, residual CSS escapes, or non-generic font selection is
-omitted. The whole declaration block is checked because variable-containing
-shorthands expose empty CSSOM longhands before substitution. Comment-like text
-inside strings is not stripped. Five color/size compatibility variables support
-Jitendex formatting through color/math wrappers at each variable use. Typing only
-the alias declaration is insufficient: a page's registered `@property` can
-replace an invalid value with a URL-valued initial value. Use-site wrappers also
-retain live theme changes without re-fetching dictionary styles. Dictionary
-media still uses the generation-owned `hd_media` path, not stylesheet URLs.
+A rule containing resource functions, custom functions, residual CSS escapes, or
+non-generic font selection is omitted. The whole declaration block is checked
+because variable-containing shorthands expose empty CSSOM longhands before
+substitution. Comment-like text inside strings is not stripped. Five color/size
+compatibility variables support Jitendex formatting through color/math wrappers
+at each variable use. Typing only the alias declaration is insufficient: a
+page's registered `@property` can replace an invalid value with a URL-valued
+initial value. Use-site wrappers also retain live theme changes without
+re-fetching dictionary styles. Every other custom property belongs to the
+dictionary, which can declare and reference it freely: Bee's Ultimate Grammar
+Dictionary builds its card, including its disclosure chevrons, from its own
+`--bugd-*` tokens. Those names are rewritten under a random prefix, chosen each
+time styles are installed, in both declarations and `var()` references. The page
+cannot read that prefix through the closed shadow root, so it can neither
+inherit a value into one nor register an `@property` for it, and a reference the
+dictionary never declares falls back as in a theme without it. Dictionary media
+still uses the generation-owned `hd_media` path, not stylesheet URLs.
 
 The trusted glossary card sits outside the dictionary scope and establishes
 paint containment, so fixed descendants and oversized shadows cannot cover
