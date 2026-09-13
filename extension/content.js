@@ -2697,6 +2697,12 @@
     return options.lookupMode === "hover" || activationPressed;
   }
 
+  // Yomitan's default: once shown, the popup outlives the activation key and
+  // the pointer's wanderings; only an explicit dismissal or a new lookup ends it.
+  function schedulePointerHide() {
+    if (options.lookupMode !== "activationSticky") scheduleHide();
+  }
+
   function updateModifierState(event) {
     const property = MODIFIER_PROPERTIES.get(options.activationKey);
     if (property) activationPressed = event[property] === true;
@@ -2808,13 +2814,13 @@
     }
     if (!activationAllowed()) {
       cancelCandidateScan();
-      scheduleHide();
+      schedulePointerHide();
       return;
     }
     const candidate = resolveCandidate(pointer.clientX, pointer.clientY);
     if (!candidate) {
       cancelCandidateScan();
-      scheduleHide();
+      schedulePointerHide();
       return;
     }
     const signature = candidateSignature(candidate);
@@ -2916,7 +2922,7 @@
     }
     if (!activationAllowed() && window.getSelection()?.isCollapsed !== false) {
       cancelCandidateScan();
-      scheduleHide();
+      schedulePointerHide();
       return;
     }
     scheduleScan();
@@ -3126,7 +3132,7 @@
       activationCode = event.code;
     }
     const popupLevel = activePointerLevel(lastPointer);
-    if (!wasPressed && activationPressed && options.lookupMode === "activation"
+    if (!wasPressed && activationPressed && options.lookupMode !== "hover"
         && lastPointer && !hasProtectedNote() && !popupHasFocus()
         && (!pointerInPopup || popupLevel)
         && !selectionDragActive
@@ -3158,7 +3164,7 @@
       lastPointer = null;
       pointerInPopup = false;
       cancelCandidateScan();
-      scheduleHide();
+      schedulePointerHide();
     }
   }
 
@@ -3421,7 +3427,7 @@
       if (!hasProtectedNote() && !popupHasFocus() && (!pointerInPopup || popupLevel)) {
         if (!activationAllowed()) {
           if (popupLevel) cancelPendingHover(popupLevel);
-          else scheduleHide();
+          else schedulePointerHide();
         }
         else if (lastPointer) scheduleScan();
       }

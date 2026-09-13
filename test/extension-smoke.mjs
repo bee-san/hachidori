@@ -7161,7 +7161,7 @@ async function startupPracticeStage() {
     const expected = ["辞書", "辞書"];
     const probed = JSON.stringify(page.lookups()) === JSON.stringify(expected);
     const invited = withoutDictionary && probed && sample()?.textContent === PRACTICE_SENTENCE_TEXT && sample().lang === "ja"
-      && document.getElementById("setup-body").textContent.includes("Hover over Japanese text, or use the lookup button.")
+      && document.getElementById("setup-body").textContent.includes("Hold Shift and hover over a word, or use the lookup button.")
       && document.querySelector(".setup-anki-outcome")?.dataset.status === "unavailable"
       && JSON.stringify(page.actionIds()) === JSON.stringify(["setup-finish"])
       // jsdom does not run appended scripts, so the chain stops at the first one.
@@ -7220,7 +7220,7 @@ async function startupPracticePartial(jsdom, setup) {
     const partial = page.heading() === "You’re ready."
       && lookup.hidden && lookup.disabled && !document.getElementById("setup-practice-tools").hidden
       && document.getElementById("setup-practice-recovery").hidden
-      && document.getElementById("setup-practice-instruction").textContent === "Try looking up a word below. Hover over Japanese text."
+      && document.getElementById("setup-practice-instruction").textContent === "Try looking up a word below. Hold Shift and hover over a word."
       && readerScripts(document).length === 1
       && JSON.stringify(requests.map(({ text, scanLength, maxResults }) => [text, scanLength, maxResults]))
         === JSON.stringify([["辞書", 2, 7], [PRACTICE_SENTENCE_TEXT, 1, 1]]);
@@ -13106,11 +13106,11 @@ async function contentNoteStage() {
     if (whileEditing) harness.reply(whileEditing, {}, false);
     await harness.settle();
     input.blur();
-    harness.emitOptions({ onlyScanJapaneseText: false });
+    harness.emitOptions({ lookupMode: "hover", onlyScanJapaneseText: false });
     harness.driver.setScanCandidate({ ...harness.candidate, query: "hello" });
     harness.driver.scanPointer(pointer);
     const beforeGate = harness.take("hd_lookup");
-    harness.emitOptions({ onlyScanJapaneseText: true });
+    harness.emitOptions({ lookupMode: "hover", onlyScanJapaneseText: true });
     if (beforeGate) harness.reply(beforeGate, { dictionaryCount: 1, results: [harness.term("hello")] });
     await harness.settle();
     const obsoleteRejected = harness.driver.snapshot().popupHidden;
@@ -13473,6 +13473,28 @@ async function contentNoteStage() {
     await harness.settle();
     result["activation release cancels delayed scans and a first pending reply without pointer motion"] =
       gated && delayed && cancelledTimer && pending !== null && harness.driver.snapshot().popupHidden;
+
+    harness.emitOptions({ ...settings, lookupMode: "activationSticky" });
+    key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
+    fire(75);
+    const sticky = harness.take("hd_lookup");
+    key("keyup", "Shift", "ShiftLeft");
+    if (sticky) harness.reply(sticky, { dictionaryCount: 1, results: [harness.term("sticky")] });
+    await harness.settle();
+    harness.driver.setScanCandidate(null);
+    move();
+    fire(75);
+    key("keydown", "Shift", "ShiftLeft", { shiftKey: true });
+    fire(75);
+    key("keyup", "Shift", "ShiftLeft");
+    harness.driver.onMouseOut({ relatedTarget: null });
+    const stayed = sticky !== null && !harness.driver.hideTimerPending() && !harness.driver.snapshot().popupHidden;
+    harness.driver.onMouseDown({ target: window.document.body, clientX: 200, clientY: 200 });
+    result["sticky activation keeps the popup through key release and pointer departure until a click"] =
+      stayed && harness.driver.snapshot().popupHidden;
+    harness.driver.onWindowBlur();
+    harness.driver.setScanCandidate(harness.candidate);
+    move();
 
     harness.emitOptions({ ...settings, activationKey: "/" });
     key("keydown", "/", "Slash");
