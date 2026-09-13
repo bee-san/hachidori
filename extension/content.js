@@ -1580,6 +1580,7 @@
       const child = levels[level.depth + 1];
       if (child) positionPopup(child);
     }, { capture: true, passive: true });
+    popup.addEventListener("wheel", onPopupWheel, { passive: false });
     popup.addEventListener("mouseenter", () => onPopupEnter(level));
     popup.addEventListener(
       "mousemove",
@@ -2076,6 +2077,29 @@
       if (levels[index].noteEditing || levels[index].pendingCustomAppends > 0) return true;
     }
     return false;
+  }
+
+  // The popup's wheel belongs to the popup. Readers such as ttu turn pages from
+  // wheel events on their body, and a pane that cannot scroll further (or has
+  // nothing to scroll) would otherwise chain the gesture into the page.
+  function onPopupWheel(event) {
+    event.stopPropagation();
+    if (event.defaultPrevented || event.ctrlKey) return;
+    const popup = event.currentTarget;
+    for (let node = event.target; node instanceof Element; node = node === popup ? null : node.parentElement) {
+      if (canScrollBy(node, event.deltaX, event.deltaY)) return;
+    }
+    event.preventDefault();
+  }
+
+  function canScrollBy(element, deltaX, deltaY) {
+    const room = (delta, offset, size, viewport) => delta > 0 ? offset + viewport < size - 1 : delta < 0 && offset > 0;
+    const vertical = room(deltaY, element.scrollTop, element.scrollHeight, element.clientHeight);
+    const horizontal = room(deltaX, element.scrollLeft, element.scrollWidth, element.clientWidth);
+    if (!vertical && !horizontal) return false;
+    const style = window.getComputedStyle(element);
+    const scrolls = overflow => overflow === "auto" || overflow === "scroll";
+    return (vertical && scrolls(style.overflowY)) || (horizontal && scrolls(style.overflowX));
   }
 
   function onPopupFocusOut(event) {

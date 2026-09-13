@@ -337,6 +337,7 @@ const PLANNED = [
   "the selected kanji dictionary is saved",
   "custom Settings lazily saves a source through the real WASM importer",
   "the popup opens below the complete wrapped match instead of the hovered glyph",
+  "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "hovering an inflected verb shows a popup",
   "the content script attached its closed-shadow host to the page",
   "the popup deinflects 食べたかった to 食べる",
@@ -9099,6 +9100,35 @@ async function main() {
     if (original.style === null) element.removeAttribute("style");
     else element.setAttribute("style", original.style);
   }, originalVerb);
+
+  // Readers such as ttu turn pages from body wheel listeners; the popup's own
+  // scrolling, including past its end, must reach neither them nor the page.
+  await tab.evaluate(() => {
+    document.body.style.minHeight = "400vh";
+    window.__pageWheels = 0;
+    document.body.addEventListener("wheel", window.__countPageWheel = () => { window.__pageWheels += 1; });
+  });
+  const wheelPopup = await hover("#verb");
+  const wheelRect = wheelPopup === null ? null : (await popup.dictionaryTabs()).rect;
+  let wheeled = null;
+  if (wheelRect) {
+    const before = await tab.evaluate(() => window.scrollY);
+    await tab.mouse.move(wheelRect.left + wheelRect.width / 2, wheelRect.top + wheelRect.height / 2);
+    for (let step = 0; step < 12; step += 1) await tab.mouse.wheel({ deltaY: 400 });
+    await new Promise(done => setTimeout(done, 300));
+    wheeled = { before, ...await tab.evaluate(() => ({ after: window.scrollY, pageWheels: window.__pageWheels })),
+      visible: await popup.waitForVisible(1000) !== null };
+  }
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await tab.evaluate(() => {
+    document.body.removeEventListener("wheel", window.__countPageWheel);
+    document.body.style.minHeight = "";
+    window.scrollTo(0, 0);
+  });
+  check("wheel over the popup scrolls neither the page nor its body wheel listeners",
+    wheeled !== null && wheeled.visible && wheeled.pageWheels === 0 && wheeled.after === wheeled.before,
+    JSON.stringify({ wheelRect, wheeled }));
 
   const verb = await hover("#verb");
   check("hovering an inflected verb shows a popup", verb !== null,
