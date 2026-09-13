@@ -84,9 +84,7 @@ It can even use anki.
 
 # Sharing
 
-I read in Chrome and I play games with the GameSentenceMiner overlay, and I did not want two Hachidoris with two sets of dictionaries, two personal dictionaries and two sets of settings that drift apart.
-
-Hachidori in Chrome shares itself through Anki, and every other Hachidori links to it, on this computer or on my laptop over Tailscale: same dictionaries, same personal entries, same lookup counts, same settings, edited from either side. One small Anki add-on, handed out by Settings, and nothing to copy.
+Set up Hachidori once and use that setup from every other Hachidori, in GameSentenceMiner, another browser or another computer: same dictionaries, same notes, same settings.
 
 See [Sharing](docs/sharing.md).
 
