@@ -735,18 +735,28 @@
               </fieldset>
               <fieldset class="lookup-group">
                 <legend>Custom toolbar links</legend>
-                <label class="field">
-                  <span class="field-label">Names and URL templates</span>
-                  <textarea id="opt-custom-links" rows="4" spellcheck="false"
-                    aria-describedby="custom-links-help custom-links-status"
-                    placeholder="Jisho, https://jisho.org/search/%w&#10;Search sentence, https://www.google.com/search?q=%s"></textarea>
-                  <span id="custom-links-help" class="field-hint">One link per line: name, URL. Use %w for the word, %r for its reading, and %s for the sentence. Change line order to reorder buttons; remove a line to remove a link.</span>
-                </label>
-                <div class="custom-dictionary-actions">
-                  <button id="save-custom-links" type="button" class="ghost">Save links</button>
-                  <button id="discard-custom-links" type="button" class="ghost">Discard changes</button>
-                </div>
-                <output id="custom-links-status" class="is-error" aria-live="polite"></output>
+                <p class="field-hint">Use %w for the word, %r for its reading and %s for the sentence.</p>
+                <ol id="custom-link-list" class="custom-link-list"></ol>
+                <p id="custom-link-empty" class="field-hint">No custom links yet.</p>
+                <form id="custom-link-form" class="custom-link-form" novalidate>
+                  <div class="fields">
+                    <label class="field">
+                      <span class="field-label">Link name</span>
+                      <input id="opt-custom-link-name" type="text" autocomplete="off" placeholder="Jisho"
+                        aria-describedby="custom-links-status" />
+                    </label>
+                    <label class="field">
+                      <span class="field-label">URL template</span>
+                      <input id="opt-custom-link-url" type="text" spellcheck="false" autocomplete="off"
+                        placeholder="https://jisho.org/search/%w" aria-describedby="custom-links-status" />
+                    </label>
+                  </div>
+                  <div class="custom-dictionary-actions">
+                    <button id="custom-link-submit" type="submit" class="ghost">Add link</button>
+                    <button id="custom-link-cancel" type="button" class="ghost" hidden>Cancel</button>
+                  </div>
+                  <output id="custom-links-status" class="is-error" aria-live="polite"></output>
+                </form>
               </fieldset>
               <details class="settings-disclosure custom-css-disclosure">
                 <summary>Custom CSS</summary>
