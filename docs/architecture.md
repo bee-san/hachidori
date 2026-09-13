@@ -1935,61 +1935,84 @@ retryable.
 
 ## Sharing between browsers
 
-Sharing makes one install the host for every other Hachidori on the same
-computer. Extensions cannot listen for connections, so a relay does: one
-loopback WebSocket listener (`127.0.0.1:8771` by default) with a `/host` role
-and a `/link` role, and both Hachidoris connect out to it. GameSentenceMiner's
-overlay process runs the relay; without GameSentenceMiner, the Anki add-on in
-`anki-relay/` runs the same relay inside Anki. Chrome keeps the host's service
-worker alive while its socket carries traffic; the relay pings both sides
-every 20 s.
+Sharing makes one install the host for every other Hachidori, on the same
+computer and, when the host asks, on the person's other computers. Extensions
+cannot listen for connections, so a relay does: one WebSocket listener
+(`127.0.0.1:8771` by default) with a `/host` role and a `/link` role, and
+both Hachidoris connect out to it. The Hachidori Relay add-on in
+`extension/anki-relay/` runs the relay inside Anki; Settings → Sharing builds
+the `.ankiaddon` in the browser from those files (`extension/anki-addon.js`,
+zip.js, stored) so the add-on always matches the extension. Chrome keeps the
+host's service worker alive while its socket carries traffic; the relay pings
+both sides every 20 s.
 
-`extension/sharing-protocol.js` is imported by the service worker and by the
-relay: the default port, the `/host` and `/link` paths, address rules, the
-table of forwardable requests and the frame validators. `extension/sharing-relay.js`
-is the relay's logic without sockets: `connectHost` tells a second host
-`listen-failed` and returns `null`, `connectClient` returns `null` while no host
-is connected so the caller can refuse the browser (which retries), and the
-relay envelopes are `listening` (the port and the relay's name,
-`GameSentenceMiner` or `Anki`, which the host reports as `relay` in its
-status), `client-open`, `client-close` and `client-text` towards the host and
-`send`, `broadcast` and `close` from it. `anki-relay/server.py` is the same
-logic in Python behind one lock with its own loopback WebSocket server, and
-`test/sharing-relay.test.mjs` runs one contract against both. A linked browser
-speaks JSON text frames: `hello` (answered with the host version, dictionary
-count and a snapshot of the five shared keys), `request` carrying an ordinary
-runtime message, and `pong` to the relay's `ping`. The relay's only rule is
-that a handshake's `Origin` starts with `chrome-extension://`; there is no token.
+`extension/sharing-protocol.js` is imported by the service worker and the
+Settings and startup pages: the default port, the `/host` and `/link` paths,
+`parseLinkAddress` (a host, `host:port` or a ws:// URL, with the `display`
+form a person sees), `browserName` (what an install calls itself, from
+`navigator.userAgentData`), the table of forwardable requests and the frame
+validators. `extension/anki-relay/server.py` keeps the host, its clients and
+the frames between them behind one lock; its `Listener` owns the listening
+socket and swaps it between `127.0.0.1` and every interface, because Linux
+refuses a wildcard bind beside a loopback listener. Towards the host the relay
+sends `listening` (the port), `listen-failed` (another browser already
+shares), `network` (the reply to the host's own `network` frame: whether the
+network listener is on, the addresses found from the routes to Tailscale's
+resolver and the default route, or the bind error), `client-open` (with the
+peer address), `client-close` and `client-text`; from the host it takes
+`send`, `broadcast`, `close` and `network`. Its rules: a handshake's `Origin`
+must start with `chrome-extension://`, `/host` is accepted from loopback peers
+only, a client is refused (503) while no host is connected, and turning the
+network off closes the clients that came over it. There is no token. A linked
+browser speaks JSON text frames: `hello` (answered with the host's version,
+browser name, dictionary count and a snapshot of the five shared keys),
+`request` carrying an ordinary runtime message, and `pong` to the relay's
+`ping`.
 
 `extension/sharing-host.js` owns the host socket, retries with the capture
 host's backoff while the worker lives, and keeps a one-minute
 `hachidori-sharing-host` alarm only while enabled and disconnected so a worker
-Chrome has put to sleep still notices a relay starting. A forwarded
-request is dispatched by its target through `relayEngineRequest`,
-`handleWorkerRequest`, `handleUpdatesRequest` or `handleAnkiRequest` with a
-synthetic sender, exactly as a page's message would be; the reply goes back
-verbatim, including its `requestId`. Every `chrome.storage.onChanged` batch
-touching `dictionaryState`, `options`, `customDictionarySource`,
-`dictionaryUpdates`, `lookupStats` or a `lookupStats:` row is broadcast whole,
-so a linked browser can replay it as one write. A browser install shares by
-default; the overlay copy (`OVERLAY_MODE`) does not.
+Chrome has put to sleep still notices Anki starting. It connects only while
+the install has dictionaries, so an empty install never takes the host slot
+ahead of the library; the service worker feeds it the count at start and on
+every `dictionaryState` change. After `listening` it asks for the network
+when that preference is on and keeps the relay's answer (`network.active`,
+`network.addresses`) in its status. A forwarded request is dispatched by its
+target through `relayEngineRequest`, `handleWorkerRequest`,
+`handleUpdatesRequest` or `handleAnkiRequest` with a synthetic sender, exactly
+as a page's message would be; the reply goes back verbatim, including its
+`requestId`. Every `chrome.storage.onChanged` batch touching
+`dictionaryState`, `options`, `customDictionarySource`, `dictionaryUpdates`,
+`lookupStats` or a `lookupStats:` row is broadcast whole, so a linked browser
+can replay it as one write. A browser install shares by default; the overlay
+copy (`OVERLAY_MODE`) does not.
 
 A linked install runs `extension/sharing-client.js`: one WebSocket to the
-relay's `/link`, `hello` on open, requests matched to replies by id, and the
-same backoff on close. `relayEngineRequest`, `handleWorkerRequest`,
-`handleUpdatesRequest` and `handleAnkiRequest` forward every message in the
-`FORWARDED_REQUESTS` table while linked and return the host's reply verbatim;
-the storage batches the host pushes are written with one `chrome.storage.local`
-`set()` outside `writeLocalState()`, the only other writer of shared keys. At
-link time the install's own five shared values are kept in `sharingLocalState`,
-the host's snapshot takes their place under the live keys, and the engine's
+relay's `/link`, on this computer or another, `hello` on open, requests
+matched to replies by id, and the same backoff on close. Linking
+(`hd_sharing_client_link`) first turns this install's own hosting off, since
+the relay holds one host and a linked install has nothing of its own to share,
+probes the address, puts hosting back if nothing answers (which is also what
+happens when an install is given its own address), and otherwise stores the
+host role off. An empty address means this computer on the port set under
+Advanced, which is also what the startup page and Settings → Sharing probe.
+`relayEngineRequest`, `handleWorkerRequest`, `handleUpdatesRequest` and
+`handleAnkiRequest` forward every message in the `FORWARDED_REQUESTS` table
+while linked and return the host's reply verbatim; the storage batches the
+host pushes are written with one `chrome.storage.local` `set()` outside
+`writeLocalState()`, the only other writer of shared keys. At link time the
+install's own five shared values are kept in `sharingLocalState`, the host's
+snapshot takes their place under the live keys, and the engine's
 `hd_state_read` / `hd_state_cas` / `hd_custom_read` / `hd_custom_cas` are served
 from that kept record, so no local generation is judged against the mirror.
 Update-alarm and maturity-cache reconciliation clear their alarms while linked.
 Unlinking restores the kept values with `max(kept, mirrored) + 1` revisions and
 removes the host's `lookupStats:` rows. The local-only `sharing` key holds
-`{ host: { enabled, port } | null, client: { address } | null }` and neither it
-nor `sharingLocalState` is part of backups. See [sharing](sharing.md) for use.
+`{ host: { enabled, port, network } | null, client: { address } | null }` and
+neither it nor `sharingLocalState` is part of backups. The startup page's
+welcome view probes this computer once and, when a shared Hachidori answers,
+offers to use it; that link then advances setup to `complete`. See
+[sharing](sharing.md) for use.
 
 ## Storage ownership
 
@@ -1999,7 +2022,7 @@ nor `sharingLocalState` is part of backups. See [sharing](sharing.md) for use.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
-| Sharing configuration: whether this install shares and on which port, or which host it is linked to | service worker | `chrome.storage.local` key `sharing` |
+| Sharing configuration: whether this install shares, on which port and whether with other computers, or which host it is linked to | service worker | `chrome.storage.local` key `sharing` |
 | A linked install's own shared values, kept while the live keys mirror the host | service worker; the local engine reads and commits it through the worker | `chrome.storage.local` key `sharingLocalState` |
 | Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
 | Media streams, compressed-frame/PCM history, occurrence timeline, pins, export jobs, and received texthooker text | offscreen capture host; dedicated workers own frame canvases and encoding allocations | transient memory only |
@@ -2071,8 +2094,8 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
 | `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |
-| `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state, including which relay carries it, or start and stop this install's connection to the relay that serves other browsers on this computer |
-| `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address, link this install to it (keeping its own state aside and mirroring the host's), or unlink and restore |
+| `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state (connection, dictionaries, the network listener and its addresses, linked browsers), or start and stop this install's connection to Anki's relay with a port and the network preference |
+| `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address (empty: this computer), link this install to it (turning its own hosting off, keeping its own state aside and mirroring the host's), or unlink and restore |
 | `hd_capture_open`, `hd_capture_tabs`, `hd_capture_link`, `hd_capture_unlink` | Open the explicit capture surface, enumerate candidate reading tabs, and bind or release one trusted page/document |
 | `hd_capture_video_select`, `hd_capture_track_area`, `hd_capture_clear_area` | Control the linked page's session-only cue and DOM collectors |
 | `hd_capture_text_begin`, `hd_capture_text_close`, `hd_capture_text_source_close` | Forward bounded occurrence lifecycle records from the linked content script to the registered capture session |

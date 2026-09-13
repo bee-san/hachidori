@@ -37,30 +37,38 @@ dispatch. The Chrome suite checks that Chrome registers the suggested Alt+Delete
 (reported as `Alt+Del`) and the popup-action commands, and that Keybinds lists
 them.
 
-`node --test test/sharing-protocol.test.mjs test/sharing-relay.test.mjs` checks
-the sharing wire contract (loopback addresses, the forwarding table, frame
-validation) and drives both relays over raw loopback sockets:
-`test/sharing-relay-server.mjs`, a plain Node WebSocket server around
-`extension/sharing-relay.js` that stands in for GameSentenceMiner, and the Anki
-add-on's `anki-relay/server.py` as a `python3` process. Each answers the
-`Origin` rule, clients refused without a host, a second host turned away, a
-1.5 MB frame relayed whole in both directions, broadcast, pings, closes and
-host loss. `node --test test/sharing-settings.test.mjs`
-checks the Settings → Sharing card with jsdom: status polling, the waiting and
-refused states, the copied address, finding and linking to a host with a reload,
-the linked state and unlinking. The extension smoke suite's sharing-host and
-sharing-client stages cover the service worker's side, including a linked
-install's kept state.
+`node --test test/sharing-protocol.test.mjs test/sharing-relay.test.mjs
+test/sharing-settings.test.mjs test/anki-addon.test.mjs` checks the sharing
+wire contract (addresses as a person types them, browser names, the forwarding
+table, frame validation), drives the Anki add-on's `extension/anki-relay/server.py`
+as a `python3` process over raw sockets (`test/anki-relay-server.mjs` starts
+it): the `Origin` rule, the loopback-only host, clients refused without a host,
+a second host turned away, a 1.5 MB frame relayed whole in both directions,
+broadcast, pings, closes, host loss, and the network listener opened on the
+host's `network` frame, linked through this machine's own address, closed
+again and dropped with the host. `sharing-settings.test.mjs` covers the
+Settings → Sharing section with jsdom: the dictionaries, waiting, refused and
+sharing states, the add-on download, the network switch with the addresses it
+lists and copies, the offer to use the Hachidori found on this computer, an
+address for another computer, the linked state and unlinking.
+`anki-addon.test.mjs` builds the `.ankiaddon` the page hands out and reads it
+back with zip.js and with Python's `zipfile`. The extension smoke suite's
+sharing-host and sharing-client stages cover the service worker's side,
+including hosting that waits for dictionaries, the network exchange, linking
+that turns hosting off and a linked install's kept state.
 
-`node test/chrome-sharing.mjs` launches two real Chromes and the test relay on
-a test-only port (`HACHIDORI_SHARING_PORT`, default 18771; with
-`HACHIDORI_SHARING_RELAY=anki` it runs the Anki add-on's relay instead): the host imports the
-fixture and moves its sharing to that port, the second browser probes and links
-to it, looks a word up through the link, writes an option and a personal entry
-that the host commits and pushes back, loses the host when it closes and
-reconnects when it relaunches, then unlinks back to its own empty state. Six
-predeclared checks; profiles are kept on failure. `HACHIDORI_SHARING_SCREENSHOTS=<dir>`
-saves the documentation screenshots from that real run.
+`node test/chrome-sharing.mjs` launches two real Chromes and the add-on's
+relay on a test-only port (`HACHIDORI_SHARING_PORT`, default 18771): the host
+imports the fixture, saves the add-on from its Sharing page and moves its
+sharing to that port; the second browser's startup page offers the shared
+Hachidori and links with one click, looks a word up through the link, writes
+an option and a personal entry that the host commits and pushes back, loses the
+host when it closes and reconnects when it relaunches, unlinks back to its own
+empty state, and links again through this machine's network address (the
+machine needs one beyond loopback) until the host stops sharing on the
+network. Eight predeclared checks; profiles are kept on failure.
+`HACHIDORI_SHARING_SCREENSHOTS=<dir>` saves the documentation screenshots from
+that real run.
 
 `node --test test/custom-links-renderer.test.mjs` checks named toolbar links,
 current word/reading/sentence expansion, background-tab clicks, live editing
@@ -1470,14 +1478,16 @@ import the installed `anki` and `aqt` packages:
 python3 test/anki-relay-desktop.py
 ```
 
-Each run creates a fresh temporary Anki base with only `anki-relay/` installed,
-configured through the add-on's `meta.json` to a test-only port (18772, or
-`--port`), starts a separate Anki instance on it, and connects to the relay
-over a raw loopback WebSocket: a `/host` handshake with an extension `Origin`
-must answer 101 and the `listening` frame naming `Anki` and the port, and a
-web `Origin` must be refused with 403. The live Anki profile, its add-ons and
-AnkiConnect are never opened. It prints a JSON summary and exits non-zero on
-failure.
+Each run creates a fresh temporary Anki base with only `extension/anki-relay/`
+installed, configured through the add-on's `meta.json` to a test-only port
+(18772, or `--port`), starts a separate Anki instance on it, and connects to
+the relay over raw WebSockets: a `/host` handshake with an extension `Origin`
+must answer 101 and the `listening` frame with the port; the host's `network`
+frame must be answered with this machine's addresses, and a `/link` handshake
+over the first of them must answer 101 and reach the host as `client-open`
+with that address; a web `Origin` must be refused with 403. The live Anki
+profile, its add-ons and AnkiConnect are never opened. It prints a JSON
+summary, gives up after 90 s, and exits non-zero on failure.
 
 ### Installed Anki Desktop playback
 
