@@ -2195,7 +2195,7 @@ async function dispatchSharedRequest(message, clientId) {
 async function writeSharingConfig(patch) {
   await serialiseStorage(async () => {
     const stored = await chrome.storage.local.get(SHARING_KEY);
-    await writeLocalState({ [SHARING_KEY]: { ...(stored[SHARING_KEY] ?? {}), ...patch } });
+    await writeLocalState({ [SHARING_KEY]: { ...stored[SHARING_KEY], ...patch } });
   });
 }
 
@@ -2235,7 +2235,7 @@ const SHARING_HANDLERS = {
       const stored = await chrome.storage.local.get([...SHARED_STATE_KEYS, SHARING_KEY]);
       await chrome.storage.local.set({
         [SHARING_LOCAL_STATE_KEY]: Object.fromEntries(SHARED_STATE_KEYS.map(key => [key, stored[key] ?? null])),
-        [SHARING_KEY]: { host: { ...(stored[SHARING_KEY]?.host ?? {}), enabled: false }, client: { address } },
+        [SHARING_KEY]: { host: { ...stored[SHARING_KEY]?.host, enabled: false }, client: { address } },
       });
       await applyMirror(hello.snapshot);
     });
@@ -2265,7 +2265,7 @@ const SHARING_HANDLERS = {
       }
       const prefix = lookupStatsPrefix(values[LOOKUP_STATS_KEY] ?? emptyLookupStats());
       removals.push(...Object.keys(stored).filter(key => key.startsWith(LOOKUP_STATS_ROW_PREFIX) && !key.startsWith(prefix)));
-      values[SHARING_KEY] = { ...(stored[SHARING_KEY] ?? {}), client: null };
+      values[SHARING_KEY] = { ...stored[SHARING_KEY], client: null };
       await chrome.storage.local.set(values);
       await chrome.storage.local.remove(removals);
     });

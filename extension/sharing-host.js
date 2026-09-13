@@ -12,7 +12,7 @@ import { DEFAULT_SHARING_PORT, PROTOCOL_VERSION, formatHostAddress, parseClientF
 export const SHARING_KEY = "sharing";
 export const SHARING_HOST_ALARM = "hachidori-sharing-host";
 
-const LOOPBACK_PEERS = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+const LOOPBACK_PEERS = new Set(["127.0.0.1", "::1"]);
 
 function describe(error) {
   return error instanceof Error ? error.message || String(error) : String(error);

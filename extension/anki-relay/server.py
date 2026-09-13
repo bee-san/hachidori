@@ -36,9 +36,10 @@ PING_SECONDS = 20
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 CONTINUATION, TEXT, CLOSE, PING, PONG = 0x0, 0x1, 0x8, 0x9, 0xA
 # Where a UDP socket would send from is this computer's address on that route:
-# Tailscale's own resolver first, then the default route. Nothing is sent.
-ADDRESS_PROBES = ("100.100.100.100", "8.8.8.8")
-TAILSCALE_RANGE = ipaddress.ip_network("100.64.0.0/10")
+# Tailscale's own resolver first, then the default route. Nothing is sent to
+# either address, and the range only labels an address as Tailscale's.
+ADDRESS_PROBES = ("100.100.100.100", "8.8.8.8")  # NOSONAR
+TAILSCALE_RANGE = ipaddress.ip_network("100.64.0.0/10")  # NOSONAR
 ACCEPT_TIMEOUT_SECONDS = 1.0
 
 Handlers = namedtuple("Handlers", ["message", "closed"])
@@ -96,10 +97,11 @@ class Listener:
         if sys.platform != "win32":
             # Frees the port straight after a restart; Windows would instead let two listeners share it.
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # The previous socket may linger until the accept loop wakes; that takes at most one timeout.
+        # The previous socket may linger until the accept loop wakes; that takes at
+        # most one timeout. Every interface is bound only while the host asks for it.
         for attempt in range(40):
             try:
-                sock.bind(("0.0.0.0" if network else "127.0.0.1", self.port))  # NOSONAR: every interface only while the host asks
+                sock.bind(("0.0.0.0" if network else "127.0.0.1", self.port))
                 break
             except OSError as error:
                 if error.errno != errno.EADDRINUSE or previous is None or attempt == 39:
@@ -183,40 +185,42 @@ class SharingRelay:
                 return None
             self._host = sock
             sock.send(encode({"kind": "listening", "port": self._listener.port}))
+        return Handlers(lambda text: self._host_frame(sock, text), lambda: self._host_closed(sock))
 
-        def message(text):
-            try:
-                frame = json.loads(text)
-            except ValueError:
-                return
-            kind = frame.get("kind") if isinstance(frame, dict) else None
-            with self._lock:
-                if kind == "send":
-                    client = self._clients.get(frame.get("clientId"))
-                    if client is not None:
-                        client.connection.send(str(frame.get("text")))
-                elif kind == "broadcast":
-                    for client in self._clients.values():
-                        client.connection.send(str(frame.get("text")))
-                elif kind == "close":
-                    client = self._clients.get(frame.get("clientId"))
-                    if client is not None:
-                        client.connection.close()
-                elif kind == "network":
-                    sock.send(encode(self._set_network(frame.get("enabled") is True)))
-
-        def closed():
-            with self._lock:
-                if self._host is not sock:
-                    return
-                self._host = None
+    def _host_frame(self, sock, text):
+        """One frame from the host: text for one or every linked browser, a close, or the network switch."""
+        try:
+            frame = json.loads(text)
+        except ValueError:
+            return
+        if not isinstance(frame, dict):
+            return
+        kind = frame.get("kind")
+        with self._lock:
+            if kind == "network":
+                sock.send(encode(self._set_network(frame.get("enabled") is True)))
+            elif kind == "broadcast":
                 for client in self._clients.values():
+                    client.connection.send(str(frame.get("text")))
+            elif kind in ("send", "close"):
+                client = self._clients.get(frame.get("clientId"))
+                if client is None:
+                    return
+                if kind == "send":
+                    client.connection.send(str(frame.get("text")))
+                else:
                     client.connection.close()
-                self._clients.clear()
-                if self._listener.network:
-                    self._set_network(False)
 
-        return Handlers(message, closed)
+    def _host_closed(self, sock):
+        with self._lock:
+            if self._host is not sock:
+                return
+            self._host = None
+            for client in self._clients.values():
+                client.connection.close()
+            self._clients.clear()
+            if self._listener.network:
+                self._set_network(False)
 
     def connect_client(self, sock, origin, address):
         """The handlers for a new linked-browser socket, or None while no host is connected."""
@@ -376,7 +380,8 @@ def refusal(relay, path, headers, peer):
 
 
 def accept_key(key):
-    return base64.b64encode(hashlib.sha1((key + WEBSOCKET_GUID).encode("ascii")).digest()).decode("ascii")
+    # RFC 6455 defines the handshake's accept value as SHA-1 over the key; it protects nothing.
+    return base64.b64encode(hashlib.sha1((key + WEBSOCKET_GUID).encode("ascii")).digest()).decode("ascii")  # NOSONAR
 
 
 def relay_frames(reader, connection, on_text):

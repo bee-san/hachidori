@@ -6,6 +6,7 @@ on this computer, and on the person's other computers when the sharing
 Hachidori asks for it, can share one library. The port is the add-on's only
 setting; see config.md.
 """
+import functools
 import threading
 import time
 
@@ -32,7 +33,7 @@ def run(port):
                     "Change the port under Tools → Add-ons → Hachidori Relay → Config, and under "
                     "Settings → Sharing → Advanced in Hachidori, then restart Anki."
                 )
-                mw.taskman.run_on_main(lambda: showWarning(text, title="Hachidori Relay"))
+                mw.taskman.run_on_main(functools.partial(showWarning, text, title="Hachidori Relay"))
             time.sleep(RETRY_SECONDS)
 
 

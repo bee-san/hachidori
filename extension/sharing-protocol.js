@@ -29,7 +29,7 @@ export const FORWARDED_REQUESTS = {
 export function forwardableRequest(message) {
   if (!message || typeof message !== "object") return false;
   const types = FORWARDED_REQUESTS[message.target];
-  if (!types || !types.has(message.type)) return false;
+  if (!types?.has(message.type)) return false;
   // A blob: URL only resolves inside the browser that created it; the host can
   // download an archive itself.
   if (message.type === "hd_import") return typeof message.archiveUrl === "string" && message.blobUrl === undefined;
@@ -48,7 +48,9 @@ export function formatHostAddress({ port = DEFAULT_SHARING_PORT } = {}) {
 // the default, or the full ws:// address. Empty means this computer.
 export function parseLinkAddress(text) {
   const trimmed = String(text ?? "").trim();
-  const withScheme = trimmed === "" ? formatLinkAddress() : trimmed.includes("://") ? trimmed : `ws://${trimmed}`;
+  let withScheme = trimmed;
+  if (trimmed === "") withScheme = formatLinkAddress();
+  else if (!trimmed.includes("://")) withScheme = `ws://${trimmed}`;
   let url;
   try {
     url = new URL(withScheme);
@@ -60,7 +62,9 @@ export function parseLinkAddress(text) {
   }
   const port = url.port === "" ? DEFAULT_SHARING_PORT : Number(url.port);
   const host = LOOPBACK_HOSTS.has(url.hostname) ? "127.0.0.1" : url.hostname;
-  const display = host === "127.0.0.1" ? "this computer" : port === DEFAULT_SHARING_PORT ? host : `${host}:${port}`;
+  let display = `${host}:${port}`;
+  if (host === "127.0.0.1") display = "this computer";
+  else if (port === DEFAULT_SHARING_PORT) display = host;
   return { host, port, address: formatLinkAddress({ host, port }), display };
 }
 

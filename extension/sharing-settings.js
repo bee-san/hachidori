@@ -26,6 +26,12 @@ function hostSummary(host, display) {
   return `the Hachidori in ${host?.name || "another browser"} ${where} (${dictionaries(host?.dictionaryCount)})`;
 }
 
+// "Chrome on this computer", "another browser at 100.75.152.76"
+function clientLabel(entry) {
+  const where = entry.local ? "on this computer" : `at ${entry.address}`;
+  return `${entry.name || "another browser"} ${where}`;
+}
+
 export function createSharingSettingsController({
   document, send, setStatus, downloadAddon,
   copy = text => document.defaultView.navigator.clipboard.writeText(text),
@@ -139,19 +145,27 @@ export function createSharingSettingsController({
     if (portDraft === null && sharing !== null && port.value !== String(sharing.port)) port.value = String(sharing.port);
     port.disabled = pending || enabled;
     renderAddresses();
-    const clients = sharing?.clients ?? [];
-    element("sharing-host-clients").textContent = !hosting() ? ""
-      : clients.length === 0 ? "No other browser is linked yet."
-        : `Linked: ${clients.map(entry => `${entry.name || "another browser"} ${entry.local ? "on this computer" : `at ${entry.address}`}`).join(", ")}.`;
+    element("sharing-host-clients").textContent = clientsText();
     element("sharing-host").disabled = isLinked;
+  }
+
+  function clientsText() {
+    if (!hosting()) return "";
+    const clients = sharing.clients ?? [];
+    if (clients.length === 0) return "No other browser is linked yet.";
+    return `Linked: ${clients.map(clientLabel).join(", ")}.`;
+  }
+
+  function foundText() {
+    if (found === null) return probing ? "Looking for a shared Hachidori on this computer…" : "";
+    if (found === false) return "No other Hachidori is sharing on this computer.";
+    return `Another browser on this computer is sharing: ${hostSummary(found.host, found.display)}.`;
   }
 
   function renderClient() {
     const isLinked = linked();
     element("sharing-client-nearby").hidden = isLinked || hosting();
-    element("sharing-client-found").textContent = found === null ? (probing ? "Looking for a shared Hachidori on this computer…" : "")
-      : found === false ? "No other Hachidori is sharing on this computer."
-        : `Another browser on this computer is sharing: ${hostSummary(found.host, found.display)}.`;
+    element("sharing-client-found").textContent = foundText();
     element("sharing-client-use").hidden = !found;
     element("sharing-client-use").disabled = pending;
     element("sharing-client-find").disabled = pending || probing;
