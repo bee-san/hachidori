@@ -618,20 +618,29 @@ async function popupReader(page, depth = 0) {
         const noteActions = noteForm?.querySelector(".gsm-hoshidicts-note-actions");
         const noteFormRect = noteForm?.getBoundingClientRect();
         const noteActionsRect = noteActions?.getBoundingClientRect();
-        const pitchRuby = this.querySelector(".gsm-hoshidicts-pitch-ruby");
-        const pitchContour = pitchRuby?.querySelector(".gsm-hoshidicts-pitch-contour");
-        const firstBase = pitchRuby && [...pitchRuby.childNodes]
-          .find(node => node.nodeType !== Node.ELEMENT_NODE || node.tagName !== "RT");
-        let firstBaseRect = null;
-        if (firstBase instanceof Element) {
-          firstBaseRect = firstBase.getBoundingClientRect();
-        } else if (firstBase?.nodeType === Node.TEXT_NODE && firstBase.length > 0) {
+        // Each headword reading must be centred over the text it reads (た over
+        // 食, not over 食べ), and pitch contours must join into one line. Chrome
+        // reports a native <rt>'s whole column for its text, wherever ruby-align
+        // draws the glyphs, so plain ruby can only be checked through its style.
+        // Pitch ruby is laid out as flex boxes, whose text geometry is real.
+        const expression = this.querySelector(".gsm-hoshidicts-expression");
+        const pitchRubies = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-ruby") ?? [])];
+        const textCentre = node => {
           const range = this.ownerDocument.createRange();
-          range.setStart(firstBase, 0);
-          range.setEnd(firstBase, 1);
-          firstBaseRect = range.getBoundingClientRect();
-        }
-        const pitchContourRect = pitchContour?.getBoundingClientRect();
+          const walker = this.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+          const rects = [];
+          while (walker.nextNode()) {
+            range.selectNodeContents(walker.currentNode);
+            rects.push(range.getBoundingClientRect());
+          }
+          return (Math.min(...rects.map(rect => rect.left)) + Math.max(...rects.map(rect => rect.right))) / 2;
+        };
+        const pitchCentring = pitchRubies.map(ruby => Math.abs(
+          textCentre(ruby.querySelector("rt")) - textCentre(ruby.querySelector(".gsm-hoshidicts-pitch-base"))));
+        const contourRects = pitchRubies
+          .map(ruby => ruby.querySelector(".gsm-hoshidicts-pitch-contour").getBoundingClientRect());
+        const contourGaps = contourRects.slice(1)
+          .map((rect, index) => Math.abs(rect.left - contourRects[index].right));
         return {
           hidden: this.hasAttribute("hidden"),
           height: this.getBoundingClientRect().height,
@@ -671,11 +680,13 @@ async function popupReader(page, depth = 0) {
             || (noteForm.scrollHeight <= noteForm.clientHeight + 1
               && noteActionsRect.top >= noteFormRect.top - 1
               && noteActionsRect.bottom <= noteFormRect.bottom + 1),
-          furiganaAlignment: pitchContourRect && firstBaseRect ? {
-            readingLeft: pitchContourRect.left,
-            wordLeft: firstBaseRect.left,
-            difference: Math.abs(pitchContourRect.left - firstBaseRect.left),
-          } : null,
+          furiganaAlignment: {
+            rubyAlign: expression ? view.getComputedStyle(expression).rubyAlign : null,
+            rubies: expression?.querySelectorAll("ruby").length ?? 0,
+            pitchRubies: pitchRubies.length,
+            pitchCentring: Math.max(0, ...pitchCentring),
+            contourGap: Math.max(0, ...contourGaps),
+          },
         };
       }`,
     });
@@ -6066,6 +6077,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       "opt-pitch-badge": false, "opt-grammar-tags": false });
     const hidden = await expectMetadata(value => value.frequencyNames.length === 0 && value.pitch === 0
       && value.ruby.length === 0 && value.grammar === 0);
+    const plainFurigana = (await popup.state())?.furiganaAlignment;
     await editSettingsControls(settings, { "opt-popup-width": "280", "opt-popup-toolbar": "bottom" });
     const defaultNarrow = await expectState(value => value.rect.width === 280 && value.toolbar === "bottom"
       && value.metadata.defaultFrequencyPill);
@@ -6073,6 +6085,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     await expectState(value => value.rect.width === 560 && value.toolbar === "top");
     const retained = await popup.retainedControls();
     evidence.push(hidden.metadata.ipa.includes("tabeɾɯ") && hidden.metadata.definitionTags === before.metadata.definitionTags
+      && plainFurigana?.rubyAlign === "center" && plainFurigana.rubies === 1 && plainFurigana.pitchRubies === 0
       && hidden.metadata.defaultFrequencyPill && hidden.metadata.defaultFrequencyLabel === "Freq:"
       && hidden.metadata.frequencyText.startsWith("Freq: ")
       && defaultNarrow.metadata.defaultFrequencyPill && !defaultNarrow.metadata.clippedFrequencies
@@ -6093,7 +6106,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     const contour = await expectMetadata(value => value.ruby.includes("hachidori-fixture") && value.pitch === 0);
     const contourState = await popup.state();
     evidence.push(contour.metadata.grammar === 0 && contour.metadata.ipa.includes("tabeɾɯ")
-      && contourState?.furiganaAlignment?.difference <= 1
+      && contourState?.furiganaAlignment?.pitchRubies === 2
+      && contourState.furiganaAlignment.pitchCentring <= 1 && contourState.furiganaAlignment.contourGap <= 1
       && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     if (process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT) {
       await editSettingsControls(settings, { "opt-average-frequency": false });
