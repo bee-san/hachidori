@@ -1303,10 +1303,10 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 ## Settings interface
 
 Settings is one document with native hash links and one visible task section.
-The primary rail exposes nine destinations. Library owns five local,
+The primary rail exposes eight destinations. Library owns five local,
 hash-addressable task views: Dictionaries, Add, Updates, Groups, and Personal
 dictionary. Backup and restore remains a global destination. The compact picker
-keeps all thirteen task views available and groups those five Library choices.
+keeps all twelve task views available and groups those five Library choices.
 Global search matches settings across every section, includes the Library
 hierarchy in matching and result breadcrumbs, opens a result's enclosing
 disclosures and focuses its control without changing values or discarding drafts.
@@ -1933,41 +1933,6 @@ or until that exact refresh consumes it. Saving is the transactional boundary,
 so a later best-effort lookup failure cannot make the already-appended row
 retryable.
 
-## Sharing between browsers
-
-Sharing makes one install the host for every other Hachidori on the same
-computer. Extensions cannot listen for connections, so the host runs
-`bridge/hachidori-bridge.mjs` through native messaging: a dependency-free Node.js
-script that owns one loopback WebSocket listener (`ws://127.0.0.1:8771/link` by
-default) and forwards frames without understanding them. Chrome keeps the host's
-service worker alive while that port is open, and the bridge exits when the port
-closes. The manifest declares `nativeMessaging` as an optional permission; the
-Sharing section requests it inside the switch's click.
-
-`extension/sharing-protocol.js` is imported by both the service worker and the
-bridge: the native host name, default port, address rules, the table of
-forwardable requests, and the splitting of a WebSocket text frame into native
-messages of at most 1 MB (`splitNativeText` / `createTextAssembler`). Native
-messages from the bridge carry `client-open`, `client-close` and `client-text`
-parts; the host answers with `send`, `broadcast` and `close`. A linked browser
-speaks JSON text frames: `hello` (answered with the host version, dictionary
-count and a snapshot of the five shared keys), `request` carrying an ordinary
-runtime message, and `pong` to the bridge's periodic `ping`.
-
-`extension/sharing-host.js` owns the port, retries with the capture host's
-backoff, keeps a one-minute `hachidori-sharing-host` alarm only while enabled
-and disconnected, and records Chrome's disconnect reason for Settings. A
-forwarded request is dispatched by its target through `relayEngineRequest`,
-`handleWorkerRequest`, `handleUpdatesRequest` or `handleAnkiRequest` with a
-synthetic sender, exactly as a page's message would be; the reply goes back
-verbatim, including its `requestId`. Every `chrome.storage.onChanged` batch
-touching `dictionaryState`, `options`, `customDictionarySource`,
-`dictionaryUpdates`, `lookupStats` or a `lookupStats:` row is broadcast whole,
-so a linked browser can replay it as one write. The bridge's only rule is that
-the handshake's `Origin` starts with `chrome-extension://`; there is no token.
-The local-only `sharing` key holds `{ host: { enabled, port } | null }` and
-is not part of backups. See [sharing](sharing.md) for setup.
-
 ## Storage ownership
 
 | Data | Owner | Storage |
@@ -1976,7 +1941,6 @@ is not part of backups. See [sharing](sharing.md) for setup.
 | Revisioned logical-package inventory, order, presentation, capabilities, source metadata, and global dictionary groups | service worker | `chrome.storage.local` key `dictionaryState` |
 | Revisioned custom-dictionary source text and semantic hash | service worker | `chrome.storage.local` key `customDictionarySource` |
 | Global managed-update schedule and last completed check time | service worker | `chrome.storage.local` key `dictionaryUpdates` |
-| Sharing configuration: whether this install shares and on which port | service worker | `chrome.storage.local` key `sharing` |
 | Hover enablement, activation mode/key, Japanese-only scanning, open/hide delays, child popup depth, scan/result limits, frequency ordering, dictionary selectors, and default-off media-capture configuration | service worker writes; extension pages read a projected subset | `chrome.storage.local` key `options` |
 | Media streams, compressed-frame/PCM history, occurrence timeline, pins, export jobs, and received texthooker text | offscreen capture host; dedicated workers own frame canvases and encoding allocations | transient memory only |
 | Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
@@ -2047,7 +2011,6 @@ consistency improvement over the pinned GSM reference's explicit name submits.
 | `hd_updates_schedule` | Save the one global update interval and reconcile its Chrome alarm |
 | `hd_updates_check` | Check every managed index and persist per-package availability without downloading |
 | `hd_updates_install` | Recheck and install the requested available managed packages |
-| `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state, or start and stop the native messaging bridge that serves other browsers on this computer |
 | `hd_capture_open`, `hd_capture_tabs`, `hd_capture_link`, `hd_capture_unlink` | Open the explicit capture surface, enumerate candidate reading tabs, and bind or release one trusted page/document |
 | `hd_capture_video_select`, `hd_capture_track_area`, `hd_capture_clear_area` | Control the linked page's session-only cue and DOM collectors |
 | `hd_capture_text_begin`, `hd_capture_text_close`, `hd_capture_text_source_close` | Forward bounded occurrence lifecycle records from the linked content script to the registered capture session |

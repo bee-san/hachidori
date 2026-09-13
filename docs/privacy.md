@@ -1,6 +1,6 @@
 # Hachidori privacy policy
 
-Last updated: 13 September 2026.
+Last updated: 8 September 2026.
 
 Hachidori helps you read Japanese with local dictionaries and save selected
 study material to Anki. It is maintained by Autumn (Bee). For privacy questions
@@ -74,16 +74,6 @@ Any later Anki synchronization is controlled by Anki and your Anki configuration
 **Texthookers.** Optional media-capture texthookers receive text and timing from
 a WebSocket service on the same computer. Lookup counts use only local browser
 storage and never contact an external service.
-
-**Sharing between browsers.** Turning on **Share this Hachidori** in Settings
-starts a helper program on your computer that listens on a local port
-(`127.0.0.1`, port 8771 by default) so other browsers on the same computer can
-use this Hachidori. Only browser extensions can connect. A linked browser
-receives dictionary results, personal entries, lookup counts and settings,
-including custom URLs and the AnkiConnect API key, and its edits are stored
-here. Nothing is sent to other computers. Another program or extension on your
-computer could connect while sharing is on, as with AnkiConnect. Sharing is off
-by default and needs the optional native messaging permission.
 
 **Links and styling.** Activating a link in a dictionary opens the URL supplied
 by that dictionary. Custom toolbar links open the URL template you configured,

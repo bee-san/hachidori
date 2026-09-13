@@ -18,9 +18,6 @@
     "storage",
     "unlimitedStorage"
   ],
-  "optional_permissions": [
-    "nativeMessaging"
-  ],
   "host_permissions": [
     "<all_urls>"
   ],
