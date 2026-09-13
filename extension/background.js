@@ -74,6 +74,7 @@ const CAPTURE_PAGE_TARGET = "hachidori-capture-page";
 const CAPTURE_CONTENT_TARGET = "hachidori-capture-content";
 const CAPTURE_DOCUMENT = "capture.html";
 const SETUP_TARGET = "hachidori-setup";
+const PAGE_ZOOM_TARGET = "hachidori-page-zoom";
 
 // Requests the worker answers itself. A second target is what keeps them out of
 // the relay below: a message from the offscreen document carrying TARGET is
@@ -1863,6 +1864,19 @@ async function relayEngineRequest(message) {
     if (backupPreparations.get(message.token) === preparation) backupPreparations.delete(message.token);
   }
 }
+
+// The reader's popup cancels browser zoom, which only extension APIs report.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== PAGE_ZOOM_TARGET) return false;
+  const tabId = sender.tab?.id;
+  if (sender.id !== chrome.runtime.id || message.type !== "hd_page_zoom" || !Number.isInteger(tabId)) {
+    sendResponse(failureReply(message, new Error("Unknown page zoom request.")));
+    return false;
+  }
+  chrome.tabs.getZoom(tabId).then((zoomFactor) => sendResponse(workerReply(message, { zoomFactor })),
+    (error) => sendResponse(failureReply(message, error)));
+  return true;
+});
 
 // Only the startup page may start or observe an accepted dictionary run.
 // Release the storage read before relaying: engine commits call back into the worker.
