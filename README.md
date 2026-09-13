@@ -8,18 +8,17 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-7c3aed" alt="GPL-3.0-or-later license"></a>
-  <a href="#install-in-60-seconds"><img src="https://img.shields.io/badge/Chrome-128%2B-4285F4?logo=googlechrome&logoColor=white" alt="Chrome 128 or newer"></a>
+  <a href="#install-in-15-seconds"><img src="https://img.shields.io/badge/Chrome-128%2B-4285F4?logo=googlechrome&logoColor=white" alt="Chrome 128 or newer"></a>
   <a href="docs/privacy.md"><img src="https://img.shields.io/badge/dictionary_engine-local-0f766e" alt="Dictionary engine runs locally"></a>
   <a href="https://sonarcloud.io/summary/new_code?id=bee-san_hachidori"><img src="https://sonarcloud.io/api/project_badges/measure?project=bee-san_hachidori&metric=alert_status" alt="SonarQube Cloud quality gate"></a>
   <a href="https://github.com/bee-san/hachidori"><img src="https://img.shields.io/github/stars/bee-san/hachidori?style=flat&logo=github&color=f59e0b" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
-  <a href="#install-in-60-seconds">Install</a> ·
-  <a href="#use-it">Usage</a> ·
-  <a href="#benchmarks">Benchmarks</a> ·
-  <a href="#hachidori-vs-the-alternatives">Compare</a> ·
+  <a href="#install-in-15-seconds">Install</a> ·
+  <a href="benchmark/README.md">Benchmarks</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
+  <a href="extension/README.md">Extension</a> ·
   <a href="docs/sharing.md">Sharing</a> ·
   <a href="docs/chrome-web-store.md">Chrome Web Store guide</a> ·
   <a href="docs/privacy.md">Privacy</a> ·
@@ -41,6 +40,8 @@ https://chromewebstore.google.com/detail/hachidori/mikpaebfdmidjnopgffchicnmoahh
 Hachidori is 83 times faster than the worlds most popular Japanese dictionary app at importing dictionaries.
 
 <img width="1672" height="941" alt="ChatGPT Image Sep 9, 2026, 09_18_59 AM" src="https://github.com/user-attachments/assets/c507c940-f61e-4063-8d2c-9e43184cd7d3" />
+
+See [the measured results](docs/browser-performance.md).
 
 
 # Media mining
