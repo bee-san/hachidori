@@ -10375,6 +10375,10 @@ async function contentNoteStage() {
         getURL: (path) => `chrome-extension://hachidoricontnotesmoke/${path}`,
         sendMessage(request, callback) {
           sent.push(JSON.parse(JSON.stringify(request)));
+          if (request.type === "hd_page_zoom") {
+            callback({ ok: true, requestId: request.requestId, type: "hd_page_zoom_result", zoomFactor: 1 });
+            return;
+          }
           if (!holdLookupStats && ["hd_lookup_stats_record", "hd_lookup_stats_read"].includes(request.type)) {
             callback({ ok: true, requestId: request.requestId, type: `${request.type}_result`,
               descriptor: { generation: "statistics", revision: ++lookupStatsRevision },
