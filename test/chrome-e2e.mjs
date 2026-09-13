@@ -211,6 +211,7 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
+  "a fresh profile declares the optional native messaging permission and reports sharing off",
   "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
   "a fresh install waits for Start setup before dictionary downloads or Anki discovery",
   "Start setup begins automatic dictionary installation with first-install preferences",
@@ -337,6 +338,7 @@ const PLANNED = [
   "the selected kanji dictionary is saved",
   "custom Settings lazily saves a source through the real WASM importer",
   "the popup opens below the complete wrapped match instead of the hovered glyph",
+  "browser zoom keeps the popup at its configured on-screen size inside the viewport",
   "hovering positioned per-glyph boxes looks up and highlights the whole word",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "hovering an inflected verb shows a popup",
@@ -6987,6 +6989,43 @@ async function main() {
       ),
     JSON.stringify(branding),
   );
+  await showSettingsSection(page, "sharing");
+  const sharing = await page.evaluate(async () => {
+    const manifest = chrome.runtime.getManifest();
+    const granted = await chrome.permissions.contains({ permissions: ["nativeMessaging"] });
+    const reply = await chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_status", requestId: "e2e-sharing" });
+    const toggle = document.getElementById("sharing-host-enabled");
+    for (let attempt = 0; attempt < 50 && toggle.disabled; attempt++) {
+      await new Promise(resolveWait => setTimeout(resolveWait, 20));
+    }
+    return {
+      optional: manifest.optional_permissions ?? [],
+      granted,
+      reply,
+      visible: !document.getElementById("sharing").hidden,
+      toggleDisabled: toggle.disabled,
+      toggleChecked: toggle.checked,
+      address: document.getElementById("sharing-host-address").value,
+      command: document.getElementById("sharing-install-command").textContent,
+      status: document.getElementById("sharing-status").textContent,
+    };
+  });
+  check(
+    "a fresh profile declares the optional native messaging permission and reports sharing off",
+    sharing.optional.includes("nativeMessaging")
+      && sharing.granted === false
+      && sharing.reply?.ok === true
+      && sharing.reply.sharing?.enabled === false
+      && sharing.reply.sharing.connected === false
+      && sharing.reply.sharing.address === "ws://127.0.0.1:8771/link"
+      && sharing.visible
+      && sharing.toggleDisabled === false
+      && sharing.toggleChecked === false
+      && sharing.address === "ws://127.0.0.1:8771/link"
+      && sharing.command === `node bridge/install.mjs --extension-id ${extensionId}`
+      && sharing.status === "Not sharing.",
+    JSON.stringify(sharing),
+  );
   await showSettingsSection(page, "keybinds");
   const browserShortcuts = await page.evaluate(async () => {
     const commands = await chrome.commands.getAll();
@@ -8230,7 +8269,7 @@ async function main() {
     const libraryLinks = [...document.querySelectorAll("#library-navigation a")];
     return document.querySelector("main > section")?.id === "dictionaries"
       && row.getBoundingClientRect().bottom < window.innerHeight
-      && links.length === 8
+      && links.length === 9
       && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION")
       && JSON.stringify(libraryLinks.map(link => link.hash)) === JSON.stringify([
         "#dictionaries", "#add-dictionaries", "#updates", "#dictionary-groups", "#custom-dictionary",
@@ -9103,6 +9142,40 @@ async function main() {
     if (original.style === null) element.removeAttribute("style");
     else element.setAttribute("style", original.style);
   }, originalVerb);
+  // Page zoom scales the page's CSS pixels; the popup cancels it.
+  const setPageZoom = zoomFactor => page.evaluate(async (url, factor) => {
+    const [target] = await chrome.tabs.query({ url });
+    await chrome.tabs.setZoom(target.id, factor);
+  }, pageUrl, zoomFactor);
+  await setPageZoom(2);
+  await tab.waitForFunction(() => window.devicePixelRatio === 2, { timeout: 5000 });
+  // Selecting the word avoids depending on how synthetic pointer input maps
+  // coordinates under browser zoom.
+  await tab.evaluate(() => getSelection().selectAllChildren(document.getElementById("verb")));
+  const zoomedPopup = await popup.waitForVisible();
+  let zoomed = null;
+  if (zoomedPopup !== null) {
+    const widthPx = await page.evaluate(async () => (await chrome.storage.local.get("options")).options?.popupWidthPx ?? 560);
+    // The zoom factor arrives from the service worker alongside the lookup.
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      zoomed = { widthPx, rect: (await popup.dictionaryTabs()).rect,
+        viewport: await tab.evaluate(() => ({ width: innerWidth, height: innerHeight })) };
+      if (Math.abs(zoomed.rect.width * 2 - widthPx) <= 2) break;
+      await new Promise(done => setTimeout(done, 100));
+    }
+  }
+  await tab.evaluate(() => getSelection().removeAllRanges());
+  await tab.keyboard.press("Escape");
+  await popup.waitForHidden();
+  await setPageZoom(1);
+  await tab.waitForFunction(() => window.devicePixelRatio === 1, { timeout: 5000 });
+  check(
+    "browser zoom keeps the popup at its configured on-screen size inside the viewport",
+    zoomed !== null && Math.abs(zoomed.rect.width * 2 - zoomed.widthPx) <= 2
+      && zoomed.rect.left >= 0 && zoomed.rect.top >= 0
+      && zoomed.rect.right <= zoomed.viewport.width && zoomed.rect.bottom <= zoomed.viewport.height,
+    JSON.stringify(zoomed),
+  );
 
   // An OCR overlay such as GameSentenceMiner's boxes every glyph in its own
   // absolutely positioned span, which CSS blockifies, and separates blocks with

@@ -20,6 +20,7 @@
   <a href="#benchmarks">Benchmarks</a> ·
   <a href="#hachidori-vs-the-alternatives">Compare</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/sharing.md">Sharing</a> ·
   <a href="docs/chrome-web-store.md">Chrome Web Store guide</a> ·
   <a href="docs/privacy.md">Privacy</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -80,6 +81,14 @@ It can even use anki.
 <p align="center">
   <img src="docs/assets/lookup-blur.gif" alt="Animated demonstration of Hachidori blurring repeated lookups before revealing their definitions" width="720">
 </p>
+
+# Sharing
+
+I read in Chrome and I play games with the GameSentenceMiner overlay, and I did not want two Hachidoris with two sets of dictionaries, two personal dictionaries and two sets of settings that drift apart.
+
+Turn on **Sharing** in the Chrome install and the other browser uses it: same dictionaries, same personal entries, same lookup counts, same settings, edited from either side.
+
+See [Sharing](docs/sharing.md) for the one-time bridge install.
 
 # Optionated
 

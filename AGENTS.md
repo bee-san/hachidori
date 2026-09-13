@@ -77,6 +77,7 @@ When implementing the dictionary-only scope from issue #9:
 - `third_party/hoshidicts` is a submodule and should move only as an intentional part of the change.
 - `extension/vendor/hoshidicts.{mjs,wasm}` is committed build output. Update it with its source change; otherwise leave it alone.
 - `test/` contains the fixture generator, smoke suites, real-Chrome E2E test, and optional native baseline. See `test/README.md` for what each suite proves.
+- `bridge/` contains the native messaging bridge and its installer for Sharing. It uses only Node.js built-ins plus `extension/sharing-protocol.js`, which the service worker imports too.
 
 ## Validation
 
@@ -85,6 +86,7 @@ Run the narrowest existing checks that exercise the change:
 - Documentation-only changes: inspect the rendered Markdown, links, and final diff; code tests are not required.
 - Fixture, C ABI, or WebAssembly changes: rebuild when needed, then run `node test/make-fixture.mjs` and `node test/node-smoke.mjs`.
 - Extension runtime or renderer changes: run `node test/make-fixture.mjs` and `node test/extension-smoke.mjs`.
+- Sharing bridge, protocol or Settings changes: also run `node --test test/sharing-protocol.test.mjs test/bridge.test.mjs test/sharing-settings.test.mjs`.
 - Manifest, service worker, offscreen lifecycle, IndexedDB persistence, content-script, or visible popup changes: also run `node test/chrome-e2e.mjs`.
 
 Do not claim a check that was not run. Report each command and its exact outcome in the pull request.

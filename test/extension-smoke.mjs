@@ -537,6 +537,9 @@ function makeChrome(owner, bus, storage, alarms = makeAlarms()) {
     runtime: {
       id: "hachidorismokeextensionid",
       lastError: undefined,
+      getManifest() {
+        return { version: "0.0.0-smoke" };
+      },
       getURL(path) {
         return `${EXTENSION_ORIGIN}/${String(path).replace(/^\//u, "")}`;
       },
@@ -757,6 +760,11 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const setupState = readFileSync(resolve(EXTENSION, "setup-state.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
+  const sharingProtocol = readFileSync(resolve(EXTENSION, "sharing-protocol.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
+  const sharingHost = readFileSync(resolve(EXTENSION, "sharing-host.js"), "utf8")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
+    .replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
@@ -774,6 +782,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-host\.js";\s*/u, "")
     .replace(/import \{ OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
@@ -787,7 +796,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${overlayModeSource}\n${setupState}\n${sharingProtocol}\n${sharingHost}\n${ankiTemplates}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${background}`,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1126,6 +1135,135 @@ async function overlayModeBackgroundStage() {
   check("overlay mode seeds hover lookups without a highlight once and never opens setup",
     seededOnce && preserved && carriedKept,
     JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
+}
+
+// The host side of sharing: a fake native port stands in for the bridge, and a
+// fake offscreen engine answers the relayed lookup.
+function fakeNativePorts(chrome) {
+  const ports = [];
+  chrome.runtime.connectNative = (name) => {
+    const port = {
+      name,
+      posted: [],
+      disconnected: false,
+      listeners: { message: [], disconnect: [] },
+      onMessage: { addListener(fn) { port.listeners.message.push(fn); } },
+      onDisconnect: { addListener(fn) { port.listeners.disconnect.push(fn); } },
+      postMessage(message) { port.posted.push(structuredClone(message)); },
+      disconnect() { port.disconnected = true; },
+      deliver(message) { for (const fn of port.listeners.message) fn(structuredClone(message)); },
+      drop(reason) {
+        chrome.runtime.lastError = reason ? { message: reason } : undefined;
+        for (const fn of port.listeners.disconnect) fn();
+        chrome.runtime.lastError = undefined;
+      },
+      sent: () => port.posted.filter(message => message.kind === "send").map(message => JSON.parse(message.text)),
+      broadcasts: () => port.posted.filter(message => message.kind === "broadcast").map(message => JSON.parse(message.text)),
+    };
+    ports.push(port);
+    return port;
+  };
+  return ports;
+}
+
+async function sharingHostStage() {
+  const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
+  const chrome = makeChrome("sharing-host-worker", bus, storage, alarms);
+  const ports = fakeNativePorts(chrome);
+  Object.assign(offscreenState, { created: 0, exists: false, concurrent: 0, peakConcurrent: 0 });
+  const relayed = [];
+  bus.addListener("sharing-engine", (message, sender, sendResponse) => {
+    if (message?.target !== "hoshidicts-offscreen" || message.relayed !== true) return false;
+    relayed.push(structuredClone(message));
+    sendResponse({ type: `${message.type}_result`, requestId: message.requestId, ok: true, results: [{ matched: message.text }] });
+    return true;
+  });
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error });
+  const settle = async (predicate = () => false) => {
+    for (let attempt = 0; attempt < 100 && !predicate(); attempt += 1) {
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+    }
+  };
+  const send = (type, fields = {}) => bus.sendMessage("sharing-page", { target: "hachidori-sharing", type, requestId: `sharing-${type}`, ...fields });
+  const clientText = (port, id, text, parts = 1) => {
+    const size = Math.ceil(text.length / parts);
+    for (let index = 0; index < parts; index += 1) {
+      port.deliver({ kind: "client-text", clientId: "client-1", id, index, count: parts, part: text.slice(index * size, (index + 1) * size) });
+    }
+  };
+
+  const before = await send("hd_sharing_status");
+  const enabled = await send("hd_sharing_host_enable", { port: 4321 });
+  await settle(() => storage.raw.get("sharing")?.host?.enabled === true);
+  const port = ports[0];
+  port.deliver({ kind: "listening", port: 4321 });
+  port.deliver({ kind: "client-open", clientId: "client-1", origin: "chrome-extension://linkedbrowser" });
+  clientText(port, 1, JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM" }));
+  await settle(() => port.sent().length >= 1);
+  const hello = port.sent()[0];
+  const listening = await send("hd_sharing_status");
+  check("turning sharing on starts the bridge, stores the port and answers a linked browser's hello with the shared snapshot",
+    before.sharing?.enabled === false && enabled.ok === true && enabled.sharing.enabled === true
+      && port.posted[0]?.kind === "listen" && port.posted[0].port === 4321
+      && storage.raw.get("sharing")?.host?.port === 4321
+      && listening.sharing.connected === true && listening.sharing.address === "ws://127.0.0.1:4321/link"
+      && listening.sharing.clients.length === 1 && listening.sharing.clients[0].name === "GSM"
+      && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.dictionaryCount === 0
+      && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options"])
+      && hello.snapshot.options === null,
+    JSON.stringify({ before, enabled, listening, hello, posted: port.posted }));
+
+  clientText(port, 2, JSON.stringify({ kind: "request", id: "r1",
+    message: { target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "lookup-9", text: "猫" } }), 3);
+  await settle(() => port.sent().length >= 2);
+  const lookup = port.sent()[1];
+  check("a forwarded lookup split across native parts reaches the engine once and returns its exact reply",
+    relayed.length === 1 && relayed[0].type === "hd_lookup" && relayed[0].text === "猫" && relayed[0].requestId === "lookup-9"
+      && lookup?.kind === "reply" && lookup.id === "r1" && lookup.response?.type === "hd_lookup_result"
+      && lookup.response.ok === true && lookup.response.requestId === "lookup-9" && lookup.response.results?.[0]?.matched === "猫",
+    JSON.stringify({ relayed, lookup }));
+
+  clientText(port, 3, JSON.stringify({ kind: "request", id: "r2",
+    message: { target: "hoshidicts-worker", type: "hd_options_write", requestId: "write-1", baseRevision: 0, options: { hoverEnabled: false } } }));
+  await settle(() => port.sent().length >= 3 && port.broadcasts().length >= 1);
+  const written = port.sent()[2];
+  const broadcast = port.broadcasts()[0];
+  await storage.api().local.set({ setupState: { stage: "welcome" } });
+  await settle();
+  clientText(port, 4, JSON.stringify({ kind: "request", id: "r3", message: { target: "hachidori-audio", type: "hd_audio_play", requestId: "audio-1" } }));
+  await settle(() => port.sent().length >= 4);
+  const refused = port.sent()[3];
+  check("a forwarded options write commits on the host and every linked browser receives that storage batch, while local-only keys stay home",
+    written?.kind === "reply" && written.id === "r2" && written.response?.ok === true && written.response.options?.hoverEnabled === false
+      && storage.raw.get("options")?.hoverEnabled === false
+      && broadcast?.kind === "storage" && JSON.stringify(Object.keys(broadcast.changes)) === JSON.stringify(["options"])
+      && broadcast.changes.options.revision === written.response.options.revision
+      && port.broadcasts().length === 1
+      && refused?.kind === "reply" && refused.id === "r3" && refused.response?.ok === false
+      && /unsupported shared request target/u.test(refused.response.error),
+    JSON.stringify({ written, broadcasts: port.broadcasts(), refused }));
+
+  port.drop("Specified native messaging host not found.");
+  await settle();
+  const dropped = await send("hd_sharing_status");
+  const retrying = alarms.values.has("hachidori-sharing-host");
+  const restartBus = makeBus();
+  const restartChrome = makeChrome("sharing-host-restart", restartBus, storage, makeAlarms());
+  const restartPorts = fakeNativePorts(restartChrome);
+  loadBackgroundScript({ chrome: restartChrome, console, setTimeout, clearTimeout, Promise, Error });
+  await settle(() => restartPorts.length === 1);
+  const disabled = await send("hd_sharing_host_disable");
+  await settle(() => storage.raw.get("sharing")?.host === null);
+  const restarted = await restartBus.sendMessage("sharing-page", { target: "hachidori-sharing", type: "hd_sharing_host_disable", requestId: "restart-off" });
+  check("a lost bridge is reported with Chrome's reason and retried by alarm, a restarted worker reconnects on its own, and turning sharing off ends the port",
+    dropped.sharing.enabled === true && dropped.sharing.connected === false
+      && dropped.sharing.error === "Specified native messaging host not found."
+      && dropped.sharing.clients.length === 0 && retrying
+      && restartPorts[0]?.posted[0]?.kind === "listen" && restartPorts[0].posted[0].port === 4321
+      && disabled.ok === true && disabled.sharing.enabled === false && disabled.sharing.error === null
+      && !alarms.values.has("hachidori-sharing-host") && storage.raw.get("sharing")?.host === null
+      && restarted.ok === true && restartPorts[0].disconnected === true,
+    JSON.stringify({ dropped, retrying, disabled, restarted, alarms: [...alarms.values.keys()], restartPosted: restartPorts[0]?.posted }));
 }
 
 async function firstRunBackgroundStage() {
@@ -2996,6 +3134,7 @@ async function main() {
   await externalLinksBackgroundStage();
   await firstRunBackgroundStage();
   await overlayModeBackgroundStage();
+  await sharingHostStage();
   await firstRunAnkiStage();
   await backupRelayStage();
   await managedScheduleStage();
@@ -10454,6 +10593,10 @@ async function contentNoteStage() {
         getURL: (path) => `chrome-extension://hachidoricontnotesmoke/${path}`,
         sendMessage(request, callback) {
           sent.push(JSON.parse(JSON.stringify(request)));
+          if (request.type === "hd_page_zoom") {
+            callback({ ok: true, requestId: request.requestId, type: "hd_page_zoom_result", zoomFactor: 1 });
+            return;
+          }
           if (!holdLookupStats && ["hd_lookup_stats_record", "hd_lookup_stats_read"].includes(request.type)) {
             callback({ ok: true, requestId: request.requestId, type: `${request.type}_result`,
               descriptor: { generation: "statistics", revision: ++lookupStatsRevision },
