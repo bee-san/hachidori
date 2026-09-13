@@ -6987,7 +6987,9 @@ async function main() {
     // Chrome registers the manifest's suggested Alt+Delete and reports it as Alt+Del.
     browserShortcuts.commands.some(({ name, shortcut }) => name === "toggleTextScanning" && shortcut === "Alt+Del")
       && browserShortcuts.commands.some(({ name }) => name === "openSettingsPage")
-      && browserShortcuts.listed.includes("Turn Japanese lookups on or offAlt+Del"),
+      && ["addNote", "nextEntry"].every(action => browserShortcuts.commands.some(({ name }) => name === action))
+      && browserShortcuts.listed.includes("Turn Japanese lookups on or offAlt+Del")
+      && browserShortcuts.listed.includes("Add the current popup entry to AnkiNot set"),
     JSON.stringify(browserShortcuts),
   );
   // ---------------------------------------------------------- first-run setup

@@ -9,7 +9,7 @@ const background = readFileSync(new URL("../extension/background.js", import.met
 const manifest = JSON.parse(readFileSync(new URL("../extension/manifest.json", import.meta.url), "utf8"));
 
 function worker(stored) {
-  const writes = [], queued = [], errors = [];
+  const writes = [], queued = [], errors = [], tabMessages = [];
   let onCommand = null, openedSettings = 0;
   const context = vm.createContext({
     readDictionaryStorage: async () => ({ state: null, options: stored }),
@@ -22,11 +22,13 @@ function worker(stored) {
     chrome: {
       commands: { onCommand: { addListener(listener) { onCommand = listener; } } },
       runtime: { openOptionsPage: async () => { openedSettings += 1; } },
+      tabs: { sendMessage: async (tabId, message) => { tabMessages.push({ tabId, message }); } },
     },
   });
   vm.runInContext(background.slice(background.indexOf("// Yomitan's native browser shortcuts"),
     background.indexOf("// Alarms may be cleared across browser restarts")), context);
-  return { writes, queued, errors, command: name => onCommand(name), openedSettings: () => openedSettings };
+  return { writes, queued, errors, tabMessages, command: (name, tab) => onCommand(name, tab),
+    openedSettings: () => openedSettings };
 }
 
 test("browser commands toggle lookups through the queued revisioned write and open Settings", async () => {
@@ -52,4 +54,19 @@ test("browser commands toggle lookups through the queued revisioned write and op
   assert.equal(other.openedSettings(), 1);
   assert.equal(other.queued.length, 0, "only the toggle writes options");
   assert.deepEqual(other.errors, []);
+});
+
+test("popup-action browser commands reach the active tab's reader as keybind actions", () => {
+  const argumentFree = globalThis.HDReaderOptions.KEYBIND_ACTIONS
+    .filter(({ id, argument }) => id !== "" && id !== "toggleOption" && !["audioSource", "option"].includes(argument))
+    .map(({ id }) => id);
+  const readerCommands = Object.keys(manifest.commands).filter(name => !["toggleTextScanning", "openSettingsPage"].includes(name));
+  assert.deepEqual([...readerCommands].sort(), argumentFree.sort(), "every keybind action without a chosen argument is a browser command");
+
+  const commands = worker({ revision: 1 });
+  for (const name of readerCommands) commands.command(name, { id: 4 });
+  commands.command("addNote", undefined);
+  assert.deepEqual(JSON.parse(JSON.stringify(commands.tabMessages)), readerCommands.map(action => ({ tabId: 4,
+    message: { target: "hachidori-reader", type: "hd_reader_command", action } })));
+  assert.equal(commands.queued.length, 0);
 });

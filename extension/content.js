@@ -16,6 +16,7 @@
 
   const TARGET = "hoshidicts-offscreen";
   const WORKER_TARGET = "hoshidicts-worker";
+  const READER_TARGET = "hachidori-reader";
   const HIGHLIGHT_NAME = "gsm-hoshidicts-match";
   const READER_STYLESHEET = "render/reader.css";
   const HOST_TAG = "hachidori-host";
@@ -986,6 +987,7 @@
     window.removeEventListener("pageshow", onPageShow);
     try {
       chrome.storage.onChanged.removeListener(onStorageChanged);
+      chrome.runtime.onMessage?.removeListener(onReaderCommand);
     } catch {
       // The context is already gone; the listener died with it.
     }
@@ -3086,6 +3088,14 @@
     }
   }
 
+  // A browser shortcut runs its keybind action here; entry moves go one entry.
+  function onReaderCommand(message) {
+    if (disposed || message?.target !== READER_TARGET || message.type !== "hd_reader_command") return false;
+    runKeybindAction({ action: message.action, argument: ["nextEntry", "previousEntry"].includes(message.action) ? "1" : "" },
+      { preventDefault() {}, stopPropagation() {} });
+    return false;
+  }
+
   // After Yomitan's HotkeyHandler: the physical key and the exact modifier set
   // select enabled keybinds whose scope applies; the first handled one wins.
   function runKeybinds(event) {
@@ -3435,6 +3445,8 @@
   function start() {
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);
+      // Optional like the worker's commands API: reader smoke hosts have no runtime messages.
+      chrome.runtime.onMessage?.addListener(onReaderCommand);
       chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS, lookupStats: null }, (stored) => {
         if (disposed || chrome.runtime.lastError) {
           return;
