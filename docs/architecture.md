@@ -1324,6 +1324,10 @@ children are labelled and aggregated on the primary Library destination while
 the local navigation identifies the active child. Status setters own these
 notices; there are no observers or additional polling loops.
 
+[The Settings UI review](settings-ui-review.md) records the layout decisions
+behind this section, unedited browser captures of each state and the targeted
+timings taken while it was reworked.
+
 The toolbar action opens a compact popup with a global lookup switch, recording
 shortcut and Settings. The switch uses the worker's existing revisioned option
 writes. The recording shortcut opens the existing capture controls, enabling
