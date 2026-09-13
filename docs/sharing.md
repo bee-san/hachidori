@@ -55,6 +55,8 @@ what a linked browser needs when the port is not the default.
 Sharing survives browser restarts, and a watchdog alarm reconnects the bridge
 within a minute if it ever stops.
 
+![Settings → Sharing with the host card and the bridge install command](assets/sharing-settings.png)
+
 ## What the host shares
 
 - lookups, media, styles and engine status;

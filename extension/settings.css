@@ -1552,3 +1552,4 @@ textarea {
   overflow-wrap: anywhere;
   user-select: all;
 }
+#sharing-host-port { width: 10ch; }
