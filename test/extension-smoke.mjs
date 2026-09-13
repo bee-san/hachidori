@@ -1144,6 +1144,20 @@ async function overlayModeBackgroundStage() {
   check("overlay mode seeds hover lookups without a highlight or mining screenshot once and never opens setup",
     seededOnce && preserved && carriedKept,
     JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
+
+  // Electron has no chrome.tabs.captureVisibleTab, so a profile that kept the
+  // screenshot switched on from before overlay mode must never reach for it.
+  const kept = makeStorage(), bus = makeBus();
+  await kept.api().local.set({ options: { revision: 1,
+    anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", captureScreenshot: true } } });
+  const keptChrome = makeChrome("overlay-worker-screenshot", bus, kept);
+  keptChrome.tabs = tabsApi;
+  loadBackgroundScript({ chrome: keptChrome, console, URL, setTimeout, clearTimeout, Promise, Error }, { overlayMode: true });
+  const screenshot = await bus.sendMessage("overlay-reader", { target: "hachidori-anki", type: "hd_anki_screenshot",
+    requestId: "overlay-screenshot", request: {} }, { id: keptChrome.runtime.id, url: "https://reader.test/page",
+    frameId: 0, documentId: "overlay-document", tab: { id: 1 } });
+  check("overlay mode never takes a mining screenshot, even when the stored option is on",
+    screenshot?.ok === false && screenshot.error.includes("turned off"), JSON.stringify(screenshot));
 }
 
 // The host side of sharing: a fake WebSocket stands in for the Anki add-on's
