@@ -9,7 +9,6 @@ import { createAudioSettingsController } from "./audio-settings.js";
 import { createKeybindSettingsController } from "./keybind-settings.js";
 import { createAnkiSettingsController } from "./anki-settings.js";
 import { createBackupSettingsController } from "./backup-settings.js";
-import { createSharingSettingsController } from "./sharing-settings.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
 import { createCustomLinkSettings } from "./custom-link-settings.js";
@@ -43,7 +42,6 @@ const WORKER_TARGET = "hoshidicts-worker";
 const UPDATE_TARGET = "hachidori-updates";
 const AUDIO_TARGET = "hachidori-audio";
 const CAPTURE_TARGET = "hachidori-capture";
-const SHARING_TARGET = "hachidori-sharing";
 const OPTION_SECTIONS = { lookup: "Reading", design: "Design", audio: "Audio", media: "Media capture", anki: "Anki", keybinds: "Keybinds" };
 const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
@@ -134,7 +132,6 @@ let requestCounter = 0;
 let audioController;
 let keybindController;
 let ankiController;
-let sharingController;
 let backupController;
 let customLinkController;
 let backingUp = false;
@@ -151,7 +148,6 @@ const SECTION_STATUSES = {
   "options-status": { section: "lookup", label: "Reading" },
   "dict-group-error": { section: "dictionary-groups", label: "Groups" },
   "backup-status": { section: "backup", label: "Backup" },
-  "sharing-status": { section: "sharing", label: "Sharing" },
 };
 let activeSection = "dictionaries";
 const unseenSectionCompletions = new Set();
@@ -251,7 +247,6 @@ function showSettingsSection(focus = false) {
   updateAnkiSettings();
   updateKeybindSettings();
   updateBackupSettings();
-  updateSharingSettings();
   if (activeSection === "design") {
     customLinkController ??= createCustomLinkSettings({ document,
       readLinks: () => options.customLinks,
@@ -297,15 +292,6 @@ function updateAnkiSettings() {
     send: (type, fields) => send(type, fields, WORKER_TARGET),
   });
   ankiController.render();
-}
-
-function updateSharingSettings() {
-  if (activeSection !== "sharing") { sharingController?.stop(); return; }
-  sharingController ??= createSharingSettingsController({ document, chrome,
-    send: (type, fields) => send(type, fields, SHARING_TARGET),
-    setStatus: (message, tone) => setSectionStatus("sharing-status", message, tone),
-  });
-  sharingController.start();
 }
 
 function renderMediaSettings() {

@@ -38,7 +38,6 @@
             <option value="media">Media capture</option>
             <option value="anki">Anki</option>
             <option value="keybinds">Keybinds</option>
-            <option value="sharing">Sharing</option>
             <option value="backup">Backup &amp; restore</option>
           </select>
         </label>
@@ -71,10 +70,6 @@
           <div class="nav-item">
             <a href="#keybinds" aria-describedby="nav-status-keybinds">Keybinds</a>
             <output class="nav-status" id="nav-status-keybinds" aria-live="polite"></output>
-          </div>
-          <div class="nav-item">
-            <a href="#sharing" aria-describedby="nav-status-sharing">Sharing</a>
-            <output class="nav-status" id="nav-status-sharing" aria-live="polite"></output>
           </div>
           <div class="nav-item">
             <a href="#backup" aria-describedby="nav-status-backup">Backup &amp; restore</a>
@@ -982,32 +977,6 @@
             <p class="field-hint">Chrome runs these on any page. Popup actions need an open popup. Change them in Chrome's extension shortcuts.</p>
             <ul id="browser-shortcut-list" class="browser-shortcut-list"></ul>
             <button id="browser-shortcuts-open" type="button" class="ghost">Change in Chrome</button>
-          </fieldset>
-        </section>
-        <section class="card" id="sharing" aria-labelledby="sharing-heading" hidden>
-          <div class="card-head">
-            <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link bridge other browser GSM overlay native messaging port address">Sharing</h1>
-            <p class="hint">Use one Hachidori from every browser on this computer.</p>
-          </div>
-          <output id="sharing-status" class="anki-status" aria-live="polite"></output>
-          <fieldset class="lookup-group" id="sharing-host">
-            <legend>Share this Hachidori</legend>
-            <p class="field-hint">Other browsers on this computer, such as the GameSentenceMiner overlay, then use this Hachidori’s dictionaries, personal entries, lookup counts and settings instead of their own.</p>
-            <label class="lookup-enable"><span>Share this Hachidori</span><input id="sharing-host-enabled" type="checkbox" disabled></label>
-            <div class="fields">
-              <label class="field"><span class="field-label">Port</span><input id="sharing-host-port" type="number" min="1" max="65535" step="1" value="8771"><span class="field-hint">Change it only if another program already uses this port.</span></label>
-              <label class="field"><span class="field-label">Address</span><input id="sharing-host-address" type="text" readonly spellcheck="false"><span class="field-hint">Other browsers find this Hachidori on the default port by themselves; enter the address there when the port differs.</span></label>
-            </div>
-            <div class="sharing-actions">
-              <button id="sharing-host-copy" type="button" class="ghost">Copy address</button>
-            </div>
-            <output id="sharing-host-clients" class="field-hint" aria-live="polite"></output>
-            <details class="anki-details" id="sharing-install">
-              <summary>Install the bridge</summary>
-              <p class="field-hint">Sharing needs a small helper program that Chrome starts and stops together with this switch. Install it once from the Hachidori checkout with Node.js:</p>
-              <pre id="sharing-install-command" class="sharing-command"></pre>
-              <p class="field-hint">Add <code>--browser chromium</code> for Chromium, or <code>--user-data-dir</code> when the browser runs on a custom profile directory. Then turn the switch on again.</p>
-            </details>
           </fieldset>
         </section>
         <section class="card" id="backup" aria-labelledby="backup-heading" hidden>
