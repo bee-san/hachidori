@@ -1105,8 +1105,8 @@ async function overlayModeBackgroundStage() {
   const seeded = storage.raw.get("options");
   const seededOnce = tabs.length === 0 && !storage.raw.has("setupState")
     && JSON.stringify(seeded) === JSON.stringify({
-      showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2,
-      lookupMode: "hover", sourceHighlightEnabled: false, revision: 1,
+      lookupMode: "hover", sourceHighlightEnabled: false,
+      showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1,
     });
 
   // The seeded values are defaults, not locks: a later edit survives a restarted worker.
