@@ -466,9 +466,11 @@ the real dictionary lookup checks.
 
 ## Hover activation and popup ownership
 
-The reader has one live `hoverEnabled` switch and `lookupMode` (`hover` or
-`activation`). Existing plain-hover behavior remains the default; the configured
-activation key defaults to Shift. `reader-options.js` translates legacy
+The reader has one live `hoverEnabled` switch and `lookupMode` (`hover`,
+`activation` or `activationSticky`). The default follows Yomitan: hold the
+activation key, Shift by default, and hover; the popup then stays open after the
+key is released. `activation` instead closes the popup on release, and `hover`
+scans without a key. `reader-options.js` translates legacy
 `modifier` values into the canonical mode/key on read and accepts old Settings
 patches through the same revision CAS. Explicit modern fields win, and selecting
 Hover does not erase the remembered key. Canonical writes contain no competing
@@ -489,7 +491,10 @@ then a separate press closes the popup. No page key is captured for activation.
 
 Key release, target/window departure, outside click, Escape, blur and scroll
 cancel delayed or unfinished pointer work immediately; the hide delay only
-retains an already-rendered popup for transfer. Same-candidate hover, popup entry,
+retains an already-rendered popup for transfer. In `activationSticky` a rendered
+popup ignores key release, pointer movement without the key, an empty scan and
+window departure; outside click, Escape, blur, scrolling its source away, a
+failed lookup or a new lookup still close it. Same-candidate hover, popup entry,
 keyboard focus and Note editing preserve the current view. Dispatching a different
 valid pointer candidate retires the previous popup, matching the pinned reader's
 `queueLookup` prune-before-send behavior: an obsolete view cannot accept a Note
@@ -503,7 +508,7 @@ dispatched Note append finishes its transaction without reopening or refreshing
 the disabled reader. Settings changes reach existing tabs and persist through a
 full browser restart without reloading the engine.
 
-![Hover controls in Settings](assets/reader-activation-settings.png)
+![Lookup mode and activation key in Settings](assets/reader-activation-settings.png)
 
 ### Keybinds
 

@@ -412,15 +412,16 @@
               <label class="field">
                 <span class="field-label">Lookup mode</span>
                 <select id="opt-lookup-mode">
+                  <option value="activationSticky">Activation key + hover, popup stays open</option>
+                  <option value="activation">Activation key + hover, popup closes on release</option>
                   <option value="hover">Hover</option>
-                  <option value="activation">Activation key + hover</option>
                 </select>
-                <span class="field-hint">Automatically, or while holding a key.</span>
+                <span class="field-hint">Hold a key to look up a word, or look up automatically on hover.</span>
               </label>
               <label class="field">
                 <span class="field-label">Activation key</span>
                 <select id="opt-activation-key"></select>
-                <span class="field-hint">Used in Activation key + hover mode. Some keys are reserved by your browser or operating system.</span>
+                <span class="field-hint">Used by the activation key modes. Some keys are reserved by your browser or operating system.</span>
               </label>
             </div>
           </fieldset>

@@ -4322,6 +4322,17 @@ async function hoverPracticeCharacter(startup, index) {
   await startup.mouse.move(point.x, point.y);
 }
 
+// A fresh install looks up while Shift is held, and the popup outlives its release.
+async function holdShiftOverPracticeCharacter(startup, index, popup) {
+  await startup.keyboard.down("Shift");
+  try {
+    await hoverPracticeCharacter(startup, index);
+    return await popup.waitForVisible();
+  } finally {
+    await startup.keyboard.up("Shift");
+  }
+}
+
 async function checkStartupPractice(startup, browser, startupUrl) {
   // Native skip navigation can precede startup.js's click handler. Reload that
   // exact URL so a fresh reader must accept the fragment, not an earlier reader
@@ -4393,8 +4404,7 @@ async function checkStartupPractice(startup, browser, startupUrl) {
   await startup.evaluate(() => getSelection().removeAllRanges());
   // The two-character word may wrap; its aggregate span box includes other
   // text between the end of one line and the beginning of the next.
-  await hoverPracticeCharacter(startup, 0);
-  const hovered = await popup.waitForVisible();
+  const hovered = await holdShiftOverPracticeCharacter(startup, 0, popup);
   const genuine = state => state?.plain.includes("辞書")
     && state.text.includes(`${RECOMMENDED_DICTIONARIES[0].title} term fixture`);
   check("startup practice immediately demonstrates the installed dictionaries and retains keyboard and hover lookup",
@@ -7461,12 +7471,13 @@ async function main() {
   if (startup) await checkStartupPractice(startup, browser, startupUrl);
 
   // The dictionary-dependent selections were applied once; the user now returns
-  // both to Automatic so the remaining assertions keep their historical options.
+  // both to Automatic, and lookups to plain hover, so the remaining assertions
+  // keep their historical options.
   await page.evaluate(async () => {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
       requestId: "first-run-reset", baseRevision: options.revision,
-      options: { compactDefinitionSummaryDictionary: "", kanjiClickDictionary: "" } });
+      options: { compactDefinitionSummaryDictionary: "", kanjiClickDictionary: "", lookupMode: "hover" } });
     if (!reply.ok) throw new Error(reply.error);
   });
 
