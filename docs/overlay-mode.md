@@ -8,6 +8,7 @@ in-game overlay. The overlay floats over a game and passes clicks through, so:
 
 - Lookups start on **hover**. Holding an activation key over a game is awkward.
 - The **word highlight** starts off. A highlight drawn over game text gets in the way.
+- The **mining screenshot** starts off. The overlay page is see-through, so a screenshot of it would not show the game.
 - The **first-run setup page** is skipped. An embedded host has no tab to show it in.
 
 ## Turning it on
@@ -33,9 +34,10 @@ normal first-install preferences plus:
 | --- | --- | --- |
 | `lookupMode` | `"hover"` | Lookup → Activation → Lookup mode → Hover |
 | `sourceHighlightEnabled` | `false` | Design → Highlight the word on the page |
+| `anki.captureScreenshot` | `false` | Anki → Screenshot the page when mining |
 
 - **Defaults only:** these are starting values, not locks. A user can change
-  either one in Settings, and the change persists.
+  any of them in Settings, and the change persists.
 - **Existing profiles:** a profile that already has stored options keeps them.
 - **Timing:** seeding runs on worker start, not in `chrome.runtime.onInstalled`,
   because an embedding host may never fire that event.
@@ -62,8 +64,8 @@ can choose them under Design.
 ## Tests
 
 `node test/extension-smoke.mjs` loads the service worker with `OVERLAY_MODE`
-set to `true`. Its "overlay mode seeds hover lookups without a highlight once and never
-opens setup" check covers:
+set to `true`. Its "overlay mode seeds hover lookups without a highlight or mining screenshot
+once and never opens setup" check covers:
 
 - the seeded options;
 - no setup record and no tab;

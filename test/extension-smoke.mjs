@@ -1122,7 +1122,8 @@ async function overlayModeBackgroundStage() {
   const seeded = storage.raw.get("options");
   const seededOnce = tabs.length === 0 && !storage.raw.has("setupState")
     && JSON.stringify(seeded) === JSON.stringify({
-      lookupMode: "hover", sourceHighlightEnabled: false,
+      lookupMode: "hover", anki: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki, captureScreenshot: false },
+      sourceHighlightEnabled: false,
       showCompactDefinitionSummary: true, compactDefinitionSummaryCount: 2, revision: 1,
     });
 
@@ -1140,7 +1141,7 @@ async function overlayModeBackgroundStage() {
   await settle();
   const carriedKept = JSON.stringify(carried.raw.get("options")) === JSON.stringify({ scanLength: 20, revision: 4 });
 
-  check("overlay mode seeds hover lookups without a highlight once and never opens setup",
+  check("overlay mode seeds hover lookups without a highlight or mining screenshot once and never opens setup",
     seededOnce && preserved && carriedKept,
     JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
 }
