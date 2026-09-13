@@ -796,6 +796,9 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   sandbox.Uint32Array ??= Uint32Array;
   sandbox.DataView ??= DataView;
   sandbox.crypto ??= globalThis.crypto;
+  // A browser install shares by default; a socket that never opens keeps the
+  // host's retry timer and alarm out of stages that fake timers or count alarms.
+  sandbox.WebSocket ??= class { constructor(url) { this.url = url; this.readyState = 0; } send() {} close() {} };
   Object.assign(sandbox, { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache });
   const context = createContext(sandbox);
   context.globalThis = context;
