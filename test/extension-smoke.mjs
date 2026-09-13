@@ -10367,10 +10367,11 @@ async function contentNoteStage() {
         kanjiCount: kanjiClickDictionary?.kind === "kanji" ? 1 : 0,
       })],
     };
+    const runtimeListeners = new Set();
     window.chrome = {
       runtime: {
         id: "hachidoricontnotesmoke",
-        onMessage: { addListener() {}, removeListener() {} },
+        onMessage: { addListener(fn) { runtimeListeners.add(fn); }, removeListener(fn) { runtimeListeners.delete(fn); } },
         lastError: null,
         getURL: (path) => `chrome-extension://hachidoricontnotesmoke/${path}`,
         sendMessage(request, callback) {
@@ -10598,6 +10599,7 @@ async function contentNoteStage() {
       },
       emitOptions,
       emitState,
+      runtimeMessage(message) { for (const listener of runtimeListeners) listener(message, {}, () => {}); },
       entryFocus: (depth = 0) => popupRecord(depth).entryFocus,
       emitLookupStats(descriptor, row) { storageListener?.({ lookupStats: { newValue: descriptor },
         ...(row ? { [lookupStatsKey(descriptor, row)]: { newValue: row } } : {}),
@@ -14243,10 +14245,20 @@ async function contentNoteStage() {
       const added = press(defaults, "KeyE", "e", { altKey: true });
       const hiddenView = press(defaults, "KeyV", "v", { altKey: true });
       const played = press(defaults, "KeyP", "p", { altKey: true }) && defaults.take("hd_audio_play") !== null;
+      const command = action => defaults.runtimeMessage({ target: "hachidori-reader", type: "hd_reader_command", action });
+      command("nextEntry");
+      command("addNote");
+      command("addNote");
+      const commandFocus = JSON.stringify(defaults.entryFocus().slice(4)) === JSON.stringify([{ offset: 1 }]);
+      command("close");
+      const commandClosed = defaults.driver.snapshot().popupHidden;
+      result["browser shortcut commands run popup keybind actions"] =
+        (commandFocus && mined === 3 && commandClosed) || { focus: defaults.entryFocus(), mined, commandClosed };
+      await defaults.initialLookup();
       const escaped = press(defaults, "Escape", "Escape") === false && defaults.driver.snapshot().popupHidden;
       result["default keybinds navigate entries, mine, play and close through Yomitan's keys"] =
-        (JSON.stringify(defaults.entryFocus()) === JSON.stringify([{ offset: 1 }, { offset: -3 }, "first", "last"])
-          && moved.every(Boolean) && !unmodified && added && mined === 1 && !hiddenView && played && escaped)
+        (JSON.stringify(defaults.entryFocus().slice(0, 4)) === JSON.stringify([{ offset: 1 }, { offset: -3 }, "first", "last"])
+          && moved.every(Boolean) && !unmodified && added && mined >= 1 && !hiddenView && played && escaped)
         || { focus: defaults.entryFocus(), moved, unmodified, added, mined, hiddenView, played, escaped };
     } finally {
       defaults.close();

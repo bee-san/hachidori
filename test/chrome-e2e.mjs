@@ -211,6 +211,7 @@ const PLANNED = [
   "extension pages expose pthread prerequisites",
   "chrome.offscreen.createDocument produced exactly one offscreen document",
   "manifest and settings page are branded as Hachidori",
+  "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
   "a fresh install waits for Start setup before dictionary downloads or Anki discovery",
   "Start setup begins automatic dictionary installation with first-install preferences",
   "Settings shows Resume setup while first-run setup is incomplete",
@@ -6971,6 +6972,25 @@ async function main() {
         size => branding.icons[size] === `icons/hachidori-${size}.png`,
       ),
     JSON.stringify(branding),
+  );
+  await showSettingsSection(page, "keybinds");
+  const browserShortcuts = await page.evaluate(async () => {
+    const commands = await chrome.commands.getAll();
+    const listed = () => [...document.querySelectorAll("#browser-shortcut-list li")].map(item => item.textContent);
+    for (let attempt = 0; attempt < 50 && listed().length < commands.length; attempt++) {
+      await new Promise(resolveWait => setTimeout(resolveWait, 20));
+    }
+    return { commands: commands.map(({ name, shortcut }) => ({ name, shortcut })), listed: listed() };
+  });
+  check(
+    "Chrome registers Hachidori's browser shortcuts and Keybinds lists them",
+    // Chrome registers the manifest's suggested Alt+Delete and reports it as Alt+Del.
+    browserShortcuts.commands.some(({ name, shortcut }) => name === "toggleTextScanning" && shortcut === "Alt+Del")
+      && browserShortcuts.commands.some(({ name }) => name === "openSettingsPage")
+      && ["addNote", "nextEntry"].every(action => browserShortcuts.commands.some(({ name }) => name === action))
+      && browserShortcuts.listed.includes("Turn Japanese lookups on or offAlt+Del")
+      && browserShortcuts.listed.includes("Add the current popup entry to AnkiNot set"),
+    JSON.stringify(browserShortcuts),
   );
   // ---------------------------------------------------------- first-run setup
   // chrome.runtime.onInstalled fired with reason "install" for this clean

@@ -2086,6 +2086,38 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 chrome.runtime.onStartup.addListener(warmUp);
 
+// Yomitan's native browser shortcuts for the features Hachidori has. The toggle
+// makes the toolbar switch's revisioned write inside the storage queue.
+async function toggleLookupsFromCommand() {
+  const { options } = await readDictionaryStorage();
+  await WORKER_HANDLERS.hd_options_write({ type: "hd_options_write", requestId: null,
+    baseRevision: optionsRevision(options), options: { hoverEnabled: !normaliseOptions(options).hoverEnabled } });
+}
+
+// Popup-action shortcuts run their in-page keybind action in the active tab.
+// Every frame's reader receives the command; one without an open popup, or
+// without a selection for the scans, does nothing.
+const READER_CONTENT_TARGET = "hachidori-reader";
+const READER_COMMANDS = new Set(["close", "addNote", "viewNotes", "playAudio", "nextEntry", "previousEntry",
+  "firstEntry", "lastEntry", "nextEntryDifferentDictionary", "previousEntryDifferentDictionary", "historyBackward",
+  "scanSelectedText", "scanTextAtSelection"]);
+
+chrome.commands?.onCommand?.addListener((command, tab) => {
+  if (command === "openSettingsPage") {
+    chrome.runtime.openOptionsPage().catch((error) => {
+      console.error("hachidori: could not open settings:", describe(error));
+    });
+  } else if (command === "toggleTextScanning") {
+    serialiseStorage(toggleLookupsFromCommand).catch((error) => {
+      console.error("hachidori: could not toggle lookups:", describe(error));
+    });
+  } else if (READER_COMMANDS.has(command) && tab?.id !== undefined) {
+    // Pages Chrome keeps content scripts out of, such as chrome://, have no reader.
+    chrome.tabs.sendMessage(tab.id, { target: READER_CONTENT_TARGET, type: "hd_reader_command", action: command })
+      .catch(() => {});
+  }
+});
+
 // Alarms may be cleared across browser restarts. Module evaluation is the one
 // startup path every MV3 worker takes, including starts not caused by either
 // lifecycle event above.

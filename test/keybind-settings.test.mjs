@@ -56,8 +56,14 @@ function fixture(t) {
   const sources = [{ id: "tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" },
     { id: "json", type: "custom-json", enabled: true, url: "https://audio.test/{term}", voice: "" }];
   let writes = 0;
+  const browser = { opened: 0, commands: [
+    { name: "_execute_action", description: "", shortcut: "" },
+    { name: "toggleTextScanning", description: "Turn Japanese lookups on or off", shortcut: "Alt+Del" },
+    { name: "openSettingsPage", description: "Open Hachidori settings", shortcut: "" },
+  ] };
   const controller = createKeybindSettingsController({ document, readKeybinds: () => keybinds,
-    editKeybinds(value) { writes += 1; keybinds = value; }, readAudioSources: () => sources });
+    editKeybinds(value) { writes += 1; keybinds = value; }, readAudioSources: () => sources,
+    getBrowserCommands: async () => browser.commands, openBrowserShortcuts: async () => { browser.opened += 1; } });
   controller.render();
   const rows = () => [...document.querySelectorAll("#keybind-list > .keybind-row")];
   const row = index => rows()[index];
@@ -72,7 +78,7 @@ function fixture(t) {
     node.dispatchEvent(new window.Event(node.type === "number" ? "input" : "change", { bubbles: true }));
   }
   t.after(() => window.close());
-  return { window, document, controller, rows, row, control, press, choose,
+  return { window, document, controller, rows, row, control, press, choose, browser,
     get keybinds() { return keybinds; }, get writes() { return writes; },
     receive(value) { keybinds = value; controller.render(); } };
 }
@@ -148,4 +154,18 @@ test("keybind lists add blank rows, show an empty state and reset to the default
   assert.equal(f.document.getElementById("keybind-empty").hidden, true);
   f.control(0, "clear").click();
   assert.equal(DEFAULT_OPTIONS.keybinds[0].key, "Escape", "editing never mutates the defaults");
+});
+
+test("browser shortcuts list Chrome's commands, link to its shortcut page and refresh on return", async t => {
+  const f = fixture(t);
+  const listed = () => [...f.document.querySelectorAll("#browser-shortcut-list li")].map(item => item.textContent);
+  await new Promise(resolveDone => setImmediate(resolveDone));
+  assert.deepEqual(listed(), ["Open the Hachidori toolbarNot set", "Turn Japanese lookups on or offAlt+Del",
+    "Open Hachidori settingsNot set"]);
+  f.document.getElementById("browser-shortcuts-open").click();
+  assert.equal(f.browser.opened, 1);
+  f.browser.commands = [{ name: "openSettingsPage", description: "Open Hachidori settings", shortcut: "Ctrl+Shift+Comma" }];
+  f.window.dispatchEvent(new f.window.Event("focus"));
+  await new Promise(resolveDone => setImmediate(resolveDone));
+  assert.deepEqual(listed(), ["Open Hachidori settingsCtrl+Shift+Comma"]);
 });
