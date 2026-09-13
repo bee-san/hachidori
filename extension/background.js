@@ -2199,12 +2199,18 @@ async function writeSharingConfig(patch) {
   });
 }
 
+// An empty address means this computer, on the port set under Advanced.
+function linkTarget(text) {
+  const trimmed = String(text ?? "").trim();
+  return parseLinkAddress(trimmed === "" ? `127.0.0.1:${getSharingHost().status().port}` : trimmed);
+}
+
 const SHARING_HANDLERS = {
   hd_sharing_status() {
     return { sharing: sharingStatus() };
   },
   async hd_sharing_client_probe(message) {
-    const { address, display } = parseLinkAddress(message.address);
+    const { address, display } = linkTarget(message.address);
     const hello = await getSharingClient().probe(address);
     return { address, display, host: { version: hello.version, name: hello.name, dictionaryCount: hello.dictionaryCount } };
   },
@@ -2214,7 +2220,7 @@ const SHARING_HANDLERS = {
   // values are kept aside for unlinking, then the host's snapshot takes their
   // place under the live keys.
   async hd_sharing_client_link(message) {
-    const { address } = parseLinkAddress(message.address);
+    const { address } = linkTarget(message.address);
     const host = getSharingHost();
     const hosting = host.status();
     if (hosting.enabled) host.disable();

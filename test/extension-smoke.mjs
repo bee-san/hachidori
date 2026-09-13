@@ -1366,8 +1366,12 @@ async function sharingClientStage() {
   await settle(() => socket.sent.length >= 1);
   socket.receive(hello);
   const linkedReply = await linking;
-  await settle(() => linkedReply && storage.raw.get("options")?.revision === 1);
-  const linkedStatus = await send("hd_sharing_status");
+  // The kept connection's own hello lands after the reply; wait for it.
+  let linkedStatus = await send("hd_sharing_status");
+  for (let attempt = 0; attempt < 200 && !linkedStatus.sharing?.client?.connected; attempt += 1) {
+    await new Promise((resolveTimer) => setTimeout(resolveTimer, 2));
+    linkedStatus = await send("hd_sharing_status");
+  }
   const mirrorSet = storage.sets.find(keys => keys.includes("dictionaryState") && keys.includes("options") && keys.includes("lookupStats"));
   check("linking keeps this install's shared state aside and mirrors the host's snapshot in one write",
     probe.url === "ws://127.0.0.1:9100/link" && probe.sent[0]?.kind === "hello" && probe.readyState === 3
@@ -7132,7 +7136,7 @@ async function startupPageStage() {
 
 // One jsdom startup page with only the worker replies and stored values a
 // dictionary-stage case needs; the two stages below drive it from there.
-function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null, anki = null }) {
+function startupCase(jsdom, { probe = null, link = null, setup, dictionaries = [], reply, cas = null, options = { revision: 1 }, lookup = null, status = null, anki = null }) {
   const dom = new jsdom.JSDOM(readFileSync(resolve(EXTENSION, "startup.html"), "utf8"), {
     pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/startup.html`,
   });
@@ -7158,6 +7162,15 @@ function startupCase(jsdom, { setup, dictionaries = [], reply, cas = null, optio
         if (message.type === "hd_status") {
           return { type: "hd_status_result", requestId: message.requestId, ok: true, error: null, ready: true, loading: false,
             ...(status === null ? {} : status(message)) };
+        }
+        // The welcome page looks around this computer once; nothing answers unless the case says so.
+        if (message.type === "hd_sharing_client_probe") {
+          return probe === null
+            ? { type: "hd_sharing_client_probe_result", requestId: message.requestId, ok: false, error: "No shared Hachidori answered at ws://127.0.0.1:8771/link." }
+            : { type: "hd_sharing_client_probe_result", requestId: message.requestId, ok: true, error: null, ...probe(message) };
+        }
+        if (message.type === "hd_sharing_client_link" && link !== null) {
+          return { type: "hd_sharing_client_link_result", requestId: message.requestId, ok: true, error: null, ...link(message) };
         }
         if (message.type !== "hd_setup_install") throw new Error(`Unexpected startup request ${message.type}`);
         return { type: "hd_setup_install_result", requestId: message.requestId, ok: true, error: null, ...installReply(message) };
@@ -7293,14 +7306,15 @@ async function startupWelcomeStage() {
   const page = startupCase(jsdom, { setup, reply, cas: () => new Promise((done) => { saveReply = done; }) });
   let resumed;
   let manual;
+  let offered;
   try {
     await page.load();
     const introduction = page.document.getElementById("setup-body").textContent;
-    const quiet = page.heading() === "Welcome to Hachidori" && page.requestTypes().length === 0
+    const quiet = page.heading() === "Welcome to Hachidori" && page.requestTypes().join(",") === "hd_sharing_client_probe"
       && page.document.getElementById("setup-steps").hidden
       && readerScripts(page.document).length === 0
       && introduction === "Click Start Setup to automatically set up Hachidori"
-        + "Already using Hachidori in another browser on this computer? Link to it from Settings instead of setting up again."
+        + "Already using Hachidori in another browser, on this computer or another one? Link to it from Settings instead of setting up again."
       && page.document.querySelector('.startup-star-link[href="https://github.com/bee-san/hachidori"]')
         ?.textContent.replace(/\s+/gu, " ").trim() === "★ Star Hachidori on GitHub"
       && page.document.querySelector('a[href*="privacy"]') === null;
@@ -7334,11 +7348,30 @@ async function startupWelcomeStage() {
     const skipped = manual.saves()[0].stage === "practice" && manual.installs().length === 0
       && !manual.requestTypes().includes("hd_setup_anki")
       && manual.document.querySelector('a[href="settings.html#add-dictionaries"]') !== null;
-    return { quiet, refused, started, resumes, skipped };
+    // A Hachidori sharing itself from another browser on this computer is offered
+    // instead; using it links and completes setup with no dictionary run.
+    let linkRequest;
+    offered = startupCase(jsdom, { setup, reply,
+      probe: () => ({ address: "ws://127.0.0.1:8771/link", display: "this computer", host: { version: "0.1.0", name: "Chrome", dictionaryCount: 5 } }),
+      link: (message) => { linkRequest = message; return { sharing: {} }; },
+      cas: (message) => ({ ok: true, state: { ...setup, revision: 2, stage: message.stage } }) });
+    await offered.load();
+    const offerShown = offered.heading() === "Welcome to Hachidori"
+      && offered.document.getElementById("setup-body").textContent === "Chrome on this computer already has Hachidori set up, with 5 dictionaries."
+        + "Use it here instead of setting up again? Words are looked up there, and nothing is downloaded twice."
+      && offered.actionIds().join(",") === "setup-use-shared,setup-start,setup-manual"
+      && offered.document.getElementById("setup-use-shared").textContent === "Use the Hachidori in Chrome"
+      && offered.document.getElementById("setup-start").textContent === "Set up separately";
+    offered.document.getElementById("setup-use-shared").click();
+    await offered.until(() => offered.heading() === "Setup is complete.", "the linked setup to complete");
+    const used = offerShown && linkRequest?.target === "hachidori-sharing" && linkRequest.address === "ws://127.0.0.1:8771/link"
+      && offered.saves().length === 1 && offered.saves()[0].stage === "complete" && offered.installs().length === 0;
+    return { quiet, refused, started, resumes, skipped, offered: used };
   } finally {
     page.window.close();
     resumed?.window.close();
     manual?.window.close();
+    offered?.window.close();
   }
 }
 
