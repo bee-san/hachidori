@@ -6,9 +6,11 @@ Run with the Python interpreter that can import the installed anki and aqt:
   python3 test/anki-relay-desktop.py
 
 Every run creates a fresh temporary Anki base with only this add-on installed,
-starts a separate Anki instance on it, and connects to the relay over a raw
-loopback WebSocket with an extension Origin and then with a web Origin. The
-live Anki profile, its add-ons and AnkiConnect are never opened.
+starts a separate Anki instance on it, and connects to the relay over raw
+WebSockets: a host with an extension Origin, which then asks for the network
+and sees a browser link over this computer's own network address, and a web
+Origin that must be refused. The live Anki profile, its add-ons and
+AnkiConnect are never opened.
 """
 import argparse
 import base64
@@ -17,6 +19,7 @@ import os
 import shutil
 import socket
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -38,12 +41,12 @@ os.environ.update(
 )
 
 
-def handshake(path, origin):
+def handshake(path, origin, host='127.0.0.1'):
     """Opens a WebSocket to the relay; returns the socket, the HTTP status and the bytes after the head."""
-    sock = socket.create_connection(('127.0.0.1', args.port), timeout=10)
+    sock = socket.create_connection((host, args.port), timeout=10)
     key = base64.b64encode(os.urandom(16)).decode('ascii')
     sock.sendall((
-        f'GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{args.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
+        f'GET {path} HTTP/1.1\r\nHost: {host}:{args.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
         f'Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\nOrigin: {origin}\r\n\r\n'
     ).encode('ascii'))
     data = b''
@@ -56,16 +59,44 @@ def handshake(path, origin):
     return sock, int(head.split(b' ')[1]), rest
 
 
-def first_text_frame(sock, data):
-    """The small unmasked text frame the relay sends first."""
-    while len(data) < 2 or len(data) < 2 + (data[1] & 0x7F):
+def text_frame(sock, data):
+    """The next unmasked text frame from the relay (up to 64 KiB), and the bytes after it."""
+    def parsed():
+        if len(data) < 2:
+            return None
+        length, start = data[1] & 0x7F, 2
+        if length == 126:
+            if len(data) < 4:
+                return None
+            length, start = int.from_bytes(data[2:4], 'big'), 4
+        return None if len(data) < start + length else (start, length)
+    while parsed() is None:
         data += sock.recv(65536)
+    start, length = parsed()
     if data[0] & 0x0F != 0x1:
         raise ValueError(f'expected a text frame, got {data[:2]!r}')
-    return json.loads(data[2:2 + (data[1] & 0x7F)])
+    return json.loads(data[start:start + length]), data[start + length:]
+
+
+def send_text(sock, text):
+    """One masked text frame, as a browser sends it."""
+    payload = text.encode('utf-8')
+    mask = os.urandom(4)
+    masked = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+    sock.sendall(bytes([0x81, 0x80 | len(payload)]) + mask + masked)
 
 
 result = {'base': str(base), 'port': args.port, 'errors': []}
+
+
+def give_up():
+    # A modal dialog or a hung startup would otherwise keep this Anki alive forever.
+    result['errors'].append('timed out after 90 s')
+    print(json.dumps(result, indent=2), flush=True)
+    os._exit(2)
+
+
+threading.Timer(90, give_up).start()
 
 
 def check():
@@ -80,7 +111,14 @@ def check():
                     raise
                 time.sleep(0.2)
         result['hostStatus'] = status
-        result['listening'] = first_text_frame(host, rest)
+        result['listening'], rest = text_frame(host, rest)
+        send_text(host, json.dumps({'kind': 'network', 'enabled': True}))
+        result['network'], rest = text_frame(host, rest)
+        addresses = [entry['address'] for entry in result['network'].get('addresses', [])]
+        if addresses:
+            link, result['linkStatus'], _ = handshake('/link', 'chrome-extension://hachidorirelaycheck', addresses[0])
+            result['clientOpen'], rest = text_frame(host, rest)
+            link.close()
         page, result['pageStatus'], _ = handshake('/host', 'https://example.com')
         page.close()
         host.close()
@@ -115,6 +153,11 @@ result['success'] = (
     not result['errors']
     and result.get('hostStatus') == 101
     and result.get('listening') == {'kind': 'listening', 'port': args.port}
+    and result.get('network', {}).get('enabled') is True
+    and (not result['network'].get('addresses') or (
+        result.get('linkStatus') == 101
+        and result.get('clientOpen', {}).get('kind') == 'client-open'
+        and result['clientOpen'].get('address') == result['network']['addresses'][0]['address']))
     and result.get('pageStatus') == 403
 )
 print(json.dumps(result, indent=2), flush=True)

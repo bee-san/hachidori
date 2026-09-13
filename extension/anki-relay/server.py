@@ -5,8 +5,10 @@
 A Chrome extension cannot listen for connections, so a sharing Hachidori (the
 host) and the browsers linked to it all connect out to this relay. The host
 connects to /host, linked browsers connect to /link, and the relay forwards
-text frames between them without reading them. SharingRelay is that logic;
-the rest is the WebSocket server around it, on the standard library alone.
+text frames between them without reading them. It listens on this computer
+only until the host asks for the network, so that browsers on the person's
+other computers can link as well. SharingRelay is that logic; the rest is the
+WebSocket server around it, on the standard library alone.
 
 Run it without Anki: python3 extension/anki-relay/server.py --port 8771
 """
@@ -14,7 +16,9 @@ from __future__ import annotations
 
 import argparse
 import base64
+import errno
 import hashlib
+import ipaddress
 import json
 import socket
 import struct
@@ -31,27 +35,141 @@ EXTENSION_ORIGIN_PREFIX = "chrome-extension://"
 PING_SECONDS = 20
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 CONTINUATION, TEXT, CLOSE, PING, PONG = 0x0, 0x1, 0x8, 0x9, 0xA
+# Where a UDP socket would send from is this computer's address on that route:
+# Tailscale's own resolver first, then the default route. Nothing is sent.
+ADDRESS_PROBES = ("100.100.100.100", "8.8.8.8")
+TAILSCALE_RANGE = ipaddress.ip_network("100.64.0.0/10")
+ACCEPT_TIMEOUT_SECONDS = 1.0
 
 Handlers = namedtuple("Handlers", ["message", "closed"])
+Client = namedtuple("Client", ["connection", "address"])
 
 
 def encode(frame):
     return json.dumps(frame, ensure_ascii=False)
 
 
-class SharingRelay:
-    """The host, its linked browsers and the frames between them, behind one lock because every socket runs on its own thread."""
+def is_loopback(address):
+    try:
+        return ipaddress.ip_address(address).is_loopback
+    except ValueError:
+        return False
+
+
+def local_addresses():
+    """The addresses other computers reach this one at, Tailscale's first when there is one."""
+    found = []
+    for target in ADDRESS_PROBES:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            try:
+                probe.connect((target, 53))
+                address = probe.getsockname()[0]
+            except OSError:
+                continue
+        if is_loopback(address) or any(entry["address"] == address for entry in found):
+            continue
+        kind = "tailscale" if ipaddress.ip_address(address) in TAILSCALE_RANGE else "local"
+        found.append({"address": address, "kind": kind})
+    return found
+
+
+class Listener:
+    """The listening socket: this computer only, or every interface while the host asks for the network."""
 
     def __init__(self, port):
         self.port = port
+        self.network = False
+        self._sock = None
+        self._generation = 0
+        self._error = None
+
+    def open(self, network):
+        """Binds afresh. The old socket goes first: Linux refuses a wildcard bind beside a loopback listener."""
+        previous, self._sock = self._sock, None
+        if previous is not None:
+            # Shutdown wakes the accept loop and frees the port on Linux; close alone leaves both to a timeout.
+            with suppress(OSError):
+                previous.shutdown(socket.SHUT_RDWR)
+            previous.close()
+        self._generation += 1
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if sys.platform != "win32":
+            # Frees the port straight after a restart; Windows would instead let two listeners share it.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # The previous socket may linger until the accept loop wakes; that takes at most one timeout.
+        for attempt in range(40):
+            try:
+                sock.bind(("0.0.0.0" if network else "127.0.0.1", self.port))  # NOSONAR: every interface only while the host asks
+                break
+            except OSError as error:
+                if error.errno != errno.EADDRINUSE or previous is None or attempt == 39:
+                    sock.close()
+                    self._error = error
+                    raise
+                time.sleep(0.05)
+        sock.listen()
+        sock.settimeout(ACCEPT_TIMEOUT_SECONDS)
+        self._sock = sock
+        self._error = None
+        self.port = sock.getsockname()[1]
+        self.network = network
+
+    def accept(self):
+        """The next connection, or None when nothing arrived before the socket was replaced or timed out."""
+        sock, generation = self._sock, self._generation
+        if sock is None:
+            if self._error is not None:
+                raise self._error
+            time.sleep(0.05)
+            return None
+        try:
+            conn, _ = sock.accept()
+        except TimeoutError:
+            return None
+        except OSError:
+            if generation != self._generation:
+                return None
+            raise
+        conn.setblocking(True)
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        return conn
+
+    def close(self):
+        sock, self._sock = self._sock, None
+        if sock is not None:
+            sock.close()
+
+
+class SharingRelay:
+    """The host, its linked browsers and the frames between them, behind one lock because every socket runs on its own thread."""
+
+    def __init__(self, listener):
+        self._listener = listener
         self._lock = threading.Lock()
         self._host = None
         self._clients = {}
         self._next_client_id = 0
+        self.closed = False
 
     @property
     def has_host(self):
         return self._host is not None
+
+    # Called with the lock held. A rebind that fails falls back to this computer
+    # and tells the host why; only a loopback bind that fails as well raises, which
+    # ends the host's connection and makes serve() start over.
+    def _set_network(self, enabled):
+        if enabled != self._listener.network:
+            try:
+                self._listener.open(enabled)
+            except OSError as error:
+                self._listener.open(False)
+                return {"kind": "network", "enabled": False, "addresses": [], "error": str(error)}
+        if not enabled:
+            for client in self._clients.values():
+                if not is_loopback(client.address):
+                    client.connection.close()
+        return {"kind": "network", "enabled": enabled, "addresses": local_addresses() if enabled else []}
 
     def _to_host(self, frame):
         if self._host is not None:
@@ -64,7 +182,7 @@ class SharingRelay:
                 sock.send(encode({"kind": "listen-failed", "error": "Another browser on this computer is already sharing through Anki."}))
                 return None
             self._host = sock
-            sock.send(encode({"kind": "listening", "port": self.port}))
+            sock.send(encode({"kind": "listening", "port": self._listener.port}))
 
         def message(text):
             try:
@@ -76,14 +194,16 @@ class SharingRelay:
                 if kind == "send":
                     client = self._clients.get(frame.get("clientId"))
                     if client is not None:
-                        client.send(str(frame.get("text")))
+                        client.connection.send(str(frame.get("text")))
                 elif kind == "broadcast":
                     for client in self._clients.values():
-                        client.send(str(frame.get("text")))
+                        client.connection.send(str(frame.get("text")))
                 elif kind == "close":
                     client = self._clients.get(frame.get("clientId"))
                     if client is not None:
-                        client.close()
+                        client.connection.close()
+                elif kind == "network":
+                    sock.send(encode(self._set_network(frame.get("enabled") is True)))
 
         def closed():
             with self._lock:
@@ -91,20 +211,22 @@ class SharingRelay:
                     return
                 self._host = None
                 for client in self._clients.values():
-                    client.close()
+                    client.connection.close()
                 self._clients.clear()
+                if self._listener.network:
+                    self._set_network(False)
 
         return Handlers(message, closed)
 
-    def connect_client(self, sock, origin):
+    def connect_client(self, sock, origin, address):
         """The handlers for a new linked-browser socket, or None while no host is connected."""
         with self._lock:
             if self._host is None:
                 return None
             self._next_client_id += 1
             client_id = f"client-{self._next_client_id}"
-            self._clients[client_id] = sock
-            self._to_host({"kind": "client-open", "clientId": client_id, "origin": origin})
+            self._clients[client_id] = Client(sock, address)
+            self._to_host({"kind": "client-open", "clientId": client_id, "origin": origin, "address": address})
 
         def message(text):
             with self._lock:
@@ -125,7 +247,7 @@ class SharingRelay:
             if self._host is not None:
                 self._host.send(ping)
             for client in self._clients.values():
-                client.send(ping)
+                client.connection.send(ping)
 
 
 def encode_frame(opcode, payload):
@@ -237,12 +359,13 @@ def parse_request(head):
     return target.split("?")[0], headers
 
 
-def refusal(relay, path, headers):
+def refusal(relay, path, headers, peer):
     """The HTTP status that turns a handshake away, or None to accept it."""
     if path not in (HOST_PATH, LINK_PATH):
         return "404 Not Found"
-    # The one rule: browser extensions may connect, web pages may not.
-    if not headers.get("origin", "").startswith(EXTENSION_ORIGIN_PREFIX):
+    # The one rule: browser extensions may connect, web pages may not. The host
+    # is the Hachidori on this computer; other computers only link.
+    if not headers.get("origin", "").startswith(EXTENSION_ORIGIN_PREFIX) or (path == HOST_PATH and not is_loopback(peer)):
         return "403 Forbidden"
     if "sec-websocket-key" not in headers:
         return "400 Bad Request"
@@ -277,9 +400,10 @@ def serve_connection(relay, sock):
     """One accepted socket from handshake to close, on its own thread."""
     with sock:
         try:
+            peer = sock.getpeername()[0]
             reader = Reader(sock)
             path, headers = parse_request(reader.until(b"\r\n\r\n"))
-            refused = refusal(relay, path, headers)
+            refused = refusal(relay, path, headers, peer)
             if refused is not None:
                 sock.sendall(f"HTTP/1.1 {refused}\r\nConnection: close\r\n\r\n".encode("ascii"))
                 return
@@ -288,7 +412,7 @@ def serve_connection(relay, sock):
                 f"Sec-WebSocket-Accept: {accept_key(headers['sec-websocket-key'])}\r\n\r\n"
             ).encode("ascii"))
             connection = Connection(sock)
-            handlers = relay.connect_host(connection) if path == HOST_PATH else relay.connect_client(connection, headers["origin"])
+            handlers = relay.connect_host(connection) if path == HOST_PATH else relay.connect_client(connection, headers["origin"], peer)
             # A second host was told why; a client that lost the host between the check and here is simply closed.
             if handlers is None:
                 connection.close()
@@ -304,27 +428,27 @@ def serve_connection(relay, sock):
 
 
 def ping_forever(relay, seconds):
-    while True:
+    while not relay.closed:
         time.sleep(seconds)
         relay.ping()
 
 
 def serve(port, ping_seconds=PING_SECONDS, announce=None):
-    """Relays on 127.0.0.1:port until the process ends. Raises OSError when the port is taken."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-        if sys.platform != "win32":
-            # Frees the port straight after a restart; Windows would instead let two listeners share it.
-            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        listener.bind(("127.0.0.1", port))
-        listener.listen()
-        relay = SharingRelay(listener.getsockname()[1])
-        if announce is not None:
-            announce(relay.port)
-        threading.Thread(target=ping_forever, args=(relay, ping_seconds), name="hachidori-relay-ping", daemon=True).start()
+    """Relays on 127.0.0.1:port until the process ends. Raises OSError when the port cannot be bound."""
+    listener = Listener(port)
+    listener.open(False)
+    relay = SharingRelay(listener)
+    if announce is not None:
+        announce(listener.port)
+    threading.Thread(target=ping_forever, args=(relay, ping_seconds), name="hachidori-relay-ping", daemon=True).start()
+    try:
         while True:
-            sock, _ = listener.accept()
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            threading.Thread(target=serve_connection, args=(relay, sock), name="hachidori-relay-connection", daemon=True).start()
+            sock = listener.accept()
+            if sock is not None:
+                threading.Thread(target=serve_connection, args=(relay, sock), name="hachidori-relay-connection", daemon=True).start()
+    finally:
+        relay.closed = True
+        listener.close()
 
 
 def main(argv=None):

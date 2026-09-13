@@ -68,8 +68,8 @@ function readServerFrame(buffer) {
 
 // A minimal WebSocket client: Node's built-in one cannot set the Origin header
 // the relay checks.
-async function connectClient(t, port, path, origin = EXTENSION_ORIGIN) {
-  const socket = connect(port, "127.0.0.1");
+async function connectClient(t, port, path, origin = EXTENSION_ORIGIN, host = "127.0.0.1") {
+  const socket = connect(port, host);
   t.after(() => socket.destroy());
   await new Promise((resolveConnect, rejectConnect) => {
     socket.once("connect", resolveConnect);
@@ -77,7 +77,7 @@ async function connectClient(t, port, path, origin = EXTENSION_ORIGIN) {
   });
   const key = randomBytes(16).toString("base64");
   socket.write([
-    `GET ${path} HTTP/1.1`, `Host: 127.0.0.1:${port}`, "Upgrade: websocket", "Connection: Upgrade",
+    `GET ${path} HTTP/1.1`, `Host: ${host}:${port}`, "Upgrade: websocket", "Connection: Upgrade",
     `Sec-WebSocket-Key: ${key}`, "Sec-WebSocket-Version: 13", ...(origin === null ? [] : [`Origin: ${origin}`]), "", "",
   ].join("\r\n"));
   const frames = queue();
@@ -195,6 +195,61 @@ test("losing the host closes its clients, and the next host is accepted", async 
   await client.closeFrame();
   await client.closed;
   assert.equal((await connectClient(t, port, "/link")).status, 503, "the lost host is forgotten");
+  const next = await connectClient(t, port, "/host");
+  assert.deepEqual(await next.json(), listening(port));
+});
+
+// The relay listens on this computer alone until the host asks for the network.
+// Skipped, with a note, on a machine that has no address other than loopback.
+async function networkOn(t, host) {
+  host.send(JSON.stringify({ kind: "network", enabled: true }));
+  const reply = await untilKind(host, "network");
+  assert.equal(reply.enabled, true);
+  assert.ok(Array.isArray(reply.addresses));
+  if (reply.addresses.length === 0) {
+    t.diagnostic("no network address on this machine; the network cases did not run");
+    return null;
+  }
+  for (const entry of reply.addresses) assert.match(entry.kind, /^(tailscale|local)$/u, JSON.stringify(entry));
+  return reply.addresses[0].address;
+}
+
+test("the host opens the relay to the network and closes it again", async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  assert.deepEqual(await host.json(), listening(port));
+  const address = await networkOn(t, host);
+  if (address === null) return;
+  assert.equal((await connectClient(t, port, "/host", EXTENSION_ORIGIN, address)).status, 403, "only this computer's Hachidori hosts");
+  const remote = await connectClient(t, port, "/link", EXTENSION_ORIGIN, address);
+  assert.equal(remote.status, 101);
+  const remoteOpen = await untilKind(host, "client-open");
+  assert.equal(remoteOpen.address, address, "the host learns where a linked browser is");
+  const local = await connectClient(t, port, "/link");
+  assert.equal(local.status, 101);
+  assert.equal((await untilKind(host, "client-open")).address, "127.0.0.1");
+  host.send(JSON.stringify({ kind: "network", enabled: false }));
+  assert.deepEqual(await untilKind(host, "network"), { kind: "network", enabled: false, addresses: [] });
+  await remote.closeFrame();
+  await remote.closed;
+  assert.equal((await untilKind(host, "client-close")).clientId, remoteOpen.clientId);
+  await assert.rejects(connectClient(t, port, "/link", EXTENSION_ORIGIN, address), /ECONNREFUSED/u, "the network listener is gone");
+  local.send("still here");
+  assert.equal((await untilKind(host, "client-text")).text, "still here", "the linked browser on this computer stays");
+});
+
+test("losing the host returns the relay to this computer", async (t) => {
+  const { port } = await server(t);
+  const host = await connectClient(t, port, "/host");
+  await host.json();
+  const address = await networkOn(t, host);
+  if (address === null) return;
+  host.send(JSON.stringify({ kind: "network", enabled: true }));
+  assert.equal((await untilKind(host, "network")).enabled, true);
+  assert.equal((await connectClient(t, port, "/link", EXTENSION_ORIGIN, address)).status, 101);
+  host.destroy();
+  await new Promise((resolveWait) => setTimeout(resolveWait, 200));
+  await assert.rejects(connectClient(t, port, "/link", EXTENSION_ORIGIN, address), /ECONNREFUSED/u);
   const next = await connectClient(t, port, "/host");
   assert.deepEqual(await next.json(), listening(port));
 });
