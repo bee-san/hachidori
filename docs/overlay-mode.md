@@ -8,7 +8,7 @@ in-game overlay. The overlay floats over a game and passes clicks through, so:
 
 - Lookups start on **hover**. Holding an activation key over a game is awkward.
 - The **word highlight** starts off. A highlight drawn over game text gets in the way.
-- The **mining screenshot** starts off. The overlay page is see-through, so a screenshot of it would not show the game.
+- The **mining screenshot** is never taken, whatever Settings says. Electron has no `chrome.tabs.captureVisibleTab`, and the see-through overlay page would not show the game anyway.
 - The **first-run setup page** is skipped. An embedded host has no tab to show it in.
 
 ## Turning it on
@@ -43,6 +43,9 @@ normal first-install preferences plus:
   because an embedding host may never fire that event.
 - **Setup:** `onInstalled` does not create a setup record or open `startup.html`,
   so Settings shows no "Resume setup" link.
+- **Screenshot:** seeding the option off only keeps the Settings checkbox honest
+  on a fresh profile. The worker reads `anki.captureScreenshot` as `false` in
+  every overlay profile, so `{screenshot}` fields stay empty without a warning.
 
 Everything else behaves exactly as in Chrome. In particular, the page scan is
 layout-unaware like Yomitan's default: an overlay may box every glyph in its own
@@ -71,3 +74,6 @@ once and never opens setup" check covers:
 - no setup record and no tab;
 - a later edit surviving a restarted worker;
 - a pre-existing profile staying untouched.
+
+Its "overlay mode never takes a mining screenshot, even when the stored option
+is on" check asks the worker for a screenshot from a profile that has it on.
