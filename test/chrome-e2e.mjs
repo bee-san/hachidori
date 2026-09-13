@@ -283,6 +283,7 @@ const PLANNED = [
   "Settings persists frequency directions and applies them to real-WASM lookup results",
   "exact selections override scan length, preserve cross-inline highlights and reject prefix-only matches",
   "source highlights reconcile selected text mutations without changing selection",
+  "hover popups stay open while a drag selects text, prefill the highlight and close on a plain click",
   "nested source highlights retain ancestor ownership when children close in native and fallback modes",
   "plain definition text opens nested child lookups with native hover, activation, miss and depth behavior",
   "fallback source paint stays exact through clipping, scrolling, visibility and cleanup",
@@ -6351,6 +6352,49 @@ async function checkReaderSelection(browser, settings, tab, popup) {
     await popup.click(".gsm-hoshidicts-note-cancel");
     await dismiss();
     await editSettingsControls(settings, { "opt-lookup-mode": "hover", "opt-scan-length": "16" });
+    // An overlay host turns click-through when the popup hides, so pressing on
+    // text must keep it open until release decides between a drag and a click.
+    await tab.$eval("#verb", (element) => { element.innerHTML = "<b>食べ</b><i>たかった</i>"; });
+    await moveTo("#verb");
+    const hoverPopup = await popup.waitForVisible();
+    await tab.evaluate(() => {
+      globalThis.__hiddenEvents = 0;
+      globalThis.__countHidden ??= () => { globalThis.__hiddenEvents += 1; };
+      window.addEventListener("hachidori-popup-hidden", globalThis.__countHidden);
+    });
+    const hoverBox = await (await tab.$("#verb")).boundingBox();
+    await tab.mouse.move(hoverBox.x + 1, hoverBox.y + hoverBox.height / 2);
+    await tab.mouse.down();
+    let hoverDrag;
+    try {
+      await tab.mouse.move(hoverBox.x + hoverBox.width - 1, hoverBox.y + hoverBox.height / 2, { steps: 8 });
+      hoverDrag = await tab.evaluate(() => ({ hidden: globalThis.__hiddenEvents,
+        selected: window.getSelection().toString() }));
+      hoverDrag.visible = popup.visible(await popup.state());
+    } finally {
+      await tab.mouse.up();
+      await tab.evaluate(() => window.removeEventListener("hachidori-popup-hidden", globalThis.__countHidden));
+    }
+    await pause();
+    const hoverSelected = await popup.waitForVisible();
+    const hoverEditorOpened = await popup.click(".gsm-hoshidicts-note-button");
+    const hoverEditor = await popup.state();
+    await popup.click(".gsm-hoshidicts-note-cancel");
+    await dismiss();
+    await moveTo("#verb");
+    const clickPopup = await popup.waitForVisible();
+    await tab.mouse.down();
+    await tab.mouse.up();
+    await pause();
+    const clickDismissed = !popup.visible(await popup.state());
+    check("hover popups stay open while a drag selects text, prefill the highlight and close on a plain click",
+      hoverPopup?.plain.includes("食べる") && hoverDrag.hidden === 0 && hoverDrag.visible
+        && hoverDrag.selected === "食べたかった" && hoverSelected?.plain.includes("食べる")
+        && hoverEditorOpened && hoverEditor.noteTerm === "食べたかった" && hoverEditor.noteReading === ""
+        && Boolean(clickPopup) && clickDismissed,
+      JSON.stringify({ hoverPopup: Boolean(hoverPopup), hoverDrag, hoverSelected: Boolean(hoverSelected),
+        hoverEditorOpened, hoverEditor, clickPopup: Boolean(clickPopup), clickDismissed }));
+    await dismiss();
     await tab.$eval("#verb", (element) => {
       element.innerHTML = '<input value="食べたかった"><textarea>食べたかった</textarea>'
         + '<b contenteditable="true"><i>食べたかった</i></b><button class="vn-next" type="button">→</button>';

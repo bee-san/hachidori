@@ -62,11 +62,16 @@ test("unknown selected words expose a pencil with a selected-text prefill and on
 
 test("lookup and kanji results expose the same pencil editor with their own term prefill", t => {
   const f = fixture(t);
-  f.view.renderResults([{ matched: "食べた", term: { expression: "食べる", reading: "たべる",
-    frequencies: [], pitches: [], glossaries: [{ dictionary: "Published dictionary", glossary: '["to eat"]' }] } }], f.candidate);
+  const results = [{ matched: "食べた", term: { expression: "食べる", reading: "たべる",
+    frequencies: [], pitches: [], glossaries: [{ dictionary: "Published dictionary", glossary: '["to eat"]' }] } }];
+  f.view.renderResults(results, { ...f.candidate, exactSelection: false });
   f.popup.querySelector(".gsm-hoshidicts-note-button").click();
   assert.equal(f.popup.querySelector("form").elements.term.value, "食べる");
   assert.equal(f.popup.querySelector("form").elements.reading.value, "たべる");
+  f.view.renderResults(results, { ...f.candidate, query: "食べた" });
+  f.popup.querySelector(".gsm-hoshidicts-note-button").click();
+  assert.equal(f.popup.querySelector("form").elements.term.value, "食べた", "an exact selection adds the highlighted text");
+  assert.equal(f.popup.querySelector("form").elements.reading.value, "");
   f.view.renderKanji({ character: "食", entries: [] }, f.candidate);
   const button = f.popup.querySelector(".gsm-hoshidicts-note-button");
   assert.equal(button.getAttribute("aria-label"), "Edit personal dictionary");
