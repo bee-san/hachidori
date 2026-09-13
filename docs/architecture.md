@@ -71,7 +71,7 @@ Each dictionary import follows one logical transaction:
 2. The service worker transfers the archive to the offscreen document.
 3. The engine worker imports Yomitan banks through the Hoshidicts C++ importer into a fresh `/dicts/.hdw-generation-<UUID>/<title>` root. A committed root is never overwritten in place.
 4. The generated files are flushed to the storage backend before metadata can reference them.
-5. The candidate's exact manifest path is strict-loaded, including disabled packages, before the service worker compare-and-set commits it.
+5. The candidate's exact manifest path is strict-loaded, including disabled packages, before the service worker compare-and-set commits it. A package already committed at its path that no longer loads does not block the candidate; see below.
 6. Only a confirmed commit publishes the new dictionary count and generation.
 7. The engine re-reads authoritative state before garbage-collecting unreferenced generation roots.
 8. The settings page renders success only after that reply.
@@ -85,9 +85,9 @@ engine resolves the ID itself and validates the final URL, title, update index,
 revision, and defining capability. Only then does the package gain its optional
 `sourceId` and catalogue-owned update URLs.
 
-If a compare-and-set result is unknown because both the commit reply and its readback fail, both the previous and candidate roots are retained. Revisioned manifest paths are authoritative on restart: the engine strict-loads those paths and removes unreferenced generations rather than adopting them from disk. The IDBFS startup path also resolves imports left by the older `.hdw-import` protocol. The archive input itself is not retained.
+If a compare-and-set result is unknown because both the commit reply and its readback fail, both the previous and candidate roots are retained. Revisioned manifest paths are authoritative on restart: the engine loads those paths and removes unreferenced generations rather than adopting them from disk. A committed package that no longer loads (missing or damaged files) is left out of the loaded set rather than failing every lookup: its row stays in the manifest, `hd_status.failedDictionaries` reports its `id`, `title` and load error, and Settings names it until it is re-imported or removed. Only packages a mutation introduces must load before they are committed. The IDBFS startup path also resolves imports left by the older `.hdw-import` protocol. The archive input itself is not retained.
 
-Removal first strict-loads the remaining manifest, then commits it, publishes the
+Removal first loads the remaining manifest, then commits it, publishes the
 new state, and finally garbage-collects the removed generation. The
 `/dicts/.hdw-remove` handling remains only for recovery of dictionaries stranded
 by the older removal protocol, including a legacy dictionary whose real title

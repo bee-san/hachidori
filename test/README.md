@@ -392,7 +392,7 @@ What it proves, in order:
    pinned controls, lazily constructed shared term/kanji Note behavior,
    exact-view refresh and Back context, Escape/hover guards, and successful
    append followed by failed refresh.
-2. **Boot and relay.** `hd_status` has exactly the ten documented envelope
+2. **Boot and relay.** `hd_status` has exactly the eleven documented envelope
    keys, echoes its `requestId`, and reaches `ready`. `createDocument` runs once
    and never concurrently. `background.js` stamps `relayed` on its forwarded copy
    and senders never do.
@@ -474,6 +474,9 @@ What it proves, in order:
    one- and three-result truncation, selected ascending/descending directions,
    disabled and all-dictionary ordering, and stable glossary identity. Their
    generated index metadata also repairs older stored packages on reload.
+   A committed package whose files no longer load is skipped on reload: the
+   other dictionaries keep answering lookups, `hd_status.failedDictionaries`
+   names it with its load error, and removing it clears the report.
 6. **A no-match lookup still reports the real `dictionaryCount`.** `content.js`
    renders "no dictionaries imported" on 0, and 0 is also what the engine's error
    fallback returns, so `offscreen.js` reads `hdw_last_error` after every
@@ -562,7 +565,7 @@ What it proves, in order:
    ordinary/preferred/em dimensions, and recover intermediate width arithmetic
    overflow/underflow while retaining valid original rounding and display clamps.
 9. **`hd_remove`** — generation root gone, logical package gone, nothing loaded,
-   and removing an unknown title does not bump `generation`. Removal strict-loads
+   and removing an unknown title does not bump `generation`. Removal loads
    the remaining manifest and commits it before deleting the old root. The
    failure case injects a `chrome.storage.local.set` rejection: the original
    generation and live engine must remain intact. Startup recovery also preserves
