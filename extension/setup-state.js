@@ -1,6 +1,8 @@
 // First-run setup state shared by the service worker, the startup page and Settings.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
+
 export const SETUP_STATE_KEY = "setupState";
 export const SETUP_STATE_SCHEMA_VERSION = 1;
 export const STARTUP_PAGE = "startup.html";
@@ -18,12 +20,22 @@ export const FIRST_INSTALL_OPTIONS = Object.freeze({
   compactDefinitionSummaryCount: 2,
 });
 
-// Dictionary-dependent initial preferences, applied once from the committed
-// catalogue entry's exact title while the option is still Automatic.
-export const FIRST_INSTALL_SELECTIONS = Object.freeze({
-  jitendex: Object.freeze({ option: "compactDefinitionSummaryDictionary", select: (title) => title }),
-  "bees-ultimate-kanji-dictionary": Object.freeze({ option: "kanjiClickDictionary", select: (title) => ({ title, kind: "term" }) }),
+// How each first-install option's value is built from a committed title.
+const FIRST_INSTALL_SELECTORS = Object.freeze({
+  compactDefinitionSummaryDictionary: (title) => title,
+  kanjiClickDictionary: (title) => ({ title, kind: "term" }),
 });
+
+// Dictionary-dependent initial preferences, applied once from the committed
+// catalogue entry's exact title while the option is still Automatic. Which
+// entry sets which option is declared by the catalogue.
+export const FIRST_INSTALL_SELECTIONS = Object.freeze(Object.fromEntries(
+  RECOMMENDED_DICTIONARIES.filter((entry) => entry.firstInstallOption !== null).map((entry) => {
+    const select = FIRST_INSTALL_SELECTORS[entry.firstInstallOption];
+    if (select === undefined) throw new Error(`no first-install selector for ${entry.firstInstallOption}`);
+    return [entry.sourceId, Object.freeze({ option: entry.firstInstallOption, select })];
+  }),
+));
 
 function emptySetupDictionaries() {
   return { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] };
