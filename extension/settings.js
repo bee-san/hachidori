@@ -1086,6 +1086,13 @@ async function refreshStatus() {
 function renderEngineStatus() {
   if (lastEngineStatus === null) return;
   const count = dictionaries.filter((entry) => entry.enabled !== false).length;
+  const failed = Array.isArray(lastEngineStatus.failedDictionaries) ? lastEngineStatus.failedDictionaries : [];
+  if (lastEngineStatus.ready && failed.length > 0) {
+    const subject = failed.length === 1 ? "1 dictionary" : `${numberFormat.format(failed.length)} dictionaries`;
+    const detail = failed.map(({ title, error }) => `${title} (${error})`).join("; ");
+    setStatus(`Could not load ${subject}: ${detail}. Re-import or remove it; the other dictionaries still work.`, "error");
+    return;
+  }
   if (lastEngineStatus.ready) {
     if (count === 0 && !lastEngineStatus.loading) {
       setStatus(dictionaries.length === 0

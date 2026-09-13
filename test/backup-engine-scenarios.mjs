@@ -177,7 +177,8 @@ export async function backupEngineScenarios({ request, pageChrome, hostChrome, s
   const recovery = await prepare(exported.blobUrl);
   assert.ok(recovery.warning);
   const recoveryRoots = roots();
-  assert.equal((await request("hd_status")).ok, false, "status still reports the damaged live generation during preview");
+  assert.deepEqual((await request("hd_status")).failedDictionaries.map(({ id }) => id), [live.id],
+    "status still reports the damaged live generation during preview");
   assert.deepEqual(roots(), recoveryRoots, "status must not clean a prepared recovery generation");
   await accepted("hd_backup_restore", { token: recovery.token });
   assert.equal((await read()).document.revision, damaged.document.revision + 11);
