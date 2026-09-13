@@ -4,8 +4,8 @@
 
 export const PROTOCOL_VERSION = 1;
 export const DEFAULT_SHARING_PORT = 8771;
-export const HOST_PATH = "/host";
-export const LINK_PATH = "/link";
+const HOST_PATH = "/host";
+const LINK_PATH = "/link";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const ADDRESS_HINT = "Enter the address shown under Sharing on the other computer, like 100.101.102.103.";
