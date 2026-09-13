@@ -12,17 +12,14 @@ const ZIP_OPTIONS = { useWebWorkers: false, level: 0, extendedTimestamp: false, 
 // `read(name)` returns one source file's text. Anki shows `human_version` in
 // its add-on list and keeps `mod` as the add-on's modification time.
 export async function buildAnkiAddon(read, { version, now = Date.now() }) {
+  /** @type {{add(name: string, reader: object): Promise<unknown>, close(): Promise<Blob>}} */
   const writer = new ZipWriter(new BlobWriter("application/zip"), ZIP_OPTIONS);
-  // zip.js writes entries in the order add() is called (keepOrder), so the
-  // adds can overlap the reads.
-  const entries = [];
   for (const name of ANKI_ADDON_FILES) {
     let text = await read(name);
     if (name === "manifest.json") {
       text = `${JSON.stringify({ ...JSON.parse(text), human_version: version, mod: Math.floor(now / 1000) }, null, 2)}\n`;
     }
-    entries.push(writer.add(name, new TextReader(text)));
+    await writer.add(name, new TextReader(text));
   }
-  await Promise.all(entries);
   return writer.close();
 }
