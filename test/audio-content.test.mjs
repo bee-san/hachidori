@@ -180,6 +180,32 @@ test("autoplay runs once per logical first result and tab, not expansion, Back o
   assert.equal(v.item.status.textContent, "");
 });
 
+test("a hidden popup audio button still autoplays the first result", async t => {
+  const f = fixture(t), v = f.view();
+  for (const file of ["external-links.js", "render/glossary.js", "render/popup.js"]) {
+    f.window.eval(readFileSync(new URL(`../extension/${file}`, import.meta.url), "utf8"));
+  }
+  const host = f.window.document.getElementById("host");
+  const appearance = f.window.HDPopup.createPopupAppearance(host);
+  const options = { ...f.window.HDReaderOptions.DEFAULT_OPTIONS, audioAutoplay: true, showPopupAudioButton: false };
+  assert.equal(f.window.HDReaderOptions.normaliseOptions({}).showPopupAudioButton, true);
+  assert.equal(f.window.HDReaderOptions.normaliseOptions({ showPopupAudioButton: false }).showPopupAudioButton, false);
+  appearance.update(options);
+  assert.equal(host.dataset.hoshidictsAudioButton, "hidden");
+  assert.match(readFileSync(new URL("../extension/render/reader.css", import.meta.url), "utf8"),
+    /:host\(\[data-hoshidicts-audio-button="hidden"\]\) \.gsm-hoshidicts-audio-control \{ display: none; \}/u);
+  f.controller.update(options);
+  v.bind();
+  assert.equal(v.item.button.hidden, false, "only the host attribute hides the button");
+  assert.equal(f.sent.length, 1);
+  assert.equal(f.sent[0].type, "hd_audio_play");
+  f.sent[0].resolveReply({ ok: true, status: "success" });
+  await settle();
+  appearance.update({ ...options, showPopupAudioButton: true });
+  assert.equal(host.dataset.hoshidictsAudioButton, undefined);
+  appearance.destroy();
+});
+
 test("late initial options play the still-current first result without replaying a manual pronunciation", async t => {
   for (const manual of [false, true]) {
     const f = fixture(t), v = f.view();

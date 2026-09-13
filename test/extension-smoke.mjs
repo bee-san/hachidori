@@ -2818,10 +2818,10 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
         && reader.DESIGN_OPTION_KEYS.includes("popupToolbarPosition") && toolbarCases.every(Boolean),
       JSON.stringify(toolbarCases));
     const appearanceDefaults = { popupTheme: "default", popupWidthPx: 560, popupHeightPx: 420,
-      popupOpacityPercent: 85, sourceHighlightEnabled: true };
+      popupOpacityPercent: 85, sourceHighlightEnabled: true, showPopupAudioButton: true };
     const appearanceAccepted = [];
     for (const [key, value] of Object.entries({ popupTheme: "miku", popupWidthPx: 1200, popupHeightPx: 200,
-      popupOpacityPercent: 0, sourceHighlightEnabled: false })) {
+      popupOpacityPercent: 0, sourceHighlightEnabled: false, showPopupAudioButton: false })) {
       await local.set({ options: saved.options });
       const reply = await send(message({ [key]: value }));
       const repeated = await send(message({ [key]: value }, { baseRevision: 3 }));
@@ -2832,7 +2832,7 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     for (const patch of [{ popupTheme: "unknown" }, { popupTheme: null }, { popupWidthPx: 279 },
       { popupWidthPx: 1201 }, { popupHeightPx: 199 }, { popupHeightPx: 901 },
       { popupOpacityPercent: -1 }, { popupOpacityPercent: 101 }, { popupOpacityPercent: 50.5 },
-      { popupWidthPx: "560" }, { sourceHighlightEnabled: "true" }]) {
+      { popupWidthPx: "560" }, { sourceHighlightEnabled: "true" }, { showPopupAudioButton: "false" }]) {
       await local.set({ options: saved.options });
       const reply = await send(message(patch));
       appearanceRejected.push(reply.ok === false && await unchanged(saved));
