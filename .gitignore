@@ -7,3 +7,4 @@ benchmark/results/
 benchmark/jl/bin/
 benchmark/jl/obj/
 *.log
+__pycache__/

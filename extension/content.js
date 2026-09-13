@@ -5,9 +5,7 @@
  * Rendering lives in render/popup.js and render/glossary.js (ported from
  * GameSentenceMiner PR #549); this file only produces the
  * {sentence, matchOffset, sourceElements} candidates those modules consume and
- * drives the request/reply state machine. Like Yomitan's default layout-unaware
- * scan, page text is read in DOM order regardless of how it is boxed, and a
- * pointer candidate's sources are the text nodes around the hovered glyph.
+ * drives the request/reply state machine.
  *
  * Copyright (C) 2026 Manhhao
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -52,9 +50,10 @@
   const MAX_MEDIA_CONCURRENT_REQUESTS = 4;
   const MAX_MEDIA_PENDING_REQUESTS = 128;
   const MEDIA_REQUEST_TIMEOUT_MS = 4000;
-  // Yomitan's sentence scan extent: how far the sentence reaches to either
-  // side of the hovered glyph before a newline cuts it.
-  const SENTENCE_SCAN_EXTENT = 200;
+  // Range.toString() over the whole sentence runs on every hover, so the
+  // container the offsets are relative to has to stay sentence-sized even on
+  // pages that put an entire chapter in one element.
+  const MAX_SENTENCE_LENGTH = 4096;
 
   // Same character set PR #549 gates lookups on: kana, halfwidth katakana, CJK
   // ideographs (including ext-A and ext-B), and the iteration/repeat marks.
@@ -97,9 +96,8 @@
   ]);
   const EDITING_TAGS = new Set(["button", "input", "select", "textarea"]);
   const EDITING_SELECTOR = [...EDITING_TAGS, "[contenteditable]"].join(",");
-  // A whitespace-only text node with a line break separates blocks in the
-  // source ("</p>\n<p>", an overlay's block separator) and ends the sentence.
-  const BLOCK_SEPARATOR_PATTERN = /^\s*[\n\r]\s*$/u;
+  // `display` values that keep text flowing inline, so the scan may cross them.
+  const INLINE_DISPLAY_PATTERN = /^(?:inline|ruby|contents)/u;
   const PRESERVED_WHITESPACE = new Set([
     "pre",
     "pre-wrap",
@@ -310,6 +308,12 @@
       style.visibility === "collapse";
   }
 
+  function isBlockDisplay(element, styleCache) {
+    return !INLINE_DISPLAY_PATTERN.test(
+      computedStyleFor(element, styleCache).display
+    );
+  }
+
   function preservesWhitespace(element, styleCache) {
     if (!element) {
       return false;
@@ -445,85 +449,40 @@
     return node?.nodeType === Node.TEXT_NODE && isScannableElement(node.parentElement, styleCache);
   }
 
-  function createScanWalker(root, styleCache) {
-    return document.createTreeWalker(
-      root,
-      NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
-      {
-        acceptNode(node) {
-          if (node.nodeType === Node.TEXT_NODE) {
-            return isHiddenElement(node.parentElement, styleCache) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
-          }
-          const editing = isEditingElement(node);
-          if (
-            (!editing && OPAQUE_TAGS.has(node.localName)) ||
-            isOurNode(node) ||
-            computedStyleFor(node, styleCache).display === "none"
-          ) {
-            return NodeFilter.FILTER_REJECT;
-          }
-          if (editing) return hasVisibleContent(node, styleCache) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-          // Visible controls and line breaks are boundaries. Every other element
-          // is crossed whatever its layout, as Yomitan's layout-unaware scan
-          // does: a word boxed one glyph per positioned span is still one word.
-          // Hidden wrappers are skipped too, since a descendant may restore
-          // visibility.
-          return node.localName === "br"
-            ? NodeFilter.FILTER_ACCEPT
-            : NodeFilter.FILTER_SKIP;
-        },
-      }
-    );
-  }
-
   /**
-   * The text nodes around `startNode`, in document order, that make up the
-   * sentence: neighbours up to SENTENCE_SCAN_EXTENT characters each way, cut at
-   * a block separator, a line break or a control. They are the candidate's
-   * `sourceElements`, so `sourceElements.map(textContent).join("") === sentence`
-   * holds by construction, which is what createSourceHighlighter requires.
+   * Nearest block-level ancestor, shrunk to the largest descendant that still
+   * fits MAX_SENTENCE_LENGTH. This element is both the walk root and the
+   * coordinate space `sentence`/`matchOffset` are expressed in, so
+   * `sourceElements.map(textContent).join("") === sentence` holds by
+   * construction, which is what createSourceHighlighter requires.
    */
-  function collectSentenceSources(startNode, root, styleCache) {
-    const sources = [startNode];
-    for (const backward of [true, false]) {
-      const walker = createScanWalker(root, styleCache);
-      walker.currentNode = startNode;
-      let length = 0;
-      while (length < SENTENCE_SCAN_EXTENT) {
-        const node = backward ? walker.previousNode() : walker.nextNode();
-        if (
-          !node ||
-          node.nodeType !== Node.TEXT_NODE ||
-          BLOCK_SEPARATOR_PATTERN.test(node.nodeValue || "") ||
-          // The walker stops at a control going forward but reaches its text
-          // first going backward.
-          (backward && isEditingElement(node.parentElement?.closest(EDITING_SELECTOR)))
-        ) {
-          break;
-        }
-        if (backward) sources.unshift(node); else sources.push(node);
-        length += (node.nodeValue || "").length;
+  function resolveScanContainer(textNode, styleCache) {
+    let block = null;
+    for (
+      let element = textNode.parentElement;
+      element && element !== document.documentElement;
+      element = element.parentElement
+    ) {
+      if (isBlockDisplay(element, styleCache)) {
+        block = element;
+        break;
       }
     }
-    return sources;
-  }
-
-  function withinSources(sources, node) {
-    return sources.some((source) => source === node
-      || (source.nodeType === Node.ELEMENT_NODE && source.contains(node)));
-  }
-
-  /** `offset` inside `node` expressed in the concatenated text of `sources`. */
-  function sourceOffset(sources, node, offset) {
-    let consumed = 0;
-    for (const source of sources) {
-      if (source === node) return consumed + offset;
-      if (source.nodeType === Node.ELEMENT_NODE && source.contains(node)) {
-        return consumed + rangeOffsetWithin(source, node, offset);
-      }
-      consumed += (source.textContent || "").length;
+    if (!block) {
+      block = textNode.parentElement;
     }
-    throw new RangeError("node is not inside the candidate sources");
+    if (!block) {
+      return null;
+    }
+    let scoped = textNode.parentElement;
+    while (scoped !== block) {
+      const parent = scoped.parentElement;
+      if (!parent || (parent.textContent || "").length > MAX_SENTENCE_LENGTH) {
+        break;
+      }
+      scoped = parent;
+    }
+    return scoped;
   }
 
   function pushCollapsedSpace(entries, node, offset, sourceLength, segmentBreak) {
@@ -601,8 +560,33 @@
     }
   }
 
-  function collectScanEntries(startNode, startOffset, root, scanLength, styleCache) {
-    const walker = createScanWalker(root, styleCache);
+  function collectScanEntries(startNode, startOffset, container, scanLength, styleCache) {
+    const walker = document.createTreeWalker(
+      container,
+      NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            return isHiddenElement(node.parentElement, styleCache) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+          }
+          const editing = isEditingElement(node);
+          if (
+            (!editing && OPAQUE_TAGS.has(node.localName)) ||
+            isOurNode(node) ||
+            computedStyleFor(node, styleCache).display === "none"
+          ) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (editing) return hasVisibleContent(node, styleCache) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+          // Visible controls and block elements are boundaries; ordinary inline
+          // elements are skipped, including hidden wrappers whose descendants
+          // may restore visibility. Hidden blocks still occupy layout space.
+          return node.localName === "br" || isBlockDisplay(node, styleCache)
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_SKIP;
+        },
+      }
+    );
     walker.currentNode = startNode;
 
     const entries = [];
@@ -617,11 +601,6 @@
       }
       offset = 0;
       node = walker.nextNode();
-      // A word never continues into the next block, as Yomitan's kept "\n"
-      // ends its match there.
-      if (node?.nodeType === Node.TEXT_NODE && BLOCK_SEPARATOR_PATTERN.test(node.nodeValue || "")) {
-        break;
-      }
     }
     dropCjkSegmentBreaks(entries);
     return entries.slice(0, scanLength);
@@ -651,10 +630,14 @@
     if (!isScannableTextNode(startNode, styleCache)) {
       return null;
     }
+    const container = resolveScanContainer(startNode, styleCache);
+    if (!container || !container.contains(startNode)) {
+      return null;
+    }
     const entries = collectScanEntries(
       startNode,
       Math.min(startOffset, (startNode.nodeValue || "").length),
-      document.body,
+      container,
       options.scanLength,
       styleCache
     );
@@ -667,11 +650,10 @@
     }
 
     const first = entries[0];
-    const sourceElements = collectSentenceSources(first.node, document.body, styleCache);
     let matchOffset;
     let anchorRange;
     try {
-      matchOffset = sourceOffset(sourceElements, first.node, first.offset);
+      matchOffset = rangeOffsetWithin(container, first.node, first.offset);
       anchorRange = document.createRange();
       anchorRange.setStart(first.node, first.offset);
       anchorRange.setEnd(
@@ -685,15 +667,15 @@
       return null;
     }
     return {
-      anchor: first.node.parentElement,
+      anchor: container,
       anchorRange,
       matchOffset,
       query,
       scanEntries: entries,
-      sentence: sourceElements.map((source) => source.nodeValue || "").join(""),
+      sentence: container.textContent || "",
       sourceDepth: -1,
-      sourceElements,
-      vertical: computedStyleFor(first.node.parentElement, styleCache)
+      sourceElements: [container],
+      vertical: computedStyleFor(container, styleCache)
         .writingMode.startsWith("vertical"),
     };
   }
@@ -828,7 +810,10 @@
         || !isScannableElement(selectionBoundaryElement(range.endContainer), styleCache)) return null;
     const query = selection.toString();
     if (!query.trim()) return null;
-    const anchor = selectionBoundaryElement(range.commonAncestorContainer);
+    const scanContainer = range.startContainer.nodeType === Node.TEXT_NODE
+      ? resolveScanContainer(range.startContainer, styleCache) : null;
+    const anchor = scanContainer?.contains(range.endContainer)
+      ? scanContainer : selectionBoundaryElement(range.commonAncestorContainer);
     for (const control of anchor.querySelectorAll(EDITING_SELECTOR)) {
       if (isEditingElement(control) && range.intersectsNode(control)
           && hasVisibleContent(control, styleCache)) return null;
@@ -902,7 +887,7 @@
     const last = matchedScanEnd(candidate, matched);
     if (!first || !last) return;
     // A page can move scanned text while the lookup is pending.
-    if (!withinSources(candidate.sourceElements, first.node) || !withinSources(candidate.sourceElements, last.node)) return;
+    if (!candidate.anchor.contains(first.node) || !candidate.anchor.contains(last.node)) return;
     try {
       // Scanning starts with a one-glyph range. Once lookup identifies the
       // complete match, place the popup against that word like Yomitan/PR 549.
@@ -937,8 +922,8 @@
       return "";
     }
     try {
-      const end = sourceOffset(
-        candidate.sourceElements,
+      const end = rangeOffsetWithin(
+        candidate.anchor,
         last.node,
         Math.min(
           (last.node.nodeValue || "").length,

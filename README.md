@@ -20,6 +20,7 @@
   <a href="#benchmarks">Benchmarks</a> ·
   <a href="#hachidori-vs-the-alternatives">Compare</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/sharing.md">Sharing</a> ·
   <a href="docs/chrome-web-store.md">Chrome Web Store guide</a> ·
   <a href="docs/privacy.md">Privacy</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -73,6 +74,12 @@ It can even use anki.
 <p align="center">
   <img src="docs/assets/lookup-blur.gif" alt="Animated demonstration of Hachidori blurring repeated lookups before revealing their definitions" width="720">
 </p>
+
+# Sharing
+
+Set up Hachidori once and use that setup from every other Hachidori, in GameSentenceMiner, another browser or another computer: same dictionaries, same notes, same settings.
+
+See [Sharing](docs/sharing.md).
 
 # Optionated
 
