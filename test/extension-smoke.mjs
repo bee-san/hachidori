@@ -13065,6 +13065,33 @@ async function contentNoteStage() {
     }
   }
 
+  async function popupWheelCase() {
+    const harness = await createHarness();
+    try {
+      await harness.initialLookup();
+      const window = harness.popup.ownerDocument.defaultView;
+      let pageWheels = 0;
+      window.document.body.addEventListener("wheel", () => { pageWheels += 1; });
+      const wheel = () => {
+        const event = new window.WheelEvent("wheel", { deltaY: 40, bubbles: true, cancelable: true, composed: true });
+        harness.popup.dispatchEvent(event);
+        return event.defaultPrevented;
+      };
+      const unscrollableHeld = wheel();
+      Object.defineProperties(harness.popup, { scrollHeight: { value: 500 }, clientHeight: { value: 100 } });
+      harness.popup.style.overflowY = "auto";
+      const scrollableNative = !wheel();
+      Object.defineProperty(harness.popup, "scrollTop", { value: 400 });
+      const edgeHeld = wheel();
+      return {
+        "popup wheel never reaches the page and cannot chain past a pane with no room left":
+          pageWheels === 0 && unscrollableHeld && scrollableNative && edgeHeld,
+      };
+    } finally {
+      harness.close();
+    }
+  }
+
   async function movedMatchEndpointCase() {
     const harness = await createHarness();
     try {
@@ -14313,7 +14340,7 @@ async function contentNoteStage() {
     definitionBlur: { ...await definitionBlurCase(), ...await ankiMaturityBlurCase() },
     kanjiNavigation: await kanjiNavigationCase(),
     externalLinks: await externalLinksCase(),
-    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await movedMatchEndpointCase(),
+    scanning: { ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
       ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
       ...await exactSelectionCase(), ...await selectedWordEditorCase(), ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
       ...await releasedSelectionDragCase(),
