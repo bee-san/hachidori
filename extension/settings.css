@@ -1272,6 +1272,7 @@ textarea {
   width: 8ch;
 }
 #opt-media-offset { width: 10ch; }
+#sharing-host-port { width: 12ch; }
 #definition-blur-count-paused label {
   cursor: pointer;
   text-decoration: underline;
