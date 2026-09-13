@@ -880,6 +880,12 @@ The native-switch scenario enables Developer mode in its isolated profile:
 Chrome 152 otherwise disables a command-line extension when it reloads as an
 unpacked extension. No personal browser settings are changed.
 
+`node --test test/recommended-dictionaries.test.mjs` checks that
+`recommended-dictionaries.js` is the only place the recommended set is described:
+first-install selections and the count and topics the startup page and Settings
+show come from its entries, and no other extension page or script repeats a
+catalogue source ID, archive or index URL, or a written-out count.
+
 `node --test test/local-file-access.test.mjs test/startup-practice.test.mjs`
 covers the optional prompt's initial query, return/reload lifecycle, stale
 replies, skip and Settings shortcut, plus practice selection, retained nodes,
