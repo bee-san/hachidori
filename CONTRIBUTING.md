@@ -19,7 +19,7 @@ cd hachidori
 
 The committed `extension/vendor/hoshidicts.{mjs,wasm}` bundle is enough to load and test ordinary JavaScript changes. Rebuilding it requires Emscripten and CMake; see the [architecture guide](docs/architecture.md).
 
-To run the extension, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `extension/`.
+To run the extension, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `extension/`. [Its README](extension/README.md) maps what is in that folder.
 
 ## Run the checks
 

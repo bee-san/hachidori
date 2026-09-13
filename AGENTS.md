@@ -72,7 +72,7 @@ When implementing the dictionary-only scope from issue #9:
 
 ## Repository map
 
-- `extension/` contains the Chrome MV3 runtime, settings UI, content script, and popup renderer.
+- `extension/` contains the Chrome MV3 runtime, settings UI, content script, and popup renderer; `extension/README.md` maps its files.
 - `extension/anki-relay/` is the Hachidori Relay add-on for Anki: the sharing relay in Python, shipped as the `.ankiaddon` that Settings → Sharing builds from that folder.
 - `wasm/bindings.cpp` is the JavaScript-facing boundary around the hoshidicts engine.
 - `third_party/hoshidicts` is a submodule and should move only as an intentional part of the change.
