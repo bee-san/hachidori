@@ -7443,10 +7443,14 @@ async function sourceHighlightStage() {
     const boxedRanges = ranges();
     const boxedPainted = texts() === "べ|た" && boxedRanges.length === 2
       && boxedRanges.every((range, index) => range.startContainer === boxes[index + 1].firstChild);
+    // Text changing elsewhere in the sentence leaves the match in place.
+    boxes[0].firstChild.data = "俺";
+    await settle();
+    const boxedNeighbour = texts() === "べ|た";
     boxes[2].remove();
     await settle();
     const boxedDetached = ranges().length === 0;
-    const textSources = boxedPainted && boxedDetached;
+    const textSources = boxedPainted && boxedNeighbour && boxedDetached;
     highlighter.clearAll();
     boxes[0].remove();
     boxes[1].remove();

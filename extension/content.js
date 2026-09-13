@@ -613,6 +613,11 @@
       }
       offset = 0;
       node = walker.nextNode();
+      // A word never continues into the next block, as Yomitan's kept "\n"
+      // ends its match there.
+      if (node?.nodeType === Node.TEXT_NODE && BLOCK_SEPARATOR_PATTERN.test(node.nodeValue || "")) {
+        break;
+      }
     }
     dropCjkSegmentBreaks(entries);
     return entries.slice(0, scanLength);
