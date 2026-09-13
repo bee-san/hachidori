@@ -5,6 +5,7 @@ import { createAnkiWorkerService } from "./anki-worker.js";
 import { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache } from "./anki-maturity-cache.js";
 import { createBackupDownloads } from "./backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
+import { SHARING_HOST_ALARM, SHARING_KEY, createSharingHost } from "./sharing-host.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm } from "./lookup-stats.js";
 import "./external-links.js";
 import "./dictionary-group-state.js";
@@ -105,6 +106,28 @@ const alarms = chrome.alarms ?? {
   async get() { return undefined; },
   create() {},
 };
+
+// The user data a linked browser mirrors: the same five keys a backup carries,
+// plus the lookup-count rows.
+const SHARED_STATE_KEYS = [DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_SOURCE_KEY, UPDATE_SETTINGS_KEY, LOOKUP_STATS_KEY];
+let sharingHost;
+
+async function readSharedState() {
+  const stored = await chrome.storage.local.get(SHARED_STATE_KEYS);
+  return Object.fromEntries(SHARED_STATE_KEYS.map(key => [key, stored[key] ?? null]));
+}
+
+function getSharingHost() {
+  sharingHost ??= createSharingHost({
+    chrome,
+    alarms,
+    dispatch: dispatchSharedRequest,
+    readSnapshot: readSharedState,
+    sharedKey: key => SHARED_STATE_KEYS.includes(key) || key.startsWith(LOOKUP_STATS_ROW_PREFIX),
+    version: chrome.runtime.getManifest().version,
+  });
+  return sharingHost;
+}
 
 async function readAnkiOptions() {
   return normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
@@ -1817,7 +1840,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // must never hold the dictionary storage queue while the engine calls into it.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== "hachidori-anki") return false;
-  Promise.resolve().then(async () => {
+  handleAnkiRequest(message, sender).then(sendResponse);
+  return true;
+});
+
+function handleAnkiRequest(message, sender) {
+  return Promise.resolve().then(async () => {
     if (sender.id !== chrome.runtime.id || !Object.hasOwn(ANKI_METHODS, message.type)) throw new Error("Unknown Anki request.");
     if (!ankiMining) {
       const send = async (target, fields) => {
@@ -1839,9 +1867,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "hd_anki_screenshot") return ankiMining.screenshot(() => captureSenderViewport(sender));
     return ankiMining[ANKI_METHODS[message.type]](message.type === "hd_anki_browse"
       ? message.request ?? message.expression : message.request);
-  }).then(result => sendResponse(workerReply(message, result)), error => sendResponse(failureReply(message, error)));
-  return true;
-});
+  }).then(result => workerReply(message, result), error => failureReply(message, error));
+}
 
 const backupPreparations = new Map();
 let backupCancelTail = Promise.resolve();
@@ -1975,10 +2002,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.target !== WORKER_TARGET) {
     return false;
   }
+  handleWorkerRequest(message, sender).then(sendResponse);
+  return true;
+});
+
+function handleWorkerRequest(message, sender) {
   const type = typeof message.type === "string" ? message.type : "";
   if (!Object.prototype.hasOwnProperty.call(WORKER_HANDLERS, type)) {
-    sendResponse(failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`)));
-    return false;
+    return Promise.resolve(failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`)));
   }
   if (type === "hd_options_write") {
     let error = null;
@@ -1988,8 +2019,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       error = responseLimitError(type);
     }
     if (error !== null) {
-      sendResponse(failureReply(message, error));
-      return true;
+      return Promise.resolve(failureReply(message, error));
     }
   }
   const invoke = () => WORKER_HANDLERS[type](message, sender);
@@ -1998,20 +2028,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     "hd_open_external", "hd_anki_discover", "hd_setup_anki", "hd_backup_download",
     "hd_lookup_stats_record", "hd_lookup_stats_read",
   ].includes(type) ? invoke() : serialiseStorage(invoke);
-  operation.then(
+  return operation.then(
     async (result) => {
       if (type === "hd_backup_cas" && result.ok !== false) {
         try { await reconcileUpdateAlarm(); }
         catch (error) { result.warning = `Restored successfully; update alarm could not be refreshed: ${describe(error)}`; }
       }
-      sendResponse(workerReply(message, result));
+      return workerReply(message, result);
     },
-    (error) => {
-      sendResponse(failureReply(message, error));
-    },
+    (error) => failureReply(message, error),
   );
-  return true;
-});
+}
 
 // Update cycles relay imports back through the engine, which calls into the
 // storage handlers above while committing. Keep this listener outside
@@ -2020,26 +2047,93 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== UPDATE_TARGET) {
     return false;
   }
-  const type = typeof message.type === "string" ? message.type : "";
-  if (!Object.hasOwn(UPDATE_HANDLERS, type)) {
-    sendResponse(failureReply(message, new Error(`unknown update request type ${JSON.stringify(type)}`)));
-    return false;
-  }
-  Promise.resolve(UPDATE_HANDLERS[type](message)).then(
-    (result) => {
-      const { ok = true, error = null, ...payload } = result ?? {};
-      sendResponse({ type: `${type}_result`, requestId: message.requestId ?? null, ok, error, ...payload });
-    },
-    (error) => {
-      sendResponse(failureReply(message, error));
-    },
-  );
+  handleUpdatesRequest(message).then(sendResponse);
   return true;
 });
+
+function handleUpdatesRequest(message) {
+  const type = typeof message.type === "string" ? message.type : "";
+  if (!Object.hasOwn(UPDATE_HANDLERS, type)) {
+    return Promise.resolve(failureReply(message, new Error(`unknown update request type ${JSON.stringify(type)}`)));
+  }
+  return Promise.resolve().then(() => UPDATE_HANDLERS[type](message)).then(
+    (result) => {
+      const { ok = true, error = null, ...payload } = result ?? {};
+      return { type: `${type}_result`, requestId: message.requestId ?? null, ok, error, ...payload };
+    },
+    (error) => failureReply(message, error),
+  );
+}
+
+// A browser linked through the sharing bridge sends ordinary runtime messages;
+// each one is answered by the handler for its target, as if a page sent it.
+const SHARING_TARGET = "hachidori-sharing";
+
+async function dispatchSharedRequest(message, clientId) {
+  const sender = { id: chrome.runtime.id, url: `hachidori-sharing://client/${clientId}` };
+  try {
+    switch (message.target) {
+      case TARGET: return await relayEngineRequest(message);
+      case WORKER_TARGET: return await handleWorkerRequest(message, sender);
+      case UPDATE_TARGET: return await handleUpdatesRequest(message);
+      case "hachidori-anki": return await handleAnkiRequest(message, sender);
+      default: throw new Error(`unsupported shared request target ${JSON.stringify(message.target)}`);
+    }
+  } catch (error) {
+    return failureReply(message, error);
+  }
+}
+
+async function writeSharingConfig(patch) {
+  await serialiseStorage(async () => {
+    const stored = await chrome.storage.local.get(SHARING_KEY);
+    await writeLocalState({ [SHARING_KEY]: { ...(stored[SHARING_KEY] ?? {}), ...patch } });
+  });
+}
+
+const SHARING_HANDLERS = {
+  hd_sharing_status() {
+    return { sharing: getSharingHost().status() };
+  },
+  async hd_sharing_host_enable(message) {
+    const host = getSharingHost();
+    host.enable({ port: message.port });
+    await writeSharingConfig({ host: { enabled: true, port: host.status().port } });
+    return { sharing: host.status() };
+  },
+  async hd_sharing_host_disable() {
+    getSharingHost().disable();
+    await writeSharingConfig({ host: null });
+    return { sharing: getSharingHost().status() };
+  },
+};
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== SHARING_TARGET) return false;
+  const type = typeof message.type === "string" ? message.type : "";
+  Promise.resolve().then(() => {
+    if (!Object.hasOwn(SHARING_HANDLERS, type)) throw new Error(`unknown sharing request type ${JSON.stringify(type)}`);
+    return SHARING_HANDLERS[type](message, sender);
+  }).then(result => sendResponse(workerReply(message, result)), error => sendResponse(failureReply(message, error)));
+  return true;
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  sharingHost?.storageChanged(changes, area);
+});
+
+async function initialiseSharing() {
+  const stored = await chrome.storage.local.get(SHARING_KEY);
+  if (stored[SHARING_KEY]?.host?.enabled) getSharingHost().enable(stored[SHARING_KEY].host);
+}
 
 chrome.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === ANKI_MATURITY_ALARM) {
     void getAnkiMaturityCache().reconcile();
+    return;
+  }
+  if (alarm.name === SHARING_HOST_ALARM) {
+    getSharingHost().reconnect();
     return;
   }
   if (alarm.name !== UPDATE_ALARM) {
@@ -2164,3 +2258,6 @@ if (OVERLAY_MODE) {
   });
 }
 void getAnkiMaturityCache().reconcile(); // NOSONAR -- initialize without delaying worker activation.
+initialiseSharing().catch((error) => {
+  console.error("hachidori: could not restore sharing:", describe(error));
+});
