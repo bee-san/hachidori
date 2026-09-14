@@ -381,6 +381,20 @@ try {
   const hostClients = (await sharingStatus(hostPage)).sharing.clients;
   await screenshot(hostPage, "sharing-settings.png");
   await screenshot(clientPage, "sharing-linked.png");
+  const statusCards = await Promise.all([hostPage, clientPage].map(page => page.$eval("#sharing-status", (node) => {
+    const style = getComputedStyle(node);
+    const marker = getComputedStyle(node, "::before");
+    const rect = node.getBoundingClientRect();
+    const parent = node.parentElement.getBoundingClientRect();
+    return {
+      display: style.display,
+      fontSize: Number.parseFloat(style.fontSize),
+      height: rect.height,
+      fullWidth: Math.abs(rect.width - parent.width) <= 1,
+      marker: marker.content,
+      ready: node.classList.contains("is-ready"),
+    };
+  })));
   const hostName = probe?.host?.name;
   check(CHECKS[2],
     probe?.ok === true && probe.display === "this computer" && typeof hostName === "string" && hostName !== ""
@@ -396,10 +410,12 @@ try {
       && (mirror.sharingLocalState?.dictionaryState?.dictionaries ?? []).length === 0 && (before.dictionaryState?.dictionaries ?? []).length === 0
       && mirror.sharing?.client?.address === ADDRESS && mirror.sharing?.host?.enabled === false
       && linkedLookup?.ok === true && linkedLookup.results?.[0]?.deinflected === "食べる"
-      && hostClients.length === 1 && hostClients[0].local === true && hostClients[0].name === hostName,
+      && hostClients.length === 1 && hostClients[0].local === true && hostClients[0].name === hostName
+      && statusCards.every(card => card.display === "grid" && card.fontSize >= 16 && card.height >= 56
+        && card.fullWidth && card.marker.includes("✓") && card.ready),
     JSON.stringify({ probe, offer, setup: setup.setupState?.stage, linked, linkedLookup: { ok: linkedLookup?.ok, error: linkedLookup?.error, first: linkedLookup?.results?.[0]?.deinflected },
       own: before.dictionaryState ?? null, kept: mirror.sharingLocalState?.dictionaryState ?? null, sharing: mirror.sharing,
-      mirrorRevision: mirror.dictionaryState?.revision, hostRevision: hostAfterLink.dictionaryState?.revision, hostClients }));
+      mirrorRevision: mirror.dictionaryState?.revision, hostRevision: hostAfterLink.dictionaryState?.revision, hostClients, statusCards }));
 
   if (process.env.HACHIDORI_SHARING_BENCHMARK) {
     const { measureSharingLookups } = await import("../benchmark/sharing-latency.mjs");

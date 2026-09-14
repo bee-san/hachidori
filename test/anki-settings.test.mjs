@@ -32,11 +32,16 @@ function discovery(request, patch = {}) {
 
 test("lazy Anki Settings ignores A→B→A stale successes/errors and never writes on discovery or saved echoes", async t => {
   const f = fixture(t);
+  assert.equal(f.el("anki-status").classList.contains("operational-status"), true);
+  assert.equal(f.el("anki-status").getAttribute("aria-atomic"), "true");
   assert.equal(f.sent.length, 0);
   f.adopt({ model: "A" });
   f.adopt({ model: "B" });
   f.adopt({ model: "A" });
   assert.equal(f.sent.length, 3);
+  assert.equal(f.el("anki-status").classList.contains("is-working"), true);
+  assert.equal(f.el("anki-status").classList.contains("is-ready"), false);
+  assert.equal(f.el("anki-status").classList.contains("is-error"), false);
   discovery(f.sent[2], { fields: ["Newest"] });
   await tick();
   discovery(f.sent[0], { fields: ["Old"] });
@@ -65,6 +70,7 @@ test("refresh retains unavailable saved choices and focused drafts; explicit mod
   assert.match(f.el("opt-anki-deck").textContent, /Deleted.*unavailable/u);
   assert.equal(f.el("opt-anki-field-expression").value, "Missing");
   assert.match(f.el("anki-status").textContent, /Missing.*unavailable/u);
+  assert.equal(f.el("anki-status").classList.contains("is-error"), true);
   const tags = f.el("opt-anki-tags");
   tags.focus();
   tags.value = "unfinished draft ";
@@ -88,6 +94,9 @@ test("case-only Anki field renames stay available without rewriting saved mappin
   assert.equal(select.value, "Front");
   assert.equal(select.selectedOptions[0].textContent, "front");
   assert.match(f.el("anki-status").textContent, /configuration ready/u);
+  assert.equal(f.el("anki-status").classList.contains("is-ready"), true);
+  assert.equal(f.el("anki-status").classList.contains("is-working"), false);
+  assert.equal(f.el("anki-status").classList.contains("is-error"), false);
   assert.equal(f.edits.length, 0);
 });
 

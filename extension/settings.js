@@ -16,6 +16,7 @@ import { createSettingsSearch } from "./settings-search.js";
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { createCustomLinkSettings } from "./custom-link-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
+import { setStatusOutput } from "./settings-dom.js";
 import {
   createDictionaryProgressList,
   installEntryState,
@@ -220,9 +221,7 @@ function syncNavigationStatus(id) {
 
 function setSectionStatus(id, message, tone, completed = false) {
   const output = element(id);
-  output.textContent = message;
-  output.classList.toggle("is-error", tone === "error");
-  output.classList.toggle("is-ready", tone === "ready");
+  setStatusOutput(output, message, tone);
   if (completed && SECTION_STATUSES[id].section !== activeSection) unseenSectionCompletions.add(id);
   syncNavigationStatus(id);
 }
@@ -383,11 +382,13 @@ async function updateMediaSettings() {
     mediaRuntimeState = reply.state;
     const source = reply.mediaSource?.name ? ` · ${reply.mediaSource.name}` : "";
     const linked = reply.linkedPage?.title ? ` · linked to ${reply.linkedPage.title}` : "";
-    element("media-runtime-status").textContent = `${state}${source}${linked}`;
+    setStatusOutput(element("media-runtime-status"), `${state}${source}${linked}`,
+      reply.state === "recording" ? "ready" : undefined);
   } catch {
     if (epoch === mediaStatusEpoch) {
       mediaRuntimeState = "unavailable";
-      element("media-runtime-status").textContent = "Capture page closed. Open it before starting a reading session.";
+      setStatusOutput(element("media-runtime-status"),
+        "Capture page closed. Open it before starting a reading session.");
     }
   }
 }
@@ -2713,9 +2714,10 @@ function attachHandlers() {
     try {
       const reply = await send("hd_capture_open", {}, CAPTURE_TARGET);
       if (!reply.ok) throw new Error(reply.error || "The capture page could not be opened.");
-      element("media-runtime-status").textContent = "Capture controls opened in a separate tab.";
+      setStatusOutput(element("media-runtime-status"), "Capture controls opened in a separate tab.");
     } catch (error) {
-      element("media-runtime-status").textContent = `Could not open capture controls: ${describe(error)}`;
+      setStatusOutput(element("media-runtime-status"),
+        `Could not open capture controls: ${describe(error)}`, "error");
     }
   });
   element("opt-media-enabled").addEventListener("change", event => {
