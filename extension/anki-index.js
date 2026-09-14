@@ -125,13 +125,19 @@ function noteFields(info) {
   return Object.fromEntries(entries);
 }
 
-function indexedNotes(value, models) {
+function indexedNotes(value, models, expectedIds = null) {
   if (!Array.isArray(value)) throw new Error("AnkiConnect returned invalid note details.");
   const byModel = new Map(models.map(model => [nameKey(model.name), model]));
-  return value.map(info => {
+  const expected = expectedIds === null ? null : new Set(expectedIds);
+  const seen = new Set();
+  const notes = value.map(info => {
     if (!positiveId(info?.noteId) || typeof info.modelName !== "string") {
       throw new Error("AnkiConnect returned invalid note details.");
     }
+    if ((expected && !expected.has(info.noteId)) || seen.has(info.noteId)) {
+      throw new Error("AnkiConnect returned invalid note details.");
+    }
+    seen.add(info.noteId);
     const model = byModel.get(nameKey(info.modelName));
     if (!model) throw new Error("AnkiConnect returned notes outside the requested note types.");
     const fields = noteFields(info);
@@ -141,13 +147,19 @@ function indexedNotes(value, models) {
     }
     return { noteId: info.noteId, model, fields, names };
   });
+  if (expected && seen.size !== expected.size) throw new Error("AnkiConnect returned invalid note details.");
+  return notes;
+}
+
+function returnedNoteIds(value, message = "AnkiConnect returned invalid note IDs.") {
+  if (!Array.isArray(value) || !value.every(positiveId)) {
+    throw new Error(message);
+  }
+  return [...new Set(value)].sort((left, right) => left - right);
 }
 
 function matureNoteIds(value) {
-  if (!Array.isArray(value) || !value.every(positiveId)) {
-    throw new Error("AnkiConnect returned invalid mature note IDs.");
-  }
-  return new Set(value);
+  return new Set(returnedNoteIds(value, "AnkiConnect returned invalid mature note IDs."));
 }
 
 function compactRows(notes, mature) {
@@ -170,11 +182,19 @@ export async function fetchAnkiIndex(invoke, source) {
   const models = await recognizedModels(invoke, source);
   const query = completeQuery(source, models);
   if (query === null) return [];
-  const [infos, matureIds] = await Promise.all([
-    invoke("notesInfo", { query }, 25_000),
+  const [candidateResult, matureIds] = await Promise.all([
+    invoke("findNotes", { query }, 25_000),
     invoke("findNotes", { query: `${query} is:review -is:learn prop:ivl>=21` }, 25_000),
   ]);
-  return compactRows(indexedNotes(infos, models), matureNoteIds(matureIds));
+  const candidateIds = returnedNoteIds(candidateResult);
+  const candidates = new Set(candidateIds);
+  const mature = matureNoteIds(matureIds);
+  if ([...mature].some(noteId => !candidates.has(noteId))) {
+    throw new Error("AnkiConnect returned invalid mature note IDs.");
+  }
+  if (!candidateIds.length) return [];
+  const infos = await invoke("notesInfo", { notes: candidateIds }, 25_000);
+  return compactRows(indexedNotes(infos, models, candidateIds), mature);
 }
 
 export async function lookupAnkiIndex(invoke, source, expression) {
@@ -183,7 +203,9 @@ export async function lookupAnkiIndex(invoke, source, expression) {
   const models = await recognizedModels(invoke, source);
   const query = lookupQuery(source, models, expression);
   if (query === null) return { wordKey, mature: false, noteIds: [] };
-  const candidates = indexedNotes(await invoke("notesInfo", { query }), models);
+  const candidateIds = returnedNoteIds(await invoke("findNotes", { query }));
+  if (!candidateIds.length) return { wordKey, mature: false, noteIds: [] };
+  const candidates = indexedNotes(await invoke("notesInfo", { notes: candidateIds }), models, candidateIds);
   const noteIds = [];
   for (const note of candidates) {
     if (note.model.fields.some(field => storedWordKey(note.fields[note.names.get(field)]) === wordKey)) {
@@ -196,6 +218,9 @@ export async function lookupAnkiIndex(invoke, source, expression) {
   const mature = matureNoteIds(await invoke("findNotes", {
     query: `nid:${unique.join(",")} is:review -is:learn prop:ivl>=21`,
   }));
+  if ([...mature].some(noteId => !unique.includes(noteId))) {
+    throw new Error("AnkiConnect returned invalid mature note IDs.");
+  }
   return { wordKey, mature: unique.some(noteId => mature.has(noteId)), noteIds: unique };
 }
 

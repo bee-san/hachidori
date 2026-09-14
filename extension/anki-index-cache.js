@@ -120,32 +120,34 @@ export function createAnkiDuplicateIndex({
 
   async function updateRow(source, wordKey, change) {
     await hydrate;
-    let changed = false;
-    const saved = await updateState(async ({ options, state: value }) => {
-      const current = cacheState(value);
-      const currentSource = await sourceFor(options);
-      if (currentSource?.key !== source.key) return;
-      const currentRows = current.snapshot?.sourceKey === source.key ? rowMap(current.snapshot) : new Map();
-      const previous = currentRows.get(wordKey) ?? null;
-      const next = change(previous);
-      if (next === null) currentRows.delete(wordKey);
-      else currentRows.set(wordKey, {
-        mature: next.mature,
-        noteIds: [...new Set(next.noteIds)].sort((left, right) => left - right),
+    return control(async () => {
+      let changed = false;
+      const saved = await updateState(async ({ options, state: value }) => {
+        const current = cacheState(value);
+        const currentSource = await sourceFor(options);
+        if (currentSource?.key !== source.key) return;
+        const currentRows = current.snapshot?.sourceKey === source.key ? rowMap(current.snapshot) : new Map();
+        const previous = currentRows.get(wordKey) ?? null;
+        const next = change(previous);
+        if (next === null) currentRows.delete(wordKey);
+        else currentRows.set(wordKey, {
+          mature: next.mature,
+          noteIds: [...new Set(next.noteIds)].sort((left, right) => left - right),
+        });
+        if (sameRow(previous, next)) return;
+        changed = true;
+        return {
+          ...current,
+          rowRevision: current.rowRevision + 1,
+          snapshot: {
+            sourceKey: source.key,
+            refreshedAt: current.snapshot?.sourceKey === source.key ? current.snapshot.refreshedAt : now(),
+            rows: rowsFromMap(currentRows),
+          },
+        };
       });
-      if (sameRow(previous, next)) return;
-      changed = true;
-      return {
-        ...current,
-        rowRevision: current.rowRevision + 1,
-        snapshot: {
-          sourceKey: source.key,
-          refreshedAt: current.snapshot?.sourceKey === source.key ? current.snapshot.refreshedAt : now(),
-          rows: rowsFromMap(currentRows),
-        },
-      };
+      if (changed) install(saved);
     });
-    if (changed) install(saved);
   }
 
   async function pull(source, token) {
@@ -235,7 +237,7 @@ export function createAnkiDuplicateIndex({
     if (!force && cached) {
       return { wordKey, mature: cached.mature, noteIds: [...cached.noteIds], cached: true };
     }
-    const liveKey = `${source.key}\n${wordKey}`;
+    const liveKey = `${source.key}\n${wordKey}\n${force ? "repair" : "lookup"}`;
     let operation = liveLookups.get(liveKey);
     if (!operation) {
       operation = Promise.resolve(lookupLive(source, expression, invoke))

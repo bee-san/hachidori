@@ -323,7 +323,7 @@
       typeof source.fields?.[key] === "string" ? source.fields[key] : ""]));
     if (ANKI_DUPLICATE_SCOPES.includes(source.duplicateScope)) {
       result.duplicateScope = source.duplicateScope;
-    } else if (source.duplicateScope === "deck" || source.duplicateScope === "deck-root") {
+    } else if (source.duplicateScope === "deck-root") {
       result.duplicateScope = "deck";
     } else if (source.duplicateScope === "collection") {
       result.duplicateScope = source.duplicateScopeCheckAllModels === true ? "all" : "model";

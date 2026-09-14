@@ -1942,7 +1942,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function handleAnkiRequest(message, sender) {
   await sharingReady;
-  // The host owns the mature-word cache; Electron has no alarm to refresh a local one.
+  // The host owns the mirrored index membership used for maturity blur.
   if (sharingLinked && message.type === "hd_anki_maturity") return forwardToHost(message);
   return answerAnkiRequest(message, sender);
 }

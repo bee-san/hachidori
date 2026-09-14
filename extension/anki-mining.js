@@ -69,6 +69,10 @@ async function unindexedDecision(prepared) {
     return { state: "duplicate", canAdd: target !== null, action: "overwrite", target, noteIds, mature: false,
       error: target ? null : "A duplicate exists, but no matching configured note type is inside the selected scope." };
   }
+  if (config.duplicateBehavior === "new") {
+    const addable = await addableDecision(prepared);
+    if (!addable.canAdd) return addable;
+  }
   return {
     state: "duplicate",
     canAdd: config.duplicateBehavior === "new",
@@ -256,7 +260,7 @@ export function createAnkiMiningService({
     const checked = await decision(prepared, request, duplicateIndex);
     if (!checked.canAdd) return { state: checked.state, error: checked.error,
       action: checked.action, noteIds: checked.noteIds };
-    const { config, configJson, note, invoke } = prepared;
+    const { config, configJson, firstField, note, invoke } = prepared;
     const { fields, target, templates } = fieldsForDecision(prepared, checked);
     const capture = captureForApplication(request, templates);
     if (capture) await validateCapture({ request, prepared, capture });
@@ -295,7 +299,10 @@ export function createAnkiMiningService({
         await releaseRejected();
         let noteIds = [];
         try {
-          noteIds = (await duplicateIndex.repair(config, request.term?.expression ?? request.expression, invoke)).noteIds;
+          const expression = request.term?.expression ?? request.expression;
+          noteIds = await duplicateIndex.source(config) === null
+            ? (await findAnkiDuplicateNotes(invoke, note, firstField, config)).map(match => match.noteId)
+            : (await duplicateIndex.repair(config, expression, invoke)).noteIds;
         } catch { /* The duplicate result is definitive even if browse discovery fails. */ }
         return { state: "duplicate", error: "This note already exists in Anki.", noteIds };
       }
@@ -355,7 +362,8 @@ export function createAnkiMiningService({
       ? ankiNoteIdsQuery(value.noteIds) : ankiBrowseQuery(value?.expression ?? "");
     const invoke = invokeFor(config);
     const opened = await invoke("guiBrowse", { query });
-    if (Array.isArray(value?.noteIds) && value.noteIds.length && Array.isArray(opened) && opened.length === 0) {
+    if (Array.isArray(value?.noteIds) && value.noteIds.length && Array.isArray(opened)
+        && value.noteIds.some(noteId => !opened.includes(noteId))) {
       const repaired = await duplicateIndex.repair(config, value.expression ?? "", invoke);
       if (repaired.noteIds.length) {
         await invoke("guiBrowse", { query: ankiNoteIdsQuery(repaired.noteIds) });

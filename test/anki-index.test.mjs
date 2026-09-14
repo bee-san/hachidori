@@ -76,13 +76,16 @@ test("a complete refresh stores compact sorted rows across recognized note types
       assert.equal(params.modelName, "Kiku v2");
       return KIKU_FIELDS;
     }
-    if (action === "notesInfo") return [
-      note(11, "Japanese", { Expression: "犬", Sentence: "ignored" }),
-      note(9, "Kiku v2", { Expression: "猫", Sentence: "ignored" }),
-      note(7, "Japanese", { Expression: "猫", Sentence: "ignored" }),
-      note(8, "Kiku v2", { Expression: "猫", Sentence: "ignored" }),
-    ];
-    if (action === "findNotes") return [8, 11];
+    if (action === "findNotes") return params.query.includes("is:review") ? [8, 11] : [11, 9, 7, 8];
+    if (action === "notesInfo") {
+      assert.deepEqual(params.notes, [7, 8, 9, 11]);
+      return [
+        note(11, "Japanese", { Expression: "犬", Sentence: "ignored" }),
+        note(9, "Kiku v2", { Expression: "猫", Sentence: "ignored" }),
+        note(7, "Japanese", { Expression: "猫", Sentence: "ignored" }),
+        note(8, "Kiku v2", { Expression: "猫", Sentence: "ignored" }),
+      ];
+    }
     throw new Error(`Unexpected ${action}`);
   };
   assert.deepEqual(await fetchAnkiIndex(invoke, source), [
@@ -90,10 +93,12 @@ test("a complete refresh stores compact sorted rows across recognized note types
     ["猫", true, [7, 8, 9]],
   ]);
   assert.deepEqual(calls.map(call => call.action),
-    ["modelNamesAndIds", "modelFieldNames", "notesInfo", "findNotes"]);
-  assert.match(calls.find(call => call.action === "notesInfo").params.query,
+    ["modelNamesAndIds", "modelFieldNames", "findNotes", "findNotes", "notesInfo"]);
+  assert.match(calls.find(call => call.action === "findNotes"
+    && !call.params.query.includes("is:review")).params.query,
     /note:Japanese.*note:Kiku v2/iu);
-  assert.doesNotMatch(calls.find(call => call.action === "notesInfo").params.query,
+  assert.doesNotMatch(calls.find(call => call.action === "findNotes"
+    && !call.params.query.includes("is:review")).params.query,
     /Basic/u);
 });
 
@@ -104,12 +109,15 @@ test("live lookup filters the configured deck and subdecks, verifies exact field
     calls.push({ action, params });
     if (action === "modelNamesAndIds") return { Japanese: 1, Lapis: 2, Other: 3 };
     if (action === "modelFieldNames") return KIKU_FIELDS;
-    if (action === "notesInfo") return [
-      note(30, "Japanese", { Expression: "猫です" }),
-      note(20, "Lapis", { Expression: "猫" }),
-      note(10, "Japanese", { Expression: "猫" }),
-    ];
-    if (action === "findNotes") return [20];
+    if (action === "findNotes") return params.query.includes("is:review") ? [20] : [30, 20, 10];
+    if (action === "notesInfo") {
+      assert.deepEqual(params.notes, [10, 20, 30]);
+      return [
+        note(30, "Japanese", { Expression: "猫です" }),
+        note(20, "Lapis", { Expression: "猫" }),
+        note(10, "Japanese", { Expression: "猫" }),
+      ];
+    }
     throw new Error(`Unexpected ${action}`);
   };
   assert.deepEqual(await lookupAnkiIndex(invoke, source, "猫"), {
@@ -117,10 +125,12 @@ test("live lookup filters the configured deck and subdecks, verifies exact field
     mature: true,
     noteIds: [10, 20],
   });
-  const lookup = calls.find(call => call.action === "notesInfo").params.query;
+  const lookup = calls.find(call => call.action === "findNotes"
+    && !call.params.query.includes("is:review")).params.query;
   assert.match(lookup, /deck:Mining\\:\\:Words/u);
   assert.match(lookup, /expression:猫/iu);
-  assert.deepEqual(calls.find(call => call.action === "findNotes").params,
+  assert.deepEqual(calls.find(call => call.action === "findNotes"
+    && call.params.query.includes("is:review")).params,
     { query: "nid:10,20 is:review -is:learn prop:ivl>=21" });
 });
 
@@ -157,9 +167,9 @@ test("compact rows retain stored HTML and Unicode while folding only ASCII case"
     [4, "は\u3099"],
     [5, "<b>猫</b>"],
   ];
-  const rows = await fetchAnkiIndex(async action => action === "notesInfo"
+  const rows = await fetchAnkiIndex(async (action, params) => action === "notesInfo"
     ? values.map(([noteId, value]) => note(noteId, "Japanese", { Expression: value }))
-    : [1, 4], source);
+    : params.query.includes("is:review") ? [1, 4] : values.map(([noteId]) => noteId), source);
   assert.deepEqual(rows, [
     ["<b>猫</b>", false, [5]],
     ["hello", true, [1]],
@@ -187,11 +197,13 @@ test("malformed bulk and live replies reject instead of publishing partial index
     [note(1, "Japanese", { Expression: 12 })],
   ];
   for (const result of invalid) {
-    await assert.rejects(fetchAnkiIndex(async action => action === "notesInfo" ? result : [], source),
+    await assert.rejects(fetchAnkiIndex(async (action, params) => action === "notesInfo"
+      ? result : params.query.includes("is:review") ? [] : [1], source),
       /invalid note|outside the requested note types/iu);
   }
-  await assert.rejects(fetchAnkiIndex(async action => action === "notesInfo"
-    ? [note(1, "Japanese", { Expression: "猫" })] : [0], source), /invalid mature note IDs/u);
-  await assert.rejects(lookupAnkiIndex(async action => action === "notesInfo" ? invalid[4] : [], source, "猫"),
+  await assert.rejects(fetchAnkiIndex(async (action, params) => action === "notesInfo"
+    ? [note(1, "Japanese", { Expression: "猫" })] : params.query.includes("is:review") ? [0] : [1], source),
+  /invalid mature note IDs/u);
+  await assert.rejects(lookupAnkiIndex(async action => action === "notesInfo" ? invalid[4] : [1], source, "猫"),
     /invalid note/iu);
 });

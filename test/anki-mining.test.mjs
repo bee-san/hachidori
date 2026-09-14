@@ -127,6 +127,26 @@ test("endpoint changes invalidate mining readiness and bind duplicates, media, w
   assert.equal(currentRequests.find(request => request.action === "guiBrowse").params.query, "nid:27");
 });
 
+test("View in Anki uses cached IDs directly and repairs a partially stale row without inspecting fields", async () => {
+  const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+    fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front" } };
+  const calls = [];
+  const service = createAnkiMiningService({
+    gateway: { async invoke(action, params) {
+      calls.push({ action, params });
+      assert.equal(action, "guiBrowse");
+      return calls.length === 1 ? [7] : [8, 9];
+    } },
+    readConfig: async () => config,
+    duplicateIndex: testIndex(() => [8, 9]),
+  });
+  await service.browse({ expression: "猫", noteIds: [7, 8] });
+  assert.deepEqual(calls, [
+    { action: "guiBrowse", params: { query: "nid:7,8" } },
+    { action: "guiBrowse", params: { query: "nid:8,9" } },
+  ]);
+});
+
 test("submissions recheck inside one queue so stale cross-tab preflight cannot add a second prevented note", async () => {
   const f = fixture();
   const { configKey } = await f.service.status();

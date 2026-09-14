@@ -2,8 +2,8 @@
 import { buildAnkiResourceFields } from "./anki-resources.js";
 import { exportAnkiAudio } from "./anki-audio.js";
 
-// Parse the complete notesInfo response away from the background and engine
-// request threads; only compact index rows cross back to the serialized commit.
+// Resolve and parse the complete scoped note set away from the background and
+// engine request threads; only compact index rows cross back to the commit.
 async function refreshAnkiIndex(window, source) {
   const worker = new window.Worker(new URL("./anki-index-worker.js", import.meta.url), { type: "module" });
   try {
