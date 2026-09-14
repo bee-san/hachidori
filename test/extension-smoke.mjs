@@ -1837,16 +1837,20 @@ async function sharingClientStage() {
       && cleanup.ok === true && storage.raw.has(rowKey),
     JSON.stringify({ engineRead, engineCas, cleanup, local: storage.raw.get("sharingLocalState") }));
 
-  // Losing the host fails reads, marks a possibly sent write as uncertain, and
-  // a restarted worker relinks by itself.
+  // Losing the host fails reads, marks sent mutations as uncertain, and a
+  // restarted worker relinks by itself.
   const requestsBeforeDrop = socket.requests().length;
   const dangling = send("hd_lookup", { text: "犬" }, "hoshidicts-offscreen");
+  const uncertainEdit = send("hd_options_write", {
+    baseRevision: 2, options: { hoverEnabled: false },
+  }, "hoshidicts-worker");
   const uncertainSubmit = send("hd_anki_submit", { request: {
     term: { expression: "犬", reading: "いぬ" }, generation: 7, trace: [], configKey: "host-config",
   } }, "hachidori-anki");
-  await settle(() => socket.requests().length >= requestsBeforeDrop + 2);
+  await settle(() => socket.requests().length >= requestsBeforeDrop + 3);
   socket.drop();
   const failed = await dangling;
+  const editUnknown = await uncertainEdit;
   const uncertain = await uncertainSubmit;
   const status = await send("hd_sharing_status");
   const restartBus = makeBus();
@@ -1863,13 +1867,15 @@ async function sharingClientStage() {
   const restartedWithoutLocalAnki = !restartBus.log.some(message => message.type === "hd_anki_index_refresh")
     && !restartAlarms.values.has(ANKI_INDEX_ALARM)
     && !restartAlarms.values.has("hachidori-managed-dictionary-updates");
-  check("losing the host fails in-flight reads, leaves a sent Anki write uncertain without cleanup, and a restarted worker restores the linked role before local work",
+  check("losing the host fails reads, reports sent mutations as uncertain, and restores the linked role before local work",
     failed.ok === false && failed.error === "The linked Hachidori is not reachable."
+      && editUnknown.ok === false && editUnknown.outcomeUnknown === true
+      && editUnknown.error === "The linked Hachidori may have completed this change. Check its state before trying again."
       && uncertain.ok === true && uncertain.state === "uncertain" && uncertain.error.includes("Check Anki before trying again")
       && localAnkiCalls.filter(call => call[0] === "settleClientMedia").length === 2
       && status.sharing.client.linked === true && status.sharing.client.connected === false
       && restartSocket?.url === "ws://127.0.0.1:9100/link" && restartedWithoutLocalAnki,
-    JSON.stringify({ failed, uncertain, status, restartedWithoutLocalAnki, restartLog: restartBus.log,
+    JSON.stringify({ failed, editUnknown, uncertain, status, restartedWithoutLocalAnki, restartLog: restartBus.log,
       restartAlarms: [...restartAlarms.values], localAnkiCalls, sockets: FakeSharingSocket.instances.map(s => s.url) }));
 
   // Unlinking restores the kept state above the mirror's revisions and drops the host's rows.
