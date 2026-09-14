@@ -65,6 +65,9 @@ every voice works offline or that every selected share captures browser speech.
 **Anki.** Hachidori communicates with the AnkiConnect URL in Anki settings,
 defaulting to `http://127.0.0.1:8765` on your computer. If you configure another
 server, it receives the metadata requests, API key and selected note content.
+When this browser is linked to another Hachidori, that host makes these
+requests with its own saved URL and API key; the linked browser's endpoint is
+not used as a fallback.
 After you start setup, it reads note-type, deck and collection metadata to suggest
 configuration. Opening the Anki settings section also reads configuration
 metadata. Hachidori refreshes a local duplicate index every 30 minutes for the
@@ -100,7 +103,12 @@ relay while it runs, as with AnkiConnect. **Share this Hachidori** in Settings
 turns it off. A browser linked to a shared Hachidori sends the text it looks up
 and its settings, presentation and personal-dictionary edits to that Hachidori,
 and keeps a mirror of its settings, personal entries and lookup counts until it
-unlinks.
+unlinks. An explicit mining action also sends its selected note context and
+final screenshot or captured AVIF/WAV bytes through the relay. The host
+validates them and performs availability checks, duplicate checks, generation
+validation, media uploads, note writes and browsing through the host's
+AnkiConnect configuration. Endpoint credentials included in a linked request
+are ignored.
 
 **Links and styling.** Activating a link in a dictionary opens the URL supplied
 by that dictionary. Custom toolbar links open the URL template you configured,
@@ -115,7 +123,9 @@ own privacy practices govern their handling of those requests.
 a field maps `{screenshot}`, choosing Add or Overwrite takes one picture of the
 whole visible reading page. The switch is on by default. This single screenshot
 uses the active reading tab directly. The picture stays in temporary memory and
-is sent to your configured AnkiConnect server with the note.
+is sent to your configured AnkiConnect server with the note. When linked, it is
+captured in this browser, transferred to the host only for that submission, and
+sent by the host to its configured AnkiConnect server.
 
 **Continuous media capture** is off by default. It starts only when you enable it, click
 **Start capture** and select a tab, window or screen in Chrome's picker. Capture
@@ -127,8 +137,10 @@ While recording, recent frames, source audio and text/timing stay in temporary
 memory. Closing the capture controls leaves recording active. **Stop capture**
 ends recording and clears the temporary history; it does not delete notes or
 media already sent to Anki. Final clips are sent to your configured AnkiConnect
-server only when you explicitly mine a note. Raw recording history is not included
-in backups.
+server only when you explicitly mine a note. When linked, only those final
+AVIF/WAV assets cross the relay to the host for its Anki transaction; raw
+recording history stays in the capturing browser. Raw recording history is not
+included in backups.
 
 ## Backups, retention and deletion
 

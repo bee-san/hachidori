@@ -6,8 +6,10 @@ Sharing lets one Hachidori serve all your browsers: the other browsers on this
 computer, and the browsers on your other computers when you want that too. The
 browser install that holds your dictionaries is the **host**; another install
 **links** to it and uses the host's dictionaries, personal entries, lookup
-counts and settings instead of its own. Nothing is copied: a linked browser
-sends its lookups and its edits to the host and mirrors what the host stores.
+counts and settings instead of its own. Dictionaries are not copied: a linked
+browser sends its lookups and edits to the host and mirrors what the host
+stores. Media chosen for an explicit Anki submission is transferred only for
+that submission.
 
 Anki carries the connection. A Chrome extension cannot listen for connections,
 so both Hachidoris connect out to a small relay that the **Hachidori Relay**
@@ -105,6 +107,13 @@ After linking, the page reloads, and from then on:
 - this browser's own dictionary state, settings, personal source, update
   schedule and lookup counts are kept aside untouched, and its engine keeps
   reading and committing them, so no local dictionary file is ever removed;
+- Anki availability, preflight, generation validation, duplicate checks,
+  writes and browsing use the host's AnkiConnect URL, API key, deck and note
+  type. The linked browser never falls back to its own Anki;
+- a mining screenshot and explicitly selected capture clip still come from the
+  linked browser's page or capture session. Immediately before submission it
+  sends the final JPEG/AVIF/WAV bytes to the host, which validates and uploads
+  them as part of its ordinary queued Anki transaction;
 - the Import and Backup sections show that archives and backups belong to the
   host; recommended dictionaries can still be installed from here.
 
@@ -124,8 +133,11 @@ overwrite restored settings or personal entries.
 The sharing browser and Anki must be running for a linked browser to look
 anything up: when they are not, lookups fail with *The linked Hachidori is not
 reachable* and the Sharing section says so; the linked browser reconnects by
-itself once they are back. The GameSentenceMiner overlay's Hachidori links
-the same way; its Electron runtime needs nothing beyond the WebSocket.
+itself once they are back. Mining also requires AnkiConnect and the selected
+deck/note type on the host. A host from before linked mining support keeps
+dictionary sharing working but reports mining unavailable until it is updated.
+The GameSentenceMiner overlay's Hachidori links the same way; its Electron
+runtime needs nothing beyond the WebSocket.
 
 ## What the host shares
 
@@ -135,10 +147,15 @@ the same way; its Electron runtime needs nothing beyond the WebSocket.
   every linked browser as the same storage batches the host writes;
 - Note appends, settings and presentation edits, update checks and installs,
   recommended-dictionary installs and removals made in a linked browser, which
-  the host commits through its ordinary revisioned transactions.
+  the host commits through its ordinary revisioned transactions;
+- Anki status, preflight, duplicate and generation checks, note writes and
+  browsing. Endpoint credentials supplied by a linked request are ignored;
+  only the host's saved Anki configuration is used.
 
-Local-file imports and backups happen on the host. Pronunciation, Anki mining,
-capture and external links run in each browser with the shared settings.
+Local-file imports and backups happen on the host. Pronunciation and external
+links run in each browser. Screenshot and continuous-capture ownership stays
+in the reading browser, while their explicitly submitted final media and the
+complete Anki transaction go through the host.
 
 ## The relay
 
@@ -167,24 +184,26 @@ frame inserted into its payload.
 
 ## Tests
 
-`node --test test/sharing-protocol.test.mjs test/sharing-settings.test.mjs
-test/anki-addon.test.mjs` checks the wire contract, covers the Settings section
-with jsdom, and verifies pinned binary downloads, HTTP/network failures,
-progress across polls, and retry. The relay's raw-socket, packaging, and
+`node --test test/sharing-protocol.test.mjs test/sharing-client.test.mjs
+test/anki-client-media.test.mjs test/sharing-settings.test.mjs
+test/anki-addon.test.mjs` checks the wire contract, capability fallback,
+Anki request allowlists and media limits, covers the Settings section with
+jsdom, and verifies pinned binary downloads, HTTP/network failures, progress
+across polls and retry. The relay's raw-socket, packaging, slow-peer and
 optional installed-Anki checks live in
-[hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test).
-Release v0.0.3 includes the slow-peer isolation and Python 3.9 idle-timeout
-regressions previously verified here.
+[hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test);
+release v0.0.3 includes the ordered large-frame, shutdown and Python 3.9
+idle-timeout regressions.
 
 The extension smoke suite's sharing-host and sharing-client stages cover the
 service worker's side against fake sockets. `node test/chrome-sharing.mjs`
 runs two real Chromes: the host imports a fixture, handles a simulated failed
-add-on download, then retries the actual pinned GitHub release from Settings.
-The suite unpacks that downloaded archive and runs its relay with `python3`.
-The second browser's startup page offers that Hachidori and links with one
-click, looks a word up through it, edits a shared setting and saves a personal
-entry that the host commits and pushes back, survives the host closing and
-relaunching, unlinks back to its own state, and links again through this
+add-on download, then retries the actual pinned GitHub release from Settings
+and runs its relay. The second browser links, looks a word up, edits shared
+state, captures a page-local JPEG and mines it through a mocked host
+AnkiConnect while a healthy client endpoint remains unused. The suite also
+rejects a stale generation and host Anki failure, survives the host closing
+and relaunching, unlinks back to its own state, and links again through this
 machine's network address until the host stops sharing on the network.
 
 For offline testing or a coordinated add-on change, set

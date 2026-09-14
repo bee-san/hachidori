@@ -82,6 +82,11 @@ note's identity for duplicate checks. A skipped or refused screenshot is a warni
 beside the note's own result — the note is still added or updated, its other
 fields intact, and no duplicate retry is invited.
 
+When the browser is linked to another Hachidori, it still owns and takes this
+screenshot. Immediately before submission it sends the validated JPEG bytes to
+the host, which performs every AnkiConnect and generation decision with the
+host's configuration. It never tries the linked browser's Anki endpoint.
+
 ![The Anki settings section with the mining screenshot switch](assets/anki-screenshot-settings.png)
 
 ## Timing
@@ -174,7 +179,9 @@ Raw frames, PCM, received text, identifiers, timing records, and source
 bindings stay in the offscreen recorder and linked page's transient state,
 and are not written to
 `chrome.storage.local`. Only explicitly mined final assets are sent to the
-configured local AnkiConnect endpoint.
+configured AnkiConnect endpoint. If this browser is linked, those final AVIF/WAV
+assets cross the sharing relay to the host for its Anki transaction; raw capture
+history and source bindings do not.
 
 The generic page collector supports ordinary accessible DOM where Hachidori can
 already locate text. Unsupported iframe or shadow-root combinations,

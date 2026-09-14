@@ -2021,9 +2021,10 @@ must start with `chrome-extension://`, `/host` is accepted from loopback peers
 only, a client is refused (503) while no host is connected, and turning the
 network off closes the clients that came over it. There is no token. A linked
 browser speaks JSON text frames: `hello` (answered with the host's version,
-browser name, dictionary count and a snapshot of the five shared keys),
-`request` carrying an ordinary runtime message, and `pong` to the relay's
-`ping`.
+browser name, dictionary count, capabilities and a snapshot of the five shared
+keys), `request` carrying an ordinary runtime message, and `pong` to the
+relay's `ping`. `linked-anki-v1` advertises the host-owned Anki transaction
+described below; omitting capabilities remains valid for older hosts.
 
 `extension/sharing-host.js` owns the host socket, retries with the capture
 host's backoff while the worker lives, and keeps a one-minute
@@ -2035,9 +2036,12 @@ every `dictionaryState` change. After `listening` it asks for the network
 when that preference is on and keeps the relay's answer (`network.active`,
 `network.addresses`) in its status. A forwarded request is dispatched by its
 target through `relayEngineRequest`, `handleWorkerRequest`,
-`handleUpdatesRequest` or `handleAnkiRequest` with a synthetic sender, exactly
-as a page's message would be; the reply goes back verbatim, including its
-`requestId`. Every `chrome.storage.onChanged` batch touching
+`handleUpdatesRequest`, or through the allowlisted linked-Anki dispatcher with
+a synthetic sender; the reply goes back verbatim, including its `requestId`.
+The Anki dispatcher accepts only status, preflight, submit, browse and maturity
+operations, rebuilds the operation-specific request shape, and never admits an
+endpoint URL, API key or screenshot-capture operation from the client. Every
+`chrome.storage.onChanged` batch touching
 `dictionaryState`, `options`, `customDictionarySource`, `dictionaryUpdates`,
 `lookupStats` or a `lookupStats:` row is broadcast whole, so a linked browser
 can replay it as one write. A browser install shares by default; the overlay
@@ -2082,6 +2086,29 @@ The startup page's
 welcome view probes this computer once and, when a shared Hachidori answers,
 offers to use it; that link then advances setup to `complete`. See
 [sharing](sharing.md) for use.
+
+Linked Anki mining is split at the browser boundary. The reading browser keeps
+`hd_anki_screenshot`/discard and its capture session local, while
+`hd_anki_status`, preflight, submit, browse and maturity go to the host. Just
+before submit, its singleton Anki worker exports the pending screenshot and
+ready capture job into an internal `clientMedia` envelope. The envelope carries
+the screenshot token/name/JPEG bytes and the capture job ID, warnings and final
+AVIF/WAV names, declared lengths and bytes. Both ends validate the request-bound
+names, base64, the 6 MiB JPEG, 4 MiB AVIF and 1 MiB WAV limits; the complete
+UTF-8 submit frame is limited to 16 MiB. The host passes the validated envelope
+to the same singleton Anki worker used by local pages, preserving its mutation
+queue, host-engine generation checks and host-only AnkiConnect configuration.
+External media follows the ordinary upload/write/readback path, but the host
+does not consult or complete its own capture session.
+
+A confirmed add/update makes the reading browser discard its screenshot and
+complete its capture job; a definitive duplicate, invalid or failed host reply
+discards/cancels them. A frame rejected before `WebSocket.send()` remains
+retryable. Once send succeeds, a closed connection or malformed reply is
+`uncertain`: neither side automatically retries it and client media stays
+available for the person to reconcile. Hosts without `linked-anki-v1` keep
+ordinary dictionary sharing but return Anki unavailable before a mining request
+is sent.
 
 ## Storage ownership
 

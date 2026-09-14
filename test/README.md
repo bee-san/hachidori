@@ -92,14 +92,15 @@ dispatch. The Chrome suite checks that Chrome registers the suggested Alt+Delete
 (reported as `Alt+Del`) and the popup-action commands, and that Keybinds lists
 them.
 
-`node --test test/sharing-protocol.test.mjs test/sharing-settings.test.mjs
-test/anki-addon.test.mjs` checks the sharing
-wire contract (addresses as a person types them, browser names, the forwarding
-table, frame validation). The relay's raw-socket tests, archive tests, and
-optional Anki Desktop check live in
+`node --test test/sharing-protocol.test.mjs test/sharing-client.test.mjs
+test/anki-client-media.test.mjs test/sharing-settings.test.mjs
+test/anki-addon.test.mjs` checks the sharing wire contract (addresses as a
+person types them, browser names, capability negotiation, the forwarding and
+Anki allowlists, frame and client-media limits). The relay's raw-socket,
+archive, paused-peer, ordered large-frame, shutdown and optional Anki Desktop
+checks live in
 [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test).
-That suite retains the paused-peer, ordered large-frame, shutdown and idle
-timeout regressions in release v0.0.3.
+Release v0.0.3 also retains the Python 3.9 idle-timeout regression.
 `sharing-settings.test.mjs` covers the
 Settings → Sharing section with jsdom: the dictionaries, waiting, refused and
 sharing states, the add-on download, the network switch with the addresses it
@@ -120,21 +121,24 @@ manifest's independent add-on version, unpacks that exact archive with Python's
 (`HACHIDORI_SHARING_PORT`, default 18771). The host moves its
 sharing to that port; the second browser's startup page offers the shared
 Hachidori and links with one click, looks a word up through the link, writes
-an option and a personal entry that the host commits and pushes back, loses the
-host when it closes and reconnects when it relaunches, unlinks back to its own
-empty state, and links again through this machine's network address (the
-machine needs one beyond loopback) until the host stops sharing on the
-network. Two Settings tabs then issue overlapping Link and Unlink requests,
-preserving a compiled local personal dictionary and settings. A third browser
-loads the actual overlay-mode extension, checks local Settings autosave and
-mixed shared/local saves, survives host disconnection and full browser restart,
-unlinks with its edited local geometry, and verifies the effective screenshot
-and browser-speech capability explanations through DOM assertions. Eleven predeclared
-checks; profiles are kept on failure. The suite
-needs `python3` and access to the pinned GitHub release. For offline runs or
-coordinated add-on changes, `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon`
-serves that local archive at the pinned URL in the browser; no release is
-downloaded in that mode. The unpacked relay is temporary and removed on exit.
+an option and a personal entry that the host commits and pushes back, then
+mines a client-coloured real JPEG through a mocked host AnkiConnect while a
+separate healthy client endpoint remains unused. It also checks host generation
+rejection, browsing and Anki unavailability, loses the host when it closes and
+reconnects when it relaunches, unlinks back to its own empty state, and links
+again through this machine's network address (the machine needs one beyond
+loopback) until the host stops sharing on the network. Two Settings tabs then
+issue overlapping Link and Unlink requests, preserving a compiled local
+personal dictionary and settings. A third browser loads the actual overlay-mode
+extension, checks local Settings autosave and mixed shared/local saves, survives
+host disconnection and full browser restart, unlinks with its edited local
+geometry, and verifies the effective screenshot and browser-speech capability
+explanations through DOM assertions. Eleven predeclared checks; profiles are
+kept on failure. The suite needs `python3` and access to the pinned GitHub
+release. For offline runs or coordinated add-on changes,
+`HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` serves that local
+archive at the pinned URL in the browser; no release is downloaded in that
+mode. The unpacked relay is temporary and removed on exit.
 `HACHIDORI_SHARING_SCREENSHOTS=<dir>` saves the documentation screenshots from
 that real run.
 
