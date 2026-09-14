@@ -5580,6 +5580,7 @@ async function main() {
   const beforeCommitRace = (await storedDictionaryState()).dictionaries.find(
     (entry) => entry.id === community.id,
   );
+  const statusBeforeCommitRace = await request("hd_status");
   const staleCommitUpdate = await pageChrome.runtime.sendMessage({
     target: updateTarget,
     type: "hd_updates_install",
@@ -5587,8 +5588,10 @@ async function main() {
   });
   const staleCommitState = await storedDictionaryState();
   const staleCommitCommunity = staleCommitState.dictionaries.find((entry) => entry.id === community.id);
+  const statusAfterCommitRace = await request("hd_status");
+  const lookupAfterCommitRace = await request("hd_lookup", { text: "食べる" });
   check(
-    "a managed replacement revalidates the installed revision at the commit snapshot",
+    "a managed replacement revalidates after staging before unloading the working generation",
     sourceRestored?.ok === true
       && concurrentRevision?.ok === true
       && staleCommitUpdate?.ok === true
@@ -5596,8 +5599,83 @@ async function main() {
       && staleCommitCommunity?.revision === "community-4"
       && staleCommitCommunity?.path === beforeCommitRace.path
       && staleCommitCommunity?.lastUpdateCheck === null
-      && commitRaceArchiveRequests.count === 1,
-    JSON.stringify({ sourceRestored, concurrentRevision, staleCommitUpdate, staleCommitState }),
+      && commitRaceArchiveRequests.count === 1
+      && statusAfterCommitRace.generation === statusBeforeCommitRace.generation
+      && lookupAfterCommitRace.generation === statusBeforeCommitRace.generation
+      && lookupAfterCommitRace.results?.some((result) => result.term?.expression === "食べる"),
+    JSON.stringify({
+      sourceRestored,
+      concurrentRevision,
+      staleCommitUpdate,
+      staleCommitState,
+      statusBeforeCommitRace,
+      statusAfterCommitRace,
+      lookupAfterCommitRace,
+    }),
+  );
+
+  const downloadFailureRestored = await editCommunity({
+    revision: "community-2",
+    indexUrl: communityIndexUrl,
+    downloadUrl: communityDownloadUrl,
+    lastUpdateCheck: null,
+  });
+  const beforeDownloadFailure = (await storedDictionaryState()).dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  const statusBeforeDownloadFailure = await request("hd_status");
+  remoteJson(communityIndexUrl, { revision: "community-3" });
+  const failingArchive = new Uint8Array(communityZip({ revision: "community-3" }));
+  remoteResponses.set(communityDownloadUrl, async () => {
+    let read = false;
+    return {
+      ok: true,
+      status: 200,
+      url: communityDownloadUrl,
+      headers: { get: () => null },
+      body: {
+        getReader: () => ({
+          async read() {
+            if (!read) {
+              read = true;
+              return { done: false, value: failingArchive.subarray(0, 32) };
+            }
+            throw new Error("injected archive stream failure");
+          },
+          releaseLock() {},
+        }),
+      },
+    };
+  });
+  const failedDownloadUpdate = await pageChrome.runtime.sendMessage({
+    target: updateTarget,
+    type: "hd_updates_install",
+    dictionaryIds: [community.id],
+  });
+  const failedDownloadState = await storedDictionaryState();
+  const failedDownloadCommunity = failedDownloadState.dictionaries.find(
+    (entry) => entry.id === community.id,
+  );
+  const statusAfterDownloadFailure = await request("hd_status");
+  const lookupAfterDownloadFailure = await request("hd_lookup", { text: "食べる" });
+  check(
+    "a failed archive body leaves the committed generation loaded and searchable",
+    downloadFailureRestored?.ok === true
+      && failedDownloadUpdate?.ok === true
+      && failedDownloadUpdate.outcomes?.[0]?.error?.includes("injected archive stream failure")
+      && failedDownloadCommunity?.revision === beforeDownloadFailure.revision
+      && failedDownloadCommunity?.path === beforeDownloadFailure.path
+      && statusAfterDownloadFailure.generation === statusBeforeDownloadFailure.generation
+      && lookupAfterDownloadFailure.generation === statusBeforeDownloadFailure.generation
+      && lookupAfterDownloadFailure.results?.some((result) => result.term?.expression === "食べる"),
+    JSON.stringify({
+      downloadFailureRestored,
+      failedDownloadUpdate,
+      failedDownloadState,
+      statusBeforeDownloadFailure,
+      statusAfterDownloadFailure,
+      lookupAfterDownloadFailure,
+    }),
   );
 
   const statusFixtureRestored = await editCommunity({
@@ -7352,7 +7430,15 @@ async function main() {
   const importProgress = [];
   restartedEngineService.configureEngineService(
     (message) => offscreenChrome.runtime.sendMessage(message),
-    { createHoshidicts, storageBackend: "idbfs", lowRam: true, reportProgress: (event) => importProgress.push(structuredClone(event)) },
+    {
+      createHoshidicts,
+      storageBackend: "idbfs",
+      lowRam: true,
+      reportProgress: (event) => importProgress.push({
+        ...structuredClone(event),
+        observedAt: performance.now(),
+      }),
+    },
   );
   let restartCounter = 0;
   const restartRequest = (type, fields = {}) => {
@@ -7419,14 +7505,39 @@ async function main() {
     downloadUrl: jmnedict.downloadUrl, capabilities: jmnedict.capabilities,
   }));
   const jmnedictRequests = { count: 0 };
-  remoteArchive(jmnedict.downloadUrl, jmnedictArchive, "https://github.com/yomidevs/jmdict-yomitan/releases/download/JMnedict.2026-09-04/JMnedict.zip", jmnedictRequests);
-  const remoteRecommendedImport = await restartRequest("hd_import", {
+  const downloadStarted = Promise.withResolvers();
+  const releaseDownload = Promise.withResolvers();
+  remoteArchive(
+    jmnedict.downloadUrl,
+    jmnedictArchive,
+    "https://github.com/yomidevs/jmdict-yomitan/releases/download/JMnedict.2026-09-04/JMnedict.zip",
+    jmnedictRequests,
+    async () => {
+      downloadStarted.resolve();
+      await releaseDownload.promise;
+    },
+  );
+  const generationBeforeStaging = restartedReload.generation;
+  const remoteImportRequestId = `restart-${restartCounter + 1}`;
+  const remoteRecommendedImportPromise = restartRequest("hd_import", {
     sourceId: jmnedict.sourceId, archiveUrl: jmnedict.downloadUrl, fileName: jmnedict.archiveName,
   });
+  await downloadStarted.promise;
+  const stagedStatus = await restartRequest("hd_status");
+  const stagedLookupStartedAt = performance.now();
+  const stagedLookup = await Promise.race([
+    restartRequest("hd_lookup", { text: trainedExpression }),
+    new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 2_000)),
+  ]);
+  const stagedLookupMs = performance.now() - stagedLookupStartedAt;
+  releaseDownload.resolve();
+  const remoteRecommendedImport = await remoteRecommendedImportPromise;
+  const remoteRecommendedImportCompletedAt = performance.now();
   const remoteRecommendedState = await storedDictionaryState();
   const remoteRecommendedPackage = remoteRecommendedState.dictionaries.find((dictionary) => dictionary.sourceId === "jmnedict");
   const downloadEvents = importProgress.filter((event) => event.phase === "downloading");
   const installingEvents = importProgress.filter((event) => event.phase === "installing");
+  const installPauseMs = remoteRecommendedImportCompletedAt - installingEvents[0]?.observedAt;
   const wrongArchive = await restartRequest("hd_import", {
     sourceId: "jiten", archiveUrl: "https://example.test/jiten.zip", fileName: "jiten-frequency.zip",
   });
@@ -7441,11 +7552,17 @@ async function main() {
     remoteRecommendedImport.ok === true && remoteRecommendedImport.report?.success === true && jmnedictRequests.count === 1
       && remoteRecommendedPackage?.title === jmnedict.title && remoteRecommendedPackage.indexUrl === jmnedict.indexUrl
       && remoteRecommendedPackage.downloadUrl === jmnedict.downloadUrl && remoteRecommendedPackage.isUpdatable === true
-      && importProgress.every((event) => event.requestId === `restart-${restartCounter - 3}`)
+      && stagedStatus.loading === true && stagedStatus.generation === generationBeforeStaging
+      && stagedLookup.timeout !== true
+      && stagedLookup.ok === true
+      && stagedLookup.generation === generationBeforeStaging
+      && stagedLookup.results?.some((result) => result.term?.expression === trainedExpression)
+      && importProgress.every((event) => event.requestId === remoteImportRequestId)
       && downloadEvents.length >= 1 && downloadEvents.every((event) => event.totalBytes === null)
       && downloadEvents.at(-1).receivedBytes === jmnedictArchive.byteLength
       && installingEvents.length === 1 && installingEvents[0].receivedBytes === jmnedictArchive.byteLength
       && importProgress.indexOf(installingEvents[0]) > importProgress.indexOf(downloadEvents.at(-1))
+      && Number.isFinite(stagedLookupMs) && Number.isFinite(installPauseMs) && installPauseMs >= 0
       && wrongArchive.ok === false && wrongArchive.error.includes("catalogue archive URL")
       && noSource.ok === false && noSource.error.includes("no archive URL")
       && unexpectedFinal.ok === false && unexpectedFinal.error.includes("unexpected final URL")
@@ -7456,6 +7573,7 @@ async function main() {
       && declared(headers({ "content-length": "0" })) === null && declared(headers({})) === null && declared({ body: {} }) === null,
     JSON.stringify({ remoteRecommendedImport, remoteRecommendedPackage, importProgress, wrongArchive, noSource, unexpectedFinal, jmnedictRequests }),
   );
+  console.log(`        staged lookup ${stagedLookupMs.toFixed(1)} ms; serialized install ${installPauseMs.toFixed(1)} ms`);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);

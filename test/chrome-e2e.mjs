@@ -320,6 +320,7 @@ const PLANNED = [
   "the Settings enabled control re-enables the preserved package",
   "Check now checks every managed dictionary including disabled packages without downloading",
   "managed update controls render persisted availability and last-checked state",
+  "lookups stay available while a managed archive download is held",
   "Update all atomically replaces a managed generation and preserves presentation",
   "one aggregate browser alarm follows the next dictionary due time",
   "per-dictionary schedules persist without engine reload and override global Off",
@@ -10232,8 +10233,60 @@ async function main() {
     beforeUpdatePackage?.path,
     GENERIC_KANJI_TITLE,
   );
+  const engineBeforeHeldDownload = await page.evaluate(() => chrome.runtime.sendMessage({
+    target: "hoshidicts-offscreen",
+    type: "hd_status",
+    requestId: "e2e-before-held-update",
+  }));
+  const heldManagedDownload = Promise.withResolvers();
+  const releaseManagedDownload = Promise.withResolvers();
+  genericArchiveRoute.respond = async () => {
+    heldManagedDownload.resolve();
+    await releaseManagedDownload.promise;
+    return genericArchiveRoute;
+  };
   await showSettingsSection(page, "updates");
   await page.click("#update-all");
+  const heldDownloadReached = await Promise.race([
+    heldManagedDownload.promise.then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 30_000)),
+  ]);
+  let lookupDuringHeldDownload = null;
+  try {
+    if (heldDownloadReached) {
+      lookupDuringHeldDownload = await page.evaluate(async () => {
+        const [status, lookup] = await Promise.all([
+          chrome.runtime.sendMessage({
+            target: "hoshidicts-offscreen",
+            type: "hd_status",
+            requestId: "e2e-held-update-status",
+          }),
+          chrome.runtime.sendMessage({
+            target: "hoshidicts-offscreen",
+            type: "hd_lookup",
+            requestId: "e2e-held-update-lookup",
+            text: "食べる",
+          }),
+        ]);
+        return { status, lookup };
+      });
+    }
+  } finally {
+    releaseManagedDownload.resolve();
+    genericArchiveRoute.respond = null;
+  }
+  check(
+    "lookups stay available while a managed archive download is held",
+    heldDownloadReached
+      && lookupDuringHeldDownload?.status?.loading === true
+      && lookupDuringHeldDownload.status.generation === engineBeforeHeldDownload.generation
+      && lookupDuringHeldDownload.lookup?.ok === true
+      && lookupDuringHeldDownload.lookup.generation === engineBeforeHeldDownload.generation
+      && lookupDuringHeldDownload.lookup.results?.some(
+        (result) => result.term?.expression === "食べる",
+      ),
+    JSON.stringify({ engineBeforeHeldDownload, heldDownloadReached, lookupDuringHeldDownload }),
+  );
   const manualUpdateSummary = await page.waitForFunction((dictionaryId) => {
     const text = document.getElementById("update-state")?.textContent?.trim() ?? "";
     return chrome.storage.local.get("dictionaryState").then(({ dictionaryState }) => {
