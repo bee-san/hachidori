@@ -1,0 +1,29 @@
+{
+  "name": "hachidori-test-tooling",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": "22.23.1",
+    "npm": "10.9.8"
+  },
+  "packageManager": "npm@10.9.8",
+  "config": {
+    "chrome": "152.0.7977.75"
+  },
+  "scripts": {
+    "test": "node ../run.mjs node",
+    "test:smoke": "node ../run.mjs smoke",
+    "test:chrome": "node ../run.mjs chrome-e2e",
+    "test:sharing": "node ../run.mjs chrome-sharing",
+    "test:fallback": "node ../run.mjs chrome-fallback",
+    "test:overlay": "node ../run.mjs chrome-overlay",
+    "install:chrome": "node ../run.mjs install-chrome"
+  },
+  "devDependencies": {
+    "@puppeteer/browsers": "3.2.1",
+    "jsdom": "30.0.1",
+    "puppeteer-core": "25.9.0"
+  }
+}
