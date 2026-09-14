@@ -734,7 +734,7 @@ function loadScript(src) {
 function loadReader() {
   readerLoading ??= readerScripts().reduce(
     (chain, src) => chain.then(() => loadScript(src)), Promise.resolve(),
-  ).catch((error) => {
+  ).then(() => globalThis.HDReaderReady).catch((error) => {
     // The persistent practice controller also exposes its recovery link.
     setStatus(`The lookup exercise could not start: ${describe(error)}`, "error");
     throw error;
