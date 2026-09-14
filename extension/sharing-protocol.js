@@ -23,6 +23,7 @@ export const FORWARDED_REQUESTS = {
     "hd_lookup_stats_read", "hd_lookup_stats_record",
   ]),
   "hachidori-updates": new Set(["hd_updates_schedule", "hd_updates_check", "hd_updates_install"]),
+  "hachidori-setup": new Set(["hd_setup_install"]),
   "hachidori-anki": new Set(["hd_anki_maturity"]),
 };
 

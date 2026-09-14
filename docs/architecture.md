@@ -67,7 +67,7 @@ The fallback is intentionally explicit: `hd_status` reports `threaded: false` an
 
 Each dictionary import follows one logical transaction:
 
-1. `settings.html` takes the next local ZIP, or downloads the next missing entry from the built-in recommendation catalogue, and sends `hd_import`.
+1. `settings.html` sends the next local ZIP with `hd_import`, or the shared offscreen installer sends the next missing catalogue source's pinned archive URL.
 2. The service worker transfers the archive to the offscreen document.
 3. The engine worker imports Yomitan banks through the Hoshidicts C++ importer into a fresh `/dicts/.hdw-generation-<UUID>/<title>` root. A committed root is never overwritten in place.
 4. The generated files are flushed to the storage backend before metadata can reference them.
@@ -76,14 +76,15 @@ Each dictionary import follows one logical transaction:
 7. The engine re-reads authoritative state before garbage-collecting unreferenced generation roots.
 8. The settings page renders success only after that reply.
 
-Multiple selected archives remain separate transactions. The settings page runs
-them sequentially, keeps an outcome for each file, continues after a failed
-archive, and refreshes dictionary state and engine status once after the batch.
-Recommended downloads use that same sequence. Settings passes only the frozen
-catalogue ID and the response's final URL; before committing the candidate, the
-engine resolves the ID itself and validates the final URL, title, update index,
-revision, and defining capability. Only then does the package gain its optional
-`sourceId` and catalogue-owned update URLs.
+Multiple selected local archives remain separate transactions. Settings runs
+them sequentially, keeps an outcome for each file, and continues after a failure.
+Recommended installation uses the same offscreen runner from both Settings and
+startup: either page attaches with `hd_setup_install`, and the run continues when
+that page closes. `recommended-install-client.js` observes ordered progress and
+reconnects after a quiet interval; linked Settings observes the host's runner
+through Sharing. Both pages render the same byte/phase progress model. The engine
+downloads catalogue-pinned archives directly and validates the final URL, title,
+update index, revision, and defining capability before publishing source metadata.
 
 If a compare-and-set result is unknown because both the commit reply and its readback fail, both the previous and candidate roots are retained. Revisioned manifest paths are authoritative on restart: the engine loads those paths and removes unreferenced generations rather than adopting them from disk. A committed package that no longer loads (missing or damaged files) is left out of the loaded set rather than failing every lookup: its row stays in the manifest, `hd_status.failedDictionaries` reports its `id`, `title` and load error, and Settings names it until it is re-imported or removed. Only packages a mutation introduces must load before they are committed. The IDBFS startup path also resolves imports left by the older `.hdw-import` protocol. The archive input itself is not retained.
 
@@ -174,8 +175,9 @@ lookup statistics, publisher downloads, configured Anki metadata discovery, opti
 pronunciation sharing, mining and explicitly started capture. **Start setup**
 uses the ordinary revisioned stage write to enter `dictionaries`; automatic
 downloads and the later Anki check wait for that successful write. The worker
-also refuses setup downloads and Anki checks while the stored stage is
-`welcome`. **Set up manually** advances directly to `practice`, where an empty
+also refuses startup's downloads and Anki checks while the stored stage is
+`welcome`. Explicit installation in Settings works independently of onboarding.
+**Set up manually** advances directly to `practice`, where an empty
 library links to Settings without downloading or checking Anki. The
 [privacy policy](privacy.md) in the repository is linked from setup and Settings.
 
@@ -207,7 +209,7 @@ with its Settings link. Settings shows **Resume setup** in its sidebar while
 
 ### Dictionary stage
 
-The offscreen document owns the automatic installation. `setup-installer.js`
+The offscreen document owns recommended installation for both startup and Settings. `setup-installer.js`
 runs one sequential batch at a time: for each requested catalogue source it
 rechecks the committed inventory through `hd_state_read` (a source installed
 meanwhile is **Already installed**, never imported twice), waits for the engine
@@ -230,8 +232,8 @@ idle again instead of failing the row, and rechecks the inventory after that
 wait: a source Settings committed meanwhile settles as **Already installed**
 rather than being downloaded and imported twice.
 
-The startup page attaches with `hd_setup_install`, relayed by the service
-worker for the exact startup page URL only, and receives the current run
+Startup and Settings attach with `hd_setup_install`, relayed by the service
+worker for those extension pages (or a linked Settings request), and receive the current run
 snapshot: an active run is returned to every requester, so a reconnecting page,
 a duplicate tab or a restarted worker cannot start a second batch. Live rows
 follow `hd_setup_progress` broadcasts that name the run and carry a sequence;
@@ -256,8 +258,10 @@ installer answers with an empty, finished one, and the sources without a
 recorded outcome are requested once more instead of leaving a screen that can
 never change. The installer records every outcome and each run's summed
 installation duration through `hd_setup_record`, which the worker accepts from
-the offscreen
-document only, and a row settles only after that record is acknowledged: a lost
+the offscreen document only. A run in which startup participates updates its
+onboarding record; a Settings-only run leaves onboarding intact. Both apply
+initial dictionary selections, including on an overlay installation without a
+setup record. A row settles only after that record is acknowledged: a lost
 reply or a restarting worker makes the installer resend the same record with
 backoff, and records are idempotent per run (`recordedRuns`), so a duration
 whose reply was lost is confirmed rather than counted twice. The last row's
@@ -269,7 +273,9 @@ and accumulate into `totalSeconds`, and a
 committed Jitendex or Bee's entry settles its first-install selection once
 (`compactDefinitionSummaryDictionary` and the term-route
 `kanjiClickDictionary`) while that option is still Automatic, through the
-revisioned options write. Each catalogue entry's `firstInstallOption` declares
+revisioned options write. Installation-local `recommendedDictionarySelections`
+remembers consumption independently of onboarding, adopting an existing setup
+record's consumed selections on first use. Each catalogue entry's `firstInstallOption` declares
 that option; `setup-state.js` owns only how its value is built from the title. That entry is located by the same catalogue identity
 the installer uses — stored source ID or exact update index — so a package
 imported by hand or carried in from another profile settles its selection from

@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { createSetupInstaller } from "../extension/setup-installer.js";
 import { ankiSetupFamily } from "../extension/anki-setup.js";
 import { lookupAnkiIndex } from "../extension/anki-index.js";
 import { ANKI_INDEX_ALARM, ANKI_INDEX_KEY, ankiIndexConfigurationChange, createAnkiDuplicateIndex } from "../extension/anki-index-cache.js";
@@ -1786,6 +1787,8 @@ async function firstRunBackgroundStage() {
   const failedRecorded = await record({ runId: "run-2", outcomes: { jiten: { status: "failed", seconds: 0.5, error: "HTTP 503" } }, runSeconds: 0.5 });
   const noRun = await record({ runId: "", runSeconds: 1 });
   const finalSetup = storage.raw.get("setupState");
+  const settingsRecorded = await record({ runId: "settings-run", recordSetup: false,
+    outcomes: { jmnedict: { status: "installed", seconds: 2 } }, runSeconds: 2 });
   // A package setup finds already installed — including one whose commit
   // outlived the installer that made it — still settles its selection.
   const reconcile = makeStorage();
@@ -1810,7 +1813,7 @@ async function firstRunBackgroundStage() {
       && JSON.stringify(jitendexRecorded.state.dictionaries.selectionsApplied) === JSON.stringify(["jitendex"])
       && afterJitendex.options.compactDefinitionSummaryDictionary === jitendexTitle && afterJitendex.options.showCompactDefinitionSummary === false
       && afterJitendex.options.revision === edited.revision + 1
-      && JSON.stringify(storage.sets.slice(recordWritesBefore, recordWritesBefore + 1)) === JSON.stringify([["options", "setupState"]])
+      && JSON.stringify(storage.sets.slice(recordWritesBefore, recordWritesBefore + 1)) === JSON.stringify([["options", "recommendedDictionarySelections", "setupState"]])
       && jitendexAgain?.ok === true && storage.raw.get("options").compactDefinitionSummaryDictionary === beesTitle
       && jitendexAgain.state.dictionaries.outcomes.jitendex.seconds === 1
       && beesRecorded?.ok === true && JSON.stringify(storage.raw.get("options")) === JSON.stringify(optionsBeforeBees)
@@ -1821,6 +1824,8 @@ async function firstRunBackgroundStage() {
       && failedRecorded?.ok === true && finalSetup.dictionaries.totalSeconds === 7
       && JSON.stringify(finalSetup.dictionaries.recordedRuns) === JSON.stringify(["run-1", "run-2"])
       && noRun?.ok === false && noRun.error.includes("names no run")
+      && settingsRecorded?.ok === true && settingsRecorded.state === null
+      && JSON.stringify(storage.raw.get("setupState")) === JSON.stringify(finalSetup)
       && JSON.stringify(finalSetup.dictionaries.outcomes.jiten) === JSON.stringify({ status: "failed", seconds: 0.5, error: "HTTP 503" })
       && finalSetup.stage === "complete" && finalSetup.revision === completed.state.revision + 5
       && reconciled?.ok === true
@@ -1828,6 +1833,25 @@ async function firstRunBackgroundStage() {
       && JSON.stringify(reconciled.state.dictionaries.selectionsApplied) === JSON.stringify(["bees-ultimate-kanji-dictionary"])
       && JSON.stringify(reconcile.raw.get("options").kanjiClickDictionary) === JSON.stringify({ title: beesTitle, kind: "term" }),
     JSON.stringify({ fromPage, unknownSource, jitendexRecorded, afterJitendex, jitendexAgain, beesRecorded, resentRun, failedRecorded, noRun, finalSetup, reconciled, reconcileOptions: reconcile.raw.get("options"), sets: storage.sets.slice(recordWritesBefore) }));
+
+  const overlayStorage = makeStorage(), overlayBus = makeBus();
+  const overlayChrome = makeChrome("recommended-overlay", overlayBus, overlayStorage);
+  loadBackgroundScript({ ...sandbox(), chrome: overlayChrome }, { overlayMode: true });
+  await settle(() => overlayStorage.raw.has("options"));
+  await overlayChrome.storage.local.set({ dictionaryState: { schemaVersion: 1, revision: 1, groups: [],
+    dictionaries: [committed("bees-id", beesTitle, "bees-ultimate-kanji-dictionary")] } });
+  const overlayRecord = () => overlayBus.sendMessage("offscreen-installer", {
+    target: "hoshidicts-worker", type: "hd_setup_record", runId: "overlay-run",
+    outcomes: { "bees-ultimate-kanji-dictionary": { status: "installed", seconds: 1 } },
+  }, { id: overlayChrome.runtime.id, url: overlayChrome.runtime.getURL("offscreen.html") });
+  const installed = await overlayRecord();
+  const selected = overlayStorage.raw.get("options").kanjiClickDictionary;
+  await overlayChrome.storage.local.set({ options: { ...overlayStorage.raw.get("options"), kanjiClickDictionary: "" } });
+  await overlayRecord();
+  check("recommended installation selects Bee's term route without onboarding and consumes the default once",
+    installed.ok && !overlayStorage.raw.has("setupState") && selected?.title === beesTitle && selected.kind === "term"
+      && overlayStorage.raw.get("options").kanjiClickDictionary === ""
+      && overlayStorage.raw.get("recommendedDictionarySelections").includes("bees-ultimate-kanji-dictionary"));
 }
 
 // First-run Anki detection: read-only calls through the gateway, the
@@ -2891,8 +2915,14 @@ async function customEngineStage() {
   );
 }
 
-function loadSettingsScript(window) {
+function loadSettingsScript(window, { recommendedInstall = async () => ({ ok: true, runId: null, sequence: 0, finished: true, entries: [] }) } = {}) {
+  // Most Settings scenarios have no active offscreen batch. The installation
+  // scenario supplies the real shared runner through this same transport.
+  const originalSend = window.chrome.runtime.sendMessage.bind(window.chrome.runtime);
+  window.chrome.runtime.sendMessage = message => message.type === "hd_setup_install"
+    ? recommendedInstall(message) : originalSend(message);
   window.ankiSetupFamily = ankiSetupFamily;
+  window.eval(readFileSync(resolve(EXTENSION, "recommended-install-client.js"), "utf8").replace(/^export\s+/gmu, ""));
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const customLinkSettings = readFileSync(resolve(EXTENSION, "custom-link-settings.js"), "utf8")
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -2930,6 +2960,7 @@ function loadSettingsScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
   const settings = readFileSync(resolve(EXTENSION, "settings.js"), "utf8")
+    .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import \{ createCustomLinkSettings \} from "\.\/custom-link-settings\.js";\s*/u, "")
     .replace(/import \{ createSettingsSearch \} from "\.\/settings-search\.js";\s*/u, "")
     .replace(/import \{ createLocalFileAccessController \} from "\.\/local-file-access\.js";\s*/u, "")
@@ -6229,11 +6260,9 @@ async function main() {
       && JSON.stringify(recommendedSettings.fetches.slice(0, RECOMMENDED_DICTIONARIES.length)
         .map(({ sourceId }) => sourceId))
         === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId))
-      && recommendedSettings.fetches.every(({ sourceId, state }) =>
-        state.includes(`Downloading ${RECOMMENDED_DICTIONARIES.find((entry) => entry.sourceId === sourceId).name}`))
-      && recommendedSettings.imports.every(({ sourceId, finalUrl, state }) => {
+      && recommendedSettings.imports.every(({ sourceId, finalUrl }) => {
         const entry = RECOMMENDED_DICTIONARIES.find((candidate) => candidate.sourceId === sourceId);
-        return finalUrl === entry.downloadUrl && state.includes(`Importing ${entry.name}`);
+        return finalUrl === entry.downloadUrl;
       })
       && recommendedSettings.maxActiveDownloads === 1
       && recommendedSettings.maxActiveImports === 1
@@ -6974,6 +7003,7 @@ async function settingsNavigationStage() {
 }
 
 function loadStartupScript(window) {
+  window.eval(readFileSync(resolve(EXTENSION, "recommended-install-client.js"), "utf8").replace(/^export\s+/gmu, ""));
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   window.eval(readFileSync(resolve(EXTENSION, "visual-novel.js"), "utf8"));
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8")
@@ -6992,6 +7022,7 @@ function loadStartupScript(window) {
   const dictionaryProgress = readFileSync(resolve(EXTENSION, "dictionary-progress.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
+    .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/visual-novel\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
@@ -9262,7 +9293,7 @@ async function settingsRecommendedImportStage() {
 
   window.URL.createObjectURL = (file) => `blob:recommended/${file.name}`;
   window.URL.revokeObjectURL = () => {};
-  window.fetch = async (url) => {
+  const downloadArchive = async (url) => {
     const entry = RECOMMENDED_DICTIONARIES.find((candidate) => candidate.downloadUrl === url);
     if (!entry) {
       throw new Error(`unexpected recommended URL ${url}`);
@@ -9289,9 +9320,25 @@ async function settingsRecommendedImportStage() {
       },
     };
   };
+  window.fetch = async () => { throw new Error("Settings must leave recommended downloads to the offscreen installer"); };
+  let progressListener;
+  const installer = createSetupInstaller({
+    ask: message => window.chrome.runtime.sendMessage(message),
+    async dispatch(message) {
+      if (message.type === "hd_status") return window.chrome.runtime.sendMessage(message);
+      const response = await downloadArchive(message.archiveUrl);
+      if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
+      installer.progress({ requestId: message.requestId, phase: "downloading", receivedBytes: 1024, totalBytes: 4096 });
+      installer.progress({ requestId: message.requestId, phase: "installing" });
+      return window.chrome.runtime.sendMessage(message);
+    },
+    notify: async () => ({ ok: true }),
+    broadcast: message => progressListener?.(message),
+  });
   window.chrome = {
     runtime: {
       id: "hachidorirecommendedsmoke",
+      onMessage: { addListener(listener) { progressListener = listener; } },
       async sendMessage(message) {
         if (message.type === "hd_state_read") {
           return { ok: true, state: structuredClone(state) };
@@ -9312,7 +9359,7 @@ async function settingsRecommendedImportStage() {
           importAttempts.set(message.sourceId, attempt);
           imports.push({
             sourceId: message.sourceId,
-            finalUrl: message.finalUrl,
+            finalUrl: message.archiveUrl,
             fileName: message.fileName,
             state: window.document.getElementById("import-state")?.textContent ?? "",
           });
@@ -9368,7 +9415,7 @@ async function settingsRecommendedImportStage() {
       },
     },
   };
-  loadSettingsScript(window);
+  loadSettingsScript(window, { recommendedInstall: async message => ({ ok: true, ...installer.attach(message.sourceIds) }) });
   const initialActionsHidden = window.document.getElementById("dict-empty").hidden
     && window.document.getElementById("recommended-starter").hidden;
 

@@ -304,6 +304,7 @@ const PLANNED = [
   "recommended dictionaries stack without overflow on narrow screens",
   "a clean profile shows one recommended install action beside local import",
   "the recommended installer continues after a mocked download failure",
+  "a Settings-started recommended batch survives reloading its page without duplicate downloads",
   "missing recommended dictionaries stay available after a settings reload",
   "recommended retry downloads only the missing trusted dictionary",
   "settings page exposes a .zip file input",
@@ -7005,6 +7006,7 @@ async function main() {
   // omits Content-Length so its progress must stay indeterminate.
   const SETUP_PADDING_BYTES = 4 * 1024 * 1024;
   const setupArchives = {
+    enabled: true,
     fixtures: new Map(RECOMMENDED_DICTIONARIES.map((entry) => [entry.downloadUrl, {
       entry, body: buildRecommendedZip({ ...entry, paddingBytes: entry.sourceId === "jmnedict" ? 0 : SETUP_PADDING_BYTES }),
     }])),
@@ -7017,7 +7019,7 @@ async function main() {
   };
   setupArchives.held = new Promise((resolve) => { setupArchives.release = resolve; });
   async function interceptSetupArchives(target) {
-    if (!target.url().endsWith("offscreen.html") || setupArchives.attached.has(target)) return;
+    if (!setupArchives.enabled || !target.url().endsWith("offscreen.html") || setupArchives.attached.has(target)) return;
     setupArchives.attached.add(target);
     try {
       const session = await target.createCDPSession();
@@ -7369,7 +7371,7 @@ async function main() {
         ["bees-ultimate-grammar-dictionary", "Waiting", null, null],
       ])
       && startupShell.importLink && startupShell.settingsLink && startupShell.actions.length === 0
-      && startupShell.status === "Installing default dictionaries."
+      && startupShell.status === "Installing default dictionaries…"
       && startupShell.background !== "rgba(0, 0, 0, 0)"
       && startupShell.cardBackground !== "rgba(0, 0, 0, 0)"
       && settingsPalette.theme === "default"
@@ -7860,6 +7862,11 @@ async function main() {
       && document.getElementById("recommended-starter")?.hidden === false;
   }, { timeout: 90_000, polling: 100 });
   const setupRequestsAfterSetup = setupArchives.requests.length;
+  setupArchives.enabled = false;
+  for (const session of setupArchives.sessions) {
+    await session.send("Fetch.disable").catch(() => {});
+    await session.detach().catch(() => {});
+  }
 
   await checkFirstRunAnkiDetection(page, browser, startupUrl);
 
@@ -7979,43 +7986,44 @@ async function main() {
     await importCard.screenshot({ path: process.env.HACHIDORI_SETTINGS_SCREENSHOT });
   }
 
-  const recommendedFixtures = new Map(RECOMMENDED_DICTIONARIES.map((entry) => [
-    entry.downloadUrl,
-    buildRecommendedZip(entry),
-  ]));
   const recommendedRequests = [];
   const recommendedAttempts = new Map();
-  const interceptRecommendedDownload = async (request) => {
-    const archive = recommendedFixtures.get(request.url());
-    if (!archive) {
-      await request.continue();
-      return;
-    }
-    const entry = RECOMMENDED_DICTIONARIES.find((candidate) => candidate.downloadUrl === request.url());
-    const attempt = (recommendedAttempts.get(entry.sourceId) ?? 0) + 1;
-    recommendedAttempts.set(entry.sourceId, attempt);
-    recommendedRequests.push(entry.sourceId);
-    const headers = {
-      "access-control-allow-origin": "*",
-      "content-type": "application/zip",
-      "cross-origin-resource-policy": "cross-origin",
-    };
-    if (entry.sourceId === "jmnedict" && attempt === 1) {
-      await request.respond({ status: 503, headers, body: "mocked publisher failure" });
-      return;
-    }
-    await request.respond({ status: 200, headers, body: archive });
-  };
-  await page.setRequestInterception(true);
-  const recommendedRequestHandler = (request) => {
-    void interceptRecommendedDownload(request).catch(async (error) => {
-      diagnostics.push(`[recommendation mock] ${error?.stack ?? error}`);
-      await request.abort().catch(() => {});
-    });
-  };
-  page.on("request", recommendedRequestHandler);
+  let releaseRecommended;
+  const heldRecommended = new Promise(resolveHeld => { releaseRecommended = resolveHeld; });
+  const recommendedRoutes = new Map(RECOMMENDED_DICTIONARIES.map(entry => [entry.downloadUrl, {
+    requests: 0,
+    async respond() {
+      const attempt = (recommendedAttempts.get(entry.sourceId) ?? 0) + 1;
+      recommendedAttempts.set(entry.sourceId, attempt);
+      recommendedRequests.push(entry.sourceId);
+      if (entry.sourceId === "jitendex" && attempt === 1) await heldRecommended;
+      return entry.sourceId === "jmnedict" && attempt === 1
+        ? { status: 503, contentType: "text/plain", body: "mocked publisher failure" }
+        : { status: 200, contentType: "application/zip", body: buildRecommendedZip(entry) };
+    },
+  }]));
+  const recommendedSession = await interceptFetches(
+    await browser.waitForTarget(target => target.url().endsWith("/offscreen.html")), recommendedRoutes, "recommended install");
 
   await page.click("#install-recommended");
+  await page.waitForFunction(() => document.getElementById("import-state")?.textContent.includes("You can close this page."));
+  const beforeReload = await page.evaluate(() => chrome.runtime.sendMessage({
+    target: "hachidori-setup", type: "hd_setup_install", sourceIds: [], requestId: "observe-settings-run",
+  }));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => document.getElementById("import-state")?.textContent.includes("You can close this page."));
+  const afterReload = await page.evaluate(() => chrome.runtime.sendMessage({
+    target: "hachidori-setup", type: "hd_setup_install", sourceIds: [], requestId: "observe-settings-run-after-reload",
+  }));
+  check("a Settings-started recommended batch survives reloading its page without duplicate downloads",
+    beforeReload.ok && beforeReload.runId === afterReload.runId && !afterReload.finished
+      && recommendedAttempts.get("jitendex") === 1, JSON.stringify({ beforeReload, afterReload, recommendedRequests }));
+  if (process.env.HACHIDORI_RECOMMENDED_SCREENSHOT) {
+    await page.setViewport({ width: 1280, height: 1000 });
+    await page.screenshot({ path: process.env.HACHIDORI_RECOMMENDED_SCREENSHOT });
+    await page.setViewport({ width: 800, height: 600 });
+  }
+  releaseRecommended();
   // The count is derived from the catalogue and passed IN: this predicate runs in
   // the page, where the Node-side catalogue does not exist, and a hardcoded count
   // would silently stop settling the moment a source is added.
@@ -8054,7 +8062,7 @@ async function main() {
       // Only jmnedict's download is mocked to fail; every other source imports.
       && JSON.stringify(recommendedFirst.outcomes.map(({ error }) => error))
         === JSON.stringify(RECOMMENDED_DICTIONARIES.map(({ sourceId }) => sourceId === "jmnedict"))
-      && recommendedFirst.outcomes.every(({ text }) => /\d+(?:\.\d)? seconds/u.test(text))
+      && recommendedFirst.outcomes.every(({ text, error }) => error ? text.includes("HTTP 503") : /\d+(?:\.\d)? seconds/u.test(text))
       && firstRecommendedPackages.length === RECOMMENDED_DICTIONARIES.length - 1
       && firstRecommendedPackages.every((dictionary) => {
         const entry = RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === dictionary.sourceId);
@@ -8114,7 +8122,7 @@ async function main() {
       && recommendedRetry.outcomes.length === 1
       && recommendedRetry.outcomes[0].name
         === RECOMMENDED_DICTIONARIES.find(({ sourceId }) => sourceId === "jmnedict").name
-      && /^Imported JMnedict .+ in \d+(?:\.\d)? seconds: /u.test(recommendedRetry.outcomes[0].text)
+      && /^Installed in \d+(?:\.\d)? seconds$/u.test(recommendedRetry.outcomes[0].text)
       && recommendedRetry.retryHidden === true
       && allRecommendedPackages.length === RECOMMENDED_DICTIONARIES.length
       && RECOMMENDED_DICTIONARIES.every((entry) => allRecommendedPackages.some((dictionary) =>
@@ -8157,8 +8165,8 @@ async function main() {
     return dictionaryState?.dictionaries?.length === 0
       && document.getElementById("recommended-starter")?.hidden === false;
   }, { timeout: 90_000, polling: 100 });
-  page.off("request", recommendedRequestHandler);
-  await page.setRequestInterception(false);
+  await recommendedSession.send("Fetch.disable");
+  await recommendedSession.detach();
 
   // ------------------------------------------------------------------ import
   await showSettingsSection(page, "add-dictionaries");

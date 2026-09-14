@@ -87,9 +87,13 @@ and installs every recommended dictionary in one click. The same button stays un
 **Import dictionaries** until any of them is installed, and **Retry missing
 dictionaries** covers a partial install.
 
-The setup page also picks the compact summary and kanji-click dictionaries
-from the dictionaries it installed. Settings leaves both on Automatic, and you
-can choose them under Design.
+The shared installer picks Jitendex for compact summaries and Bee's term-based
+dictionary for kanji clicks from their committed titles, including when installed
+through Settings in overlay mode. Each initial selection is consumed once in
+installation-local `recommendedDictionarySelections` bookkeeping; an existing
+choice is preserved. This does not create an onboarding record in an overlay.
+Recommended installation continues after closing Settings, and reopening it
+reattaches to the same run.
 
 ## Tests
 
