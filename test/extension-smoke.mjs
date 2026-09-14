@@ -791,7 +791,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-host\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
-    .replace(/import \{ OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
+    .replace(/import \{ HOST_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;
@@ -1113,7 +1113,9 @@ async function overlayModeBackgroundStage() {
   const tabs = [];
   const tabsApi = { async create(properties) { tabs.push(structuredClone(properties)); return { id: tabs.length }; } };
   const start = (name, store) => {
-    const chrome = makeChrome(name, makeBus(), store);
+    const bus = makeBus();
+    const chrome = makeChrome(name, bus, store);
+    chrome.__bus = bus;
     chrome.tabs = tabsApi;
     loadBackgroundScript({ chrome, console, URL, setTimeout, clearTimeout, Promise, Error }, { overlayMode: true });
     return chrome;
@@ -1154,6 +1156,28 @@ async function overlayModeBackgroundStage() {
     seededOnce && preserved && carriedKept,
     JSON.stringify({ tabs, seeded, options: storage.raw.get("options"), setup: storage.raw.get("setupState"), carried: [...carried.raw.entries()] }));
 
+  const captureHostStarts = offscreenState.created;
+  const unavailable = await Promise.all([
+    chrome.__bus.sendMessage("overlay-settings", {
+      target: "hachidori-capture", type: "hd_capture_open", requestId: "overlay-capture",
+    }, { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") }),
+    chrome.__bus.sendMessage("overlay-settings", {
+      target: "hoshidicts-worker", type: "hd_backup_download", requestId: "overlay-backup",
+    }, { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html") }),
+    chrome.__bus.sendMessage("overlay-reader", {
+      target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-link",
+      url: "https://example.test/", active: true,
+    }, { id: chrome.runtime.id, url: "https://reader.test/page", tab: { id: 1, windowId: 1 } }),
+  ]);
+  await storage.api().local.set({ options: {
+    ...storage.raw.get("options"),
+    mediaCapture: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.mediaCapture, enabled: true },
+    revision: storage.raw.get("options").revision + 1,
+  } });
+  await settle();
+  const unsupportedGuarded = unavailable.every(reply => reply?.ok === false && reply.error.includes("unavailable in this overlay"))
+    && offscreenState.created === captureHostStarts && tabs.length === 0;
+
   // Electron has no chrome.tabs.captureVisibleTab, so a profile that kept the
   // screenshot switched on from before overlay mode must never reach for it.
   const kept = makeStorage(), bus = makeBus();
@@ -1166,7 +1190,8 @@ async function overlayModeBackgroundStage() {
     requestId: "overlay-screenshot", request: {} }, { id: keptChrome.runtime.id, url: "https://reader.test/page",
     frameId: 0, documentId: "overlay-document", tab: { id: 1 } });
   check("overlay mode never takes a mining screenshot, even when the stored option is on",
-    screenshot?.ok === false && screenshot.error.includes("turned off"), JSON.stringify(screenshot));
+    screenshot?.ok === false && screenshot.error.includes("turned off") && unsupportedGuarded,
+    JSON.stringify({ screenshot, unavailable, captureHostStarts, captureHostEnds: offscreenState.created, tabs }));
 }
 
 // The host side of sharing: a fake WebSocket stands in for the Anki add-on's
@@ -3557,6 +3582,13 @@ async function customEngineStage() {
 
 function loadSettingsScript(window, { overlayMode = false, recommendedInstall = async () => ({ ok: true, runId: null, sequence: 0, finished: true, entries: [] }) } = {}) {
   window.OVERLAY_MODE = overlayMode;
+  window.HOST_CAPABILITIES = {
+    backupExport: !overlayMode,
+    browserShortcuts: !overlayMode,
+    customLinks: !overlayMode,
+    localFileAccessPrompt: !overlayMode,
+    mediaCapture: !overlayMode,
+  };
   window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
   // Most Settings scenarios have no active offscreen batch. The installation
   // scenario supplies the real shared runner through this same transport.

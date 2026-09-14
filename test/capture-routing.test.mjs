@@ -23,6 +23,7 @@ function freshWorker({ readerDocument = reader.documentId, linked = true, status
   const context = vm.createContext({
     capturePage: null, captureRecovery: null, captureContentDocument: null, captureLink: null,
     OPTIONS_KEY: 'options', OFFSCREEN_DOCUMENT: 'offscreen.html',
+    HOST_CAPABILITIES: { mediaCapture: true },
     ensureOffscreen: async () => {}, HDReaderOptions: { normaliseOptions: value => value,
       projectContentOptions: globalThis.HDReaderOptions.projectContentOptions },
     CAPTURE_DOCUMENT: 'capture.html', CAPTURE_CONTENT_TARGET: 'hachidori-capture-content',

@@ -97,7 +97,9 @@ the service worker and both engine runtimes run the same code.
   which adapts Hoshi Reader and Yomitan; `render/ATTRIBUTION.md` records what
   came from where.
 - **Overlay mode.** `overlay-mode.js` is the one switch a host such as the
-  GameSentenceMiner overlay flips in its copy; see
+  GameSentenceMiner overlay flips in its copy. It also defines the shared
+  host-capability policy used by Settings, the toolbar, the reader and the
+  service worker; see
   [overlay mode](../docs/overlay-mode.md).
 - **Vendored code.** `vendor/hoshidicts-threaded.{mjs,wasm}` and
   `vendor/hoshidicts.{mjs,wasm}` are the two builds of the hoshidicts engine

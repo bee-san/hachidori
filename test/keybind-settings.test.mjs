@@ -45,7 +45,7 @@ test("default keybinds keep Yomitan's keys for the actions Hachidori supports an
   assert.deepEqual(Object.keys(KEYBIND_OPTION_LABELS), KEYBIND_TOGGLE_OPTIONS, "every toggleable option has its Settings label");
 });
 
-function fixture(t) {
+function fixture(t, { browserShortcutsAvailable = true } = {}) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"),
     { pretendToBeVisual: true, url: "https://extension.test/settings.html" });
   const { window } = dom;
@@ -56,14 +56,15 @@ function fixture(t) {
   const sources = [{ id: "tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" },
     { id: "json", type: "custom-json", enabled: true, url: "https://audio.test/{term}", voice: "" }];
   let writes = 0;
-  const browser = { opened: 0, commands: [
+  const browser = { opened: 0, reads: 0, commands: [
     { name: "_execute_action", description: "", shortcut: "" },
     { name: "toggleTextScanning", description: "Turn Japanese lookups on or off", shortcut: "Alt+Del" },
     { name: "openSettingsPage", description: "Open Hachidori settings", shortcut: "" },
   ] };
   const controller = createKeybindSettingsController({ document, readKeybinds: () => keybinds,
     editKeybinds(value) { writes += 1; keybinds = value; }, readAudioSources: () => sources,
-    getBrowserCommands: async () => browser.commands, openBrowserShortcuts: async () => { browser.opened += 1; } });
+    getBrowserCommands: async () => { browser.reads += 1; return browser.commands; },
+    openBrowserShortcuts: async () => { browser.opened += 1; }, browserShortcutsAvailable });
   controller.render();
   const rows = () => [...document.querySelectorAll("#keybind-list > .keybind-row")];
   const row = index => rows()[index];
@@ -168,4 +169,17 @@ test("browser shortcuts list Chrome's commands, link to its shortcut page and re
   f.window.dispatchEvent(new f.window.Event("focus"));
   await new Promise(resolveDone => setImmediate(resolveDone));
   assert.deepEqual(listed(), ["Open Hachidori settingsCtrl+Shift+Comma"]);
+});
+
+test("overlay mode disables only Chrome-owned browser shortcuts", async t => {
+  const f = fixture(t, { browserShortcutsAvailable: false });
+  await new Promise(resolveDone => setImmediate(resolveDone));
+  assert.equal(f.document.getElementById("browser-shortcuts").disabled, true);
+  assert.equal(f.document.getElementById("browser-shortcuts-overlay-help").hidden, false);
+  assert.equal(f.browser.reads, 0);
+  f.document.getElementById("browser-shortcuts-open").click();
+  assert.equal(f.browser.opened, 0);
+  const before = f.writes;
+  f.document.getElementById("keybind-add").click();
+  assert.equal(f.writes, before + 1, "page and popup keybinds remain editable");
 });

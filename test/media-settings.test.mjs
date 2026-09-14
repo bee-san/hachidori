@@ -13,16 +13,27 @@ const extension = file => readFileSync(new URL(`../extension/${file}`, import.me
 const withoutModules = source => source.replace(/^import(?:[^;]+);\s*/gmu, "").replace(/^export\s+/gmu, "");
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-test("fresh Settings lets a user enter a texthooker endpoint before enabling the feed", async t => {
+function fixture(t, { overlayMode = false, mediaEnabled = false } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: "https://settings.example" });
   t.after(() => dom.window.close());
   const { window } = dom;
+  const requests = [];
+  window.OVERLAY_MODE = overlayMode;
+  window.HOST_CAPABILITIES = {
+    backupExport: !overlayMode,
+    browserShortcuts: !overlayMode,
+    customLinks: !overlayMode,
+    localFileAccessPrompt: !overlayMode,
+    mediaCapture: !overlayMode,
+  };
+  window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
   window.settingsReplies = {
     hd_capture_status: { ok: true, state: "stopped" },
     hd_capture_open: { ok: true },
   };
   window.chrome = {
     runtime: { sendMessage(message) {
+      requests.push(structuredClone(message));
       return Promise.resolve(window.settingsReplies[message.type] ?? { ok: true, state: "stopped" });
     } },
     storage: { onChanged: { addListener() {} } },
@@ -41,12 +52,18 @@ test("fresh Settings lets a user enter a texthooker endpoint before enabling the
   assert.ok(source.endsWith("start();\n"));
   window.eval(source.replace(/start\(\);\s*$/u, `
     attachHandlers();
+    options.mediaCapture.enabled = ${mediaEnabled};
     renderMediaSettings();
     activeSection = "media";
     globalThis.readMediaSettings = () => options.mediaCapture;
     globalThis.refreshMediaStatus = updateMediaSettings;
   `));
   const el = id => window.document.getElementById(id);
+  return { window, el, requests };
+}
+
+test("fresh Settings lets a user enter a texthooker endpoint before enabling the feed", async t => {
+  const { window, el } = fixture(t);
   const endpoint = el("opt-media-texthooker-url"), enabled = el("opt-media-texthooker");
   assert.equal(enabled.checked, false);
   assert.equal(endpoint.value, "");
@@ -89,4 +106,24 @@ test("fresh Settings lets a user enter a texthooker endpoint before enabling the
   await tick();
   assert.equal(el("media-runtime-status").textContent, "Capture controls opened in a separate tab.");
   assert.equal(el("media-runtime-status").classList.contains("is-error"), false);
+});
+
+test("overlay Settings preserves but cannot activate remote media capture options", async t => {
+  const { window, el, requests } = fixture(t, { overlayMode: true, mediaEnabled: true });
+  assert.equal(el("media-overlay-help").hidden, false);
+  assert.equal(el("opt-media-enabled").checked, false);
+  assert.ok([...window.document.querySelectorAll("#media button, #media input, #media select")]
+    .every(control => control.disabled), "every recorder control is explicitly disabled");
+
+  await window.refreshMediaStatus();
+  assert.equal(el("media-runtime-status").textContent, "Media capture is unavailable in this overlay.");
+  assert.equal(requests.length, 0, "status does not wake the capture host");
+
+  el("opt-media-enabled").checked = true;
+  el("opt-media-enabled").dispatchEvent(new window.Event("change", { bubbles: true }));
+  el("media-open-capture").dispatchEvent(new window.Event("click", { bubbles: true }));
+  await tick();
+  assert.equal(window.readMediaSettings().enabled, true, "the stored host value is preserved");
+  assert.equal(el("opt-media-enabled").checked, false, "the effective overlay value stays off");
+  assert.equal(requests.length, 0);
 });

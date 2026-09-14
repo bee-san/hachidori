@@ -13,7 +13,7 @@ const [html, source, optionsSource, manifest] = await Promise.all([
   readFile(new URL("manifest.json", extension), "utf8").then(JSON.parse),
 ]);
 
-async function toolbar(stored = {}, captureState = "stopped") {
+async function toolbar(stored = {}, captureState = "stopped", { mediaCapture = true } = {}) {
   const nodes = new Map([...html.matchAll(/id="([^"]+)"/gu)].map(([, id]) => [id, {
     id, textContent: "", hidden: true, attributes: new Map(), listeners: new Map(),
     classList: { values: new Set(), toggle(name, enabled) {
@@ -28,6 +28,7 @@ async function toolbar(stored = {}, captureState = "stopped") {
   let openedSettings = 0;
   let closed = 0;
   const context = vm.createContext({
+    HOST_CAPABILITIES: { mediaCapture },
     document: { querySelectorAll: () => [...nodes.values()] },
     window: { close: () => { closed++; }, addEventListener() {} },
     setInterval() { return 1; }, clearInterval() {},
@@ -58,7 +59,10 @@ async function toolbar(stored = {}, captureState = "stopped") {
     },
   });
   vm.runInContext(optionsSource, context);
-  await vm.runInContext(`(async () => { ${source.replace('import "./reader-options.js";', "")} })()`, context);
+  const script = source
+    .replace('import "./reader-options.js";', "")
+    .replace(/import \{ HOST_CAPABILITIES \} from "\.\/overlay-mode\.js";\s*/u, "");
+  await vm.runInContext(`(async () => { ${script} })()`, context);
   return {
     nodes, requests,
     async click(id) { nodes.get(id).listeners.get("click")(); await setImmediate(); },
@@ -109,6 +113,17 @@ test("recording shortcut enables existing controls without starting or duplicati
   assert.equal(active.nodes.get("record-label").textContent, "Recording");
   await active.click("record-screen");
   assert.deepEqual(active.requests.map(request => request.type), ["hd_capture_status", "hd_capture_open"]);
+});
+
+test("overlay toolbar keeps recording visibly disabled without waking capture", async () => {
+  const ui = await toolbar({ mediaCapture: { enabled: true }, revision: 4 }, "recording", { mediaCapture: false });
+  assert.equal(ui.nodes.get("record-screen").disabled, true);
+  assert.equal(ui.nodes.get("record-label").textContent, "Recording unavailable");
+  assert.match(ui.nodes.get("record-screen").title, /unavailable in this overlay/u);
+  assert.deepEqual(ui.requests, []);
+  await ui.click("record-screen");
+  assert.deepEqual(ui.requests, []);
+  assert.equal(ui.closed, 0);
 });
 
 test("settings shortcut opens Chrome options and closes the toolbar", async () => {
