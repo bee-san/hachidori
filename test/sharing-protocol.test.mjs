@@ -38,6 +38,7 @@ test("only plain-message requests forward; blob imports stay local", () => {
   assert.equal(forwardableRequest({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "猫" }), true);
   assert.equal(forwardableRequest({ target: "hoshidicts-worker", type: "hd_options_write" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-updates", type: "hd_updates_check" }), true);
+  assert.equal(forwardableRequest({ target: "hachidori-setup", type: "hd_setup_install", sourceIds: [] }), true);
   assert.equal(forwardableRequest({ target: "hachidori-anki", type: "hd_anki_maturity" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-anki", type: "hd_anki_submit" }), false);
   assert.equal(forwardableRequest({ target: "hachidori-audio", type: "hd_audio_play" }), false);

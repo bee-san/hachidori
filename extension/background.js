@@ -44,6 +44,7 @@ import {
 import { OVERLAY_MODE } from "./overlay-mode.js";
 import {
   FIRST_INSTALL_OPTIONS, FIRST_INSTALL_SELECTIONS, OVERLAY_MODE_OPTIONS, SETUP_STATE_KEY, STARTUP_PAGE,
+  RECOMMENDED_SELECTIONS_KEY,
   advanceSetupState, initialSetupState, normaliseSetupState, overlayAnkiOptions, recordSetupAnki, recordSetupDictionaries,
 } from "./setup-state.js";
 
@@ -1024,16 +1025,17 @@ const WORKER_HANDLERS = {
         || !Object.keys(outcomes).every((sourceId) => recommendedDictionarySource(sourceId) !== null)) {
       throw new Error("the setup record names an unknown catalogue source");
     }
-    const stored = await chrome.storage.local.get([SETUP_STATE_KEY, DICTIONARY_STATE_KEY, OPTIONS_KEY]);
+    const stored = await chrome.storage.local.get([SETUP_STATE_KEY, DICTIONARY_STATE_KEY, OPTIONS_KEY, RECOMMENDED_SELECTIONS_KEY]);
     const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
-    if (current === null) throw new Error("Setup has not started on this installation.");
-    const selections = firstInstallSelections(current, outcomes, stored[DICTIONARY_STATE_KEY], stored[OPTIONS_KEY]);
-    const state = recordSetupDictionaries(current, {
+    const previousSelections = stored[RECOMMENDED_SELECTIONS_KEY] ?? current?.dictionaries.selectionsApplied ?? [];
+    const selections = firstInstallSelections(previousSelections, outcomes, stored[DICTIONARY_STATE_KEY], stored[OPTIONS_KEY]);
+    const state = recordSetupDictionaries(message.recordSetup === false ? null : current, {
       runId: message.runId, outcomes, runSeconds: message.runSeconds ?? null, selectionsApplied: selections.applied,
     });
-    const values = { [SETUP_STATE_KEY]: state };
+    const values = state === null ? {} : { [SETUP_STATE_KEY]: state };
+    if (selections.applied.length > 0) values[RECOMMENDED_SELECTIONS_KEY] = [...new Set([...previousSelections, ...selections.applied])];
     if (selections.options !== null) values[OPTIONS_KEY] = selections.options;
-    await writeLocalState(values);
+    if (Object.keys(values).length > 0) await writeLocalState(values);
     return { state };
   },
 };
@@ -1106,14 +1108,14 @@ async function detectFirstRunAnki() {
 // Dictionary-dependent initial preferences follow the committed entry's exact
 // title, whether setup installed it or found it installed. Each is consumed
 // once; an option the user already changed is left alone.
-function firstInstallSelections(current, outcomes, dictionaryState, storedOptions) {
+function firstInstallSelections(previousSelections, outcomes, dictionaryState, storedOptions) {
   const dictionaries = dictionaryState?.dictionaries ?? [];
   const effective = normaliseOptions(storedOptions);
   const applied = [];
   const patch = {};
   for (const [sourceId, rule] of Object.entries(FIRST_INSTALL_SELECTIONS)) {
     if (!["installed", "already-installed"].includes(outcomes[sourceId]?.status)
-        || current.dictionaries.selectionsApplied.includes(sourceId)) continue;
+        || previousSelections.includes(sourceId)) continue;
     // The same catalogue identity the installer uses, so a package carried in
     // or imported by hand, which is recognised by its exact update index, is
     // the entry the selection follows.
@@ -2013,20 +2015,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// Only the startup page may start or observe an accepted dictionary run.
-// Release the storage read before relaying: engine commits call back into the worker.
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.target !== SETUP_TARGET || message.relayed === true) return false;
-  if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL(STARTUP_PAGE)) {
-    sendResponse(failureReply(message, new Error("Setup installation is available only from the Hachidori startup page.")));
-    return false;
-  }
-  chrome.storage.local.get(SETUP_STATE_KEY).then((stored) => {
+// Startup and Settings attach to one recommended-install run. The welcome gate
+// belongs to startup; opening Settings never requires an onboarding record.
+async function handleRecommendedInstall(message, sender, shared = false) {
+  const startup = startupSender(sender);
+  const settings = sender?.id === chrome.runtime.id
+    && sender.url?.split(/[?#]/u)[0] === chrome.runtime.getURL("settings.html");
+  if (!shared && !startup && !settings) throw new Error("Recommended installation is available only from Hachidori startup or Settings.");
+  if (message.type !== "hd_setup_install") throw new Error("Unknown recommended installation request.");
+  if (startup) {
+    const stored = await chrome.storage.local.get(SETUP_STATE_KEY);
     const current = normaliseSetupState(stored[SETUP_STATE_KEY]);
     if (current === null) throw new Error("Setup has not started on this installation.");
     if (current.stage === "welcome") throw new Error("Start setup before downloading dictionaries.");
-    return relay(message);
-  }).then(sendResponse, (error) => sendResponse(failureReply(message, error)));
+  }
+  // Never hold the storage queue here: each engine commit calls back into it.
+  await sharingReady;
+  return sharingLinked ? forwardToHost(message) : relay({ ...message, recordSetup: startup });
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== SETUP_TARGET || message.relayed === true) return false;
+  handleRecommendedInstall(message, sender).then(sendResponse, (error) => sendResponse(failureReply(message, error)));
   return true;
 });
 
@@ -2189,6 +2199,7 @@ async function dispatchSharedRequest(message, clientId) {
       case TARGET: return await relayEngineRequest(message);
       case WORKER_TARGET: return await handleWorkerRequest(message, sender);
       case UPDATE_TARGET: return await handleUpdatesRequest(message);
+      case SETUP_TARGET: return await handleRecommendedInstall(message, sender, true);
       case "hachidori-anki": return await handleAnkiRequest(message, sender);
       default: throw new Error(`unsupported shared request target ${JSON.stringify(message.target)}`);
     }

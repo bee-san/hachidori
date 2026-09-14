@@ -4,6 +4,8 @@
 import { RECOMMENDED_DICTIONARIES } from "./recommended-dictionaries.js";
 
 export const SETUP_STATE_KEY = "setupState";
+// Installation-local bookkeeping, also available when an embedded host skips setup.
+export const RECOMMENDED_SELECTIONS_KEY = "recommendedDictionarySelections";
 export const SETUP_STATE_SCHEMA_VERSION = 1;
 export const STARTUP_PAGE = "startup.html";
 // A new installation waits for informed Start setup before its automatic work.
@@ -205,6 +207,8 @@ export function recordSetupDictionaries(current, { runId, outcomes = {}, runSeco
   if (!selectionsApplied.every((sourceId) => Object.hasOwn(FIRST_INSTALL_SELECTIONS, sourceId))) {
     throw new Error("the setup selection is unknown");
   }
+  // Settings records the same outcomes for initial selections without onboarding.
+  if (current === null) return null;
   const dictionaries = current.dictionaries;
   const countRun = runSeconds !== null && !dictionaries.recordedRuns.includes(runId);
   return {

@@ -45,8 +45,9 @@ the service worker and both engine runtimes run the same code.
   the import progress. `managed-dictionary-source.js` and
   `recommended-dictionaries.js` define the trusted update sources and the
   starter set; `custom-dictionary.js` the personal dictionary's source format
-  and archive; `setup-state.js` and `setup-installer.js` the first-run stages
-  and the installer that runs them. `json-value.js` and `response-limits.js`
+  and archive; `setup-state.js` the first-run stages and initial selections;
+  `setup-installer.js` the offscreen recommended installer, observed from startup
+  and Settings by `recommended-install-client.js`. `json-value.js` and `response-limits.js`
   are the comparison and size rules the transaction boundaries share.
 - **Lookup statistics.** `lookup-stats-identity.js`, a classic script so the
   content script can use it, and `lookup-stats.js`.

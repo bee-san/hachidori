@@ -146,6 +146,14 @@ test("reported durations start at installation and exclude download time", async
   assert.equal(log.recorded[0].runSeconds, 2.5);
 });
 
+test("a Settings run applies source selections without rewriting completed onboarding", async () => {
+  const { installer, log } = harness();
+  installer.attach(["jiten"], { recordSetup: false });
+  await untilFinished(installer);
+  assert.equal(log.recorded[0].recordSetup, false);
+  assert.equal(log.recorded[0].outcomes.jiten.status, "installed");
+});
+
 test("a source committed elsewhere while the installer waited is settled as already installed, not reimported", async () => {
   const installed = [];
   const statuses = [{ ok: true, ready: true, loading: true }, { ok: true, ready: true, loading: false }];

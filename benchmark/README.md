@@ -118,6 +118,28 @@ and popup rendering.
 
 ## Tiny deterministic acceptance run
 
+### Recommended installation
+
+`recommended-install.mjs` measures Settings' recommended-install button through
+download, native import, OPFS publication and the final progress message. It
+serves the five catalogue URLs with deterministic fixtures (1 MiB of stored
+media padding per archive), verifies one request per source, and checks the
+persisted inventory and a real lookup. Pass baseline and changed checkout roots
+to alternate three fresh-profile samples per revision:
+
+```sh
+HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js \
+  node benchmark/recommended-install.mjs /path/to/baseline /path/to/changed
+```
+
+The JSON output records archive sizes/hashes, runtime versions, revisions and
+each timing. These are orchestration measurements with controlled download
+bytes, not publisher-network or full-dictionary throughput measurements. The
+timed boundary ends at the final UI message; inventory/lookup verification and
+browser startup/teardown are outside it.
+
+### Local archive
+
 Generate the existing test fixture, then run one fresh-profile sample:
 
 ```bash

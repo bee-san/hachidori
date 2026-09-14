@@ -13,10 +13,12 @@ import { createSharingSettingsController } from "./sharing-settings.js";
 import { ANKI_ADDON_FILE_NAME, buildAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
+import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { createCustomLinkSettings } from "./custom-link-settings.js";
 import { createDictionaryNameDrafts, renameWithBaseline } from "./dictionary-name-drafts.js";
 import {
   createDictionaryProgressList,
+  installEntryState,
   formatSeconds,
 } from "./dictionary-progress.js";
 import {
@@ -116,6 +118,13 @@ let customSaving = false;
 let customDraftStale = false;
 let customDraftNewline = "\n";
 let importing = false;
+let installingRecommended = false;
+let renderedInstallRun = null;
+const recommendedInstallation = createRecommendedInstallClient({
+  send: sourceIds => send("hd_setup_install", { sourceIds }, "hachidori-setup"),
+  onChange: renderRecommendedInstallation,
+  onError(error) { setImportState(`Could not observe dictionary installation: ${describe(error)}`, "error"); },
+});
 let updating = false;
 let removing = false;
 let committing = false;
@@ -165,7 +174,7 @@ function element(id) {
 
 function sectionHasPendingWork(id) {
   switch (id) {
-    case "import-state": return importing;
+    case "import-state": return importing || installingRecommended;
     case "update-state": return updating || savingSchedule !== null || pendingSchedule !== null;
     case "custom-dictionary-status": return customLoading || customSaving || customDictionaryDirty();
     case "backup-status": return backingUp;
@@ -423,7 +432,7 @@ function updateBackupSettings() {
     document, send,
     download: () => send("hd_backup_download", {}, WORKER_TARGET),
     checkReady() {
-      if (importing || updating || removing || committing || customLoading || customSaving || pendingDictionaryCommits > 0) {
+      if (importing || installingRecommended || updating || removing || committing || customLoading || customSaving || pendingDictionaryCommits > 0) {
         throw new Error("Wait for the current dictionary operation to finish, then try again.");
       }
       if (customDictionaryDirty() || customLinkController?.dirty() || savingOptions !== null || optionsEditRevision !== null
@@ -765,7 +774,7 @@ function customDictionaryDraftSource() {
 }
 
 function renderCustomDictionaryControls() {
-  const busy = importing || updating || removing || committing || customLoading || customSaving || backingUp;
+  const busy = importing || installingRecommended || updating || removing || committing || customLoading || customSaving || backingUp;
   const source = element("custom-dictionary-source");
   source.disabled = busy || !customEditorLoaded;
   element("custom-dictionary-save").disabled = busy
@@ -972,7 +981,7 @@ function renderUpdateControls() {
   element("update-last-checked").textContent = checked !== null && !Number.isNaN(checked.getTime())
     ? `Last checked ${checked.toLocaleString()}.`
     : "Never checked.";
-  const busy = updating || importing || removing || committing || customSaving || backingUp;
+  const busy = updating || importing || installingRecommended || removing || committing || customSaving || backingUp;
   element("update-all").disabled = busy || availableUpdates().length === 0;
   element("update-check-now").disabled = busy;
   schedule.disabled = busy || updateSettings.revision < 0;
@@ -1046,7 +1055,7 @@ function renderRecommendedActions() {
 }
 
 function setControlsDisabled(disabled) {
-  const blocked = disabled || removing || updating || customSaving || backingUp;
+  const blocked = disabled || installingRecommended || removing || updating || customSaving || backingUp;
   const importBlocked = blocked || committing;
   element("import-file").disabled = importBlocked;
   element("import-drop-zone").setAttribute("aria-disabled", String(importBlocked));
@@ -2239,50 +2248,41 @@ async function importArchive(request, index, total, label, started) {
   return false;
 }
 
-async function importRecommendedDictionary(entry, index, total) {
-  const started = Date.now();
-  const tick = () => {
-    const elapsed = elapsedSince(started);
-    setImportState(
-      `Downloading ${entry.name} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsed} elapsed`,
-      "busy",
-    );
-    updateImportResult(index, { text: `Downloading… ${elapsed} elapsed`, progress: { value: null } });
-  };
-  tick();
-  const ticker = setInterval(tick, 1000);
-  if (sharingLinkedAddress !== null) {
-    clearInterval(ticker);
-    return importArchive({ sourceId: entry.sourceId, archiveUrl: entry.downloadUrl, fileName: entry.archiveName }, index, total, entry.name, started);
+function renderRecommendedInstallation() {
+  const { run, failed, pending } = recommendedInstallation;
+  const wasInstalling = installingRecommended;
+  installingRecommended = !failed && (run?.finished === false || pending?.installing === true);
+  setControlsDisabled(importing);
+  if (failed || importing) return;
+  if (!run?.runId) {
+    if (wasInstalling) setImportState("Installation was interrupted. Retry missing dictionaries.", "error");
+    return;
   }
-  try {
-    const response = await fetch(entry.downloadUrl, { credentials: "omit" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const file = new File([await response.blob()], entry.archiveName, { type: "application/zip" });
-    clearInterval(ticker);
-    return await importFile(
-      file,
-      index,
-      total,
-      { sourceId: entry.sourceId, finalUrl: response.url },
-      entry.name,
-      started,
-    );
-  } catch (error) {
-    updateImportResult(index, {
-      text: `Download failed after ${importDuration(started)}: ${describe(error)}`,
-      tone: "error",
-    });
-    return false;
-  } finally {
-    clearInterval(ticker);
+  if (renderedInstallRun !== run.runId) {
+    renderedInstallRun = run.runId;
+    clearImportResults();
+    setImportEntries(run.entries.map(entry => {
+      const source = RECOMMENDED_DICTIONARIES.find(source => source.sourceId === entry.sourceId);
+      return { id: entry.sourceId, name: source?.name ?? entry.sourceId, purpose: source?.description ?? "" };
+    }));
   }
+  for (const entry of run.entries) importProgressView().update(entry.sourceId, installEntryState(entry));
+  const failedCount = run.entries.filter(entry => entry.phase === "failed").length;
+  const complete = run.entries.filter(entry => ["installed", "already-installed", "failed"].includes(entry.phase)).length;
+  const total = run.entries.length;
+  const label = total === 1 ? "recommended dictionary" : "recommended dictionaries";
+  if (run.finished) {
+    setImportState(`Finished ${total} of ${total} ${label} — ${total - failedCount} imported, ${failedCount} failed.`,
+      failedCount ? "error" : "ready");
+    if (wasInstalling) void reloadDictionaries().then(refreshStatus);
+  } else {
+    setImportState(`Installing recommended dictionaries — ${complete} of ${total} complete. You can close this page.`, "busy");
+  }
+  renderRecommendedActions();
 }
 
 async function runImportBatch(items, importOne, singular, plural, describeItem) {
-  if (importing) {
+  if (importing || installingRecommended) {
     return;
   }
   importing = true;
@@ -2367,14 +2367,10 @@ function bindImportDropZone(file) {
 
 function installMissingRecommendedDictionaries() {
   const missing = missingRecommendedDictionaries();
-  if (missing.length > 0) {
-    void runImportBatch(
-      missing,
-      importRecommendedDictionary,
-      "recommended dictionary",
-      "recommended dictionaries",
-      (entry) => ({ name: entry.name, purpose: entry.description }),
-    );
+  if (missing.length > 0 && !importing && !installingRecommended) {
+    installingRecommended = true;
+    setControlsDisabled(importing);
+    void recommendedInstallation.request(missing.map(entry => entry.sourceId));
   }
 }
 
@@ -2842,6 +2838,9 @@ function attachHandlers() {
   });
 
   chrome.storage.onChanged.addListener(handleStorageChange);
+  chrome.runtime.onMessage?.addListener(recommendedInstallation.receive);
+  window.addEventListener("pagehide", recommendedInstallation.stop);
+  window.addEventListener("pageshow", event => { if (event.persisted) void recommendedInstallation.request(); });
 }
 
 function dictionaryNameIsBeingEdited() {
@@ -3023,6 +3022,7 @@ async function start() {
   renderOptions();
   renderUpdateControls();
   await refreshStatus();
+  void recommendedInstallation.request();
 }
 
 start();
