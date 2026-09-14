@@ -5,6 +5,32 @@ import "../extension/reader-options.js";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { buildAnkiFields } from "../extension/anki-values.js";
 
+function testIndex(resolve = async () => []) {
+  const find = async (config, expression, invoke) => {
+    const value = await resolve(config, expression, invoke);
+    const result = Array.isArray(value) ? { noteIds: value } : value;
+    return {
+      wordKey: expression,
+      mature: result?.mature === true,
+      noteIds: [...new Set(result?.noteIds ?? [])].sort((left, right) => left - right),
+      cached: false,
+    };
+  };
+  return {
+    source: async config => {
+      const fields = config.fieldTemplates === null
+        ? [config.fields.expression].filter(Boolean)
+        : Object.entries(config.fieldTemplates).filter(([, template]) => /^\{expression\}$/iu.test(template.value))
+          .map(([field]) => field);
+      return fields.length ? { key: "test", model: config.model, fields: fields.map(field => field.toLowerCase()) } : null;
+    },
+    lookup: find,
+    repair: find,
+    async recordWrite() {},
+    async has() { return false; },
+  };
+}
+
 function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
   const calls = [], audioRequests = [];
   let fields = overwrite ? { Front: "猫", Audio: "pronunciation[sound:checked.wav]" } : undefined;
@@ -29,6 +55,7 @@ function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
     throw new Error(`Unexpected ${action}`);
   } };
   const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+    duplicateIndex: testIndex(() => overwrite ? [12] : []),
     readDictionaries: async () => [{ title: "A", path: "/dicts/generation/A", enabled: true }],
     engine: async message => { calls.push(message.type); return { generation, ready: true, loading: false }; },
     offscreen: async message => {
@@ -241,6 +268,7 @@ function captureFixture({
   };
   const service = createAnkiWorkerService({
     gateway,
+    duplicateIndex: testIndex(() => duplicate ? [44] : []),
     readOptions: async () => {
       if (stopDuringFinalConfigRead && uploads === Object.keys(assets).length) captureAvailable = false;
       return options;
@@ -623,6 +651,7 @@ test("a mining screenshot is held until the note is written, then stored under i
       return params.filename;
     } };
   const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+    duplicateIndex: testIndex(() => /duplicate/iu.test(check.error ?? "") ? [12] : []),
     readDictionaries: async () => [], engine: async () => ({ generation: 3, ready: true, loading: false }),
     offscreen: async message => (message.type === "hd_anki_audio" ? { filename: "", data: "" } : {
       fields: Object.fromEntries(Object.entries(message.templates).map(([field, template]) =>
@@ -741,7 +770,7 @@ test("pronunciation enrichment keeps a failed or replaced screenshot unavailable
     let fields = overwrite ? { Front: "猫", Back: "preserved" } : undefined;
     const updates = [];
     const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic",
-      duplicateBehavior: overwrite ? "overwrite" : "prevent", duplicateScope: "collection",
+      duplicateBehavior: overwrite ? "overwrite" : "prevent", duplicateScope: "model",
       fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
         Back: { value: `${overwrite ? "preserved" : ""}{screenshot}{audio}`, overwriteMode: "overwrite" } } } });
     const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
@@ -765,6 +794,7 @@ test("pronunciation enrichment keeps a failed or replaced screenshot unavailable
       throw new Error(`Unexpected ${action}`);
     } };
     const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+      duplicateIndex: testIndex(() => overwrite ? [12] : []),
       readDictionaries: async () => [], engine: async () => ({ generation: 3, ready: true, loading: false }),
       offscreen: async message => message.type === "hd_anki_audio" ? { filename: "checked.wav", data: "YXVkaW8=" }
         : { fields: await buildAnkiFields(message.request, message.templates, { audio: message.audio }), media: [] },

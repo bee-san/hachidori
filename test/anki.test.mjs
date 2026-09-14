@@ -13,15 +13,36 @@ test("global Anki configuration validates complete mappings and duplicate polici
   assert.equal(defaults.deck, "Default");
   assert.equal(defaults.model, "");
   assert.equal(defaults.url, "http://127.0.0.1:8765");
-  assert.equal(defaults.checkForDuplicates, true);
+  assert.equal(defaults.duplicateScope, "model");
+  assert.equal(Object.hasOwn(defaults, "checkForDuplicates"), false);
+  assert.equal(Object.hasOwn(defaults, "duplicateScopeCheckAllModels"), false);
   const value = config({ model: "日本語", tags: Array.from({ length: 300 }, (_, i) => `tag${i}`),
-    fields: { ...defaults.fields, expression: "日本語".repeat(300) }, duplicateScope: "deck-root", duplicateBehavior: "new" });
+    fields: { ...defaults.fields, expression: "日本語".repeat(300) }, duplicateScope: "deck", duplicateBehavior: "new" });
   assert.deepEqual(validateOptionsPatch({ anki: value }), { anki: value });
   assert.deepEqual(normaliseOptions({ anki: value }).anki, value);
   for (const bad of [null, [], { ...value, model: 42 }, { ...value, fields: {} },
-    { ...value, tags: [false] }, { ...value, duplicateScope: "profile" }, { ...value, checkForDuplicates: "yes" }]) {
+    { ...value, tags: [false] }, { ...value, duplicateScope: "profile" }]) {
     assert.throws(() => validateOptionsPatch({ anki: bad }));
   }
+  assert.equal(normaliseOptions({ anki: {
+    ...value,
+    duplicateScope: "collection",
+    duplicateScopeCheckAllModels: false,
+  } }).anki.duplicateScope, "model");
+  assert.equal(normaliseOptions({ anki: {
+    ...value,
+    duplicateScope: "collection",
+    duplicateScopeCheckAllModels: true,
+  } }).anki.duplicateScope, "all");
+  assert.equal(normaliseOptions({ anki: {
+    ...value,
+    duplicateScope: "deck-root",
+  } }).anki.duplicateScope, "deck");
+  assert.equal(normaliseOptions({ anki: {
+    ...value,
+    checkForDuplicates: false,
+    duplicateBehavior: "overwrite",
+  } }).anki.duplicateBehavior, "new");
 });
 
 test("Anki discovery defaults to localhost and fixes the envelope, reads lists concurrently and retains field order", async () => {

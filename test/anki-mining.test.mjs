@@ -5,6 +5,32 @@ import "../extension/reader-options.js";
 import { createAnkiMiningService } from "../extension/anki-mining.js";
 import { createAnkiGateway } from "../extension/anki.js";
 
+function testIndex(resolve = async () => []) {
+  const find = async (config, expression, invoke) => {
+    const value = await resolve(config, expression, invoke);
+    const result = Array.isArray(value) ? { noteIds: value } : value;
+    return {
+      wordKey: expression,
+      mature: result?.mature === true,
+      noteIds: [...new Set(result?.noteIds ?? [])].sort((left, right) => left - right),
+      cached: false,
+    };
+  };
+  return {
+    source: async config => {
+      const fields = config.fieldTemplates === null
+        ? [config.fields.expression].filter(Boolean)
+        : Object.entries(config.fieldTemplates).filter(([, template]) => /^\{expression\}$/iu.test(template.value))
+          .map(([field]) => field);
+      return fields.length ? { key: "test", model: config.model, fields: fields.map(field => field.toLowerCase()) } : null;
+    },
+    lookup: find,
+    repair: find,
+    async recordWrite() {},
+    async has() { return false; },
+  };
+}
+
 function fixture() {
   let config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
     fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front", definition: "Back" } };
@@ -25,6 +51,7 @@ function fixture() {
     },
   };
   const dependencies = { gateway, readConfig: async () => config,
+    duplicateIndex: testIndex(() => exists ? [123] : []),
     buildFields: async request => ({ fields: { Front: request.expression, Back: "cat" } }), beforeWrite: async () => {}, enrich: async () => [] };
   const service = createAnkiMiningService(dependencies);
   return { service, gateway, calls, dependencies, get discovers() { return discovers; },
@@ -70,6 +97,7 @@ test("endpoint changes invalidate mining readiness and bind duplicates, media, w
     return { ok: true, json: async () => ({ result, error: null }) };
   } });
   const service = createAnkiMiningService({ gateway, readConfig: async () => config,
+    duplicateIndex: testIndex(),
     buildFields: async () => ({ fields: { Front: "猫", Back: "cat" } }),
     beforeWrite: async ({ invoke }) => {
       await invoke("storeMediaFile", { filename: "capture.wav", data: "YQ==" }, 30_000);
@@ -99,6 +127,26 @@ test("endpoint changes invalidate mining readiness and bind duplicates, media, w
   assert.equal(currentRequests.find(request => request.action === "guiBrowse").params.query, "nid:27");
 });
 
+test("View in Anki uses cached IDs directly and repairs a partially stale row without inspecting fields", async () => {
+  const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+    fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front" } };
+  const calls = [];
+  const service = createAnkiMiningService({
+    gateway: { async invoke(action, params) {
+      calls.push({ action, params });
+      assert.equal(action, "guiBrowse");
+      return calls.length === 1 ? [7] : [8, 9];
+    } },
+    readConfig: async () => config,
+    duplicateIndex: testIndex(() => [8, 9]),
+  });
+  await service.browse({ expression: "猫", noteIds: [7, 8] });
+  assert.deepEqual(calls, [
+    { action: "guiBrowse", params: { query: "nid:7,8" } },
+    { action: "guiBrowse", params: { query: "nid:8,9" } },
+  ]);
+});
+
 test("submissions recheck inside one queue so stale cross-tab preflight cannot add a second prevented note", async () => {
   const f = fixture();
   const { configKey } = await f.service.status();
@@ -110,7 +158,7 @@ test("submissions recheck inside one queue so stale cross-tab preflight cannot a
   assert.equal(second.state, "duplicate");
   assert.deepEqual(second.noteIds, [123]);
   assert.equal(f.calls.filter(action => action === "addNote").length, 1);
-  assert.equal(f.calls.filter(action => action === "canAddNotesWithErrorDetail").length, 3);
+  assert.equal(f.calls.filter(action => action === "canAddNotesWithErrorDetail").length, 2);
   assert.equal(f.discovers, 3, "each mutation refreshes authoritative model fields");
 });
 
@@ -201,7 +249,7 @@ test("the screenshot requirement follows the configured mapping and the Settings
 test("a coalesced screenshot remains prepared when the overwrite target disappears before writing", async () => {
   for (const unavailable of [false, true]) {
     const f = fixture();
-    f.change({ duplicateBehavior: "overwrite", duplicateScope: "collection", fieldTemplates: {
+    f.change({ duplicateBehavior: "overwrite", duplicateScope: "model", fieldTemplates: {
       Front: { value: "{expression}", overwriteMode: "overwrite" },
       Back: { value: "{screenshot}", overwriteMode: "coalesce" },
     } });
@@ -219,6 +267,7 @@ test("a coalesced screenshot remains prepared when the overwrite target disappea
       return invoke(action, params);
     };
     const service = createAnkiMiningService({ ...f.dependencies,
+      duplicateIndex: testIndex(() => targetPresent ? [42] : []),
       buildFields: async request => ({ fields: { Front: "猫", Back: request.screenshot
         ? `<img src="${request.screenshot.filename}">` : "" } }),
       beforeWrite: async () => { preparations++; } });
@@ -261,6 +310,7 @@ test("overwrite leaves preserved fields out of the mutation when Anki changes du
     assert.fail(`Unexpected ${action}`);
   };
   const service = createAnkiMiningService({ ...f.dependencies,
+    duplicateIndex: testIndex(() => [123]),
     buildFields: async () => ({ fields: { Front: "猫", Keep: "incoming", Fill: "incoming", Fallback: "", Back: "cat" } }),
     beforeWrite: async () => {
       // Anki stays editable while Hachidori prepares media for the write.

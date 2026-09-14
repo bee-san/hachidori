@@ -25,7 +25,8 @@ import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
 import { ankiSetupFamily } from "../extension/anki-setup.js";
-import { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache } from "../extension/anki-maturity-cache.js";
+import { lookupAnkiIndex } from "../extension/anki-index.js";
+import { ANKI_INDEX_ALARM, ANKI_INDEX_KEY, ankiIndexConfigurationChange, createAnkiDuplicateIndex } from "../extension/anki-index-cache.js";
 import { backupEngineScenarios } from "./backup-engine-scenarios.mjs";
 import { assertBackupSnapshot, backupRevisions } from "../extension/backup-state.js";
 import { createBackupDownloads } from "../extension/backup-downloads.js";
@@ -776,7 +777,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ detectAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
-    .replace(/^import .* from "\.\/anki-maturity-cache\.js";\s*/gmu, "")
+    .replace(/^import .* from "\.\/anki-index(?:-cache)?\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/external-links\.js";\s*/u, "")
     .replace(/import "\.\/dictionary-group-state\.js";\s*/u, "")
@@ -799,7 +800,13 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   // A browser install shares by default; a socket that never opens keeps the
   // host's retry timer and alarm out of stages that fake timers or count alarms.
   sandbox.WebSocket ??= class { constructor(url) { this.url = url; this.readyState = 0; } send() {} close() {} };
-  Object.assign(sandbox, { ANKI_MATURITY_ALARM, ANKI_MATURITY_CACHE_KEY, ankiMaturityConfigurationChange, createAnkiMaturityCache });
+  Object.assign(sandbox, {
+    ANKI_INDEX_ALARM,
+    ANKI_INDEX_KEY,
+    ankiIndexConfigurationChange,
+    createAnkiDuplicateIndex,
+    lookupAnkiIndex,
+  });
   const context = createContext(sandbox);
   context.globalThis = context;
   runInContext(
@@ -1944,7 +1951,7 @@ async function firstRunAnkiStage() {
       && savedOptions.anki.fieldTemplates.SentenceAudio.value === ""
       && savedOptions.anki.fieldTemplates.Picture.value === "{screenshot}"
       && Object.keys(savedOptions.anki.fieldTemplates).length === KIKU_FIELDS.length
-      && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([["options", "setupState"]])
+      && JSON.stringify(found.storage.sets.slice(writesBefore)) === JSON.stringify([[ANKI_INDEX_KEY, "options", "setupState"]])
       && first.state.revision === 5,
     JSON.stringify({ first, second, actions, savedOptions, sets: found.storage.sets.slice(writesBefore) }));
 
@@ -2172,15 +2179,17 @@ async function ankiBackgroundStage() {
     target: "hoshidicts-worker", type: "hd_options_write", baseRevision, options,
   });
   const enabled = await writeCacheOptions(0, { definitionBlurAnkiMature: true, anki: commit.options.anki });
-  const enabledCache = structuredClone(cacheStorage.raw.get(ANKI_MATURITY_CACHE_KEY));
+  const enabledIndex = structuredClone(cacheStorage.raw.get(ANKI_INDEX_KEY));
   const disabled = await writeCacheOptions(enabled.options.revision, { definitionBlurAnkiMature: false });
-  const disabledCache = cacheStorage.raw.get(ANKI_MATURITY_CACHE_KEY);
+  const disabledIndex = cacheStorage.raw.get(ANKI_INDEX_KEY);
   const optionsCommits = cacheStorage.sets.filter(keys => keys.includes("options"));
-  check("Anki maturity options and their invalidation revision commit atomically before storage events",
-    enabled.ok && disabled.ok && enabledCache.configurationRevision === 1 && disabledCache.configurationRevision === 2
-      && disabledCache.attempt === null && optionsCommits.length === 2
-      && optionsCommits.every(keys => keys.length === 2 && keys.includes(ANKI_MATURITY_CACHE_KEY)),
-    JSON.stringify({ enabledCache, disabledCache, optionsCommits }));
+  check("Anki index source invalidation commits atomically while blur-only changes retain the same rows",
+    enabled.ok && disabled.ok && enabledIndex.configurationRevision === 1
+      && disabledIndex.configurationRevision === 1
+      && optionsCommits.length === 2
+      && optionsCommits[0].length === 2 && optionsCommits[0].includes(ANKI_INDEX_KEY)
+      && optionsCommits[1].length === 1,
+    JSON.stringify({ enabledIndex, disabledIndex, optionsCommits }));
 }
 
 async function backupRelayStage() {
