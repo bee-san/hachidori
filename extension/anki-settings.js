@@ -152,12 +152,16 @@ export function createAnkiSettingsController({ document, readConfig, editConfig,
 
   function renderStatus(config, resolved) {
     const status = element("anki-status");
-    const errors = ankiAvailability(config, discovery, resolved);
+    // A URL/API-key/model edit retires the old discovery immediately. Its
+    // fields no longer match `resolved`, and must not be rendered while the
+    // replacement request (or a linked host-side save) is still pending.
+    const currentDiscovery = discoveryKey === connectionKey(config) ? discovery : null;
+    const errors = ankiAvailability(config, currentDiscovery, resolved);
     let state = "Not connected";
-    if (discovery?.connected) state = errors.length ? "Connected · configuration needs attention" : "Connected · configuration ready";
+    if (currentDiscovery?.connected) state = errors.length ? "Connected · configuration needs attention" : "Connected · configuration ready";
     const message = loading ? "Checking AnkiConnect…" : [state, ...errors].join("\n");
     const invalid = !loading && errors.length > 0;
-    const tone = loading ? "working" : invalid ? "error" : discovery?.connected ? "ready" : undefined;
+    const tone = loading ? "working" : invalid ? "error" : currentDiscovery?.connected ? "ready" : undefined;
     setStatusOutput(status, message, tone);
     if (element("anki-refresh").disabled !== loading) element("anki-refresh").disabled = loading;
   }

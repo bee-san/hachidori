@@ -318,8 +318,13 @@ test("a stale preset response or intervening mapping edit cannot overwrite the c
 
 test("AnkiConnect URL commits on change, retains invalid drafts and ignores old endpoint responses", async t => {
   const f = fixture(t);
-  f.controller.render();
+  f.adopt({ model: "A", fieldTemplates: {
+    Front: { value: "{expression}", overwriteMode: "coalesce" },
+    Back: { value: "{definition}", overwriteMode: "coalesce" },
+  } });
   const old = f.sent[0];
+  discovery(old);
+  await tick();
   const url = f.el("opt-anki-url");
   url.focus();
   url.value = "http://";
@@ -337,6 +342,9 @@ test("AnkiConnect URL commits on change, retains invalid drafts and ignores old 
   assert.equal(f.read().url, "https://anki.example.test:8766/connect");
   assert.equal(f.sent.length, 2);
   assert.equal(f.sent[1].url, f.read().url);
+  assert.equal(f.el("anki-status").classList.contains("is-working"), true);
+  assert.doesNotMatch(f.el("anki-status").textContent, /configuration ready/u,
+    "the retired endpoint's fields must not be paired with the new endpoint");
   discovery(f.sent[1], { models: ["New endpoint"] });
   await tick();
   discovery(old, { models: ["Old endpoint"] });

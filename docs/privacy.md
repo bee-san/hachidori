@@ -59,15 +59,19 @@ audio servers are supported; use HTTPS for services on other computers. Browser
 speech uses your selected browser/operating-system voice, which may be provided
 by an online service. If active Media capture is used to attach that speech to
 Anki, its transient shared-audio PCM is read locally and only the mined WAV is
-sent to the configured AnkiConnect endpoint. Hachidori does not guarantee that
-every voice works offline or that every selected share captures browser speech.
+sent to the configured AnkiConnect endpoint. When linked, mining requests to URL
+audio providers are made by the host (`localhost` means the host computer), but
+browser speech is still produced and recorded in the reading browser; only its
+final WAV crosses the relay. Hachidori does not guarantee that every voice works
+offline or that every selected share captures browser speech.
 
 **Anki.** Hachidori communicates with the AnkiConnect URL in Anki settings,
 defaulting to `http://127.0.0.1:8765` on your computer. If you configure another
 server, it receives the metadata requests, API key and selected note content.
 When this browser is linked to another Hachidori, that host makes these
 requests with its own saved URL and API key; the linked browser's endpoint is
-not used as a fallback.
+not used as a fallback. Anki Settings discovery also runs on the host after
+pending linked settings have been saved there.
 After you start setup, it reads note-type, deck and collection metadata to suggest
 configuration. Opening the Anki settings section also reads configuration
 metadata. Hachidori refreshes a local duplicate index every 30 minutes for the
@@ -76,9 +80,10 @@ matching note is mature, and matching note IDs; it does not store note fields,
 note-type names, deck names or card data. A missing word triggers a scoped
 Anki lookup during mining and a found result repairs the local index. Mature-card
 definition blur reads only that index. These reads and checks do not create
-notes. Explicit mining sends the content selected by your field mappings, such
-as a word, definition, sentence, page title, image or audio, and creates or
-updates a note according to your settings.
+notes. A linked browser suspends its own duplicate-index refresh and alarm; the
+host owns duplicate and maturity checks. Explicit mining sends the content
+selected by your field mappings, such as a word, definition, sentence, page
+title, image or audio, and creates or updates a note according to your settings.
 Any later Anki synchronization is controlled by Anki and your Anki configuration.
 
 **Texthookers.** Optional media-capture texthookers receive text and timing from
@@ -104,11 +109,11 @@ turns it off. A browser linked to a shared Hachidori sends the text it looks up
 and its settings, presentation and personal-dictionary edits to that Hachidori,
 and keeps a mirror of its settings, personal entries and lookup counts until it
 unlinks. An explicit mining action also sends its selected note context and
-final screenshot or captured AVIF/WAV bytes through the relay. The host
-validates them and performs availability checks, duplicate checks, generation
-validation, media uploads, note writes and browsing through the host's
-AnkiConnect configuration. Endpoint credentials included in a linked request
-are ignored.
+final screenshot, captured AVIF/WAV, or browser-speech WAV bytes through the
+relay. The host validates them and performs Settings discovery, availability
+checks, duplicate checks, generation validation, media uploads, note writes and
+browsing through the host's AnkiConnect configuration. Endpoint credentials
+included in a linked request are ignored.
 
 **Links and styling.** Activating a link in a dictionary opens the URL supplied
 by that dictionary. Custom toolbar links open the URL template you configured,

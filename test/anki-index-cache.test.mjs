@@ -104,6 +104,24 @@ test("cold maturity checks stay cache-only while one refresh supplies every late
   assert.equal(f.lookups.length, 0, "an unrelated absent word must not query Anki for maturity");
 });
 
+test("suspending drains an admitted refresh, clears its alarm, and blocks local pulls until resume", async () => {
+  const f = fixture(), hold = f.hold();
+  const refresh = f.service.reconcile();
+  while (!f.refreshes.length) await new Promise(resolve => setImmediate(resolve));
+  let suspended = false;
+  const suspension = f.service.suspend().then(() => { suspended = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(suspended, false);
+  hold.resolve();
+  await Promise.all([refresh, suspension]);
+  assert.equal(f.alarms.has(ANKI_INDEX_ALARM), false);
+  f.due();
+  await f.service.reconcile();
+  assert.equal(f.refreshes.length, 1);
+  await f.service.resume();
+  assert.equal(f.refreshes.length, 2);
+});
+
 test("warm hits return sorted note IDs without Anki, while an absent word is never negatively cached", async () => {
   const f = fixture();
   await f.service.reconcile();

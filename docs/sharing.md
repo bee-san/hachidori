@@ -107,13 +107,18 @@ After linking, the page reloads, and from then on:
 - this browser's own dictionary state, settings, personal source, update
   schedule and lookup counts are kept aside untouched, and its engine keeps
   reading and committing them, so no local dictionary file is ever removed;
-- Anki availability, preflight, generation validation, duplicate checks,
-  writes and browsing use the host's AnkiConnect URL, API key, deck and note
-  type. The linked browser never falls back to its own Anki;
+- Anki Settings discovery, availability, preflight, generation validation,
+  duplicate checks, writes and browsing use the host's AnkiConnect URL, API
+  key, deck and note type. The linked browser never falls back to its own Anki,
+  and its duplicate-index refresh is suspended while linked;
 - a mining screenshot and explicitly selected capture clip still come from the
   linked browser's page or capture session. Immediately before submission it
   sends the final JPEG/AVIF/WAV bytes to the host, which validates and uploads
   them as part of its ordinary queued Anki transaction;
+- browser text-to-speech is planned by the host but verified and recorded with
+  the linked browser's own voice and capture session. Only that final WAV is
+  sent; URL pronunciation providers run on the host, so their `localhost`
+  addresses refer to the host computer;
 - the Import and Backup sections show that archives and backups belong to the
   host; recommended dictionaries can still be installed from here.
 
@@ -128,7 +133,16 @@ Sharing actions from multiple Settings tabs run in order, including the initial
 connection probe. Repeating **Link** keeps the original local snapshot; repeating
 **Unlink** keeps the first successful restoration. A failed restoration retains
 the saved state for retry, and late messages from the old connection cannot
-overwrite restored settings or personal entries.
+overwrite restored settings or personal entries. Link waits for Anki work that
+already began under the old role—including local media export for a linked
+submission—and for an admitted duplicate-index refresh; Unlink also waits for
+the linked transaction it is retiring. New Anki requests wait for either
+transition. Restarting a linked browser restores that role before local Anki or
+update alarms can run. Switching to another host fails requests owned by the old
+connection instead of leaving them hung. Each host worker also gives mining
+requests a host-specific configuration key, so a result from another host, the
+local browser or a pre-restart worker is rejected even if its generation number
+and Anki settings happen to match.
 
 The sharing browser and Anki must be running for a linked browser to look
 anything up: when they are not, lookups fail with *The linked Hachidori is not
@@ -148,14 +162,15 @@ runtime needs nothing beyond the WebSocket.
 - Note appends, settings and presentation edits, update checks and installs,
   recommended-dictionary installs and removals made in a linked browser, which
   the host commits through its ordinary revisioned transactions;
-- Anki status, preflight, duplicate and generation checks, note writes and
-  browsing. Endpoint credentials supplied by a linked request are ignored;
-  only the host's saved Anki configuration is used.
+- Anki Settings discovery, status, preflight, duplicate and generation checks,
+  note writes and browsing. Endpoint credentials supplied by a linked request
+  are ignored; only the host's saved Anki configuration is used.
 
-Local-file imports and backups happen on the host. Pronunciation and external
-links run in each browser. Screenshot and continuous-capture ownership stays
-in the reading browser, while their explicitly submitted final media and the
-complete Anki transaction go through the host.
+Local-file imports and backups happen on the host. Pronunciation playback and
+external links run in each browser. During mining, URL pronunciation providers
+run on the host while browser speech, screenshots and continuous-capture
+ownership stay in the reading browser. Their explicitly submitted final media
+and the complete Anki transaction go through the host.
 
 ## The relay
 

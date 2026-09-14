@@ -71,3 +71,21 @@ test("a capability-gated request reports whether its frame was sent", async () =
   await assert.rejects(pending, /not reachable/u);
   assert.equal(sent, true);
 });
+
+test("switching linked hosts rejects requests and connection waiters owned by the old address", async () => {
+  const { client, socket } = await linked([LINKED_ANKI_CAPABILITY]);
+  const request = client.forward({
+    target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "lookup", text: "猫",
+  });
+  client.link("ws://127.0.0.1:9000/link");
+  await assert.rejects(request, /not reachable/u);
+  assert.equal(socket.readyState, 3);
+  assert.equal(Socket.instances.at(-1).url, "ws://127.0.0.1:9000/link");
+
+  const waiting = client.forward({
+    target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "waiting", text: "犬",
+  });
+  client.link("ws://127.0.0.1:9001/link");
+  await assert.rejects(waiting, /not reachable/u);
+  assert.equal(Socket.instances.at(-1).url, "ws://127.0.0.1:9001/link");
+});

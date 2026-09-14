@@ -163,7 +163,9 @@ export function createSharingHost({
     }
     socket = next;
     listeningPort = null;
-    next.onmessage = (event) => onRelayMessage(String(event.data));
+    next.onmessage = (event) => {
+      if (socket === next) onRelayMessage(String(event.data));
+    };
     next.onclose = () => {
       if (socket !== next) return;
       socket = null;

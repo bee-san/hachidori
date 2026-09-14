@@ -2040,7 +2040,9 @@ target through `relayEngineRequest`, `handleWorkerRequest`,
 a synthetic sender; the reply goes back verbatim, including its `requestId`.
 The Anki dispatcher accepts only status, preflight, submit, browse and maturity
 operations, rebuilds the operation-specific request shape, and never admits an
-endpoint URL, API key or screenshot-capture operation from the client. Every
+endpoint URL, API key or screenshot-capture operation from the client. Settings
+discovery has a separate allowlist: the client may name the prospective note
+type, while the host reads its own saved URL and API key. Every
 `chrome.storage.onChanged` batch touching
 `dictionaryState`, `options`, `customDictionarySource`, `dictionaryUpdates`,
 `lookupStats` or a `lookupStats:` row is broadcast whole, so a linked browser
@@ -2065,7 +2067,15 @@ install's own five shared values are kept in `sharingLocalState`, the host's
 snapshot takes their place under the live keys, and the engine's
 `hd_state_read` / `hd_state_cas` / `hd_custom_read` / `hd_custom_cas` are served
 from that kept record, so no local generation is judged against the mirror.
-Update-alarm and maturity-cache reconciliation clear their alarms while linked.
+Before publishing a new linked route, the worker drains Anki operations admitted
+under the old role—including a linked submission still exporting or transmitting
+client media—and the duplicate-index refresh, then suspends that index. Unlink
+drains the same transaction before restoring local routing. Requests arriving
+during either transition wait for its result. Update-alarm and duplicate-index
+reconciliation clear their alarms while linked, including after a service-worker
+restart; saved sharing state is restored before either startup reconciliation
+runs. Switching hosts also rejects requests and connection waiters owned by the
+retired socket instead of leaving them pending.
 Unlinking restores the kept values with `max(kept, mirrored) + 1` revisions and
 removes the host's `lookupStats:` rows. The local-only `sharing` key holds
 `{ host: { enabled, port, network } | null, client: { address } | null }` and
@@ -2089,17 +2099,28 @@ offers to use it; that link then advances setup to `complete`. See
 
 Linked Anki mining is split at the browser boundary. The reading browser keeps
 `hd_anki_screenshot`/discard and its capture session local, while
-`hd_anki_status`, preflight, submit, browse and maturity go to the host. Just
-before submit, its singleton Anki worker exports the pending screenshot and
-ready capture job into an internal `clientMedia` envelope. The envelope carries
-the screenshot token/name/JPEG bytes and the capture job ID, warnings and final
-AVIF/WAV names, declared lengths and bytes. Both ends validate the request-bound
-names, base64, the 6 MiB JPEG, 4 MiB AVIF and 1 MiB WAV limits; the complete
-UTF-8 submit frame is limited to 16 MiB. The host passes the validated envelope
-to the same singleton Anki worker used by local pages, preserving its mutation
-queue, host-engine generation checks and host-only AnkiConnect configuration.
+Settings discovery, `hd_anki_status`, preflight, submit, browse and maturity go
+to the host. A browser-speech source is planned against the host's mirrored
+configuration but verified and recorded with the reading browser's selected
+voice and capture session. Just before submit, the reading browser's singleton
+Anki worker exports that final speech WAV, the pending screenshot and the ready
+capture job into an internal `clientMedia` envelope. The envelope carries the
+screenshot token/name/JPEG bytes; capture job ID, warnings and final AVIF/WAV
+assets; and the speech source identity, canonical filename, declared length and
+WAV bytes. Both ends validate the request-bound identities and names, base64,
+the 6 MiB JPEG, 4 MiB AVIF and 1 MiB WAV limits; the complete UTF-8 submit frame
+is limited to 16 MiB. The host passes the validated envelope to the same
+singleton Anki worker used by local pages, preserving its mutation queue,
+host-engine generation checks and host-only AnkiConnect configuration. URL
+pronunciation providers, dictionary media and AnkiConnect requests run from the
+host; `localhost` in those configured URLs therefore means the host machine.
 External media follows the ordinary upload/write/readback path, but the host
-does not consult or complete its own capture session.
+does not consult or complete its own capture session. Status wraps the ordinary
+Anki configuration digest in a host-worker-specific key; preflight and submit
+must return that exact wrapper before the host restores the internal digest.
+Consequently, a result from local Anki, another sharing host or an earlier host
+worker cannot pass through coincident generation numbers and identical Anki
+settings.
 
 A confirmed add/update makes the reading browser discard its screenshot and
 complete its capture job; a definitive duplicate, invalid or failed host reply

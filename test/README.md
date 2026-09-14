@@ -96,7 +96,7 @@ them.
 test/anki-client-media.test.mjs test/sharing-settings.test.mjs
 test/anki-addon.test.mjs` checks the sharing wire contract (addresses as a
 person types them, browser names, capability negotiation, the forwarding and
-Anki allowlists, frame and client-media limits). The relay's raw-socket,
+Anki allowlists, host switching, frame and client-media limits). The relay's raw-socket,
 archive, paused-peer, ordered large-frame, shutdown and optional Anki Desktop
 checks live in
 [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test).
@@ -111,7 +111,10 @@ failure feedback, and retry. `anki-addon.test.mjs` checks the pinned GitHub
 URL, binary preservation, and HTTP/network errors. The extension smoke suite's
 sharing-host and sharing-client stages cover the service worker's side,
 including hosting that waits for dictionaries, the network exchange, linking
-that turns hosting off and a linked install's kept state.
+that turns hosting off, a linked install's kept state, draining old-role Anki
+work before the route changes, linked Settings discovery, local media/TTS
+ownership, host-specific mining keys, duplicate-index suspension and restart
+ordering.
 
 `node test/chrome-sharing.mjs` launches two real Chromes: the host imports
 the fixture, handles a simulated HTTP 503 add-on download, and retries the
@@ -124,7 +127,7 @@ Hachidori and links with one click, looks a word up through the link, writes
 an option and a personal entry that the host commits and pushes back, then
 mines a client-coloured real JPEG through a mocked host AnkiConnect while a
 separate healthy client endpoint remains unused. It also checks host generation
-rejection, browsing and Anki unavailability, loses the host when it closes and
+rejection, Settings discovery, browsing and Anki unavailability, loses the host when it closes and
 reconnects when it relaunches, unlinks back to its own empty state, and links
 again through this machine's network address (the machine needs one beyond
 loopback) until the host stops sharing on the network. Two Settings tabs then
@@ -740,7 +743,9 @@ stale cached-ID inspection. It also rejects malformed partial Anki replies.
 checks warm hits without Anki, miss repair without negative rows, a second
 zero-request hit, immediate post-write updates, forced stale replacement,
 30-minute full refreshes, retained snapshots through failures, worker restart
-and cache-only maturity membership. The offscreen service test verifies that
+and cache-only maturity membership. It also verifies that linked-role
+suspension drains an admitted refresh, clears its alarm and blocks further
+local pulls until resume. The offscreen service test verifies that
 the refresh worker returns only compact rows and terminates after success or
 failure. These focused suites never contact an Anki collection.
 

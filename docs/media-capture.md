@@ -18,6 +18,12 @@ voice at mining time and attach its WAV to Anki. This does not reuse the pinned
 sentence clip. A downloadable pronunciation source remains the fallback when
 speech is not captured.
 
+When linked to another Hachidori, the host chooses the browser-speech source
+from its saved mining configuration, but the reading browser verifies its own
+voice and shared-audio capture and records the exact WAV locally. Transient PCM
+never crosses the relay; only the final bounded WAV accompanies the submission
+to the host.
+
 ## Setup
 
 1. Open **Settings → Media capture**.

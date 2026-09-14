@@ -86,7 +86,7 @@ const CHECKS = [
   "the second browser's startup page offers the shared Hachidori, and one click links it and completes setup",
   "an options edit made on the linked browser is committed by the host and pushed back",
   "a personal dictionary save made on the linked browser lands in the host's source and answers lookups",
-  "the linked browser captures locally and mines through the host's AnkiConnect, rejects stale results, and never falls back locally",
+  "the linked browser discovers and mines through the host while capture stays local, stale results fail, and local Anki stays unused",
   "closing the host fails linked lookups, and relaunching it reconnects the linked browser by itself",
   "unlinking restores the linked browser's own empty state",
   "sharing with other computers lets the second browser link through this computer's network address, and turning it off disconnects it",

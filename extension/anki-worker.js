@@ -377,7 +377,7 @@ export function createAnkiWorkerService({
     const sources = options.audioSources.filter(source => source.enabled);
     const source = sources.find(candidate => candidate.id === plan.sourceId
       && JSON.stringify(candidate) === plan.sourceKey
-      && candidate.type.startsWith("text-to-speech"));
+      && typeof candidate.type === "string" && candidate.type.startsWith("text-to-speech"));
     if (!source) throw new Error("The browser-speech source changed. Check Audio Settings and try again.");
     if (request.audioSelection !== undefined
         && (request.audioSelection?.sourceId !== source.id || request.audioSelection.sourceKey !== plan.sourceKey)) {

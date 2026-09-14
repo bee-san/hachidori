@@ -56,8 +56,9 @@ the service worker and both engine runtimes run the same code.
   `anki-glossary.js`, `anki-resources.js` and `anki-audio.js` build the note
   fields and media; `anki-duplicates.js` and `anki-enrichment.js` handle a
   note that already exists; `anki-digest.js` hashes media.
-  `anki-client-media.js` validates final media crossing a linked-browser
-  boundary. `anki-mining.js` and `anki-worker.js` are the mining service in the
+  `anki-client-media.js` validates final screenshot, capture and browser-speech
+  media crossing a linked-browser boundary. `anki-mining.js` and
+  `anki-worker.js` are the mining service in the
   service worker. `anki-index.js` and `anki-index-cache.js` provide the shared
   scoped duplicate and maturity index. `anki-offscreen.js` launches
   `anki-index-worker.js` for complete refreshes without moving note fields

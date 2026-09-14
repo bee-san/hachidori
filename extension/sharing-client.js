@@ -229,6 +229,9 @@ export function createSharingClient({ WebSocket, applyBatch, version, name, capa
     probe,
     forward,
     link(next) {
+      const failure = new Error(NOT_REACHABLE);
+      rejectPending(failure);
+      settleWaiting(failure);
       address = next;
       error = null;
       attempt = 0;
