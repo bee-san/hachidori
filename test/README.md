@@ -117,7 +117,9 @@ including hosting that waits for dictionaries, the network exchange, linking
 that turns hosting off, a linked install's kept state, draining old-role Anki
 work before the route changes, linked Settings discovery/setup checks, local
 media/TTS ownership, host-specific mining keys, duplicate-index suspension and
-restart ordering.
+restart ordering. The focused sharing-client checks also pin link generations:
+an unsent edit cannot move to a replacement host, an already-sent write reports
+an unknown outcome, and an obsolete reply cannot settle the new link's request.
 
 `node test/chrome-sharing.mjs` launches two real Chromes: the host imports
 the fixture, handles a simulated HTTP 503 add-on download, and retries the

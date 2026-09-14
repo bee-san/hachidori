@@ -5,7 +5,8 @@ import {
   DEFAULT_SHARING_PORT, LINKED_ANKI_CAPABILITY, MAX_LINKED_ANKI_FRAME_BYTES,
   allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest,
   assertLinkedAnkiFrame, browserName,
-  formatHostAddress, formatLinkAddress, forwardableRequest, parseClientFrame, parseHostFrame,
+  formatHostAddress, formatLinkAddress, forwardableRequest, mutatingForwardedRequest,
+  parseClientFrame, parseHostFrame,
   parseLinkAddress,
 } from "../extension/sharing-protocol.js";
 
@@ -52,6 +53,30 @@ test("only host-owned plain-message requests forward; screenshots and blob impor
   assert.equal(forwardableRequest({ target: "hoshidicts-offscreen", type: "hd_import", blobUrl: "blob:x" }), false);
   assert.equal(forwardableRequest({ target: "hoshidicts-offscreen", type: "hd_import", archiveUrl: "https://example.com/a.zip" }), true);
   assert.equal(forwardableRequest(null), false);
+});
+
+test("forwarded mutations are classified at the protocol boundary", () => {
+  assert.equal(mutatingForwardedRequest({
+    target: "hoshidicts-worker", type: "hd_options_write",
+  }), true);
+  assert.equal(mutatingForwardedRequest({
+    target: "hoshidicts-offscreen", type: "hd_import", archiveUrl: "https://example.com/a.zip",
+  }), true);
+  assert.equal(mutatingForwardedRequest({
+    target: "hachidori-updates", type: "hd_updates_check",
+  }), true);
+  assert.equal(mutatingForwardedRequest({
+    target: "hachidori-anki", type: "hd_anki_submit",
+  }), true);
+  assert.equal(mutatingForwardedRequest({
+    target: "hoshidicts-offscreen", type: "hd_lookup",
+  }), false);
+  assert.equal(mutatingForwardedRequest({
+    target: "hachidori-anki", type: "hd_anki_preflight",
+  }), false);
+  assert.equal(mutatingForwardedRequest({
+    target: "unknown", type: "hd_options_write",
+  }), false);
 });
 
 test("frames are validated on both sides", () => {

@@ -140,7 +140,11 @@ the linked transaction it is retiring. New Anki requests wait for either
 transition, and duplicate-index alarms or settings changes wait for it before
 deciding whether local Anki is active. Restarting a linked browser restores that
 role before local Anki or update alarms can run. Switching to another host fails
-requests owned by the old connection instead of leaving them hung. Each host
+requests owned by the old connection instead of leaving them hung or sending
+them to the replacement. A write whose frame was already sent reports that its
+outcome is unknown and is never retried automatically; a write still waiting
+for the old connection is safe to retry. Replies and storage batches from an
+obsolete link generation are ignored. Each host
 worker also gives mining and browse requests a host-specific configuration key,
 so a result or note ID from another host, the local browser, a pre-restart
 worker or an older host Anki configuration is rejected even if its generation
