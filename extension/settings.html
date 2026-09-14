@@ -818,7 +818,7 @@
             <button id="media-open-capture" type="button" class="primary-button">Open capture controls</button>
           </div>
           <div class="options-feedback-slot"></div>
-          <output id="media-runtime-status" class="anki-status" aria-live="polite">
+          <output id="media-runtime-status" class="operational-status" aria-live="polite" aria-atomic="true">
             Capture is stopped.
           </output>
           <p class="section-note">
@@ -936,7 +936,7 @@
           </div>
           <div class="options-feedback-slot"></div>
           <div class="anki-connection-summary">
-            <output id="anki-status" class="anki-status" aria-live="polite">Open Anki to discover your decks and note types.</output>
+            <output id="anki-status" class="operational-status" aria-live="polite" aria-atomic="true">Open Anki to discover your decks and note types.</output>
             <p class="field-hint">Requires the <a href="https://ankiweb.net/shared/info/2055492159" target="_blank" rel="noopener noreferrer">AnkiConnect add-on</a> in Anki.</p>
           </div>
           <fieldset class="lookup-group">
@@ -1001,7 +1001,7 @@
             <h1 id="sharing-heading" tabindex="-1" data-search-keywords="share link other browser computer Tailscale network relay Anki add-on addon port address">Sharing</h1>
             <p class="hint">Use one Hachidori from all your browsers, on this computer and on your other computers. Anki carries the connection.</p>
           </div>
-          <output id="sharing-status" class="anki-status" aria-live="polite"></output>
+          <output id="sharing-status" class="operational-status" aria-live="polite" aria-atomic="true"></output>
           <fieldset class="lookup-group" id="sharing-host">
             <legend>Share this Hachidori</legend>
             <p class="field-hint">Your other browsers then use this Hachidori’s dictionaries, personal entries, lookup counts and settings instead of their own. Anki carries the connection: install the Hachidori Relay add-on once and keep Anki open.</p>

@@ -4943,11 +4943,25 @@ async function checkAnkiSettings(page, browser) {
     const persisted = await page.evaluate(async () => ({
       anki: (await chrome.storage.local.get("options")).options.anki,
       status: await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }),
+      statusCard: (() => {
+        const node = document.getElementById("anki-status");
+        const style = getComputedStyle(node);
+        return {
+          display: style.display,
+          fontSize: Number.parseFloat(style.fontSize),
+          marker: getComputedStyle(node, "::before").content,
+          ready: node.classList.contains("is-ready"),
+          height: node.getBoundingClientRect().height,
+        };
+      })(),
     }));
     check("Anki configuration persists through reload without reloading the dictionary engine",
       persisted.anki.deck === "Japanese" && persisted.anki.model === "Japanese"
         && persisted.anki.fields.expression === "Expression" && persisted.anki.fields.audio === "Audio"
-        && persisted.status.generation === original.status.generation, JSON.stringify(persisted));
+        && persisted.status.generation === original.status.generation
+        && persisted.statusCard.display === "grid" && persisted.statusCard.fontSize >= 16
+        && persisted.statusCard.marker.includes("✓") && persisted.statusCard.ready
+        && persisted.statusCard.height >= 56, JSON.stringify(persisted));
     await page.select("#anki-preset", "kiku");
     await page.click("#anki-apply-preset");
     await saved();
@@ -8523,6 +8537,10 @@ async function main() {
           };
           const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
             .filter((control) => control.checkVisibility());
+          const statusId = { media: "media-runtime-status", anki: "anki-status" }[section];
+          const status = statusId ? document.getElementById(statusId) : null;
+          const statusRect = status?.getBoundingClientRect();
+          const statusStyle = status ? getComputedStyle(status) : null;
           return { theme, section, width: innerWidth,
             selectedTheme: document.documentElement.dataset.hoshidictsTheme,
             taskVisible: panel.querySelector("h1").checkVisibility() && document.getElementById(primary[section]).checkVisibility(),
@@ -8531,6 +8549,9 @@ async function main() {
               const rect = control.getBoundingClientRect();
               return rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth + 1;
             }),
+            statusFits: status === null || (status.checkVisibility() && statusStyle.display === "grid"
+              && Number.parseFloat(statusStyle.fontSize) >= 16 && statusRect.left >= 0 && statusRect.right <= innerWidth + 1
+              && getComputedStyle(status, "::before").content !== "none"),
           };
         }, { theme, section }));
       }
@@ -8606,7 +8627,7 @@ async function main() {
       && narrowThemes.every(({ theme, noOverflow, fieldsFit, statusExposed }) =>
         ["light", "default"].includes(theme) && noOverflow && fieldsFit && statusExposed)
       && themeLayouts.every((layout) => layout.selectedTheme === layout.theme
-        && layout.taskVisible && layout.noOverflow && layout.controlsFit)
+        && layout.taskVisible && layout.noOverflow && layout.controlsFit && layout.statusFits)
       && themePalettes.every((theme) => theme.selectedTheme === theme.expectedTheme && theme.palette
         && theme.scheme === theme.paletteScheme && theme.stylesheet
         && theme.textContrast >= 4.5 && theme.controlContrast >= 3),
