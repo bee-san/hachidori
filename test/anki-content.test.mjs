@@ -141,6 +141,32 @@ test("successful Add remains successful after a refresh failure and a second cli
   assert.equal(submitted, 1);
 });
 
+test("a host-planned browser-speech request is carried only into the matching submission", async t => {
+  const clientSpeech = {
+    sourceId: "default-tts",
+    sourceKey: "saved-source",
+    expression: "猫",
+    reading: "",
+  };
+  let submitted;
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_submit") {
+      submitted = request;
+      return { state: "added", noteId: 12, warnings: [] };
+    }
+    return request.term.expression === "猫"
+      ? { state: "addable", canAdd: true, clientSpeech }
+      : { state: "addable", canAdd: true };
+  });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  f.items[0].add.click();
+  await until(() => f.items[0].add.dataset.state === "success");
+  assert.deepEqual(submitted.clientSpeech, clientSpeech);
+});
+
 test("late preflight cannot expose retired controls and an uncertain write opens Anki instead of retrying", async t => {
   const held = Promise.withResolvers();
   let pending = true, writes = 0;

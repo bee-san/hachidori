@@ -51,6 +51,7 @@ export function createAnkiWorkerService({
 }) {
   const confirmedCaptureUploads = new Map();
   const linkedClientMedia = new WeakMap();
+  const linkedClientPreflights = new WeakSet();
 
   function isLinkedSubmission(request) {
     return linkedClientMedia.has(request);
@@ -62,8 +63,18 @@ export function createAnkiWorkerService({
       throw new Error("The dictionary generation changed or is being updated. Look up this result again before adding it.");
     }
   }
-  const audio = (request, config, { recordSpeech = true } = {}) => offscreen({ type: "hd_anki_audio", term: request.term,
-    selection: request.audioSelection, sources: config.audioSources, recordSpeech });
+  const audio = (request, config, { recordSpeech = true } = {}) => {
+    const clientSpeech = linkedClientMedia.get(request)?.speech;
+    return offscreen({
+      type: "hd_anki_audio",
+      term: request.term,
+      selection: request.audioSelection,
+      sources: config.audioSources,
+      recordSpeech,
+      ...(linkedClientPreflights.has(request) ? { clientSpeechProbe: true } : {}),
+      ...(clientSpeech ? { clientSpeech } : {}),
+    });
+  };
   const render = (request, templates, audio, resources) => offscreen({ type: "hd_anki_fields", request, templates, audio,
     dictionaryPaths: resources.dictionaryPaths });
 
@@ -247,6 +258,7 @@ export function createAnkiWorkerService({
         const prepared = await audio(request, current.config, { recordSpeech: !preflight });
         if (prepared?.recordingRequired === true) {
           if (!preflight) throw new Error("Browser text-to-speech was not recorded for this note.");
+          if (prepared.clientSpeech) resources.clientSpeech = prepared.clientSpeech;
           resources.deferDuplicateCheck = true;
         }
         else {
@@ -262,6 +274,24 @@ export function createAnkiWorkerService({
     validateCapture,
     beforeWrite: prepareCapture,
     beforeMutation,
+    preflightExtra: async ({ request, prepared, applied }) => {
+      if (!linkedClientPreflights.has(request)) return {};
+      if (prepared.resources.clientSpeech) return { clientSpeech: prepared.resources.clientSpeech };
+      if (prepared.resources.audioPrepared || !applied
+          || !Object.values(applied.templates).some(template =>
+            ankiTemplateMarkerNames(template.value).includes("audio"))
+          || prepared.config.audioSources.length === 0) return {};
+      try {
+        const planned = await audio(request, prepared.config, { recordSpeech: false });
+        return planned?.recordingRequired === true && planned.clientSpeech
+          ? { clientSpeech: planned.clientSpeech }
+          : {};
+      } catch {
+        // Non-first-field pronunciation remains best-effort. Submission will
+        // report the ordinary warning if no configured source is available.
+        return {};
+      }
+    },
     afterConfirmed: completeCapture,
     afterRejected: releaseScreenshot,
     duplicateIndex,
@@ -327,6 +357,64 @@ export function createAnkiWorkerService({
     }
   }
 
+  async function preflightClient(request) {
+    linkedClientPreflights.add(request);
+    try {
+      return await mining.preflight(request);
+    } finally {
+      linkedClientPreflights.delete(request);
+    }
+  }
+
+  async function resolveClientSpeech(request, recordSpeech) {
+    const plan = request?.clientSpeech;
+    if (!plan || typeof plan !== "object" || Array.isArray(plan)
+        || typeof request.term?.expression !== "string" || typeof request.term.reading !== "string"
+        || plan.expression !== request.term.expression || plan.reading !== request.term.reading) {
+      throw new Error("The linked browser-speech request is invalid or stale.");
+    }
+    const options = await readOptions();
+    const sources = options.audioSources.filter(source => source.enabled);
+    const source = sources.find(candidate => candidate.id === plan.sourceId
+      && JSON.stringify(candidate) === plan.sourceKey
+      && candidate.type.startsWith("text-to-speech"));
+    if (!source) throw new Error("The browser-speech source changed. Check Audio Settings and try again.");
+    if (request.audioSelection !== undefined
+        && (request.audioSelection?.sourceId !== source.id || request.audioSelection.sourceKey !== plan.sourceKey)) {
+      throw new Error("The selected pronunciation changed before browser speech could be recorded.");
+    }
+    const file = await offscreen({
+      type: "hd_anki_audio",
+      term: request.term,
+      selection: request.audioSelection,
+      sources: [source],
+      recordSpeech,
+    });
+    if (!recordSpeech) {
+      if (file?.recordingRequired !== true) {
+        throw new Error("Browser text-to-speech preflight returned an unexpected result.");
+      }
+      return { available: true };
+    }
+    const byteLength = decodedBase64Length(file?.data);
+    if (file?.sourceId !== source.id || typeof file.filename !== "string"
+        || byteLength === null || byteLength < 1) {
+      throw new Error("Browser text-to-speech produced no transferable WAV data.");
+    }
+    return {
+      sourceId: plan.sourceId,
+      sourceKey: plan.sourceKey,
+      expression: plan.expression,
+      reading: plan.reading,
+      filename: file.filename,
+      byteLength,
+      data: file.data,
+    };
+  }
+
+  const clientSpeech = request => resolveClientSpeech(request, true);
+  const preflightClientSpeech = request => resolveClientSpeech(request, false);
+
   // The reading browser owns these bytes. Export them only when submission is
   // about to cross the sharing socket, without consulting its local engine or
   // Anki endpoint.
@@ -362,6 +450,7 @@ export function createAnkiWorkerService({
         assets,
       };
     }
+    if (request?.clientSpeech) value.speech = await clientSpeech(request);
     return validateLinkedAnkiClientMedia(request, value);
   }
 
@@ -377,7 +466,8 @@ export function createAnkiWorkerService({
     return { settled: true };
   }
 
-  return { ...mining, submit: submitRequest, submitClient, clientMedia, settleClientMedia,
+  return { ...mining, preflightClient, preflightClientSpeech, submit: submitRequest, submitClient,
+    clientMedia, settleClientMedia,
     screenshot, discardScreenshot, async maturity(request) {
     try {
       const options = await readOptions();

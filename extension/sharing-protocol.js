@@ -124,6 +124,7 @@ const MINING_REQUEST_FIELDS = [
   "term", "trace", "generation", "sentence", "matchOffset", "matched", "popupSelectionText",
   "searchQuery", "documentTitle", "audioSelection", "capturePin", "dictionaryAliases",
   "frequencyDictionaries", "configKey", "screenshot", "captureJobId", "captureUnavailable",
+  "clientSpeech",
 ];
 
 function selectedFields(value, fields) {
@@ -155,6 +156,25 @@ export function allowLinkedAnkiRequest(message) {
   return message.type === "hd_anki_submit"
     ? { ...base, request, clientMedia: message.clientMedia }
     : { ...base, request };
+}
+
+// Settings discovery is a worker request rather than a mining request. The
+// linked browser may choose a prospective note type, but its endpoint and API
+// key never cross the host boundary.
+export function allowLinkedAnkiDiscoveryRequest(message) {
+  if (!message || typeof message !== "object" || message.target !== "hoshidicts-worker"
+      || message.type !== "hd_anki_discover" || typeof message.model !== "string"
+      || message.model.length > 4096) {
+    throw new Error("unsupported linked Anki discovery request");
+  }
+  const requestId = typeof message.requestId === "string" || Number.isFinite(message.requestId)
+    ? message.requestId : null;
+  return {
+    target: "hoshidicts-worker",
+    type: "hd_anki_discover",
+    requestId,
+    model: message.model,
+  };
 }
 
 // A frame a client sends to the host.

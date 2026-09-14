@@ -2,10 +2,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  CAPTURE_LIMITS, MAX_LINKED_SCREENSHOT_BYTES, decodedBase64Length, validateLinkedAnkiClientMedia,
+  CAPTURE_LIMITS, MAX_LINKED_SCREENSHOT_BYTES, MAX_LINKED_SPEECH_BYTES,
+  decodedBase64Length, validateLinkedAnkiClientMedia,
 } from "../extension/anki-client-media.js";
 
 const SCREENSHOT = "hachidori-screenshot-123e4567-e89b-42d3-a456-426614174000.jpg";
+const SPEECH = `hachidori_${"a".repeat(64)}.wav`;
+const speechPlan = {
+  sourceId: "default-tts",
+  sourceKey: JSON.stringify({ id: "default-tts", enabled: true, type: "text-to-speech-reading", url: "", voice: "" }),
+  expression: "猫",
+  reading: "ねこ",
+};
 const request = () => ({
   screenshot: { token: "screen-token", filename: SCREENSHOT },
   captureJobId: "job-1",
@@ -14,6 +22,7 @@ const request = () => ({
     audioFilename: "hachidori-abc123.wav",
   },
   captureUnavailable: [],
+  clientSpeech: speechPlan,
 });
 const envelope = () => ({
   screenshot: { token: "screen-token", filename: SCREENSHOT, data: "/9j/2Q==" },
@@ -25,9 +34,10 @@ const envelope = () => ({
       audio: { filename: "hachidori-abc123.wav", byteLength: 1, data: "Aw==" },
     },
   },
+  speech: { ...speechPlan, filename: SPEECH, byteLength: 4, data: "UklGRg==" },
 });
 
-test("linked screenshot and AVIF/WAV bytes are allowlisted against their request", () => {
+test("linked screenshot, captured media and browser-speech WAV bytes are allowlisted against their request", () => {
   assert.equal(decodedBase64Length("AQI="), 2);
   assert.equal(decodedBase64Length("Aw=="), 1);
   assert.equal(decodedBase64Length("not base64"), null);
@@ -45,6 +55,12 @@ test("missing, stale, malformed and mismatched linked media is rejected", () => 
   const malformed = envelope();
   malformed.capture.assets.audio.data = "***=";
   assert.throws(() => validateLinkedAnkiClientMedia(request(), malformed), /audio.*invalid/u);
+  const staleSpeech = envelope();
+  staleSpeech.speech.sourceId = "other";
+  assert.throws(() => validateLinkedAnkiClientMedia(request(), staleSpeech), /browser-speech.*stale/u);
+  const notWav = envelope();
+  notWav.speech.data = "AQIDBA==";
+  assert.throws(() => validateLinkedAnkiClientMedia(request(), notWav), /browser-speech.*invalid/u);
   const notJpeg = envelope();
   notJpeg.screenshot.data = "AQI=";
   assert.throws(() => validateLinkedAnkiClientMedia(request(), notJpeg), /screenshot.*invalid/u);
@@ -59,6 +75,7 @@ test("missing, stale, malformed and mismatched linked media is rejected", () => 
 test("linked media enforces the screenshot, AVIF and WAV byte limits", () => {
   const screenshot = request();
   delete screenshot.captureJobId;
+  delete screenshot.clientSpeech;
   const screenshotMedia = {
     screenshot: {
       token: "screen-token",
@@ -74,6 +91,7 @@ test("linked media enforces the screenshot, AVIF and WAV byte limits", () => {
   for (const kind of ["animation", "audio"]) {
     const value = request();
     delete value.screenshot;
+    delete value.clientSpeech;
     value.captureUnavailable = kind === "animation" ? ["audio"] : ["animation"];
     const bytes = Buffer.alloc(CAPTURE_LIMITS[kind] + 1);
     const media = { capture: { jobId: "job-1", warnings: [], assets: {
@@ -85,14 +103,28 @@ test("linked media enforces the screenshot, AVIF and WAV byte limits", () => {
     } } };
     assert.throws(() => validateLinkedAnkiClientMedia(value, media), new RegExp(`${kind}.*size limit`, "u"));
   }
+
+  const speech = request();
+  delete speech.screenshot;
+  delete speech.captureJobId;
+  const bytes = Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(MAX_LINKED_SPEECH_BYTES)]);
+  const media = { speech: {
+    ...speechPlan,
+    filename: SPEECH,
+    byteLength: bytes.byteLength,
+    data: bytes.toString("base64"),
+  } };
+  assert.throws(() => validateLinkedAnkiClientMedia(speech, media), /browser-speech.*size limit/u);
 });
 
 test("unavailable capture outputs may be omitted without inventing media", () => {
   const value = request();
   delete value.screenshot;
+  delete value.clientSpeech;
   value.captureUnavailable = ["audio"];
   const media = envelope();
   delete media.screenshot;
+  delete media.speech;
   delete media.capture.assets.audio;
   assert.deepEqual(validateLinkedAnkiClientMedia(value, media), media);
 });

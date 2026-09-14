@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_SHARING_PORT, LINKED_ANKI_CAPABILITY, MAX_LINKED_ANKI_FRAME_BYTES,
-  allowLinkedAnkiRequest, assertLinkedAnkiFrame, browserName, formatHostAddress, formatLinkAddress,
-  forwardableRequest, parseClientFrame, parseHostFrame, parseLinkAddress,
+  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, assertLinkedAnkiFrame, browserName,
+  formatHostAddress, formatLinkAddress, forwardableRequest, parseClientFrame, parseHostFrame,
+  parseLinkAddress,
 } from "../extension/sharing-protocol.js";
 
 test("link addresses take a host, host:port or a ws:// URL, and say where that is", () => {
@@ -121,6 +122,25 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
   assert.throws(() => allowLinkedAnkiRequest({
     target: "hachidori-anki", type: "hd_anki_screenshot", requestId: "capture",
   }), /unsupported linked Anki request/u);
+  assert.deepEqual(allowLinkedAnkiDiscoveryRequest({
+    target: "hoshidicts-worker",
+    type: "hd_anki_discover",
+    requestId: "discover-1",
+    model: "Basic",
+    url: "https://client.invalid/anki",
+    apiKey: "client-secret",
+  }), {
+    target: "hoshidicts-worker",
+    type: "hd_anki_discover",
+    requestId: "discover-1",
+    model: "Basic",
+  });
+  assert.throws(() => allowLinkedAnkiDiscoveryRequest({
+    target: "hoshidicts-worker", type: "hd_anki_discover", model: null,
+  }), /unsupported linked Anki discovery request/u);
+  assert.throws(() => allowLinkedAnkiDiscoveryRequest({
+    target: "hoshidicts-worker", type: "hd_anki_discover", model: "x".repeat(4097),
+  }), /unsupported linked Anki discovery request/u);
 });
 
 test("linked Anki submissions have one 16 MiB UTF-8 frame limit", () => {

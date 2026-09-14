@@ -733,6 +733,11 @@ try {
   // operation must still use the host's endpoint and key.
   await setLocalAnkiEndpoint(startup, clientAnki.url, "client-secret");
   const clientEndpoint = (await stored(startup, ["options"])).options.anki;
+  const ankiDiscovery = await message(clientPage, "hoshidicts-worker", "hd_anki_discover", {
+    model: "Basic",
+    url: clientAnki.url,
+    apiKey: "client-secret",
+  });
   const miningLookup = await lookup(clientPage);
   if (!miningLookup?.ok || !miningLookup.results?.length) {
     throw new Error(`the linked Anki fixture lookup failed: ${miningLookup?.error}`);
@@ -806,6 +811,10 @@ try {
   const centre = screenshotProof?.centre ?? [];
   check(CHECKS[5],
     mirroredAnki.url === hostAnki.url && clientEndpoint.url === clientAnki.url
+      && ankiDiscovery?.ok === true && ankiDiscovery.connected === true
+      && JSON.stringify(ankiDiscovery.decks) === JSON.stringify(["Default"])
+      && JSON.stringify(ankiDiscovery.models) === JSON.stringify(["Basic"])
+      && JSON.stringify(ankiDiscovery.fields) === JSON.stringify(["Front", "Back", "Picture"])
       && ankiStatus?.ok === true && ankiStatus.available === true && typeof ankiStatus.configKey === "string"
       && preflight?.ok === true && preflight.state === "addable" && preflight.canAdd === true && preflight.screenshot === true
       && captured?.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(captured.filename ?? "")
@@ -827,6 +836,7 @@ try {
       mirroredUrl: mirroredAnki.url,
       clientUrl: clientEndpoint.url,
       status: ankiStatus,
+      discovery: ankiDiscovery,
       preflight,
       captured: { ok: captured?.ok, filename: captured?.filename },
       submitted,

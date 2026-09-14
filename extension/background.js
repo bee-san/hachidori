@@ -9,8 +9,8 @@ import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
 import { SHARING_HOST_ALARM, SHARING_KEY, createSharingHost } from "./sharing-host.js";
 import { SHARING_LOCAL_STATE_KEY, createSharingClient } from "./sharing-client.js";
 import {
-  FORWARDED_REQUESTS, LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, allowLinkedAnkiRequest,
-  browserName, forwardableRequest, parseLinkAddress,
+  FORWARDED_REQUESTS, LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED,
+  allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, browserName, forwardableRequest, parseLinkAddress,
 } from "./sharing-protocol.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, assertLookupStatsDescriptor, assertLookupStatsRows, emptyLookupStats, incrementLookupStats, lookupStatsKey, lookupStatsPrefix, normaliseLookupTerm } from "./lookup-stats.js";
 import "./external-links.js";
@@ -155,6 +155,11 @@ const OVERLAY_OPTIONS_STORAGE_KEYS = [OPTIONS_KEY, DICTIONARY_STATE_KEY, SHARING
 
 function engineSender(sender) {
   return sender?.id === chrome.runtime.id && sender.url === chrome.runtime.getURL(OFFSCREEN_DOCUMENT);
+}
+
+function ankiSettingsSender(sender) {
+  return sender?.id === chrome.runtime.id
+    && sender.url?.split(/[?#]/u)[0] === chrome.runtime.getURL("settings.html");
 }
 
 // While linked, this install's own engine keeps reading and committing the
@@ -817,7 +822,7 @@ const WORKER_HANDLERS = {
   },
 
   async hd_anki_discover(message, sender) {
-    if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
+    if (!ankiSettingsSender(sender)) {
       throw new Error("Anki discovery is available only from Hachidori Settings");
     }
     if (typeof message.model !== "string" || typeof message.apiKey !== "string") {
@@ -2066,7 +2071,14 @@ async function handleAnkiRequest(message, sender) {
     if (message.type === "hd_anki_submit") return submitToLinkedAnki(message);
     if (["hd_anki_status", "hd_anki_preflight", "hd_anki_browse"].includes(message.type)) {
       try {
-        return await getSharingClient().forward(message, { capability: LINKED_ANKI_CAPABILITY });
+        const reply = await getSharingClient().forward(message, { capability: LINKED_ANKI_CAPABILITY });
+        if (message.type === "hd_anki_preflight" && reply?.ok !== false && reply?.clientSpeech) {
+          await getAnkiMining().preflightClientSpeech({
+            ...message.request,
+            clientSpeech: reply.clientSpeech,
+          });
+        }
+        return reply;
       } catch (error) {
         if (message.type === "hd_anki_status" && describe(error) === LINKED_ANKI_UNSUPPORTED) {
           return workerReply(message, { available: false, configKey: "", error: LINKED_ANKI_UNSUPPORTED });
@@ -2151,6 +2163,9 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
     // Only the screenshot needs to know which page asked, and it is given the
     // capture rather than the sender, so nothing else can capture a tab.
     if (message.type === "hd_anki_screenshot") return service.screenshot(() => captureSenderViewport(sender));
+    if (linkedClient && message.type === "hd_anki_preflight") {
+      return service.preflightClient(message.request);
+    }
     if (linkedClient && message.type === "hd_anki_submit") {
       return service.submitClient(message.request, message.clientMedia);
     }
@@ -2311,6 +2326,17 @@ async function handleWorkerRequest(message, sender) {
     return failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`));
   }
   await sharingReady;
+  if (sharingLinked && type === "hd_anki_discover") {
+    try {
+      if (!ankiSettingsSender(sender)) {
+        throw new Error("Anki discovery is available only from Hachidori Settings");
+      }
+      const allowed = allowLinkedAnkiDiscoveryRequest(message);
+      return await getSharingClient().forward(allowed, { capability: LINKED_ANKI_CAPABILITY });
+    } catch (error) {
+      return failureReply(message, error);
+    }
+  }
   // The host owns the lookup-count rows a linked engine would otherwise prune.
   if (sharingLinked && type === "hd_lookup_stats_cleanup") return workerReply(message, {});
   if (type === "hd_options_write") {
@@ -2381,7 +2407,14 @@ async function dispatchSharedRequest(message, clientId) {
   try {
     switch (message.target) {
       case TARGET: return await relayEngineRequest(message);
-      case WORKER_TARGET: return await handleWorkerRequest(message, sender);
+      case WORKER_TARGET:
+        if (message.type === "hd_anki_discover") {
+          const allowed = allowLinkedAnkiDiscoveryRequest(message);
+          ankiGateway ??= createAnkiGateway();
+          const options = await readAnkiOptions();
+          return workerReply(allowed, await ankiGateway.discover({ ...options.anki, model: allowed.model }));
+        }
+        return await handleWorkerRequest(message, sender);
       case UPDATE_TARGET: return await handleUpdatesRequest(message);
       case SETUP_TARGET: return await handleRecommendedInstall(message, sender, true);
       case "hachidori-anki": return await answerAnkiRequest(allowLinkedAnkiRequest(message), sender, true);

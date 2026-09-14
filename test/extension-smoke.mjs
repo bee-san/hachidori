@@ -1178,7 +1178,15 @@ async function sharingHostStage() {
   const hostAnkiCalls = [];
   const hostAnkiService = {
     status() { hostAnkiCalls.push(["status"]); return { available: true, configKey: "host-config" }; },
-    preflight(request) { hostAnkiCalls.push(["preflight", structuredClone(request)]); return { state: "addable", canAdd: true }; },
+    preflightClient(request) {
+      hostAnkiCalls.push(["preflightClient", structuredClone(request)]);
+      return { state: "addable", canAdd: true, clientSpeech: {
+        sourceId: "default-tts",
+        sourceKey: "host-source",
+        expression: request.term.expression,
+        reading: request.term.reading,
+      } };
+    },
     submitClient(request, clientMedia) {
       hostAnkiCalls.push(["submitClient", structuredClone(request), structuredClone(clientMedia)]);
       return { state: "added", noteId: 71, warnings: [] };
@@ -1315,7 +1323,7 @@ async function sharingHostStage() {
       && ankiPreflight.response?.state === "addable" && ankiSubmit.response?.state === "added"
       && ankiBrowse.response?.opened === true && ankiMaturity.response?.mature === true
       && hostScreenshot.response?.ok === false && /unsupported linked Anki request/u.test(hostScreenshot.response.error)
-      && JSON.stringify(hostAnkiCalls.map(call => call[0])) === JSON.stringify(["status", "preflight", "submitClient", "browse", "maturity"])
+      && JSON.stringify(hostAnkiCalls.map(call => call[0])) === JSON.stringify(["status", "preflightClient", "submitClient", "browse", "maturity"])
       && submitted?.[1]?.url === undefined && submitted?.[1]?.apiKey === undefined && submitted?.[1]?.anki === undefined
       && submitted?.[1]?.term?.expression === "猫" && JSON.stringify(submitted?.[2]) === JSON.stringify({}),
     JSON.stringify({ ankiStatus, ankiPreflight, ankiSubmit, ankiBrowse, ankiMaturity, hostScreenshot, hostAnkiCalls }));
@@ -1397,9 +1405,19 @@ async function sharingClientStage() {
     },
     clientMedia(request) {
       localAnkiCalls.push(["clientMedia", structuredClone(request)]);
-      return request?.screenshot
-        ? { screenshot: { ...request.screenshot, data: "AQI=" } }
-        : {};
+      return {
+        ...(request?.screenshot ? { screenshot: { ...request.screenshot, data: "AQI=" } } : {}),
+        ...(request?.clientSpeech ? { speech: {
+          ...request.clientSpeech,
+          filename: `hachidori_${"a".repeat(64)}.wav`,
+          byteLength: 4,
+          data: "UklGRg==",
+        } } : {}),
+      };
+    },
+    preflightClientSpeech(request) {
+      localAnkiCalls.push(["preflightClientSpeech", structuredClone(request)]);
+      return { available: true };
     },
     settleClientMedia(request, state) {
       localAnkiCalls.push(["settleClientMedia", structuredClone(request), state]);
@@ -1555,9 +1573,16 @@ async function sharingClientStage() {
     configKey: "host-config",
     screenshot: localScreenshot,
   };
+  const linkedSpeech = {
+    sourceId: "default-tts",
+    sourceKey: "host-source",
+    expression: "猫",
+    reading: "ねこ",
+  };
   const ankiStatus = await askLinkedAnki("hd_anki_status", {}, { available: true, configKey: "host-config" });
   const ankiPreflight = await askLinkedAnki("hd_anki_preflight", { request: linkedRequest },
-    { state: "addable", canAdd: true });
+    { state: "addable", canAdd: true, clientSpeech: linkedSpeech });
+  linkedRequest.clientSpeech = ankiPreflight.reply.clientSpeech;
   const screenshot = await send("hd_anki_screenshot", { request: {} }, "hachidori-anki");
   const requestsBeforeSubmit = socket.requests().length;
   const ankiSubmit = await askLinkedAnki("hd_anki_submit", { request: linkedRequest },
@@ -1568,6 +1593,7 @@ async function sharingClientStage() {
     { mature: true });
   const rejectedRequest = { ...linkedRequest, term: { expression: "犬", reading: "いぬ" } };
   delete rejectedRequest.screenshot;
+  delete rejectedRequest.clientSpeech;
   const beforeRejected = socket.requests().length;
   const rejecting = send("hd_anki_submit", { request: rejectedRequest }, "hachidori-anki");
   await settle(() => socket.requests().length > beforeRejected);
@@ -1586,6 +1612,12 @@ async function sharingClientStage() {
       && ankiSubmit.forwarded.message.type === "hd_anki_submit"
       && JSON.stringify(ankiSubmit.forwarded.message.clientMedia) === JSON.stringify({
         screenshot: { ...localScreenshot, data: "AQI=" },
+        speech: {
+          ...linkedRequest.clientSpeech,
+          filename: `hachidori_${"a".repeat(64)}.wav`,
+          byteLength: 4,
+          data: "UklGRg==",
+        },
       })
       && ankiSubmit.reply.state === "added" && ankiSubmit.reply.noteId === 82
       && ankiBrowse.forwarded.message.type === "hd_anki_browse" && ankiBrowse.reply.opened === true
@@ -1593,11 +1625,47 @@ async function sharingClientStage() {
       && rejected.ok === false && /generation changed/u.test(rejected.error)
       && JSON.stringify(forwardedRejected.message.clientMedia) === JSON.stringify({})
       && JSON.stringify(localOperations) === JSON.stringify([
-        "screenshot", "clientMedia", "settleClientMedia", "clientMedia", "settleClientMedia",
+        "preflightClientSpeech", "screenshot", "clientMedia", "settleClientMedia",
+        "clientMedia", "settleClientMedia",
       ])
-      && localAnkiCalls[2]?.[2] === "added" && localAnkiCalls[4]?.[2] === "invalid",
+      && localAnkiCalls[3]?.[2] === "added" && localAnkiCalls[5]?.[2] === "invalid",
     JSON.stringify({ ankiStatus, ankiPreflight, screenshot, ankiSubmit, ankiBrowse, ankiMaturity,
       rejected, forwardedRejected, localAnkiCalls }));
+
+  const beforeDiscovery = socket.requests().length;
+  const discovering = bus.sendMessage("sharing-client-settings", {
+    target: "hoshidicts-worker",
+    type: "hd_anki_discover",
+    requestId: "client-anki-discover",
+    model: "Basic",
+    url: "https://client.invalid/anki",
+    apiKey: "client-secret",
+  }, { id: chrome.runtime.id, url: chrome.runtime.getURL("settings.html#anki") });
+  await settle(() => socket.requests().length > beforeDiscovery);
+  const forwardedDiscovery = socket.requests().at(-1);
+  socket.receive({ kind: "reply", id: forwardedDiscovery.id, response: {
+    type: "hd_anki_discover_result",
+    requestId: "client-anki-discover",
+    ok: true,
+    error: null,
+    connected: true,
+    model: "Basic",
+    decks: ["Default"],
+    models: ["Basic"],
+    fields: ["Front", "Back"],
+    errors: [],
+  } });
+  const discovered = await discovering;
+  check("linked Anki Settings discovery runs on the host without forwarding the reading browser's endpoint credentials",
+    JSON.stringify(forwardedDiscovery.message) === JSON.stringify({
+      target: "hoshidicts-worker",
+      type: "hd_anki_discover",
+      requestId: "client-anki-discover",
+      model: "Basic",
+    })
+      && discovered.ok === true && discovered.connected === true
+      && JSON.stringify(discovered.fields) === JSON.stringify(["Front", "Back"]),
+    JSON.stringify({ forwardedDiscovery, discovered }));
 
   // This install's own engine keeps its pre-link state.
   const engineRead = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_state_read", requestId: "engine-read" }, engineSender);
@@ -1686,8 +1754,8 @@ async function sharingTransitionStage() {
       constructor(url) { super(url); sockets.push(this); }
     }
     const context = loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: Socket }, { overlayMode });
-    const send = (type, fields = {}, target = "hachidori-sharing") => bus.sendMessage("sharing-settings-tab",
-      { target, type, requestId: `transition-${type}`, ...fields });
+    const send = (type, fields = {}, target = "hachidori-sharing", sender) => bus.sendMessage("sharing-settings-tab",
+      { target, type, requestId: `transition-${type}`, ...fields }, sender);
     await send("hd_sharing_status");
     const hello = { kind: "hello", protocol: 1, version: "1", name: "Host", dictionaryCount: 1, snapshot: {
       dictionaryState: { schemaVersion: 1, revision: 9, dictionaries: [genericPackage({ id: "host" })], groups: [] },
@@ -1732,11 +1800,21 @@ async function sharingTransitionStage() {
     const keptSocket = f.sockets.at(-1);
     const requestsBeforeOldAnki = keptSocket.requests().length;
     const oldAnki = await f.send("hd_anki_status", {}, "hachidori-anki");
+    const oldDiscovery = await f.send("hd_anki_discover", {
+      model: "Basic",
+      url: "https://client.invalid/anki",
+      apiKey: "client-secret",
+    }, "hoshidicts-worker", {
+      id: f.chrome.runtime.id,
+      url: f.chrome.runtime.getURL("settings.html#anki"),
+    });
     check("an old host keeps linked dictionaries available but reports host-owned Anki mining unavailable without sending a request",
       oldAnki.ok === true && oldAnki.available === false
         && oldAnki.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
+        && oldDiscovery.ok === false
+        && oldDiscovery.error === "The linked Hachidori does not support host-owned Anki mining. Update it and try again."
         && keptSocket.requests().length === requestsBeforeOldAnki,
-      JSON.stringify({ oldAnki, requests: keptSocket.requests() }));
+      JSON.stringify({ oldAnki, oldDiscovery, requests: keptSocket.requests() }));
     const writes = f.storage.sets.length, sockets = f.sockets.length;
     await f.finishLinks([f.link()]);
     check("a repeated Link returns the current link without probing or replacing its saved state",

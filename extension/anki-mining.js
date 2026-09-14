@@ -172,6 +172,7 @@ export function createAnkiMiningService({
   beforeMutation = async () => {},
   afterConfirmed = async () => {},
   afterRejected = async () => {},
+  preflightExtra = async () => ({}),
   validateCapture = async () => {},
   enrich,
   duplicateIndex,
@@ -224,6 +225,7 @@ export function createAnkiMiningService({
     if (prepared.resources.deferDuplicateCheck === true) {
       const capture = captureForApplication(request, prepared.resolved.templates);
       if (capture) await validateCapture({ request, prepared, capture });
+      const extra = await preflightExtra({ request, prepared, applied: null, deferred: true });
       return {
         state: "addable",
         canAdd: true,
@@ -232,12 +234,14 @@ export function createAnkiMiningService({
         capture,
         screenshot: prepared.config.captureScreenshot === true
           && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot,
+        ...(extra ?? {}),
       };
     }
     const result = await decision(prepared, request, duplicateIndex);
     const applied = result.canAdd ? fieldsForDecision(prepared, result) : null;
     const capture = applied ? captureForApplication(request, applied.templates) : null;
     if (capture) await validateCapture({ request, prepared, capture });
+    const extra = await preflightExtra({ request, prepared, applied, deferred: false });
     return {
       state: result.state,
       canAdd: result.canAdd,
@@ -252,6 +256,7 @@ export function createAnkiMiningService({
       // write and may then apply a field this one would have kept.
       screenshot: prepared.config.captureScreenshot === true
         && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot,
+      ...(extra ?? {}),
     };
   }
 
