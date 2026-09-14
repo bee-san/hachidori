@@ -114,7 +114,7 @@ test("live lookup filters the configured deck and subdecks, verifies exact field
   });
   const lookup = calls.find(call => call.action === "notesInfo").params.query;
   assert.match(lookup, /deck:Mining\\:\\:Words/u);
-  assert.match(lookup, /Expression:猫/u);
+  assert.match(lookup, /expression:猫/iu);
   assert.deepEqual(calls.find(call => call.action === "findNotes").params,
     { query: "nid:10,20 is:review -is:learn prop:ivl>=21" });
 });
@@ -142,4 +142,3 @@ test("cached note inspection selects only an exact configured-type overwrite tar
   assert.equal(changed.stale, true);
   assert.equal(changed.target, null);
 });
-

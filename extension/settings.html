@@ -964,12 +964,10 @@
           </fieldset>
           <details class="anki-details">
             <summary>Duplicate handling</summary>
-            <label class="lookup-enable"><span>Check for duplicates</span><input id="opt-anki-check-duplicates" type="checkbox"></label>
             <div class="fields lookup-group">
-              <label class="field"><span class="field-label">Check within</span><select id="opt-anki-duplicate-scope"><option value="collection">Entire collection</option><option value="deck">Selected deck</option><option value="deck-root">Deck root and its subdecks</option></select></label>
-              <label class="field"><span class="field-label">When a duplicate exists</span><select id="opt-anki-duplicate-behavior"><option value="prevent">Prevent duplicate</option><option value="new">Add new anyway</option><option value="overwrite">Overwrite existing</option></select></label>
+              <label class="field"><span class="field-label">Check within</span><select id="opt-anki-duplicate-scope"><option value="model">Configured note type</option><option value="deck">Configured deck and subdecks</option><option value="all">All of Anki</option></select></label>
+              <label class="field"><span class="field-label">When a duplicate exists</span><select id="opt-anki-duplicate-behavior"><option value="prevent">Prevent</option><option value="new">Add anyway</option><option value="overwrite">Overwrite</option></select></label>
             </div>
-            <label class="lookup-enable"><span>Check across all note types</span><input id="opt-anki-check-all-models" type="checkbox"></label>
           </details>
           <details class="anki-details">
             <summary>Connection settings</summary>

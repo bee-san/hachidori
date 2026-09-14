@@ -269,3 +269,24 @@ test("AnkiConnect URL commits on change, retains invalid drafts and ignores old 
   assert.match(f.el("opt-anki-model").textContent, /New endpoint/u);
   assert.doesNotMatch(f.el("opt-anki-model").textContent, /Old endpoint/u);
 });
+
+test("duplicate scope labels follow the exact configured destination and replace the legacy controls", async t => {
+  const f = fixture(t);
+  f.adopt({ model: "Kiku v2", deck: "Mining::Words", duplicateScope: "model" });
+  discovery(f.sent[0], { models: ["Kiku v2"] });
+  await tick();
+  const scope = f.el("opt-anki-duplicate-scope");
+  assert.deepEqual([...scope.options].map(option => [option.value, option.textContent]), [
+    ["model", "Note type: Kiku v2"],
+    ["deck", "Deck: Mining::Words"],
+    ["all", "All of Anki"],
+  ]);
+  assert.equal(scope.value, "model");
+  assert.equal(f.el("opt-anki-check-duplicates"), null);
+  assert.equal(f.el("opt-anki-check-all-models"), null);
+  scope.value = "all";
+  scope.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.equal(f.read().duplicateScope, "all");
+  assert.deepEqual([...f.el("opt-anki-duplicate-behavior").options].map(option => option.textContent),
+    ["Prevent", "Add anyway", "Overwrite"]);
+});

@@ -152,14 +152,19 @@ test("the complete index refreshes every 30 minutes and retries if a post-write 
   const refresh = f.service.reconcile();
   while (!f.refreshes.length) await new Promise(resolve => setImmediate(resolve));
   await f.service.recordWrite(f.options.anki, "犬", 20);
+  f.setRows([["犬", false, [20]], ["猫", true, [7, 9]]]);
   hold.resolve();
   await refresh;
   while (f.refreshes.length < 2) await new Promise(resolve => setImmediate(resolve));
+  while (!f.state.snapshot.rows.some(([word]) => word === "犬")) {
+    await new Promise(resolve => setImmediate(resolve));
+  }
   assert.equal(f.refreshes.length, 2, "a pull started before the write must not erase its row");
   assert.equal(f.alarms.get(ANKI_INDEX_ALARM).scheduledTime, 3_600_000);
   assert.ok(f.state.snapshot.rows.some(([word]) => word === "犬"));
   f.due();
   await f.service.reconcile();
+  while (f.refreshes.length < 3) await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.refreshes.length, 3);
 });
 
@@ -176,4 +181,3 @@ test("scope changes invalidate membership and schedule an immediate replacement,
   await f.service.reconcile();
   assert.equal(f.refreshes.length, 2);
 });
-
