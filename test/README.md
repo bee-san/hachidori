@@ -5,7 +5,8 @@
 ## Reproducible setup and CI
 
 Use Node **22.23.1** (`.node-version`) and npm **10.9.8**. The bridge suite needs
-Node 22.15 or newer. Sharing tests invoke `python3`; CI pins **Python 3.13.2**.
+Node 22.15 or newer. Sharing tests invoke `python3`; CI pins **Python 3.13.2**
+and runs the relay socket suite separately on **Python 3.9.25**.
 Ordinary JavaScript tests use the committed WASM bundles and need no build or
 submodule checkout.
 
@@ -97,10 +98,14 @@ wire contract (addresses as a person types them, browser names, the forwarding
 table, frame validation), drives the Anki add-on's `extension/anki-relay/server.py`
 as a `python3` process over raw sockets (`test/anki-relay-server.mjs` starts
 it): the `Origin` rule, the loopback-only host, clients refused without a host,
-a second host turned away, a 1.5 MB frame relayed whole in both directions,
+a second host turned away, large UTF-8 frames relayed whole in both directions,
 broadcast, pings, closes, host loss, and the network listener opened on the
 host's `network` frame, linked through this machine's own address, closed
-again and dropped with the host. `sharing-settings.test.mjs` covers the
+again and dropped with the host. It also pauses a real client during 16 MiB
+UTF-8 replies, checks healthy requests and pings, resumes to verify frame order,
+and interrupts stalled writes on network disable and host loss. The idle accept
+timeout is checked on Python 3.9 as well as the CI interpreter.
+`sharing-settings.test.mjs` covers the
 Settings → Sharing section with jsdom: the dictionaries, waiting, refused and
 sharing states, the add-on download, the network switch with the addresses it
 lists and copies, the offer to use the Hachidori found on this computer, an

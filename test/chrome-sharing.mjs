@@ -282,7 +282,7 @@ function report() {
 if (!existsSync(CHROME)) fatal(`Chrome not found; set HACHIDORI_CHROME (tried ${CHROME || "nothing"})`);
 if (!existsSync(FIXTURE)) fatal(`missing ${FIXTURE}; run node test/make-fixture.mjs first`);
 for (const path of [HOST_PROFILE, CLIENT_PROFILE]) rmSync(path, { recursive: true, force: true });
-const relay = await startAnkiRelayServer({ port: PORT });
+const relay = await startAnkiRelayServer({ port: PORT, serverPath: process.env.HACHIDORI_RELAY_SERVER });
 console.log(`     relay listening on 127.0.0.1:${relay.port}`);
 const EXTENSION_VERSION = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8")).version;
 
@@ -362,6 +362,11 @@ try {
     JSON.stringify({ probe, offer, setup: setup.setupState?.stage, linked, linkedLookup: { ok: linkedLookup?.ok, error: linkedLookup?.error, first: linkedLookup?.results?.[0]?.deinflected },
       own: before.dictionaryState ?? null, kept: mirror.sharingLocalState?.dictionaryState ?? null, sharing: mirror.sharing,
       mirrorRevision: mirror.dictionaryState?.revision, hostRevision: hostAfterLink.dictionaryState?.revision, hostClients }));
+
+  if (process.env.HACHIDORI_SHARING_BENCHMARK) {
+    const { measureSharingLookups } = await import("../benchmark/sharing-latency.mjs");
+    await measureSharingLookups(clientPage, clientBrowser, relay.serverPath, process.env.HACHIDORI_SHARING_BENCHMARK);
+  }
 
   const baseRevision = mirror.options?.revision ?? 0;
   const written = await message(clientPage, "hoshidicts-worker", "hd_options_write", { baseRevision, options: { scanLength: 7 } });
