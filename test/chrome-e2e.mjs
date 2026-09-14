@@ -5856,7 +5856,6 @@ async function checkDesignPreview(page) {
   try {
     await page.setViewport({ width: 1280, height: 900 });
     await showSettingsSection(page, "design");
-    await page.$eval("#design-preview-disclosure", node => { node.open = true; });
     const frame = await (await page.$("#design-preview")).contentFrame();
     await frame.waitForFunction(() => document.getElementById("preview-host")?.shadowRoot
       ?.querySelector('.gloss-image-link[data-image-load-state="loaded"] img')?.naturalWidth > 0,
