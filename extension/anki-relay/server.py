@@ -20,12 +20,13 @@ import errno
 import hashlib
 import ipaddress
 import json
+import select
 import socket
 import struct
 import sys
 import threading
 import time
-from collections import namedtuple
+from collections import deque, namedtuple
 from contextlib import suppress
 
 DEFAULT_PORT = 8771
@@ -126,7 +127,7 @@ class Listener:
             return None
         try:
             conn, _ = sock.accept()
-        except TimeoutError:
+        except socket.timeout:
             return None
         except OSError:
             if sock is not self._sock:
@@ -143,7 +144,7 @@ class Listener:
 
 
 class SharingRelay:
-    """The host, its linked browsers and the frames between them, behind one lock because every socket runs on its own thread."""
+    """One lock owns relay state and frame ordering; Connection never waits for a socket while it is held."""
 
     def __init__(self, listener):
         self._listener = listener
@@ -280,7 +281,12 @@ class Reader:
         self._buffer = bytearray()
 
     def _fill(self):
-        chunk = self._sock.recv(1 << 20)
+        while True:
+            try:
+                chunk = self._sock.recv(1 << 20)
+                break
+            except BlockingIOError:
+                select.select([self._sock], [], [])
         if not chunk:
             raise EOFError
         self._buffer += chunk
@@ -316,22 +322,61 @@ class Reader:
 
 
 class Connection:
-    """One socket after its handshake; the relay sees only send() and close()."""
+    """Nonblocking sends; only backpressure starts a per-socket drain thread."""
 
     def __init__(self, sock):
         self._sock = sock
+        sock.setblocking(False)
         self._lock = threading.Lock()
+        self._pending = deque()
         self._closed = False
 
+    def _send_pending(self):
+        """Advance the first frame without waiting; called with this connection's lock held."""
+        frame = self._pending[0]
+        try:
+            sent = self._sock.send(frame)
+        except BlockingIOError:
+            return
+        if sent == 0:
+            raise ConnectionError("socket closed while sending")
+        if sent < len(frame):
+            self._pending[0] = frame[sent:]
+        else:
+            self._pending.popleft()
+
+    def _drain(self):
+        try:
+            while True:
+                # No relay or connection lock is held during the only write wait.
+                # shutdown() wakes this wait even if the peer never reads again.
+                select.select([], [self._sock], [])
+                with self._lock:
+                    if self._closed:
+                        return
+                    self._send_pending()
+                    if not self._pending:
+                        return
+        except (OSError, ValueError):
+            # The reader owns relay cleanup; wake it on send failure as well.
+            self.close()
+
     def _write(self, opcode, payload):
-        with self._lock:
-            if self._closed:
-                return
-            try:
-                self._sock.sendall(encode_frame(opcode, payload))
-            except OSError:
-                # This socket's own thread reports the loss to the relay.
-                self._closed = True
+        frame = memoryview(encode_frame(opcode, payload))
+        try:
+            with self._lock:
+                if self._closed:
+                    return
+                draining = bool(self._pending)
+                self._pending.append(frame)
+                if not draining:
+                    # Healthy sockets keep the direct-send path. Once a frame
+                    # is partial, all later frames queue behind its remainder.
+                    self._send_pending()
+                    if self._pending:
+                        threading.Thread(target=self._drain, name="hachidori-relay-send", daemon=True).start()
+        except OSError:
+            self.close()
 
     def send(self, text):
         self._write(TEXT, text.encode("utf-8"))
@@ -344,11 +389,14 @@ class Connection:
             if self._closed:
                 return
             self._closed = True
-            # The peer may be gone already; the shutdown still wakes this socket's own thread.
-            with suppress(OSError):
-                self._sock.sendall(encode_frame(CLOSE, b""))
-            with suppress(OSError):
-                self._sock.shutdown(socket.SHUT_RDWR)
+            # A close frame cannot interrupt a partly written data frame. In
+            # that case abort the transport rather than waiting for its peer.
+            if not self._pending:
+                with suppress(OSError):
+                    self._sock.send(encode_frame(CLOSE, b""))
+            self._pending.clear()
+        with suppress(OSError):
+            self._sock.shutdown(socket.SHUT_RDWR)
 
 
 def parse_request(head):
@@ -425,6 +473,7 @@ def serve_connection(relay, sock):
             try:
                 relay_frames(reader, connection, handlers.message)
             finally:
+                connection.close()
                 handlers.closed()
         except (OSError, EOFError, ValueError):
             # The peer went away or sent something that is not WebSocket text. Inside Anki an

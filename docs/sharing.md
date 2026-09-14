@@ -143,6 +143,14 @@ computers reach it at, found from the routes to Tailscale's resolver and to the
 default route without sending anything. Run it without Anki with
 `python3 extension/anki-relay/server.py --port 8771`.
 
+Socket writes never wait while holding the shared relay state lock. A healthy
+connection sends directly; a socket that fills its send buffer queues the rest
+of that frame and later frames in order, with its own drain thread. Other
+browsers can keep looking up words and receiving keep-alives while it catches
+up. Turning network sharing off or losing the host interrupts stalled sends;
+a partly sent frame ends with transport shutdown rather than a malformed close
+frame inserted into its payload.
+
 ## Tests
 
 `node --test test/sharing-protocol.test.mjs test/sharing-relay.test.mjs
@@ -153,7 +161,11 @@ second host turned away, whole-frame relaying in both directions, broadcast,
 pings, closes, host loss, and the network listener opened, linked through this
 machine's own address and closed again), covers the Settings section with
 jsdom, and builds the add-on archive and reads it back with Python's
-`zipfile`. With Anki installed, `python3 test/anki-relay-desktop.py` starts a
+`zipfile`. The socket suite also pauses a client during 16 MiB UTF-8 replies,
+checks healthy-client traffic and both keep-alive and control pings, resumes
+the client to verify complete ordered frames, and checks shutdown during a
+stalled send. An idle listener stays available across accept timeouts, including
+on Python 3.9. With Anki installed, `python3 test/anki-relay-desktop.py` starts a
 separate Anki on a temporary base with only the add-on installed and runs the
 same host, network and refusal exchange against it. The extension smoke
 suite's sharing-host and sharing-client stages cover the service worker's
