@@ -10,15 +10,23 @@ export function canDiscoverSharingHost(sharing) {
     && !(sharing.enabled === true && sharing.connected === true);
 }
 
+export const LINKED_ANKI_CAPABILITY = "linked-anki-v1";
+export const SHARING_CAPABILITIES = Object.freeze([LINKED_ANKI_CAPABILITY]);
+export const LINKED_ANKI_UNSUPPORTED = "The linked Hachidori does not support host-owned Anki mining. Update it and try again.";
+export const MAX_LINKED_ANKI_FRAME_BYTES = 16 * 1024 * 1024;
 const HOST_PATH = "/host";
 const LINK_PATH = "/link";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const ADDRESS_HINT = "Enter the address shown under Sharing on the other computer, like 100.101.102.103.";
 
+export const LINKED_ANKI_REQUESTS = new Set([
+  "hd_anki_status", "hd_anki_preflight", "hd_anki_submit", "hd_anki_browse", "hd_anki_maturity",
+]);
+
 // Which runtime messages a linked client sends to the host instead of its own
-// engine or worker. Everything else stays local: audio, Anki mining, capture,
-// page zoom, external links, setup, local-file imports and backups.
+// engine or worker. Screenshot capture/discard and captured-media sessions stay
+// in the reading browser; the host owns every Anki and generation decision.
 export const FORWARDED_REQUESTS = {
   "hoshidicts-offscreen": new Set([
     "hd_lookup", "hd_lookup_dictionary", "hd_kanji", "hd_styles", "hd_media", "hd_status",
@@ -30,7 +38,7 @@ export const FORWARDED_REQUESTS = {
   ]),
   "hachidori-updates": new Set(["hd_updates_schedule", "hd_updates_check", "hd_updates_install"]),
   "hachidori-setup": new Set(["hd_setup_install"]),
-  "hachidori-anki": new Set(["hd_anki_maturity"]),
+  "hachidori-anki": LINKED_ANKI_REQUESTS,
 };
 
 export function forwardableRequest(message) {
@@ -93,17 +101,75 @@ function parseJsonObject(text) {
   return value;
 }
 
+function parseCapabilities(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 32
+      || value.some(item => typeof item !== "string" || item === "" || item.length > 100)) {
+    throw new Error("malformed sharing capabilities");
+  }
+  return [...new Set(value)];
+}
+
+function linkedAnkiSubmission(message) {
+  return message?.target === "hachidori-anki" && message.type === "hd_anki_submit";
+}
+
+export function assertLinkedAnkiFrame(text) {
+  if (new TextEncoder().encode(text).byteLength > MAX_LINKED_ANKI_FRAME_BYTES) {
+    throw new Error("The linked Anki submission exceeds the 16 MiB frame limit.");
+  }
+}
+
+const MINING_REQUEST_FIELDS = [
+  "term", "trace", "generation", "sentence", "matchOffset", "matched", "popupSelectionText",
+  "searchQuery", "documentTitle", "audioSelection", "capturePin", "dictionaryAliases",
+  "frequencyDictionaries", "configKey", "screenshot", "captureJobId", "captureUnavailable",
+];
+
+function selectedFields(value, fields) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("malformed linked Anki request");
+  return Object.fromEntries(fields.filter(field => Object.hasOwn(value, field)).map(field => [field, value[field]]));
+}
+
+// A linked browser is untrusted at the host boundary. Rebuild only the request
+// shape each operation needs; endpoint credentials and local-only operations
+// never enter the host's ordinary Anki handler.
+export function allowLinkedAnkiRequest(message) {
+  if (!message || typeof message !== "object" || message.target !== "hachidori-anki"
+      || !LINKED_ANKI_REQUESTS.has(message.type)) {
+    throw new Error("unsupported linked Anki request");
+  }
+  const requestId = typeof message.requestId === "string" || Number.isFinite(message.requestId)
+    ? message.requestId : null;
+  const base = { target: "hachidori-anki", type: message.type, requestId };
+  if (message.type === "hd_anki_status") return base;
+  if (message.type === "hd_anki_maturity") {
+    const request = selectedFields(message.request, ["term"]);
+    request.term = selectedFields(request.term, ["expression", "reading"]);
+    return { ...base, request };
+  }
+  if (message.type === "hd_anki_browse") {
+    return { ...base, request: selectedFields(message.request, ["noteIds", "expression"]) };
+  }
+  const request = selectedFields(message.request, MINING_REQUEST_FIELDS);
+  return message.type === "hd_anki_submit"
+    ? { ...base, request, clientMedia: message.clientMedia }
+    : { ...base, request };
+}
+
 // A frame a client sends to the host.
 export function parseClientFrame(text) {
   const frame = parseJsonObject(text);
   switch (frame.kind) {
     case "hello":
       if (frame.protocol !== PROTOCOL_VERSION) throw new Error(`unsupported sharing protocol ${JSON.stringify(frame.protocol)}`);
-      return { kind: "hello", version: String(frame.version ?? ""), name: String(frame.name ?? "") };
+      return { kind: "hello", version: String(frame.version ?? ""), name: String(frame.name ?? ""),
+        capabilities: parseCapabilities(frame.capabilities) };
     case "request":
       if (!frame.message || typeof frame.message !== "object" || Array.isArray(frame.message)
           || typeof frame.message.target !== "string" || typeof frame.message.type !== "string"
           || (typeof frame.id !== "string" && typeof frame.id !== "number")) throw new Error("malformed sharing request");
+      if (linkedAnkiSubmission(frame.message)) assertLinkedAnkiFrame(text);
       return { kind: "request", id: frame.id, message: frame.message };
     case "pong":
       return { kind: "pong" };
@@ -120,7 +186,8 @@ export function parseHostFrame(text) {
       if (frame.protocol !== PROTOCOL_VERSION) throw new Error(`unsupported sharing protocol ${JSON.stringify(frame.protocol)}`);
       if (!frame.snapshot || typeof frame.snapshot !== "object") throw new Error("malformed sharing hello");
       return { kind: "hello", version: String(frame.version ?? ""), name: String(frame.name ?? ""),
-        dictionaryCount: Number(frame.dictionaryCount) || 0, snapshot: frame.snapshot };
+        dictionaryCount: Number(frame.dictionaryCount) || 0, capabilities: parseCapabilities(frame.capabilities),
+        snapshot: frame.snapshot };
     case "reply":
       if (typeof frame.id !== "string" && typeof frame.id !== "number") throw new Error("malformed sharing reply");
       return { kind: "reply", id: frame.id, response: frame.response };

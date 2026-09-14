@@ -264,6 +264,7 @@ function captureFixture({
       return { ok: true, filename: asset.filename, data: asset.data };
     }
     if (message.type === "hd_capture_complete") return { ok: true, completed: true };
+    if (message.type === "hd_capture_cancel") return { ok: true, cancelled: true };
     throw new Error(`Unexpected capture ${message.type}`);
   };
   const service = createAnkiWorkerService({
@@ -284,6 +285,8 @@ function captureFixture({
         fields: Object.fromEntries(Object.entries(message.templates).map(([field, template]) => [field,
           template.value
             .replaceAll("{expression}", "猫")
+            .replaceAll("{screenshot}", message.request.captureUnavailable?.includes("screenshot")
+              ? "" : `<img src="${message.request.screenshot?.filename || ""}">`)
             .replaceAll("{capture-animation}", message.request.captureUnavailable?.includes("animation")
               ? "" : `<img src="${message.request.capturePin?.animationFilename || ""}">`)
             .replaceAll("{capture-audio}", message.request.captureUnavailable?.includes("audio")
@@ -486,6 +489,94 @@ test("captured media preflight stays read-only and submission uploads referenced
   assert.deepEqual(f.captureCalls.map(call => call.type),
     ["hd_capture_job_status", "hd_capture_asset", "hd_capture_asset", "hd_capture_job_status", "hd_capture_complete"]);
   assert.ok(f.calls.lastIndexOf("storeMediaFile") < f.calls.indexOf("addNote"));
+});
+
+test("host mining uploads externally supplied screenshot and AVIF/WAV bytes without touching host capture state", async () => {
+  const screenshot = {
+    token: "linked-screen",
+    filename: "hachidori-screenshot-123e4567-e89b-42d3-a456-426614174000.jpg",
+  };
+  const f = captureFixture({
+    templates: {
+      Front: { value: "{expression}", overwriteMode: "overwrite" },
+      Screenshot: { value: "{screenshot}", overwriteMode: "overwrite" },
+      Media: { value: "{capture-animation}", overwriteMode: "overwrite" },
+      CapturedAudio: { value: "{capture-audio}", overwriteMode: "overwrite" },
+    },
+  });
+  f.request.configKey = (await f.service.status()).configKey;
+  f.request.captureJobId = "linked-job";
+  f.request.screenshot = screenshot;
+  const result = await f.service.submitClient(f.request, {
+    screenshot: { ...screenshot, data: "/9j/2Q==" },
+    capture: {
+      jobId: "linked-job",
+      warnings: ["client warning"],
+      assets: {
+        animation: { filename: "hachidori-abc123.avif", byteLength: 2, data: "AQI=" },
+        audio: { filename: "hachidori-abc123.wav", byteLength: 1, data: "Aw==" },
+      },
+    },
+  });
+  assert.equal(result.state, "added");
+  assert.match(result.warnings.join(" "), /client warning/u);
+  assert.equal(f.fields.Screenshot, `<img src="${screenshot.filename}">`);
+  assert.equal(f.fields.Media, '<img src="hachidori-abc123.avif">');
+  assert.equal(f.fields.CapturedAudio, "[sound:hachidori-abc123.wav]");
+  assert.deepEqual(f.storedMedia, [screenshot.filename, "hachidori-abc123.avif", "hachidori-abc123.wav"]);
+  assert.deepEqual(f.captureCalls, [], "Chrome must not consult its own capture session for Brave-owned media");
+  assert.ok(f.calls.filter(call => call === "hd_status").length >= 4, "every host-side generation guard remains active");
+});
+
+test("client media export and outcome cleanup stay local to the reading browser", async () => {
+  const f = captureFixture({
+    templates: {
+      Front: { value: "{expression}", overwriteMode: "overwrite" },
+      Media: { value: "{capture-animation}", overwriteMode: "overwrite" },
+      CapturedAudio: { value: "{capture-audio}", overwriteMode: "overwrite" },
+    },
+    warnings: ["local warning"],
+  });
+  f.request.captureJobId = "client-job";
+  const media = await f.service.clientMedia(f.request);
+  assert.deepEqual(media, {
+    capture: {
+      jobId: "client-job",
+      warnings: ["local warning"],
+      assets: {
+        animation: { filename: "hachidori-abc123.avif", byteLength: 2, data: "AQI=" },
+        audio: { filename: "hachidori-abc123.wav", byteLength: 1, data: "Aw==" },
+      },
+    },
+  });
+  assert.deepEqual(f.captureCalls.map(call => call.type),
+    ["hd_capture_job_status", "hd_capture_asset", "hd_capture_asset"]);
+  await f.service.settleClientMedia(f.request, "added");
+  assert.equal(f.captureCalls.at(-1).type, "hd_capture_complete");
+
+  f.request.captureJobId = "client-rejected";
+  await f.service.settleClientMedia(f.request, "duplicate");
+  assert.equal(f.captureCalls.at(-1).type, "hd_capture_cancel");
+});
+
+test("host generation validation rejects stale externally supplied media before any Anki write", async () => {
+  const f = captureFixture();
+  f.request.configKey = (await f.service.status()).configKey;
+  f.request.generation = 2;
+  f.request.captureJobId = "stale-job";
+  await assert.rejects(f.service.submitClient(f.request, {
+    capture: {
+      jobId: "stale-job",
+      warnings: [],
+      assets: {
+        animation: { filename: "hachidori-abc123.avif", byteLength: 2, data: "AQI=" },
+        audio: { filename: "hachidori-abc123.wav", byteLength: 1, data: "Aw==" },
+      },
+    },
+  }), /dictionary generation changed/u);
+  assert.equal(f.calls.includes("addNote"), false);
+  assert.equal(f.calls.includes("storeMediaFile"), false);
+  assert.deepEqual(f.captureCalls, []);
 });
 
 test("Stop during the final capture upload or config read prevents a new add or overwrite", async () => {
@@ -758,6 +849,7 @@ test("a mining screenshot is held until the note is written, then stored under i
 
   // The capture itself refuses when the switch is off or the page gives nothing.
   await assert.rejects(service.screenshot(async () => "not-an-image"), /no screenshot/u);
+  await assert.rejects(service.screenshot(async () => "data:image/png;base64,c2hvdA=="), /no screenshot/u);
   await assert.rejects(service.screenshot(async () => { throw new Error("The reading tab is no longer the active tab."); }),
     /no longer the active tab/u);
   options.anki.captureScreenshot = false;

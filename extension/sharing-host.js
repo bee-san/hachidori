@@ -7,7 +7,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { DEFAULT_SHARING_PORT, PROTOCOL_VERSION, formatHostAddress, parseClientFrame } from "./sharing-protocol.js";
+import {
+  DEFAULT_SHARING_PORT, PROTOCOL_VERSION, SHARING_CAPABILITIES, formatHostAddress, parseClientFrame,
+} from "./sharing-protocol.js";
 
 export const SHARING_KEY = "sharing";
 export const SHARING_HOST_ALARM = "hachidori-sharing-host";
@@ -28,7 +30,9 @@ function relayAddresses(entries) {
 // reply object a runtime sender would receive. `readSnapshot()` returns the
 // shared storage keys as stored. `sharedKey(key)` says whether a storage
 // change belongs to the mirror. `name` is what linked browsers call this one.
-export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, sharedKey, version, name }) {
+export function createSharingHost({
+  WebSocket, alarms, dispatch, readSnapshot, sharedKey, version, name, capabilities = SHARING_CAPABILITIES,
+}) {
   const clients = new Map();
   let enabled = false;
   let configuredPort = DEFAULT_SHARING_PORT;
@@ -79,10 +83,10 @@ export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, s
     }
     if (frame.kind === "hello") {
       const client = clients.get(clientId);
-      if (client) Object.assign(client, { name: frame.name, version: frame.version });
+      if (client) Object.assign(client, { name: frame.name, version: frame.version, capabilities: frame.capabilities });
       const snapshot = await readSnapshot();
       const dictionaryCount = Array.isArray(snapshot.dictionaryState?.dictionaries) ? snapshot.dictionaryState.dictionaries.length : 0;
-      send(clientId, { kind: "hello", protocol: PROTOCOL_VERSION, version, name, dictionaryCount, snapshot });
+      send(clientId, { kind: "hello", protocol: PROTOCOL_VERSION, version, name, dictionaryCount, capabilities, snapshot });
       return;
     }
     if (frame.kind === "request") {
@@ -116,7 +120,7 @@ export function createSharingHost({ WebSocket, alarms, dispatch, readSnapshot, s
       case "client-open": {
         const address = String(message.address ?? "");
         clients.set(message.clientId, { id: message.clientId, origin: String(message.origin ?? ""), address, local: LOOPBACK_PEERS.has(address),
-          name: "", version: "", connectedAt: Date.now() });
+          name: "", version: "", capabilities: [], connectedAt: Date.now() });
         return;
       }
       case "client-close":
