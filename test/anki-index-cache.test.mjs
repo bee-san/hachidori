@@ -1,0 +1,179 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import assert from "node:assert/strict";
+import test from "node:test";
+import "../extension/reader-options.js";
+import {
+  ANKI_INDEX_ALARM,
+  ANKI_INDEX_REFRESH_MS,
+  ankiIndexConfigurationChange,
+  createAnkiDuplicateIndex,
+} from "../extension/anki-index-cache.js";
+
+const copy = value => structuredClone(value);
+const deferred = () => {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+};
+
+function fixture(saved) {
+  let options = globalThis.HDReaderOptions.normaliseOptions({ anki: {
+    model: "Japanese",
+    fields: { expression: "Expression" },
+  } });
+  let state = copy(saved), clock = 1_800_000, rows = [["猫", true, [9, 7]]];
+  let held = null, failure = null, storageTail = Promise.resolve(), writing = false;
+  const refreshes = [], lookups = [], alarms = new Map();
+  const dependencies = {
+    async fetchRows(source) {
+      assert.equal(writing, false, "Anki refresh must run outside the storage queue");
+      refreshes.push(source);
+      if (held) { const pending = held; held = null; await pending.promise; }
+      if (failure) throw failure;
+      return copy(rows);
+    },
+    async lookupLive(source, expression, invoke) {
+      lookups.push({ source, expression, invoke });
+      return invoke.answer(expression);
+    },
+    readOptions: async () => copy(options),
+    readState: async () => copy(state),
+    updateState(update) {
+      const run = storageTail.then(async () => {
+        writing = true;
+        try {
+          const next = await update({ options: copy(options), state: copy(state) });
+          if (next !== undefined) state = copy(next);
+          return copy(state);
+        } finally {
+          writing = false;
+        }
+      });
+      storageTail = run.catch(() => {});
+      return run;
+    },
+    alarms: {
+      get: async name => copy(alarms.get(name)),
+      clear: async name => alarms.delete(name),
+      create: async (name, value) => alarms.set(name, { name, scheduledTime: value.when }),
+    },
+    now: () => clock,
+    reportError() {},
+  };
+  const service = createAnkiDuplicateIndex(dependencies);
+  return {
+    service,
+    alarms,
+    refreshes,
+    lookups,
+    invoke(answer) { return { answer }; },
+    get options() { return copy(options); },
+    get state() { return copy(state); },
+    setRows(value) { rows = copy(value); },
+    fail(value = new Error("Anki closed")) { failure = value; },
+    hold() { return held = deferred(); },
+    due() { clock += ANKI_INDEX_REFRESH_MS; },
+    async change(patch, notify = true) {
+      const commit = storageTail.then(async () => {
+        const nextOptions = globalThis.HDReaderOptions.normaliseOptions({ ...options, ...patch });
+        const nextState = await ankiIndexConfigurationChange(options, nextOptions, copy(state));
+        options = nextOptions;
+        if (nextState !== undefined) state = copy(nextState);
+      });
+      storageTail = commit.catch(() => {});
+      await commit;
+      if (notify) return service.reconcile();
+    },
+  };
+}
+
+test("warm hits return sorted note IDs without Anki, while an absent word is never negatively cached", async () => {
+  const f = fixture();
+  await f.service.reconcile();
+  const forbidden = f.invoke(() => { throw new Error("warm hit queried Anki"); });
+  assert.deepEqual(await f.service.lookup(f.options.anki, "猫", forbidden), {
+    wordKey: "猫",
+    mature: true,
+    noteIds: [7, 9],
+    cached: true,
+  });
+  const live = f.invoke(() => ({ wordKey: "犬", mature: false, noteIds: [] }));
+  assert.deepEqual(await f.service.lookup(f.options.anki, "犬", live), {
+    wordKey: "犬",
+    mature: false,
+    noteIds: [],
+    cached: false,
+  });
+  assert.equal(f.lookups.length, 1);
+  await f.service.lookup(f.options.anki, "犬", live);
+  assert.equal(f.lookups.length, 2, "a miss without notes must not create a negative row");
+});
+
+test("a miss repaired from Anki is persisted once and the second lookup makes zero Anki requests", async () => {
+  const f = fixture();
+  await f.service.reconcile();
+  const invoke = f.invoke(expression => ({ wordKey: expression, mature: true, noteIds: [42, 12, 42] }));
+  const first = await f.service.lookup(f.options.anki, "犬", invoke);
+  assert.deepEqual(first, { wordKey: "犬", mature: true, noteIds: [12, 42], cached: false });
+  const calls = f.lookups.length;
+  const second = await f.service.lookup(f.options.anki, "犬",
+    f.invoke(() => { throw new Error("repaired hit queried Anki"); }));
+  assert.deepEqual(second, { wordKey: "犬", mature: true, noteIds: [12, 42], cached: true });
+  assert.equal(f.lookups.length, calls);
+  assert.deepEqual(f.state.snapshot.rows, [["犬", true, [12, 42]], ["猫", true, [7, 9]]]);
+});
+
+test("forced stale repair replaces or removes the compact row", async () => {
+  const f = fixture();
+  await f.service.reconcile();
+  const replaced = await f.service.repair(f.options.anki, "猫",
+    f.invoke(() => ({ wordKey: "猫", mature: false, noteIds: [15] })));
+  assert.deepEqual(replaced.noteIds, [15]);
+  assert.deepEqual(f.state.snapshot.rows, [["猫", false, [15]]]);
+  await f.service.repair(f.options.anki, "猫",
+    f.invoke(() => ({ wordKey: "猫", mature: false, noteIds: [] })));
+  assert.deepEqual(f.state.snapshot.rows, []);
+  assert.equal(await f.service.has(f.options.anki, "猫"), false);
+});
+
+test("confirmed adds and overwrites update the row immediately without changing its maturity", async () => {
+  const f = fixture();
+  await f.service.reconcile();
+  await f.service.recordWrite(f.options.anki, "猫", 8);
+  assert.deepEqual(f.state.snapshot.rows, [["猫", true, [7, 8, 9]]]);
+  await f.service.recordWrite(f.options.anki, "犬", 20, { mature: false });
+  assert.deepEqual(f.state.snapshot.rows, [["犬", false, [20]], ["猫", true, [7, 8, 9]]]);
+  assert.equal(await f.service.has(f.options.anki, "犬"), false);
+  assert.equal(f.lookups.length, 0, "maturity membership must remain cache-only");
+});
+
+test("the complete index refreshes every 30 minutes and retries if a post-write update races its pull", async () => {
+  const f = fixture(), hold = f.hold();
+  const refresh = f.service.reconcile();
+  while (!f.refreshes.length) await new Promise(resolve => setImmediate(resolve));
+  await f.service.recordWrite(f.options.anki, "犬", 20);
+  hold.resolve();
+  await refresh;
+  while (f.refreshes.length < 2) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.refreshes.length, 2, "a pull started before the write must not erase its row");
+  assert.equal(f.alarms.get(ANKI_INDEX_ALARM).scheduledTime, 3_600_000);
+  assert.ok(f.state.snapshot.rows.some(([word]) => word === "犬"));
+  f.due();
+  await f.service.reconcile();
+  assert.equal(f.refreshes.length, 3);
+});
+
+test("scope changes invalidate membership and schedule an immediate replacement, while policy changes retain it", async () => {
+  const f = fixture();
+  await f.service.reconcile();
+  const before = f.state.configurationRevision;
+  await f.change({ anki: { ...f.options.anki, duplicateBehavior: "overwrite" } });
+  assert.equal(f.state.configurationRevision, before);
+  assert.equal(await f.service.has(f.options.anki, "猫"), true);
+  await f.change({ anki: { ...f.options.anki, duplicateScope: "all" } }, false);
+  assert.equal(f.state.configurationRevision, before + 1);
+  assert.equal(await f.service.has(f.options.anki, "猫"), false);
+  await f.service.reconcile();
+  assert.equal(f.refreshes.length, 2);
+});
+
